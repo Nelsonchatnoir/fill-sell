@@ -55,7 +55,7 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 
 function SwipeRow({onDelete, children}){
-  const isTouch = typeof window !== 'undefined' && 'ontouchstart' in window;
+  const isMobile = window.innerWidth < 768;
   const innerRef=useRef(null);
   const bgRef=useRef(null);
   const startX=useRef(0);
@@ -63,7 +63,7 @@ function SwipeRow({onDelete, children}){
   const THRESHOLD=70;
 
   // ═══ DESKTOP : div simple + croix au hover ═══
-  if(!isTouch){
+  if(!isMobile){
     return(
       <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
         onMouseEnter={e=>{
