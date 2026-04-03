@@ -131,12 +131,16 @@ export default function App(){
     supabase.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
     supabase.auth.onAuthStateChange((_,session)=>{setUser(session?.user??null);});
     try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}");setItems(d.items||[]);}catch{}
-    supabase.from('ventes').select('*').order('created_at',{ascending:false})
+  },[]);
+
+  useEffect(()=>{
+    if(!user)return;
+    supabase.from('ventes').select('*').eq('user_id',user.id).order('created_at',{ascending:false})
       .then(({data,error})=>{
         if(error){console.error('[Supabase] Erreur chargement:',error.message);return;}
         setSales((data||[]).map(v=>({id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date})));
       });
-  },[]);
+  },[user]);
 
   const save=useCallback((it)=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({items:it}));},[]);
 
@@ -229,6 +233,7 @@ export default function App(){
   async function handleLogout(){
     await supabase.auth.signOut();
     setUser(null);
+    setSales([]);
   }
 
   const TABS_MOBILE=[
