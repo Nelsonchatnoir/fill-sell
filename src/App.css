@@ -18,7 +18,7 @@ const C = {
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overflow-x:hidden;}
+  html,body{width:100%;max-width:100%;overflow-x:hidden;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
@@ -123,7 +123,7 @@ function SwipeRow({onDelete, children}){
     setTimeout(()=>onDelete(),200);
   }
   return(
-    <div style={{position:"relative",borderRadius:12,overflow:"hidden"}}>
+    <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%"}}>
       <div ref={bgRef} onClick={handleDelClick}
         style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}
       >
@@ -384,7 +384,7 @@ export default function App(){
   );
 
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
+    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%",maxWidth:"100vw"}}>
       <style>{css}</style>
 
       <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
