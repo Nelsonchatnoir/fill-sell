@@ -34,7 +34,7 @@ const css = `
   .row-wrap:hover .del-btn{opacity:1;}
   .del-btn:hover{background:#FEE2E2;color:${C.red};}
   .swipe-bg{position:absolute;right:0;top:0;bottom:0;width:80px;background:linear-gradient(135deg,#FF6B6B,${C.red});display:flex;align-items:center;justify-content:center;border-radius:0 12px 12px 0;}
-  @media(min-width:769px){.swipe-bg{display:none!important;}}
+  @media(min-width:769px){.mobile-only-del{display:none!important;}}
   .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
   .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
@@ -64,54 +64,49 @@ const css = `
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 
-function SwipeRow({onDelete, children, style}){
+function SwipeRow({onDelete, children}){
   const innerRef=useRef(null);
   const startX=useRef(0);
   const isDragging=useRef(false);
   const THRESHOLD=70;
+  const isMobile=()=>window.innerWidth<=768;
 
   function onTouchStart(e){
+    if(!isMobile())return;
     startX.current=e.touches[0].clientX;
     isDragging.current=true;
     innerRef.current.style.transition='none';
   }
-
   function onTouchMove(e){
-    if(!isDragging.current)return;
+    if(!isDragging.current||!isMobile())return;
     const dx=e.touches[0].clientX-startX.current;
     if(dx>=0){innerRef.current.style.transform='translateX(0)';return;}
-    const clamped=Math.max(dx,-(THRESHOLD+30));
-    innerRef.current.style.transform=`translateX(${clamped}px)`;
+    innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
   }
-
   function onTouchEnd(){
+    if(!isMobile()){isDragging.current=false;return;}
     isDragging.current=false;
     innerRef.current.style.transition='transform 0.25s ease';
-    const current=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
-    if(current<=-THRESHOLD){
-      innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
-    } else {
-      innerRef.current.style.transform='translateX(0)';
-    }
+    const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
+    if(cur<=-THRESHOLD) innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
+    else innerRef.current.style.transform='translateX(0)';
   }
-
   function handleDelClick(){
     innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
     innerRef.current.style.transform='translateX(-120%)';
     innerRef.current.style.opacity='0';
     setTimeout(()=>onDelete(),200);
   }
-
   return(
-    <div className="row-wrap" style={style}>
-      <div className="swipe-bg" onClick={handleDelClick}>
+    <div style={{position:"relative",borderRadius:12,overflow:"hidden"}}>
+      <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:`linear-gradient(135deg,#FF6B6B,#E53E3E)`,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 12px 12px 0",cursor:"pointer"}} onClick={handleDelClick} className="mobile-only-del">
         <span style={{fontSize:22}}>🗑️</span>
       </div>
-      <div ref={innerRef} className="row-inner"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px"}}
+      <div ref={innerRef} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onMouseEnter={e=>e.currentTarget.style.background="#F3F4F6"}
+        onMouseLeave={e=>e.currentTarget.style.background="#F9FAFB"}
+        className="swipe-inner-row"
       >
         {children}
       </div>
