@@ -124,6 +124,8 @@ export default function App(){
   const [cSaved,setCSaved]=useState(false);
   const [user,setUser]=useState(null);
   const [authLoading,setAuthLoading]=useState(true);
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
@@ -211,15 +213,14 @@ export default function App(){
       .then(({error})=>{if(error)console.error('[Supabase] Erreur delete:',error.message);});
   }
 
-async function handleLogin(e){
-    e.preventDefault();
-    const email=e.target.email.value;
-    const password=e.target.password.value;
+  async function handleLogin(){
+    if(!email||!password){alert("Remplis email et mot de passe");return;}
     const {error}=await supabase.auth.signInWithPassword({email,password});
     if(error)alert(error.message);
   }
 
-  async function handleSignup(email,password){
+  async function handleSignup(){
+    if(!email||!password){alert("Remplis email et mot de passe");return;}
     const {error}=await supabase.auth.signUp({email,password});
     if(error)alert(error.message);
     else alert("Vérifie ton email pour confirmer ton compte !");
@@ -256,17 +257,12 @@ async function handleLogin(e){
           <img src="/logo.png" style={{height:52,marginBottom:12}} alt="Fill & Sell"/>
           <div style={{fontSize:15,color:C.sub}}>Connecte-toi pour continuer</div>
         </div>
-        <form onSubmit={handleLogin} style={{display:"flex",flexDirection:"column",gap:14}}>
-          <input name="email" type="email" placeholder="Email" required style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
-          <input name="password" type="password" placeholder="Mot de passe" required style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
-          <button type="submit" style={{padding:"14px",background:C.teal,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Se connecter</button>
-          <button type="button" onClick={()=>{
-    const email=document.querySelector('input[name=email]').value;
-    const password=document.querySelector('input[name=password]').value;
-    if(!email||!password){alert("Remplis email et mot de passe");return;}
-    handleSignup(email,password);
-  }} style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button> style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button>
-        </form>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+          <input type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)} style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+          <button onClick={handleLogin} style={{padding:"14px",background:C.teal,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Se connecter</button>
+          <button onClick={handleSignup} style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button>
+        </div>
       </div>
     </div>
   );
