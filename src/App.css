@@ -33,7 +33,8 @@ const css = `
   .del-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:8px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s,background 0.15s;color:#9CA3AF;font-size:15px;}
   .row-wrap:hover .del-btn{opacity:1;}
   .del-btn:hover{background:#FEE2E2;color:${C.red};}
-  .swipe-bg{position:absolute;right:0;top:0;bottom:0;width:80px;background:linear-gradient(135deg,#FF6B6B,${C.red});display:flex;align-items:center;justify-content:center;border-radius:0 12px 12px 0;}
+  ..swipe-bg{position:absolute;right:0;top:0;bottom:0;width:80px;background:linear-gradient(135deg,#FF6B6B,${C.red});display:flex;align-items:center;justify-content:center;border-radius:0 12px 12px 0;}
+@media(min-width:769px){.swipe-bg{display:none!important;}}
   .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
   .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
