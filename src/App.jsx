@@ -1,3 +1,4 @@
+console.log("DEPLOY TEST OK");
 import { supabase } from './lib/supabase'
 import { useState, useEffect, useCallback } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
