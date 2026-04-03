@@ -94,15 +94,21 @@ function SwipeRow({onDelete, children}){
   function onTouchMove(e){
     if(!isDragging.current)return;
     const dx=e.touches[0].clientX-startX.current;
-    if(dx>=0){innerRef.current.style.transform='translateX(0)';return;}
+    if(dx>=0){innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
     innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
+    bgRef.current.style.opacity='1';bgRef.current.style.pointerEvents='auto';
   }
   function onTouchEnd(){
     isDragging.current=false;
     innerRef.current.style.transition='transform 0.25s ease';
     const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
-    if(cur<=-THRESHOLD) innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
-    else innerRef.current.style.transform='translateX(0)';
+    if(cur<=-THRESHOLD){
+      innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
+      bgRef.current.style.opacity='1';bgRef.current.style.pointerEvents='auto';
+    } else {
+      innerRef.current.style.transform='translateX(0)';
+      bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';
+    }
   }
   function handleDelClick(){
     innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
@@ -113,7 +119,7 @@ function SwipeRow({onDelete, children}){
   return(
     <div style={{position:"relative",borderRadius:12,overflow:"hidden"}}>
       <div ref={bgRef} onClick={handleDelClick}
-        style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+        style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}
       >
         <span style={{fontSize:22}}>🗑️</span>
       </div>
