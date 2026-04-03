@@ -66,29 +66,13 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 
 function SwipeRow({onDelete, children}){
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const wrapRef=useRef(null);
   const innerRef=useRef(null);
+  const bgRef=useRef(null);
   const startX=useRef(0);
   const isDragging=useRef(false);
   const THRESHOLD=70;
 
-  // DESKTOP: div simple + bouton X au hover
-  if(!isMobile){
-    return(
-      <div style={{position:"relative",borderRadius:12,display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",transition:"background 0.15s"}}
-        onMouseEnter={e=>{e.currentTarget.style.background="#F3F4F6";e.currentTarget.querySelector('.delx').style.opacity="1";}}
-        onMouseLeave={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity="0";}}
-      >
-        {children}
-        <button className="delx" onClick={onDelete} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0}}
-          onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
-        >✕</button>
-      </div>
-    );
-  }
-
-  // MOBILE: swipe iOS
   function onTouchStart(e){
     startX.current=e.touches[0].clientX;
     isDragging.current=true;
@@ -97,15 +81,22 @@ function SwipeRow({onDelete, children}){
   function onTouchMove(e){
     if(!isDragging.current)return;
     const dx=e.touches[0].clientX-startX.current;
-    if(dx>=0){innerRef.current.style.transform='translateX(0)';return;}
-    innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
+    if(dx>=0){innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';return;}
+    const moved=Math.max(dx,-(THRESHOLD+30));
+    innerRef.current.style.transform=`translateX(${moved}px)`;
+    bgRef.current.style.opacity=String(Math.min(1,Math.abs(moved)/THRESHOLD));
   }
   function onTouchEnd(){
     isDragging.current=false;
     innerRef.current.style.transition='transform 0.25s ease';
     const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
-    if(cur<=-THRESHOLD) innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
-    else innerRef.current.style.transform='translateX(0)';
+    if(cur<=-THRESHOLD){
+      innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
+      bgRef.current.style.opacity='1';
+    } else {
+      innerRef.current.style.transform='translateX(0)';
+      bgRef.current.style.opacity='0';
+    }
   }
   function handleDelClick(){
     innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
@@ -115,14 +106,47 @@ function SwipeRow({onDelete, children}){
   }
 
   return(
-    <div style={{position:"relative",borderRadius:12,overflow:"hidden"}}>
-      <div onClick={handleDelClick} style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 12px 12px 0",cursor:"pointer"}}>
+    <div ref={wrapRef} style={{position:"relative",borderRadius:12}}>
+      {/* Fond rouge : opacity 0 par defaut, visible seulement au swipe */}
+      <div ref={bgRef} onClick={handleDelClick} style={{
+        position:"absolute",right:0,top:0,bottom:0,width:80,
+        background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",
+        display:"flex",alignItems:"center",justifyContent:"center",
+        borderRadius:"0 12px 12px 0",cursor:"pointer",
+        opacity:0,transition:"opacity 0.2s"
+      }}>
         <span style={{fontSize:22}}>🗑️</span>
       </div>
-      <div ref={innerRef} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      {/* Ligne principale */}
+      <div ref={innerRef} style={{
+        position:"relative",zIndex:1,
+        width:"100%",display:"flex",alignItems:"center",gap:10,
+        padding:"11px 14px",background:"#F9FAFB",borderRadius:12,
+        transition:"background 0.15s"
+      }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseEnter={e=>{
+          e.currentTarget.style.background="#F3F4F6";
+          e.currentTarget.querySelector('.delx').style.opacity='1';
+        }}
+        onMouseLeave={e=>{
+          e.currentTarget.style.background="#F9FAFB";
+          e.currentTarget.querySelector('.delx').style.opacity='0';
+        }}
       >
         {children}
+        {/* Croix desktop : invisible par defaut, visible au hover */}
+        <button className="delx" onClick={onDelete} style={{
+          position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
+          opacity:0,background:"transparent",border:"none",cursor:"pointer",
+          fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,
+          transition:"all 0.15s",flexShrink:0
+        }}
+          onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
+        >✕</button>
       </div>
     </div>
   );
