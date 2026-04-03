@@ -126,10 +126,17 @@ export default function App(){
   const [authLoading,setAuthLoading]=useState(true);
 
   useEffect(()=>{
-    try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}");setItems(d.items||[]);setSales(d.sales||[]);}catch{}
+    supabase.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
+    supabase.auth.onAuthStateChange((_,session)=>{setUser(session?.user??null);});
+    try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}");setItems(d.items||[]);}catch{}
+    supabase.from('ventes').select('*').order('created_at',{ascending:false})
+      .then(({data,error})=>{
+        if(error){console.error('[Supabase] Erreur chargement:',error.message);return;}
+        setSales((data||[]).map(v=>({id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date})));
+      });
   },[]);
 
-  const save=useCallback((it,sa)=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({items:it,sales:sa}));},[]);
+  const save=useCallback((it)=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({items:it}));},[]);
 
   const buy=parseFloat(cBuy)||0;
   const sell=parseFloat(cSell)||0;
@@ -165,7 +172,7 @@ export default function App(){
     const item={id:Date.now(),title:iTitle,buy:b,sell:hasS?s:null,margin:hasS?mg:null,marginPct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
     const ni=[item,...items];let ns=sales;
     if(hasS){const ns2={id:Date.now()+1,title:iTitle,buy:b,sell:s,ship:0,margin:mg,marginPct:mgp,date:new Date().toISOString()};ns=[ns2,...sales];setSales(ns);}
-    setItems(ni);save(ni,ns);setISaved(true);setTimeout(()=>setISaved(false),1600);
+    setItems(ni);save(ni);setISaved(true);setTimeout(()=>setISaved(false),1600);
     setITitle("");setIBuy("");setISell("");
   }
 
@@ -175,17 +182,17 @@ export default function App(){
     const mg=sv-item.buy;const mgp=(mg/sv)*100;
     const ni=items.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i);
     const ns=[{id:Date.now(),title:item.title,buy:item.buy,sell:sv,ship:0,margin:mg,marginPct:mgp,date:new Date().toISOString()},...sales];
-    setItems(ni);setSales(ns);save(ni,ns);
+    setItems(ni);setSales(ns);save(ni);
   }
 
-  function delItem(id){const ni=items.filter(i=>i.id!==id);setItems(ni);save(ni,sales);}
+  function delItem(id){const ni=items.filter(i=>i.id!==id);setItems(ni);save(ni);}
+
   function addSale(){
     if(!isValid)return;
     const saleDate=new Date();
     const ns=[{id:Date.now(),title:cTitle||"Article",buy,sell,ship,margin,marginPct,date:saleDate.toISOString()},...sales];
-    setSales(ns);save(items,ns);setCSaved(true);setTimeout(()=>setCSaved(false),1600);
+    setSales(ns);setCSaved(true);setTimeout(()=>setCSaved(false),1600);
     setCTitle("");setCBuy("");setCSell("");setCShip("");
-    // Insert Supabase (non-bloquant)
     supabase.from('ventes').insert([{
       titre: cTitle||"Article",
       prix_achat: buy,
@@ -196,7 +203,27 @@ export default function App(){
       if(error) console.error('[Supabase] Erreur insert:', error.message);
     });
   }
-  function delSale(id){const ns=sales.filter(s=>s.id!==id);setSales(ns);save(items,ns);}
+
+  function delSale(id){
+    const ns=sales.filter(s=>s.id!==id);setSales(ns);
+    supabase.from('ventes').delete().eq('id',id)
+      .then(({error})=>{if(error)console.error('[Supabase] Erreur delete:',error.message);});
+  }
+
+  async function handleLogin(e,isSignup=false){
+    e.preventDefault();
+    const email=e.target.email.value;
+    const password=e.target.password.value;
+    const fn=isSignup?supabase.auth.signUp:supabase.auth.signInWithPassword;
+    const {error}=await fn.call(supabase.auth,{email,password});
+    if(error)alert(error.message);
+    else if(isSignup)alert("Vérifie ton email pour confirmer ton compte !");
+  }
+
+  async function handleLogout(){
+    await supabase.auth.signOut();
+    setUser(null);
+  }
 
   const TABS_MOBILE=[
     {icon:"📊",label:"Dashboard",idx:0},
@@ -211,6 +238,29 @@ export default function App(){
     {label:"En stock",value:`${stock.length} art. · ${fmt(stockVal)}`},
   ];
 
+  if(authLoading)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`}}>
+      <div style={{color:"#fff",fontSize:18,fontWeight:700}}>Chargement...</div>
+    </div>
+  );
+
+  if(!user)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`}}>
+      <div style={{background:"#fff",borderRadius:20,padding:"40px 32px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <img src="/logo.png" style={{height:52,marginBottom:12}} alt="Fill & Sell"/>
+          <div style={{fontSize:15,color:C.sub}}>Connecte-toi pour continuer</div>
+        </div>
+        <form onSubmit={handleLogin} style={{display:"flex",flexDirection:"column",gap:14}}>
+          <input name="email" type="email" placeholder="Email" required style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+          <input name="password" type="password" placeholder="Mot de passe" required style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+          <button type="submit" style={{padding:"14px",background:C.teal,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Se connecter</button>
+          <button type="button" onClick={e=>handleLogin(e,true)} style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button>
+        </form>
+      </div>
+    </div>
+  );
+
   return(
     <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
       <style>{css}</style>
@@ -222,25 +272,28 @@ export default function App(){
             <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
             <div style={{fontSize:13.5,color:"rgba(255,255,255,0.95)",fontWeight:600,letterSpacing:"0.3px",fontStyle:"italic",textShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>Ton assistant Vinted 🏷️</div>
           </div>
-          <div className="header-stats" style={{gap:12}}>
-            {headerStats.map((b,i)=>(
-              <div key={i} style={{
-                background:"rgba(255,255,255,0.18)",
-                backdropFilter:"blur(16px)",
-                borderRadius:14,
-                padding:"7px 18px",
-                textAlign:"center",
-                border:"1px solid rgba(255,255,255,0.28)",
-                boxShadow:"0 4px 16px rgba(0,0,0,0.12)",
-                transition:"all 0.2s ease",
-                cursor:"default"
-              }}
-              onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 10px 28px rgba(0,0,0,0.18)";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.12)";}}>
-                <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
-                <div style={{fontSize:15,fontWeight:900,color:"#fff",letterSpacing:"-0.3px"}}>{b.value}</div>
-              </div>
-            ))}
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div className="header-stats" style={{gap:12}}>
+              {headerStats.map((b,i)=>(
+                <div key={i} style={{
+                  background:"rgba(255,255,255,0.18)",
+                  backdropFilter:"blur(16px)",
+                  borderRadius:14,
+                  padding:"7px 18px",
+                  textAlign:"center",
+                  border:"1px solid rgba(255,255,255,0.28)",
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.12)",
+                  transition:"all 0.2s ease",
+                  cursor:"default"
+                }}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 10px 28px rgba(0,0,0,0.18)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.12)";}}>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
+                  <div style={{fontSize:15,fontWeight:900,color:"#fff",letterSpacing:"-0.3px"}}>{b.value}</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Déconnexion</button>
           </div>
         </div>
       </div>
