@@ -1,6 +1,5 @@
-console.log("DEPLOY TEST OK");
-import { supabase } from './lib/supabase'
 import { useState, useEffect, useCallback } from "react";
+import { supabase } from './lib/supabase';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const STORAGE_KEY = "fill-sell-v4";
@@ -18,23 +17,6 @@ const C = {
   rowBg:"#F9FAFB", rowHover:"#F3F4F6",
 };
 
-// 👉 ICI TU AJOUTES 👇
-
-async function ajouterVente() {
-  const { data, error } = await supabase
-    .from('ventes')
-    .insert([
-      {
-        titre: 'Test produit',
-        prix_achat: 10,
-        prix_vente: 20,
-        benefice: 10,
-        date: '2026-01-01'
-      }
-    ])
-
-  console.log('RESULT:', data, error)
-}
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overflow-x:hidden;}
@@ -49,7 +31,7 @@ const css = `
   .row{transition:background 0.15s;}
   .row:hover{background:${C.rowHover}!important;}
   .row:hover .del{opacity:1!important;}
-@media(max-width:768px){.del{display:none!important;}}
+  @media(max-width:768px){.del{display:none!important;}}
   .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
   .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
@@ -173,7 +155,6 @@ export default function App(){
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
-  const potential=stock.reduce((a,i)=>a+(i.sell?i.sell-i.buy:0),0);
 
   function addItem(){
     if(!iTitle||!iBuy)return;
@@ -198,9 +179,20 @@ export default function App(){
   function delItem(id){const ni=items.filter(i=>i.id!==id);setItems(ni);save(ni,sales);}
   function addSale(){
     if(!isValid)return;
-    const ns=[{id:Date.now(),title:cTitle||"Article",buy,sell,ship,margin,marginPct,date:new Date().toISOString()},...sales];
+    const saleDate=new Date();
+    const ns=[{id:Date.now(),title:cTitle||"Article",buy,sell,ship,margin,marginPct,date:saleDate.toISOString()},...sales];
     setSales(ns);save(items,ns);setCSaved(true);setTimeout(()=>setCSaved(false),1600);
     setCTitle("");setCBuy("");setCSell("");setCShip("");
+    // Insert Supabase (non-bloquant)
+    supabase.from('ventes').insert([{
+      titre: cTitle||"Article",
+      prix_achat: buy,
+      prix_vente: sell,
+      benefice: margin,
+      date: saleDate.toISOString().split('T')[0],
+    }]).then(({error})=>{
+      if(error) console.error('[Supabase] Erreur insert:', error.message);
+    });
   }
   function delSale(id){const ns=sales.filter(s=>s.id!==id);setSales(ns);save(items,ns);}
 
@@ -218,10 +210,8 @@ export default function App(){
   ];
 
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}
-
-
-   <style>{css}</style>
+    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
+      <style>{css}</style>
 
       {/* HEADER */}
       <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.14)",backdropFilter:"blur(8px)"}}>
@@ -277,13 +267,13 @@ export default function App(){
           <div style={{display:"flex",flexDirection:"column",gap:28}}>
             <div className="grid4">
               <div className="kpi card" style={{padding:"22px",boxShadow:"0 16px 40px rgba(0,0,0,0.12)",transform:"scale(1.02)",transformOrigin:"center"}}>
-  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-    <div style={{width:42,height:42,background:C.teal+"20",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21}}>💰</div>
-    <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8}}>Bénéfice ce mois</span>
-  </div>
-  <div style={{fontSize:30,fontWeight:900,color:C.teal,letterSpacing:"-0.5px",lineHeight:1}}>{fmt(tm?.profit||0)}</div>
-  <div style={{fontSize:11,color:C.sub,marginTop:8}}>{tm?.count||0} vente(s)</div>
-</div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                  <div style={{width:42,height:42,background:C.teal+"20",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21}}>💰</div>
+                  <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8}}>Bénéfice ce mois</span>
+                </div>
+                <div style={{fontSize:30,fontWeight:900,color:C.teal,letterSpacing:"-0.5px",lineHeight:1}}>{fmt(tm?.profit||0)}</div>
+                <div style={{fontSize:11,color:C.sub,marginTop:8}}>{tm?.count||0} vente(s)</div>
+              </div>
               <Kpi label="Marge moyenne" value={fmtp(avgM)} sub="toutes ventes" color={C.peach} icon="📊"/>
               <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color={C.teal} icon="🏆"/>
               <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
