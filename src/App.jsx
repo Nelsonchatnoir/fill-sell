@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from './lib/supabase';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -29,8 +29,8 @@ const css = `
   .dtab:hover{color:${C.teal}!important;}
   .row{transition:background 0.15s;}
   .row:hover{background:${C.rowHover}!important;}
+  .del{opacity:0.35;transition:opacity 0.15s;}
   .row:hover .del{opacity:1!important;}
-  @media(max-width:768px){.del{display:none!important;}}
   .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
   .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
@@ -41,6 +41,10 @@ const css = `
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
+  .swipe-wrap{position:relative;overflow:hidden;border-radius:10px;}
+  .swipe-inner{display:flex;align-items:center;transition:transform 0.2s ease;will-change:transform;}
+  .swipe-inner.no-transition{transition:none;}
+  .swipe-del{position:absolute;right:0;top:0;bottom:0;width:72px;background:${C.red};display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;border-radius:0 10px 10px 0;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);}
@@ -51,12 +55,57 @@ const css = `
     .mobile-nav{display:flex!important;}
     .header-stats{display:none!important;}
     .page-pad{padding-bottom:90px!important;}
+    .del{display:none!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
 
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
+
+// Swipe-to-delete row for mobile
+function SwipeRow({onDelete, children}){
+  const ref=useRef(null);
+  const startX=useRef(0);
+  const currentX=useRef(0);
+  const swiping=useRef(false);
+  const THRESHOLD=80;
+
+  function onTouchStart(e){
+    startX.current=e.touches[0].clientX;
+    currentX.current=0;
+    swiping.current=true;
+    ref.current.classList.add('no-transition');
+  }
+  function onTouchMove(e){
+    if(!swiping.current)return;
+    const dx=e.touches[0].clientX-startX.current;
+    if(dx>0){ref.current.style.transform='translateX(0)';return;}
+    currentX.current=Math.max(dx,-THRESHOLD-20);
+    ref.current.style.transform=`translateX(${currentX.current}px)`;
+  }
+  function onTouchEnd(){
+    swiping.current=false;
+    ref.current.classList.remove('no-transition');
+    if(currentX.current<=-THRESHOLD){
+      ref.current.style.transform=`translateX(-${THRESHOLD}px)`;
+    } else {
+      ref.current.style.transform='translateX(0)';
+    }
+  }
+
+  return(
+    <div className="swipe-wrap">
+      <div className="swipe-del" onClick={onDelete}>🗑️</div>
+      <div ref={ref} className="swipe-inner"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{width:"100%"}}
+      >{children}</div>
+    </div>
+  );
+}
 
 const Tip=({active,payload,label})=>active&&payload?.length?(
   <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",fontSize:12,boxShadow:"0 10px 30px rgba(0,0,0,0.1)"}}>
@@ -197,8 +246,7 @@ export default function App(){
     const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
-      const newItem=mapItem(data);
-      setItems(prev=>[newItem,...prev]);
+      setItems(prev=>[mapItem(data),...prev]);
       if(hasS){
         const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,date:new Date().toISOString().split('T')[0]};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
@@ -444,15 +492,17 @@ export default function App(){
                 {stock.length===0?<Empty text="Aucun article en stock"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stock.map(item=>(
-                      <div key={item.id} className="row" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:C.rowBg,borderRadius:10}}>
-                        <div style={{width:36,height:36,background:C.orangeLight,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📦</div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          <div style={{fontSize:11,color:C.sub,marginTop:2}}>Investi {fmt(item.buy)}</div>
+                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
+                        <div className="row" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:C.rowBg,borderRadius:10,width:"100%"}}>
+                          <div style={{width:36,height:36,background:C.orangeLight,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📦</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                            <div style={{fontSize:11,color:C.sub,marginTop:2}}>Investi {fmt(item.buy)}</div>
+                          </div>
+                          <button onClick={()=>markSold(item)} style={{background:C.tealLight,color:C.teal,border:"none",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
+                          <button className="del" onClick={()=>delItem(item.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:17,padding:"4px",flexShrink:0}}>✕</button>
                         </div>
-                        <button onClick={()=>markSold(item)} style={{background:C.tealLight,color:C.teal,border:"none",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
-                        <button className="del" onClick={()=>delItem(item.id)} style={{opacity:0,background:"transparent",border:"none",color:C.sub,cursor:"pointer",fontSize:17,padding:"4px",flexShrink:0}}>✕</button>
-                      </div>
+                      </SwipeRow>
                     ))}
                   </div>
                 )}
@@ -468,18 +518,20 @@ export default function App(){
                     {sold.map(item=>{
                       const smc=item.margin<0?C.red:C.green;
                       return(
-                        <div key={item.id} className="row" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:C.rowBg,borderRadius:10}}>
-                          <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📈</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                            <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
+                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
+                          <div className="row" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:C.rowBg,borderRadius:10,width:"100%"}}>
+                            <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📈</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                              <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
+                            </div>
+                            <div style={{textAlign:"right",flexShrink:0}}>
+                              <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
+                              <div style={{fontSize:11,color:C.sub}}>{fmtp(item.marginPct)}</div>
+                            </div>
+                            <button className="del" onClick={()=>delItem(item.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:17,padding:"4px",flexShrink:0}}>✕</button>
                           </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
-                            <div style={{fontSize:11,color:C.sub}}>{fmtp(item.marginPct)}</div>
-                          </div>
-                          <button className="del" onClick={()=>delItem(item.id)} style={{opacity:0,background:"transparent",border:"none",color:C.sub,cursor:"pointer",fontSize:17,padding:"4px",flexShrink:0}}>✕</button>
-                        </div>
+                        </SwipeRow>
                       );
                     })}
                   </div>
@@ -539,18 +591,20 @@ export default function App(){
             ):sales.map(s=>{
               const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
               return(
-                <div key={s.id} className="row card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:C.rowBg}}>
-                  <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                    <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
+                <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
+                  <div className="row card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:C.rowBg,width:"100%"}}>
+                    <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                      <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
+                      <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
+                    </div>
+                    <button className="del" onClick={()=>delSale(s.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:17,padding:"4px 6px",borderRadius:8,flexShrink:0}}>✕</button>
                   </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
-                    <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
-                  </div>
-                  <button className="del" onClick={()=>delSale(s.id)} style={{opacity:0,background:"transparent",border:"none",color:C.sub,cursor:"pointer",fontSize:17,padding:"4px 6px",borderRadius:8,flexShrink:0}}>✕</button>
-                </div>
+                </SwipeRow>
               );
             })}
           </div>
