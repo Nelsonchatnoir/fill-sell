@@ -113,6 +113,7 @@ export default function App(){
   const [tab,setTab]=useState(0);
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
+  const [salesLoading,setSalesLoading]=useState(true);
   const [iTitle,setITitle]=useState("");
   const [iBuy,setIBuy]=useState("");
   const [iSell,setISell]=useState("");
@@ -126,6 +127,7 @@ export default function App(){
   const [authLoading,setAuthLoading]=useState(true);
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const [resetStep,setResetStep]=useState(0);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
@@ -134,11 +136,13 @@ export default function App(){
   },[]);
 
   useEffect(()=>{
-    if(!user)return;
+    if(!user){setSalesLoading(false);return;}
+    setSalesLoading(true);
     supabase.from('ventes').select('*').eq('user_id',user.id).order('created_at',{ascending:false})
       .then(({data,error})=>{
-        if(error){console.error('[Supabase] Erreur chargement:',error.message);return;}
-        setSales((data||[]).map(v=>({id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date})));
+        if(error){console.error('[Supabase] Erreur chargement:',error.message);}
+        else{setSales((data||[]).map(v=>({id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date})));}
+        setSalesLoading(false);
       });
   },[user]);
 
@@ -217,6 +221,17 @@ export default function App(){
       .then(({error})=>{if(error)console.error('[Supabase] Erreur delete:',error.message);});
   }
 
+  async function handleReset(){
+    if(resetStep===0){setResetStep(1);return;}
+    if(resetStep===1){
+      await supabase.from('ventes').delete().eq('user_id',user.id);
+      setSales([]);
+      setItems([]);
+      save([]);
+      setResetStep(0);
+    }
+  }
+
   async function handleLogin(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const {error}=await supabase.auth.signInWithPassword({email,password});
@@ -234,6 +249,7 @@ export default function App(){
     await supabase.auth.signOut();
     setUser(null);
     setSales([]);
+    setResetStep(0);
   }
 
   const TABS_MOBILE=[
@@ -331,55 +347,86 @@ export default function App(){
         {/* DASHBOARD */}
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28}}>
-            <div className="grid4">
-              <div className="kpi card" style={{padding:"22px",boxShadow:"0 16px 40px rgba(0,0,0,0.12)",transform:"scale(1.02)",transformOrigin:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                  <div style={{width:42,height:42,background:C.teal+"20",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21}}>💰</div>
-                  <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8}}>Bénéfice ce mois</span>
-                </div>
-                <div style={{fontSize:30,fontWeight:900,color:C.teal,letterSpacing:"-0.5px",lineHeight:1}}>{fmt(tm?.profit||0)}</div>
-                <div style={{fontSize:11,color:C.sub,marginTop:8}}>{tm?.count||0} vente(s)</div>
-              </div>
-              <Kpi label="Marge moyenne" value={fmtp(avgM)} sub="toutes ventes" color={C.peach} icon="📊"/>
-              <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color={C.teal} icon="🏆"/>
-              <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
-            </div>
 
-            <div className="grid2">
-              <div className="card" style={{padding:"20px"}}>
-                <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Bénéfices mensuels</div>
-                <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
-                {hasData?(<ResponsiveContainer width="100%" height={175}><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>):<Empty/>}
+            {salesLoading?(
+              <div style={{textAlign:"center",padding:"40px 0",color:C.sub,fontSize:14,fontWeight:600}}>
+                Chargement des données...
               </div>
-              <div className="card" style={{padding:"20px"}}>
-                <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Évolution marge %</div>
-                <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
-                {hasData?(<ResponsiveContainer width="100%" height={175}><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer>):<Empty/>}
-              </div>
-            </div>
-
-            {hasData&&(
-              <div className="card" style={{padding:"20px"}}>
-                <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:16}}>Dernières ventes</div>
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  {sales.slice(0,5).map(s=>{
-                    const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
-                    return(
-                      <div key={s.id} className="row" style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:C.rowBg,borderRadius:10}}>
-                        <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                          <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
-                        </div>
-                        <div style={{textAlign:"right"}}>
-                          <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
-                          <div style={{fontSize:11,color:C.sub}}>{fmtp(s.marginPct)}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
+            ):(
+              <>
+                <div className="grid4">
+                  <div className="kpi card" style={{padding:"22px",boxShadow:"0 16px 40px rgba(0,0,0,0.12)",transform:"scale(1.02)",transformOrigin:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                      <div style={{width:42,height:42,background:C.teal+"20",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21}}>💰</div>
+                      <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8}}>Bénéfice ce mois</span>
+                    </div>
+                    <div style={{fontSize:30,fontWeight:900,color:C.teal,letterSpacing:"-0.5px",lineHeight:1}}>{fmt(tm?.profit||0)}</div>
+                    <div style={{fontSize:11,color:C.sub,marginTop:8}}>{tm?.count||0} vente(s)</div>
+                  </div>
+                  <Kpi label="Marge moyenne" value={fmtp(avgM)} sub="toutes ventes" color={C.peach} icon="📊"/>
+                  <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color={C.teal} icon="🏆"/>
+                  <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
                 </div>
-              </div>
+
+                <div className="grid2">
+                  <div className="card" style={{padding:"20px"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Bénéfices mensuels</div>
+                    <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
+                    {hasData?(<ResponsiveContainer width="100%" height={175}><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>):<Empty/>}
+                  </div>
+                  <div className="card" style={{padding:"20px"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Évolution marge %</div>
+                    <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
+                    {hasData?(<ResponsiveContainer width="100%" height={175}><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer>):<Empty/>}
+                  </div>
+                </div>
+
+                {hasData&&(
+                  <div className="card" style={{padding:"20px"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:16}}>Dernières ventes</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {sales.slice(0,5).map(s=>{
+                        const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
+                        return(
+                          <div key={s.id} className="row" style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:C.rowBg,borderRadius:10}}>
+                            <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                              <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
+                              <div style={{fontSize:11,color:C.sub}}>{fmtp(s.marginPct)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* RESET ZONE */}
+                <div className="card" style={{padding:"20px",border:`1px solid ${C.red}22`,background:C.redLight}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:8}}>⚠️ Zone dangereuse</div>
+                  <div style={{fontSize:12,color:C.sub,marginBottom:14}}>Supprime toutes tes ventes et ton inventaire de façon irréversible.</div>
+                  {resetStep===0&&(
+                    <button onClick={handleReset} style={{padding:"10px 20px",background:"transparent",border:`1px solid ${C.red}`,borderRadius:10,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      🗑️ Tout remettre à zéro
+                    </button>
+                  )}
+                  {resetStep===1&&(
+                    <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:C.red}}>Tu es sûr ? Cette action est irréversible.</div>
+                      <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                        Oui, tout supprimer
+                      </button>
+                      <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                        Annuler
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}
