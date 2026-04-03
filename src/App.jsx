@@ -18,7 +18,7 @@ const C = {
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overflow-x:hidden;}
+  html,body{width:100%;max-width:100%;overflow-x:hidden;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
@@ -27,10 +27,6 @@ const css = `
   .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
   .dtab{transition:all 0.15s;cursor:pointer;}
   .dtab:hover{color:${C.teal}!important;}
-  .row{transition:background 0.15s;}
-  .row:hover{background:${C.rowHover}!important;}
-  .del{opacity:0.35;transition:opacity 0.15s;}
-  .row:hover .del{opacity:1!important;}
   .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
   .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
@@ -41,10 +37,6 @@ const css = `
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
-  .swipe-wrap{position:relative;overflow:hidden;border-radius:10px;}
-  .swipe-inner{display:flex;align-items:center;transition:transform 0.2s ease;will-change:transform;}
-  .swipe-inner.no-transition{transition:none;}
-  .swipe-del{position:absolute;right:0;top:0;bottom:0;width:72px;background:${C.red};display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;border-radius:0 10px 10px 0;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);}
@@ -55,7 +47,6 @@ const css = `
     .mobile-nav{display:flex!important;}
     .header-stats{display:none!important;}
     .page-pad{padding-bottom:90px!important;}
-    .del{display:none!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
@@ -63,49 +54,91 @@ const css = `
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 
-// Swipe-to-delete row for mobile
 function SwipeRow({onDelete, children}){
-  const ref=useRef(null);
+  const isMobile = window.innerWidth < 768;
+  const innerRef=useRef(null);
+  const bgRef=useRef(null);
   const startX=useRef(0);
-  const currentX=useRef(0);
-  const swiping=useRef(false);
-  const THRESHOLD=80;
+  const isDragging=useRef(false);
+  const THRESHOLD=70;
 
+  // ═══ DESKTOP : div simple + croix au hover ═══
+  if(!isMobile){
+    return(
+      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
+        onMouseEnter={e=>{
+          e.currentTarget.style.background="#F3F4F6";
+          e.currentTarget.querySelector('.delx').style.opacity='1';
+        }}
+        onMouseLeave={e=>{
+          e.currentTarget.style.background="#F9FAFB";
+          e.currentTarget.querySelector('.delx').style.opacity='0';
+        }}
+      >
+        {children}
+        <button className="delx" onClick={onDelete}
+          style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0}}
+          onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
+        >✕</button>
+      </div>
+    );
+  }
+
+  // ═══ MOBILE : swipe iOS ═══
   function onTouchStart(e){
     startX.current=e.touches[0].clientX;
-    currentX.current=0;
-    swiping.current=true;
-    ref.current.classList.add('no-transition');
+    isDragging.current=true;
+    innerRef.current.style.transition='none';
   }
   function onTouchMove(e){
-    if(!swiping.current)return;
+    if(!isDragging.current)return;
     const dx=e.touches[0].clientX-startX.current;
-    if(dx>0){ref.current.style.transform='translateX(0)';return;}
-    currentX.current=Math.max(dx,-THRESHOLD-20);
-    ref.current.style.transform=`translateX(${currentX.current}px)`;
+    if(dx>=0){innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
+    innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
+    bgRef.current.style.right = '0px';
+    bgRef.current.style.opacity = '1';
+    bgRef.current.style.pointerEvents = 'auto';
   }
   function onTouchEnd(){
-    swiping.current=false;
-    ref.current.classList.remove('no-transition');
-    if(currentX.current<=-THRESHOLD){
-      ref.current.style.transform=`translateX(-${THRESHOLD}px)`;
+    isDragging.current=false;
+    innerRef.current.style.transition='transform 0.25s ease';
+    const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
+    if(cur<=-THRESHOLD){
+      innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
+      bgRef.current.style.right = '0px';
+    bgRef.current.style.opacity = '1';
+    bgRef.current.style.pointerEvents = 'auto';
     } else {
-      ref.current.style.transform='translateX(0)';
+      innerRef.current.style.transform='translateX(0)';
+      bgRef.current.style.opacity='0';
+      bgRef.current.style.pointerEvents='none';
+      bgRef.current.style.right='-80px';
     }
   }
-
+  function handleDelClick(){
+    innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
+    innerRef.current.style.transform='translateX(-120%)';
+    innerRef.current.style.opacity='0';
+    setTimeout(()=>onDelete(),200);
+  }
   return(
-    <div className="swipe-wrap">
-      <div className="swipe-del" onClick={onDelete}>🗑️</div>
-      <div ref={ref} className="swipe-inner"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{width:"100%"}}
-      >{children}</div>
+    <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%"}}>
+      <div ref={bgRef} onClick={handleDelClick}
+        style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}
+      >
+        <span style={{fontSize:22}}>🗑️</span>
+      </div>
+      <div ref={innerRef}
+        style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      >
+        {children}
+      </div>
     </div>
   );
 }
+
 
 const Tip=({active,payload,label})=>active&&payload?.length?(
   <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",fontSize:12,boxShadow:"0 10px 30px rgba(0,0,0,0.1)"}}>
@@ -157,12 +190,8 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
   }}>{children}</button>
 );
 
-function mapItem(v){
-  return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};
-}
-function mapSale(v){
-  return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};
-}
+function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};}
+function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
 export default function App(){
   const [tab,setTab]=useState(0);
@@ -355,23 +384,23 @@ export default function App(){
   );
 
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
+    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%",maxWidth:"100vw"}}>
       <style>{css}</style>
 
       <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
         <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:72,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
             <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
-            <div style={{fontSize:13.5,color:"rgba(255,255,255,0.95)",fontWeight:600,letterSpacing:"0.3px",fontStyle:"italic",textShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>Ton assistant Vinted 🏷️</div>
+            <div style={{fontSize:13.5,color:"rgba(255,255,255,0.95)",fontWeight:600,letterSpacing:"0.3px",fontStyle:"italic"}}>Ton assistant Vinted 🏷️</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div className="header-stats" style={{gap:12}}>
               {headerStats.map((b,i)=>(
-                <div key={i} style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(16px)",borderRadius:14,padding:"7px 18px",textAlign:"center",border:"1px solid rgba(255,255,255,0.28)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",transition:"all 0.2s ease",cursor:"default"}}
+                <div key={i} style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(16px)",borderRadius:14,padding:"7px 18px",textAlign:"center",border:"1px solid rgba(255,255,255,0.28)",transition:"all 0.2s ease",cursor:"default"}}
                 onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";}}
                 onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";}}>
                   <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
-                  <div style={{fontSize:15,fontWeight:900,color:"#fff",letterSpacing:"-0.3px"}}>{b.value}</div>
+                  <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{b.value}</div>
                 </div>
               ))}
             </div>
@@ -432,17 +461,17 @@ export default function App(){
                       {sales.slice(0,5).map(s=>{
                         const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
                         return(
-                          <div key={s.id} className="row" style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:C.rowBg,borderRadius:10}}>
+                          <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
                             <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                               <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
                             </div>
-                            <div style={{textAlign:"right"}}>
+                            <div style={{textAlign:"right",paddingRight:8}}>
                               <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
                               <div style={{fontSize:11,color:C.sub}}>{fmtp(s.marginPct)}</div>
                             </div>
-                          </div>
+                          </SwipeRow>
                         );
                       })}
                     </div>
@@ -493,15 +522,12 @@ export default function App(){
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stock.map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
-                        <div className="row" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:C.rowBg,borderRadius:10,width:"100%"}}>
-                          <div style={{width:36,height:36,background:C.orangeLight,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📦</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                            <div style={{fontSize:11,color:C.sub,marginTop:2}}>Investi {fmt(item.buy)}</div>
-                          </div>
-                          <button onClick={()=>markSold(item)} style={{background:C.tealLight,color:C.teal,border:"none",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
-                          <button className="del" onClick={()=>delItem(item.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:17,padding:"4px",flexShrink:0}}>✕</button>
+                        <div style={{width:36,height:36,background:C.orangeLight,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📦</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                          <div style={{fontSize:11,color:C.sub,marginTop:2}}>Investi {fmt(item.buy)}</div>
                         </div>
+                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:C.tealLight,color:C.teal,border:"none",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
                       </SwipeRow>
                     ))}
                   </div>
@@ -519,17 +545,14 @@ export default function App(){
                       const smc=item.margin<0?C.red:C.green;
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
-                          <div className="row" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:C.rowBg,borderRadius:10,width:"100%"}}>
-                            <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📈</div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                              <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
-                            </div>
-                            <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
-                              <div style={{fontSize:11,color:C.sub}}>{fmtp(item.marginPct)}</div>
-                            </div>
-                            <button className="del" onClick={()=>delItem(item.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:17,padding:"4px",flexShrink:0}}>✕</button>
+                          <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📈</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                            <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0,paddingRight:8}}>
+                            <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
+                            <div style={{fontSize:11,color:C.sub}}>{fmtp(item.marginPct)}</div>
                           </div>
                         </SwipeRow>
                       );
@@ -591,18 +614,15 @@ export default function App(){
             ):sales.map(s=>{
               const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
               return(
-                <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
-                  <div className="row card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:C.rowBg,width:"100%"}}>
-                    <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                      <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
-                    </div>
-                    <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
-                      <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
-                    </div>
-                    <button className="del" onClick={()=>delSale(s.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:17,padding:"4px 6px",borderRadius:8,flexShrink:0}}>✕</button>
+                <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{marginBottom:0}}>
+                  <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                    <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0,paddingRight:8}}>
+                    <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
+                    <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
                   </div>
                 </SwipeRow>
               );
