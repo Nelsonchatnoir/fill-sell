@@ -1,3 +1,4 @@
+import { supabase } from './lib/supabase'
 import { useState, useEffect, useCallback } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -15,7 +16,25 @@ const C = {
   orange:"#DD6B20", orangeLight:"#FFFAF0",
   rowBg:"#F9FAFB", rowHover:"#F3F4F6",
 };
+const C = { ... }
 
+// 👉 ICI TU AJOUTES 👇
+
+async function ajouterVente() {
+  const { data, error } = await supabase
+    .from('ventes')
+    .insert([
+      {
+        titre: 'Test produit',
+        prix_achat: 10,
+        prix_vente: 20,
+        benefice: 10,
+        date: '2026-01-01'
+      }
+    ])
+
+  console.log('RESULT:', data, error)
+}
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overflow-x:hidden;}
@@ -200,6 +219,26 @@ export default function App(){
 
   return(
     <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
+
+  <button 
+  onClick={ajouterVente}
+  style={{
+    position: "fixed",
+    top: 10,
+    right: 10,
+    zIndex: 9999,
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "none",
+    background: "#111",
+    color: "#fff",
+    cursor: "pointer"
+  }}
+>
+  TEST DB
+</button>
+
+    <style>{css}</style>
       <style>{css}</style>
 
       {/* HEADER */}
