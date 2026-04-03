@@ -211,14 +211,18 @@ export default function App(){
       .then(({error})=>{if(error)console.error('[Supabase] Erreur delete:',error.message);});
   }
 
-  async function handleLogin(e,isSignup=false){
+async function handleLogin(e){
     e.preventDefault();
     const email=e.target.email.value;
     const password=e.target.password.value;
-    const fn=isSignup?supabase.auth.signUp:supabase.auth.signInWithPassword;
-    const {error}=await fn.call(supabase.auth,{email,password});
+    const {error}=await supabase.auth.signInWithPassword({email,password});
     if(error)alert(error.message);
-    else if(isSignup)alert("Vérifie ton email pour confirmer ton compte !");
+  }
+
+  async function handleSignup(email,password){
+    const {error}=await supabase.auth.signUp({email,password});
+    if(error)alert(error.message);
+    else alert("Vérifie ton email pour confirmer ton compte !");
   }
 
   async function handleLogout(){
