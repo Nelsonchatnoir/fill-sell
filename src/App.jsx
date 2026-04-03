@@ -260,7 +260,12 @@ async function handleLogin(e){
           <input name="email" type="email" placeholder="Email" required style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
           <input name="password" type="password" placeholder="Mot de passe" required style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
           <button type="submit" style={{padding:"14px",background:C.teal,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Se connecter</button>
-          <button type="button" onClick={e=>{e.preventDefault();handleLogin(e,true);}} style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button>
+          <button type="button" onClick={()=>{
+    const email=document.querySelector('input[name=email]').value;
+    const password=document.querySelector('input[name=password]').value;
+    if(!email||!password){alert("Remplis email et mot de passe");return;}
+    handleSignup(email,password);
+  }} style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button> style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button>
         </form>
       </div>
     </div>
