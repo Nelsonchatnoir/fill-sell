@@ -18,7 +18,7 @@ const C = {
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{width:100%;max-width:100%;overflow-x:hidden;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
+  html,body{width:100%;max-width:100%;overflow-x:hidden;}*::-webkit-scrollbar{display:none;}*{-ms-overflow-style:none;scrollbar-width:none;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
