@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from './lib/supabase';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
-const STORAGE_KEY = "fill-sell-v4";
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
 const C = {
@@ -109,11 +108,18 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
   }}>{children}</button>
 );
 
+function mapItem(v){
+  return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};
+}
+function mapSale(v){
+  return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};
+}
+
 export default function App(){
   const [tab,setTab]=useState(0);
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
-  const [salesLoading,setSalesLoading]=useState(true);
+  const [loading,setLoading]=useState(true);
   const [iTitle,setITitle]=useState("");
   const [iBuy,setIBuy]=useState("");
   const [iSell,setISell]=useState("");
@@ -129,24 +135,33 @@ export default function App(){
   const [password,setPassword]=useState("");
   const [resetStep,setResetStep]=useState(0);
 
+  async function fetchAll(uid){
+    setLoading(true);
+    const [v,i]=await Promise.all([
+      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+    ]);
+    if(!v.error) setSales((v.data||[]).map(mapSale));
+    if(!i.error) setItems((i.data||[]).map(mapItem));
+    setLoading(false);
+  }
+
   useEffect(()=>{
-    supabase.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
-    supabase.auth.onAuthStateChange((_,session)=>{setUser(session?.user??null);});
-    try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}");setItems(d.items||[]);}catch{}
+    supabase.auth.getSession().then(({data:{session}})=>{
+      const u=session?.user??null;
+      setUser(u);
+      if(u) fetchAll(u.id);
+      else setLoading(false);
+      setAuthLoading(false);
+    });
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      const u=session?.user??null;
+      setUser(u);
+      if(u) fetchAll(u.id);
+      else{setSales([]);setItems([]);setLoading(false);}
+    });
+    return()=>subscription.unsubscribe();
   },[]);
-
-  useEffect(()=>{
-    if(!user){setSalesLoading(false);return;}
-    setSalesLoading(true);
-    supabase.from('ventes').select('*').eq('user_id',user.id).order('created_at',{ascending:false})
-      .then(({data,error})=>{
-        if(error){console.error('[Supabase] Erreur chargement:',error.message);}
-        else{setSales((data||[]).map(v=>({id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date})));}
-        setSalesLoading(false);
-      });
-  },[user]);
-
-  const save=useCallback((it)=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({items:it}));},[]);
 
   const buy=parseFloat(cBuy)||0;
   const sell=parseFloat(cSell)||0;
@@ -175,81 +190,84 @@ export default function App(){
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
 
-  function addItem(){
+  async function addItem(){
     if(!iTitle||!iBuy)return;
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const hasS=s>0;
     const mg=hasS?s-b:0;const mgp=hasS?(mg/s)*100:0;
-    const item={id:Date.now(),title:iTitle,buy:b,sell:hasS?s:null,margin:hasS?mg:null,marginPct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
-    const ni=[item,...items];let ns=sales;
-    if(hasS){const ns2={id:Date.now()+1,title:iTitle,buy:b,sell:s,ship:0,margin:mg,marginPct:mgp,date:new Date().toISOString()};ns=[ns2,...sales];setSales(ns);}
-    setItems(ni);save(ni);setISaved(true);setTimeout(()=>setISaved(false),1600);
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
+    const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
+    if(!error){
+      const newItem=mapItem(data);
+      setItems(prev=>[newItem,...prev]);
+      if(hasS){
+        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,date:new Date().toISOString().split('T')[0]};
+        const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
+        if(sd) setSales(prev=>[mapSale(sd),...prev]);
+      }
+    }
+    setISaved(true);setTimeout(()=>setISaved(false),1600);
     setITitle("");setIBuy("");setISell("");
   }
 
-  function markSold(item){
+  async function markSold(item){
     const sv=parseFloat(prompt(`Prix de vente pour "${item.title}" ?`)||"0");
     if(!sv||sv<=0)return;
     const mg=sv-item.buy;const mgp=(mg/sv)*100;
-    const ni=items.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i);
-    const ns=[{id:Date.now(),title:item.title,buy:item.buy,sell:sv,ship:0,margin:mg,marginPct:mgp,date:new Date().toISOString()},...sales];
-    setItems(ni);setSales(ns);save(ni);
+    await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu"}).eq('id',item.id);
+    setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
+    const srow={id:Date.now(),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
+    const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
+    if(sd) setSales(prev=>[mapSale(sd),...prev]);
   }
 
-  function delItem(id){const ni=items.filter(i=>i.id!==id);setItems(ni);save(ni);}
+  async function delItem(id){
+    await supabase.from('inventaire').delete().eq('id',id);
+    setItems(prev=>prev.filter(i=>i.id!==id));
+  }
 
-  function addSale(){
+  async function addSale(){
     if(!isValid)return;
     const saleDate=new Date();
-    const ns=[{id:Date.now(),title:cTitle||"Article",buy,sell,ship,margin,marginPct,date:saleDate.toISOString()},...sales];
-    setSales(ns);setCSaved(true);setTimeout(()=>setCSaved(false),1600);
+    const row={id:Date.now(),user_id:user.id,titre:cTitle||"Article",prix_achat:buy,prix_vente:sell,benefice:margin,date:saleDate.toISOString().split('T')[0]};
+    const{data,error}=await supabase.from('ventes').insert([row]).select().single();
+    if(!error) setSales(prev=>[mapSale(data),...prev]);
+    else console.error('[Supabase] Erreur insert:',error.message);
+    setCSaved(true);setTimeout(()=>setCSaved(false),1600);
     setCTitle("");setCBuy("");setCSell("");setCShip("");
-    supabase.from('ventes').insert([{
-      titre: cTitle||"Article",
-      prix_achat: buy,
-      prix_vente: sell,
-      benefice: margin,
-      date: saleDate.toISOString().split('T')[0],
-      user_id: user.id,
-    }]).then(({error})=>{
-      if(error) console.error('[Supabase] Erreur insert:', error.message);
-    });
   }
 
-  function delSale(id){
-    const ns=sales.filter(s=>s.id!==id);setSales(ns);
-    supabase.from('ventes').delete().eq('id',id)
-      .then(({error})=>{if(error)console.error('[Supabase] Erreur delete:',error.message);});
+  async function delSale(id){
+    await supabase.from('ventes').delete().eq('id',id);
+    setSales(prev=>prev.filter(s=>s.id!==id));
   }
 
   async function handleReset(){
     if(resetStep===0){setResetStep(1);return;}
     if(resetStep===1){
-      await supabase.from('ventes').delete().eq('user_id',user.id);
-      setSales([]);
-      setItems([]);
-      save([]);
-      setResetStep(0);
+      await Promise.all([
+        supabase.from('ventes').delete().eq('user_id',user.id),
+        supabase.from('inventaire').delete().eq('user_id',user.id),
+      ]);
+      setSales([]);setItems([]);setResetStep(0);
     }
   }
 
   async function handleLogin(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
-    const {error}=await supabase.auth.signInWithPassword({email,password});
+    const{error}=await supabase.auth.signInWithPassword({email,password});
     if(error)alert(error.message);
   }
 
   async function handleSignup(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
-    const {error}=await supabase.auth.signUp({email,password});
+    const{error}=await supabase.auth.signUp({email,password});
     if(error)alert(error.message);
     else alert("Vérifie ton email pour confirmer ton compte !");
   }
 
   async function handleLogout(){
     await supabase.auth.signOut();
-    setUser(null);
-    setSales([]);
-    setResetStep(0);
+    setUser(null);setSales([]);setItems([]);setResetStep(0);
   }
 
   const TABS_MOBILE=[
@@ -292,8 +310,7 @@ export default function App(){
     <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
       <style>{css}</style>
 
-      {/* HEADER */}
-      <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.14)",backdropFilter:"blur(8px)"}}>
+      <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
         <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:72,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
             <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
@@ -302,19 +319,9 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div className="header-stats" style={{gap:12}}>
               {headerStats.map((b,i)=>(
-                <div key={i} style={{
-                  background:"rgba(255,255,255,0.18)",
-                  backdropFilter:"blur(16px)",
-                  borderRadius:14,
-                  padding:"7px 18px",
-                  textAlign:"center",
-                  border:"1px solid rgba(255,255,255,0.28)",
-                  boxShadow:"0 4px 16px rgba(0,0,0,0.12)",
-                  transition:"all 0.2s ease",
-                  cursor:"default"
-                }}
-                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 10px 28px rgba(0,0,0,0.18)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.12)";}}>
+                <div key={i} style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(16px)",borderRadius:14,padding:"7px 18px",textAlign:"center",border:"1px solid rgba(255,255,255,0.28)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",transition:"all 0.2s ease",cursor:"default"}}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";}}>
                   <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
                   <div style={{fontSize:15,fontWeight:900,color:"#fff",letterSpacing:"-0.3px"}}>{b.value}</div>
                 </div>
@@ -325,33 +332,22 @@ export default function App(){
         </div>
       </div>
 
-      {/* DESKTOP TABS */}
       <div className="desktop-nav" style={{background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",borderBottom:`1px solid rgba(0,0,0,0.06)`,boxShadow:"0 1px 8px rgba(0,0,0,0.04)"}}>
         <div className="wrap">
           <div style={{display:"flex",overflowX:"auto"}}>
             {["📊 Dashboard","📦 Inventaire","🧮 Calculer","📋 Historique"].map((t,i)=>(
-              <button key={i} className="dtab" onClick={()=>setTab(i)} style={{
-                padding:"15px 20px",background:"transparent",border:"none",
-                borderBottom:tab===i?`2px solid ${C.teal}`:"2px solid transparent",
-                color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:400,
-                marginBottom:-1,whiteSpace:"nowrap"
-              }}>{t}</button>
+              <button key={i} className="dtab" onClick={()=>setTab(i)} style={{padding:"15px 20px",background:"transparent",border:"none",borderBottom:tab===i?`2px solid ${C.teal}`:"2px solid transparent",color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:400,marginBottom:-1,whiteSpace:"nowrap"}}>{t}</button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* CONTENT */}
       <div className="wrap page-pad" style={{padding:"24px 20px 64px"}}>
 
-        {/* DASHBOARD */}
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28}}>
-
-            {salesLoading?(
-              <div style={{textAlign:"center",padding:"40px 0",color:C.sub,fontSize:14,fontWeight:600}}>
-                Chargement des données...
-              </div>
+            {loading?(
+              <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>Chargement des données...</div>
             ):(
               <>
                 <div className="grid4">
@@ -405,24 +401,17 @@ export default function App(){
                   </div>
                 )}
 
-                {/* RESET ZONE */}
                 <div className="card" style={{padding:"20px",border:`1px solid ${C.red}22`,background:C.redLight}}>
                   <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:8}}>⚠️ Zone dangereuse</div>
                   <div style={{fontSize:12,color:C.sub,marginBottom:14}}>Supprime toutes tes ventes et ton inventaire de façon irréversible.</div>
                   {resetStep===0&&(
-                    <button onClick={handleReset} style={{padding:"10px 20px",background:"transparent",border:`1px solid ${C.red}`,borderRadius:10,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                      🗑️ Tout remettre à zéro
-                    </button>
+                    <button onClick={handleReset} style={{padding:"10px 20px",background:"transparent",border:`1px solid ${C.red}`,borderRadius:10,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer"}}>🗑️ Tout remettre à zéro</button>
                   )}
                   {resetStep===1&&(
                     <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:C.red}}>Tu es sûr ? Cette action est irréversible.</div>
-                      <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                        Oui, tout supprimer
-                      </button>
-                      <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                        Annuler
-                      </button>
+                      <div style={{fontSize:13,fontWeight:700,color:C.red}}>Tu es sûr ? Action irréversible.</div>
+                      <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>Oui, tout supprimer</button>
+                      <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:700,cursor:"pointer"}}>Annuler</button>
                     </div>
                   )}
                 </div>
@@ -431,7 +420,6 @@ export default function App(){
           </div>
         )}
 
-        {/* INVENTAIRE */}
         {tab===1&&(
           <div className="grid-inv">
             <div className="card" style={{padding:"20px",display:"flex",flexDirection:"column",gap:12}}>
@@ -501,7 +489,6 @@ export default function App(){
           </div>
         )}
 
-        {/* CALCULER */}
         {tab===2&&(
           <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
             <div style={{background:isValid?(margin>=0?C.greenLight:C.redLight):C.white,borderRadius:18,padding:"24px",border:`1px solid ${isValid?(margin>=0?C.green:C.red)+"44":"rgba(0,0,0,0.06)"}`,boxShadow:"0 10px 30px rgba(0,0,0,0.08)"}}>
@@ -527,11 +514,7 @@ export default function App(){
             <Field label="Frais annexes" value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
             {isValid&&(
               <div className="card" style={{padding:"16px 22px",display:"flex",justifyContent:"space-around"}}>
-                {[
-                  {label:"Coût total",value:fmt(buy+ship),color:C.sub},
-                  {label:"Revenu brut",value:fmt(sell),color:C.teal},
-                  {label:"Bénéfice",value:fmt(margin),color:mc},
-                ].map((item,i)=>(
+                {[{label:"Coût total",value:fmt(buy+ship),color:C.sub},{label:"Revenu brut",value:fmt(sell),color:C.teal},{label:"Bénéfice",value:fmt(margin),color:mc}].map((item,i)=>(
                   <div key={i} style={{textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{item.label}</div>
                     <div style={{fontSize:16,fontWeight:800,color:item.color}}>{item.value}</div>
@@ -545,7 +528,6 @@ export default function App(){
           </div>
         )}
 
-        {/* HISTORIQUE */}
         {tab===3&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {sales.length===0?(
@@ -575,23 +557,9 @@ export default function App(){
         )}
       </div>
 
-      {/* MOBILE NAV */}
-      <div className="mobile-nav" style={{
-        position:"fixed",bottom:0,left:0,right:0,
-        background:"rgba(255,255,255,0.95)",
-        backdropFilter:"blur(16px)",
-        borderTop:"1px solid rgba(0,0,0,0.08)",
-        boxShadow:"0 -4px 24px rgba(0,0,0,0.1)",
-        zIndex:100,
-        paddingBottom:"env(safe-area-inset-bottom)"
-      }}>
+      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.95)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 -4px 24px rgba(0,0,0,0.1)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)"}}>
         {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>setTab(t.idx)} style={{
-            flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-            padding:"10px 0 12px",background:"transparent",border:"none",cursor:"pointer",
-            color:tab===t.idx?C.teal:C.label,
-            transition:"all 0.15s"
-          }}>
+          <button key={t.idx} onClick={()=>setTab(t.idx)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"10px 0 12px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?C.teal:C.label,transition:"all 0.15s"}}>
             <div style={{fontSize:22,marginBottom:3,transform:tab===t.idx?"scale(1.15)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
             <div style={{fontSize:10,fontWeight:tab===t.idx?700:500,letterSpacing:0.3}}>{t.label}</div>
             {tab===t.idx&&<div style={{width:4,height:4,borderRadius:99,background:C.teal,marginTop:3}}/>}
