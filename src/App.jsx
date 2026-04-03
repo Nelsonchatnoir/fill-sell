@@ -122,6 +122,8 @@ export default function App(){
   const [cSell,setCSell]=useState("");
   const [cShip,setCShip]=useState("");
   const [cSaved,setCSaved]=useState(false);
+  const [user,setUser]=useState(null);
+  const [authLoading,setAuthLoading]=useState(true);
 
   useEffect(()=>{
     try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}");setItems(d.items||[]);setSales(d.sales||[]);}catch{}
