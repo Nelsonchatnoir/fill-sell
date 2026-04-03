@@ -199,6 +199,7 @@ export default function App(){
       prix_vente: sell,
       benefice: margin,
       date: saleDate.toISOString().split('T')[0],
+      user_id: user.id,
     }]).then(({error})=>{
       if(error) console.error('[Supabase] Erreur insert:', error.message);
     });
