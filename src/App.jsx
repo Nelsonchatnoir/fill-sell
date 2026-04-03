@@ -16,7 +16,6 @@ const C = {
   orange:"#DD6B20", orangeLight:"#FFFAF0",
   rowBg:"#F9FAFB", rowHover:"#F3F4F6",
 };
-const C = { ... }
 
 // 👉 ICI TU AJOUTES 👇
 
@@ -218,28 +217,10 @@ export default function App(){
   ];
 
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}}>
+    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%"}
 
-  <button 
-  onClick={ajouterVente}
-  style={{
-    position: "fixed",
-    top: 10,
-    right: 10,
-    zIndex: 9999,
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "none",
-    background: "#111",
-    color: "#fff",
-    cursor: "pointer"
-  }}
->
-  TEST DB
-</button>
 
-    <style>{css}</style>
-      <style>{css}</style>
+   <style>{css}</style>
 
       {/* HEADER */}
       <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.14)",backdropFilter:"blur(8px)"}}>
