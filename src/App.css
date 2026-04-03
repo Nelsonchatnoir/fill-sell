@@ -1,20 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './lib/supabase';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
-const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+/* ================== CONFIG ================== */
 
 const C = {
-  teal:"#3EACA0", tealLight:"#E8F7F6",
+  teal:"#3EACA0",
   peach:"#E8956D",
   white:"#FFFFFF",
-  text:"#111827", sub:"#6B7280", label:"#9CA3AF",
-  border:"rgba(0,0,0,0.06)",
-  red:"#E53E3E", redLight:"#FFF5F5",
-  green:"#38A169", greenLight:"#F0FFF4",
-  orange:"#DD6B20", orangeLight:"#FFFAF0",
-  rowBg:"#F9FAFB", rowHover:"#F3F4F6",
+  text:"#111827",
+  sub:"#6B7280",
+  label:"#9CA3AF",
+  red:"#E53E3E",
+  green:"#38A169",
 };
+
+/* ================== CSS GLOBAL FIX ================== */
 
 const css = `
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -22,139 +22,145 @@ const css = `
 html,body,#root{
   width:100%;
   max-width:100%;
-  overflow-x:hidden !important;
+  overflow-x:hidden;
 }
 
 body{
   background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);
   min-height:100vh;
-  overscroll-behavior:none;
-  touch-action:pan-y;
-  position:relative;
 }
 
 .wrap{
   width:100%;
-  max-width:100%;
+  max-width:1280px;
   margin:0 auto;
   padding:0 16px;
-  overflow:hidden;
 }
 
-.desktop-nav{
-  overflow:hidden !important;
-}
-
-@media(max-width:768px){
-  .desktop-nav{display:none!important;}
-  .mobile-nav{display:flex!important;}
-}
 `;
 
-const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
-const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
+/* ================== SWIPE FIX ================== */
 
-function SwipeRow({onDelete, children}){
-  const isMobile = window.innerWidth < 768;
-  const innerRef=useRef(null);
-  const bgRef=useRef(null);
-  const startX=useRef(0);
-  const isDragging=useRef(false);
-  const THRESHOLD=70;
-
-  if(!isMobile){
-    return(
-      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}>
-        {children}
-        <button onClick={onDelete}
-          style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF"}}
-        >✕</button>
-      </div>
-    );
-  }
-
-  function onTouchStart(e){
-    startX.current=e.touches[0].clientX;
-    isDragging.current=true;
-    innerRef.current.style.transition='none';
-  }
-
-  function onTouchMove(e){
-    if(!isDragging.current)return;
-    const dx=e.touches[0].clientX-startX.current;
-    if(dx>=0){
-      innerRef.current.style.transform='translateX(0)';
-      return;
-    }
-    innerRef.current.style.transform=`translateX(${Math.max(dx,-80)}px)`;
-  }
-
-  function onTouchEnd(){
-    isDragging.current=false;
-    innerRef.current.style.transition='transform 0.25s ease';
-    const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
-    innerRef.current.style.transform = cur <= -70 ? 'translateX(-70px)' : 'translateX(0)';
-  }
+function SwipeRow({children}){
 
   return(
     <div style={{
       position:"relative",
-      borderRadius:12,
-      overflow:"hidden",
       width:"100%",
-      maxWidth:"100%"
+      overflow:"hidden"
     }}>
-      <div ref={bgRef}
-        style={{
-          position:"absolute",
-          right:0,
-          top:0,
-          bottom:0,
-          width:70,
-          background:"#E53E3E",
-          display:"flex",
-          alignItems:"center",
-          justifyContent:"center"
-        }}
-        onClick={onDelete}
-      >
-        🗑️
-      </div>
-
-      <div ref={innerRef}
-        style={{
-          position:"relative",
-          zIndex:1,
-          width:"100%",
-          display:"flex",
-          alignItems:"center",
-          gap:10,
-          padding:"11px 14px",
-          background:"#F9FAFB",
-          borderRadius:12,
-          maxWidth:"100%"
-        }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
+      <div style={{
+        width:"100%",
+        display:"flex",
+        alignItems:"center",
+        padding:"14px",
+        background:"#F9FAFB",
+        borderRadius:12
+      }}>
         {children}
       </div>
     </div>
   );
 }
 
+/* ================== APP ================== */
+
 export default function App(){
+
+  const [user,setUser]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+  },[]);
+
+  async function handleLogout(){
+    await supabase.auth.signOut();
+    setUser(null);
+  }
+
+  if(loading){
+    return <div style={{padding:40}}>Loading...</div>;
+  }
+
+  if(!user){
+    return <div style={{padding:40}}>Not connected</div>;
+  }
+
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%",maxWidth:"100vw"}}>
+    <div style={{
+      minHeight:"100vh",
+      width:"100%",
+      overflowX:"hidden"
+    }}>
+
       <style>{css}</style>
 
-      <div style={{padding:20}}>
-        <h1>✅ FIX APPLIQUÉ</h1>
-        <p>Plus de scroll gris</p>
-        <p>Plus de bordure rouge</p>
-        <p>Swipe propre</p>
+      {/* ===== HEADER FIX ===== */}
+      <div style={{
+        background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,
+        overflow:"hidden"
+      }}>
+        <div className="wrap" style={{
+          display:"flex",
+          justifyContent:"space-between",
+          alignItems:"center",
+          height:70
+        }}>
+          <div style={{color:"#fff",fontWeight:700}}>
+            Fill & Sell
+          </div>
+
+          <button onClick={handleLogout} style={{
+            background:"rgba(255,255,255,0.2)",
+            border:"none",
+            color:"#fff",
+            padding:"8px 14px",
+            borderRadius:8,
+            cursor:"pointer"
+          }}>
+            Déconnexion
+          </button>
+        </div>
       </div>
+
+      {/* ===== CONTENT FIX ===== */}
+      <div className="wrap" style={{
+        padding:"24px 0 60px"
+      }}>
+
+        <div style={{
+          display:"flex",
+          flexDirection:"column",
+          gap:12
+        }}>
+
+          {/* CARD EXEMPLE */}
+          <SwipeRow>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600}}>Article test</div>
+              <div style={{fontSize:12,color:C.sub}}>
+                45€ → 46€
+              </div>
+            </div>
+
+            <div style={{textAlign:"right"}}>
+              <div style={{color:C.green,fontWeight:700}}>
+                1€
+              </div>
+              <div style={{fontSize:12,color:C.sub}}>
+                2.2%
+              </div>
+            </div>
+          </SwipeRow>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }
