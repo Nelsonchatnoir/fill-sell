@@ -27,15 +27,6 @@ const css = `
   .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
   .dtab{transition:all 0.15s;cursor:pointer;}
   .dtab:hover{color:${C.teal}!important;}
-    /* Swipe delete mobile */
-  .swipe-del-bg{position:absolute;right:0;top:0;bottom:0;width:80px;background:linear-gradient(135deg,#FF6B6B,#E53E3E);display:flex;align-items:center;justify-content:center;border-radius:0 12px 12px 0;cursor:pointer;}
-  /* Croix desktop */
-  .del-x{display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:8px;background:transparent;border:none;cursor:pointer;align-items:center;justify-content:center;color:#9CA3AF;font-size:14px;transition:background 0.15s,color 0.15s;}
-  .del-x:hover{background:#FEE2E2;color:#E53E3E;}
-  @media(min-width:769px){
-    .swipe-del-bg{display:none!important;}
-    .del-x{display:flex!important;}
-  }
   .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
   .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
@@ -56,8 +47,6 @@ const css = `
     .mobile-nav{display:flex!important;}
     .header-stats{display:none!important;}
     .page-pad{padding-bottom:90px!important;}
-    .del-btn{display:none!important;}
-    .row-wrap:hover .del-btn{opacity:0;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
@@ -66,67 +55,17 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 
 function SwipeRow({onDelete, children}){
-  const wrapRef=useRef(null);
+  const isTouch = typeof window !== 'undefined' && 'ontouchstart' in window;
   const innerRef=useRef(null);
   const bgRef=useRef(null);
   const startX=useRef(0);
   const isDragging=useRef(false);
   const THRESHOLD=70;
 
-  function onTouchStart(e){
-    startX.current=e.touches[0].clientX;
-    isDragging.current=true;
-    innerRef.current.style.transition='none';
-  }
-  function onTouchMove(e){
-    if(!isDragging.current)return;
-    const dx=e.touches[0].clientX-startX.current;
-    if(dx>=0){innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';return;}
-    const moved=Math.max(dx,-(THRESHOLD+30));
-    innerRef.current.style.transform=`translateX(${moved}px)`;
-    bgRef.current.style.opacity=String(Math.min(1,Math.abs(moved)/THRESHOLD));
-  }
-  function onTouchEnd(){
-    isDragging.current=false;
-    innerRef.current.style.transition='transform 0.25s ease';
-    const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
-    if(cur<=-THRESHOLD){
-      innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
-      bgRef.current.style.opacity='1';
-    } else {
-      innerRef.current.style.transform='translateX(0)';
-      bgRef.current.style.opacity='0';
-    }
-  }
-  function handleDelClick(){
-    innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
-    innerRef.current.style.transform='translateX(-120%)';
-    innerRef.current.style.opacity='0';
-    setTimeout(()=>onDelete(),200);
-  }
-
-  return(
-    <div ref={wrapRef} style={{position:"relative",borderRadius:12}}>
-      {/* Fond rouge : opacity 0 par defaut, visible seulement au swipe */}
-      <div ref={bgRef} onClick={handleDelClick} style={{
-        position:"absolute",right:0,top:0,bottom:0,width:80,
-        background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",
-        display:"flex",alignItems:"center",justifyContent:"center",
-        borderRadius:"0 12px 12px 0",cursor:"pointer",
-        opacity:0,transition:"opacity 0.2s"
-      }}>
-        <span style={{fontSize:22}}>🗑️</span>
-      </div>
-      {/* Ligne principale */}
-      <div ref={innerRef} style={{
-        position:"relative",zIndex:1,
-        width:"100%",display:"flex",alignItems:"center",gap:10,
-        padding:"11px 14px",background:"#F9FAFB",borderRadius:12,
-        transition:"background 0.15s"
-      }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+  // ═══ DESKTOP : div simple + croix au hover ═══
+  if(!isTouch){
+    return(
+      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
         onMouseEnter={e=>{
           e.currentTarget.style.background="#F3F4F6";
           e.currentTarget.querySelector('.delx').style.opacity='1';
@@ -137,16 +76,52 @@ function SwipeRow({onDelete, children}){
         }}
       >
         {children}
-        {/* Croix desktop : invisible par defaut, visible au hover */}
-        <button className="delx" onClick={onDelete} style={{
-          position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
-          opacity:0,background:"transparent",border:"none",cursor:"pointer",
-          fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,
-          transition:"all 0.15s",flexShrink:0
-        }}
+        <button className="delx" onClick={onDelete}
+          style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0}}
           onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
           onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
         >✕</button>
+      </div>
+    );
+  }
+
+  // ═══ MOBILE : swipe iOS ═══
+  function onTouchStart(e){
+    startX.current=e.touches[0].clientX;
+    isDragging.current=true;
+    innerRef.current.style.transition='none';
+  }
+  function onTouchMove(e){
+    if(!isDragging.current)return;
+    const dx=e.touches[0].clientX-startX.current;
+    if(dx>=0){innerRef.current.style.transform='translateX(0)';return;}
+    innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
+  }
+  function onTouchEnd(){
+    isDragging.current=false;
+    innerRef.current.style.transition='transform 0.25s ease';
+    const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
+    if(cur<=-THRESHOLD) innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
+    else innerRef.current.style.transform='translateX(0)';
+  }
+  function handleDelClick(){
+    innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
+    innerRef.current.style.transform='translateX(-120%)';
+    innerRef.current.style.opacity='0';
+    setTimeout(()=>onDelete(),200);
+  }
+  return(
+    <div style={{position:"relative",borderRadius:12,overflow:"hidden"}}>
+      <div ref={bgRef} onClick={handleDelClick}
+        style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+      >
+        <span style={{fontSize:22}}>🗑️</span>
+      </div>
+      <div ref={innerRef}
+        style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      >
+        {children}
       </div>
     </div>
   );
