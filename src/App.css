@@ -66,11 +66,29 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 
 function SwipeRow({onDelete, children}){
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
   const innerRef=useRef(null);
   const startX=useRef(0);
   const isDragging=useRef(false);
   const THRESHOLD=70;
 
+  // DESKTOP: div simple + bouton X au hover
+  if(!isMobile){
+    return(
+      <div style={{position:"relative",borderRadius:12,display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",transition:"background 0.15s"}}
+        onMouseEnter={e=>{e.currentTarget.style.background="#F3F4F6";e.currentTarget.querySelector('.delx').style.opacity="1";}}
+        onMouseLeave={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity="0";}}
+      >
+        {children}
+        <button className="delx" onClick={onDelete} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0}}
+          onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
+        >✕</button>
+      </div>
+    );
+  }
+
+  // MOBILE: swipe iOS
   function onTouchStart(e){
     startX.current=e.touches[0].clientX;
     isDragging.current=true;
@@ -98,23 +116,14 @@ function SwipeRow({onDelete, children}){
 
   return(
     <div style={{position:"relative",borderRadius:12,overflow:"hidden"}}>
-      {/* Fond rouge visible uniquement sur mobile au swipe */}
-      <div className="swipe-del-bg" onClick={handleDelClick}>
+      <div onClick={handleDelClick} style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 12px 12px 0",cursor:"pointer"}}>
         <span style={{fontSize:22}}>🗑️</span>
       </div>
-      {/* Ligne principale */}
-      <div ref={innerRef}
-        style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onMouseEnter={e=>e.currentTarget.style.background="#F3F4F6"}
-        onMouseLeave={e=>e.currentTarget.style.background="#F9FAFB"}
+      <div ref={innerRef} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       >
         {children}
       </div>
-      {/* Croix desktop uniquement */}
-      <button className="del-x" onClick={()=>onDelete()}>✕</button>
     </div>
   );
 }
