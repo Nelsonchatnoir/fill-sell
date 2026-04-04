@@ -233,15 +233,18 @@ export default function App({ loginOnly = false }){
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [resetStep,setResetStep]=useState(0);
+  const [isPremium,setIsPremium]=useState(false);
 
   async function fetchAll(uid){
     setLoading(true);
-    const [v,i]=await Promise.all([
+    const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+      supabase.from('profiles').select('is_premium').eq('id',uid).single(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
+    if(!p.error) setIsPremium(p.data?.is_premium||false);
     setLoading(false);
   }
 
@@ -291,7 +294,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
+    if(!isPremium&&items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const hasS=s>0;
     const mg=hasS?s-b:0;const mgp=hasS?(mg/s)*100:0;
     const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
@@ -530,12 +533,12 @@ export default function App({ loginOnly = false }){
               <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
                 💡 Sans prix → <strong>stock</strong>. Avec prix → <strong>vendu</strong>.
               </div>
-              {items.length>=18&&items.length<20&&(
+              {!isPremium&&items.length>=18&&items.length<20&&(
                 <div style={{background:"#FFFBEB",borderRadius:10,padding:"10px 14px",fontSize:11,color:"#92400E",border:"1px solid #FDE68A",fontWeight:600}}>
                   ⚠️ {20-items.length} article{20-items.length>1?"s":""} restant{20-items.length>1?"s":""} sur ton plan gratuit
                 </div>
               )}
-              {items.length>=20
+              {!isPremium&&items.length>=20
                 ? <PremiumBanner userEmail={user?.email}/>
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
                     {iSaved?"✓ Ajouté !":"Ajouter à l'inventaire"}
@@ -548,7 +551,7 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{fontSize:14,fontWeight:700,color:C.text}}>📦 En stock</div>
-                    {items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#E8956D22",color:"#E8956D",borderRadius:99,padding:"2px 8px",border:"1px solid #E8956D44"}}>Plan gratuit</span>}
+                    {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#E8956D22",color:"#E8956D",borderRadius:99,padding:"2px 8px",border:"1px solid #E8956D44"}}>Plan gratuit</span>}
                   </div>
                   <div style={{background:C.orangeLight,color:C.orange,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
