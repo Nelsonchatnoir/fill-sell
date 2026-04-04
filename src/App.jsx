@@ -270,6 +270,7 @@ export default function App(){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
+    if(items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const hasS=s>0;
     const mg=hasS?s-b:0;const mgp=hasS?(mg/s)*100:0;
     const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
