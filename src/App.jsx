@@ -62,18 +62,11 @@ function SwipeRow({onDelete, children}){
   const isDragging=useRef(false);
   const THRESHOLD=70;
 
-  // ═══ DESKTOP : div simple + croix au hover ═══
   if(!isMobile){
     return(
       <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
-        onMouseEnter={e=>{
-          e.currentTarget.style.background="#F3F4F6";
-          e.currentTarget.querySelector('.delx').style.opacity='1';
-        }}
-        onMouseLeave={e=>{
-          e.currentTarget.style.background="#F9FAFB";
-          e.currentTarget.querySelector('.delx').style.opacity='0';
-        }}
+        onMouseEnter={e=>{e.currentTarget.style.background="#F3F4F6";e.currentTarget.querySelector('.delx').style.opacity='1';}}
+        onMouseLeave={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity='0';}}
       >
         {children}
         <button className="delx" onClick={onDelete}
@@ -85,60 +78,58 @@ function SwipeRow({onDelete, children}){
     );
   }
 
-  // ═══ MOBILE : swipe iOS ═══
-  function onTouchStart(e){
-    startX.current=e.touches[0].clientX;
-    isDragging.current=true;
-    innerRef.current.style.transition='none';
-  }
+  function onTouchStart(e){startX.current=e.touches[0].clientX;isDragging.current=true;innerRef.current.style.transition='none';}
   function onTouchMove(e){
     if(!isDragging.current)return;
     const dx=e.touches[0].clientX-startX.current;
     if(dx>=0){innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
     innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
-    bgRef.current.style.right = '0px';
-    bgRef.current.style.opacity = '1';
-    bgRef.current.style.pointerEvents = 'auto';
+    bgRef.current.style.right='0px';bgRef.current.style.opacity='1';bgRef.current.style.pointerEvents='auto';
   }
   function onTouchEnd(){
     isDragging.current=false;
     innerRef.current.style.transition='transform 0.25s ease';
     const cur=new DOMMatrix(getComputedStyle(innerRef.current).transform).m41;
-    if(cur<=-THRESHOLD){
-      innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;
-      bgRef.current.style.right = '0px';
-    bgRef.current.style.opacity = '1';
-    bgRef.current.style.pointerEvents = 'auto';
-    } else {
-      innerRef.current.style.transform='translateX(0)';
-      bgRef.current.style.opacity='0';
-      bgRef.current.style.pointerEvents='none';
-      bgRef.current.style.right='-80px';
-    }
+    if(cur<=-THRESHOLD){innerRef.current.style.transform=`translateX(-${THRESHOLD}px)`;bgRef.current.style.right='0px';bgRef.current.style.opacity='1';bgRef.current.style.pointerEvents='auto';}
+    else{innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';bgRef.current.style.right='-80px';}
   }
   function handleDelClick(){
     innerRef.current.style.transition='transform 0.2s ease,opacity 0.2s ease';
-    innerRef.current.style.transform='translateX(-120%)';
-    innerRef.current.style.opacity='0';
+    innerRef.current.style.transform='translateX(-120%)';innerRef.current.style.opacity='0';
     setTimeout(()=>onDelete(),200);
   }
   return(
     <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%"}}>
-      <div ref={bgRef} onClick={handleDelClick}
-        style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}
-      >
+      <div ref={bgRef} onClick={handleDelClick} style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}>
         <span style={{fontSize:22}}>🗑️</span>
       </div>
-      <div ref={innerRef}
-        style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-      >
+      <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         {children}
       </div>
     </div>
   );
 }
 
+function PremiumBanner(){
+  return(
+    <div style={{background:"linear-gradient(135deg,#3EACA008,#E8956D0D)",border:"1.5px solid #E8956D55",borderRadius:16,padding:"20px 22px",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+        <div style={{fontSize:26,flexShrink:0}}>🔒</div>
+        <div>
+          <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:4}}>Limite du plan gratuit atteinte</div>
+          <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}}>Tu as atteint 20 articles. Passe au plan premium pour un inventaire illimité et continuer à développer ton business.</div>
+        </div>
+      </div>
+      <button
+        onClick={()=>alert("Le paiement arrive bientôt 🚀\nMerci pour ton intérêt !")}
+        style={{padding:"11px 20px",background:"linear-gradient(135deg,#3EACA0,#E8956D)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"flex-start"}}
+        onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 20px rgba(62,172,160,0.45)";}}
+        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 14px rgba(62,172,160,0.35)";}}
+      >✨ Passer au premium</button>
+    </div>
+  );
+}
 
 const Tip=({active,payload,label})=>active&&payload?.length?(
   <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",fontSize:12,boxShadow:"0 10px 30px rgba(0,0,0,0.1)"}}>
@@ -508,15 +499,26 @@ export default function App(){
               <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
                 💡 Sans prix → <strong>stock</strong>. Avec prix → <strong>vendu</strong>.
               </div>
-              <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
-                {iSaved?"✓ Ajouté !":"Ajouter à l'inventaire"}
-              </Btn>
+              {items.length>=18&&items.length<20&&(
+                <div style={{background:"#FFFBEB",borderRadius:10,padding:"10px 14px",fontSize:11,color:"#92400E",border:"1px solid #FDE68A",fontWeight:600}}>
+                  ⚠️ {20-items.length} article{20-items.length>1?"s":""} restant{20-items.length>1?"s":""} sur ton plan gratuit
+                </div>
+              )}
+              {items.length>=20
+                ? <PremiumBanner/>
+                : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
+                    {iSaved?"✓ Ajouté !":"Ajouter à l'inventaire"}
+                  </Btn>
+              }
             </div>
 
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <div className="card" style={{padding:"20px"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>📦 En stock</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>📦 En stock</div>
+                    {items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#E8956D22",color:"#E8956D",borderRadius:99,padding:"2px 8px",border:"1px solid #E8956D44"}}>Plan gratuit</span>}
+                  </div>
                   <div style={{background:C.orangeLight,color:C.orange,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
                 {stock.length===0?<Empty text="Aucun article en stock"/>:(
@@ -615,7 +617,7 @@ export default function App(){
             ):sales.map(s=>{
               const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
               return(
-                <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{marginBottom:0}}>
+                <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
                   <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
