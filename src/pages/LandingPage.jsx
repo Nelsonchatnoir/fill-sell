@@ -53,7 +53,8 @@ const css = `
     font-family: 'Inter', sans-serif;
     font-size: 22px;
     font-weight: 800;
-    letter-spacing: -0.8px;
+    letter-spacing: 0.5px;
+    font-style: italic;
     background: linear-gradient(135deg, #3EACA0, #E8956D);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
