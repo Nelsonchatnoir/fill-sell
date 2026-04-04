@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -203,6 +204,7 @@ export default function App(){
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [resetStep,setResetStep]=useState(0);
+  const navigate = useNavigate();
 
   async function fetchAll(uid){
     setLoading(true);
@@ -337,6 +339,7 @@ export default function App(){
   async function handleLogout(){
     await supabase.auth.signOut();
     setUser(null);setSales([]);setItems([]);setResetStep(0);
+    navigate("/");
   }
 
   const TABS_MOBILE=[
