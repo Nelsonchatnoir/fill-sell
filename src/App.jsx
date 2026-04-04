@@ -467,7 +467,7 @@ export default function App(){
                               <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                               <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
                             </div>
-                            <div style={{textAlign:"right",paddingRight:8}}>
+                            <div style={{textAlign:"right",paddingRight:36}}>
                               <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
                               <div style={{fontSize:11,color:C.sub}}>{fmtp(s.marginPct)}</div>
                             </div>
@@ -550,7 +550,7 @@ export default function App(){
                             <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                             <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
                           </div>
-                          <div style={{textAlign:"right",flexShrink:0,paddingRight:8}}>
+                          <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
                             <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
                             <div style={{fontSize:11,color:C.sub}}>{fmtp(item.marginPct)}</div>
                           </div>
@@ -620,7 +620,7 @@ export default function App(){
                     <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                     <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
                   </div>
-                  <div style={{textAlign:"right",flexShrink:0,paddingRight:8}}>
+                  <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
                     <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
                     <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
                   </div>
