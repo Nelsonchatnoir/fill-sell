@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800;1,900&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; overflow-x: hidden; background: #F8F7F4; }
 
@@ -50,11 +50,12 @@ const css = `
   }
 
   .brand-logo {
-    font-family: 'Inter', sans-serif;
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 21px;
+    font-weight: 900;
+    letter-spacing: 0.3px;
     font-style: italic;
+    white-space: nowrap;
     background: linear-gradient(135deg, #3EACA0, #E8956D);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
