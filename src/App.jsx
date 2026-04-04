@@ -112,7 +112,29 @@ function SwipeRow({onDelete, children}){
   );
 }
 
-function PremiumBanner(){
+function PremiumBanner({ userEmail }){
+  const [loading, setLoading] = useState(false);
+
+  async function handleCheckout(){
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userEmail }),
+        }
+      );
+      const { url, error } = await res.json();
+      if(error) throw new Error(error);
+      window.location.href = url;
+    } catch(e) {
+      alert("Erreur : " + e.message);
+      setLoading(false);
+    }
+  }
+
   return(
     <div style={{background:"linear-gradient(135deg,#3EACA008,#E8956D0D)",border:"1.5px solid #E8956D55",borderRadius:16,padding:"20px 22px",display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
@@ -123,11 +145,14 @@ function PremiumBanner(){
         </div>
       </div>
       <button
-        onClick={()=>alert("Le paiement arrive bientôt 🚀\nMerci pour ton intérêt !")}
-        style={{padding:"11px 20px",background:"linear-gradient(135deg,#3EACA0,#E8956D)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"flex-start"}}
-        onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 20px rgba(62,172,160,0.45)";}}
-        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 14px rgba(62,172,160,0.35)";}}
-      >✨ Passer au premium</button>
+        onClick={handleCheckout}
+        disabled={loading}
+        style={{padding:"11px 20px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"flex-start"}}
+        onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
+        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
+      >
+        {loading ? "Redirection..." : "✨ Passer au premium"}
+      </button>
     </div>
   );
 }
@@ -185,7 +210,8 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
 function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
-export default function App(){
+export default function App({ loginOnly = false }){
+  const navigate = useNavigate();
   const [tab,setTab]=useState(0);
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
@@ -204,7 +230,6 @@ export default function App(){
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [resetStep,setResetStep]=useState(0);
-  const navigate = useNavigate();
 
   async function fetchAll(uid){
     setLoading(true);
@@ -361,7 +386,7 @@ export default function App(){
     </div>
   );
 
-  if(!user)return(
+  if(!user||loginOnly)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`}}>
       <div style={{background:"#fff",borderRadius:20,padding:"40px 32px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
@@ -508,7 +533,7 @@ export default function App(){
                 </div>
               )}
               {items.length>=20
-                ? <PremiumBanner/>
+                ? <PremiumBanner userEmail={user?.email}/>
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
                     {iSaved?"✓ Ajouté !":"Ajouter à l'inventaire"}
                   </Btn>

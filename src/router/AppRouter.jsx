@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import ProtectedRoute from "../components/ProtectedRoute";
 import LandingPage from "../pages/LandingPage";
+import Success from "../pages/Success";
+import Cancel from "../pages/Cancel";
 import App from "../App";
 
 function RedirectIfLoggedIn({ children }) {
@@ -24,6 +26,8 @@ export default function AppRouter() {
         <Route path="/" element={<RedirectIfLoggedIn><LandingPage /></RedirectIfLoggedIn>} />
         <Route path="/login" element={<RedirectIfLoggedIn><App loginOnly /></RedirectIfLoggedIn>} />
         <Route path="/app" element={<ProtectedRoute><App /></ProtectedRoute>} />
+        <Route path="/success" element={<Success />} />
+        <Route path="/cancel" element={<Cancel />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
