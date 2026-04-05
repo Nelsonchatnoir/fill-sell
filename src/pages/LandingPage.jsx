@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800;1,900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; overflow-x: hidden; background: #F8F7F4; }
 
@@ -50,12 +50,10 @@ const css = `
   }
 
   .brand-logo {
-    font-family: 'Nunito', sans-serif;
-    font-size: 21px;
-    font-weight: 900;
-    letter-spacing: 0.3px;
-    font-style: italic;
-    white-space: nowrap;
+    font-family: 'Inter', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.8px;
     background: linear-gradient(135deg, #3EACA0, #E8956D);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -80,7 +78,9 @@ const css = `
     letter-spacing: -1.5px; line-height: 1;
   }
 
+  .pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   @media(max-width: 768px) {
+    .pricing-grid { grid-template-columns: 1fr !important; }
     .lp-grid3 { grid-template-columns: 1fr; }
     .hero-title { font-size: 36px !important; letter-spacing: -1px !important; }
     .hero-sub { font-size: 16px !important; }
@@ -266,6 +266,81 @@ export default function LandingPage() {
                   <div key={i} style={{ flex: 1, background: i === 5 ? "#3EACA0" : "#3EACA025", borderRadius: "6px 6px 0 0", height: `${h}%`, transition: "all 0.3s" }} />
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      {/* ── PRICING ── */}
+      <section style={{ padding: "90px 24px", background: "#fff" }}>
+        <div style={{ maxWidth: 860, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>Tarifs</div>
+            <h2 style={{ fontSize: 38, fontWeight: 900, color: C.text, letterSpacing: "-1px", marginBottom: 16 }}>Simple et transparent</h2>
+            <p style={{ fontSize: 16, color: C.sub, maxWidth: 420, margin: "0 auto" }}>Commence gratuitement, passe au premium quand tu es prêt à scaler.</p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }}>
+            {/* Gratuit */}
+            <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Gratuit</div>
+              <div style={{ fontSize: 40, fontWeight: 900, color: C.text, letterSpacing: "-1.5px", marginBottom: 4 }}>0 €</div>
+              <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>Pour commencer</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {[
+                  { label: "Articles en stock", value: "20 max" },
+                  { label: "Dashboard", ok: true },
+                  { label: "Calcul des marges", ok: true },
+                  { label: "Historique des ventes", ok: true },
+                  { label: "Statistiques avancées", ok: false },
+                  { label: "Articles illimités", ok: false },
+                ].map(({ label, ok, value }) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>{ok === false ? "✗" : "✓"}</span>
+                    <span style={{ fontSize: 14, color: ok === false ? C.label : C.text, textDecoration: ok === false ? "none" : "none" }}>
+                      {label}{value ? ` — ${value}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => nav("/login")} style={{ marginTop: 28, width: "100%", padding: "13px", background: "transparent", color: C.teal, border: `1.5px solid ${C.teal}`, borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}
+                onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.teal; }}
+              >
+                Commencer gratuitement
+              </button>
+            </div>
+
+            {/* Premium */}
+            <div style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden", boxShadow: "0 20px 60px rgba(62,172,160,0.3)" }}>
+              <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, background: "rgba(255,255,255,0.08)", borderRadius: "50%" }} />
+              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Premium</div>
+              <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 4 }}>4,99 €</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 28 }}>par mois · sans engagement</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {[
+                  { label: "Articles en stock", value: "illimités" },
+                  { label: "Dashboard", ok: true },
+                  { label: "Calcul des marges", ok: true },
+                  { label: "Historique des ventes", ok: true },
+                  { label: "Statistiques avancées", ok: true },
+                  { label: "Articles illimités", ok: true },
+                ].map(({ label, ok, value }) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0, color: "#fff" }}>✓</span>
+                    <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>
+                      {label}{value ? ` — ${value}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => nav("/login")} style={{ marginTop: 28, width: "100%", padding: "13px", background: "#fff", color: C.teal, border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 8px 24px rgba(0,0,0,0.15)", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.2)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)"; }}
+              >
+                Passer au premium 🚀
+              </button>
             </div>
           </div>
         </div>
