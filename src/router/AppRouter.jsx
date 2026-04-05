@@ -1,12 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import ProtectedRoute from "../components/ProtectedRoute";
 import LandingPage from "../pages/LandingPage";
 import Success from "../pages/Success";
 import Cancel from "../pages/Cancel";
 import App from "../App";
 
+// Bloque /login et / si déjà connecté
 function RedirectIfLoggedIn({ children }) {
   const [user, setUser] = useState(undefined);
   useEffect(() => {
@@ -19,6 +19,7 @@ function RedirectIfLoggedIn({ children }) {
   return children;
 }
 
+// Protège /app : redirige vers / si non connecté, sinon reste sur place
 function RequireAuth({ children }) {
   const [user, setUser] = useState(undefined);
   const location = useLocation();
