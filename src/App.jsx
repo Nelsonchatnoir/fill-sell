@@ -112,7 +112,7 @@ function SwipeRow({onDelete, children}){
   );
 }
 
-function PremiumBanner({ userEmail }){
+function PremiumBanner({ userEmail, compact=false }){
   const [loading, setLoading] = useState(false);
 
   async function handleCheckout(){
@@ -136,6 +136,20 @@ function PremiumBanner({ userEmail }){
       alert("Erreur : " + e.message);
       setLoading(false);
     }
+  }
+
+  if(compact){
+    return(
+      <button
+        onClick={handleCheckout}
+        disabled={loading}
+        style={{padding:"7px 14px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",whiteSpace:"nowrap",flexShrink:0}}
+        onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
+        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
+      >
+        {loading ? "..." : "✨ Premium"}
+      </button>
+    );
   }
 
   return(
@@ -454,7 +468,7 @@ export default function App({ loginOnly = false }){
                 background: 20-items.length<=5 ? "#FFFBEB" : C.tealLight,
                 border: `1px solid ${20-items.length<=5 ? "#FDE68A" : C.teal+"33"}`,
                 borderRadius:12, padding:"12px 18px",
-                display:"flex", alignItems:"center", justifyContent:"space-between"
+                display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap"
               }}>
                 <div style={{fontSize:13,fontWeight:600,color:20-items.length<=5?"#92400E":C.teal}}>
                   {20-items.length<=5
@@ -462,8 +476,11 @@ export default function App({ loginOnly = false }){
                     : `Il te reste ${20-items.length} article${20-items.length>1?"s":""} gratuit${20-items.length>1?"s":""}`
                   }
                 </div>
-                <div style={{fontSize:12,fontWeight:800,color:20-items.length<=5?"#92400E":C.teal}}>
-                  {items.length}/20
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{fontSize:12,fontWeight:800,color:20-items.length<=5?"#92400E":C.teal}}>
+                    {items.length}/20
+                  </div>
+                  <PremiumBanner userEmail={user?.email} compact/>
                 </div>
               </div>
             )}
