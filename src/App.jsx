@@ -9,7 +9,7 @@ const C = {
   teal:"#3EACA0", tealLight:"#E8F7F6",
   peach:"#E8956D",
   white:"#FFFFFF",
-  text:"#111827", sub:"#6B7280", label:"#9CA3AF",
+  text:"#0F172A", sub:"#475569", label:"#94A3B8",
   border:"rgba(0,0,0,0.06)",
   red:"#E53E3E", redLight:"#FFF5F5",
   green:"#38A169", greenLight:"#F0FFF4",
@@ -18,8 +18,9 @@ const C = {
 };
 
 const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{width:100%;max-width:100%;overflow:hidden;margin:0;padding:0;}
+  html,body{width:100%;max-width:100%;overflow:hidden;margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
   *::-webkit-scrollbar{display:none;}
   *{-ms-overflow-style:none;scrollbar-width:none;}
   body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior:none;touch-action:pan-y;}
