@@ -409,17 +409,25 @@ export default function App({ loginOnly = false }){
   );
 
   if(!user||loginOnly)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`}}>
-      <div style={{background:"#fff",borderRadius:20,padding:"40px 32px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,overflowX:"hidden",boxSizing:"border-box"}}>
+      <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <img src="/logo.png" style={{height:52,marginBottom:12}} alt="Fill & Sell"/>
-          <div style={{fontSize:15,color:C.sub}}>Connecte-toi pour continuer</div>
+          <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
+          <div style={{fontSize:15,color:C.sub,fontWeight:500}}>Connecte-toi pour continuer</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
-          <input type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)} style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
-          <button onClick={handleLogin} style={{padding:"14px",background:C.teal,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Se connecter</button>
-          <button onClick={handleSignup} style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>Créer un compte</button>
+          <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
+            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+          <input type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)}
+            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+          <button onClick={handleLogin}
+            style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
+            Se connecter
+          </button>
+          <button onClick={handleSignup}
+            style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}}>
+            Créer un compte
+          </button>
         </div>
       </div>
     </div>
