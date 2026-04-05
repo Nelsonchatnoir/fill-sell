@@ -476,6 +476,9 @@ export default function App({ loginOnly = false }){
                 </div>
               ))}
             </div>
+            {isPremium&&(
+              <div style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",border:"1px solid rgba(255,255,255,0.35)",whiteSpace:"nowrap"}}>⭐ Premium</div>
+            )}
             <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Déconnexion</button>
           </div>
         </div>
@@ -497,9 +500,11 @@ export default function App({ loginOnly = false }){
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
             {!isPremium&&!loading&&(
               <div style={{background:20-items.length<=5?"#FFFBEB":C.tealLight,border:`1px solid ${20-items.length<=5?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",overflow:"hidden"}}>
-                <div style={{fontSize:13,fontWeight:600,color:20-items.length<=5?"#92400E":C.teal}}>
-                  {20-items.length<=5
-                    ? `Plus que ${20-items.length} article${20-items.length>1?"s":""} avant de passer au premium 👀`
+                <div style={{fontSize:13,fontWeight:600,color:items.length>=14?"#C05621":items.length>=10?"#D97706":C.teal}}>
+                  {items.length>=14
+                    ? `🔴 Plus que ${20-items.length} article${20-items.length>1?"s":""} avant la limite !`
+                    : items.length>=10
+                    ? `⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} avant de passer au premium`
                     : `Il te reste ${20-items.length} article${20-items.length>1?"s":""} gratuit${20-items.length>1?"s":""}`
                   }
                 </div>
@@ -649,17 +654,17 @@ export default function App({ loginOnly = false }){
               {!isPremium&&items.length>=20
                 ? <PremiumBanner userEmail={user?.email}/>
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
-                    {iSaved?"✓ Ajouté !":items.length===0?"Ajouter mon premier article 🚀":"Ajouter à l'inventaire"}
+                    {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":"Ajouter à l'inventaire"}
                   </Btn>
               }
               {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
                 <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
-                  Remplis au moins le nom et le prix d'achat
+                  Tu es à 1 étape de voir tes premiers profits 💰
                 </div>
               )}
               {items.length===0&&!iSaved&&iTitle&&iBuy&&(
-                <div style={{textAlign:"center",fontSize:12,color:C.sub,marginTop:-4}}>
-                  Ensuite tu pourras enregistrer une vente et voir ton bénéfice 📈
+                <div style={{textAlign:"center",fontSize:12,color:C.teal,fontWeight:600,marginTop:-4}}>
+                  ✓ Prêt ! Clique pour ajouter et voir ton bénéfice instantanément
                 </div>
               )}
               {firstItemAdded&&(
