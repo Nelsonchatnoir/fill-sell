@@ -283,11 +283,11 @@ export default function LandingPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }}>
             {/* Gratuit */}
-            <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)" }}>
+            <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)", display:"flex", flexDirection:"column" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Gratuit</div>
               <div style={{ fontSize: 40, fontWeight: 900, color: C.text, letterSpacing: "-1.5px", marginBottom: 4 }}>0 €</div>
               <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>Idéal pour débuter</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
                 {[
                   { label: "Articles en stock", value: "20 max" },
                   { label: "Dashboard", ok: true },
@@ -313,7 +313,7 @@ export default function LandingPage() {
             </div>
 
             {/* Premium */}
-            <div style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden", boxShadow: "0 20px 60px rgba(62,172,160,0.3)" }}>
+            <div style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden", boxShadow: "0 20px 60px rgba(62,172,160,0.3)", display:"flex", flexDirection:"column" }}>
               <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, background: "rgba(255,255,255,0.08)", borderRadius: "50%" }} />
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>Premium</div>
@@ -322,7 +322,7 @@ export default function LandingPage() {
               <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 4 }}>4,99 €</div>
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 8 }}>par mois · sans engagement</div>
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 600, marginBottom: 20 }}>🚀 Débloque toutes les fonctionnalités en 1 clic</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
                 {[
                   { label: "Articles illimités en stock" },
                   { label: "Dashboard complet" },
