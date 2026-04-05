@@ -599,7 +599,7 @@ export default function App({ loginOnly = false }){
           <div className="grid-inv">
             <div className="card" style={{padding:"20px",display:"flex",flexDirection:"column",gap:12,border:items.length===0?`1.5px solid ${C.teal}44`:"1px solid rgba(0,0,0,0.05)",boxShadow:items.length===0?"0 0 0 4px "+C.teal+"11, 0 10px 30px rgba(0,0,0,0.08)":"0 10px 30px rgba(0,0,0,0.08)"}}>
               {items.length===0?(
-                <div style={{textAlign:"center",paddingBottom:4}}>
+                <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
                   <div style={{fontSize:28,marginBottom:8}}>🧩</div>
                   <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:6}}>Ajoute ton premier article</div>
                   <div style={{fontSize:13,color:C.sub,lineHeight:1.6}}>Entre le nom et ton prix d'achat. Tu pourras ajouter le prix de vente plus tard.</div>
@@ -635,6 +635,11 @@ export default function App({ loginOnly = false }){
                     {iSaved?"✓ Ajouté !":items.length===0?"Ajouter mon premier article 🚀":"Ajouter à l'inventaire"}
                   </Btn>
               }
+              {items.length===0&&!iSaved&&(
+                <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
+                  Ensuite tu pourras enregistrer une vente et voir ton bénéfice 📈
+                </div>
+              )}
               {firstItemAdded&&(
                 <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.green,border:"1px solid #C6F6D5",fontWeight:600,textAlign:"center"}}>
                   ✅ Article ajouté ! Tu peux maintenant enregistrer une vente.
@@ -651,7 +656,7 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:C.orangeLight,color:C.orange,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
-                {stock.length===0?<Empty text="Aucun article en stock"/>:(
+                {stock.length===0?<Empty text="Ton inventaire apparaîtra ici"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stock.map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
