@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@1,700;1,800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@700;800&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; overflow-x: hidden; background: #F8F7F4; }
 
@@ -50,11 +50,10 @@ const css = `
   }
 
   .brand-logo {
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-family: 'Sora', sans-serif;
     font-size: 22px;
     font-weight: 800;
-    font-style: italic;
-    letter-spacing: 0.2px;
+    letter-spacing: -0.5px;
     background: linear-gradient(135deg, #3EACA0, #E8956D);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -282,7 +281,7 @@ export default function LandingPage() {
             <p style={{ fontSize: 16, color: C.sub, maxWidth: 420, margin: "0 auto" }}>Commence gratuitement, passe au premium quand tu es prêt à scaler.</p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24, maxWidth: 700, margin: "0 auto" }}>
             {/* Gratuit */}
             <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)", display:"flex", flexDirection:"column" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Gratuit</div>
