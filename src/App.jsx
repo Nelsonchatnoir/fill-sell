@@ -19,7 +19,10 @@ const C = {
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{width:100%;max-width:100%;overflow-x:hidden;margin:0;padding:0;}*::-webkit-scrollbar{display:none;}*{-ms-overflow-style:none;scrollbar-width:none;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
+  html,body{width:100%;max-width:100%;overflow:hidden;margin:0;padding:0;}
+  *::-webkit-scrollbar{display:none;}
+  *{-ms-overflow-style:none;scrollbar-width:none;}
+  body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior:none;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
@@ -38,6 +41,7 @@ const css = `
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
+  .app-root{min-height:100vh;width:100%;overflow-x:hidden;overscroll-behavior-x:none;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);}
@@ -123,9 +127,9 @@ function PremiumBanner({ userEmail, compact=false }){
         {
           method: "POST",
           headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
           body: JSON.stringify({ email: userEmail }),
         }
       );
@@ -140,9 +144,7 @@ function PremiumBanner({ userEmail, compact=false }){
 
   if(compact){
     return(
-      <button
-        onClick={handleCheckout}
-        disabled={loading}
+      <button onClick={handleCheckout} disabled={loading}
         style={{padding:"7px 14px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",whiteSpace:"nowrap",flexShrink:0}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
@@ -158,12 +160,10 @@ function PremiumBanner({ userEmail, compact=false }){
         <div style={{fontSize:26,flexShrink:0}}>🔒</div>
         <div>
           <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:4}}>Limite du plan gratuit atteinte</div>
-          <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}}>Tu as atteint 20 articles. Passe au plan premium pour un inventaire illimité et continuer à développer ton business.</div>
+          <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}}>Tu as atteint 20 articles. Passe au plan premium pour un inventaire illimité.</div>
         </div>
       </div>
-      <button
-        onClick={handleCheckout}
-        disabled={loading}
+      <button onClick={handleCheckout} disabled={loading}
         style={{padding:"11px 20px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"flex-start"}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
@@ -434,7 +434,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%",maxWidth:"100vw",overscrollBehaviorX:"none",touchAction:"pan-y"}}>
+    <div className="app-root">
       <style>{css}</style>
 
       <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
@@ -461,7 +461,7 @@ export default function App({ loginOnly = false }){
 
       <div className="desktop-nav" style={{background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",borderBottom:`1px solid rgba(0,0,0,0.06)`,boxShadow:"0 1px 8px rgba(0,0,0,0.04)"}}>
         <div className="wrap">
-          <div style={{display:"flex",overflowX:"auto"}}>
+          <div style={{display:"flex",overflowX:"auto",msOverflowStyle:"none",scrollbarWidth:"none"}}>
             {["📊 Dashboard","📦 Inventaire","🧮 Calculer","📋 Historique"].map((t,i)=>(
               <button key={i} className="dtab" onClick={()=>{setTab(i);localStorage.setItem('tab',i);}} style={{padding:"15px 20px",background:"transparent",border:"none",borderBottom:tab===i?`2px solid ${C.teal}`:"2px solid transparent",color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:400,marginBottom:-1,whiteSpace:"nowrap"}}>{t}</button>
             ))}
@@ -469,17 +469,12 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"24px 20px 64px"}}>
+      <div className="wrap page-pad" style={{padding:"24px 20px 64px",overflow:"hidden"}}>
 
         {tab===0&&(
-          <div style={{display:"flex",flexDirection:"column",gap:28,overflow:"hidden",maxWidth:"100%"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
             {!isPremium&&!loading&&(
-              <div style={{
-                background: 20-items.length<=5 ? "#FFFBEB" : C.tealLight,
-                border: `1px solid ${20-items.length<=5 ? "#FDE68A" : C.teal+"33"}`,
-                borderRadius:12, padding:"12px 18px",
-                display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap"
-              }}>
+              <div style={{background:20-items.length<=5?"#FFFBEB":C.tealLight,border:`1px solid ${20-items.length<=5?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",overflow:"hidden"}}>
                 <div style={{fontSize:13,fontWeight:600,color:20-items.length<=5?"#92400E":C.teal}}>
                   {20-items.length<=5
                     ? `Plus que ${20-items.length} article${20-items.length>1?"s":""} avant de passer au premium 👀`
@@ -487,9 +482,7 @@ export default function App({ loginOnly = false }){
                   }
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{fontSize:12,fontWeight:800,color:20-items.length<=5?"#92400E":C.teal}}>
-                    {items.length}/20
-                  </div>
+                  <div style={{fontSize:12,fontWeight:800,color:20-items.length<=5?"#92400E":C.teal}}>{items.length}/20</div>
                   <PremiumBanner userEmail={user?.email} compact/>
                 </div>
               </div>
@@ -497,7 +490,7 @@ export default function App({ loginOnly = false }){
             {loading?(
               <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>Chargement des données...</div>
             ):items.length===0&&sales.length===0?(
-              <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease"}}>
+              <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
                 <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
                 <div className="card" style={{padding:"40px 32px",textAlign:"center"}}>
                   <div style={{fontSize:48,marginBottom:16}}>👋</div>
@@ -506,15 +499,10 @@ export default function App({ loginOnly = false }){
                     Suis tes profits Vinted en quelques secondes.<br/>Commence par ajouter ton premier article.
                   </div>
                   <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:36,flexWrap:"wrap"}}>
-                    {[
-                      {icon:"📦",label:"Ajoute un article"},
-                      {icon:"💰",label:"Enregistre une vente"},
-                      {icon:"📊",label:"Analyse tes profits"},
-                    ].map((step,i)=>(
+                    {[{icon:"📦",label:"Ajoute un article"},{icon:"💰",label:"Enregistre une vente"},{icon:"📊",label:"Analyse tes profits"}].map((step,i)=>(
                       <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"14px 18px",background:C.rowBg,borderRadius:14,border:"1px solid rgba(0,0,0,0.06)",minWidth:100}}>
                         <div style={{fontSize:26}}>{step.icon}</div>
                         <div style={{fontSize:11,fontWeight:700,color:C.sub,textAlign:"center"}}>{step.label}</div>
-                        {i<2&&<div style={{position:"absolute",right:-16,top:"50%",color:C.label,fontSize:16}}>→</div>}
                       </div>
                     ))}
                   </div>
@@ -522,15 +510,11 @@ export default function App({ loginOnly = false }){
                     <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}} style={{padding:"14px 24px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(62,172,160,0.35)",transition:"all 0.2s"}}
                       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
                       onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}
-                    >
-                      ➕ Ajouter mon premier article
-                    </button>
+                    >➕ Ajouter mon premier article</button>
                     <button onClick={()=>{setTab(2);localStorage.setItem('tab',2);}} style={{padding:"14px 24px",background:"transparent",color:C.teal,border:`1.5px solid ${C.teal}`,borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
                       onMouseEnter={e=>{e.currentTarget.style.background=C.tealLight;}}
                       onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
-                    >
-                      🧮 Tester le calculateur
-                    </button>
+                    >🧮 Tester le calculateur</button>
                   </div>
                 </div>
               </div>
@@ -551,12 +535,12 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 <div className="grid2">
-                  <div className="card" style={{padding:"20px"}}>
+                  <div className="card" style={{padding:"20px",overflow:"hidden"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Bénéfices mensuels</div>
                     <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
                     {hasData?(<ResponsiveContainer width="100%" height={175}><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>):<Empty/>}
                   </div>
-                  <div className="card" style={{padding:"20px"}}>
+                  <div className="card" style={{padding:"20px",overflow:"hidden"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Évolution marge %</div>
                     <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
                     {hasData?(<ResponsiveContainer width="100%" height={175}><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer>):<Empty/>}
