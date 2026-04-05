@@ -496,6 +496,44 @@ export default function App({ loginOnly = false }){
             )}
             {loading?(
               <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>Chargement des données...</div>
+            ):items.length===0&&sales.length===0?(
+              <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease"}}>
+                <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
+                <div className="card" style={{padding:"40px 32px",textAlign:"center"}}>
+                  <div style={{fontSize:48,marginBottom:16}}>👋</div>
+                  <div style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-0.5px",marginBottom:12}}>Bienvenue sur Fill & Sell</div>
+                  <div style={{fontSize:14,color:C.sub,lineHeight:1.7,marginBottom:32,maxWidth:380,margin:"0 auto 32px"}}>
+                    Suis tes profits Vinted en quelques secondes.<br/>Commence par ajouter ton premier article.
+                  </div>
+                  <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:36,flexWrap:"wrap"}}>
+                    {[
+                      {icon:"📦",label:"Ajoute un article"},
+                      {icon:"💰",label:"Enregistre une vente"},
+                      {icon:"📊",label:"Analyse tes profits"},
+                    ].map((step,i)=>(
+                      <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"14px 18px",background:C.rowBg,borderRadius:14,border:"1px solid rgba(0,0,0,0.06)",minWidth:100}}>
+                        <div style={{fontSize:26}}>{step.icon}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:C.sub,textAlign:"center"}}>{step.label}</div>
+                        {i<2&&<div style={{position:"absolute",right:-16,top:"50%",color:C.label,fontSize:16}}>→</div>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}} style={{padding:"14px 24px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(62,172,160,0.35)",transition:"all 0.2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                      onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}
+                    >
+                      ➕ Ajouter mon premier article
+                    </button>
+                    <button onClick={()=>{setTab(2);localStorage.setItem('tab',2);}} style={{padding:"14px 24px",background:"transparent",color:C.teal,border:`1.5px solid ${C.teal}`,borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.background=C.tealLight;}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
+                    >
+                      🧮 Tester le calculateur
+                    </button>
+                  </div>
+                </div>
+              </div>
             ):(
               <>
                 <div className="grid4">
