@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@1,700;1,800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@1,700;1,800&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; overflow-x: hidden; background: #F8F7F4; }
 
@@ -50,11 +50,11 @@ const css = `
   }
 
   .brand-logo {
-    font-family: 'Playfair Display', serif;
-    font-size: 23px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 22px;
     font-weight: 800;
     font-style: italic;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.2px;
     background: linear-gradient(135deg, #3EACA0, #E8956D);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
