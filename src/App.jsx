@@ -731,30 +731,72 @@ export default function App({ loginOnly = false }){
 
         {tab===2&&(
           <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{background:isValid?(margin>=0?C.greenLight:C.redLight):C.white,borderRadius:18,padding:"24px",border:`1px solid ${isValid?(margin>=0?C.green:C.red)+"44":"rgba(0,0,0,0.06)"}`,boxShadow:"0 10px 30px rgba(0,0,0,0.08)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>Marge nette</div>
-                  <div style={{fontSize:48,fontWeight:900,color:isValid?mc:"#D1D5DB",letterSpacing:"-2px",lineHeight:1}}>{isValid?fmt(margin):"—"}</div>
+
+            {/* ── Bloc résultat principal ── */}
+            <div style={{
+              background:isValid?(margin>=0?"linear-gradient(135deg,#F0FFF4,#E6FFFA)":"linear-gradient(135deg,#FFF5F5,#FED7D7)"):"#fff",
+              borderRadius:20,padding:"28px 24px",
+              border:`1.5px solid ${isValid?(margin>=0?C.green:C.red)+"44":"#E2E8F0"}`,
+              boxShadow:"0 4px 20px rgba(0,0,0,0.06)",
+              transition:"all 0.3s ease"
+            }}>
+              {!isValid?(
+                <div style={{textAlign:"center",padding:"8px 0"}}>
+                  <div style={{fontSize:36,marginBottom:10}}>🧮</div>
+                  <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>Calcule ta marge instantanément</div>
+                  <div style={{fontSize:13,color:C.sub}}>Entre le prix d'achat et de vente ci-dessous</div>
                 </div>
-                <div style={{background:C.white,borderRadius:14,padding:"16px 22px",textAlign:"center",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 4px 12px rgba(0,0,0,0.06)"}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>Taux</div>
-                  <div style={{fontSize:30,fontWeight:900,color:isValid?mc:"#D1D5DB",letterSpacing:"-1px"}}>{isValid?fmtp(marginPct):"—"}</div>
-                </div>
-              </div>
-              {isValid&&sell>0&&(
-                <div style={{marginTop:18,height:5,background:"rgba(0,0,0,0.06)",borderRadius:99}}>
-                  <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:margin<0?C.red:C.teal,borderRadius:99,transition:"width 0.4s ease"}}/>
-                </div>
+              ):(
+                <>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Profit estimé</div>
+                      <div style={{fontSize:52,fontWeight:900,color:mc,letterSpacing:"-2.5px",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
+                    </div>
+                    <div style={{background:"rgba(255,255,255,0.8)",borderRadius:16,padding:"14px 20px",textAlign:"center",border:"1px solid rgba(0,0,0,0.06)",backdropFilter:"blur(8px)"}}>
+                      <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Rentabilité</div>
+                      <div style={{fontSize:32,fontWeight:900,color:mc,letterSpacing:"-1px"}}>{fmtp(marginPct)}</div>
+                    </div>
+                  </div>
+                  {/* Barre de progression */}
+                  <div style={{height:6,background:"rgba(0,0,0,0.06)",borderRadius:99,marginBottom:14}}>
+                    <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:margin<0?C.red:`linear-gradient(90deg,${C.teal},${C.peach})`,borderRadius:99,transition:"width 0.4s ease"}}/>
+                  </div>
+                  {/* Insight automatique */}
+                  <div style={{
+                    display:"inline-flex",alignItems:"center",gap:6,
+                    background:"rgba(255,255,255,0.7)",borderRadius:99,
+                    padding:"5px 14px",fontSize:12,fontWeight:700,
+                    color:margin<0?C.red:marginPct>=30?C.green:marginPct>=15?C.orange:C.sub,
+                    border:"1px solid rgba(0,0,0,0.06)"
+                  }}>
+                    {margin<0?"❌ Vente à perte":marginPct>=30?"🔥 Excellent deal !":marginPct>=20?"👍 Bon deal":marginPct>=10?"📊 Marge correcte":"⚠️ Rentabilité faible"}
+                  </div>
+                </>
               )}
             </div>
-            <Field label="Nom de l'article" value={cTitle} set={setCTitle} placeholder="Ex: Nike Air Max 90" icon="🏷️"/>
-            <Field label="Prix d'achat" value={cBuy} set={setCBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
-            <Field label="Prix de vente Vinted" value={cSell} set={setCSell} placeholder="0,00" type="number" icon="📦" suffix="€"/>
-            <Field label="Frais annexes" value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
+
+            {/* ── Inputs ── */}
+            <div>
+              <Field label="Nom de l'article" value={cTitle} set={setCTitle} placeholder="Ex: Nike Air Max 90" icon="🏷️"/>
+            </div>
+            <div>
+              <Field label="Prix d'achat" value={cBuy} set={setCBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
+              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix auquel tu as acheté l'article</div>
+            </div>
+            <div>
+              <Field label="Prix de vente" value={cSell} set={setCSell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
+              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix de vente sur Vinted ou autre plateforme</div>
+            </div>
+            <div>
+              <Field label="Frais annexes" value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
+              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Livraison, emballage, commissions...</div>
+            </div>
+
+            {/* ── Récap rapide ── */}
             {isValid&&(
               <div className="card" style={{padding:"16px 22px",display:"flex",justifyContent:"space-around"}}>
-                {[{label:"Coût total",value:fmt(buy+ship),color:C.sub},{label:"Revenu brut",value:fmt(sell),color:C.teal},{label:"Bénéfice",value:fmt(margin),color:mc}].map((item,i)=>(
+                {[{label:"Coût total",value:fmt(buy+ship),color:C.sub},{label:"Revenu brut",value:fmt(sell),color:C.teal},{label:"Bénéfice net",value:fmt(margin),color:mc}].map((item,i)=>(
                   <div key={i} style={{textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{item.label}</div>
                     <div style={{fontSize:16,fontWeight:800,color:item.color}}>{item.value}</div>
@@ -762,36 +804,117 @@ export default function App({ loginOnly = false }){
                 ))}
               </div>
             )}
-            <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":C.teal} full>
-              {cSaved?"✓ Vente enregistrée !":"Enregistrer la vente"}
+
+            {/* ── CTA ── */}
+            <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":`linear-gradient(135deg,${C.teal},${C.peach})`} full>
+              {cSaved?"✓ Ajouté à ton suivi !":"💾 Ajouter à mon suivi"}
             </Btn>
+
+            {!isPremium&&(
+              <div style={{textAlign:"center",fontSize:11,color:C.label}}>
+                🔓 <span style={{cursor:"pointer",textDecoration:"underline",color:C.teal}} onClick={()=>setTab(1)}>Débloque le suivi illimité avec Premium</span>
+              </div>
+            )}
           </div>
         )}
 
         {tab===3&&(
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {sales.length===0?(
-              <div style={{textAlign:"center",padding:"80px 20px"}}>
-                <div style={{fontSize:56,marginBottom:16}}>📭</div>
-                <div style={{fontSize:17,fontWeight:700,color:C.text,marginBottom:8}}>Aucune vente encore</div>
-                <div style={{fontSize:13,color:C.sub}}>Utilise le calculateur ou l'inventaire</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+            {/* ── Header stats ── */}
+            {sales.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:4}}>
+                {[
+                  {label:"Profit total",value:fmt(totalM),color:totalM>=0?C.green:C.red,icon:"💰"},
+                  {label:"Nb de ventes",value:sales.length,color:C.teal,icon:"📦"},
+                  {label:"Profit moyen",value:fmt(sales.length?totalM/sales.length:0),color:C.peach,icon:"📊"},
+                ].map((s,i)=>(
+                  <div key={i} className="card" style={{padding:"14px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
+                    <div style={{fontSize:11,color:C.label,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{s.label}</div>
+                    <div style={{fontSize:16,fontWeight:900,color:s.color}}>{s.value}</div>
+                  </div>
+                ))}
               </div>
-            ):sales.map(s=>{
-              const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
-              return(
-                <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
-                  <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                    <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
+            )}
+
+            {sales.length===0?(
+              <div>
+                {/* Empty state amélioré */}
+                <div className="card" style={{padding:"36px 28px",textAlign:"center",marginBottom:12}}>
+                  <div style={{fontSize:48,marginBottom:16}}>📊</div>
+                  <div style={{fontSize:18,fontWeight:800,color:C.text,marginBottom:10}}>Ton suivi de performance</div>
+                  <div style={{fontSize:14,color:C.sub,lineHeight:1.7,marginBottom:28,maxWidth:340,margin:"0 auto 28px"}}>
+                    Chaque vente enregistrée te donnera une vision claire de tes profits et de ta progression.
                   </div>
-                  <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
-                    <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
-                    <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
+                  <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}} style={{padding:"13px 28px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:14,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(62,172,160,0.3)",marginBottom:16}}>
+                    ➕ Ajouter un article
+                  </button>
+
+                  {/* Mock data grisée */}
+                  <div style={{marginTop:24,opacity:0.35,pointerEvents:"none"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Aperçu de l'historique</div>
+                    {[
+                      {title:"Nike Air Max 90",buy:45,sell:80,margin:35,pct:43.8},
+                      {title:"Zara Veste cuir",buy:22,sell:38,margin:16,pct:42.1},
+                      {title:"Adidas Stan Smith",buy:30,sell:52,margin:22,pct:42.3},
+                    ].map((ex,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"#F8FAFC",borderRadius:10,marginBottom:6,filter:"blur(0.5px)"}}>
+                        <div style={{width:32,height:32,background:"#C6F6D5",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📈</div>
+                        <div style={{flex:1,minWidth:0,textAlign:"left"}}>
+                          <div style={{fontWeight:600,fontSize:12,color:C.text}}>{ex.title}</div>
+                          <div style={{fontSize:10,color:C.sub}}>{fmt(ex.buy)} → {fmt(ex.sell)}</div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:13,fontWeight:800,color:C.green}}>+{fmt(ex.margin)}</div>
+                          <div style={{fontSize:10,color:C.sub}}>{fmtp(ex.pct)}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </SwipeRow>
-              );
-            })}
+                </div>
+
+                {!isPremium&&(
+                  <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33"}}>
+                    <div style={{fontSize:20}}>⭐</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>Analyse avancée disponible en Premium</div>
+                      <div style={{fontSize:11,color:C.sub}}>Graphiques, tendances et statistiques détaillées</div>
+                    </div>
+                    <PremiumBanner userEmail={user?.email} compact/>
+                  </div>
+                )}
+              </div>
+            ):(
+              <>
+                {sales.map(s=>{
+                  const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
+                  return(
+                    <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
+                      <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
+                        <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
+                        <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
+                      </div>
+                    </SwipeRow>
+                  );
+                })}
+                {!isPremium&&(
+                  <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33",marginTop:4}}>
+                    <div style={{fontSize:20}}>⭐</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>Analyse avancée disponible en Premium</div>
+                      <div style={{fontSize:11,color:C.sub}}>Graphiques, tendances et statistiques détaillées</div>
+                    </div>
+                    <PremiumBanner userEmail={user?.email} compact/>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
