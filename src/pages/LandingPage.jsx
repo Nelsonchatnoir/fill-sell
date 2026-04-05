@@ -286,7 +286,7 @@ export default function LandingPage() {
             <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Gratuit</div>
               <div style={{ fontSize: 40, fontWeight: 900, color: C.text, letterSpacing: "-1.5px", marginBottom: 4 }}>0 €</div>
-              <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>Pour commencer</div>
+              <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>Idéal pour débuter</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {[
                   { label: "Articles en stock", value: "20 max" },
@@ -294,7 +294,7 @@ export default function LandingPage() {
                   { label: "Calcul des marges", ok: true },
                   { label: "Historique des ventes", ok: true },
                   { label: "Statistiques avancées", ok: false },
-                  { label: "Articles illimités", ok: false },
+                  { label: "Support prioritaire", ok: false },
                 ].map(({ label, ok, value }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0 }}>{ok === false ? "✗" : "✓"}</span>
@@ -315,23 +315,25 @@ export default function LandingPage() {
             {/* Premium */}
             <div style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden", boxShadow: "0 20px 60px rgba(62,172,160,0.3)" }}>
               <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, background: "rgba(255,255,255,0.08)", borderRadius: "50%" }} />
-              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Premium</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>Premium</div>
+                <span style={{ background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 99, padding: "3px 10px", border: "1px solid rgba(255,255,255,0.4)" }}>⭐ Le plus populaire</span>
+              </div>
               <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 4 }}>4,99 €</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 28 }}>par mois · sans engagement</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 8 }}>par mois · sans engagement</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 600, marginBottom: 20 }}>🚀 Débloque toutes les fonctionnalités en 1 clic</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {[
-                  { label: "Articles en stock", value: "illimités" },
-                  { label: "Dashboard", ok: true },
-                  { label: "Calcul des marges", ok: true },
-                  { label: "Historique des ventes", ok: true },
-                  { label: "Statistiques avancées", ok: true },
-                  { label: "Articles illimités", ok: true },
-                ].map(({ label, ok, value }) => (
+                  { label: "Articles illimités en stock" },
+                  { label: "Dashboard complet" },
+                  { label: "Calcul des marges" },
+                  { label: "Historique des ventes" },
+                  { label: "Statistiques avancées" },
+                  { label: "Support prioritaire" },
+                ].map(({ label }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0, color: "#fff" }}>✓</span>
-                    <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>
-                      {label}{value ? ` — ${value}` : ""}
-                    </span>
+                    <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>{label}</span>
                   </div>
                 ))}
               </div>
@@ -339,7 +341,7 @@ export default function LandingPage() {
                 onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.2)"; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)"; }}
               >
-                Passer au premium 🚀
+                🔓 Débloquer l'illimité
               </button>
             </div>
           </div>
