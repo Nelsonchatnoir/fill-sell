@@ -19,7 +19,7 @@ const C = {
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{width:100%;max-width:100%;overflow-x:hidden;}*::-webkit-scrollbar{display:none;}*{-ms-overflow-style:none;scrollbar-width:none;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
+  html,body{width:100%;max-width:100%;overflow-x:hidden;margin:0;padding:0;}*::-webkit-scrollbar{display:none;}*{-ms-overflow-style:none;scrollbar-width:none;}body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior-x:none;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
@@ -409,7 +409,7 @@ export default function App({ loginOnly = false }){
   );
 
   if(!user||loginOnly)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,overflowX:"hidden",boxSizing:"border-box"}}>
+    <div style={{minHeight:"100vh",width:"100vw",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,overflow:"hidden",boxSizing:"border-box",margin:0}}>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
