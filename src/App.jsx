@@ -472,7 +472,7 @@ export default function App({ loginOnly = false }){
       <div className="wrap page-pad" style={{padding:"24px 20px 64px"}}>
 
         {tab===0&&(
-          <div style={{display:"flex",flexDirection:"column",gap:28}}>
+          <div style={{display:"flex",flexDirection:"column",gap:28,overflow:"hidden",maxWidth:"100%"}}>
             {!isPremium&&!loading&&(
               <div style={{
                 background: 20-items.length<=5 ? "#FFFBEB" : C.tealLight,
