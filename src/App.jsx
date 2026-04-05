@@ -811,8 +811,8 @@ export default function App({ loginOnly = false }){
             </Btn>
 
             {!isPremium&&(
-              <div style={{textAlign:"center",fontSize:11,color:C.label}}>
-                🔓 <span style={{cursor:"pointer",textDecoration:"underline",color:C.teal}} onClick={()=>setTab(1)}>Débloque le suivi illimité avec Premium</span>
+              <div style={{textAlign:"center",fontSize:11,color:C.label,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                🔓 <PremiumBanner userEmail={user?.email} compact/>
               </div>
             )}
           </div>
