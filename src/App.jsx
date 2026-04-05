@@ -357,7 +357,8 @@ export default function App({ loginOnly = false }){
   async function handleLogin(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{error}=await supabase.auth.signInWithPassword({email,password});
-    if(error)alert(error.message);
+    if(error){alert(error.message);return;}
+    navigate("/app");
   }
 
   async function handleSignup(){
