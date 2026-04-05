@@ -20,10 +20,10 @@ const C = {
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{width:100%;max-width:100%;overflow:hidden;margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
+  html,body{width:100%;max-width:100%;overflow-x:hidden;overflow-y:auto;margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;height:100%;-webkit-overflow-scrolling:touch;}
   *::-webkit-scrollbar{display:none;}
   *{-ms-overflow-style:none;scrollbar-width:none;}
-  body{background:#F1F5F9;min-height:100vh;overscroll-behavior:none;touch-action:pan-y;}
+  body{background:#F1F5F9;min-height:100vh;overscroll-behavior-x:none;overscroll-behavior-y:auto;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
@@ -42,7 +42,7 @@ const css = `
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
-  .app-root{min-height:100vh;width:100%;overflow-x:hidden;overscroll-behavior-x:none;}
+  .app-root{min-height:100vh;width:100%;overflow-x:hidden;overflow-y:visible;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);}
@@ -494,7 +494,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"28px 20px 72px",overflow:"hidden"}}>
+      <div className="wrap page-pad" style={{padding:"28px 20px 72px",overflowX:"hidden"}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
