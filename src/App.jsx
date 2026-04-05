@@ -215,7 +215,7 @@ function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_ve
 
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
-  const [tab,setTab]=useState(0);
+  const [tab,setTab]=useState(()=>parseInt(localStorage.getItem('tab')||'0'));
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -439,7 +439,7 @@ export default function App({ loginOnly = false }){
         <div className="wrap">
           <div style={{display:"flex",overflowX:"auto"}}>
             {["📊 Dashboard","📦 Inventaire","🧮 Calculer","📋 Historique"].map((t,i)=>(
-              <button key={i} className="dtab" onClick={()=>setTab(i)} style={{padding:"15px 20px",background:"transparent",border:"none",borderBottom:tab===i?`2px solid ${C.teal}`:"2px solid transparent",color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:400,marginBottom:-1,whiteSpace:"nowrap"}}>{t}</button>
+              <button key={i} className="dtab" onClick={()=>{setTab(i);localStorage.setItem('tab',i);}} style={{padding:"15px 20px",background:"transparent",border:"none",borderBottom:tab===i?`2px solid ${C.teal}`:"2px solid transparent",color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:400,marginBottom:-1,whiteSpace:"nowrap"}}>{t}</button>
             ))}
           </div>
         </div>
@@ -688,7 +688,7 @@ export default function App({ loginOnly = false }){
 
       <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.95)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 -4px 24px rgba(0,0,0,0.1)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)"}}>
         {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>setTab(t.idx)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"10px 0 12px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?C.teal:C.label,transition:"all 0.15s"}}>
+          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"10px 0 12px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?C.teal:C.label,transition:"all 0.15s"}}>
             <div style={{fontSize:22,marginBottom:3,transform:tab===t.idx?"scale(1.15)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
             <div style={{fontSize:10,fontWeight:tab===t.idx?700:500,letterSpacing:0.3}}>{t.label}</div>
             {tab===t.idx&&<div style={{width:4,height:4,borderRadius:99,background:C.teal,marginTop:3}}/>}
