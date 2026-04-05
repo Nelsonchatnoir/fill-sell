@@ -147,7 +147,7 @@ function PremiumBanner({ userEmail, compact=false }){
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
-        {loading ? "..." : "✨ Premium"}
+        {loading ? "..." : "Passer au premium 🚀"}
       </button>
     );
   }
