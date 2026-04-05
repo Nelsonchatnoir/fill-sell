@@ -371,13 +371,15 @@ export default function App({ loginOnly = false }){
   async function handleLogin(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{error}=await supabase.auth.signInWithPassword({email,password});
-    if(error)alert(error.message);
+    if(error){alert(error.message);return;}
+    navigate("/app");
   }
 
   async function handleSignup(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
-    const{error}=await supabase.auth.signUp({email,password});
-    if(error)alert(error.message);
+    const{data,error}=await supabase.auth.signUp({email,password});
+    if(error){alert(error.message);return;}
+    if(data?.session) navigate("/app");
     else alert("Vérifie ton email pour confirmer ton compte !");
   }
 
