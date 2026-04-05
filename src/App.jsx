@@ -200,7 +200,7 @@ const Kpi=({label,value,sub,color,icon})=>(
 );
 
 const Field=({label,value,set,placeholder,type="text",icon,suffix})=>(
-  <div className="inp" style={{background:C.white,borderRadius:14,padding:"14px 16px",border:`1px solid rgba(0,0,0,0.08)`,display:"flex",alignItems:"center",gap:12,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+  <div className="inp" style={{background:C.white,borderRadius:14,padding:"14px 16px",border:value?`1px solid ${C.teal}44`:`1px solid rgba(0,0,0,0.08)`,display:"flex",alignItems:"center",gap:12,boxShadow:value?`0 0 0 3px ${C.teal}11`:"0 2px 8px rgba(0,0,0,0.04)",transition:"all 0.2s"}}>
     <span style={{fontSize:22,flexShrink:0}}>{icon}</span>
     <div style={{flex:1}}>
       <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:3}}>{label}</div>
@@ -221,7 +221,16 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
     color:disabled?C.sub:C.white,
     border:"none",borderRadius:14,fontSize:15,fontWeight:700,
     boxShadow:disabled?"none":`0 4px 16px rgba(0,0,0,0.14)`,
-  }}>{children}</button>
+    opacity:disabled?0.6:1,
+    cursor:disabled?"not-allowed":"pointer",
+    transition:"all 0.3s ease",
+    transform:"scale(1)",
+  }}
+    onMouseEnter={e=>{if(!disabled){e.currentTarget.style.transform="scale(1.03)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.18)";}}}
+    onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow=disabled?"none":"0 4px 16px rgba(0,0,0,0.14)";}}
+    onMouseDown={e=>{if(!disabled)e.currentTarget.style.transform="scale(0.97)";}}
+    onMouseUp={e=>{if(!disabled)e.currentTarget.style.transform="scale(1.03)";}}
+  >{children}</button>
 );
 
 function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};}
@@ -635,8 +644,13 @@ export default function App({ loginOnly = false }){
                     {iSaved?"✓ Ajouté !":items.length===0?"Ajouter mon premier article 🚀":"Ajouter à l'inventaire"}
                   </Btn>
               }
-              {items.length===0&&!iSaved&&(
+              {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
                 <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
+                  Remplis au moins le nom et le prix d'achat
+                </div>
+              )}
+              {items.length===0&&!iSaved&&iTitle&&iBuy&&(
+                <div style={{textAlign:"center",fontSize:12,color:C.sub,marginTop:-4}}>
                   Ensuite tu pourras enregistrer une vente et voir ton bénéfice 📈
                 </div>
               )}
