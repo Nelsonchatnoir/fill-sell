@@ -248,6 +248,9 @@ export default function App({ loginOnly = false }){
   const [password,setPassword]=useState("");
   const [resetStep,setResetStep]=useState(0);
   const [isPremium,setIsPremium]=useState(false);
+  const [firstItemAdded,setFirstItemAdded]=useState(false);
+  const titleInputRef=useRef(null);
+  const listRef=useRef(null);
 
   async function fetchAll(uid){
     setLoading(true);
@@ -321,8 +324,10 @@ export default function App({ loginOnly = false }){
         if(sd) setSales(prev=>[mapSale(sd),...prev]);
       }
     }
+    if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
     setITitle("");setIBuy("");setISell("");
+    setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
   async function markSold(item){
@@ -592,14 +597,33 @@ export default function App({ loginOnly = false }){
 
         {tab===1&&(
           <div className="grid-inv">
-            <div className="card" style={{padding:"20px",display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>Ajouter un article</div>
-              <Field label="Nom" value={iTitle} set={setITitle} placeholder="Nike Air Max 90" icon="🏷️"/>
-              <Field label="Prix d'achat" value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
-              <Field label="Prix de vente (optionnel)" value={iSell} set={setISell} placeholder="Vide = en stock" type="number" icon="📦" suffix="€"/>
-              <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
-                💡 Sans prix → <strong>stock</strong>. Avec prix → <strong>vendu</strong>.
+            <div className="card" style={{padding:"20px",display:"flex",flexDirection:"column",gap:12,border:items.length===0?`1.5px solid ${C.teal}44`:"1px solid rgba(0,0,0,0.05)",boxShadow:items.length===0?"0 0 0 4px "+C.teal+"11, 0 10px 30px rgba(0,0,0,0.08)":"0 10px 30px rgba(0,0,0,0.08)"}}>
+              {items.length===0?(
+                <div style={{textAlign:"center",paddingBottom:4}}>
+                  <div style={{fontSize:28,marginBottom:8}}>🧩</div>
+                  <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:6}}>Ajoute ton premier article</div>
+                  <div style={{fontSize:13,color:C.sub,lineHeight:1.6}}>Entre le nom et ton prix d'achat. Tu pourras ajouter le prix de vente plus tard.</div>
+                </div>
+              ):(
+                <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>Ajouter un article</div>
+              )}
+              <div>
+                <Field label="Nom" value={iTitle} set={setITitle} placeholder="Ex: Nike Air Max, Zara jean..." icon="🏷️"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
               </div>
+              <div>
+                <Field label="Prix d'achat" value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix auquel tu as acheté l'article</div>}
+              </div>
+              <div>
+                <Field label="Prix de vente (optionnel)" value={iSell} set={setISell} placeholder="Vide = en stock" type="number" icon="📦" suffix="€"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Optionnel — à remplir quand tu vends</div>}
+              </div>
+              {items.length>0&&(
+                <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
+                  💡 Sans prix → <strong>stock</strong>. Avec prix → <strong>vendu</strong>.
+                </div>
+              )}
               {!isPremium&&items.length>=18&&items.length<20&&(
                 <div style={{background:"#FFFBEB",borderRadius:10,padding:"10px 14px",fontSize:11,color:"#92400E",border:"1px solid #FDE68A",fontWeight:600}}>
                   ⚠️ {20-items.length} article{20-items.length>1?"s":""} restant{20-items.length>1?"s":""} sur ton plan gratuit
@@ -608,12 +632,17 @@ export default function App({ loginOnly = false }){
               {!isPremium&&items.length>=20
                 ? <PremiumBanner userEmail={user?.email}/>
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
-                    {iSaved?"✓ Ajouté !":"Ajouter à l'inventaire"}
+                    {iSaved?"✓ Ajouté !":items.length===0?"Ajouter mon premier article 🚀":"Ajouter à l'inventaire"}
                   </Btn>
               }
+              {firstItemAdded&&(
+                <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.green,border:"1px solid #C6F6D5",fontWeight:600,textAlign:"center"}}>
+                  ✅ Article ajouté ! Tu peux maintenant enregistrer une vente.
+                </div>
+              )}
             </div>
 
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16}}>
               <div className="card" style={{padding:"20px"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
