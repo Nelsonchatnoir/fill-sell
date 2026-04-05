@@ -434,7 +434,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%",maxWidth:"100vw"}}>
+    <div style={{minHeight:"100vh",overflowX:"hidden",width:"100%",maxWidth:"100vw",overscrollBehaviorX:"none",touchAction:"pan-y"}}>
       <style>{css}</style>
 
       <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
