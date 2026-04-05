@@ -20,8 +20,9 @@ const C = {
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
-  html{height:100%;overflow-x:hidden;}
-  body{width:100%;min-height:100%;overflow-x:hidden;overflow-y:auto;margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#F1F5F9;overscroll-behavior-x:none;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
+  html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;}
+  body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#F1F5F9;min-height:100vh;touch-action:pan-y;}
+  *{box-sizing:border-box;max-width:100%;}
   *::-webkit-scrollbar{display:none;}
   *{-ms-overflow-style:none;scrollbar-width:none;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
@@ -42,7 +43,7 @@ const css = `
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
-  .app-root{min-height:100vh;width:100%;overflow-x:hidden;position:relative;}
+  .app-root{min-height:100vh;width:100%;max-width:100vw;overflow-x:hidden;position:relative;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);}
@@ -456,7 +457,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div className="app-root">
+    <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
       <div style={{background:`linear-gradient(135deg,${C.teal} 0%,#5bb8b3 40%,${C.peach} 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
