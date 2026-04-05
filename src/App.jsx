@@ -409,7 +409,7 @@ export default function App({ loginOnly = false }){
   );
 
   if(!user||loginOnly)return(
-    <div style={{minHeight:"100vh",width:"100vw",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,overflow:"hidden",boxSizing:"border-box",margin:0}}>
+    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,overflow:"hidden",boxSizing:"border-box"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
