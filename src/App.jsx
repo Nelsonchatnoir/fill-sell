@@ -14,7 +14,7 @@ const C = {
   red:"#E53E3E", redLight:"#FFF5F5",
   green:"#38A169", greenLight:"#F0FFF4",
   orange:"#DD6B20", orangeLight:"#FFFAF0",
-  rowBg:"#F9FAFB", rowHover:"#F3F4F6",
+  rowBg:"#F8FAFC", rowHover:"#F1F5F9",
 };
 
 const css = `
@@ -23,7 +23,7 @@ const css = `
   html,body{width:100%;max-width:100%;overflow:hidden;margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
   *::-webkit-scrollbar{display:none;}
   *{-ms-overflow-style:none;scrollbar-width:none;}
-  body{background:linear-gradient(180deg,#F8F7F4 0%,#E8E3DA 100%);min-height:100vh;overscroll-behavior:none;touch-action:pan-y;}
+  body{background:#F1F5F9;min-height:100vh;overscroll-behavior:none;touch-action:pan-y;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
@@ -32,12 +32,12 @@ const css = `
   .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
   .dtab{transition:all 0.15s;cursor:pointer;}
   .dtab:hover{color:${C.teal}!important;}
-  .card{background:#fff;border-radius:16px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 10px 30px rgba(0,0,0,0.08);transition:all 0.2s ease;}
+  .card{background:#fff;border-radius:20px;border:1px solid #E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04);transition:all 0.2s ease;}
   .kpi{transition:all 0.2s ease;}
-  .kpi:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.12)!important;}
+  .kpi:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,0.10)!important;}
   .wrap{width:100%;max-width:1280px;margin:0 auto;padding:0 20px;}
   .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
   .grid-inv{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;width:100%;}
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
@@ -459,7 +459,7 @@ export default function App({ loginOnly = false }){
     <div className="app-root">
       <style>{css}</style>
 
-      <div style={{background:`linear-gradient(135deg,${C.teal}ee 0%,${C.peach}dd 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
+      <div style={{background:`linear-gradient(135deg,${C.teal} 0%,#5bb8b3 40%,${C.peach} 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
         <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:72,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
             <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
@@ -481,7 +481,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="desktop-nav" style={{background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",borderBottom:`1px solid rgba(0,0,0,0.06)`,boxShadow:"0 1px 8px rgba(0,0,0,0.04)"}}>
+      <div className="desktop-nav" style={{background:"rgba(255,255,255,0.97)",backdropFilter:"blur(16px)",borderBottom:`1px solid #E2E8F0`,boxShadow:"0 1px 8px rgba(0,0,0,0.04)"}}>
         <div className="wrap">
           <div style={{display:"flex",overflowX:"auto",msOverflowStyle:"none",scrollbarWidth:"none"}}>
             {["📊 Dashboard","📦 Inventaire","🧮 Calculer","📋 Historique"].map((t,i)=>(
@@ -491,7 +491,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"24px 20px 64px",overflow:"hidden"}}>
+      <div className="wrap page-pad" style={{padding:"28px 20px 72px",overflow:"hidden"}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
