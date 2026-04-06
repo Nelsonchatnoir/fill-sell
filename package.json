@@ -12,10 +12,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
     "axios": "^1.14.0",
+    "chart.js": "^4.5.1",
     "react": "^19.2.4",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.14.0",
-    "recharts": "2.12.7"
+    "react-router-dom": "^7.14.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
