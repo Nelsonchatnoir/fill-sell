@@ -637,7 +637,7 @@ export default function App({ loginOnly = false }){
             ):(
               <>
                 <div className="grid4">
-                  <div className="kpi card" style={{padding:"22px",boxShadow:"0 16px 40px rgba(0,0,0,0.12)",transform:"scale(1.02)",transformOrigin:"center"}}>
+                  <div className="kpi card" style={{padding:"22px"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                       <div style={{width:42,height:42,background:C.teal+"20",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21}}>💰</div>
                       <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8}}>Bénéfice ce mois</span>
@@ -654,12 +654,12 @@ export default function App({ loginOnly = false }){
                   <div className="card" style={{padding:"20px",overflow:"hidden"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Bénéfices mensuels</div>
                     <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
-                    {hasData?(<ResponsiveContainer width="100%" height={175}><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>):<Empty/>}
+                    {hasData?(<div style={{width:"100%",height:"175px"}}><ResponsiveContainer width="100%" height="100%"><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></div>):<Empty/>}
                   </div>
                   <div className="card" style={{padding:"20px",overflow:"hidden"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Évolution marge %</div>
                     <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
-                    {hasData?(<ResponsiveContainer width="100%" height={175}><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer>):<Empty/>}
+                    {hasData?(<div style={{width:"100%",height:"175px"}}><ResponsiveContainer width="100%" height="100%"><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer></div>):<Empty/>}
                   </div>
                 </div>
 
