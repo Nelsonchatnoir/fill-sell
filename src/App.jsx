@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
+ChartJS.defaults.font.family = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif";
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
@@ -411,16 +412,50 @@ export default function App({ loginOnly = false }){
   const hasData=sales.length>0;
   const tm=mData[mData.length-1];
 
+  const _f={family:"'Plus Jakarta Sans', -apple-system, sans-serif",size:11};
+  const _tip={backgroundColor:'#ffffff',titleColor:'#94A3B8',borderColor:'rgba(0,0,0,0.09)',borderWidth:1,padding:12,cornerRadius:12,displayColors:false,titleFont:{..._f,size:11,weight:'600'},bodyFont:{..._f,size:14,weight:'800'}};
+  const _scales=(unit)=>({
+    x:{grid:{display:false},border:{display:false},ticks:{color:'#94A3B8',font:_f}},
+    y:{grid:{color:'#F1F5F9',drawTicks:false},border:{display:false},ticks:{color:'#94A3B8',font:_f,padding:8,callback:v=>v+unit}},
+  });
   const barChartData={
     labels:mData.map(d=>d.name),
-    datasets:[{data:mData.map(d=>d.profit),backgroundColor:'#3EACA0',borderRadius:8,borderSkipped:false}],
+    datasets:[{
+      data:mData.map(d=>d.profit),
+      backgroundColor:'#3EACA0',
+      hoverBackgroundColor:'#35958a',
+      borderRadius:8,
+      borderSkipped:false,
+    }],
   };
   const lineChartData={
     labels:mData.map(d=>d.name),
-    datasets:[{data:mData.map(d=>d['Marge %']),borderColor:'#E8956D',backgroundColor:'rgba(232,149,109,0.08)',borderWidth:3,tension:0.4,pointBackgroundColor:'#E8956D',pointBorderColor:'#fff',pointBorderWidth:2,pointRadius:4,fill:true}],
+    datasets:[{
+      data:mData.map(d=>d['Marge %']),
+      borderColor:'#E8956D',
+      backgroundColor:'rgba(232,149,109,0.10)',
+      borderWidth:3,
+      tension:0.4,
+      pointBackgroundColor:'#E8956D',
+      pointBorderColor:'#ffffff',
+      pointBorderWidth:2,
+      pointRadius:4,
+      pointHoverRadius:6,
+      fill:true,
+    }],
   };
-  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',titleColor:'#94A3B8',bodyColor:'#3EACA0',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,callbacks:{label:ctx=>`${(ctx.raw||0).toFixed(2).replace('.',',')} €`}}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:'#94A3B8',font:{size:11}}},y:{grid:{color:'rgba(0,0,0,0.05)',drawBorder:false},border:{display:false,dash:[4,4]},ticks:{color:'#94A3B8',font:{size:11},callback:v=>v+'€'}}}};
-  const lineOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',titleColor:'#94A3B8',bodyColor:'#E8956D',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,callbacks:{label:ctx=>`${(ctx.raw||0).toFixed(1)}%`}}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:'#94A3B8',font:{size:11}}},y:{grid:{color:'rgba(0,0,0,0.05)',drawBorder:false},border:{display:false,dash:[4,4]},ticks:{color:'#94A3B8',font:{size:11},callback:v=>v+'%'}}}};
+  const barOpts={
+    responsive:true,maintainAspectRatio:false,
+    animation:{duration:700,easing:'easeOutQuart'},
+    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#3EACA0',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(2).replace('.',',')} €`}}},
+    scales:_scales('€'),
+  };
+  const lineOpts={
+    responsive:true,maintainAspectRatio:false,
+    animation:{duration:700,easing:'easeOutQuart'},
+    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#E8956D',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(1)} %`}}},
+    scales:_scales('%'),
+  };
   const totalM=sales.reduce((a,s)=>a+s.margin,0);
   const totalR=sales.reduce((a,s)=>a+s.sell,0);
   const avgM=sales.length?sales.reduce((a,s)=>a+s.marginPct,0)/sales.length:0;
