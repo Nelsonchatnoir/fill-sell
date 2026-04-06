@@ -35,8 +35,6 @@ const css = `
   .inp:focus-within{border-color:${C.teal}!important;box-shadow:0 0 0 3px ${C.teal}18!important;}
   .btn{transition:all 0.2s ease;cursor:pointer;}
   .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
-  .dtab{transition:color 0.15s;cursor:pointer;}
-  .dtab:hover{color:${C.teal}!important;}
   .card{background:#fff;border-radius:16px;border:1px solid #ECF0F4;box-shadow:0 1px 4px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.04);transition:box-shadow 0.2s ease,transform 0.2s ease;}
   .kpi{transition:transform 0.18s ease,box-shadow 0.18s ease;}
   .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.09)!important;}
@@ -623,11 +621,15 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="desktop-nav" style={{background:"rgba(255,255,255,0.97)",backdropFilter:"blur(16px)",borderBottom:`1px solid #E2E8F0`,boxShadow:"0 1px 8px rgba(0,0,0,0.04)"}}>
+      <div className="desktop-nav" style={{background:"rgba(255,255,255,0.96)",backdropFilter:"blur(16px)",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
         <div className="wrap">
-          <div style={{display:"flex",overflowX:"auto",msOverflowStyle:"none",scrollbarWidth:"none"}}>
+          <div style={{display:"flex",justifyContent:"center",padding:"10px 0",gap:4}}>
             {["📊 Dashboard","📦 Inventaire","🧮 Calculer","📋 Historique"].map((t,i)=>(
-              <button key={i} className="dtab" onClick={()=>{setTab(i);localStorage.setItem('tab',i);}} style={{padding:"15px 20px",background:"transparent",border:"none",borderBottom:tab===i?`2px solid ${C.teal}`:"2px solid transparent",color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:400,marginBottom:-1,whiteSpace:"nowrap"}}>{t}</button>
+              <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
+                style={{padding:"9px 20px",background:tab===i?"#fff":"transparent",border:"none",borderRadius:10,color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:500,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease",boxShadow:tab===i?"0 1px 6px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)":"none"}}
+                onMouseEnter={e=>{if(i!==tab){e.currentTarget.style.background="rgba(0,0,0,0.04)";e.currentTarget.style.color=C.text;}}}
+                onMouseLeave={e=>{if(i!==tab){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.sub;}}}
+              >{t}</button>
             ))}
           </div>
         </div>
@@ -1055,12 +1057,11 @@ export default function App({ loginOnly = false }){
         )}
       </div>
 
-      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.95)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 -4px 24px rgba(0,0,0,0.1)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)"}}>
+      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.96)",backdropFilter:"blur(16px)",boxShadow:"0 -4px 24px rgba(0,0,0,0.08)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)",padding:"8px 12px",gap:4}}>
         {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"10px 0 12px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?C.teal:C.label,transition:"all 0.15s"}}>
-            <div style={{fontSize:22,marginBottom:3,transform:tab===t.idx?"scale(1.15)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
+          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"8px 0 10px",background:tab===t.idx?"#fff":"transparent",border:"none",borderRadius:10,cursor:"pointer",color:tab===t.idx?C.teal:C.label,transition:"all 0.15s",boxShadow:tab===t.idx?"0 1px 6px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)":"none"}}>
+            <div style={{fontSize:21,marginBottom:2,transform:tab===t.idx?"scale(1.12)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
             <div style={{fontSize:10,fontWeight:tab===t.idx?700:500,letterSpacing:0.3}}>{t.label}</div>
-            {tab===t.idx&&<div style={{width:4,height:4,borderRadius:99,background:C.teal,marginTop:3}}/>}
           </button>
         ))}
       </div>
