@@ -24,7 +24,7 @@ const css = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;}
-  body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#F1F5F9;min-height:100vh;touch-action:pan-y;}
+  body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#F4F6F9;min-height:100vh;touch-action:pan-y;}
   *{box-sizing:border-box;max-width:100%;}
   svg,svg *{max-width:none!important;overflow:visible;}
   *::-webkit-scrollbar{display:none;}
@@ -32,15 +32,15 @@ const css = `
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   input[type=number]{-moz-appearance:textfield;}
   .inp{transition:all 0.2s ease;}
-  .inp:focus-within{border-color:${C.teal}!important;box-shadow:0 0 0 3px ${C.teal}22!important;}
+  .inp:focus-within{border-color:${C.teal}!important;box-shadow:0 0 0 3px ${C.teal}18!important;}
   .btn{transition:all 0.2s ease;cursor:pointer;}
   .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
-  .dtab{transition:all 0.15s;cursor:pointer;}
+  .dtab{transition:color 0.15s;cursor:pointer;}
   .dtab:hover{color:${C.teal}!important;}
-  .card{background:#fff;border-radius:20px;border:1px solid #E8EDF2;box-shadow:0 2px 8px rgba(0,0,0,0.06),0 8px 24px rgba(0,0,0,0.05);transition:box-shadow 0.2s ease,transform 0.2s ease;}
-  .kpi{transition:transform 0.2s ease,box-shadow 0.2s ease;}
-  .kpi:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,0.10)!important;}
-  .wrap{width:100%;max-width:1280px;margin:0 auto;padding:0 20px;}
+  .card{background:#fff;border-radius:16px;border:1px solid #ECF0F4;box-shadow:0 1px 4px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.04);transition:box-shadow 0.2s ease,transform 0.2s ease;}
+  .kpi{transition:transform 0.18s ease,box-shadow 0.18s ease;}
+  .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.09)!important;}
+  .wrap{width:100%;max-width:1280px;margin:0 auto;padding:0 24px;}
   .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
   .grid-inv{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;width:100%;}
@@ -53,8 +53,8 @@ const css = `
     .grid4{grid-template-columns:repeat(2,1fr);gap:12px;}
     .grid2{grid-template-columns:1fr;gap:12px;}
     .grid-inv{grid-template-columns:1fr;width:100%;overflow:hidden;box-sizing:border-box;}
-    .wrap{padding:0 14px;overflow-x:hidden;}
-    .card{border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07),0 6px 20px rgba(0,0,0,0.05);}
+    .wrap{padding:0 16px;overflow-x:hidden;}
+    .card{border-radius:14px;}
     .desktop-nav{display:none!important;}
     .mobile-nav{display:flex!important;}
     .header-stats{display:none!important;}
@@ -196,13 +196,13 @@ const Empty=({text="Aucune donnée"})=>(
 );
 
 const Kpi=({label,value,sub,color,icon})=>(
-  <div className="kpi card" style={{padding:"18px"}}>
-    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-      <div style={{width:38,height:38,background:color+"20",borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19}}>{icon}</div>
-      <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8}}>{label}</span>
+  <div className="kpi card" style={{padding:"20px 20px 16px"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+      <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
+      <div style={{width:34,height:34,background:color+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{icon}</div>
     </div>
-    <div style={{fontSize:26,fontWeight:900,color,letterSpacing:"-0.5px",lineHeight:1}}>{value}</div>
-    {sub&&<div style={{fontSize:11,color:C.sub,marginTop:8}}>{sub}</div>}
+    <div style={{fontSize:30,fontWeight:900,color:C.text,letterSpacing:"-1px",lineHeight:1}}>{value}</div>
+    {sub&&<div style={{fontSize:11,color:C.label,marginTop:8,fontWeight:500}}>{sub}</div>}
   </div>
 );
 
@@ -598,27 +598,32 @@ export default function App({ loginOnly = false }){
     <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
-      <div style={{background:`linear-gradient(135deg,${C.teal} 0%,#5bb8b3 40%,${C.peach} 100%)`,boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
-        <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:72,padding:"0 24px"}}>
+      <div style={{background:"#fff",borderBottom:"1px solid #E8ECF0",boxShadow:"0 1px 0 rgba(0,0,0,0.04)"}}>
+        <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:60,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
-            <div style={{fontSize:13.5,color:"rgba(255,255,255,0.95)",fontWeight:600,letterSpacing:"0.3px",fontStyle:"italic"}}>Ton assistant Vinted 🏷️</div>
+            <img src="/logo.png" style={{height:34,objectFit:"contain"}} alt="Fill & Sell"/>
+            <div style={{borderLeft:"1px solid #E2E8F0",paddingLeft:14}}>
+              <div style={{fontSize:15,fontWeight:800,color:C.text,letterSpacing:"-0.3px",lineHeight:1.1}}>Dashboard</div>
+              <div style={{fontSize:11,color:C.label,fontWeight:500,marginTop:1}}>Suivi de tes performances</div>
+            </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div className="header-stats" style={{gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div className="header-stats" style={{gap:10}}>
               {headerStats.map((b,i)=>(
-                <div key={i} style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(16px)",borderRadius:14,padding:"7px 18px",textAlign:"center",border:"1px solid rgba(255,255,255,0.28)",transition:"all 0.2s ease",cursor:"default"}}
-                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";}}>
-                  <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
-                  <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{b.value}</div>
+                <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"6px 14px",textAlign:"center",border:"1px solid #E8ECF0",transition:"all 0.2s ease",cursor:"default"}}
+                onMouseEnter={e=>{e.currentTarget.style.background="#F1F5F9";e.currentTarget.style.transform="translateY(-1px)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="#F8FAFC";e.currentTarget.style.transform="translateY(0)";}}>
+                  <div style={{fontSize:9,color:C.label,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>{b.label}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:C.text}}>{b.value}</div>
                 </div>
               ))}
             </div>
             {isPremium&&(
-              <div style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",border:"1px solid rgba(255,255,255,0.35)",whiteSpace:"nowrap"}}>⭐ Premium</div>
+              <div style={{background:`${C.teal}12`,borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:700,color:C.teal,border:`1px solid ${C.teal}30`,whiteSpace:"nowrap"}}>⭐ Premium</div>
             )}
-            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Déconnexion</button>
+            <button onClick={handleLogout} style={{background:"transparent",border:"1px solid #E2E8F0",borderRadius:9,padding:"6px 13px",color:C.sub,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="#CBD5E1";e.currentTarget.style.color=C.text;}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="#E2E8F0";e.currentTarget.style.color=C.sub;}}>Déconnexion</button>
           </div>
         </div>
       </div>
