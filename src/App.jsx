@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
@@ -245,6 +245,95 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
 function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
+const CHART_RANGES=['7j','1M','3M','6M','YTD'];
+
+function getFilteredData(range, salesData){
+  const now=new Date();
+  const hasSales=salesData.length>0;
+
+  // ── helpers réels ──
+  function dayBucket(days){
+    return Array.from({length:days},(_,i)=>{
+      const d=new Date(now); d.setDate(now.getDate()-days+1+i);
+      const dayStr=d.toISOString().split('T')[0];
+      const ds=salesData.filter(s=>(s.date||'').startsWith(dayStr));
+      return{name:`${d.getDate()}/${d.getMonth()+1}`,profit:ds.reduce((a,s)=>a+s.margin,0),'Marge %':ds.length?ds.reduce((a,s)=>a+s.marginPct,0)/ds.length:null,count:ds.length};
+    });
+  }
+  function weekBucket(totalDays,numWeeks){
+    const cutoff=new Date(now); cutoff.setDate(now.getDate()-totalDays+1);
+    const filtered=salesData.filter(s=>new Date(s.date)>=cutoff);
+    return Array.from({length:numWeeks},(_,i)=>{
+      const start=new Date(cutoff); start.setDate(cutoff.getDate()+i*7);
+      const end=new Date(start); end.setDate(start.getDate()+6);
+      const ws=filtered.filter(s=>{const sd=new Date(s.date);return sd>=start&&sd<=end;});
+      return{name:`S${i+1}`,profit:ws.reduce((a,s)=>a+s.margin,0),'Marge %':ws.length?ws.reduce((a,s)=>a+s.marginPct,0)/ws.length:null,count:ws.length};
+    });
+  }
+  function monthBucket(pts){
+    return Array.from({length:pts},(_,i)=>{
+      const d=new Date(now.getFullYear(),now.getMonth()-(pts-1-i),1);
+      const m=d.getMonth(); const y=d.getFullYear();
+      const ms=salesData.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
+      return{name:MONTHS_FR[m],profit:ms.reduce((a,s)=>a+s.margin,0),'Marge %':ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:null,count:ms.length};
+    });
+  }
+  function ytdBucket(){
+    const n=now.getMonth()+1;
+    return Array.from({length:n},(_,i)=>{
+      const ms=salesData.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===i&&sd.getFullYear()===now.getFullYear();});
+      return{name:MONTHS_FR[i],profit:ms.reduce((a,s)=>a+s.margin,0),'Marge %':ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:null,count:ms.length};
+    });
+  }
+
+  // ── données réelles ──
+  if(hasSales){
+    switch(range){
+      case '7j':  return dayBucket(7);
+      case '1M':  return dayBucket(30);
+      case '3M':  return weekBucket(91,13);
+      case '6M':  return monthBucket(6);
+      case 'YTD': return ytdBucket();
+      default:    return monthBucket(6);
+    }
+  }
+
+  // ── mock réaliste si aucune vente ──
+  const sin=(i,a,b,p)=>Math.round((a+Math.sin(i/p*Math.PI*2)*b)*10)/10;
+  switch(range){
+    case '7j': return Array.from({length:7},(_,i)=>{
+      const d=new Date(now); d.setDate(now.getDate()-6+i);
+      const p=[0,4.5,0,6.8,2.5,0,9.2][i];
+      return{name:`${d.getDate()}/${d.getMonth()+1}`,profit:p,'Marge %':p?[null,34,null,30,38,null,43][i]:null,count:p?1:0};
+    });
+    case '1M': return Array.from({length:30},(_,i)=>{
+      const d=new Date(now); d.setDate(now.getDate()-29+i);
+      const p=i%4===0?0:Math.max(0,sin(i,12,9,30)+i*0.4);
+      return{name:`${d.getDate()}/${d.getMonth()+1}`,profit:Math.round(p*10)/10,'Marge %':p?Math.round(32+Math.sin(i/5)*8):null,count:p?1:0};
+    });
+    case '3M': return Array.from({length:13},(_,i)=>({
+      name:`S${i+1}`,
+      profit:Math.round((14+Math.sin(i/3)*10+i*2.2)*10)/10,
+      'Marge %':Math.round(31+Math.sin(i/2.5)*9+i*0.8),
+      count:Math.ceil((i+1)/3),
+    }));
+    case '6M': return Array.from({length:6},(_,i)=>{
+      const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
+      return{name:MONTHS_FR[d.getMonth()],profit:[22,18,35,28,44,52][i],'Marge %':[33,29,38,35,42,47][i],count:[3,2,4,3,5,6][i]};
+    });
+    case 'YTD': {
+      const n=now.getMonth()+1;
+      const ps=[18,25,32,28,41,35,48,38,55,44,60,52];
+      const ms=[30,34,38,35,42,39,45,41,48,44,51,47];
+      return Array.from({length:n},(_,i)=>({name:MONTHS_FR[i],profit:ps[i],'Marge %':ms[i],count:i+2}));
+    }
+    default: return Array.from({length:6},(_,i)=>{
+      const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
+      return{name:MONTHS_FR[d.getMonth()],profit:[22,18,35,28,44,52][i],'Marge %':[33,29,38,35,42,47][i],count:[3,2,4,3,5,6][i]};
+    });
+  }
+}
+
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [tab,setTab]=useState(()=>parseInt(localStorage.getItem('tab')||'0'));
@@ -267,6 +356,7 @@ export default function App({ loginOnly = false }){
   const [resetStep,setResetStep]=useState(0);
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
+  const [chartRange,setChartRange]=useState('6M');
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
@@ -317,6 +407,8 @@ export default function App({ loginOnly = false }){
   });
 
   const hasData=sales.length>0;
+  const chartData=getFilteredData(chartRange,sales);
+  const isMock=!hasData;
   const tm=mData[mData.length-1];
   const totalM=sales.reduce((a,s)=>a+s.margin,0);
   const totalR=sales.reduce((a,s)=>a+s.sell,0);
@@ -563,15 +655,66 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 <div className="grid2">
+                  {/* ── Bénéfices ── */}
                   <div className="card" style={{padding:"20px",overflow:"hidden"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Bénéfices mensuels</div>
-                    <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
-                    {hasData?(<ResponsiveContainer width="100%" height={175}><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>):<Empty/>}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:8,flexWrap:"wrap"}}>
+                      <div style={{fontSize:14,fontWeight:800,color:C.text}}>Bénéfices mensuels</div>
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        {CHART_RANGES.map(r=>(
+                          <button key={r} onClick={()=>setChartRange(r)} style={{padding:"3px 8px",background:chartRange===r?C.green:"transparent",color:chartRange===r?"#fff":C.sub,border:`1px solid ${chartRange===r?C.green:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{fontSize:10,color:C.label,marginBottom:14,display:"flex",alignItems:"center",gap:5}}>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:isMock?C.peach:C.green,display:"inline-block",flexShrink:0}}/>
+                      {isMock?"Données estimées":"Données basées sur ton activité"}
+                    </div>
+                    <ResponsiveContainer width="100%" height={175}>
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={C.green} stopOpacity={0.18}/>
+                            <stop offset="95%" stopColor={C.green} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={42}/>
+                        <Tooltip content={<Tip/>}/>
+                        <Area type="monotone" dataKey="profit" name="Bénéfice" stroke={C.green} strokeWidth={3} fill="url(#profitGrad)" dot={false} activeDot={{r:5,fill:C.green,strokeWidth:2,stroke:"#fff"}} connectNulls/>
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
+
+                  {/* ── Marge % ── */}
                   <div className="card" style={{padding:"20px",overflow:"hidden"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Évolution marge %</div>
-                    <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
-                    {hasData?(<ResponsiveContainer width="100%" height={175}><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer>):<Empty/>}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:8,flexWrap:"wrap"}}>
+                      <div style={{fontSize:14,fontWeight:800,color:C.text}}>Évolution marge %</div>
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        {CHART_RANGES.map(r=>(
+                          <button key={r} onClick={()=>setChartRange(r)} style={{padding:"3px 8px",background:chartRange===r?C.peach:"transparent",color:chartRange===r?"#fff":C.sub,border:`1px solid ${chartRange===r?C.peach:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{fontSize:10,color:C.label,marginBottom:14,display:"flex",alignItems:"center",gap:5}}>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:C.peach,display:"inline-block",flexShrink:0}}/>
+                      {isMock?"Données estimées":"Données basées sur ton activité"}
+                    </div>
+                    <ResponsiveContainer width="100%" height={175}>
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient id="margeGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={C.peach} stopOpacity={0.18}/>
+                            <stop offset="95%" stopColor={C.peach} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={42}/>
+                        <Tooltip content={<Tip/>}/>
+                        <Area type="monotone" dataKey="Marge %" name="Marge %" stroke={C.peach} strokeWidth={3} fill="url(#margeGrad)" dot={false} activeDot={{r:5,fill:C.peach,strokeWidth:2,stroke:"#fff"}} connectNulls/>
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
 
