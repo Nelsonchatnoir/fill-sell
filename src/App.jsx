@@ -598,32 +598,27 @@ export default function App({ loginOnly = false }){
     <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
-      <div style={{background:"#fff",borderBottom:"1px solid #E8ECF0",boxShadow:"0 1px 0 rgba(0,0,0,0.04)"}}>
-        <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:60,padding:"0 24px"}}>
+      <div style={{background:"linear-gradient(135deg,#3EACA0ee 0%,#E8956Ddd 100%)",boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
+        <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:72,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <img src="/logo.png" style={{height:34,objectFit:"contain"}} alt="Fill & Sell"/>
-            <div style={{borderLeft:"1px solid #E2E8F0",paddingLeft:14}}>
-              <div style={{fontSize:15,fontWeight:800,color:C.text,letterSpacing:"-0.3px",lineHeight:1.1}}>Dashboard</div>
-              <div style={{fontSize:11,color:C.label,fontWeight:500,marginTop:1}}>Suivi de tes performances</div>
-            </div>
+            <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
+            <div style={{fontSize:13.5,color:"rgba(255,255,255,0.95)",fontWeight:600,letterSpacing:"0.3px",fontStyle:"italic"}}>Maximise tes profits 📈</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div className="header-stats" style={{gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div className="header-stats" style={{gap:12}}>
               {headerStats.map((b,i)=>(
-                <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"6px 14px",textAlign:"center",border:"1px solid #E8ECF0",transition:"all 0.2s ease",cursor:"default"}}
-                onMouseEnter={e=>{e.currentTarget.style.background="#F1F5F9";e.currentTarget.style.transform="translateY(-1px)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="#F8FAFC";e.currentTarget.style.transform="translateY(0)";}}>
-                  <div style={{fontSize:9,color:C.label,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>{b.label}</div>
-                  <div style={{fontSize:13,fontWeight:800,color:C.text}}>{b.value}</div>
+                <div key={i} style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(16px)",borderRadius:14,padding:"7px 18px",textAlign:"center",border:"1px solid rgba(255,255,255,0.28)",transition:"all 0.2s ease",cursor:"default"}}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";}}>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
+                  <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{b.value}</div>
                 </div>
               ))}
             </div>
             {isPremium&&(
-              <div style={{background:`${C.teal}12`,borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:700,color:C.teal,border:`1px solid ${C.teal}30`,whiteSpace:"nowrap"}}>⭐ Premium</div>
+              <div style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",border:"1px solid rgba(255,255,255,0.35)",whiteSpace:"nowrap"}}>⭐ Premium</div>
             )}
-            <button onClick={handleLogout} style={{background:"transparent",border:"1px solid #E2E8F0",borderRadius:9,padding:"6px 13px",color:C.sub,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s"}}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor="#CBD5E1";e.currentTarget.style.color=C.text;}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="#E2E8F0";e.currentTarget.style.color=C.sub;}}>Déconnexion</button>
+            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Déconnexion</button>
           </div>
         </div>
       </div>
