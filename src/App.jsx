@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
@@ -648,31 +648,27 @@ export default function App({ loginOnly = false }){
                   <div className="card" style={{padding:"20px"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Bénéfices mensuels</div>
                     <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>6 derniers mois</div>
-                    <div style={{width:"100%",height:"200px",minHeight:"200px",display:"block"}}>
-                      <ResponsiveContainer width="99%" height="100%">
-                        <BarChart data={mData} barSize={22} margin={{top:4,right:4,bottom:0,left:0}}>
-                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11,fontWeight:500}}/>
-                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11}} tickFormatter={v=>v+"€"} width={38}/>
-                          <Tooltip content={<Tip/>}/>
-                          <Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/>
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div style={{overflowX:"auto"}}>
+                      <BarChart width={800} height={200} data={mData} barSize={22} margin={{top:4,right:4,bottom:0,left:0}}>
+                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11,fontWeight:500}}/>
+                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11}} tickFormatter={v=>v+"€"} width={38}/>
+                        <Tooltip content={<Tip/>}/>
+                        <Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/>
+                      </BarChart>
                     </div>
                   </div>
                   <div className="card" style={{padding:"20px"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Évolution marge %</div>
                     <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>6 derniers mois</div>
-                    <div style={{width:"100%",height:"200px",minHeight:"200px",display:"block"}}>
-                      <ResponsiveContainer width="99%" height="100%">
-                        <LineChart data={mData} margin={{top:4,right:4,bottom:0,left:0}}>
-                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11,fontWeight:500}}/>
-                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11}} tickFormatter={v=>v+"%"} width={38}/>
-                          <Tooltip content={<Tip/>}/>
-                          <Line type="monotone" dataKey="Marge %" name="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5,strokeWidth:0}}/>
-                        </LineChart>
-                      </ResponsiveContainer>
+                    <div style={{overflowX:"auto"}}>
+                      <LineChart width={800} height={200} data={mData} margin={{top:4,right:4,bottom:0,left:0}}>
+                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11,fontWeight:500}}/>
+                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11}} tickFormatter={v=>v+"%"} width={38}/>
+                        <Tooltip content={<Tip/>}/>
+                        <Line type="monotone" dataKey="Marge %" name="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5,strokeWidth:0}}/>
+                      </LineChart>
                     </div>
                   </div>
                 </div>
