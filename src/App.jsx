@@ -648,8 +648,8 @@ export default function App({ loginOnly = false }){
                   <div className="card" style={{padding:"20px"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Bénéfices mensuels</div>
                     <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>6 derniers mois</div>
-                    <div style={{width:"100%",height:"200px"}}>
-                      <ResponsiveContainer width="100%" height="100%">
+                    <div style={{width:"100%",height:"200px",minHeight:"200px",display:"block"}}>
+                      <ResponsiveContainer width="99%" height="100%">
                         <BarChart data={mData} barSize={22} margin={{top:4,right:4,bottom:0,left:0}}>
                           <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11,fontWeight:500}}/>
@@ -663,8 +663,8 @@ export default function App({ loginOnly = false }){
                   <div className="card" style={{padding:"20px"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Évolution marge %</div>
                     <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>6 derniers mois</div>
-                    <div style={{width:"100%",height:"200px"}}>
-                      <ResponsiveContainer width="100%" height="100%">
+                    <div style={{width:"100%",height:"200px",minHeight:"200px",display:"block"}}>
+                      <ResponsiveContainer width="99%" height="100%">
                         <LineChart data={mData} margin={{top:4,right:4,bottom:0,left:0}}>
                           <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.label,fontSize:11,fontWeight:500}}/>
