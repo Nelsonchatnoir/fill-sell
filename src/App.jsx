@@ -356,7 +356,8 @@ export default function App({ loginOnly = false }){
   const [resetStep,setResetStep]=useState(0);
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
-  const [chartRange,setChartRange]=useState('6M');
+  const [rangeProfit,setRangeProfit]=useState('1M');
+  const [rangeMargin,setRangeMargin]=useState('1M');
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
@@ -407,8 +408,11 @@ export default function App({ loginOnly = false }){
   });
 
   const hasData=sales.length>0;
-  const chartData=getFilteredData(chartRange,sales);
   const isMock=!hasData;
+  const profitData=getFilteredData(rangeProfit,sales);
+  const marginData=getFilteredData(rangeMargin,sales);
+  console.log("DATA PROFIT",profitData);
+  console.log("DATA MARGIN",marginData);
   const tm=mData[mData.length-1];
   const totalM=sales.reduce((a,s)=>a+s.margin,0);
   const totalR=sales.reduce((a,s)=>a+s.sell,0);
@@ -656,12 +660,12 @@ export default function App({ loginOnly = false }){
 
                 <div className="grid2">
                   {/* ── Bénéfices ── */}
-                  <div className="card" style={{padding:"20px",overflow:"hidden"}}>
+                  <div className="card" style={{padding:"20px"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:8,flexWrap:"wrap"}}>
                       <div style={{fontSize:14,fontWeight:800,color:C.text}}>Bénéfices mensuels</div>
                       <div style={{display:"flex",gap:4,flexShrink:0}}>
                         {CHART_RANGES.map(r=>(
-                          <button key={r} onClick={()=>setChartRange(r)} style={{padding:"3px 8px",background:chartRange===r?C.green:"transparent",color:chartRange===r?"#fff":C.sub,border:`1px solid ${chartRange===r?C.green:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
+                          <button key={r} onClick={()=>setRangeProfit(r)} style={{padding:"3px 8px",background:rangeProfit===r?C.green:"transparent",color:rangeProfit===r?"#fff":C.sub,border:`1px solid ${rangeProfit===r?C.green:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
                         ))}
                       </div>
                     </div>
@@ -669,30 +673,26 @@ export default function App({ loginOnly = false }){
                       <span style={{width:5,height:5,borderRadius:"50%",background:isMock?C.peach:C.green,display:"inline-block",flexShrink:0}}/>
                       {isMock?"Données estimées":"Données basées sur ton activité"}
                     </div>
-                    <ResponsiveContainer width="100%" height={175}>
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={C.green} stopOpacity={0.18}/>
-                            <stop offset="95%" stopColor={C.green} stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={42}/>
-                        <Tooltip content={<Tip/>}/>
-                        <Area type="monotone" dataKey="profit" name="Bénéfice" stroke={C.green} strokeWidth={3} fill="url(#profitGrad)" dot={false} activeDot={{r:5,fill:C.green,strokeWidth:2,stroke:"#fff"}} connectNulls/>
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <div style={{width:"100%",height:200}}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={profitData} margin={{top:4,right:8,bottom:0,left:0}}>
+                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={42}/>
+                          <Tooltip content={<Tip/>}/>
+                          <Line type="monotone" dataKey="profit" name="Bénéfice" stroke={C.green} strokeWidth={3} dot={false} activeDot={{r:5,fill:C.green,strokeWidth:2,stroke:"#fff"}} connectNulls/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
 
                   {/* ── Marge % ── */}
-                  <div className="card" style={{padding:"20px",overflow:"hidden"}}>
+                  <div className="card" style={{padding:"20px"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:8,flexWrap:"wrap"}}>
                       <div style={{fontSize:14,fontWeight:800,color:C.text}}>Évolution marge %</div>
                       <div style={{display:"flex",gap:4,flexShrink:0}}>
                         {CHART_RANGES.map(r=>(
-                          <button key={r} onClick={()=>setChartRange(r)} style={{padding:"3px 8px",background:chartRange===r?C.peach:"transparent",color:chartRange===r?"#fff":C.sub,border:`1px solid ${chartRange===r?C.peach:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
+                          <button key={r} onClick={()=>setRangeMargin(r)} style={{padding:"3px 8px",background:rangeMargin===r?C.peach:"transparent",color:rangeMargin===r?"#fff":C.sub,border:`1px solid ${rangeMargin===r?C.peach:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
                         ))}
                       </div>
                     </div>
@@ -700,21 +700,17 @@ export default function App({ loginOnly = false }){
                       <span style={{width:5,height:5,borderRadius:"50%",background:C.peach,display:"inline-block",flexShrink:0}}/>
                       {isMock?"Données estimées":"Données basées sur ton activité"}
                     </div>
-                    <ResponsiveContainer width="100%" height={175}>
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="margeGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={C.peach} stopOpacity={0.18}/>
-                            <stop offset="95%" stopColor={C.peach} stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={42}/>
-                        <Tooltip content={<Tip/>}/>
-                        <Area type="monotone" dataKey="Marge %" name="Marge %" stroke={C.peach} strokeWidth={3} fill="url(#margeGrad)" dot={false} activeDot={{r:5,fill:C.peach,strokeWidth:2,stroke:"#fff"}} connectNulls/>
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <div style={{width:"100%",height:200}}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={marginData} margin={{top:4,right:8,bottom:0,left:0}}>
+                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={42}/>
+                          <Tooltip content={<Tip/>}/>
+                          <Line type="monotone" dataKey="Marge %" name="Marge %" stroke={C.peach} strokeWidth={3} dot={false} activeDot={{r:5,fill:C.peach,strokeWidth:2,stroke:"#fff"}} connectNulls/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
 
