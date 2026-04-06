@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
-import { AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
@@ -246,9 +246,7 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
 function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
-const CHART_RANGES=['7j','1M','3M','6M','YTD'];
-
-function getFilteredData(range, salesData){
+function getFilteredData_unused(range, salesData){
   const now=new Date();
   const hasSales=salesData.length>0;
 
@@ -357,8 +355,6 @@ export default function App({ loginOnly = false }){
   const [resetStep,setResetStep]=useState(0);
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
-  const [rangeProfit,setRangeProfit]=useState('1M');
-  const [rangeMargin,setRangeMargin]=useState('1M');
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
@@ -409,9 +405,6 @@ export default function App({ loginOnly = false }){
   });
 
   const hasData=sales.length>0;
-  const isMock=!hasData;
-  const profitData=getFilteredData(rangeProfit,sales);
-  const marginData=getFilteredData(rangeMargin,sales);
   const tm=mData[mData.length-1];
   const totalM=sales.reduce((a,s)=>a+s.margin,0);
   const totalR=sales.reduce((a,s)=>a+s.sell,0);
@@ -657,73 +650,16 @@ export default function App({ loginOnly = false }){
                   <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
                 </div>
 
-                {/* SVG defs globaux — définis avant les charts pour garantir la résolution de url() */}
-                <svg width="0" height="0" style={{position:"absolute",pointerEvents:"none"}}>
-                  <defs>
-                    <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#38A169" stopOpacity={0.25}/>
-                      <stop offset="100%" stopColor="#38A169" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="gMarge" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#E8956D" stopOpacity={0.25}/>
-                      <stop offset="100%" stopColor="#E8956D" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                </svg>
-
                 <div className="grid2">
-                  {/* ── Bénéfices ── */}
-                  <div className="card" style={{padding:"20px"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:8,flexWrap:"wrap"}}>
-                      <div style={{fontSize:14,fontWeight:800,color:C.text}}>Bénéfices mensuels</div>
-                      <div style={{display:"flex",gap:4,flexShrink:0}}>
-                        {CHART_RANGES.map(r=>(
-                          <button key={r} onClick={()=>setRangeProfit(r)} style={{padding:"3px 8px",background:rangeProfit===r?"#38A169":"transparent",color:rangeProfit===r?"#fff":C.sub,border:`1px solid ${rangeProfit===r?"#38A169":"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{fontSize:10,color:C.label,marginBottom:12,display:"flex",alignItems:"center",gap:5}}>
-                      <span style={{width:5,height:5,borderRadius:"50%",background:isMock?C.peach:"#38A169",display:"inline-block",flexShrink:0}}/>
-                      {isMock?"Données estimées":"Données basées sur ton activité"}
-                    </div>
-                    <div style={{width:"100%",height:"200px"}}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={profitData} margin={{top:6,right:4,bottom:0,left:0}}>
-                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={40}/>
-                          <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#38A169",fontWeight:800,fontSize:14}}>{fmt(payload[0].value)}</div></div>):null}/>
-                          <Area type="monotone" dataKey="profit" name="Bénéfice" stroke="#38A169" strokeWidth={3} fill="url(#gProfit)" dot={false} activeDot={{r:5,fill:"#38A169",strokeWidth:2,stroke:"#fff"}} connectNulls isAnimationActive animationDuration={600} animationEasing="ease-out"/>
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                  <div className="card" style={{padding:"20px",overflow:"hidden"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Bénéfices mensuels</div>
+                    <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
+                    {hasData?(<ResponsiveContainer width="100%" height={175}><BarChart data={mData} barSize={26}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"€"}/><Tooltip content={<Tip/>}/><Bar dataKey="profit" name="Bénéfice" fill={C.teal} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>):<Empty/>}
                   </div>
-
-                  {/* ── Marge % ── */}
-                  <div className="card" style={{padding:"20px"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:8,flexWrap:"wrap"}}>
-                      <div style={{fontSize:14,fontWeight:800,color:C.text}}>Évolution marge %</div>
-                      <div style={{display:"flex",gap:4,flexShrink:0}}>
-                        {CHART_RANGES.map(r=>(
-                          <button key={r} onClick={()=>setRangeMargin(r)} style={{padding:"3px 8px",background:rangeMargin===r?"#E8956D":"transparent",color:rangeMargin===r?"#fff":C.sub,border:`1px solid ${rangeMargin===r?"#E8956D":"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{fontSize:10,color:C.label,marginBottom:12,display:"flex",alignItems:"center",gap:5}}>
-                      <span style={{width:5,height:5,borderRadius:"50%",background:"#E8956D",display:"inline-block",flexShrink:0}}/>
-                      {isMock?"Données estimées":"Données basées sur ton activité"}
-                    </div>
-                    <div style={{width:"100%",height:"200px"}}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={marginData} margin={{top:6,right:4,bottom:0,left:0}}>
-                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={40}/>
-                          <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#E8956D",fontWeight:800,fontSize:14}}>{fmtp(payload[0].value)}</div></div>):null}/>
-                          <Area type="monotone" dataKey="Marge %" name="Marge %" stroke="#E8956D" strokeWidth={3} fill="url(#gMarge)" dot={false} activeDot={{r:5,fill:"#E8956D",strokeWidth:2,stroke:"#fff"}} connectNulls isAnimationActive animationDuration={600} animationEasing="ease-out"/>
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                  <div className="card" style={{padding:"20px",overflow:"hidden"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>Évolution marge %</div>
+                    <div style={{fontSize:11,color:C.sub,marginBottom:16}}>6 derniers mois</div>
+                    {hasData?(<ResponsiveContainer width="100%" height={175}><LineChart data={mData}><CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false}/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:11}} tickFormatter={v=>v+"%"}/><Tooltip content={<Tip/>}/><Line type="monotone" dataKey="Marge %" stroke={C.peach} strokeWidth={2.5} dot={{fill:C.peach,r:3,strokeWidth:0}} activeDot={{r:5}}/></LineChart></ResponsiveContainer>):<Empty/>}
                   </div>
                 </div>
 
