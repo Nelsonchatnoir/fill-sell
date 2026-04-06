@@ -657,6 +657,20 @@ export default function App({ loginOnly = false }){
                   <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
                 </div>
 
+                {/* SVG defs globaux — définis avant les charts pour garantir la résolution de url() */}
+                <svg width="0" height="0" style={{position:"absolute",pointerEvents:"none"}}>
+                  <defs>
+                    <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#38A169" stopOpacity={0.25}/>
+                      <stop offset="100%" stopColor="#38A169" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="gMarge" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#E8956D" stopOpacity={0.25}/>
+                      <stop offset="100%" stopColor="#E8956D" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+
                 <div className="grid2">
                   {/* ── Bénéfices ── */}
                   <div className="card" style={{padding:"20px"}}>
@@ -664,29 +678,25 @@ export default function App({ loginOnly = false }){
                       <div style={{fontSize:14,fontWeight:800,color:C.text}}>Bénéfices mensuels</div>
                       <div style={{display:"flex",gap:4,flexShrink:0}}>
                         {CHART_RANGES.map(r=>(
-                          <button key={r} onClick={()=>setRangeProfit(r)} style={{padding:"3px 8px",background:rangeProfit===r?C.green:"transparent",color:rangeProfit===r?"#fff":C.sub,border:`1px solid ${rangeProfit===r?C.green:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
+                          <button key={r} onClick={()=>setRangeProfit(r)} style={{padding:"3px 8px",background:rangeProfit===r?"#38A169":"transparent",color:rangeProfit===r?"#fff":C.sub,border:`1px solid ${rangeProfit===r?"#38A169":"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
                         ))}
                       </div>
                     </div>
                     <div style={{fontSize:10,color:C.label,marginBottom:12,display:"flex",alignItems:"center",gap:5}}>
-                      <span style={{width:5,height:5,borderRadius:"50%",background:isMock?C.peach:C.green,display:"inline-block",flexShrink:0}}/>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:isMock?C.peach:"#38A169",display:"inline-block",flexShrink:0}}/>
                       {isMock?"Données estimées":"Données basées sur ton activité"}
                     </div>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <AreaChart data={profitData} margin={{top:6,right:4,bottom:0,left:0}}>
-                        <defs>
-                          <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#38A169" stopOpacity={0.22}/>
-                            <stop offset="100%" stopColor="#38A169" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={40}/>
-                        <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#38A169",fontWeight:800,fontSize:14}}>{fmt(payload[0].value)}</div></div>):null}/>
-                        <Area isAnimationActive={true} animationDuration={600} animationEasing="ease-out" type="monotone" dataKey="profit" name="Bénéfice" stroke="#38A169" strokeWidth={3} fill="url(#gProfit)" dot={false} activeDot={{r:5,fill:"#38A169",strokeWidth:2,stroke:"#fff"}} connectNulls/>
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <div style={{width:"100%",height:"200px"}}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={profitData} margin={{top:6,right:4,bottom:0,left:0}}>
+                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={40}/>
+                          <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#38A169",fontWeight:800,fontSize:14}}>{fmt(payload[0].value)}</div></div>):null}/>
+                          <Area type="monotone" dataKey="profit" name="Bénéfice" stroke="#38A169" strokeWidth={3} fill="url(#gProfit)" dot={false} activeDot={{r:5,fill:"#38A169",strokeWidth:2,stroke:"#fff"}} connectNulls isAnimationActive animationDuration={600} animationEasing="ease-out"/>
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
 
                   {/* ── Marge % ── */}
@@ -695,29 +705,25 @@ export default function App({ loginOnly = false }){
                       <div style={{fontSize:14,fontWeight:800,color:C.text}}>Évolution marge %</div>
                       <div style={{display:"flex",gap:4,flexShrink:0}}>
                         {CHART_RANGES.map(r=>(
-                          <button key={r} onClick={()=>setRangeMargin(r)} style={{padding:"3px 8px",background:rangeMargin===r?C.peach:"transparent",color:rangeMargin===r?"#fff":C.sub,border:`1px solid ${rangeMargin===r?C.peach:"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
+                          <button key={r} onClick={()=>setRangeMargin(r)} style={{padding:"3px 8px",background:rangeMargin===r?"#E8956D":"transparent",color:rangeMargin===r?"#fff":C.sub,border:`1px solid ${rangeMargin===r?"#E8956D":"rgba(0,0,0,0.1)"}`,borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{r}</button>
                         ))}
                       </div>
                     </div>
                     <div style={{fontSize:10,color:C.label,marginBottom:12,display:"flex",alignItems:"center",gap:5}}>
-                      <span style={{width:5,height:5,borderRadius:"50%",background:C.peach,display:"inline-block",flexShrink:0}}/>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:"#E8956D",display:"inline-block",flexShrink:0}}/>
                       {isMock?"Données estimées":"Données basées sur ton activité"}
                     </div>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <AreaChart data={marginData} margin={{top:6,right:4,bottom:0,left:0}}>
-                        <defs>
-                          <linearGradient id="gMarge" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#E8956D" stopOpacity={0.22}/>
-                            <stop offset="100%" stopColor="#E8956D" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={40}/>
-                        <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#E8956D",fontWeight:800,fontSize:14}}>{fmtp(payload[0].value)}</div></div>):null}/>
-                        <Area isAnimationActive={true} animationDuration={600} animationEasing="ease-out" type="monotone" dataKey="Marge %" name="Marge %" stroke="#E8956D" strokeWidth={3} fill="url(#gMarge)" dot={false} activeDot={{r:5,fill:"#E8956D",strokeWidth:2,stroke:"#fff"}} connectNulls/>
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <div style={{width:"100%",height:"200px"}}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={marginData} margin={{top:6,right:4,bottom:0,left:0}}>
+                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={40}/>
+                          <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#E8956D",fontWeight:800,fontSize:14}}>{fmtp(payload[0].value)}</div></div>):null}/>
+                          <Area type="monotone" dataKey="Marge %" name="Marge %" stroke="#E8956D" strokeWidth={3} fill="url(#gMarge)" dot={false} activeDot={{r:5,fill:"#E8956D",strokeWidth:2,stroke:"#fff"}} connectNulls isAnimationActive animationDuration={600} animationEasing="ease-out"/>
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
 
