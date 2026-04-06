@@ -23,6 +23,7 @@ const css = `
   html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;}
   body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#F1F5F9;min-height:100vh;touch-action:pan-y;}
   *{box-sizing:border-box;max-width:100%;}
+  svg,svg *{max-width:none!important;overflow:visible;}
   *::-webkit-scrollbar{display:none;}
   *{-ms-overflow-style:none;scrollbar-width:none;}
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
@@ -411,8 +412,6 @@ export default function App({ loginOnly = false }){
   const isMock=!hasData;
   const profitData=getFilteredData(rangeProfit,sales);
   const marginData=getFilteredData(rangeMargin,sales);
-  console.log("DATA PROFIT",profitData);
-  console.log("DATA MARGIN",marginData);
   const tm=mData[mData.length-1];
   const totalM=sales.reduce((a,s)=>a+s.margin,0);
   const totalR=sales.reduce((a,s)=>a+s.sell,0);
@@ -669,21 +668,25 @@ export default function App({ loginOnly = false }){
                         ))}
                       </div>
                     </div>
-                    <div style={{fontSize:10,color:C.label,marginBottom:14,display:"flex",alignItems:"center",gap:5}}>
+                    <div style={{fontSize:10,color:C.label,marginBottom:12,display:"flex",alignItems:"center",gap:5}}>
                       <span style={{width:5,height:5,borderRadius:"50%",background:isMock?C.peach:C.green,display:"inline-block",flexShrink:0}}/>
                       {isMock?"Données estimées":"Données basées sur ton activité"}
                     </div>
-                    <div style={{width:"100%",height:200}}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={profitData} margin={{top:4,right:8,bottom:0,left:0}}>
-                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={42}/>
-                          <Tooltip content={<Tip/>}/>
-                          <Line type="monotone" dataKey="profit" name="Bénéfice" stroke={C.green} strokeWidth={3} dot={false} activeDot={{r:5,fill:C.green,strokeWidth:2,stroke:"#fff"}} connectNulls/>
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={profitData} margin={{top:6,right:4,bottom:0,left:0}}>
+                        <defs>
+                          <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#38A169" stopOpacity={0.22}/>
+                            <stop offset="100%" stopColor="#38A169" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"€"} width={40}/>
+                        <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#38A169",fontWeight:800,fontSize:14}}>{fmt(payload[0].value)}</div></div>):null}/>
+                        <Area isAnimationActive={true} animationDuration={600} animationEasing="ease-out" type="monotone" dataKey="profit" name="Bénéfice" stroke="#38A169" strokeWidth={3} fill="url(#gProfit)" dot={false} activeDot={{r:5,fill:"#38A169",strokeWidth:2,stroke:"#fff"}} connectNulls/>
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
 
                   {/* ── Marge % ── */}
@@ -696,21 +699,25 @@ export default function App({ loginOnly = false }){
                         ))}
                       </div>
                     </div>
-                    <div style={{fontSize:10,color:C.label,marginBottom:14,display:"flex",alignItems:"center",gap:5}}>
+                    <div style={{fontSize:10,color:C.label,marginBottom:12,display:"flex",alignItems:"center",gap:5}}>
                       <span style={{width:5,height:5,borderRadius:"50%",background:C.peach,display:"inline-block",flexShrink:0}}/>
                       {isMock?"Données estimées":"Données basées sur ton activité"}
                     </div>
-                    <div style={{width:"100%",height:200}}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={marginData} margin={{top:4,right:8,bottom:0,left:0}}>
-                          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
-                          <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={42}/>
-                          <Tooltip content={<Tip/>}/>
-                          <Line type="monotone" dataKey="Marge %" name="Marge %" stroke={C.peach} strokeWidth={3} dot={false} activeDot={{r:5,fill:C.peach,strokeWidth:2,stroke:"#fff"}} connectNulls/>
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={marginData} margin={{top:6,right:4,bottom:0,left:0}}>
+                        <defs>
+                          <linearGradient id="gMarge" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#E8956D" stopOpacity={0.22}/>
+                            <stop offset="100%" stopColor="#E8956D" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false}/>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} interval="preserveStartEnd"/>
+                        <YAxis axisLine={false} tickLine={false} tick={{fill:C.sub,fontSize:10}} tickFormatter={v=>v+"%"} width={40}/>
+                        <Tooltip content={({active,payload,label})=>active&&payload?.length?(<div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.07)",borderRadius:12,padding:"10px 14px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",fontSize:12}}><div style={{color:C.sub,fontWeight:600,marginBottom:4}}>{label}</div><div style={{color:"#E8956D",fontWeight:800,fontSize:14}}>{fmtp(payload[0].value)}</div></div>):null}/>
+                        <Area isAnimationActive={true} animationDuration={600} animationEasing="ease-out" type="monotone" dataKey="Marge %" name="Marge %" stroke="#E8956D" strokeWidth={3} fill="url(#gMarge)" dot={false} activeDot={{r:5,fill:"#E8956D",strokeWidth:2,stroke:"#fff"}} connectNulls/>
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
 
