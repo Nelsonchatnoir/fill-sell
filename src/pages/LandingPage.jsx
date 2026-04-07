@@ -290,16 +290,16 @@ export default function LandingPage() {
               <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>Idéal pour débuter</div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
                 {[
-                  { label: "Articles en stock", value: "20 max" },
-                  { label: "Dashboard", ok: true },
-                  { label: "Calcul des marges", ok: true },
-                  { label: "Historique des ventes", ok: true },
+                  { label: "📦 Articles en stock — 20 max" },
+                  { label: "📊 Dashboard" },
+                  { label: "🧮 Calcul des marges" },
+                  { label: "📋 Historique des ventes" },
                   { label: "Support prioritaire", ok: false },
-                ].map(({ label, ok, value }) => (
+                ].map(({ label, ok }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0 }}>{ok === false ? "✗" : "✓"}</span>
-                    <span style={{ fontSize: 14, color: ok === false ? C.label : C.text, textDecoration: ok === false ? "none" : "none" }}>
-                      {label}{value ? ` — ${value}` : ""}
+                    <span style={{ fontSize: 14, color: ok === false ? C.label : C.text }}>
+                      {label}
                     </span>
                   </div>
                 ))}
@@ -324,13 +324,13 @@ export default function LandingPage() {
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 600, marginBottom: 20 }}>🚀 Débloque toutes les fonctionnalités en 1 clic</div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
                 {[
-                  { label: "Articles illimités en stock" },
-                  { label: "Dashboard complet" },
-                  { label: "Calcul des marges" },
-                  { label: "Historique des ventes" },
-                  { label: "📥📤 Import & export Excel de tes données" },
-                  { label: "Support prioritaire" },
-                ].map(({ label }) => (
+                  "♾️ Articles illimités en stock",
+                  "📊 Dashboard complet",
+                  "🧮 Calcul des marges",
+                  "📈 Historique des ventes",
+                  "📊 Import & export Excel de tes données",
+                  "⭐ Support prioritaire",
+                ].map(label => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0, color: "#fff" }}>✓</span>
                     <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>{label}</span>
