@@ -359,6 +359,7 @@ export default function App({ loginOnly = false }){
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [selectedRange,setSelectedRange]=useState('6M');
   const [cancelStep,setCancelStep]=useState(0);
   const [cancelLoading,setCancelLoading]=useState(false);
   const [cancelMsg,setCancelMsg]=useState("");
@@ -411,15 +412,49 @@ export default function App({ loginOnly = false }){
   const mc=margin<0?C.red:C.teal;
 
   const now=new Date();
-  const mData=Array.from({length:6},(_,i)=>{
-    const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
-    const m=d.getMonth();const y=d.getFullYear();
-    const ms=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
-    return{name:MONTHS_FR[m],profit:ms.reduce((a,s)=>a+s.margin,0),"Marge %":ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:0,count:ms.length};
-  });
 
+  // KPI mois courant — indépendant du filtre
+  const currentMonthSales=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
+  const tm={profit:currentMonthSales.reduce((a,s)=>a+s.margin,0),count:currentMonthSales.length};
+
+  // Filtre par période pour les graphiques
+  function filterSalesByRange(salesArr,range){
+    const cutoffs={'7j':7,'1M':30,'6M':180,'1A':365};
+    if(range==='YTD') return salesArr.filter(s=>new Date(s.date)>=new Date(now.getFullYear(),0,1));
+    const ms=cutoffs[range]||180;
+    const cutoff=new Date(now.getTime()-ms*86400000);
+    return salesArr.filter(s=>new Date(s.date)>=cutoff);
+  }
+
+  function buildChartData(salesArr,range){
+    const byMonth=(n)=>Array.from({length:n},(_,i)=>{
+      const d=new Date(now.getFullYear(),now.getMonth()-(n-1)+i,1);
+      const m=d.getMonth();const y=d.getFullYear();
+      const ms=salesArr.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
+      return{name:MONTHS_FR[m],profit:ms.reduce((a,s)=>a+s.margin,0),"Marge %":ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:0};
+    });
+    if(range==='7j'){
+      return Array.from({length:7},(_,i)=>{
+        const d=new Date(now);d.setDate(d.getDate()-6+i);
+        const ds=salesArr.filter(s=>{const sd=new Date(s.date);return sd.toDateString()===d.toDateString();});
+        return{name:`${d.getDate()}/${d.getMonth()+1}`,profit:ds.reduce((a,s)=>a+s.margin,0),"Marge %":ds.length?ds.reduce((a,s)=>a+s.marginPct,0)/ds.length:0};
+      });
+    }
+    if(range==='1M'){
+      return Array.from({length:4},(_,i)=>{
+        const end=new Date(now);end.setDate(end.getDate()-i*7);
+        const start=new Date(end);start.setDate(start.getDate()-6);
+        const ds=salesArr.filter(s=>{const sd=new Date(s.date);return sd>=start&&sd<=end;});
+        return{name:`S${4-i}`,profit:ds.reduce((a,s)=>a+s.margin,0),"Marge %":ds.length?ds.reduce((a,s)=>a+s.marginPct,0)/ds.length:0};
+      }).reverse();
+    }
+    if(range==='1A') return byMonth(12);
+    if(range==='YTD') return byMonth(now.getMonth()+1);
+    return byMonth(6); // 6M default
+  }
+
+  const mData=buildChartData(sales,selectedRange);
   const hasData=sales.length>0;
-  const tm=mData[mData.length-1];
 
   const _f={family:"'Plus Jakarta Sans', -apple-system, sans-serif",size:11};
   const _tip={backgroundColor:'#ffffff',titleColor:'#94A3B8',borderColor:'rgba(0,0,0,0.09)',borderWidth:1,padding:12,cornerRadius:12,displayColors:false,titleFont:{..._f,size:11,weight:'600'},bodyFont:{..._f,size:14,weight:'800'}};
@@ -714,9 +749,28 @@ export default function App({ loginOnly = false }){
     console.log('[Import] Inserting',toInsert.length,'rows — sample:',toInsert[0]);
 
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
+    if(error){setImportLoading(false);setImportMsg("Erreur import : "+error.message);return;}
+
+    // Insère aussi dans ventes les lignes "vendu"
+    const ventesRows=(data||[])
+      .filter(row=>row.statut==='vendu'&&row.prix_vente)
+      .map(row=>({
+        id:row.id+1000000,
+        user_id:user.id,
+        titre:row.titre,
+        prix_achat:row.prix_achat,
+        prix_vente:row.prix_vente,
+        benefice:row.margin,
+        date:now.split('T')[0],
+      }));
+    if(ventesRows.length){
+      const{error:ve}=await supabase.from('ventes').insert(ventesRows);
+      if(ve) console.warn('[Import] ventes insert error:',ve.message);
+    }
+
+    // Resync complet depuis Supabase
+    await fetchAll(user.id);
     setImportLoading(false);
-    if(error){setImportMsg("Erreur import : "+error.message);return;}
-    setItems(prev=>[...(data||[]).map(mapItem),...prev]);
     setImportModal(null);
     setImportMsg(`✅ ${data?.length||0} article(s) importé(s) avec succès.`);
     setTimeout(()=>setImportMsg(""),4000);
@@ -922,17 +976,30 @@ export default function App({ loginOnly = false }){
                   <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
                 </div>
 
+                {/* Sélecteur de période */}
+                <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}>
+                  {['7j','1M','6M','1A','YTD'].map(r=>(
+                    <button key={r} onClick={()=>setSelectedRange(r)} style={{padding:"5px 14px",borderRadius:8,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",background:selectedRange===r?C.teal:"#EDF2F7",color:selectedRange===r?"#fff":C.sub}}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="grid2">
                   <div className="card" style={{padding:"20px"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Bénéfices mensuels</div>
-                    <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>6 derniers mois</div>
+                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Bénéfices</div>
+                    <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>
+                      {selectedRange==='7j'?"7 derniers jours":selectedRange==='1M'?"30 derniers jours":selectedRange==='1A'?"12 derniers mois":selectedRange==='YTD'?"Depuis le 1er janvier":"6 derniers mois"}
+                    </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
                     </div>
                   </div>
                   <div className="card" style={{padding:"20px"}}>
                     <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Évolution marge %</div>
-                    <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>6 derniers mois</div>
+                    <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>
+                      {selectedRange==='7j'?"7 derniers jours":selectedRange==='1M'?"30 derniers jours":selectedRange==='1A'?"12 derniers mois":selectedRange==='YTD'?"Depuis le 1er janvier":"6 derniers mois"}
+                    </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
                     </div>
