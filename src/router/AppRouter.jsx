@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import LandingPage from "../pages/LandingPage";
 import Success from "../pages/Success";
 import Cancel from "../pages/Cancel";
+import Legal from "../pages/Legal";
 import App from "../App";
 
 // Bloque /login et / si déjà connecté
@@ -42,6 +43,7 @@ export default function AppRouter() {
         <Route path="/app" element={<RequireAuth><App /></RequireAuth>} />
         <Route path="/success" element={<Success />} />
         <Route path="/cancel" element={<Cancel />} />
+        <Route path="/legal" element={<Legal />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
