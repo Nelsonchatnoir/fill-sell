@@ -358,6 +358,9 @@ export default function App({ loginOnly = false }){
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [cancelStep,setCancelStep]=useState(0);
+  const [cancelLoading,setCancelLoading]=useState(false);
+  const [cancelMsg,setCancelMsg]=useState("");
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
@@ -528,6 +531,35 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  async function handleCancelSubscription(){
+    setCancelLoading(true);
+    try{
+      const{data:{session}}=await supabase.auth.getSession();
+      const res=await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-subscription`,
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "Authorization":`Bearer ${session?.access_token}`,
+          },
+        }
+      );
+      const json=await res.json();
+      if(json.error) throw new Error(json.error);
+      setIsPremium(false);
+      const msg=json.period_end
+        ? `Abonnement annulé. Tu garderas l'accès jusqu'au ${json.period_end}.`
+        : "Abonnement annulé. Tu garderas l'accès jusqu'à la fin de la période.";
+      setCancelMsg(msg);
+      setCancelStep(0);
+    }catch(e){
+      setCancelMsg("Erreur : "+e.message);
+    }finally{
+      setCancelLoading(false);
+    }
+  }
+
   async function handleLogin(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{error}=await supabase.auth.signInWithPassword({email,password});
@@ -617,7 +649,7 @@ export default function App({ loginOnly = false }){
             {isPremium&&(
               <div style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",border:"1px solid rgba(255,255,255,0.35)",whiteSpace:"nowrap"}}>⭐ Premium</div>
             )}
-            <button onClick={()=>setShowSettings(true)} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 11px",color:"#fff",fontSize:18,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}
+            <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 11px",color:"#fff",fontSize:18,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
               onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.2)"}
             >⚙️</button>
@@ -1089,6 +1121,37 @@ export default function App({ loginOnly = false }){
               <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
               {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ Abonnement Premium actif</div>}
             </div>
+
+            {/* Désabonnement — visible uniquement si premium */}
+            {isPremium&&(
+              <div style={{marginBottom:12}}>
+                {cancelMsg?(
+                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.5}}>
+                    ✅ {cancelMsg}
+                  </div>
+                ):cancelStep===0?(
+                  <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:"1.5px solid rgba(232,149,109,0.6)",borderRadius:12,color:C.peach,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(232,149,109,0.06)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                  >
+                    <span>📭</span> Se désabonner
+                  </button>
+                ):(
+                  <div style={{background:"rgba(232,149,109,0.08)",border:"1.5px solid rgba(232,149,109,0.4)",borderRadius:12,padding:"14px"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}}>Confirmer la résiliation ?</div>
+                    <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>Tu conserveras l'accès Premium jusqu'à la fin de ta période en cours. Aucun remboursement au prorata.</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:C.peach,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
+                        {cancelLoading?"...":"Confirmer"}
+                      </button>
+                      <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Support */}
             <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
