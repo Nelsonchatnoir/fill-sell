@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
+import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
@@ -361,6 +362,10 @@ export default function App({ loginOnly = false }){
   const [cancelStep,setCancelStep]=useState(0);
   const [cancelLoading,setCancelLoading]=useState(false);
   const [cancelMsg,setCancelMsg]=useState("");
+  const [importModal,setImportModal]=useState(null); // {rows, mapping, preview}
+  const [importLoading,setImportLoading]=useState(false);
+  const [importMsg,setImportMsg]=useState("");
+  const importRef=useRef(null);
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
@@ -565,6 +570,110 @@ export default function App({ loginOnly = false }){
     }finally{
       setCancelLoading(false);
     }
+  }
+
+  // ── Détection automatique des colonnes ──────────────────────────────────
+  function detectColumns(headers){
+    const n=h=>h.toString().toLowerCase().trim().replace(/\s+/g," ");
+    const mapping={};
+    for(const h of headers){
+      const v=n(h);
+      if(!mapping.titre && /nom|titre|article|produit|d[eé]signation/.test(v)) mapping.titre=h;
+      else if(!mapping.prix_achat && /achat|achet[eé]|co[uû]t|^pa$|prix.?achat/.test(v)) mapping.prix_achat=h;
+      else if(!mapping.prix_vente && /vente|vendu|^pv$|prix.?vente/.test(v)) mapping.prix_vente=h;
+      else if(!mapping.date && /^date$/.test(v)) mapping.date=h;
+    }
+    return mapping;
+  }
+
+  // ── Import Excel / CSV ───────────────────────────────────────────────────
+  function handleImportFile(e){
+    const file=e.target.files?.[0];
+    if(!file) return;
+    e.target.value="";
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const raw=XLSX.utils.sheet_to_json(ws,{defval:""});
+        if(!raw.length){setImportMsg("Fichier vide ou format non reconnu.");return;}
+        const headers=Object.keys(raw[0]);
+        const mapping=detectColumns(headers);
+        setImportModal({rows:raw,mapping,preview:raw.slice(0,3),headers});
+        setImportMsg("");
+      }catch(err){
+        setImportMsg("Erreur lecture fichier : "+err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function handleImportConfirm(){
+    if(!importModal) return;
+    setImportLoading(true);
+    const{rows,mapping}=importModal;
+    const toInsert=rows.map(r=>{
+      const titre=(mapping.titre?String(r[mapping.titre]):"").trim()||"Article importé";
+      const buy=parseFloat(String(r[mapping.prix_achat]??0).replace(",","."))||0;
+      const sell=mapping.prix_vente?parseFloat(String(r[mapping.prix_vente]??0).replace(",","."))||0:0;
+      const hasSell=sell>0;
+      const margin=hasSell?sell-buy:null;
+      const marginPct=hasSell?(margin/sell)*100:null;
+      const rawDate=mapping.date?r[mapping.date]:null;
+      let dateStr=new Date().toISOString();
+      if(rawDate){
+        const d=new Date(rawDate);
+        if(!isNaN(d.getTime())) dateStr=d.toISOString();
+      }
+      return{
+        user_id:user.id,
+        titre,
+        prix_achat:buy,
+        prix_vente:hasSell?sell:null,
+        margin:margin,
+        margin_pct:marginPct,
+        statut:hasSell?"vendu":"stock",
+        date:dateStr,
+      };
+    }).filter(r=>r.prix_achat>0||r.titre!=="Article importé");
+
+    const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
+    setImportLoading(false);
+    if(error){setImportMsg("Erreur import : "+error.message);return;}
+    setItems(prev=>[...(data||[]).map(mapItem),...prev]);
+    setImportModal(null);
+    setImportMsg(`✅ ${data?.length||0} article(s) importé(s) avec succès.`);
+    setTimeout(()=>setImportMsg(""),4000);
+  }
+
+  // ── Export Excel ─────────────────────────────────────────────────────────
+  function handleExport(){
+    const today=new Date().toISOString().split("T")[0];
+    const wb=XLSX.utils.book_new();
+
+    // Onglet Ventes
+    const ventesData=sales.map(s=>({
+      "Date":s.date,
+      "Article":s.title,
+      "Prix achat":s.buy,
+      "Prix vente":s.sell,
+      "Bénéfice":parseFloat(s.margin.toFixed(2)),
+      "Marge %":parseFloat(s.marginPct.toFixed(1)),
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ventesData),"Ventes");
+
+    // Onglet Inventaire
+    const invData=items.map(i=>({
+      "Article":i.title,
+      "Prix achat":i.buy,
+      "Prix vente":i.sell||"",
+      "Statut":i.statut==="stock"?"En stock":"Vendu",
+      "Date":i.date?new Date(i.date).toLocaleDateString("fr-FR"):"",
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(invData),"Inventaire");
+
+    XLSX.writeFile(wb,`fillsell-export-${today}.xlsx`);
   }
 
   async function handleLogin(){
@@ -861,6 +970,33 @@ export default function App({ loginOnly = false }){
             </div>
 
             <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16}}>
+
+              {/* ── Barre Import / Export ── */}
+              {isPremium?(
+                <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div style={{flex:1,fontSize:13,fontWeight:700,color:C.text}}>Outils Premium</div>
+                  <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
+                  <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:C.tealLight,color:C.teal,border:`1px solid ${C.teal}44`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#C6EBE9"}
+                    onMouseLeave={e=>e.currentTarget.style.background=C.tealLight}
+                  >📥 Importer</button>
+                  <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#EDF2F7",color:C.sub,border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#E2E8F0"}
+                    onMouseLeave={e=>e.currentTarget.style.background="#EDF2F7"}
+                  >📤 Exporter</button>
+                  {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
+                </div>
+              ):(
+                <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33"}}>
+                  <span style={{fontSize:18}}>🔒</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>Import / Export Excel</div>
+                    <div style={{fontSize:11,color:C.sub}}>Fonctionnalité Premium — importe et exporte tes données</div>
+                  </div>
+                  <PremiumBanner userEmail={user?.email} compact/>
+                </div>
+              )}
+
               <div className="card" style={{padding:"20px"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1104,6 +1240,78 @@ export default function App({ loginOnly = false }){
           </div>
         )}
       </div>
+
+      {/* ── IMPORT MODAL ── */}
+      {importModal&&(
+        <>
+          <div onClick={()=>setImportModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(90vw,540px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"80vh",overflowY:"auto"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>📥 Confirmer l'import</div>
+              <button onClick={()=>setImportModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+            </div>
+
+            {/* Mapping détecté */}
+            <div style={{background:C.rowBg,borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Colonnes détectées</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {[
+                  {key:"titre",label:"Titre / Nom",icon:"🏷️"},
+                  {key:"prix_achat",label:"Prix d'achat",icon:"🛒"},
+                  {key:"prix_vente",label:"Prix de vente",icon:"💰"},
+                  {key:"date",label:"Date",icon:"📅"},
+                ].map(({key,label,icon})=>(
+                  <div key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+                    <span style={{fontSize:14}}>{icon}</span>
+                    <span style={{color:C.sub,minWidth:110}}>{label} :</span>
+                    {importModal.mapping[key]
+                      ? <span style={{fontWeight:700,color:C.teal}}>✓ "{importModal.mapping[key]}"</span>
+                      : <span style={{color:C.label,fontStyle:"italic"}}>non détectée</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Aperçu 3 premières lignes */}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Aperçu ({importModal.rows.length} ligne{importModal.rows.length>1?"s":""})</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {importModal.preview.map((row,i)=>{
+                  const titre=importModal.mapping.titre?String(row[importModal.mapping.titre]).trim():"—";
+                  const buy=importModal.mapping.prix_achat?row[importModal.mapping.prix_achat]:"—";
+                  const sell=importModal.mapping.prix_vente?row[importModal.mapping.prix_vente]:"—";
+                  return(
+                    <div key={i} style={{display:"flex",gap:10,padding:"8px 12px",background:C.rowBg,borderRadius:10,fontSize:12}}>
+                      <span style={{fontWeight:600,flex:2,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{titre}</span>
+                      <span style={{color:C.sub,flex:1,whiteSpace:"nowrap"}}>Achat : {buy}</span>
+                      <span style={{color:C.sub,flex:1,whiteSpace:"nowrap"}}>Vente : {sell}</span>
+                    </div>
+                  );
+                })}
+                {importModal.rows.length>3&&<div style={{fontSize:11,color:C.label,textAlign:"center"}}>+ {importModal.rows.length-3} autre(s) ligne(s)</div>}
+              </div>
+            </div>
+
+            {!importModal.mapping.titre&&(
+              <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#92400E",marginBottom:16}}>
+                ⚠️ Colonne "nom/titre" non détectée. Les articles seront importés avec le nom par défaut.
+              </div>
+            )}
+
+            {importMsg&&<div style={{fontSize:12,color:C.red,marginBottom:12}}>{importMsg}</div>}
+
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={handleImportConfirm} disabled={importLoading} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:importLoading?"not-allowed":"pointer",opacity:importLoading?0.7:1,transition:"all 0.2s"}}>
+                {importLoading?"Import en cours...":"Importer les données →"}
+              </button>
+              <button onClick={()=>setImportModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── SETTINGS DRAWER ── */}
       {showSettings&&(
