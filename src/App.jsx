@@ -572,17 +572,31 @@ export default function App({ loginOnly = false }){
     }
   }
 
-  // ── Détection automatique des colonnes ──────────────────────────────────
-  function detectColumns(headers){
-    const n=h=>h.toString().toLowerCase().trim().replace(/\s+/g," ");
-    const mapping={};
+  // ── Détection automatique des colonnes (v2) ─────────────────────────────
+  function detectColumns(headers, rows){
+    const TITRE_RE=/article|titre|nom|désign|designat|produit|objet|item|libell[eé]|description/i;
+    const ACHAT_RE=/achat|achet[eé]|co[uû]t|cost|^pa$|prix.?achat|invest|d[eé]pense/i;
+    const VENTE_RE=/vente|vendu|^pv$|prix.?vente|revente|cession/i;
+    const mapping={titre:null,prix_achat:null,prix_vente:null};
+
+    // 1. Détection par header (regex insensible à la casse)
     for(const h of headers){
-      const v=n(h);
-      if(!mapping.titre && /nom|titre|article|produit|d[eé]signation/.test(v)) mapping.titre=h;
-      else if(!mapping.prix_achat && /achat|achet[eé]|co[uû]t|^pa$|prix.?achat/.test(v)) mapping.prix_achat=h;
-      else if(!mapping.prix_vente && /vente|vendu|^pv$|prix.?vente/.test(v)) mapping.prix_vente=h;
-      else if(!mapping.date && /^date$/.test(v)) mapping.date=h;
+      const s=String(h).trim();
+      if(!mapping.titre && TITRE_RE.test(s)) mapping.titre=h;
+      else if(!mapping.prix_achat && ACHAT_RE.test(s)) mapping.prix_achat=h;
+      else if(!mapping.prix_vente && VENTE_RE.test(s)) mapping.prix_vente=h;
     }
+
+    // 2. Fallback contenu : colonnes entièrement numériques = prix
+    const sample=rows.slice(0,10);
+    const numCols=headers.filter(h=>{
+      if(h===mapping.titre||h===mapping.prix_achat||h===mapping.prix_vente) return false;
+      return sample.some(r=>String(r[h]??'').trim()!=='') &&
+             sample.every(r=>{const v=String(r[h]??'').replace(',','.').trim();return v===''||!isNaN(parseFloat(v));});
+    });
+    if(!mapping.prix_achat && numCols[0]) mapping.prix_achat=numCols[0];
+    if(!mapping.prix_vente && numCols[1]) mapping.prix_vente=numCols[1];
+
     return mapping;
   }
 
@@ -599,7 +613,7 @@ export default function App({ loginOnly = false }){
         const raw=XLSX.utils.sheet_to_json(ws,{defval:""});
         if(!raw.length){setImportMsg("Fichier vide ou format non reconnu.");return;}
         const headers=Object.keys(raw[0]);
-        const mapping=detectColumns(headers);
+        const mapping=detectColumns(headers,raw);
         setImportModal({rows:raw,mapping,preview:raw.slice(0,3),headers});
         setImportMsg("");
       }catch(err){
@@ -1251,22 +1265,28 @@ export default function App({ loginOnly = false }){
               <button onClick={()=>setImportModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
             </div>
 
-            {/* Mapping détecté */}
+            {/* Mapping détecté + selects manuels */}
             <div style={{background:C.rowBg,borderRadius:12,padding:"14px 16px",marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Colonnes détectées</div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Correspondance des colonnes</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {[
-                  {key:"titre",label:"Titre / Nom",icon:"🏷️"},
-                  {key:"prix_achat",label:"Prix d'achat",icon:"🛒"},
-                  {key:"prix_vente",label:"Prix de vente",icon:"💰"},
-                  {key:"date",label:"Date",icon:"📅"},
-                ].map(({key,label,icon})=>(
-                  <div key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
-                    <span style={{fontSize:14}}>{icon}</span>
-                    <span style={{color:C.sub,minWidth:110}}>{label} :</span>
+                  {key:"titre",label:"Titre / Nom",icon:"🏷️",required:true},
+                  {key:"prix_achat",label:"Prix d'achat",icon:"🛒",required:true},
+                  {key:"prix_vente",label:"Prix de vente",icon:"💰",required:false},
+                ].map(({key,label,icon,required})=>(
+                  <div key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
+                    <span style={{fontSize:14,flexShrink:0}}>{icon}</span>
+                    <span style={{color:C.sub,minWidth:106,flexShrink:0}}>{label}{required?" *":""} :</span>
                     {importModal.mapping[key]
-                      ? <span style={{fontWeight:700,color:C.teal}}>✓ "{importModal.mapping[key]}"</span>
-                      : <span style={{color:C.label,fontStyle:"italic"}}>non détectée</span>
+                      ? <span style={{fontWeight:700,color:C.teal,flex:1}}>✓ « {importModal.mapping[key]} »</span>
+                      : <select
+                          value=""
+                          onChange={e=>setImportModal(m=>({...m,mapping:{...m.mapping,[key]:e.target.value||null}}))}
+                          style={{flex:1,fontSize:12,padding:"4px 8px",borderRadius:8,border:"1px solid #CBD5E0",background:"#fff",color:C.text,cursor:"pointer",minWidth:0}}
+                        >
+                          <option value="">— Choisir une colonne —</option>
+                          {importModal.headers.map(h=><option key={h} value={h}>{h}</option>)}
+                        </select>
                     }
                   </div>
                 ))}

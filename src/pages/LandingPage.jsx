@@ -328,6 +328,7 @@ export default function LandingPage() {
                   { label: "Dashboard complet" },
                   { label: "Calcul des marges" },
                   { label: "Historique des ventes" },
+                  { label: "📥📤 Import & export Excel de tes données" },
                   { label: "Support prioritaire" },
                 ].map(({ label }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
