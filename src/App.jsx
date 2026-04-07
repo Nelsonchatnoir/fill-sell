@@ -664,7 +664,7 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:48,marginBottom:16}}>👋</div>
                   <div style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-0.5px",marginBottom:12}}>Bienvenue sur Fill & Sell</div>
                   <div style={{fontSize:14,color:C.sub,lineHeight:1.7,marginBottom:32,maxWidth:380,margin:"0 auto 32px"}}>
-                    Suis tes profits Vinted en quelques secondes.<br/>Commence par ajouter ton premier article.
+                    Suis tes profits de revente en quelques secondes.<br/>Commence par ajouter ton premier article.
                   </div>
                   <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:36,flexWrap:"wrap"}}>
                     {[{icon:"📦",label:"Ajoute un article"},{icon:"💰",label:"Enregistre une vente"},{icon:"📊",label:"Analyse tes profits"}].map((step,i)=>(
@@ -924,7 +924,7 @@ export default function App({ loginOnly = false }){
             </div>
             <div>
               <Field label="Prix de vente" value={cSell} set={setCSell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
-              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix de vente sur Vinted ou autre plateforme</div>
+              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix de vente sur ta plateforme de revente</div>
             </div>
             <div>
               <Field label="Frais annexes" value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>

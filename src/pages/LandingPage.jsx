@@ -136,7 +136,7 @@ export default function LandingPage() {
 
         <div style={{ maxWidth: 740, margin: "0 auto", position: "relative" }}>
           <div className="hero-badge">
-            🚀 Déjà utilisé par des centaines de revendeurs Vinted
+            🚀 Déjà utilisé par des centaines de revendeurs
           </div>
 
           <h1 className="hero-title" style={{
@@ -144,7 +144,7 @@ export default function LandingPage() {
             letterSpacing: "-2px", lineHeight: 1.1, marginBottom: 24,
             textShadow: "0 2px 24px rgba(0,0,0,0.12)"
           }}>
-            Track tes profits Vinted<br />automatiquement 💰
+            Suis tes profits de revente<br />automatiquement 💰
           </h1>
 
           <p className="hero-sub" style={{
@@ -377,7 +377,7 @@ export default function LandingPage() {
           <img src="/logo.png" style={{ height: 26, filter: "brightness(0) invert(1) opacity(0.5)" }} alt="Fill & Sell" />
           <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "-0.3px" }}>Fill & Sell</span>
         </div>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)" }}>© 2026 Fill & Sell · Fait pour les revendeurs Vinted 🏷️</p>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)" }}>© 2026 Fill & Sell · Conçu pour les revendeurs 🏷️</p>
       </footer>
     </div>
   );
