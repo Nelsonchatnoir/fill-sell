@@ -193,13 +193,13 @@ const Empty=({text="Aucune donnée"})=>(
   </div>
 );
 
-const Kpi=({label,value,sub,color,icon})=>(
-  <div className="kpi card" style={{padding:"20px 20px 16px"}}>
+const Kpi=({label,value,sub,color,icon,featured})=>(
+  <div className="kpi card" style={{padding:"20px 20px 16px",...(featured?{background:"linear-gradient(135deg,#F0FAFA,#fff)",borderLeft:"4px solid #3EACA0"}:{})}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
       <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
       <div style={{width:34,height:34,background:color+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{icon}</div>
     </div>
-    <div style={{fontSize:30,fontWeight:900,color:color,letterSpacing:"-1px",lineHeight:1}}>{value}</div>
+    <div style={{fontSize:featured?36:30,fontWeight:900,color:color,letterSpacing:"-1px",lineHeight:1,...(featured?{textShadow:"0 0 20px rgba(62,172,160,0.3)"}:{})}}>{value}</div>
     {sub&&<div style={{fontSize:11,color:C.label,marginTop:8,fontWeight:500}}>{sub}</div>}
   </div>
 );
@@ -357,6 +357,7 @@ export default function App({ loginOnly = false }){
   const [resetStep,setResetStep]=useState(0);
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
+  const [showSettings,setShowSettings]=useState(false);
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
@@ -616,7 +617,10 @@ export default function App({ loginOnly = false }){
             {isPremium&&(
               <div style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",border:"1px solid rgba(255,255,255,0.35)",whiteSpace:"nowrap"}}>⭐ Premium</div>
             )}
-            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Déconnexion</button>
+            <button onClick={()=>setShowSettings(true)} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 11px",color:"#fff",fontSize:18,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+            >⚙️</button>
           </div>
         </div>
       </div>
@@ -689,7 +693,7 @@ export default function App({ loginOnly = false }){
             ):(
               <>
                 <div className="grid4">
-                  <Kpi label="Bénéfice ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente(s)`} color={C.teal} icon="💰"/>
+                  <Kpi label="Bénéfice ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente(s)`} color={C.teal} icon="💰" featured/>
                   <Kpi label="Marge moyenne" value={fmtp(avgM)} sub="toutes ventes" color={C.peach} icon="📊"/>
                   <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color={C.teal} icon="🏆"/>
                   <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
@@ -737,17 +741,17 @@ export default function App({ loginOnly = false }){
                 )}
 
                 <div style={{display:"flex",justifyContent:"center"}}>
-                  <div className="card" style={{padding:"28px 32px",border:`1px solid ${C.red}30`,background:"rgba(254,242,242,0.6)",borderRadius:20,maxWidth:480,width:"100%"}}>
-                    <div style={{fontSize:14,fontWeight:700,color:"#C53030",marginBottom:6}}>Zone dangereuse</div>
+                  <div className="card" style={{padding:"28px 32px",border:`1px solid ${C.red}30`,background:"rgba(254,242,242,0.6)",borderRadius:20,maxWidth:480,width:"100%",textAlign:"center"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#C53030",marginBottom:6}}>⚠️ Zone dangereuse</div>
                     <div style={{fontSize:13,color:C.sub,marginBottom:20,lineHeight:1.6}}>Cette action supprime définitivement toutes tes ventes et ton inventaire. Elle est irréversible.</div>
                     {resetStep===0&&(
-                      <button onClick={handleReset} style={{padding:"10px 22px",background:"transparent",border:`1.5px solid ${C.red}99`,borderRadius:12,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
+                      <button onClick={handleReset} style={{padding:"10px 22px",background:"transparent",border:`1.5px solid ${C.red}99`,borderRadius:12,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",display:"block",margin:"0 auto"}}
                         onMouseEnter={e=>{e.currentTarget.style.background="rgba(229,62,62,0.08)";}}
                         onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
                       >🗑️ Tout remettre à zéro</button>
                     )}
                     {resetStep===1&&(
-                      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
                         <div style={{fontSize:13,fontWeight:600,color:C.red}}>Confirme-tu ? Action irréversible.</div>
                         <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>Oui, tout supprimer</button>
                         <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>Annuler</button>
@@ -1061,6 +1065,64 @@ export default function App({ loginOnly = false }){
           </div>
         )}
       </div>
+
+      {/* ── SETTINGS DRAWER ── */}
+      {showSettings&&(
+        <>
+          <div onClick={()=>setShowSettings(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",backdropFilter:"blur(4px)",zIndex:200,animation:"fadeInBd 0.2s ease"}}/>
+          <div style={{
+            position:"fixed",zIndex:201,background:"#fff",
+            boxShadow:"0 24px 80px rgba(0,0,0,0.2)",
+            ...(window.innerWidth<768
+              ? {bottom:0,left:"50%",transform:"translateX(-50%)",width:"min(85vw,480px)",borderRadius:"20px 20px 0 0",padding:"28px 24px 40px",animation:"slideUp 0.25s cubic-bezier(0.32,0.72,0,1)"}
+              : {top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:380,borderRadius:20,padding:"32px 28px",animation:"fadeInBd 0.2s ease"}
+            )
+          }}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>Paramètres</div>
+              <button onClick={()=>setShowSettings(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
+            </div>
+
+            {/* Profil */}
+            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Mon compte</div>
+              <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
+              {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ Abonnement Premium actif</div>}
+            </div>
+
+            {/* Support */}
+            <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background=C.rowBg}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+            >
+              <span style={{fontSize:18,flexShrink:0}}>💬</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:600}}>Support</div>
+                <div style={{fontSize:12,color:C.sub}}>support@fillsell.app</div>
+              </div>
+            </a>
+
+            {/* Mentions légales */}
+            <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background=C.rowBg}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+            >
+              <span style={{fontSize:18,flexShrink:0}}>📄</span>
+              <div style={{fontSize:14,fontWeight:600}}>Mentions légales</div>
+            </a>
+
+            {/* Déconnexion */}
+            <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${C.red}88`,borderRadius:12,color:C.red,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(229,62,62,0.06)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+            >Se déconnecter</button>
+          </div>
+          <style>{`
+            @keyframes slideUp{from{transform:translateX(-50%) translateY(100%)}to{transform:translateX(-50%) translateY(0)}}
+            @keyframes fadeInBd{from{opacity:0}to{opacity:1}}
+          `}</style>
+        </>
+      )}
 
       <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.96)",backdropFilter:"blur(16px)",boxShadow:"0 -4px 24px rgba(0,0,0,0.08)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)",padding:"8px 12px",gap:4}}>
         {TABS_MOBILE.map(t=>(
