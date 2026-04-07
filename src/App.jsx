@@ -543,9 +543,9 @@ export default function App({ loginOnly = false }){
           method:"POST",
           headers:{
             "Content-Type":"application/json",
-            "Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            "Authorization":`Bearer ${session?.access_token}`,
+            "apikey":import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
-          body:JSON.stringify({access_token:session?.access_token}),
         }
       );
       const json=await res.json();

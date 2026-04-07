@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
 };
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
@@ -12,7 +12,7 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-// Admin client avec service role — bypass RLS pour tous les accès DB
+// Admin client — SERVICE_ROLE_KEY bypasse le RLS sur toutes les tables
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -24,34 +24,29 @@ serve(async (req) => {
   }
 
   try {
-    // Récupère l'access_token du user depuis le body
-    const body = await req.json();
-    const accessToken: string | undefined = body?.access_token;
+    // Extrait le JWT user depuis le header Authorization
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const jwt = authHeader.replace("Bearer ", "").trim();
 
-    if (!accessToken) {
-      return new Response(JSON.stringify({ error: "access_token manquant" }), {
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: "JWT manquant" }), {
         status: 401,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
-    // Vérifie l'identité du user via son JWT
-    const supabaseUser = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
-    );
+    // Vérifie le JWT et récupère l'user via le client admin (fiable, bypass RLS)
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
 
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
     if (authError || !user) {
-      console.error("[cancel-subscription] Auth failed:", authError?.message);
-      return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
+      console.error("[cancel-subscription] JWT invalide:", authError?.message);
+      return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
         status: 401,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
-    console.log("[cancel-subscription] User authenticated:", user.id);
+    console.log("[cancel-subscription] User OK:", user.id);
 
     // Récupère stripe_customer_id depuis profiles (admin = bypass RLS)
     const { data: profile, error: profileError } = await supabaseAdmin
@@ -61,51 +56,53 @@ serve(async (req) => {
       .single();
 
     if (profileError || !profile) {
-      console.error("[cancel-subscription] Profile fetch failed:", profileError?.message);
+      console.error("[cancel-subscription] Profile introuvable:", profileError?.message);
       return new Response(JSON.stringify({ error: "Profil introuvable" }), {
         status: 404,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
-    console.log("[cancel-subscription] Profile:", { stripe_customer_id: profile.stripe_customer_id, is_premium: profile.is_premium });
+    console.log("[cancel-subscription] Profile:", {
+      stripe_customer_id: profile.stripe_customer_id,
+      is_premium: profile.is_premium,
+    });
 
-    // Cas : pas de customer Stripe — force is_premium=false quand même
+    // Cas : pas de customer Stripe — force is_premium=false
     if (!profile.stripe_customer_id) {
-      const { error: updateError } = await supabaseAdmin
+      const { error: upErr } = await supabaseAdmin
         .from("profiles")
         .update({ is_premium: false })
         .eq("id", user.id);
-      console.log("[cancel-subscription] No stripe_customer_id — UPDATE result:", updateError?.message ?? "OK");
+      console.log("[cancel-subscription] No Stripe customer — UPDATE:", upErr?.message ?? "OK");
       return new Response(
         JSON.stringify({ success: true, period_end: null }),
         { headers: { ...CORS, "Content-Type": "application/json" } }
       );
     }
 
-    // Récupère les abonnements Stripe actifs
+    // Récupère les abonnements actifs Stripe
     const subscriptions = await stripe.subscriptions.list({
       customer: profile.stripe_customer_id,
       status: "active",
       limit: 5,
     });
 
-    console.log("[cancel-subscription] Active subscriptions:", subscriptions.data.length);
+    console.log("[cancel-subscription] Abonnements actifs:", subscriptions.data.length);
 
     let periodEnd: string | null = null;
 
     if (subscriptions.data.length > 0) {
-      // Annule avec cancel_at_period_end pour garder l'accès jusqu'à la fin
       const canceled = await stripe.subscriptions.update(subscriptions.data[0].id, {
         cancel_at_period_end: true,
       });
       if (canceled.cancel_at) {
         periodEnd = new Date(canceled.cancel_at * 1000).toLocaleDateString("fr-FR");
       }
-      console.log("[cancel-subscription] Subscription cancelled, period_end:", periodEnd);
+      console.log("[cancel-subscription] Stripe annulé, fin le:", periodEnd);
     }
 
-    // UPDATE is_premium=false via service role (bypass RLS)
+    // UPDATE is_premium=false via service role (bypass RLS garanti)
     const { error: updateError } = await supabaseAdmin
       .from("profiles")
       .update({ is_premium: false })
@@ -113,13 +110,13 @@ serve(async (req) => {
 
     if (updateError) {
       console.error("[cancel-subscription] UPDATE profiles FAILED:", updateError.message);
-      return new Response(JSON.stringify({ error: "Échec mise à jour profil : " + updateError.message }), {
-        status: 500,
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Échec mise à jour profil : " + updateError.message }),
+        { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log("[cancel-subscription] is_premium=false OK for user:", user.id);
+    console.log("[cancel-subscription] is_premium=false écrit pour user:", user.id);
 
     return new Response(
       JSON.stringify({ success: true, period_end: periodEnd }),
@@ -127,7 +124,7 @@ serve(async (req) => {
     );
 
   } catch (err) {
-    console.error("[cancel-subscription] Unexpected error:", err.message);
+    console.error("[cancel-subscription] Erreur inattendue:", err.message);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...CORS, "Content-Type": "application/json" },
