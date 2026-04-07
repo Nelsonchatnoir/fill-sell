@@ -193,13 +193,13 @@ const Empty=({text="Aucune donnée"})=>(
   </div>
 );
 
-const Kpi=({label,value,sub,color,icon,featured})=>(
-  <div className="kpi card" style={{padding:"20px 20px 16px",...(featured?{background:"linear-gradient(135deg,#F0FAFA,#fff)",borderLeft:"4px solid #3EACA0"}:{})}}>
+const Kpi=({label,value,sub,color,icon})=>(
+  <div className="kpi card" style={{padding:"20px 20px 16px"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
       <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
       <div style={{width:34,height:34,background:color+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{icon}</div>
     </div>
-    <div style={{fontSize:featured?36:30,fontWeight:900,color:color,letterSpacing:"-1px",lineHeight:1,...(featured?{textShadow:"0 0 20px rgba(62,172,160,0.3)"}:{})}}>{value}</div>
+    <div style={{fontSize:30,fontWeight:900,color:color,letterSpacing:"-1px",lineHeight:1}}>{value}</div>
     {sub&&<div style={{fontSize:11,color:C.label,marginTop:8,fontWeight:500}}>{sub}</div>}
   </div>
 );
@@ -725,7 +725,7 @@ export default function App({ loginOnly = false }){
             ):(
               <>
                 <div className="grid4">
-                  <Kpi label="Bénéfice ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente(s)`} color={C.teal} icon="💰" featured/>
+                  <Kpi label="Bénéfice ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente(s)`} color={C.teal} icon="💰"/>
                   <Kpi label="Marge moyenne" value={fmtp(avgM)} sub="toutes ventes" color={C.peach} icon="📊"/>
                   <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color={C.teal} icon="🏆"/>
                   <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
