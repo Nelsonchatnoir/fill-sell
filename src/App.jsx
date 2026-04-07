@@ -373,7 +373,9 @@ export default function App({ loginOnly = false }){
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
-    if(!p.error) setIsPremium(p.data?.is_premium||false);
+    const premiumValue=p.data?.is_premium===true;
+    console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
+    if(!p.error) setIsPremium(premiumValue);
     setLoading(false);
   }
 
@@ -547,7 +549,11 @@ export default function App({ loginOnly = false }){
       );
       const json=await res.json();
       if(json.error) throw new Error(json.error);
+      // Optimistic update immédiat
       setIsPremium(false);
+      // Resync depuis Supabase pour garantir la cohérence
+      await new Promise(r=>setTimeout(r,600));
+      await fetchAll(user.id);
       const msg=json.period_end
         ? `Abonnement annulé. Tu garderas l'accès jusqu'au ${json.period_end}.`
         : "Abonnement annulé. Tu garderas l'accès jusqu'à la fin de la période.";

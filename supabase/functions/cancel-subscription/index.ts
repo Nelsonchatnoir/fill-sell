@@ -77,14 +77,16 @@ serve(async (req) => {
     });
 
     if (subscriptions.data.length === 0) {
-      // Pas d'abonnement actif — met à jour quand même le profil
-      await supabaseAdmin
+      // Pas d'abonnement actif — force is_premium=false quand même
+      const { error: updateError } = await supabaseAdmin
         .from("profiles")
         .update({ is_premium: false })
         .eq("id", user.id);
+      if (updateError) console.error("[cancel-subscription] UPDATE profiles (no active sub):", updateError.message);
+      else console.log("[cancel-subscription] No active sub — is_premium set to false for user:", user.id);
 
       return new Response(
-        JSON.stringify({ success: true, message: "Aucun abonnement actif trouvé. Profil mis à jour." }),
+        JSON.stringify({ success: true, period_end: null }),
         { headers: { ...CORS, "Content-Type": "application/json" } }
       );
     }
@@ -98,11 +100,20 @@ serve(async (req) => {
       canceledAt.push(canceled.cancel_at as number);
     }
 
-    // Met is_premium à false dans profiles
-    await supabaseAdmin
+    // Met is_premium à false dans profiles (service role bypass RLS)
+    const { error: updateError } = await supabaseAdmin
       .from("profiles")
       .update({ is_premium: false })
       .eq("id", user.id);
+
+    if (updateError) {
+      console.error("[cancel-subscription] UPDATE profiles failed:", updateError.message);
+      return new Response(JSON.stringify({ error: "Échec mise à jour profil : " + updateError.message }), {
+        status: 500,
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+    console.log("[cancel-subscription] is_premium set to false for user:", user.id);
 
     const periodEnd = canceledAt[0]
       ? new Date(canceledAt[0] * 1000).toLocaleDateString("fr-FR")
