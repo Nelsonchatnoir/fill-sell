@@ -579,23 +579,27 @@ export default function App({ loginOnly = false }){
     const VENTE_RE=/vente|vendu|^pv$|prix.?vente|revente|cession/i;
     const mapping={titre:null,prix_achat:null,prix_vente:null};
 
-    // 1. Détection par header (regex insensible à la casse)
+    // 1. Détection par nom de colonne (regex)
     for(const h of headers){
       const s=String(h).trim();
       if(!mapping.titre && TITRE_RE.test(s)) mapping.titre=h;
       else if(!mapping.prix_achat && ACHAT_RE.test(s)) mapping.prix_achat=h;
       else if(!mapping.prix_vente && VENTE_RE.test(s)) mapping.prix_vente=h;
     }
+    console.log('[Import] detectColumns — headers:', headers, '→ mapping:', mapping);
 
-    // 2. Fallback contenu : colonnes entièrement numériques = prix
+    // 2. Fallback contenu : colonnes majoritairement numériques = prix
     const sample=rows.slice(0,10);
     const numCols=headers.filter(h=>{
       if(h===mapping.titre||h===mapping.prix_achat||h===mapping.prix_vente) return false;
-      return sample.some(r=>String(r[h]??'').trim()!=='') &&
-             sample.every(r=>{const v=String(r[h]??'').replace(',','.').trim();return v===''||!isNaN(parseFloat(v));});
+      const vals=sample.map(r=>String(r[h]??'').replace(',','.').trim()).filter(v=>v!=='');
+      if(!vals.length) return false;
+      const numericRatio=vals.filter(v=>!isNaN(parseFloat(v))).length/vals.length;
+      return numericRatio>=0.7;
     });
     if(!mapping.prix_achat && numCols[0]) mapping.prix_achat=numCols[0];
     if(!mapping.prix_vente && numCols[1]) mapping.prix_vente=numCols[1];
+    console.log('[Import] after numeric fallback:', mapping);
 
     return mapping;
   }
@@ -610,13 +614,42 @@ export default function App({ loginOnly = false }){
       try{
         const wb=XLSX.read(ev.target.result,{type:"array"});
         const ws=wb.Sheets[wb.SheetNames[0]];
-        const raw=XLSX.utils.sheet_to_json(ws,{defval:""});
-        if(!raw.length){setImportMsg("Fichier vide ou format non reconnu.");return;}
-        const headers=Object.keys(raw[0]);
-        const mapping=detectColumns(headers,raw);
-        setImportModal({rows:raw,mapping,preview:raw.slice(0,3),headers});
+
+        // Lecture brute en tableau de tableaux pour trouver la vraie ligne de headers
+        const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+        console.log('[Import] Raw matrix (10 first rows):', matrix.slice(0,10));
+
+        // Cherche la première ligne avec >= 2 cellules non vides et non 100% numériques
+        let headerRowIdx=-1;
+        let headerRow=[];
+        for(let i=0;i<Math.min(10,matrix.length);i++){
+          const row=matrix[i].map(c=>String(c??'').trim());
+          const nonNumeric=row.filter(c=>c!==''&&isNaN(parseFloat(c.replace(',','.'))));
+          if(nonNumeric.length>=2){headerRowIdx=i;headerRow=row;break;}
+        }
+        console.log('[Import] Header row detected at index',headerRowIdx,':',headerRow);
+
+        if(headerRowIdx<0||!headerRow.length){
+          setImportMsg("Impossible de détecter les en-têtes. Vérifiez que la première ligne contient les noms de colonnes.");
+          return;
+        }
+
+        // Convertit les lignes de données en objets clé→valeur
+        const rows=matrix.slice(headerRowIdx+1)
+          .filter(r=>r.some(c=>String(c??'').trim()!==''))
+          .map(r=>{
+            const obj={};
+            headerRow.forEach((h,ci)=>{obj[h]=r[ci]??'';});
+            return obj;
+          });
+
+        if(!rows.length){setImportMsg("Aucune donnée trouvée sous les en-têtes.");return;}
+
+        const mapping=detectColumns(headerRow,rows);
+        setImportModal({rows,mapping,preview:rows.slice(0,3),headers:headerRow.filter(h=>h!=='')});
         setImportMsg("");
       }catch(err){
+        console.error('[Import] Error:',err);
         setImportMsg("Erreur lecture fichier : "+err.message);
       }
     };
@@ -627,30 +660,28 @@ export default function App({ loginOnly = false }){
     if(!importModal) return;
     setImportLoading(true);
     const{rows,mapping}=importModal;
-    const toInsert=rows.map(r=>{
+    const now=new Date().toISOString();
+    const toInsert=rows.map((r,idx)=>{
       const titre=(mapping.titre?String(r[mapping.titre]):"").trim()||"Article importé";
       const buy=parseFloat(String(r[mapping.prix_achat]??0).replace(",","."))||0;
       const sell=mapping.prix_vente?parseFloat(String(r[mapping.prix_vente]??0).replace(",","."))||0:0;
       const hasSell=sell>0;
       const margin=hasSell?sell-buy:null;
       const marginPct=hasSell?(margin/sell)*100:null;
-      const rawDate=mapping.date?r[mapping.date]:null;
-      let dateStr=new Date().toISOString();
-      if(rawDate){
-        const d=new Date(rawDate);
-        if(!isNaN(d.getTime())) dateStr=d.toISOString();
-      }
       return{
+        id:Date.now()+idx,       // évite la contrainte NOT NULL sur id
         user_id:user.id,
         titre,
         prix_achat:buy,
         prix_vente:hasSell?sell:null,
-        margin:margin,
+        margin,
         margin_pct:marginPct,
         statut:hasSell?"vendu":"stock",
-        date:dateStr,
+        date:now,
+        created_at:now,
       };
     }).filter(r=>r.prix_achat>0||r.titre!=="Article importé");
+    console.log('[Import] Inserting',toInsert.length,'rows, sample:',toInsert[0]);
 
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
     setImportLoading(false);
