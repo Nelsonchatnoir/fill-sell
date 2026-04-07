@@ -199,7 +199,7 @@ const Kpi=({label,value,sub,color,icon})=>(
       <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
       <div style={{width:34,height:34,background:color+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{icon}</div>
     </div>
-    <div style={{fontSize:30,fontWeight:900,color:C.text,letterSpacing:"-1px",lineHeight:1}}>{value}</div>
+    <div style={{fontSize:30,fontWeight:900,color:color,letterSpacing:"-1px",lineHeight:1}}>{value}</div>
     {sub&&<div style={{fontSize:11,color:C.label,marginTop:8,fontWeight:500}}>{sub}</div>}
   </div>
 );
@@ -736,19 +736,24 @@ export default function App({ loginOnly = false }){
                   </div>
                 )}
 
-                <div className="card" style={{padding:"20px",border:`1px solid ${C.red}22`,background:C.redLight}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:8}}>⚠️ Zone dangereuse</div>
-                  <div style={{fontSize:12,color:C.sub,marginBottom:14}}>Supprime toutes tes ventes et ton inventaire de façon irréversible.</div>
-                  {resetStep===0&&(
-                    <button onClick={handleReset} style={{padding:"10px 20px",background:"transparent",border:`1px solid ${C.red}`,borderRadius:10,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer"}}>🗑️ Tout remettre à zéro</button>
-                  )}
-                  {resetStep===1&&(
-                    <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:C.red}}>Tu es sûr ? Action irréversible.</div>
-                      <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>Oui, tout supprimer</button>
-                      <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:700,cursor:"pointer"}}>Annuler</button>
-                    </div>
-                  )}
+                <div style={{display:"flex",justifyContent:"center"}}>
+                  <div className="card" style={{padding:"28px 32px",border:`1px solid ${C.red}30`,background:"rgba(254,242,242,0.6)",borderRadius:20,maxWidth:480,width:"100%"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#C53030",marginBottom:6}}>Zone dangereuse</div>
+                    <div style={{fontSize:13,color:C.sub,marginBottom:20,lineHeight:1.6}}>Cette action supprime définitivement toutes tes ventes et ton inventaire. Elle est irréversible.</div>
+                    {resetStep===0&&(
+                      <button onClick={handleReset} style={{padding:"10px 22px",background:"transparent",border:`1.5px solid ${C.red}99`,borderRadius:12,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.background="rgba(229,62,62,0.08)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
+                      >🗑️ Tout remettre à zéro</button>
+                    )}
+                    {resetStep===1&&(
+                      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                        <div style={{fontSize:13,fontWeight:600,color:C.red}}>Confirme-tu ? Action irréversible.</div>
+                        <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>Oui, tout supprimer</button>
+                        <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>Annuler</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

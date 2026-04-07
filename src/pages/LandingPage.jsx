@@ -294,7 +294,6 @@ export default function LandingPage() {
                   { label: "Dashboard", ok: true },
                   { label: "Calcul des marges", ok: true },
                   { label: "Historique des ventes", ok: true },
-                  { label: "Statistiques avancées", ok: false },
                   { label: "Support prioritaire", ok: false },
                 ].map(({ label, ok, value }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -329,7 +328,6 @@ export default function LandingPage() {
                   { label: "Dashboard complet" },
                   { label: "Calcul des marges" },
                   { label: "Historique des ventes" },
-                  { label: "Statistiques avancées" },
                   { label: "Support prioritaire" },
                 ].map(({ label }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
