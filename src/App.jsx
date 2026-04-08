@@ -641,6 +641,22 @@ export default function App({ loginOnly = false }){
     return mapping;
   }
 
+  // ── Filtre lignes parasites ───────────────────────────────────────────────
+  // Retourne null si la ligne est valide, sinon la catégorie de raison
+  function classifyParasite(row, mapping){
+    const PARASITE_RE=/total|sous.?total|somme|bilan|virement|re[cç]u|comptabilis|r[eé]sum[eé]|r[eé]cap|moyenne|average|\bnote\b|\binfo\b|NaN/i;
+    const buyStr=String(row[mapping.prix_achat]??'').replace(',','.').trim();
+    const buy=parseFloat(buyStr);
+    // Prix achat invalide ou nul
+    if(!mapping.prix_achat||!buyStr||isNaN(buy)||buy<=0) return 'prix manquant';
+    // Titre invalide : vide, chiffre pur, trop court, symbole
+    const titre=buildTitre(row,mapping.titres);
+    if(!titre||titre==='Article importé'||titre.length<2||/^[\d\s.,#*\-=]+$/.test(titre)) return 'titre invalide';
+    // Ligne parasite (totaux, résumés, virements…)
+    if(PARASITE_RE.test(titre)) return 'totaux/résumés';
+    return null;
+  }
+
   // Helper : construit le titre depuis mapping.titres (ÉTAPE 4)
   function buildTitre(r, titresCols){
     if(!titresCols.length) return "Article importé";
@@ -739,13 +755,23 @@ export default function App({ loginOnly = false }){
         const allHeaders=[...seenHeaders];
         const mapping=detectColumns(allHeaders,allRows);
 
-        const validCount=allRows.filter(r=>{
-          const buy=parseFloat(String(r[mapping.prix_achat]??0).replace(',','.'))||0;
-          const nom=buildTitre(r,mapping.titres);
-          return buy>0||nom!=="Article importé";
-        }).length;
+        // Filtre lignes parasites et compte par catégorie
+        const skipCounts={};
+        const cleanRows=allRows.filter(r=>{
+          const reason=classifyParasite(r,mapping);
+          if(reason){skipCounts[reason]=(skipCounts[reason]||0)+1;return false;}
+          return true;
+        });
+        const ignoredCount=Object.values(skipCounts).reduce((a,b)=>a+b,0);
+        console.log('[Import] Filtered:',cleanRows.length,'kept,',ignoredCount,'skipped',skipCounts);
 
-        setImportModal({rows:allRows,mapping,preview:allRows.slice(0,3),headers:allHeaders,validCount,sheetsRead});
+        if(!cleanRows.length){
+          const detail=Object.entries(skipCounts).map(([k,v])=>`${v} ${k}`).join(', ');
+          setImportMsg(`Aucune ligne valide après filtrage (${detail}).`);
+          return;
+        }
+
+        setImportModal({rows:cleanRows,mapping,preview:cleanRows.slice(0,3),headers:allHeaders,validCount:cleanRows.length,sheetsRead,ignoredCount,skipCounts});
         setImportMsg("");
       }catch(err){
         console.error('[Import] Error:',err);
@@ -784,7 +810,7 @@ export default function App({ loginOnly = false }){
         date:rowDate,
         created_at:now,
       };
-    }).filter(r=>r.prix_achat>0||r.titre!=="Article importé");
+    }).filter(r=>r.prix_achat>0&&r.titre!=="Article importé");
     console.log('[Import] Inserting',toInsert.length,'rows — sample:',toInsert[0]);
 
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
@@ -1472,6 +1498,16 @@ export default function App({ loginOnly = false }){
                 ))}
               </div>
             </div>
+
+            {/* Lignes ignorées */}
+            {importModal.ignoredCount>0&&(
+              <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#92400E",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{fontWeight:700}}>⚠️ {importModal.ignoredCount} ligne{importModal.ignoredCount>1?"s":""} ignorée{importModal.ignoredCount>1?"s":""} :</span>
+                {Object.entries(importModal.skipCounts).map(([reason,count])=>(
+                  <span key={reason} style={{background:"#FEF3C7",borderRadius:6,padding:"2px 8px",fontWeight:600}}>{count} {reason}</span>
+                ))}
+              </div>
+            )}
 
             {/* Aperçu 3 premières lignes avec valeurs calculées */}
             <div style={{marginBottom:16}}>
