@@ -660,54 +660,92 @@ export default function App({ loginOnly = false }){
     reader.onload=ev=>{
       try{
         const wb=XLSX.read(ev.target.result,{type:"array"});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
-        console.log('[Import] Raw matrix (first 10 rows):',matrix.slice(0,10));
 
-        // ÉTAPE 1 : Trouver la ligne headers
+        const MOIS={janvier:1,février:2,fevrier:2,mars:3,avril:4,mai:5,juin:6,juillet:7,août:8,aout:8,septembre:9,octobre:10,novembre:11,décembre:12,decembre:12};
+        const IGNORE_RE=/^(listes?|config|param[eè]tres?|r[eé]sum[eé]|summary|dashboard|feuil\d+|sheet\d+)$/i;
         const KEYWORDS=/nom|titre|article|marque|produit|achat|vente|prix|libell[eé]|d[eé]sign|item|brand|statut/i;
-        let bestRowIdx=-1, bestScore=-1, fallbackIdx=-1;
-        for(let i=0;i<Math.min(15,matrix.length);i++){
-          const row=matrix[i].map(c=>String(c??'').trim());
-          const nonEmpty=row.filter(c=>c!=='');
-          const nonNumeric=nonEmpty.filter(c=>isNaN(parseFloat(c.replace(',','.'))));
-          if(nonNumeric.length<2) continue;
-          if(fallbackIdx<0&&nonEmpty.length>=3) fallbackIdx=i;
-          const score=nonNumeric.filter(c=>KEYWORDS.test(c)).length;
-          if(score>bestScore){bestScore=score;bestRowIdx=i;}
-        }
-        const headerRowIdx=bestRowIdx>=0?bestRowIdx:fallbackIdx;
-        console.log('[Import] Header row index:',headerRowIdx,'score:',bestScore);
 
-        if(headerRowIdx<0){
-          setImportMsg("Impossible de détecter les en-têtes. Vérifiez que le fichier contient des noms de colonnes.");
+        const allRows=[];
+        const seenHeaders=new Set();
+        let sheetsRead=0;
+
+        for(const sheetName of wb.SheetNames){
+          if(IGNORE_RE.test(sheetName.trim())){
+            console.log(`[Import] Sheet "${sheetName}" — ignored (config/list sheet)`);
+            continue;
+          }
+
+          const ws=wb.Sheets[sheetName];
+          const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+          console.log(`[Import] Sheet "${sheetName}" — ${matrix.length} rows`);
+
+          // Date déduite du nom de feuille (ex: "Janvier" → 2026-01-01)
+          const monthNum=MOIS[sheetName.trim().toLowerCase()];
+          const sheetDate=monthNum
+            ? new Date(new Date().getFullYear(),monthNum-1,1).toISOString()
+            : null;
+
+          // ÉTAPE 1 : Trouver la ligne headers
+          let bestRowIdx=-1, bestScore=-1, fallbackIdx=-1;
+          for(let i=0;i<Math.min(15,matrix.length);i++){
+            const row=matrix[i].map(c=>String(c??'').trim());
+            const nonEmpty=row.filter(c=>c!=='');
+            const nonNumeric=nonEmpty.filter(c=>isNaN(parseFloat(c.replace(',','.'))));
+            if(nonNumeric.length<2) continue;
+            if(fallbackIdx<0&&nonEmpty.length>=3) fallbackIdx=i;
+            const score=nonNumeric.filter(c=>KEYWORDS.test(c)).length;
+            if(score>bestScore){bestScore=score;bestRowIdx=i;}
+          }
+          const headerRowIdx=bestRowIdx>=0?bestRowIdx:fallbackIdx;
+          if(headerRowIdx<0){
+            console.log(`[Import] Sheet "${sheetName}" — no headers found, skipping`);
+            continue;
+          }
+
+          const headerRow=matrix[headerRowIdx].map(c=>String(c??'').trim());
+          const rows=matrix.slice(headerRowIdx+1)
+            .filter(r=>r.some(c=>String(c??'').trim()!==''))
+            .map(r=>{
+              const obj={};
+              headerRow.forEach((h,ci)=>{if(h) obj[h]=r[ci]??'';});
+              if(sheetDate) obj.__sheetDate=sheetDate;
+              return obj;
+            });
+
+          if(!rows.length){
+            console.log(`[Import] Sheet "${sheetName}" — no data rows, skipping`);
+            continue;
+          }
+
+          // Vérifie que la feuille a au moins une colonne prix
+          const sheetHeaders=headerRow.filter(h=>h!=='');
+          const sheetMapping=detectColumns(sheetHeaders,rows);
+          if(!sheetMapping.prix_achat){
+            console.log(`[Import] Sheet "${sheetName}" — no price column detected, skipping`);
+            continue;
+          }
+
+          sheetsRead++;
+          allRows.push(...rows);
+          sheetHeaders.forEach(h=>seenHeaders.add(h));
+          console.log(`[Import] Sheet "${sheetName}" — added ${rows.length} rows`);
+        }
+
+        if(!allRows.length){
+          setImportMsg("Aucune donnée valide trouvée dans le fichier.");
           return;
         }
 
-        const headerRow=matrix[headerRowIdx].map(c=>String(c??'').trim());
-        console.log('[Import] Header row:',headerRow);
+        const allHeaders=[...seenHeaders];
+        const mapping=detectColumns(allHeaders,allRows);
 
-        // Convertit les lignes de données en objets clé→valeur
-        const rows=matrix.slice(headerRowIdx+1)
-          .filter(r=>r.some(c=>String(c??'').trim()!==''))
-          .map(r=>{
-            const obj={};
-            headerRow.forEach((h,ci)=>{if(h) obj[h]=r[ci]??'';});
-            return obj;
-          });
-
-        if(!rows.length){setImportMsg("Aucune donnée trouvée sous les en-têtes.");return;}
-
-        const mapping=detectColumns(headerRow.filter(h=>h!==''),rows);
-
-        // Calcule le nombre de lignes valides pour l'affichage
-        const validCount=rows.filter(r=>{
+        const validCount=allRows.filter(r=>{
           const buy=parseFloat(String(r[mapping.prix_achat]??0).replace(',','.'))||0;
           const nom=buildTitre(r,mapping.titres);
           return buy>0||nom!=="Article importé";
         }).length;
 
-        setImportModal({rows,mapping,preview:rows.slice(0,3),headers:headerRow.filter(h=>h!==''),validCount});
+        setImportModal({rows:allRows,mapping,preview:allRows.slice(0,3),headers:allHeaders,validCount,sheetsRead});
         setImportMsg("");
       }catch(err){
         console.error('[Import] Error:',err);
@@ -733,6 +771,7 @@ export default function App({ loginOnly = false }){
       const hasSell=sell>0;
       const margin=hasSell?sell-buy:null;
       const marginPct=hasSell?(margin/sell)*100:null;
+      const rowDate=r.__sheetDate||now;
       return{
         id:Date.now()+idx,
         user_id:user.id,
@@ -742,7 +781,7 @@ export default function App({ loginOnly = false }){
         margin,
         margin_pct:marginPct,
         statut,
-        date:now,
+        date:rowDate,
         created_at:now,
       };
     }).filter(r=>r.prix_achat>0||r.titre!=="Article importé");
@@ -761,7 +800,7 @@ export default function App({ loginOnly = false }){
         prix_achat:row.prix_achat,
         prix_vente:row.prix_vente,
         benefice:row.margin,
-        date:now.split('T')[0],
+        date:(row.date||now).split('T')[0],
       }));
     if(ventesRows.length){
       const{error:ve}=await supabase.from('ventes').insert(ventesRows);
@@ -1396,7 +1435,7 @@ export default function App({ loginOnly = false }){
             {/* ÉTAPE 6 : Mapping détecté */}
             <div style={{background:C.rowBg,borderRadius:12,padding:"14px 16px",marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
-                Correspondance — <span style={{color:C.teal}}>{importModal.validCount} ligne{importModal.validCount>1?"s":""} valide{importModal.validCount>1?"s":""}</span>
+                Correspondance — <span style={{color:C.teal}}>{importModal.sheetsRead} feuille{importModal.sheetsRead>1?"s":""} lue{importModal.sheetsRead>1?"s":""}, {importModal.validCount} ligne{importModal.validCount>1?"s":""} valide{importModal.validCount>1?"s":""} trouvée{importModal.validCount>1?"s":""}</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {/* Titre (peut être multiple) */}
