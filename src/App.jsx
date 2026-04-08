@@ -356,6 +356,8 @@ export default function App({ loginOnly = false }){
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [resetStep,setResetStep]=useState(0);
+  const [forgotMode,setForgotMode]=useState(false);
+  const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
@@ -877,6 +879,14 @@ export default function App({ loginOnly = false }){
     navigate("/app");
   }
 
+  async function handleForgot(){
+    if(!email){setForgotMsg("Saisis ton email ci-dessus.");return;}
+    setForgotMsg("");
+    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://fillsell.app/reset-password"});
+    if(error){setForgotMsg("Erreur : "+error.message);return;}
+    setForgotMsg("📧 Email envoyé ! Vérifie ta boîte mail.");
+  }
+
   async function handleSignup(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{data,error}=await supabase.auth.signUp({email,password});
@@ -920,16 +930,44 @@ export default function App({ loginOnly = false }){
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-          <input type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)}
-            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-          <button onClick={handleLogin}
-            style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
-            Se connecter
-          </button>
-          <button onClick={handleSignup}
-            style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}}>
-            Créer un compte
-          </button>
+          {!forgotMode&&(
+            <>
+              <input type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+              <button onClick={handleLogin}
+                style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
+                Se connecter
+              </button>
+              <button onClick={handleSignup}
+                style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}}>
+                Créer un compte
+              </button>
+              <div style={{textAlign:"center"}}>
+                <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:C.teal,cursor:"pointer",textDecoration:"underline"}}>
+                  Mot de passe oublié ?
+                </span>
+              </div>
+            </>
+          )}
+          {forgotMode&&(
+            <>
+              <button onClick={handleForgot}
+                style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
+                Envoyer le lien de réinitialisation
+              </button>
+              {forgotMsg&&(
+                <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?C.teal:C.red,fontWeight:600}}>
+                  {forgotMsg}
+                </div>
+              )}
+              <div style={{textAlign:"center"}}>
+                <span onClick={()=>{setForgotMode(false);setForgotMsg("");}} style={{fontSize:13,color:C.sub,cursor:"pointer"}}>
+                  ← Retour
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
