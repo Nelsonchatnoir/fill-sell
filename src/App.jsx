@@ -5,27 +5,34 @@ import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
-ChartJS.defaults.font.family = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif";
+ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
 const C = {
-  teal:"#3EACA0", tealLight:"#E8F7F6",
-  peach:"#E8956D",
+  // Design tokens Fill & Sell
+  primary:"#1D9E75",
+  dark:"#0F6E56",
+  soft:"#5DCAA5",
+  muted:"#A3A9A6",
+  bg:"#F5F6F5",
+  // Couleurs d'UI
+  teal:"#4ECDC4", tealLight:"#E8F5F0",
+  peach:"#F9A26C",
   white:"#FFFFFF",
-  text:"#0F172A", sub:"#475569", label:"#94A3B8",
+  text:"#0D0D0D", sub:"#6B7280", label:"#A3A9A6",
   border:"rgba(0,0,0,0.06)",
   red:"#E53E3E", redLight:"#FFF5F5",
-  green:"#38A169", greenLight:"#F0FFF4",
-  orange:"#DD6B20", orangeLight:"#FFFAF0",
-  rowBg:"#F8FAFC", rowHover:"#F1F5F9",
+  green:"#1D9E75", greenLight:"#E8F5F0",
+  orange:"#F9A26C", orangeLight:"#FFF4EE",
+  rowBg:"#F5F6F5", rowHover:"#EAEBEA",
 };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;}
-  body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#F4F6F9;min-height:100vh;touch-action:pan-y;}
+  body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#F5F6F5;min-height:100vh;touch-action:pan-y;}
   *{box-sizing:border-box;max-width:100%;}
   svg,svg *{max-width:none!important;overflow:visible;}
   *::-webkit-scrollbar{display:none;}
@@ -75,9 +82,9 @@ function SwipeRow({onDelete, children}){
 
   if(!isMobile){
     return(
-      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12,transition:"background 0.15s"}}
-        onMouseEnter={e=>{e.currentTarget.style.background="#F3F4F6";e.currentTarget.querySelector('.delx').style.opacity='1';}}
-        onMouseLeave={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity='0';}}
+      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"background 0.15s",marginBottom:0}}
+        onMouseEnter={e=>{e.currentTarget.style.background="#F5F6F5";e.currentTarget.querySelector('.delx').style.opacity='1';}}
+        onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.querySelector('.delx').style.opacity='0';}}
       >
         {children}
         <button className="delx" onClick={onDelete}
@@ -110,11 +117,11 @@ function SwipeRow({onDelete, children}){
     setTimeout(()=>onDelete(),200);
   }
   return(
-    <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%"}}>
+    <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
       <div ref={bgRef} onClick={handleDelClick} style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}>
         <span style={{fontSize:22}}>🗑️</span>
       </div>
-      <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#F9FAFB",borderRadius:12}}
+      <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12}}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         {children}
       </div>
@@ -151,7 +158,7 @@ function PremiumBanner({ userEmail, compact=false }){
   if(compact){
     return(
       <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"7px 14px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",whiteSpace:"nowrap",flexShrink:0}}
+        style={{padding:"4px 10px",background:loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.18)",color:"#fff",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,fontSize:10,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.2s",whiteSpace:"nowrap",flexShrink:0}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
@@ -194,14 +201,11 @@ const Empty=({text="Aucune donnée"})=>(
   </div>
 );
 
-const Kpi=({label,value,sub,color,icon})=>(
-  <div className="kpi card" style={{padding:"20px 20px 16px"}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-      <span style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
-      <div style={{width:34,height:34,background:color+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{icon}</div>
-    </div>
-    <div style={{fontSize:30,fontWeight:900,color:color,letterSpacing:"-1px",lineHeight:1}}>{value}</div>
-    {sub&&<div style={{fontSize:11,color:C.label,marginTop:8,fontWeight:500}}>{sub}</div>}
+const Kpi=({label,value,sub,color})=>(
+  <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+    <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
+    {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#A3A9A6",marginTop:4}}>{sub}</div>}
   </div>
 );
 
@@ -411,7 +415,7 @@ export default function App({ loginOnly = false }){
   const margin=sell-buy-ship;
   const marginPct=sell>0?(margin/sell)*100:0;
   const isValid=sell>0&&buy>=0;
-  const mc=margin<0?C.red:C.teal;
+  const mc=margin<0?C.red:C.green;
 
   const now=new Date();
 
@@ -458,18 +462,18 @@ export default function App({ loginOnly = false }){
   const mData=buildChartData(sales,selectedRange);
   const hasData=sales.length>0;
 
-  const _f={family:"'Plus Jakarta Sans', -apple-system, sans-serif",size:11};
-  const _tip={backgroundColor:'#ffffff',titleColor:'#94A3B8',borderColor:'rgba(0,0,0,0.09)',borderWidth:1,padding:12,cornerRadius:12,displayColors:false,titleFont:{..._f,size:11,weight:'600'},bodyFont:{..._f,size:14,weight:'800'}};
+  const _f={family:"'Nunito', -apple-system, sans-serif",size:11};
+  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
   const _scales=(unit)=>({
-    x:{grid:{display:false},border:{display:false},ticks:{color:'#94A3B8',font:_f}},
-    y:{grid:{color:'#F1F5F9',drawTicks:false},border:{display:false},ticks:{color:'#94A3B8',font:_f,padding:8,callback:v=>v+unit}},
+    x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},
+    y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:v=>v+unit}},
   });
   const barChartData={
     labels:mData.map(d=>d.name),
     datasets:[{
       data:mData.map(d=>d.profit),
-      backgroundColor:'#3EACA0',
-      hoverBackgroundColor:'#35958a',
+      backgroundColor:'#1D9E75',
+      hoverBackgroundColor:'#0F6E56',
       borderRadius:8,
       borderSkipped:false,
     }],
@@ -478,11 +482,11 @@ export default function App({ loginOnly = false }){
     labels:mData.map(d=>d.name),
     datasets:[{
       data:mData.map(d=>d['Marge %']),
-      borderColor:'#E8956D',
-      backgroundColor:'rgba(232,149,109,0.10)',
+      borderColor:'#F9A26C',
+      backgroundColor:'rgba(249,162,108,0.10)',
       borderWidth:3,
       tension:0.4,
-      pointBackgroundColor:'#E8956D',
+      pointBackgroundColor:'#F9A26C',
       pointBorderColor:'#ffffff',
       pointBorderWidth:2,
       pointRadius:4,
@@ -493,13 +497,13 @@ export default function App({ loginOnly = false }){
   const barOpts={
     responsive:true,maintainAspectRatio:false,
     animation:{duration:700,easing:'easeOutQuart'},
-    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#3EACA0',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(2).replace('.',',')} €`}}},
+    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#1D9E75',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(2).replace('.',',')} €`}}},
     scales:_scales('€'),
   };
   const lineOpts={
     responsive:true,maintainAspectRatio:false,
     animation:{duration:700,easing:'easeOutQuart'},
-    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#E8956D',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(1)} %`}}},
+    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#F9A26C',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(1)} %`}}},
     scales:_scales('%'),
   };
   const totalM=sales.reduce((a,s)=>a+s.margin,0);
@@ -915,13 +919,13 @@ export default function App({ loginOnly = false }){
   ];
 
   if(authLoading)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)"}}>
       <div style={{color:"#fff",fontSize:18,fontWeight:700}}>Chargement...</div>
     </div>
   );
 
   if(!user||loginOnly)return(
-    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:`linear-gradient(135deg,${C.teal} 0%,${C.peach} 100%)`,overflow:"hidden",boxSizing:"border-box"}}>
+    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
@@ -977,27 +981,30 @@ export default function App({ loginOnly = false }){
     <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
-      <div style={{background:"linear-gradient(135deg,#3EACA0ee 0%,#E8956Ddd 100%)",boxShadow:"0 6px 24px rgba(0,0,0,0.12)",backdropFilter:"blur(8px)"}}>
-        <div className="wrap" style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:72,padding:"0 24px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <img src="/logo.png" style={{height:42,objectFit:"contain",filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.2))"}} alt="Fill & Sell"/>
-            <div style={{fontSize:13.5,color:"rgba(255,255,255,0.95)",fontWeight:600,letterSpacing:"0.3px",fontStyle:"italic"}}>Maximise tes profits 📈</div>
+      <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8,maxWidth:1280,margin:"0 auto"}}>
+          {/* Colonne gauche : brand */}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:30,height:30,background:"rgba(255,255,255,0.22)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",fontStyle:"italic",flexShrink:0}}>F&S</div>
+            <div style={{fontSize:14,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div className="header-stats" style={{gap:12}}>
-              {headerStats.map((b,i)=>(
-                <div key={i} style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(16px)",borderRadius:14,padding:"7px 18px",textAlign:"center",border:"1px solid rgba(255,255,255,0.28)",transition:"all 0.2s ease",cursor:"default"}}
-                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.28)";e.currentTarget.style.transform="translateY(-3px)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.18)";e.currentTarget.style.transform="translateY(0)";}}>
-                  <div style={{fontSize:9,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{b.label}</div>
-                  <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{b.value}</div>
-                </div>
-              ))}
+          {/* Colonne centre : stats dynamiques */}
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-0.02em",lineHeight:1}}>
+              {fmt(tm.profit)}<span style={{opacity:0.65,fontSize:12,fontWeight:700}}> profit</span>
             </div>
-            {isPremium&&(
-              <div style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",border:"1px solid rgba(255,255,255,0.35)",whiteSpace:"nowrap"}}>⭐ Premium</div>
+            <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",marginTop:2,whiteSpace:"nowrap"}}>
+              {tm.count} vente{tm.count!==1?"s":""} ce mois
+            </div>
+          </div>
+          {/* Colonne droite : bouton premium + settings */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6}}>
+            {!isPremium?(
+              <PremiumBanner userEmail={user?.email} compact/>
+            ):(
+              <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>⭐ Premium</div>
             )}
-            <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:10,padding:"6px 11px",color:"#fff",fontSize:18,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}
+            <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"5px 9px",color:"#fff",fontSize:16,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
               onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.2)"}
             >⚙️</button>
@@ -1005,21 +1012,19 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="desktop-nav" style={{background:"rgba(255,255,255,0.96)",backdropFilter:"blur(16px)",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+      <div className="desktop-nav" style={{background:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
         <div className="wrap">
-          <div style={{display:"flex",justifyContent:"center",padding:"10px 0",gap:4}}>
-            {["📊 Dashboard","📦 Inventaire","🧮 Calculer","📋 Historique"].map((t,i)=>(
+          <div style={{display:"flex",padding:"0 14px",gap:0,overflowX:"auto"}}>
+            {["Dashboard","Inventaire","Calculer","Historique"].map((t,i)=>(
               <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
-                style={{padding:"9px 20px",background:tab===i?"#fff":"transparent",border:"none",borderRadius:10,color:tab===i?C.teal:C.sub,fontSize:13,fontWeight:tab===i?700:500,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease",boxShadow:tab===i?"0 1px 6px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)":"none"}}
-                onMouseEnter={e=>{if(i!==tab){e.currentTarget.style.background="rgba(0,0,0,0.04)";e.currentTarget.style.color=C.text;}}}
-                onMouseLeave={e=>{if(i!==tab){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.sub;}}}
+                style={{padding:"9px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:12,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease",marginRight:4}}
               >{t}</button>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"28px 20px 72px"}}>
+      <div className="wrap page-pad" style={{padding:"18px 14px 80px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)"}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
@@ -1072,35 +1077,57 @@ export default function App({ loginOnly = false }){
               </div>
             ):(
               <>
-                <div className="grid4">
-                  <Kpi label="Bénéfice ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente(s)`} color={C.teal} icon="💰"/>
-                  <Kpi label="Marge moyenne" value={fmtp(avgM)} sub="toutes ventes" color={C.peach} icon="📊"/>
-                  <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color={C.teal} icon="🏆"/>
-                  <Kpi label="Capital investi" value={fmt(invested)} sub={<span><span style={{display:"block",color:C.green}}>{fmt(recovered)} récupérés</span><span style={{display:"block",color:C.sub,marginTop:2}}>{stock.length} en stock</span></span>} color={C.orange} icon="💸"/>
+                {/* Badge mois */}
+                <div>
+                  <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:10}}>
+                    <div style={{width:4,height:4,borderRadius:"50%",background:"#1D9E75",flexShrink:0}}/>
+                    {MONTHS_FR[now.getMonth()]} {now.getFullYear()}
+                  </div>
+                  <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
+                    T'as vendu <span style={{color:"#1D9E75"}}>quoi</span> ?
+                  </div>
+                </div>
+
+                {/* Hero card profit net */}
+                <div style={{background:"#0F6E56",borderRadius:14,padding:18,marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>Profit net</div>
+                    <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} ce mois</div>
+                  </div>
+                  <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{sales.length} vente{sales.length!==1?"s":""} · marge moy. {fmt(sales.length?totalM/sales.length:0)}</div>
+                </div>
+
+                {/* KPIs 2 colonnes */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <Kpi label="Ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente${(tm?.count||0)!==1?"s":""}`} color="#1D9E75"/>
+                  <Kpi label="Marge moy." value={fmtp(avgM)} sub="toutes ventes" color="#5DCAA5"/>
+                  <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color="#1D9E75"/>
+                  <Kpi label="En stock" value={`${stock.length}`} sub={`${fmt(stockVal)} investi`} color="#A3A9A6"/>
                 </div>
 
                 {/* Sélecteur de période */}
                 <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}>
                   {['7j','1M','6M','1A','YTD'].map(r=>(
-                    <button key={r} onClick={()=>setSelectedRange(r)} style={{padding:"5px 14px",borderRadius:8,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",background:selectedRange===r?C.teal:"#EDF2F7",color:selectedRange===r?"#fff":C.sub}}>
+                    <button key={r} onClick={()=>setSelectedRange(r)} style={{padding:"5px 12px",borderRadius:8,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",background:selectedRange===r?"#1D9E75":"#fff",color:selectedRange===r?"#fff":"#A3A9A6",boxShadow:selectedRange===r?"none":"0 1px 3px rgba(0,0,0,0.06)"}}>
                       {r}
                     </button>
                   ))}
                 </div>
 
                 <div className="grid2">
-                  <div className="card" style={{padding:"20px"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Bénéfices</div>
-                    <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>
+                  <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>Bénéfices</div>
+                    <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>
                       {selectedRange==='7j'?"7 derniers jours":selectedRange==='1M'?"30 derniers jours":selectedRange==='1A'?"12 derniers mois":selectedRange==='YTD'?"Depuis le 1er janvier":"6 derniers mois"}
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
                     </div>
                   </div>
-                  <div className="card" style={{padding:"20px"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:4,letterSpacing:"-0.2px"}}>Évolution marge %</div>
-                    <div style={{fontSize:11,color:C.label,marginBottom:14,fontWeight:500}}>
+                  <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>Évolution marge %</div>
+                    <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>
                       {selectedRange==='7j'?"7 derniers jours":selectedRange==='1M'?"30 derniers jours":selectedRange==='1A'?"12 derniers mois":selectedRange==='YTD'?"Depuis le 1er janvier":"6 derniers mois"}
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
@@ -1110,21 +1137,20 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {hasData&&(
-                  <div className="card" style={{padding:"20px"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:16}}>Dernières ventes</div>
+                  <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>Dernières ventes</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {sales.slice(0,5).map(s=>{
                         const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
                         return(
                           <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
-                            <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                              <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
+                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                              <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
                             </div>
                             <div style={{textAlign:"right",paddingRight:36}}>
-                              <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
-                              <div style={{fontSize:11,color:C.sub}}>{fmtp(s.marginPct)}</div>
+                              <div style={{fontWeight:900,fontSize:14,color:smc}}>{smc===C.green?"+":""}{fmt(s.margin)}</div>
+                              <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(s.marginPct)}</div>
                             </div>
                           </SwipeRow>
                         );
@@ -1159,7 +1185,7 @@ export default function App({ loginOnly = false }){
 
         {tab===1&&(
           <div className="grid-inv">
-            <div className="card" style={{padding:"20px",display:"flex",flexDirection:"column",gap:12,border:items.length===0?`1.5px solid ${C.teal}44`:"1px solid rgba(0,0,0,0.05)",boxShadow:items.length===0?"0 0 0 4px "+C.teal+"11, 0 10px 30px rgba(0,0,0,0.08)":"0 10px 30px rgba(0,0,0,0.08)"}}>
+            <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
                   <div style={{fontSize:28,marginBottom:8}}>🧩</div>
@@ -1193,7 +1219,7 @@ export default function App({ loginOnly = false }){
               )}
               {!isPremium&&items.length>=20
                 ? <PremiumBanner userEmail={user?.email}/>
-                : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":C.teal} full>
+                : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
                     {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":"Ajouter à l'inventaire"}
                   </Btn>
               }
@@ -1218,7 +1244,7 @@ export default function App({ loginOnly = false }){
 
               {/* ── Barre Import / Export ── */}
               {isPremium?(
-                <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                   <div style={{flex:1,fontSize:13,fontWeight:700,color:C.text}}>Outils Premium</div>
                   <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
                   <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:C.tealLight,color:C.teal,border:`1px solid ${C.teal}44`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
@@ -1232,44 +1258,43 @@ export default function App({ loginOnly = false }){
                   {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
                 </div>
               ):(
-                <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33"}}>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:12,border:"1px solid rgba(249,162,108,0.3)"}}>
                   <span style={{fontSize:18}}>🔒</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>Import / Export Excel</div>
-                    <div style={{fontSize:11,color:C.sub}}>Fonctionnalité Premium — importe et exporte tes données</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>Import / Export Excel</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6"}}>Fonctionnalité Premium — importe et exporte tes données</div>
                   </div>
                   <PremiumBanner userEmail={user?.email} compact/>
                 </div>
               )}
 
-              <div className="card" style={{padding:"20px"}}>
+              <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>📦 En stock</div>
-                    {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#E8956D22",color:"#E8956D",borderRadius:99,padding:"2px 8px",border:"1px solid #E8956D44"}}>Plan gratuit</span>}
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>En stock</div>
+                    {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>Plan gratuit</span>}
                   </div>
-                  <div style={{background:C.orangeLight,color:C.orange,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
+                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
                 {stock.length===0?<Empty text="Ton inventaire apparaîtra ici"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stock.map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
-                        <div style={{width:36,height:36,background:C.orangeLight,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📦</div>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          <div style={{fontSize:11,color:C.sub,marginTop:2}}>Investi {fmt(item.buy)}</div>
+                          <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi {fmt(item.buy)}</div>
                         </div>
-                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:C.tealLight,color:C.teal,border:"none",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
+                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
                       </SwipeRow>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div className="card" style={{padding:"20px"}}>
+              <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>✅ Vendus</div>
-                  <div style={{background:C.greenLight,color:C.green,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{sold.length} vente{sold.length>1?"s":""}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>Vendus</div>
+                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{sold.length} vente{sold.length>1?"s":""}</div>
                 </div>
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1277,14 +1302,13 @@ export default function App({ loginOnly = false }){
                       const smc=item.margin<0?C.red:C.green;
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
-                          <div style={{width:36,height:36,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📈</div>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                            <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
+                            <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
-                            <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
-                            <div style={{fontSize:11,color:C.sub}}>{fmtp(item.marginPct)}</div>
+                            <div style={{fontWeight:900,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
+                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(item.marginPct)}</div>
                           </div>
                         </SwipeRow>
                       );
@@ -1301,10 +1325,10 @@ export default function App({ loginOnly = false }){
 
             {/* ── Bloc résultat principal ── */}
             <div style={{
-              background:isValid?(margin>=0?"linear-gradient(135deg,#F0FFF4,#E6FFFA)":"linear-gradient(135deg,#FFF5F5,#FED7D7)"):"#fff",
-              borderRadius:20,padding:"28px 24px",
-              border:`1.5px solid ${isValid?(margin>=0?C.green:C.red)+"44":"#E2E8F0"}`,
-              boxShadow:"0 4px 20px rgba(0,0,0,0.06)",
+              background:isValid?(margin>=0?"#0F6E56":"#fff"):"#fff",
+              borderRadius:12,padding:"14px 16px",
+              border:isValid?"none":`1px solid rgba(0,0,0,0.06)`,
+              boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
               transition:"all 0.3s ease"
             }}>
               {!isValid?(
@@ -1315,28 +1339,20 @@ export default function App({ loginOnly = false }){
                 </div>
               ):(
                 <>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div>
-                      <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Profit estimé</div>
-                      <div style={{fontSize:52,fontWeight:900,color:mc,letterSpacing:"-2.5px",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
+                      <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Profit estimé</div>
+                      <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
                     </div>
-                    <div style={{background:"rgba(255,255,255,0.8)",borderRadius:16,padding:"14px 20px",textAlign:"center",border:"1px solid rgba(0,0,0,0.06)",backdropFilter:"blur(8px)"}}>
-                      <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Rentabilité</div>
-                      <div style={{fontSize:32,fontWeight:900,color:mc,letterSpacing:"-1px"}}>{fmtp(marginPct)}</div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Rentabilité</div>
+                      <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
                     </div>
                   </div>
-                  {/* Barre de progression */}
-                  <div style={{height:6,background:"rgba(0,0,0,0.06)",borderRadius:99,marginBottom:14}}>
-                    <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:margin<0?C.red:`linear-gradient(90deg,${C.teal},${C.peach})`,borderRadius:99,transition:"width 0.4s ease"}}/>
+                  <div style={{marginTop:10,height:4,background:"rgba(255,255,255,0.15)",borderRadius:99}}>
+                    <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
                   </div>
-                  {/* Insight automatique */}
-                  <div style={{
-                    display:"inline-flex",alignItems:"center",gap:6,
-                    background:"rgba(255,255,255,0.7)",borderRadius:99,
-                    padding:"5px 14px",fontSize:12,fontWeight:700,
-                    color:margin<0?C.red:marginPct>=30?C.green:marginPct>=15?C.orange:C.sub,
-                    border:"1px solid rgba(0,0,0,0.06)"
-                  }}>
+                  <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>
                     {margin<0?"❌ Vente à perte":marginPct>=30?"🔥 Excellent deal !":marginPct>=20?"👍 Bon deal":marginPct>=10?"📊 Marge correcte":"⚠️ Rentabilité faible"}
                   </div>
                 </>
@@ -1362,7 +1378,7 @@ export default function App({ loginOnly = false }){
 
             {/* ── Récap rapide ── */}
             {isValid&&(
-              <div className="card" style={{padding:"16px 22px",display:"flex",justifyContent:"space-around"}}>
+              <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-around",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 {[{label:"Coût total",value:fmt(buy+ship),color:C.sub},{label:"Revenu brut",value:fmt(sell),color:C.teal},{label:"Bénéfice net",value:fmt(margin),color:mc}].map((item,i)=>(
                   <div key={i} style={{textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{item.label}</div>
@@ -1373,7 +1389,7 @@ export default function App({ loginOnly = false }){
             )}
 
             {/* ── CTA ── */}
-            <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":`linear-gradient(135deg,${C.teal},${C.peach})`} full>
+            <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full>
               {cSaved?"✓ Ajouté à ton suivi !":"💾 Ajouter à mon suivi"}
             </Btn>
 
@@ -1392,14 +1408,13 @@ export default function App({ loginOnly = false }){
             {sales.length>0&&(
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:4}}>
                 {[
-                  {label:"Profit total",value:fmt(totalM),color:totalM>=0?C.green:C.red,icon:"💰"},
-                  {label:"Nb de ventes",value:sales.length,color:C.teal,icon:"📦"},
-                  {label:"Profit moyen",value:fmt(sales.length?totalM/sales.length:0),color:C.peach,icon:"📊"},
+                  {label:"Profit total",value:fmt(totalM),color:totalM>=0?"#1D9E75":C.red},
+                  {label:"Ventes",value:sales.length,color:"#4ECDC4"},
+                  {label:"Profit moyen",value:fmt(sales.length?totalM/sales.length:0),color:"#5DCAA5"},
                 ].map((s,i)=>(
-                  <div key={i} className="card" style={{padding:"14px 12px",textAlign:"center"}}>
-                    <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
-                    <div style={{fontSize:11,color:C.label,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{s.label}</div>
-                    <div style={{fontSize:16,fontWeight:900,color:s.color}}>{s.value}</div>
+                  <div key={i} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",textAlign:"center"}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
+                    <div style={{fontSize:18,fontWeight:900,color:s.color,letterSpacing:"-0.03em"}}>{s.value}</div>
                   </div>
                 ))}
               </div>
@@ -1458,14 +1473,13 @@ export default function App({ loginOnly = false }){
                   const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
                   return(
                     <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
-                      <div style={{width:38,height:38,background:smc+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.margin>=0?"📈":"📉"}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:600,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                        <div style={{fontSize:11,color:C.sub,marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()} · {fmt(s.buy)} → {fmt(s.sell)}</div>
+                        <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
-                        <div style={{fontWeight:800,fontSize:14,color:smc}}>{fmt(s.margin)}</div>
-                        <div style={{fontSize:11,color:C.sub,marginTop:2}}>{fmtp(s.marginPct)}</div>
+                        <div style={{fontWeight:900,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:smc,marginTop:2}}>{smc===C.green?"+":""}{fmt(s.margin)}</div>
                       </div>
                     </SwipeRow>
                   );
@@ -1680,11 +1694,11 @@ export default function App({ loginOnly = false }){
         </>
       )}
 
-      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.96)",backdropFilter:"blur(16px)",boxShadow:"0 -4px 24px rgba(0,0,0,0.08)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)",padding:"8px 12px",gap:4}}>
+      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"8px 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
         {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"8px 0 10px",background:tab===t.idx?"#fff":"transparent",border:"none",borderRadius:10,cursor:"pointer",color:tab===t.idx?C.teal:C.label,transition:"all 0.15s",boxShadow:tab===t.idx?"0 1px 6px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)":"none"}}>
-            <div style={{fontSize:21,marginBottom:2,transform:tab===t.idx?"scale(1.12)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
-            <div style={{fontSize:10,fontWeight:tab===t.idx?700:500,letterSpacing:0.3}}>{t.label}</div>
+          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s"}}>
+            <div style={{fontSize:20,marginBottom:2,transform:tab===t.idx?"scale(1.1)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
+            <div style={{fontSize:10,fontWeight:tab===t.idx?800:600,letterSpacing:0.2}}>{t.label}</div>
           </button>
         ))}
       </div>
