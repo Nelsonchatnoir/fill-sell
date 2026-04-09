@@ -170,9 +170,9 @@ function PremiumBanner({ userEmail, compact=false }){
   if(compact){
     return(
       <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"6px 12px",background:loading?"rgba(255,255,255,0.6)":"#fff",color:"#0F6E56",border:"2px solid #fff",borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 4px rgba(0,0,0,0.12)"}}
-        onMouseEnter={e=>{if(!loading)e.currentTarget.style.background="rgba(255,255,255,0.9)";}}
-        onMouseLeave={e=>{e.currentTarget.style.background=loading?"rgba(255,255,255,0.6)":"#fff";}}
+        style={{padding:"6px 12px",background:loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)",color:"#fff",border:"1px solid rgba(255,255,255,0.4)",borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
+        onMouseEnter={e=>{if(!loading)e.currentTarget.style.background="rgba(255,255,255,0.3)";}}
+        onMouseLeave={e=>{e.currentTarget.style.background=loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)";}}
       >
         {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">Passer au premium ✨</span></>}
       </button>
@@ -1000,7 +1000,7 @@ export default function App({ loginOnly = false }){
             {/* Logo desktop */}
             <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:32,width:"auto",objectFit:"contain",flexShrink:0}}/>
             {/* Logo mobile (icône carrée) */}
-            <img src="/fill_sell_premium_32.png" alt="Fill & Sell" className="logo-mobile" style={{width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
+            <img src="/favicon-32x32.png" alt="Fill & Sell" className="logo-mobile" style={{display:"block",width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
             <span className="header-brand-text" style={{fontSize:14,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
           </div>
           {/* Colonne centre : stats dynamiques (masquées sur mobile) */}
@@ -1104,7 +1104,7 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {/* Hero card profit net */}
-                <div style={{background:"#0F6E56",borderRadius:14,padding:18,marginBottom:10}}>
+                <div style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>Profit net</div>
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} ce mois</div>
