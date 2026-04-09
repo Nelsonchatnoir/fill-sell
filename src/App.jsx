@@ -1000,7 +1000,7 @@ export default function App({ loginOnly = false }){
             {/* Logo desktop */}
             <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:32,width:"auto",objectFit:"contain",flexShrink:0}}/>
             {/* Logo mobile (icône carrée) */}
-            <img src="/favicon-32x32.png" alt="Fill & Sell" className="logo-mobile" style={{display:"block",width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
+            <img src="/favicon-32x32.png" alt="Fill & Sell" className="logo-mobile" style={{width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
             <span style={{fontSize:15,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
           </div>
           {/* Colonne centre : stats dynamiques (masquées sur mobile) */}
