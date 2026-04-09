@@ -1001,7 +1001,7 @@ export default function App({ loginOnly = false }){
             <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:32,width:"auto",objectFit:"contain",flexShrink:0}}/>
             {/* Logo mobile (icône carrée) */}
             <img src="/favicon-32x32.png" alt="Fill & Sell" className="logo-mobile" style={{display:"block",width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
-            <span className="header-brand-text" style={{fontSize:14,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
+            <span style={{fontSize:15,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
           </div>
           {/* Colonne centre : stats dynamiques (masquées sur mobile) */}
           <div className="header-centre" style={{textAlign:"center"}}>
@@ -1044,7 +1044,7 @@ export default function App({ loginOnly = false }){
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
             {!isPremium&&!loading&&(
-              <div style={{background:20-items.length<=5?"#FFFBEB":C.tealLight,border:`1px solid ${20-items.length<=5?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",overflow:"hidden"}}>
+              <div style={{background:20-items.length<=5?"#FFFBEB":C.tealLight,border:`1px solid ${20-items.length<=5?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",textAlign:"center",cursor:"pointer",overflow:"hidden"}}>
                 <div style={{fontSize:13,fontWeight:600,color:items.length>=14?"#C05621":items.length>=10?"#D97706":C.teal}}>
                   {items.length>=14
                     ? `🔴 Plus que ${20-items.length} article${20-items.length>1?"s":""} avant la limite !`
@@ -1052,10 +1052,6 @@ export default function App({ loginOnly = false }){
                     ? `⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} avant de passer au premium`
                     : `Il te reste ${20-items.length} article${20-items.length>1?"s":""} gratuit${20-items.length>1?"s":""}`
                   }
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{fontSize:12,fontWeight:800,color:20-items.length<=5?"#92400E":C.teal}}>{items.length}/20</div>
-                  <PremiumBanner userEmail={user?.email} compact/>
                 </div>
               </div>
             )}
