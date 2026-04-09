@@ -53,6 +53,12 @@ const css = `
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
+  .header-centre{display:flex;flex-direction:column;align-items:center;}
+  .header-brand-text{display:inline;}
+  .logo-desktop{display:block;}
+  .logo-mobile{display:none;}
+  .premium-full{display:inline;}
+  .premium-short{display:none;}
   .app-root{min-height:100vh;width:100%;max-width:100vw;overflow-x:hidden;position:relative;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
@@ -64,6 +70,12 @@ const css = `
     .desktop-nav{display:none!important;}
     .mobile-nav{display:flex!important;}
     .header-stats{display:none!important;}
+    .header-centre{display:none!important;}
+    .header-brand-text{display:none!important;}
+    .logo-desktop{display:none!important;}
+    .logo-mobile{display:block!important;}
+    .premium-full{display:none!important;}
+    .premium-short{display:inline!important;}
     .page-pad{padding-bottom:90px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
@@ -158,11 +170,11 @@ function PremiumBanner({ userEmail, compact=false }){
   if(compact){
     return(
       <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"4px 10px",background:loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.18)",color:"#fff",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,fontSize:10,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.2s",whiteSpace:"nowrap",flexShrink:0}}
-        onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
-        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
+        style={{padding:"6px 12px",background:loading?"rgba(255,255,255,0.6)":"#fff",color:"#0F6E56",border:"2px solid #fff",borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 4px rgba(0,0,0,0.12)"}}
+        onMouseEnter={e=>{if(!loading)e.currentTarget.style.background="rgba(255,255,255,0.9)";}}
+        onMouseLeave={e=>{e.currentTarget.style.background=loading?"rgba(255,255,255,0.6)":"#fff";}}
       >
-        {loading ? "..." : "Passer au premium 🚀"}
+        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">Passer au premium ✨</span></>}
       </button>
     );
   }
@@ -984,12 +996,15 @@ export default function App({ loginOnly = false }){
       <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8,maxWidth:1280,margin:"0 auto"}}>
           {/* Colonne gauche : brand */}
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:30,height:30,background:"rgba(255,255,255,0.22)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",fontStyle:"italic",flexShrink:0}}>F&S</div>
-            <div style={{fontSize:14,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+            {/* Logo desktop */}
+            <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:32,width:"auto",objectFit:"contain",flexShrink:0}}/>
+            {/* Logo mobile (icône carrée) */}
+            <img src="/fill_sell_premium_32.png" alt="Fill & Sell" className="logo-mobile" style={{width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
+            <span className="header-brand-text" style={{fontSize:14,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
           </div>
-          {/* Colonne centre : stats dynamiques */}
-          <div style={{textAlign:"center"}}>
+          {/* Colonne centre : stats dynamiques (masquées sur mobile) */}
+          <div className="header-centre" style={{textAlign:"center"}}>
             <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-0.02em",lineHeight:1}}>
               {fmt(tm.profit)}<span style={{opacity:0.65,fontSize:12,fontWeight:700}}> profit</span>
             </div>
@@ -998,7 +1013,7 @@ export default function App({ loginOnly = false }){
             </div>
           </div>
           {/* Colonne droite : bouton premium + settings */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6,minWidth:0}}>
             {!isPremium?(
               <PremiumBanner userEmail={user?.email} compact/>
             ):(
