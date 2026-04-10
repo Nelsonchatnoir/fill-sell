@@ -994,17 +994,15 @@ export default function App({ loginOnly = false }){
       <style>{css}</style>
 
       <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8,maxWidth:1280,margin:"0 auto"}}>
-          {/* Colonne gauche : brand */}
-          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-            {/* Logo desktop */}
+        <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:1280,margin:"0 auto",width:"100%"}}>
+          {/* Gauche : logo cliquable → dashboard */}
+          <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} style={{display:"flex",alignItems:"center",gap:8,background:"transparent",border:"none",padding:0,cursor:"pointer",flexShrink:0}}>
             <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:32,width:"auto",objectFit:"contain",flexShrink:0}}/>
-            {/* Logo mobile (icône carrée) */}
             <img src="/favicon-32x32.png" alt="Fill & Sell" className="logo-mobile" style={{width:32,height:32,borderRadius:11,objectFit:"cover",flexShrink:0}}/>
             <span style={{fontSize:15,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
-          </div>
-          {/* Colonne centre : stats dynamiques (masquées sur mobile) */}
-          <div className="header-centre" style={{textAlign:"center"}}>
+          </button>
+          {/* Centre : stats dynamiques (masquées sur mobile) */}
+          <div className="header-centre" style={{textAlign:"center",flex:1}}>
             <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-0.02em",lineHeight:1}}>
               {fmt(tm.profit)}<span style={{opacity:0.65,fontSize:12,fontWeight:700}}> profit</span>
             </div>
@@ -1012,8 +1010,8 @@ export default function App({ loginOnly = false }){
               {tm.count} vente{tm.count!==1?"s":""} ce mois
             </div>
           </div>
-          {/* Colonne droite : bouton premium + settings */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6,minWidth:0}}>
+          {/* Droite : premium + settings — toujours collé à droite */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto",flexShrink:0}}>
             {!isPremium?(
               <PremiumBanner userEmail={user?.email} compact/>
             ):(
@@ -1032,7 +1030,9 @@ export default function App({ loginOnly = false }){
           <div style={{display:"flex",padding:"0 14px",gap:0,overflowX:"auto"}}>
             {["Dashboard","Inventaire","Calculer","Historique"].map((t,i)=>(
               <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
-                style={{padding:"9px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:12,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease",marginRight:4}}
+                style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
+                onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color="#5DCAA5";}}
+                onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color="#A3A9A6";}}
               >{t}</button>
             ))}
           </div>
