@@ -141,7 +141,7 @@ function SwipeRow({onDelete, children}){
   );
 }
 
-function PremiumBanner({ userEmail, compact=false }){
+function PremiumBanner({ userEmail, compact=false, onDark=false }){
   const [loading, setLoading] = useState(false);
 
   async function handleCheckout(){
@@ -168,11 +168,16 @@ function PremiumBanner({ userEmail, compact=false }){
   }
 
   if(compact){
+    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):"transparent";
+    const bgHover=onDark?"rgba(255,255,255,0.3)":"rgba(29,158,117,0.08)";
+    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):"transparent";
+    const col=onDark?"#fff":"#1D9E75";
+    const brd=onDark?"1px solid rgba(255,255,255,0.4)":"1px solid #1D9E75";
     return(
       <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"6px 12px",background:loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)",color:"#fff",border:"1px solid rgba(255,255,255,0.4)",borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
-        onMouseEnter={e=>{if(!loading)e.currentTarget.style.background="rgba(255,255,255,0.3)";}}
-        onMouseLeave={e=>{e.currentTarget.style.background=loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)";}}
+        style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
+        onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
+        onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
         {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">Passer au premium ✨</span></>}
       </button>
@@ -1013,7 +1018,7 @@ export default function App({ loginOnly = false }){
           {/* Droite : premium + settings — toujours collé à droite */}
           <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto",flexShrink:0}}>
             {!isPremium?(
-              <PremiumBanner userEmail={user?.email} compact/>
+              <PremiumBanner userEmail={user?.email} compact onDark/>
             ):(
               <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>⭐ Premium</div>
             )}
