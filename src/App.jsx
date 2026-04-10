@@ -396,6 +396,15 @@ export default function App({ loginOnly = false }){
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
 
+  async function triggerCheckout(){
+    try{
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email})});
+      const{url,error}=await res.json();
+      if(error)throw new Error(error);
+      window.location.href=url;
+    }catch(e){alert("Erreur : "+e.message);}
+  }
+
   async function fetchAll(uid){
     setLoading(true);
     const [v,i,p]=await Promise.all([
@@ -1053,16 +1062,20 @@ export default function App({ loginOnly = false }){
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
-            {!isPremium&&!loading&&items.length>0&&(
-              <div style={{background:items.length>=18?"#FFFBEB":C.tealLight,border:`1px solid ${items.length>=18?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",textAlign:"center",cursor:"pointer",overflow:"hidden"}}>
-                <div style={{fontSize:13,fontWeight:600,color:items.length>=14?"#C05621":items.length>=10?"#D97706":C.teal}}>
-                  {items.length>=14
-                    ? `🔴 Plus que ${20-items.length} article${20-items.length>1?"s":""} avant la limite !`
-                    : items.length>=10
-                    ? `⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} avant de passer au premium`
+            {!isPremium&&!loading&&items.length>0&&items.length<18&&(
+              <div style={{background:C.tealLight,border:`1px solid ${C.teal}33`,borderRadius:12,padding:"12px 18px",textAlign:"center",overflow:"hidden"}}>
+                <div style={{fontSize:13,fontWeight:600,color:20-items.length<=2?"#C05621":C.teal}}>
+                  {20-items.length<=2
+                    ? `⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} — passe au premium`
                     : `Il te reste ${20-items.length} article${20-items.length>1?"s":""} gratuit${20-items.length>1?"s":""}`
                   }
                 </div>
+              </div>
+            )}
+            {!isPremium&&!loading&&items.length>=18&&(
+              <div onClick={triggerCheckout} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>⚠️ Plus que {20-items.length} article{20-items.length>1?"s":""} disponible{20-items.length>1?"s":""}</div>
+                <button onClick={e=>{e.stopPropagation();triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Débloquer ✨</button>
               </div>
             )}
             {loading?(
@@ -1115,13 +1128,20 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {/* Hero card profit net */}
-                <div style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10}}>
+                <div onClick={()=>!isPremium&&triggerCheckout()}
+                  style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:isPremium?"default":"pointer",transition:"transform 0.15s,opacity 0.15s"}}
+                  onMouseEnter={e=>{if(!isPremium){e.currentTarget.style.opacity="0.92";e.currentTarget.style.transform="scale(1.01)";}}}
+                  onMouseLeave={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.transform="scale(1)";}}
+                  onMouseDown={e=>{if(!isPremium)e.currentTarget.style.transform="scale(0.99)";}}
+                  onMouseUp={e=>{if(!isPremium)e.currentTarget.style.transform="scale(1.01)";}}
+                >
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>Profit net</div>
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} ce mois</div>
                   </div>
                   <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
                   <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{sales.length} vente{sales.length!==1?"s":""} · marge moy. {fmt(sales.length?totalM/sales.length:0)}</div>
+                  {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>Appuie pour voir l'analyse complète</div>}
                 </div>
 
                 {/* KPIs 2 colonnes */}
@@ -1149,6 +1169,13 @@ export default function App({ loginOnly = false }){
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
+                      {!isPremium&&(
+                        <div onClick={triggerCheckout} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
+                          <span style={{fontSize:20}}>🔒</span>
+                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>Débloquer l'analyse avancée</div>
+                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>Débloquer le premium ✨</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
@@ -1158,6 +1185,13 @@ export default function App({ loginOnly = false }){
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
+                      {!isPremium&&(
+                        <div onClick={triggerCheckout} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
+                          <span style={{fontSize:20}}>🔒</span>
+                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>Débloquer l'analyse avancée</div>
+                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>Débloquer le premium ✨</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
