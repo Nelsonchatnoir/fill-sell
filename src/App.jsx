@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
+import Toast from './components/Toast';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
@@ -44,8 +45,9 @@ const css = `
   .btn{transition:all 0.2s ease;cursor:pointer;}
   .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
   .card{background:#fff;border-radius:16px;border:1px solid #ECF0F4;box-shadow:0 1px 4px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.04);transition:box-shadow 0.2s ease,transform 0.2s ease;}
-  .kpi{transition:transform 0.18s ease,box-shadow 0.18s ease;}
+  .kpi{transition:transform 0.18s ease,box-shadow 0.18s ease;cursor:pointer;}
   .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.09)!important;}
+  .kpi:active{transform:scale(0.98)!important;box-shadow:0 1px 4px rgba(0,0,0,0.06)!important;}
   .wrap{width:100%;max-width:1280px;margin:0 auto;padding:0 24px;}
   .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
@@ -168,18 +170,18 @@ function PremiumBanner({ userEmail, compact=false, onDark=false }){
   }
 
   if(compact){
-    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):"transparent";
-    const bgHover=onDark?"rgba(255,255,255,0.3)":"rgba(29,158,117,0.08)";
-    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):"transparent";
-    const col=onDark?"#fff":"#1D9E75";
-    const brd=onDark?"1px solid rgba(255,255,255,0.4)":"1px solid #1D9E75";
+    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#1D9E75");
+    const bgHover=onDark?"rgba(255,255,255,0.3)":"#0F6E56";
+    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#1D9E75");
+    const col=onDark?"#fff":"#fff";
+    const brd=onDark?"1px solid rgba(255,255,255,0.4)":"none";
     return(
       <button onClick={handleCheckout} disabled={loading}
         style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">Passer au premium ✨</span></>}
+        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">Débloquer le premium ✨</span></>}
       </button>
     );
   }
@@ -198,7 +200,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false }){
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
-        {loading ? "Redirection..." : "✨ Passer au premium"}
+        {loading ? "Redirection..." : "✨ Débloquer le premium"}
       </button>
     </div>
   );
@@ -219,10 +221,10 @@ const Empty=({text="Aucune donnée"})=>(
 );
 
 const Kpi=({label,value,sub,color})=>(
-  <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-    <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+  <div className="kpi" style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+    <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
     <div style={{fontSize:22,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
-    {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#A3A9A6",marginTop:4}}>{sub}</div>}
+    {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#6B7280",marginTop:4}}>{sub}</div>}
   </div>
 );
 
@@ -367,6 +369,7 @@ export default function App({ loginOnly = false }){
   const [iBuy,setIBuy]=useState("");
   const [iSell,setISell]=useState("");
   const [iSaved,setISaved]=useState(false);
+  const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
   const [cBuy,setCBuy]=useState("");
   const [cSell,setCSell]=useState("");
@@ -549,6 +552,8 @@ export default function App({ loginOnly = false }){
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
+    setToast({visible:true,message:`Article ajouté · +${b.toFixed(2).replace(".",",")}€ dans ton suivi 💰`});
+    setTimeout(()=>setToast({visible:false,message:""}),3000);
     setITitle("");setIBuy("");setISell("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
@@ -1236,7 +1241,7 @@ export default function App({ loginOnly = false }){
               {!isPremium&&items.length>=20
                 ? <PremiumBanner userEmail={user?.email}/>
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
-                    {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":"Ajouter à l'inventaire"}
+                    {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":"Ajouter un article"}
                   </Btn>
               }
               {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
@@ -1292,7 +1297,19 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
-                {stock.length===0?<Empty text="Ton inventaire apparaîtra ici"/>:(
+                {stock.length===0?(
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 16px",gap:12}}>
+                    <span style={{fontSize:40}}>📦</span>
+                    <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",textAlign:"center"}}>Ajoute ton premier article</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",textAlign:"center",maxWidth:200,lineHeight:1.5}}>Commence à suivre tes profits dès maintenant</div>
+                    <button onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}
+                      style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:8,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
+                      onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
+                      onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                      onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+                    >Ajouter un article 🚀</button>
+                  </div>
+                ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stock.map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
@@ -1450,7 +1467,7 @@ export default function App({ loginOnly = false }){
                   {label:"Profit moyen",value:fmt(sales.length?totalM/sales.length:0),color:"#5DCAA5"},
                 ].map((s,i)=>(
                   <div key={i} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",textAlign:"center"}}>
-                    <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
+                    <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
                     <div style={{fontSize:18,fontWeight:900,color:s.color,letterSpacing:"-0.03em"}}>{s.value}</div>
                   </div>
                 ))}
@@ -1459,38 +1476,10 @@ export default function App({ loginOnly = false }){
 
             {sales.length===0?(
               <div>
-                {/* Empty state amélioré */}
-                <div className="card" style={{padding:"36px 28px",textAlign:"center",marginBottom:12}}>
-                  <div style={{fontSize:48,marginBottom:16}}>📊</div>
-                  <div style={{fontSize:18,fontWeight:800,color:C.text,marginBottom:10}}>Ton suivi de performance</div>
-                  <div style={{fontSize:14,color:C.sub,lineHeight:1.7,marginBottom:28,maxWidth:340,margin:"0 auto 28px"}}>
-                    Chaque vente enregistrée te donnera une vision claire de tes profits et de ta progression.
-                  </div>
-                  <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}} style={{padding:"13px 28px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:14,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(62,172,160,0.3)",marginBottom:16}}>
-                    ➕ Ajouter un article
-                  </button>
-
-                  {/* Mock data grisée */}
-                  <div style={{marginTop:24,opacity:0.35,pointerEvents:"none"}}>
-                    <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Aperçu de l'historique</div>
-                    {[
-                      {title:"Nike Air Max 90",buy:45,sell:80,margin:35,pct:43.8},
-                      {title:"Zara Veste cuir",buy:22,sell:38,margin:16,pct:42.1},
-                      {title:"Adidas Stan Smith",buy:30,sell:52,margin:22,pct:42.3},
-                    ].map((ex,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"#F8FAFC",borderRadius:10,marginBottom:6,filter:"blur(0.5px)"}}>
-                        <div style={{width:32,height:32,background:"#C6F6D5",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📈</div>
-                        <div style={{flex:1,minWidth:0,textAlign:"left"}}>
-                          <div style={{fontWeight:600,fontSize:12,color:C.text}}>{ex.title}</div>
-                          <div style={{fontSize:10,color:C.sub}}>{fmt(ex.buy)} → {fmt(ex.sell)}</div>
-                        </div>
-                        <div style={{textAlign:"right"}}>
-                          <div style={{fontSize:13,fontWeight:800,color:C.green}}>+{fmt(ex.margin)}</div>
-                          <div style={{fontSize:10,color:C.sub}}>{fmtp(ex.pct)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="card" style={{padding:"48px 28px",textAlign:"center",marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+                  <span style={{fontSize:40}}>💸</span>
+                  <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>Aucune vente pour l'instant</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",maxWidth:200,lineHeight:1.5}}>Tes profits apparaîtront ici</div>
                 </div>
 
                 {!isPremium&&(
@@ -1730,6 +1719,8 @@ export default function App({ loginOnly = false }){
           `}</style>
         </>
       )}
+
+      <Toast message={toast.message} visible={toast.visible}/>
 
       <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"8px 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
         {TABS_MOBILE.map(t=>(
