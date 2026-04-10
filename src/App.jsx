@@ -1053,8 +1053,8 @@ export default function App({ loginOnly = false }){
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
-            {!isPremium&&!loading&&(
-              <div style={{background:20-items.length<=5?"#FFFBEB":C.tealLight,border:`1px solid ${20-items.length<=5?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",textAlign:"center",cursor:"pointer",overflow:"hidden"}}>
+            {!isPremium&&!loading&&items.length>0&&(
+              <div style={{background:items.length>=18?"#FFFBEB":C.tealLight,border:`1px solid ${items.length>=18?"#FDE68A":C.teal+"33"}`,borderRadius:12,padding:"12px 18px",textAlign:"center",cursor:"pointer",overflow:"hidden"}}>
                 <div style={{fontSize:13,fontWeight:600,color:items.length>=14?"#C05621":items.length>=10?"#D97706":C.teal}}>
                   {items.length>=14
                     ? `🔴 Plus que ${20-items.length} article${20-items.length>1?"s":""} avant la limite !`
@@ -1077,8 +1077,13 @@ export default function App({ loginOnly = false }){
                     Suis tes profits de revente en quelques secondes.<br/>Commence par ajouter ton premier article.
                   </div>
                   <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:36,flexWrap:"wrap"}}>
-                    {[{icon:"📦",label:"Ajoute un article"},{icon:"💰",label:"Enregistre une vente"},{icon:"📊",label:"Analyse tes profits"}].map((step,i)=>(
-                      <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"14px 18px",background:C.rowBg,borderRadius:14,border:"1px solid rgba(0,0,0,0.06)",minWidth:100}}>
+                    {[{icon:"📦",label:"Ajoute un article",tab:1},{icon:"💰",label:"Enregistre une vente",tab:1},{icon:"📊",label:"Analyse tes profits",tab:3}].map((step,i)=>(
+                      <div key={i} onClick={()=>{setTab(step.tab);localStorage.setItem('tab',step.tab);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"14px 18px",background:C.rowBg,borderRadius:14,border:"1px solid rgba(0,0,0,0.06)",minWidth:100,cursor:"pointer",transition:"transform 0.15s,box-shadow 0.15s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.08)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}
+                        onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
+                        onMouseUp={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                      >
                         <div style={{fontSize:26}}>{step.icon}</div>
                         <div style={{fontSize:11,fontWeight:700,color:C.sub,textAlign:"center"}}>{step.label}</div>
                       </div>
@@ -1302,7 +1307,7 @@ export default function App({ loginOnly = false }){
                     <span style={{fontSize:40}}>📦</span>
                     <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",textAlign:"center"}}>Ajoute ton premier article</div>
                     <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",textAlign:"center",maxWidth:200,lineHeight:1.5}}>Commence à suivre tes profits dès maintenant</div>
-                    <button onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}
+                    <button onClick={()=>{window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
                       style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:8,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
                       onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
                       onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
