@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
 import Toast from './components/Toast';
+import StatsPage from './pages/StatsPage';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
@@ -1128,12 +1129,10 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {/* Hero card profit net */}
-                <div onClick={()=>!isPremium&&triggerCheckout()}
-                  style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:isPremium?"default":"pointer",transition:"transform 0.15s,opacity 0.15s"}}
-                  onMouseEnter={e=>{if(!isPremium){e.currentTarget.style.opacity="0.92";e.currentTarget.style.transform="scale(1.01)";}}}
-                  onMouseLeave={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.transform="scale(1)";}}
-                  onMouseDown={e=>{if(!isPremium)e.currentTarget.style.transform="scale(0.99)";}}
-                  onMouseUp={e=>{if(!isPremium)e.currentTarget.style.transform="scale(1.01)";}}
+                <div onClick={()=>{if(!isPremium)triggerCheckout();else{setTab(4);localStorage.setItem('tab',4);}}}
+                  style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%"}}
+                  onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                 >
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>Profit net</div>
@@ -1142,6 +1141,7 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
                   <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{sales.length} vente{sales.length!==1?"s":""} · marge moy. {fmt(sales.length?totalM/sales.length:0)}</div>
                   {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>Appuie pour voir l'analyse complète</div>}
+                  {isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>Voir l'analyse complète →</div>}
                 </div>
 
                 {/* KPIs 2 colonnes */}
@@ -1561,7 +1561,33 @@ export default function App({ loginOnly = false }){
                 )}
               </>
             )}
+
+            {/* ── Bouton stats avancées ── */}
+            {isPremium?(
+              <button onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
+                style={{width:"100%",marginTop:4,padding:"14px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
+                onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
+                onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+              >📊 Voir mes stats avancées</button>
+            ):(
+              <button onClick={triggerCheckout}
+                style={{width:"100%",marginTop:4,padding:"14px",background:"transparent",color:"#1D9E75",border:"2px solid #1D9E75",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(29,158,117,0.06)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              >🔒 Débloquer les stats avancées ✨</button>
+            )}
           </div>
+        )}
+
+        {tab===4&&(
+          <StatsPage
+            sales={sales}
+            items={items}
+            isPremium={isPremium}
+            triggerCheckout={triggerCheckout}
+            onBack={()=>{setTab(3);localStorage.setItem('tab',3);}}
+          />
         )}
       </div>
 
