@@ -1336,7 +1336,7 @@ export default function App({ loginOnly = false }){
 
             {/* ── Bloc résultat principal ── */}
             <div style={{
-              background:isValid?(margin>=0?"#0F6E56":"#fff"):"#fff",
+              background:isValid?(margin>=0?"#0F6E56":"#FEF2F2"):"#fff",
               borderRadius:12,padding:"14px 16px",
               border:isValid?"none":`1px solid rgba(0,0,0,0.06)`,
               boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
@@ -1349,24 +1349,45 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,color:C.sub}}>Entre le prix d'achat et de vente ci-dessous</div>
                 </div>
               ):(
-                <>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Profit estimé</div>
-                      <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
+                margin>=0?(
+                  <>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Profit estimé</div>
+                        <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Rentabilité</div>
+                        <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
+                      </div>
                     </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Rentabilité</div>
-                      <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
+                    <div style={{marginTop:10,height:4,background:"rgba(255,255,255,0.15)",borderRadius:99}}>
+                      <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
-                  </div>
-                  <div style={{marginTop:10,height:4,background:"rgba(255,255,255,0.15)",borderRadius:99}}>
-                    <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
-                  </div>
-                  <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>
-                    {margin<0?"❌ Vente à perte":marginPct>=30?"🔥 Excellent deal !":marginPct>=20?"👍 Bon deal":marginPct>=10?"📊 Marge correcte":"⚠️ Rentabilité faible"}
-                  </div>
-                </>
+                    <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>
+                      {marginPct>=30?"🔥 Excellent deal !":marginPct>=20?"👍 Bon deal":marginPct>=10?"📊 Marge correcte":"⚠️ Rentabilité faible"}
+                    </div>
+                  </>
+                ):(
+                  <>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>Perte estimée</div>
+                        <div style={{fontSize:28,fontWeight:900,color:"#E24B4A",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>Rentabilité</div>
+                        <div style={{fontSize:28,fontWeight:900,color:"#E24B4A",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
+                      </div>
+                    </div>
+                    <div style={{marginTop:10,height:4,background:"rgba(226,75,74,0.15)",borderRadius:99}}>
+                      <div style={{width:`${Math.min(Math.abs(marginPct),100)}%`,height:"100%",background:"#E24B4A",borderRadius:99,transition:"width 0.4s ease"}}/>
+                    </div>
+                    <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"#E24B4A"}}>
+                      Tu perds de l'argent ⚠️
+                    </div>
+                  </>
+                )
               )}
             </div>
 
