@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
 import Toast from './components/Toast';
 import StatsPage from './pages/StatsPage';
+import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
@@ -384,6 +385,7 @@ export default function App({ loginOnly = false }){
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
+  const [lang,setLang]=useState(()=>localStorage.getItem('fs_lang')||'fr');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [selectedRange,setSelectedRange]=useState('6M');
@@ -396,6 +398,9 @@ export default function App({ loginOnly = false }){
   const importRef=useRef(null);
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
+
+  const {t,tpl}=useTranslation(lang);
+  useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
 
   async function triggerCheckout(){
     try{
@@ -562,7 +567,7 @@ export default function App({ loginOnly = false }){
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
-    setToast({visible:true,message:`Article ajouté · +${b.toFixed(2).replace(".",",")}€ dans ton suivi 💰`});
+    setToast({visible:true,message:`${t('articleAjoute')} · +${b.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     setITitle("");setIBuy("");setISell("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
@@ -938,10 +943,10 @@ export default function App({ loginOnly = false }){
   }
 
   const TABS_MOBILE=[
-    {icon:"📊",label:"Dashboard",idx:0},
-    {icon:"📦",label:"Stock",idx:1},
-    {icon:"🧮",label:"Calculer",idx:2},
-    {icon:"📋",label:"Historique",idx:3},
+    {icon:"📊",label:t('dashboard'),idx:0},
+    {icon:"📦",label:t('inventaire'),idx:1},
+    {icon:"🧮",label:t('calculer'),idx:2},
+    {icon:"📋",label:t('historique'),idx:3},
   ];
 
   const headerStats=[
@@ -1024,10 +1029,10 @@ export default function App({ loginOnly = false }){
           {/* Centre : stats dynamiques (masquées sur mobile) */}
           <div className="header-centre" style={{textAlign:"center",flex:1}}>
             <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-0.02em",lineHeight:1}}>
-              {fmt(tm.profit)}<span style={{opacity:0.65,fontSize:12,fontWeight:700}}> profit</span>
+              {fmt(tm.profit)}<span style={{opacity:0.65,fontSize:12,fontWeight:700}}> {t('profit')}</span>
             </div>
             <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",marginTop:2,whiteSpace:"nowrap"}}>
-              {tm.count} vente{tm.count!==1?"s":""} ce mois
+              {tm.count} {t('ventesMonth')}
             </div>
           </div>
           {/* Droite : premium + settings — toujours collé à droite */}
@@ -1035,7 +1040,7 @@ export default function App({ loginOnly = false }){
             {!isPremium?(
               <PremiumBanner userEmail={user?.email} compact onDark/>
             ):(
-              <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>⭐ Premium</div>
+              <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>{t('premium')}</div>
             )}
             <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"5px 9px",color:"#fff",fontSize:16,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
@@ -1048,12 +1053,12 @@ export default function App({ loginOnly = false }){
       <div className="desktop-nav" style={{background:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
         <div className="wrap">
           <div style={{display:"flex",padding:"0 14px",gap:0,overflowX:"auto"}}>
-            {["Dashboard","Inventaire","Calculer","Historique"].map((t,i)=>(
+            {[t('dashboard'),t('inventaire'),t('calculer'),t('historique')].map((tabLabel,i)=>(
               <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
                 style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
                 onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color="#5DCAA5";}}
                 onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color="#A3A9A6";}}
-              >{t}</button>
+              >{tabLabel}</button>
             ))}
           </div>
         </div>
@@ -1067,8 +1072,8 @@ export default function App({ loginOnly = false }){
               <div style={{background:C.tealLight,border:`1px solid ${C.teal}33`,borderRadius:12,padding:"12px 18px",textAlign:"center",overflow:"hidden"}}>
                 <div style={{fontSize:13,fontWeight:600,color:20-items.length<=2?"#C05621":C.teal}}>
                   {20-items.length<=2
-                    ? `⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} — passe au premium`
-                    : `Il te reste ${20-items.length} article${20-items.length>1?"s":""} gratuit${20-items.length>1?"s":""}`
+                    ? tpl('urgenceArticles',{n:20-items.length})
+                    : tpl('articlesGratuits',{n:20-items.length})
                   }
                 </div>
               </div>
@@ -1076,7 +1081,7 @@ export default function App({ loginOnly = false }){
             {!isPremium&&!loading&&items.length>=18&&(
               <div onClick={triggerCheckout} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>⚠️ Plus que {20-items.length} article{20-items.length>1?"s":""} disponible{20-items.length>1?"s":""}</div>
-                <button onClick={e=>{e.stopPropagation();triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Débloquer ✨</button>
+                <button onClick={e=>{e.stopPropagation();triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
               </div>
             )}
             {loading?(
@@ -1124,7 +1129,7 @@ export default function App({ loginOnly = false }){
                     {MONTHS_FR[now.getMonth()]} {now.getFullYear()}
                   </div>
                   <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
-                    T'as vendu <span style={{color:"#1D9E75"}}>quoi</span> ?
+                    {(()=>{const title=t('dashTitle');const hi=t('dashTitleHighlight');const idx=title.lastIndexOf(hi);return idx<0?<span style={{color:"#1D9E75"}}>{title}</span>:<>{title.slice(0,idx)}<span style={{color:"#1D9E75"}}>{hi}</span></>;})()}
                   </div>
                 </div>
 
@@ -1135,21 +1140,21 @@ export default function App({ loginOnly = false }){
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                 >
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                    <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>Profit net</div>
+                    <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>{t('profitNet')}</div>
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} ce mois</div>
                   </div>
                   <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
                   <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{sales.length} vente{sales.length!==1?"s":""} · marge moy. {fmt(sales.length?totalM/sales.length:0)}</div>
-                  {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>Appuie pour voir l'analyse complète</div>}
-                  {isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>Voir l'analyse complète →</div>}
+                  {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('unlocAnalyse')}</div>}
+                  {isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('analyseComplete')}</div>}
                 </div>
 
                 {/* KPIs 2 colonnes */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <Kpi label="Ce mois" value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente${(tm?.count||0)!==1?"s":""}`} color="#1D9E75"/>
-                  <Kpi label="Marge moy." value={fmtp(avgM)} sub="toutes ventes" color="#5DCAA5"/>
-                  <Kpi label="Revenu brut" value={fmt(totalR)} sub="total encaissé" color="#1D9E75"/>
-                  <Kpi label="En stock" value={`${stock.length}`} sub={`${fmt(stockVal)} investi`} color="#A3A9A6"/>
+                  <Kpi label={t('ceMois')} value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente${(tm?.count||0)!==1?"s":""}`} color="#1D9E75"/>
+                  <Kpi label={t('margeMoy')} value={fmtp(avgM)} sub="toutes ventes" color="#5DCAA5"/>
+                  <Kpi label={t('revenuBrutLabel')} value={fmt(totalR)} sub="total encaissé" color="#1D9E75"/>
+                  <Kpi label={t('enStock')} value={`${stock.length}`} sub={`${fmt(stockVal)} investi`} color="#A3A9A6"/>
                 </div>
 
                 {/* Sélecteur de période */}
@@ -1163,9 +1168,9 @@ export default function App({ loginOnly = false }){
 
                 <div className="grid2">
                   <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>Bénéfices</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>{t('benefices')}</div>
                     <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>
-                      {selectedRange==='7j'?"7 derniers jours":selectedRange==='1M'?"30 derniers jours":selectedRange==='1A'?"12 derniers mois":selectedRange==='YTD'?"Depuis le 1er janvier":"6 derniers mois"}
+                      {selectedRange==='7j'?t('dernierNJours'):selectedRange==='1M'?t('trente'):selectedRange==='1A'?t('douze'):selectedRange==='YTD'?t('depuisJanvier'):t('sixMois')}
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
@@ -1179,9 +1184,9 @@ export default function App({ loginOnly = false }){
                     </div>
                   </div>
                   <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>Évolution marge %</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>{t('evolutionMarge')}</div>
                     <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>
-                      {selectedRange==='7j'?"7 derniers jours":selectedRange==='1M'?"30 derniers jours":selectedRange==='1A'?"12 derniers mois":selectedRange==='YTD'?"Depuis le 1er janvier":"6 derniers mois"}
+                      {selectedRange==='7j'?t('dernierNJours'):selectedRange==='1M'?t('trente'):selectedRange==='1A'?t('douze'):selectedRange==='YTD'?t('depuisJanvier'):t('sixMois')}
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
@@ -1198,7 +1203,7 @@ export default function App({ loginOnly = false }){
 
                 {hasData&&(
                   <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>Dernières ventes</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>{t('dernieresventes')}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {sales.slice(0,5).map(s=>{
                         const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
@@ -1249,7 +1254,7 @@ export default function App({ loginOnly = false }){
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
                   <div style={{fontSize:28,marginBottom:8}}>🧩</div>
-                  <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:6}}>Ajoute ton premier article</div>
+                  <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:6}}>{t('premierArticle')}</div>
                   <div style={{fontSize:13,color:C.sub,lineHeight:1.6}}>Entre le nom et ton prix d'achat. Tu pourras ajouter le prix de vente plus tard.</div>
                 </div>
               ):(
@@ -1321,8 +1326,8 @@ export default function App({ loginOnly = false }){
                 <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:12,border:"1px solid rgba(249,162,108,0.3)"}}>
                   <span style={{fontSize:18}}>🔒</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>Import / Export Excel</div>
-                    <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6"}}>Fonctionnalité Premium — importe et exporte tes données</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('importExcel')}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6"}}>{t('importDesc')}</div>
                   </div>
                   <PremiumBanner userEmail={user?.email} compact/>
                 </div>
@@ -1331,7 +1336,7 @@ export default function App({ loginOnly = false }){
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>En stock</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
                     {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>Plan gratuit</span>}
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
@@ -1339,14 +1344,14 @@ export default function App({ loginOnly = false }){
                 {stock.length===0?(
                   <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 16px",gap:12}}>
                     <span style={{fontSize:40}}>📦</span>
-                    <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",textAlign:"center"}}>Ajoute ton premier article</div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",textAlign:"center",maxWidth:200,lineHeight:1.5}}>Commence à suivre tes profits dès maintenant</div>
+                    <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",textAlign:"center"}}>{t('premierArticle')}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",textAlign:"center",maxWidth:200,lineHeight:1.5}}>{t('commenceSuivi')}</div>
                     <button onClick={()=>{window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
                       style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:8,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
                       onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
                       onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
                       onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-                    >Ajouter un article 🚀</button>
+                    >{t('ajouterArticle')} 🚀</button>
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1365,7 +1370,7 @@ export default function App({ loginOnly = false }){
 
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>Vendus</div>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{sold.length} vente{sold.length>1?"s":""}</div>
                 </div>
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
@@ -1414,11 +1419,11 @@ export default function App({ loginOnly = false }){
                   <>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Profit estimé</div>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>{t('profitEstime')}</div>
                         <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>Rentabilité</div>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>{t('rentabilite')}</div>
                         <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
                       </div>
                     </div>
@@ -1426,18 +1431,18 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>
-                      {marginPct>=30?"🔥 Excellent deal !":marginPct>=20?"👍 Bon deal":marginPct>=10?"📊 Marge correcte":"⚠️ Rentabilité faible"}
+                      {marginPct>=30?t('excellentDeal'):marginPct>=20?t('bonDeal'):marginPct>=10?t('dealCorrect'):t('margeFaible')}
                     </div>
                   </>
                 ):(
                   <>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>Perte estimée</div>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>{t('perteEstimee')}</div>
                         <div style={{fontSize:28,fontWeight:900,color:"#E24B4A",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>Rentabilité</div>
+                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>{t('rentabilite')}</div>
                         <div style={{fontSize:28,fontWeight:900,color:"#E24B4A",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
                       </div>
                     </div>
@@ -1445,7 +1450,7 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(Math.abs(marginPct),100)}%`,height:"100%",background:"#E24B4A",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"#E24B4A"}}>
-                      Tu perds de l'argent ⚠️
+                      {t('perteDargent')}
                     </div>
                   </>
                 )
@@ -1454,25 +1459,23 @@ export default function App({ loginOnly = false }){
 
             {/* ── Inputs ── */}
             <div>
-              <Field label="Nom de l'article" value={cTitle} set={setCTitle} placeholder="Ex: Nike Air Max 90" icon="🏷️"/>
+              <Field label={t('nomArticle')} value={cTitle} set={setCTitle} placeholder="Ex: Nike Air Max 90" icon="🏷️"/>
             </div>
             <div>
-              <Field label="Prix d'achat" value={cBuy} set={setCBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
-              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix auquel tu as acheté l'article</div>
+              <Field label={t('prixAchat')} value={cBuy} set={setCBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
             </div>
             <div>
-              <Field label="Prix de vente" value={cSell} set={setCSell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
-              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix de vente sur ta plateforme de revente</div>
+              <Field label={t('prixVente')} value={cSell} set={setCSell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
             </div>
             <div>
-              <Field label="Frais annexes" value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
+              <Field label={t('fraisAnnexes')} value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
               <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Livraison, emballage, commissions...</div>
             </div>
 
             {/* ── Récap rapide ── */}
             {isValid&&(
               <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-around",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                {[{label:"Coût total",value:fmt(buy+ship),color:C.sub},{label:"Revenu brut",value:fmt(sell),color:C.teal},{label:"Bénéfice net",value:fmt(margin),color:mc}].map((item,i)=>(
+                {[{label:t('coutTotal'),value:fmt(buy+ship),color:C.sub},{label:t('revenuBrut'),value:fmt(sell),color:C.teal},{label:t('beneficeNet'),value:fmt(margin),color:mc}].map((item,i)=>(
                   <div key={i} style={{textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{item.label}</div>
                     <div style={{fontSize:16,fontWeight:800,color:item.color}}>{item.value}</div>
@@ -1483,7 +1486,7 @@ export default function App({ loginOnly = false }){
 
             {/* ── CTA ── */}
             <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full>
-              {cSaved?"✓ Ajouté à ton suivi !":"💾 Ajouter à mon suivi"}
+              {cSaved?"✓ Ajouté à ton suivi !":t('ajouterSuivi')}
             </Btn>
 
             {!isPremium&&(
@@ -1517,8 +1520,8 @@ export default function App({ loginOnly = false }){
               <div>
                 <div className="card" style={{padding:"48px 28px",textAlign:"center",marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
                   <span style={{fontSize:40}}>💸</span>
-                  <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>Aucune vente pour l'instant</div>
-                  <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",maxWidth:200,lineHeight:1.5}}>Tes profits apparaîtront ici</div>
+                  <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>{t('premiereVente')}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",maxWidth:200,lineHeight:1.5}}>{t('profitsApparaitront')}</div>
                 </div>
 
                 {!isPremium&&(
@@ -1569,13 +1572,13 @@ export default function App({ loginOnly = false }){
                 onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                 onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
                 onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-              >📊 Voir mes stats avancées</button>
+              >{t('statsAvancees')}</button>
             ):(
               <button onClick={triggerCheckout}
                 style={{width:"100%",marginTop:4,padding:"14px",background:"transparent",color:"#1D9E75",border:"2px solid #1D9E75",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(29,158,117,0.06)"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              >🔒 Débloquer les stats avancées ✨</button>
+              >{t('debloquerStats')}</button>
             )}
           </div>
         )}
@@ -1587,6 +1590,8 @@ export default function App({ loginOnly = false }){
             isPremium={isPremium}
             triggerCheckout={triggerCheckout}
             onBack={()=>{setTab(3);localStorage.setItem('tab',3);}}
+            t={t}
+            tpl={tpl}
           />
         )}
       </div>
@@ -1709,7 +1714,7 @@ export default function App({ loginOnly = false }){
             )
           }}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>Paramètres</div>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{t('parametres')}</div>
               <button onClick={()=>setShowSettings(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
             </div>
 
@@ -1772,11 +1777,24 @@ export default function App({ loginOnly = false }){
               <div style={{fontSize:14,fontWeight:600}}>Mentions légales</div>
             </a>
 
+            {/* Langue */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:C.rowBg,borderRadius:12,marginBottom:12}}>
+              <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('langue')}</span>
+              <div style={{display:"flex",gap:6}}>
+                {['fr','en'].map(l=>(
+                  <button key={l} onClick={()=>setLang(l)}
+                    style={{padding:"5px 12px",borderRadius:99,border:"none",fontSize:12,fontWeight:800,cursor:"pointer",transition:"all 0.15s",background:lang===l?"#1D9E75":"rgba(0,0,0,0.06)",color:lang===l?"#fff":"#6B7280"}}>
+                    {l.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Déconnexion */}
             <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${C.red}88`,borderRadius:12,color:C.red,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(229,62,62,0.06)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-            >Se déconnecter</button>
+            >{t('seDeconnecter')}</button>
           </div>
           <style>{`
             @keyframes slideUp{from{transform:translateX(-50%) translateY(100%)}to{transform:translateX(-50%) translateY(0)}}

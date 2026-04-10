@@ -1,6 +1,4 @@
 import { Line } from 'react-chartjs-2';
-
-const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const fmt = n => (Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n => (Math.round(n*10)/10).toFixed(1)+"%";
 
@@ -27,7 +25,12 @@ function KpiCard({ label, value, sub, color }) {
   );
 }
 
-export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack }) {
+const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+
+export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl }) {
+  // Fallbacks if called without i18n props (shouldn't happen)
+  const tr = t || (k=>k);
+
   if (!isPremium) {
     triggerCheckout();
     onBack();
@@ -55,7 +58,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   });
   const bestMonthEntry = Object.values(monthMap).sort((a,b)=>b.profit-a.profit)[0]||null;
   const bestMonthLabel = bestMonthEntry
-    ? `${MONTHS_FR[bestMonthEntry.month]} ${bestMonthEntry.year} · +${fmt(bestMonthEntry.profit)}`
+    ? `${MONTHS[bestMonthEntry.month]} ${bestMonthEntry.year} · +${fmt(bestMonthEntry.profit)}`
     : "—";
 
   // Avg sell delay (match by title)
@@ -80,7 +83,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
     const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
     const m=d.getMonth();const y=d.getFullYear();
     const ms=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
-    return{name:MONTHS_FR[m],profit:ms.reduce((a,s)=>a+s.margin,0)};
+    return{name:MONTHS[m],profit:ms.reduce((a,s)=>a+s.margin,0)};
   });
 
   const lineData = {
@@ -112,44 +115,44 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
       {/* Bouton retour */}
       <button onClick={onBack}
         style={{display:"flex",alignItems:"center",gap:4,background:"transparent",border:"none",padding:"0 0 16px",cursor:"pointer",fontSize:13,fontWeight:700,color:"#1D9E75",fontFamily:"inherit"}}>
-        ← Retour
+        {tr('retour')}
       </button>
 
       {/* Header */}
       <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:10,alignSelf:"flex-start"}}>
-        <span>⭐</span> Stats avancées
+        {tr('statsLabel')}
       </div>
       <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:20}}>
-        Tes <span style={{color:"#1D9E75"}}>performances</span>
+        {tr('tesPerformances')}
       </div>
 
       {n===0?(
         <div style={{background:"#fff",borderRadius:12,padding:"40px 20px",textAlign:"center",border:"1px solid rgba(0,0,0,0.06)"}}>
           <div style={{fontSize:36,marginBottom:12}}>💸</div>
-          <div style={{fontSize:16,fontWeight:800,color:C.text}}>Aucune vente enregistrée</div>
-          <div style={{fontSize:13,color:C.sub,marginTop:6}}>Tes stats apparaîtront ici dès ta première vente</div>
+          <div style={{fontSize:16,fontWeight:800,color:C.text}}>{tr('aucuneVenteStat')}</div>
+          <div style={{fontSize:13,color:C.sub,marginTop:6}}>{tr('statsApparaitront')}</div>
         </div>
       ):(
         <>
-          <SectionTitle>Vue globale</SectionTitle>
+          <SectionTitle>{tr('vueGlobale')}</SectionTitle>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <KpiCard label="Profit total" value={fmt(totalProfit)} color={totalProfit>=0?"#1D9E75":"#E53E3E"}/>
-            <KpiCard label="Revenu total" value={fmt(totalRevenue)} color="#4ECDC4"/>
-            <KpiCard label="Total investi" value={fmt(totalInvested)} color="#A3A9A6"/>
-            <KpiCard label="Ventes totales" value={n} color="#1D9E75"/>
+            <KpiCard label={tr('profitTotal')} value={fmt(totalProfit)} color={totalProfit>=0?"#1D9E75":"#E53E3E"}/>
+            <KpiCard label={tr('revenuTotal')} value={fmt(totalRevenue)} color="#4ECDC4"/>
+            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#A3A9A6"/>
+            <KpiCard label={tr('ventesTotales')} value={n} color="#1D9E75"/>
           </div>
 
-          <SectionTitle>Performance</SectionTitle>
+          <SectionTitle>{tr('performance')}</SectionTitle>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <KpiCard label="Marge moyenne" value={fmtp(avgMargin)} color="#1D9E75"/>
-            <KpiCard label="Panier moyen" value={fmt(avgBasket)} color="#5DCAA5"/>
-            <KpiCard label="Profit / vente" value={fmt(avgProfit)} color="#1D9E75"/>
-            <KpiCard label="Taux de vente" value={`${sellRate}%`} color="#4ECDC4" sub={`${soldItems.length}/${items.length} articles`}/>
+            <KpiCard label={tr('margeMoyenne')} value={fmtp(avgMargin)} color="#1D9E75"/>
+            <KpiCard label={tr('panierMoyen')} value={fmt(avgBasket)} color="#5DCAA5"/>
+            <KpiCard label={tr('profitParVente')} value={fmt(avgProfit)} color="#1D9E75"/>
+            <KpiCard label={tr('tauxVente')} value={`${sellRate}%`} color="#4ECDC4" sub={`${soldItems.length}/${items.length} ${tr('articles')}`}/>
           </div>
 
           {bestSale&&(
             <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",marginTop:8}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Meilleure vente</div>
+              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{tr('meilleurVente')}</div>
               <div style={{fontWeight:800,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bestSale.title}</div>
               <div style={{fontSize:13,fontWeight:700,color:"#1D9E75",marginTop:2}}>+{fmt(bestSale.margin)} · {fmtp(bestSale.marginPct)}</div>
             </div>
@@ -157,24 +160,24 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
 
           {bestPct&&bestPct.id!==bestSale?.id&&(
             <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",marginTop:8}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Plus rentable</div>
+              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{tr('plusRentable')}</div>
               <div style={{fontWeight:800,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bestPct.title}</div>
-              <div style={{fontSize:13,fontWeight:700,color:"#5DCAA5",marginTop:2}}>{fmtp(bestPct.marginPct)} de marge</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#5DCAA5",marginTop:2}}>{fmtp(bestPct.marginPct)}</div>
             </div>
           )}
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
-            <KpiCard label="Meilleur mois" value={bestMonthEntry?`${MONTHS_FR[bestMonthEntry.month]} ${bestMonthEntry.year}`:"-"} sub={bestMonthEntry?`+${fmt(bestMonthEntry.profit)}`:undefined} color="#1D9E75"/>
+            <KpiCard label={tr('meilleurMois')} value={bestMonthEntry?`${MONTHS[bestMonthEntry.month]} ${bestMonthEntry.year}`:"-"} sub={bestMonthEntry?`+${fmt(bestMonthEntry.profit)}`:undefined} color="#1D9E75"/>
             {avgDelay!==null
-              ? <KpiCard label="Délai moyen" value={`${avgDelay} jour${avgDelay!==1?"s":""}`} color="#A3A9A6" sub="entre achat et vente"/>
-              : <KpiCard label="Délai moyen" value="—" color="#A3A9A6" sub="données insuffisantes"/>
+              ? <KpiCard label={tr('delaiMoyen')} value={`${avgDelay} ${tr('jours')}`} color="#A3A9A6" sub={tr('entreAchatVente')}/>
+              : <KpiCard label={tr('delaiMoyen')} value="—" color="#A3A9A6" sub={tr('donneesInsuffisantes')}/>
             }
           </div>
 
-          <SectionTitle>Tendances</SectionTitle>
+          <SectionTitle>{tr('tendances')}</SectionTitle>
           <div style={{background:"#fff",borderRadius:12,padding:"16px 18px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{fontSize:13,fontWeight:800,color:C.text,marginBottom:4}}>Évolution profit</div>
-            <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>6 derniers mois</div>
+            <div style={{fontSize:13,fontWeight:800,color:C.text,marginBottom:4}}>{tr('evolutionProfit')}</div>
+            <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>{tr('sixDerniersMois')}</div>
             <div style={{position:"relative",height:"180px",width:"100%"}}>
               <Line data={lineData} options={lineOpts}/>
             </div>
@@ -182,9 +185,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
 
           {top3.length>0&&(
             <>
-              <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",color:"#A3A9A6",marginTop:20,marginBottom:8}}>
-                Top 3 articles
-              </div>
+              <SectionTitle>{tr('top3')}</SectionTitle>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {top3.map((s,i)=>{
                   const d=new Date(s.date);
@@ -195,7 +196,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:800,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                        <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</div>
+                        <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{d.getDate()} {MONTHS[d.getMonth()]} {d.getFullYear()}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
                         <div style={{fontWeight:900,fontSize:14,color:"#1D9E75"}}>+{fmt(s.margin)}</div>
