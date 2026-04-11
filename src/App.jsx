@@ -274,6 +274,18 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
   >{children}</button>
 );
 
+function getMargeMessage(marginPct){
+  if(marginPct>=50) return{msg:"Affaire en or 🏆",color:"#1D9E75"};
+  if(marginPct>=35) return{msg:"Excellent deal 🔥",color:"#1D9E75"};
+  if(marginPct>=25) return{msg:"Très bon deal ✅",color:"#1D9E75"};
+  if(marginPct>=15) return{msg:"Pas mal 👍",color:"#5DCAA5"};
+  if(marginPct>=8)  return{msg:"Moyen, à toi de voir 🤔",color:"#F9A26C"};
+  if(marginPct>=1)  return{msg:"Marge très faible ⚠️",color:"#F9A26C"};
+  if(marginPct===0) return{msg:"Aucun bénéfice",color:"#6B7280"};
+  if(marginPct>=-10) return{msg:"Légère perte 😬",color:"#E53E3E"};
+  if(marginPct>=-30) return{msg:"Perte significative ❌",color:"#E53E3E"};
+  return{msg:"Grosse perte, évite 🚨",color:"#E53E3E"};
+}
 function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||""};}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
@@ -1581,8 +1593,8 @@ export default function App({ loginOnly = false }){
                     <div style={{marginTop:10,height:4,background:"rgba(255,255,255,0.15)",borderRadius:99}}>
                       <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
-                    <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>
-                      {marginPct>=30?t('excellentDeal'):marginPct>=20?t('bonDeal'):marginPct>=10?t('dealCorrect'):t('margeFaible')}
+                    <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.75)"}}>
+                      {getMargeMessage(marginPct).msg}
                     </div>
                   </>
                 ):(
@@ -1601,7 +1613,7 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(Math.abs(marginPct),100)}%`,height:"100%",background:"#E24B4A",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"#E24B4A"}}>
-                      {t('perteDargent')}
+                      {getMargeMessage(marginPct).msg}
                     </div>
                   </>
                 )

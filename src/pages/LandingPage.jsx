@@ -5,6 +5,19 @@ import { landingTranslations } from '../i18n/translations';
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
+function getMargeMessage(marginPct){
+  if(marginPct>=50) return{msg:"Affaire en or 🏆",color:"#1D9E75"};
+  if(marginPct>=35) return{msg:"Excellent deal 🔥",color:"#1D9E75"};
+  if(marginPct>=25) return{msg:"Très bon deal ✅",color:"#1D9E75"};
+  if(marginPct>=15) return{msg:"Pas mal 👍",color:"#5DCAA5"};
+  if(marginPct>=8)  return{msg:"Moyen, à toi de voir 🤔",color:"#F9A26C"};
+  if(marginPct>=1)  return{msg:"Marge très faible ⚠️",color:"#F9A26C"};
+  if(marginPct===0) return{msg:"Aucun bénéfice",color:"#6B7280"};
+  if(marginPct>=-10) return{msg:"Légère perte 😬",color:"#E53E3E"};
+  if(marginPct>=-30) return{msg:"Perte significative ❌",color:"#E53E3E"};
+  return{msg:"Grosse perte, évite 🚨",color:"#E53E3E"};
+}
+
 function getBrowserLang() {
   const saved = localStorage.getItem('fs_lang');
   if (saved) return saved;
@@ -137,11 +150,9 @@ export default function LandingPage() {
   const calcMargin = calcSell - calcBuy - calcFees;
   const calcPct = calcBuy > 0 ? (calcMargin / calcBuy) * 100 : 0;
   const hasResult = calcBuy > 0 && calcSell > 0;
-  const calcColor = !hasResult ? '#6B7280' : calcMargin < 0 ? '#E53E3E' : calcPct >= 20 ? '#1D9E75' : '#F9A26C';
-  const calcMsg = !hasResult ? '' : calcMargin < 0
-    ? (lang === 'fr' ? '⚠️ Perte' : '⚠️ Loss')
-    : calcPct >= 20 ? 'Excellent deal 🔥'
-    : (lang === 'fr' ? 'Peut mieux faire' : 'Room to improve');
+  const { msg: calcMsg, color: calcColor } = !hasResult
+    ? { msg: '', color: '#6B7280' }
+    : getMargeMessage(calcPct);
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
 
