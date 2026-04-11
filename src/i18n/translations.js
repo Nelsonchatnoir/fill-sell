@@ -309,6 +309,17 @@ export const landingTranslations = {
     ctaNote: "Gratuit · Sans carte bancaire · Prêt en 30 secondes",
     footerTagline: "L'outil simple pour les revendeurs malins.",
     footerRights: "© 2026 Fill & Sell. Tous droits réservés.",
+    platformsTitle: "Compatible avec toutes les plateformes",
+    platformsSub: "Vinted · eBay · Depop · Leboncoin · Beebeep · Facebook Marketplace · Poshmark · Mercari · Wallapop · Vestiaire Collective · GOAT · StockX · et toutes les autres marketplaces",
+    platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
+    faqTitle: "Questions fréquentes",
+    faqItems: [
+      { q: "Fill & Sell est-il gratuit ?", a: "Oui, Fill & Sell est entièrement gratuit jusqu'à 20 articles. La version Premium à 4,99€/mois offre des articles illimités, des statistiques avancées et l'export Excel." },
+      { q: "Quelles plateformes sont compatibles ?", a: "Fill & Sell fonctionne avec Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop et toutes les autres marketplaces." },
+      { q: "Comment calculer ma marge sur Vinted ?", a: "Entre ton prix d'achat et ton prix de vente dans le calculateur. Fill & Sell calcule instantanément ta marge nette et ta rentabilité en pourcentage." },
+      { q: "Puis-je exporter mes ventes en Excel ?", a: "Oui, l'export Excel est disponible en version Premium à 4,99€/mois." },
+      { q: "Fill & Sell fonctionne-t-il sur mobile ?", a: "Oui, l'app est optimisée mobile-first pour iPhone et Android, directement dans ton navigateur." }
+    ],
   },
   en: {
     navLogin: "Log in",
@@ -363,5 +374,16 @@ export const landingTranslations = {
     ctaNote: "Free · No credit card · Ready in 30 seconds",
     footerTagline: "The simple tool for smart resellers.",
     footerRights: "© 2026 Fill & Sell. All rights reserved.",
+    platformsTitle: "Compatible with all platforms",
+    platformsSub: "Vinted · eBay · Depop · Leboncoin · Beebeep · Facebook Marketplace · Poshmark · Mercari · Wallapop · Vestiaire Collective · GOAT · StockX · and all other marketplaces",
+    platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
+    faqTitle: "Frequently asked questions",
+    faqItems: [
+      { q: "Is Fill & Sell free?", a: "Yes, Fill & Sell is completely free for up to 20 items. The Premium plan at €4.99/month offers unlimited items, advanced stats and Excel export." },
+      { q: "Which platforms are supported?", a: "Fill & Sell works with Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop and all other marketplaces." },
+      { q: "How do I calculate my margin on Vinted?", a: "Enter your purchase price and selling price in the calculator. Fill & Sell instantly calculates your net margin and profitability percentage." },
+      { q: "Can I export my sales to Excel?", a: "Yes, Excel export is available in the Premium plan at €4.99/month." },
+      { q: "Does Fill & Sell work on mobile?", a: "Yes, the app is mobile-first optimized for iPhone and Android, directly in your browser." }
+    ],
   },
 };

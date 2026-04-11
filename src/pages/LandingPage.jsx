@@ -61,25 +61,19 @@ const css = `
 
   .brand-logo {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 22px;
-    font-weight: 800;
-    font-style: italic;
+    font-size: 22px; font-weight: 800; font-style: italic;
     letter-spacing: 0.2px;
     background: linear-gradient(135deg, #3EACA0, #E8956D);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
 
   .hero-badge {
     display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(255,255,255,0.18);
-    backdrop-filter: blur(8px);
+    background: rgba(255,255,255,0.18); backdrop-filter: blur(8px);
     border-radius: 99px; padding: 6px 16px;
     font-size: 13px; font-weight: 600; color: #fff;
     margin-bottom: 28px;
-    border: 1px solid rgba(255,255,255,0.28);
-    letter-spacing: 0.1px;
+    border: 1px solid rgba(255,255,255,0.28); letter-spacing: 0.1px;
   }
 
   .stat-value {
@@ -89,9 +83,13 @@ const css = `
     letter-spacing: -1.5px; line-height: 1;
   }
 
-  .pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .faq-details { border-bottom: 1px solid rgba(0,0,0,0.07); }
+  .faq-details summary { list-style: none; cursor: pointer; padding: 18px 0; display: flex; justify-content: space-between; align-items: center; }
+  .faq-details summary::-webkit-details-marker { display: none; }
+  .faq-details[open] .faq-plus { transform: rotate(45deg); }
+  .faq-plus { font-size: 22px; color: #3EACA0; transition: transform 0.2s; flex-shrink: 0; }
+
   @media(max-width: 768px) {
-    .pricing-grid { grid-template-columns: 1fr !important; }
     .lp-grid3 { grid-template-columns: 1fr; }
     .hero-title { font-size: 36px !important; letter-spacing: -1px !important; }
     .hero-sub { font-size: 16px !important; }
@@ -100,6 +98,7 @@ const css = `
     .lp-nav-cta { display: none !important; }
     .stats-grid { grid-template-columns: repeat(2,1fr) !important; }
     .brand-logo { font-size: 18px; }
+    .pricing-grid { grid-template-columns: 1fr !important; }
   }
 `;
 
@@ -132,10 +131,11 @@ export default function LandingPage() {
       <style>{css}</style>
 
       {/* ── NAVBAR ── */}
-      <nav className="lp-nav">
+      <nav className="lp-nav" aria-label="Navigation principale">
         <div className="lp-nav-inner">
           <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => nav("/")}>
-            <img src="/logo.png" style={{ height: 34, objectFit: "contain" }} alt="Fill & Sell" />
+            <img src="/logo.png" height={34} style={{ objectFit: "contain" }}
+              alt="Fill & Sell — tracker profits revente" />
             <span className="brand-logo">Fill & Sell</span>
           </div>
 
@@ -144,6 +144,7 @@ export default function LandingPage() {
             <div style={{ display:"flex", alignItems:"center", gap:2, background:"rgba(0,0,0,0.06)", borderRadius:99, padding:3 }}>
               {['fr','en'].map(code => (
                 <button key={code} onClick={() => changeLang(code)}
+                  aria-label={`Passer en ${code.toUpperCase()}`}
                   style={{ padding:"4px 10px", borderRadius:99, border:"none", fontSize:12, fontWeight:800, cursor:"pointer", transition:"all 0.15s",
                            background: lang===code ? "#fff" : "transparent",
                            color: lang===code ? "#0D0D0D" : "#6B7280",
@@ -152,14 +153,14 @@ export default function LandingPage() {
                 </button>
               ))}
             </div>
-            <button onClick={() => nav("/login")} style={{
-              padding: "8px 18px", background: "transparent", color: C.sub,
-              border: "1px solid rgba(0,0,0,0.12)", borderRadius: 10,
-              fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
-            }}>
+            <button onClick={() => nav("/login")}
+              aria-label="Se connecter à Fill & Sell"
+              style={{ padding:"8px 18px", background:"transparent", color:C.sub, border:"1px solid rgba(0,0,0,0.12)", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}>
               {l.navLogin}
             </button>
-            <button className="lp-btn-main lp-nav-cta" style={{ padding: "8px 20px", fontSize: 14 }} onClick={() => nav("/login")}>
+            <button className="lp-btn-main lp-nav-cta" style={{ padding:"8px 20px", fontSize:14 }}
+              onClick={() => nav("/login")}
+              aria-label="Créer un compte gratuit sur Fill & Sell">
               {l.navCta}
             </button>
           </div>
@@ -167,63 +168,53 @@ export default function LandingPage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section style={{
-        background: "linear-gradient(135deg,#3EACA0 0%,#60b9b4 45%,#E8956D 100%)",
-        padding: "110px 24px 100px", textAlign: "center",
-        position: "relative", overflow: "hidden"
-      }}>
-        <div style={{ position: "absolute", top: -100, right: -80, width: 360, height: 360, background: "rgba(255,255,255,0.06)", borderRadius: "50%", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: -60, left: -60, width: 260, height: 260, background: "rgba(255,255,255,0.04)", borderRadius: "50%", pointerEvents: "none" }} />
+      <section style={{ background:"linear-gradient(135deg,#3EACA0 0%,#60b9b4 45%,#E8956D 100%)", padding:"110px 24px 100px", textAlign:"center", position:"relative", overflow:"hidden" }}>
+        <div style={{ position:"absolute", top:-100, right:-80, width:360, height:360, background:"rgba(255,255,255,0.06)", borderRadius:"50%", pointerEvents:"none" }} />
+        <div style={{ position:"absolute", bottom:-60, left:-60, width:260, height:260, background:"rgba(255,255,255,0.04)", borderRadius:"50%", pointerEvents:"none" }} />
 
-        <div style={{ maxWidth: 740, margin: "0 auto", position: "relative" }}>
-          <div className="hero-badge">{l.badge}</div>
+        <div style={{ maxWidth:740, margin:"0 auto", position:"relative" }}>
+          <p className="hero-badge">{l.badge}</p>
 
-          <h1 className="hero-title" style={{
-            fontSize: 54, fontWeight: 900, color: "#fff",
-            letterSpacing: "-2px", lineHeight: 1.1, marginBottom: 24,
-            textShadow: "0 2px 24px rgba(0,0,0,0.12)"
-          }}>
+          <h1 className="hero-title" style={{ fontSize:54, fontWeight:900, color:"#fff", letterSpacing:"-2px", lineHeight:1.1, marginBottom:24, textShadow:"0 2px 24px rgba(0,0,0,0.12)" }}>
             {l.heroTitle1}<br />{l.heroTitle2} {l.heroEmoji}
           </h1>
 
-          <p className="hero-sub" style={{
-            fontSize: 19, color: "rgba(255,255,255,0.88)",
-            lineHeight: 1.65, maxWidth: 520, margin: "0 auto 48px",
-            fontWeight: 400
-          }}>
+          <p className="hero-sub" style={{ fontSize:19, color:"rgba(255,255,255,0.88)", lineHeight:1.65, maxWidth:520, margin:"0 auto 48px", fontWeight:400 }}>
             {l.heroSub}
           </p>
 
-          <div className="lp-hero-btns" style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className="lp-btn-main" style={{ fontSize: 17, padding: "16px 36px" }}
-              onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav("/login"); }}>
+          <div className="lp-hero-btns" style={{ display:"flex", gap:14, justifyContent:"center", flexWrap:"wrap" }}>
+            <button className="lp-btn-main" style={{ fontSize:17, padding:"16px 36px" }}
+              aria-label="Créer un compte gratuit sur Fill & Sell"
+              onClick={() => { track('cta_click', { cta:'hero_signup', page:'landing' }); nav("/login"); }}>
               {l.heroCta}
             </button>
             <button className="lp-btn-sec"
-              onClick={() => { track('cta_click', { cta: 'how_it_works', page: 'landing' }); document.getElementById("features").scrollIntoView({ behavior: "smooth" }); }}>
+              aria-label="Voir comment fonctionne Fill & Sell"
+              onClick={() => { track('cta_click', { cta:'how_it_works', page:'landing' }); document.getElementById("features").scrollIntoView({ behavior:"smooth" }); }}>
               {l.heroSecondary}
             </button>
           </div>
 
-          <p style={{ marginTop: 22, fontSize: 13, color: "rgba(255,255,255,0.55)", letterSpacing: "0.2px" }}>
+          <p style={{ marginTop:22, fontSize:13, color:"rgba(255,255,255,0.55)", letterSpacing:"0.2px" }}>
             {l.heroFree} · {l.heroNoCard} · {l.heroReady}
           </p>
         </div>
       </section>
 
       {/* ── STATS ── */}
-      <section style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px" }}>
-          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", textAlign: "center" }}>
+      <section aria-label="Chiffres clés" style={{ background:"#fff", borderBottom:"1px solid rgba(0,0,0,0.06)" }}>
+        <div style={{ maxWidth:900, margin:"0 auto", padding:"0 24px" }}>
+          <div className="stats-grid" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", textAlign:"center" }}>
             {[
               [l.stat1Val, l.stat1Label],
               [l.stat2Val, l.stat2Label],
               [l.stat3Val, l.stat3Label],
               [l.stat4Val, l.stat4Label],
             ].map(([v, lbl]) => (
-              <div key={lbl} style={{ padding: "30px 16px" }}>
+              <div key={lbl} style={{ padding:"30px 16px" }}>
                 <div className="stat-value">{v}</div>
-                <div style={{ fontSize: 13, color: C.sub, marginTop: 6, fontWeight: 500 }}>{lbl}</div>
+                <div style={{ fontSize:13, color:C.sub, marginTop:6, fontWeight:500 }}>{lbl}</div>
               </div>
             ))}
           </div>
@@ -231,15 +222,15 @@ export default function LandingPage() {
       </section>
 
       {/* ── FEATURES ── */}
-      <section id="features" style={{ padding: "96px 24px" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 60 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>
+      <section id="features" style={{ padding:"96px 24px" }}>
+        <div style={{ maxWidth:1100, margin:"0 auto" }}>
+          <div style={{ textAlign:"center", marginBottom:60 }}>
+            <p style={{ fontSize:12, fontWeight:700, color:C.teal, textTransform:"uppercase", letterSpacing:"2px", marginBottom:14 }}>
               {l.featuresLabel}
-            </div>
-            <h2 style={{ fontSize: 38, fontWeight: 900, color: C.text, letterSpacing: "-1.2px", marginBottom: 16 }}>
+            </p>
+            <h2 style={{ fontSize:38, fontWeight:900, color:C.text, letterSpacing:"-1.2px", marginBottom:16 }}>
               {l.featuresTitle}{" "}
-              <span style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
+              <span style={{ background:"linear-gradient(135deg,#3EACA0,#E8956D)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
                 {l.featuresTitleAccent}
               </span>
             </h2>
@@ -247,55 +238,56 @@ export default function LandingPage() {
 
           <div className="lp-grid3">
             {features.map(({ icon, title, desc }) => (
-              <div key={title} className="feat-card">
-                <div style={{ fontSize: 36, marginBottom: 16 }}>{icon}</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 10, letterSpacing: "-0.3px", lineHeight: 1.3 }}>{title}</div>
-                <div style={{ fontSize: 14, color: C.sub, lineHeight: 1.7 }}>{desc}</div>
-              </div>
+              <article key={title} className="feat-card">
+                <div style={{ fontSize:36, marginBottom:16 }} aria-hidden="true">{icon}</div>
+                <h3 style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:10, letterSpacing:"-0.3px", lineHeight:1.3 }}>{title}</h3>
+                <p style={{ fontSize:14, color:C.sub, lineHeight:1.7 }}>{desc}</p>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
       {/* ── PREVIEW ── */}
-      <section style={{ background: "linear-gradient(180deg,#F0FAF9,#F8F7F4)", padding: "80px 24px" }}>
-        <div style={{ maxWidth: 860, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 52 }}>
-            <h2 style={{ fontSize: 36, fontWeight: 900, color: C.text, letterSpacing: "-1.2px", marginBottom: 14 }}>
+      <section aria-label="Aperçu de l'application" style={{ background:"linear-gradient(180deg,#F0FAF9,#F8F7F4)", padding:"80px 24px" }}>
+        <div style={{ maxWidth:860, margin:"0 auto" }}>
+          <div style={{ textAlign:"center", marginBottom:52 }}>
+            <h2 style={{ fontSize:36, fontWeight:900, color:C.text, letterSpacing:"-1.2px", marginBottom:14 }}>
               {l.previewTitle}
             </h2>
-            <p style={{ fontSize: 16, color: C.sub, lineHeight: 1.65, maxWidth: 480, margin: "0 auto" }}>
+            <p style={{ fontSize:16, color:C.sub, lineHeight:1.65, maxWidth:480, margin:"0 auto" }}>
               {l.previewSub}
             </p>
           </div>
 
-          {/* Mock dashboard */}
-          <div style={{ background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.12)", border: "1px solid rgba(0,0,0,0.06)" }}>
-            <div style={{ background: "linear-gradient(135deg,#3EACA0cc,#E8956Dcc)", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 32, height: 32, background: "rgba(255,255,255,0.3)", borderRadius: 9 }} />
-              <div style={{ flex: 1, height: 8, background: "rgba(255,255,255,0.4)", borderRadius: 99, maxWidth: 140 }} />
-              {["143,00 €", "67,50 €", "2 art."].map(v => (
-                <div key={v} style={{ background: "rgba(255,255,255,0.2)", borderRadius: 10, padding: "5px 14px", fontSize: 12, fontWeight: 800, color: "#fff" }}>{v}</div>
+          <div style={{ background:"#fff", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.12)", border:"1px solid rgba(0,0,0,0.06)" }}
+            role="img" aria-label="Dashboard Fill & Sell - suivi profits revente Vinted eBay Depop">
+            <div style={{ background:"linear-gradient(135deg,#3EACA0cc,#E8956Dcc)", padding:"14px 20px", display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ width:32, height:32, background:"rgba(255,255,255,0.3)", borderRadius:9 }} />
+              <div style={{ flex:1, height:8, background:"rgba(255,255,255,0.4)", borderRadius:99, maxWidth:140 }} />
+              {["143,00 €","67,50 €","2 art."].map(v => (
+                <div key={v} style={{ background:"rgba(255,255,255,0.2)", borderRadius:10, padding:"5px 14px", fontSize:12, fontWeight:800, color:"#fff" }}>{v}</div>
               ))}
             </div>
-            <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+            <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
               {[
-                { icon: "💰", label: "Bénéfice ce mois", val: "143,00 €", color: "#3EACA0" },
-                { icon: "📊", label: "Marge moyenne", val: "38.2%", color: "#E8956D" },
-                { icon: "🏆", label: "Revenu brut", val: "374,00 €", color: "#3EACA0" },
-                { icon: "💸", label: "Capital investi", val: "231,00 €", color: "#DD6B20" },
+                { icon:"💰", label:"Bénéfice ce mois", val:"143,00 €", color:"#3EACA0" },
+                { icon:"📊", label:"Marge moyenne", val:"38.2%", color:"#E8956D" },
+                { icon:"🏆", label:"Revenu brut", val:"374,00 €", color:"#3EACA0" },
+                { icon:"💸", label:"Capital investi", val:"231,00 €", color:"#DD6B20" },
               ].map(({ icon, label, val, color }) => (
-                <div key={label} style={{ background: "#F9FAFB", borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(0,0,0,0.05)" }}>
-                  <div style={{ fontSize: 18, marginBottom: 8 }}>{icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: C.label, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color }}>{val}</div>
+                <div key={label} style={{ background:"#F9FAFB", borderRadius:14, padding:"14px 16px", border:"1px solid rgba(0,0,0,0.05)" }}>
+                  <div style={{ fontSize:18, marginBottom:8 }}>{icon}</div>
+                  <div style={{ fontSize:9, fontWeight:700, color:C.label, textTransform:"uppercase", letterSpacing:0.8, marginBottom:4 }}>{label}</div>
+                  <div style={{ fontSize:18, fontWeight:900, color }}>{val}</div>
                 </div>
               ))}
             </div>
-            <div style={{ padding: "0 20px 20px" }}>
-              <div style={{ background: "#F9FAFB", borderRadius: 14, padding: 16, height: 90, display: "flex", alignItems: "flex-end", gap: 8, border: "1px solid rgba(0,0,0,0.05)" }}>
-                {[30, 55, 40, 70, 45, 90].map((h, i) => (
-                  <div key={i} style={{ flex: 1, background: i === 5 ? "#3EACA0" : "#3EACA025", borderRadius: "6px 6px 0 0", height: `${h}%`, transition: "all 0.3s" }} />
+            <div style={{ padding:"0 20px 20px" }}>
+              <div style={{ background:"#F9FAFB", borderRadius:14, padding:16, height:90, display:"flex", alignItems:"flex-end", gap:8, border:"1px solid rgba(0,0,0,0.05)" }}
+                role="img" aria-label="Graphique évolution profits - tracker revendeur Fill & Sell">
+                {[30,55,40,70,45,90].map((h,i) => (
+                  <div key={i} style={{ flex:1, background:i===5?"#3EACA0":"#3EACA025", borderRadius:"6px 6px 0 0", height:`${h}%`, transition:"all 0.3s" }} />
                 ))}
               </div>
             </div>
@@ -303,57 +295,78 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── PLATFORMS ── */}
+      <section id="platforms" style={{ padding:"80px 24px", background:"#fff" }}>
+        <div style={{ maxWidth:860, margin:"0 auto", textAlign:"center" }}>
+          <h2 style={{ fontSize:32, fontWeight:900, color:C.text, letterSpacing:"-1px", marginBottom:14 }}>
+            {l.platformsTitle}
+          </h2>
+          <p style={{ fontSize:16, color:C.sub, marginBottom:36, lineHeight:1.65, maxWidth:600, margin:"0 auto 36px" }}>
+            {l.platformsSub}
+          </p>
+          <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:10 }}>
+            {l.platforms.map(platform => (
+              <span key={platform} style={{ background:"#E8F5F0", color:"#0F6E56", fontWeight:700, fontSize:14, padding:"8px 18px", borderRadius:99, border:"1px solid #9FE1CB", display:"inline-block" }}>
+                {platform}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── PRICING ── */}
-      <section style={{ padding: "90px 24px", background: "#fff" }}>
-        <div style={{ maxWidth: 860, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 56 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>{l.pricingLabel}</div>
-            <h2 style={{ fontSize: 38, fontWeight: 900, color: C.text, letterSpacing: "-1px", marginBottom: 16 }}>{l.pricingTitle}</h2>
+      <section style={{ padding:"90px 24px", background:"#F8F7F4" }}>
+        <div style={{ maxWidth:860, margin:"0 auto" }}>
+          <div style={{ textAlign:"center", marginBottom:56 }}>
+            <p style={{ fontSize:12, fontWeight:700, color:C.teal, textTransform:"uppercase", letterSpacing:"2px", marginBottom:14 }}>{l.pricingLabel}</p>
+            <h2 style={{ fontSize:38, fontWeight:900, color:C.text, letterSpacing:"-1px", marginBottom:16 }}>{l.pricingTitle}</h2>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24, maxWidth: 700, margin: "0 auto" }}>
+          <div className="pricing-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:24, maxWidth:700, margin:"0 auto" }}>
             {/* Gratuit */}
-            <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)", display:"flex", flexDirection:"column" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>{l.pricingFreeTitle}</div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: C.text, letterSpacing: "-1.5px", marginBottom: 4 }}>{l.pricingFreePrice}</div>
-              <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>{l.pricingFreePeriod}</div>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
+            <div style={{ background:"#fff", borderRadius:20, padding:"32px 28px", border:"1px solid rgba(0,0,0,0.08)", display:"flex", flexDirection:"column" }}>
+              <p style={{ fontSize:13, fontWeight:700, color:C.sub, textTransform:"uppercase", letterSpacing:1, marginBottom:12 }}>{l.pricingFreeTitle}</p>
+              <div style={{ fontSize:40, fontWeight:900, color:C.text, letterSpacing:"-1.5px", marginBottom:4 }}>{l.pricingFreePrice}</div>
+              <p style={{ fontSize:13, color:C.sub, marginBottom:28 }}>{l.pricingFreePeriod}</p>
+              <ul style={{ flex:1, display:"flex", flexDirection:"column", gap:14, marginBottom:0, listStyle:"none" }}>
                 {l.pricingFreeFeatures.map(feat => (
-                  <div key={feat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>✓</span>
-                    <span style={{ fontSize: 14, color: C.text }}>{feat}</span>
-                  </div>
+                  <li key={feat} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ fontSize:16, flexShrink:0, color:C.teal }}>✓</span>
+                    <span style={{ fontSize:14, color:C.text }}>{feat}</span>
+                  </li>
                 ))}
-              </div>
-              <button onClick={() => nav("/login")} style={{ marginTop: 28, width: "100%", padding: "13px", background: "transparent", color: C.teal, border: `1.5px solid ${C.teal}`, borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}
-                onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = "#fff"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.teal; }}
-              >
+              </ul>
+              <button onClick={() => nav("/login")}
+                aria-label="Créer un compte gratuit sur Fill & Sell"
+                style={{ marginTop:28, width:"100%", padding:"13px", background:"transparent", color:C.teal, border:`1.5px solid ${C.teal}`, borderRadius:12, fontSize:14, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
+                onMouseEnter={e => { e.currentTarget.style.background=C.teal; e.currentTarget.style.color="#fff"; }}
+                onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.color=C.teal; }}>
                 {l.pricingFreeCta}
               </button>
             </div>
 
             {/* Premium */}
-            <div style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden", boxShadow: "0 20px 60px rgba(62,172,160,0.3)", display:"flex", flexDirection:"column" }}>
-              <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, background: "rgba(255,255,255,0.08)", borderRadius: "50%" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>{l.pricingProTitle}</div>
-                <span style={{ background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 99, padding: "3px 10px", border: "1px solid rgba(255,255,255,0.4)" }}>⭐ {l.pricingProBadge}</span>
+            <div style={{ background:"linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius:20, padding:"32px 28px", position:"relative", overflow:"hidden", boxShadow:"0 20px 60px rgba(62,172,160,0.3)", display:"flex", flexDirection:"column" }}>
+              <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, background:"rgba(255,255,255,0.08)", borderRadius:"50%" }} />
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                <p style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.8)", textTransform:"uppercase", letterSpacing:1 }}>{l.pricingProTitle}</p>
+                <span style={{ background:"rgba(255,255,255,0.25)", color:"#fff", fontSize:11, fontWeight:800, borderRadius:99, padding:"3px 10px", border:"1px solid rgba(255,255,255,0.4)" }}>⭐ {l.pricingProBadge}</span>
               </div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 4 }}>{l.pricingProPrice}</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 20 }}>{l.pricingProPeriod}</div>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
+              <div style={{ fontSize:40, fontWeight:900, color:"#fff", letterSpacing:"-1.5px", marginBottom:4 }}>{l.pricingProPrice}</div>
+              <p style={{ fontSize:13, color:"rgba(255,255,255,0.75)", marginBottom:20 }}>{l.pricingProPeriod}</p>
+              <ul style={{ flex:1, display:"flex", flexDirection:"column", gap:14, marginBottom:0, listStyle:"none" }}>
                 {l.pricingProFeatures.map(feat => (
-                  <div key={feat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 16, flexShrink: 0, color: "#fff" }}>✓</span>
-                    <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>{feat}</span>
-                  </div>
+                  <li key={feat} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ fontSize:16, flexShrink:0, color:"#fff" }}>✓</span>
+                    <span style={{ fontSize:14, color:"#fff", fontWeight:500 }}>{feat}</span>
+                  </li>
                 ))}
-              </div>
-              <button onClick={() => nav("/login")} style={{ marginTop: 28, width: "100%", padding: "13px", background: "#fff", color: C.teal, border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 8px 24px rgba(0,0,0,0.15)", transition: "all 0.2s" }}
-                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.2)"; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)"; }}
-              >
+              </ul>
+              <button onClick={() => nav("/login")}
+                aria-label="Passer au plan Premium Fill & Sell"
+                style={{ marginTop:28, width:"100%", padding:"13px", background:"#fff", color:C.teal, border:"none", borderRadius:12, fontSize:14, fontWeight:800, cursor:"pointer", boxShadow:"0 8px 24px rgba(0,0,0,0.15)", transition:"all 0.2s" }}
+                onMouseEnter={e => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 12px 32px rgba(0,0,0,0.2)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.15)"; }}>
                 {l.pricingProCta}
               </button>
             </div>
@@ -362,35 +375,51 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA FINAL ── */}
-      <section style={{ padding: "96px 24px", textAlign: "center", background: "linear-gradient(135deg,#3EACA0,#E8956D)" }}>
-        <div style={{ maxWidth: 620, margin: "0 auto" }}>
-          <h2 style={{ fontSize: 42, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 18, lineHeight: 1.1 }}>
+      <section style={{ padding:"96px 24px", textAlign:"center", background:"linear-gradient(135deg,#3EACA0,#E8956D)" }}>
+        <div style={{ maxWidth:620, margin:"0 auto" }}>
+          <h2 style={{ fontSize:42, fontWeight:900, color:"#fff", letterSpacing:"-1.5px", marginBottom:18, lineHeight:1.1 }}>
             {l.ctaTitle}
           </h2>
-          <p style={{ fontSize: 18, color: "rgba(255,255,255,0.82)", marginBottom: 44, lineHeight: 1.65 }}>
+          <p style={{ fontSize:18, color:"rgba(255,255,255,0.82)", marginBottom:44, lineHeight:1.65 }}>
             {l.ctaSub}
           </p>
-          <button className="lp-btn-main" style={{
-            fontSize: 18, padding: "18px 48px",
-            background: "#fff", color: C.teal,
-            boxShadow: "0 12px 40px rgba(0,0,0,0.15)"
-          }} onClick={() => nav("/login")}>
+          <button className="lp-btn-main"
+            aria-label="Créer un compte gratuit sur Fill & Sell"
+            style={{ fontSize:18, padding:"18px 48px", background:"#fff", color:C.teal, boxShadow:"0 12px 40px rgba(0,0,0,0.15)" }}
+            onClick={() => nav("/login")}>
             {l.ctaBtn}
           </button>
-          <p style={{ marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.55)" }}>
-            {l.ctaNote}
-          </p>
+          <p style={{ marginTop:20, fontSize:13, color:"rgba(255,255,255,0.55)" }}>{l.ctaNote}</p>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section id="faq" style={{ padding:"80px 24px", background:"#fff" }}>
+        <div style={{ maxWidth:720, margin:"0 auto" }}>
+          <h2 style={{ fontSize:32, fontWeight:900, color:C.text, letterSpacing:"-1px", marginBottom:40, textAlign:"center" }}>
+            {l.faqTitle}
+          </h2>
+          {l.faqItems.map((item, i) => (
+            <details key={i} className="faq-details">
+              <summary>
+                <span style={{ fontSize:15, fontWeight:800, color:C.text, paddingRight:16 }}>{item.q}</span>
+                <span className="faq-plus" aria-hidden="true">+</span>
+              </summary>
+              <p style={{ fontSize:14, color:C.sub, paddingBottom:18, lineHeight:1.7 }}>{item.a}</p>
+            </details>
+          ))}
         </div>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer style={{ background: "#0F172A", padding: "36px 24px", textAlign: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
-          <img src="/logo.png" style={{ height: 26, filter: "brightness(0) invert(1) opacity(0.5)" }} alt="Fill & Sell" />
-          <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "-0.3px" }}>Fill & Sell</span>
+      <footer style={{ background:"#0F172A", padding:"36px 24px", textAlign:"center" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:8 }}>
+          <img src="/logo.png" height={26} style={{ filter:"brightness(0) invert(1) opacity(0.5)" }}
+            alt="Fill & Sell - tracker profits revente" />
+          <span style={{ fontSize:15, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"-0.3px" }}>Fill & Sell</span>
         </div>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>{l.footerTagline}</p>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)" }}>{l.footerRights}</p>
+        <p style={{ fontSize:13, color:"rgba(255,255,255,0.35)", marginBottom:6 }}>{l.footerTagline}</p>
+        <p style={{ fontSize:13, color:"rgba(255,255,255,0.25)" }}>{l.footerRights}</p>
       </footer>
     </div>
   );
