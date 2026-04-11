@@ -380,6 +380,7 @@ export default function App({ loginOnly = false }){
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
+  const [soldShowAll,setSoldShowAll]=useState(false);
   const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
   const [cBuy,setCBuy]=useState("");
@@ -1444,6 +1445,55 @@ export default function App({ loginOnly = false }){
                 </div>
               )}
 
+              {/* ── VENDUS (en premier) ── */}
+              <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
+                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
+                </div>
+                {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque).filter(Boolean))];return marquesSold.length>1&&(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                    {marquesSold.map(m=>(
+                      <button key={m} onClick={()=>setFilterMarqueSold(m)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
+                          background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
+                          color:filterMarqueSold===m?"#fff":"#6B7280"}}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                );})()}
+                {sold.length===0?<Empty text="Aucune vente encore"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {(soldShowAll?soldFiltre:soldFiltre.slice(0,20)).map(item=>{
+                      const smc=item.margin<0?C.red:C.green;
+                      return(
+                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                              {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                            </div>
+                            {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
+                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
+                            <div style={{fontWeight:900,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
+                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(item.marginPct)}</div>
+                          </div>
+                        </SwipeRow>
+                      );
+                    })}
+                    {soldFiltre.length>20&&!soldShowAll&&(
+                      <button onClick={()=>setSoldShowAll(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
+                        Voir plus ({soldFiltre.length-20} articles)
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── EN STOCK ── */}
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1491,48 +1541,6 @@ export default function App({ loginOnly = false }){
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
                       </SwipeRow>
                     ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
-                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
-                </div>
-                {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque).filter(Boolean))];return marquesSold.length>1&&(
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-                    {marquesSold.map(m=>(
-                      <button key={m} onClick={()=>setFilterMarqueSold(m)}
-                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
-                          background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
-                          color:filterMarqueSold===m?"#fff":"#6B7280"}}>
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                );})()}
-                {sold.length===0?<Empty text="Aucune vente encore"/>:(
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {soldFiltre.map(item=>{
-                      const smc=item.margin<0?C.red:C.green;
-                      return(
-                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                              {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                            </div>
-                            {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
-                            <div style={{fontWeight:900,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
-                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(item.marginPct)}</div>
-                          </div>
-                        </SwipeRow>
-                      );
-                    })}
                   </div>
                 )}
               </div>
