@@ -181,6 +181,7 @@ export default function LandingPage() {
     ? { msg: '', color: '#6B7280' }
     : getMargeMessage(calcPct, calcMargin, lang);
 
+  useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
 
   function changeLang(code) {
