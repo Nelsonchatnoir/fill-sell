@@ -109,7 +109,6 @@ const css = `
     .lp-grid3 { grid-template-columns: 1fr; }
     .calc-row { flex-direction: column; }
     .dash-kpi { grid-template-columns: repeat(2,1fr) !important; }
-    .dash-wrap { transform: none !important; }
     .hero-title { font-size: 36px !important; letter-spacing: -1px !important; }
     .hero-sub { font-size: 16px !important; }
     .lp-hero-btns { flex-direction: column !important; }
@@ -328,7 +327,7 @@ export default function LandingPage() {
           </div>
 
           {/* Faux dashboard fidèle au design de l'app */}
-          <div className="dash-wrap" style={{ fontFamily:"'Nunito', 'Inter', sans-serif", background:"#fff", borderRadius:20, overflow:"hidden", boxShadow:"0 32px 80px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06)", border:"1px solid rgba(0,0,0,0.06)", transform:"rotate(-1deg)", transformOrigin:"center center" }}
+          <div className="dash-wrap" style={{ fontFamily:"'Nunito', 'Inter', sans-serif", background:"#fff", borderRadius:20, overflow:"hidden", boxShadow:"0 32px 80px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06)", border:"1px solid rgba(0,0,0,0.06)",  }}
             role="img" aria-label="Dashboard Fill & Sell - suivi profits revente Vinted eBay Depop">
 
             {/* 1 — Header gradient */}
