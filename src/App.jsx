@@ -947,15 +947,16 @@ export default function App({ loginOnly = false }){
       .map(row=>({
         user_id:user.id,
         titre:row.titre,
-        prix_achat:row.prix_achat,
-        prix_vente:row.prix_vente,
-        benefice:row.margin??0,
-        date:String(row.date||now).split('T')[0],
+        prix_achat:parseFloat(row.prix_achat)||0,
+        prix_vente:parseFloat(row.prix_vente)||0,
+        benefice:parseFloat(row.margin)??0,
+        date:(row.date?String(row.date):now.toString()).slice(0,10),
         marque:row.marque||null,
       }));
-    console.log('[Import] ventesRows:',ventesRows);
+    console.log('[Import] ventesRows à insérer:',ventesRows);
     if(ventesRows.length){
       const{error:ve}=await supabase.from('ventes').insert(ventesRows);
+      console.log('[Import] erreur ventes:',ve);
       if(ve) console.warn('[Import] ventes insert error:',ve.message);
     }
 
