@@ -179,7 +179,7 @@ export default function LandingPage() {
   const hasResult = calcBuy > 0 && calcSell > 0;
   const { msg: calcMsg, color: calcColor } = !hasResult
     ? { msg: '', color: '#6B7280' }
-    : getMargeMessage(calcPct, calcMargin, (navigator.language||'fr').startsWith('fr')?'fr':'en');
+    : getMargeMessage(calcPct, calcMargin, lang);
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
 
