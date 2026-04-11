@@ -725,7 +725,7 @@ export default function App({ loginOnly = false }){
     const buyStr=String(row[mapping.prix_achat]??'').replace(',','.').trim();
     const buy=parseFloat(buyStr);
     // Prix achat invalide ou nul
-    if(!mapping.prix_achat||!buyStr||isNaN(buy)||buy<=0) return 'prix manquant';
+    if(!mapping.prix_achat||!buyStr||isNaN(buy)||buy<0) return 'prix manquant';
     // Titre invalide : vide, chiffre pur, trop court, symbole
     const titre=buildTitre(row,mapping.titres);
     if(!titre||titre==='Article importé'||titre.length<2||/^[\d\s.,#*\-=]+$/.test(titre)) return 'titre invalide';
@@ -929,7 +929,7 @@ export default function App({ loginOnly = false }){
         marque,
         created_at:now,
       };
-    }).filter(r=>r.prix_achat>0&&r.titre!=="Article importé");
+    }).filter(r=>r.prix_achat>=0&&r.titre!=="Article importé");
     console.log('[Import] Inserting',toInsert.length,'rows — sample:',toInsert[0]);
 
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
