@@ -379,6 +379,7 @@ export default function App({ loginOnly = false }){
   const [rememberFrais,setRememberFrais]=useState(false);
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
+  const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
   const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
   const [cBuy,setCBuy]=useState("");
@@ -474,6 +475,12 @@ export default function App({ loginOnly = false }){
     }
     calcWasComplete.current = complete;
   },[cBuy, cSell, cShip, margin]);
+  useEffect(()=>{
+    if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque)) setFilterMarque("Toutes");
+  },[stock,filterMarque]);
+  useEffect(()=>{
+    if(filterMarqueSold!=="Toutes"&&!sold.some(i=>i.marque===filterMarqueSold)) setFilterMarqueSold("Toutes");
+  },[sold,filterMarqueSold]);
 
   const now=new Date();
 
@@ -570,6 +577,7 @@ export default function App({ loginOnly = false }){
   const stock=items.filter(i=>i.statut==="stock");
   const sold=items.filter(i=>i.statut==="vendu");
   const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||(i.marque?.trim()===filterMarque.trim()));
+  const soldFiltre=sold.filter(i=>filterMarqueSold==="Toutes"||(i.marque?.trim()===filterMarqueSold.trim()));
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -1445,7 +1453,7 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
-                {(()=>{const marques=["Toutes",...new Set(items.map(i=>i.marque).filter(Boolean))];return marques.length>1&&(
+                {(()=>{const marques=["Toutes",...new Set(stock.map(i=>i.marque).filter(Boolean))];return marques.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
                     {marques.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
@@ -1493,9 +1501,21 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
                 </div>
+                {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque).filter(Boolean))];return marquesSold.length>1&&(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                    {marquesSold.map(m=>(
+                      <button key={m} onClick={()=>setFilterMarqueSold(m)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
+                          background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
+                          color:filterMarqueSold===m?"#fff":"#6B7280"}}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                );})()}
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {sold.map(item=>{
+                    {soldFiltre.map(item=>{
                       const smc=item.margin<0?C.red:C.green;
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
