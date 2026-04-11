@@ -453,6 +453,7 @@ export default function App({ loginOnly = false }){
 
   const {t,tpl}=useTranslation(lang);
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
+  useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
 
   async function triggerCheckout(){
     try{
