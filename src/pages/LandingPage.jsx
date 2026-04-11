@@ -84,20 +84,20 @@ const css = `
   }
 
   .calc-inp {
-    flex: 1; min-width: 0;
+    flex: 1; min-width: 0; width: 100%;
     padding: 10px 14px; border-radius: 12px;
     border: 1.5px solid rgba(255,255,255,0.25);
     background: rgba(255,255,255,0.15);
-    color: #fff; font-size: 15px; font-weight: 600;
-    outline: none; transition: border-color 0.2s, background 0.2s;
-    font-family: 'Inter', sans-serif; width: 100%;
+    color: #fff; font-size: 15px; font-weight: 600; outline: none;
+    transition: border-color 0.2s, background 0.2s;
+    font-family: 'Inter', sans-serif;
   }
   .calc-inp::placeholder { color: rgba(255,255,255,0.48); font-weight: 400; }
   .calc-inp:focus { border-color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.22); }
   .calc-inp::-webkit-outer-spin-button,
   .calc-inp::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  .calc-result-val { transition: color 0.35s ease; }
-  .calc-result-box { transition: border-color 0.35s ease, background 0.35s ease; }
+  .calc-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .calc-val { transition: color 0.35s ease; }
 
   .faq-details { border-bottom: 1px solid rgba(0,0,0,0.07); }
   .faq-details summary { list-style: none; cursor: pointer; padding: 18px 0; display: flex; justify-content: space-between; align-items: center; }
@@ -107,7 +107,7 @@ const css = `
 
   @media(max-width: 768px) {
     .lp-grid3 { grid-template-columns: 1fr; }
-    .calc-row { flex-direction: column !important; }
+    .calc-row { flex-direction: column; }
     .hero-title { font-size: 36px !important; letter-spacing: -1px !important; }
     .hero-sub { font-size: 16px !important; }
     .lp-hero-btns { flex-direction: column !important; }
@@ -128,19 +128,19 @@ export default function LandingPage() {
   const [cSell, setCSell] = useState('');
   const [cFees, setCFees] = useState('');
 
+  const l = landingTranslations[lang] || landingTranslations.fr;
+
   const calcBuy = parseFloat(cBuy) || 0;
   const calcSell = parseFloat(cSell) || 0;
   const calcFees = parseFloat(cFees) || 0;
-  const margin = calcSell - calcBuy - calcFees;
-  const marginPct = calcBuy > 0 ? (margin / calcBuy) * 100 : 0;
+  const calcMargin = calcSell - calcBuy - calcFees;
+  const calcPct = calcBuy > 0 ? (calcMargin / calcBuy) * 100 : 0;
   const hasResult = calcBuy > 0 && calcSell > 0;
-  const calcColor = !hasResult ? '#6B7280' : margin < 0 ? '#E53E3E' : marginPct >= 20 ? '#1D9E75' : '#F9A26C';
-  const calcMsg = !hasResult ? '' : margin < 0 ? (lang === 'fr' ? '⚠️ Perte' : '⚠️ Loss') : marginPct >= 20 ? 'Excellent deal 🔥' : (lang === 'fr' ? 'Peut mieux faire' : 'Room to improve');
-
-  useEffect(() => {
-    if (hasResult) track('use_calculator', { source: 'landing', is_positive: margin > 0 });
-  }, [hasResult]);
-  const l = landingTranslations[lang] || landingTranslations.fr;
+  const calcColor = !hasResult ? '#6B7280' : calcMargin < 0 ? '#E53E3E' : calcPct >= 20 ? '#1D9E75' : '#F9A26C';
+  const calcMsg = !hasResult ? '' : calcMargin < 0
+    ? (lang === 'fr' ? '⚠️ Perte' : '⚠️ Loss')
+    : calcPct >= 20 ? 'Excellent deal 🔥'
+    : (lang === 'fr' ? 'Peut mieux faire' : 'Room to improve');
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
 
@@ -233,12 +233,12 @@ export default function LandingPage() {
             {l.heroFree} · {l.heroNoCard} · {l.heroReady}
           </p>
 
-          {/* ── Hero calculator ── */}
-          <div style={{ marginTop:28, background:"rgba(255,255,255,0.1)", backdropFilter:"blur(14px)", borderRadius:20, padding:"24px 28px", maxWidth:520, margin:"28px auto 0", border:"1px solid rgba(255,255,255,0.2)", boxShadow:"0 8px 32px rgba(0,0,0,0.1)" }}>
+          {/* ── Calculateur marge ── */}
+          <div style={{ marginTop:32, background:"rgba(255,255,255,0.1)", backdropFilter:"blur(14px)", borderRadius:20, padding:"24px 28px", maxWidth:520, marginLeft:"auto", marginRight:"auto", border:"1px solid rgba(255,255,255,0.2)", boxShadow:"0 8px 32px rgba(0,0,0,0.1)" }}>
             <p style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.7)", textTransform:"uppercase", letterSpacing:"1.8px", marginBottom:16, textAlign:"center" }}>
               🧮 {lang === 'fr' ? 'Calcule ta marge' : 'Calculate your margin'}
             </p>
-            <div className="calc-row" style={{ display:"flex", gap:10, marginBottom:14 }}>
+            <div className="calc-row">
               <input className="calc-inp" type="number" min="0" step="0.01"
                 placeholder={lang === 'fr' ? 'Achat €' : 'Buy €'}
                 value={cBuy} onChange={e => setCBuy(e.target.value)} />
@@ -249,13 +249,13 @@ export default function LandingPage() {
                 placeholder={lang === 'fr' ? 'Frais €' : 'Fees €'}
                 value={cFees} onChange={e => setCFees(e.target.value)} />
             </div>
-            <div className="calc-result-box" style={{ textAlign:"center", padding:"14px 16px", background: hasResult ? `${calcColor}18` : "rgba(255,255,255,0.06)", borderRadius:14, border: `1.5px solid ${hasResult ? calcColor + '55' : 'rgba(255,255,255,0.12)'}` }}>
+            <div style={{ textAlign:"center", padding:"14px 16px", background: hasResult ? `${calcColor}18` : "rgba(255,255,255,0.06)", borderRadius:14, border:`1.5px solid ${hasResult ? calcColor + '55' : 'rgba(255,255,255,0.12)'}`, transition:"background 0.35s, border-color 0.35s" }}>
               {hasResult ? (
                 <>
-                  <div className="calc-result-val" style={{ fontSize:28, fontWeight:900, color:calcColor, letterSpacing:"-0.5px" }}>
-                    {margin >= 0 ? '+' : ''}{margin.toFixed(2)} € <span style={{ fontSize:16, fontWeight:700 }}>({marginPct.toFixed(1)}%)</span>
+                  <div className="calc-val" style={{ fontSize:28, fontWeight:900, color:calcColor, letterSpacing:"-0.5px" }}>
+                    {calcMargin >= 0 ? '+' : ''}{calcMargin.toFixed(2)} € <span style={{ fontSize:16, fontWeight:700 }}>({calcPct.toFixed(1)}%)</span>
                   </div>
-                  <p className="calc-result-val" style={{ fontSize:13, fontWeight:700, color:calcColor, marginTop:4 }}>{calcMsg}</p>
+                  <p className="calc-val" style={{ fontSize:13, fontWeight:700, color:calcColor, marginTop:4 }}>{calcMsg}</p>
                 </>
               ) : (
                 <p style={{ fontSize:13, color:"rgba(255,255,255,0.4)", fontWeight:500 }}>
@@ -478,7 +478,7 @@ export default function LandingPage() {
 
       {/* ── COMPAT BANDEAU ── */}
       <div style={{ background:"#F8F7F4", borderTop:"1px solid rgba(0,0,0,0.07)", padding:"16px 24px", textAlign:"center" }}>
-        <p style={{ fontSize:13, color:C.sub, fontWeight:500, letterSpacing:0.1 }}>
+        <p style={{ fontSize:13, color:C.sub, fontWeight:500 }}>
           {lang === 'fr' ? 'Fonctionne avec toutes tes ventes, peu importe la plateforme.' : 'Works with all your sales, whatever the platform.'}
         </p>
       </div>
