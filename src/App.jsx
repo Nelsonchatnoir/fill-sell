@@ -1475,11 +1475,11 @@ export default function App({ loginOnly = false }){
                               {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                             </div>
                             {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
+                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → <span style={{color:"#0D0D0D"}}>{fmt(item.sell)}</span></div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
                             <div style={{fontWeight:900,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
-                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(item.marginPct)}</div>
+                            <div style={{fontSize:11,fontWeight:700,color:"#6B7280"}}>{fmtp(item.marginPct)}</div>
                           </div>
                         </SwipeRow>
                       );
@@ -1536,7 +1536,7 @@ export default function App({ loginOnly = false }){
                             {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi {fmt(item.buy)}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi <span style={{color:"#F9A26C"}}>{fmt(item.buy)}</span>{item.sell>0&&<> · <span style={{color:"#1D9E75"}}>{fmt(item.sell)}</span></>}</div>
                         </div>
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
                       </SwipeRow>
