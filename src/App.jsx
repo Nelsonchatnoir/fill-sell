@@ -274,7 +274,7 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
   >{children}</button>
 );
 
-function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date};}
+function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||""};}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
 function getFilteredData_unused(range, salesData){
@@ -373,7 +373,10 @@ export default function App({ loginOnly = false }){
   const [iTitle,setITitle]=useState("");
   const [iBuy,setIBuy]=useState("");
   const [iSell,setISell]=useState("");
+  const [iMarque,setIMarque]=useState("");
+  const [iDesc,setIDesc]=useState("");
   const [iSaved,setISaved]=useState(false);
+  const [filterMarque,setFilterMarque]=useState("Toutes");
   const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
   const [cBuy,setCBuy]=useState("");
@@ -573,7 +576,7 @@ export default function App({ loginOnly = false }){
     if(!isPremium&&items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const hasS=s>0;
     const mg=hasS?s-b:0;const mgp=hasS?(mg/s)*100:0;
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:iMarque||null,description:iDesc||null};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
@@ -588,7 +591,7 @@ export default function App({ loginOnly = false }){
     setISaved(true);setTimeout(()=>setISaved(false),1600);
     setToast({visible:true,message:`${t('articleAjoute')} · +${b.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
-    setITitle("");setIBuy("");setISell("");
+    setITitle("");setIBuy("");setISell("");setIMarque("");setIDesc("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -1289,12 +1292,29 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
               </div>
               <div>
+                <Field label="Marque (optionnel)" value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, Levi's..." icon="🏷️"/>
+              </div>
+              <div>
                 <Field label="Prix d'achat" value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix auquel tu as acheté l'article</div>}
               </div>
               <div>
                 <Field label="Prix de vente (optionnel)" value={iSell} set={setISell} placeholder="Vide = en stock" type="number" icon="📦" suffix="€"/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Optionnel — à remplir quand tu vends</div>}
+              </div>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 Description (optionnel)</div>
+                <textarea
+                  value={iDesc}
+                  onChange={e=>setIDesc(e.target.value.slice(0,200))}
+                  placeholder="Ex: Lot de 3 pièces, taille M, état neuf..."
+                  maxLength={200}
+                  rows={2}
+                  style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${iDesc?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
+                  onFocus={e=>e.currentTarget.style.borderColor=C.teal}
+                  onBlur={e=>e.currentTarget.style.borderColor=iDesc?C.teal:"rgba(0,0,0,0.12)"}
+                />
+                <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{iDesc.length}/200</div>
               </div>
               {items.length>0&&(
                 <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
@@ -1365,6 +1385,18 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
+                {(()=>{const marques=["Toutes",...[...new Set(stock.filter(i=>i.marque).map(i=>i.marque))].sort()];return marques.length>1&&(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                    {marques.map(m=>(
+                      <button key={m} onClick={()=>setFilterMarque(m)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
+                          background:filterMarque===m?"#1D9E75":"#F3F4F6",
+                          color:filterMarque===m?"#fff":"#6B7280"}}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                );})()}
                 {stock.length===0?(
                   <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 16px",gap:12}}>
                     <span style={{fontSize:40}}>📦</span>
@@ -1379,10 +1411,14 @@ export default function App({ loginOnly = false }){
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {stock.map(item=>(
+                    {stock.filter(item=>filterMarque==="Toutes"||item.marque===filterMarque).map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                            <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                            {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                          </div>
+                          {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
                           <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi {fmt(item.buy)}</div>
                         </div>
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
@@ -1404,7 +1440,11 @@ export default function App({ loginOnly = false }){
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                              {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                            </div>
+                            {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
                             <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → {fmt(item.sell)}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
