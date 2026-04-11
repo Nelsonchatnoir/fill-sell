@@ -576,8 +576,8 @@ export default function App({ loginOnly = false }){
   async function addItem(){
     if(!iTitle||!iBuy)return;
     if(!isPremium&&items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
-    const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const hasS=s>0;
-    const mg=hasS?s-b:0;const mgp=hasS?(mg/s)*100:0;
+    const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const f=parseFloat(iFrais)||0;const hasS=s>0;
+    const mg=hasS?s-b-f:0;const mgp=hasS?(mg/s)*100:0;
     const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:iMarque||null,description:iDesc||null};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
@@ -591,7 +591,7 @@ export default function App({ loginOnly = false }){
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
-    setToast({visible:true,message:`${t('articleAjoute')} · +${b.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
+    setToast({visible:true,message:`${t('articleAjoute')} · +${mg.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     setITitle("");setIBuy("");setISell("");setIMarque("");setIDesc("");if(!rememberFrais)setIFrais("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
@@ -1395,7 +1395,7 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
-                {(()=>{const marques=["Toutes",...[...new Set(stock.filter(i=>i.marque).map(i=>i.marque))].sort()];return marques.length>1&&(
+                {(()=>{const marques=["Toutes",...new Set(items.map(i=>i.marque).filter(Boolean))];const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||i.marque===filterMarque);return marques.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
                     {marques.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
@@ -1421,7 +1421,7 @@ export default function App({ loginOnly = false }){
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {stock.filter(item=>filterMarque==="Toutes"||item.marque===filterMarque).map(item=>(
+                    {stockFiltre.map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
