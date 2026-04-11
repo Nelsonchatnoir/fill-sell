@@ -274,21 +274,42 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
   >{children}</button>
 );
 
-function getMargeMessage(marginPct,marginEur){
-  if(marginEur>=500) return{msg:"Jackpot 💎",color:"#1D9E75"};
-  if(marginEur>=200) return{msg:"Grosse affaire 🤑",color:"#1D9E75"};
-  if(marginEur>=100) return{msg:"Très belle vente 🚀",color:"#1D9E75"};
-  if(marginEur>=50)  return{msg:"Belle marge 💪",color:"#1D9E75"};
-  if(marginPct>=50) return{msg:"Affaire en or 🏆",color:"#1D9E75"};
-  if(marginPct>=35) return{msg:"Excellent deal 🔥",color:"#1D9E75"};
-  if(marginPct>=25) return{msg:"Très bon deal ✅",color:"#1D9E75"};
-  if(marginPct>=15) return{msg:"Pas mal 👍",color:"#5DCAA5"};
-  if(marginPct>=8)  return{msg:"Moyen, à toi de voir 🤔",color:"#F9A26C"};
-  if(marginPct>=1)  return{msg:"Marge très faible ⚠️",color:"#F9A26C"};
-  if(marginPct===0) return{msg:"Aucun bénéfice",color:"#6B7280"};
-  if(marginPct>=-10) return{msg:"Légère perte 😬",color:"#E53E3E"};
-  if(marginPct>=-30) return{msg:"Perte significative ❌",color:"#E53E3E"};
-  return{msg:"Grosse perte, évite 🚨",color:"#E53E3E"};
+function getMargeMessage(marginPct,marginEur,lang='fr'){
+  const msgs={
+    fr:[
+      {msg:"Jackpot 💎",color:"#1D9E75"},{msg:"Grosse affaire 🤑",color:"#1D9E75"},
+      {msg:"Très belle vente 🚀",color:"#1D9E75"},{msg:"Belle marge 💪",color:"#1D9E75"},
+      {msg:"Affaire en or 🏆",color:"#1D9E75"},{msg:"Excellent deal 🔥",color:"#1D9E75"},
+      {msg:"Très bon deal ✅",color:"#1D9E75"},{msg:"Pas mal 👍",color:"#5DCAA5"},
+      {msg:"Moyen, à toi de voir 🤔",color:"#F9A26C"},{msg:"Marge très faible ⚠️",color:"#F9A26C"},
+      {msg:"Aucun bénéfice",color:"#6B7280"},{msg:"Légère perte 😬",color:"#E53E3E"},
+      {msg:"Perte significative ❌",color:"#E53E3E"},{msg:"Grosse perte, évite 🚨",color:"#E53E3E"},
+    ],
+    en:[
+      {msg:"Jackpot 💎",color:"#1D9E75"},{msg:"Big win 🤑",color:"#1D9E75"},
+      {msg:"Great sale 🚀",color:"#1D9E75"},{msg:"Nice margin 💪",color:"#1D9E75"},
+      {msg:"Golden deal 🏆",color:"#1D9E75"},{msg:"Excellent deal 🔥",color:"#1D9E75"},
+      {msg:"Very good deal ✅",color:"#1D9E75"},{msg:"Not bad 👍",color:"#5DCAA5"},
+      {msg:"Average, up to you 🤔",color:"#F9A26C"},{msg:"Very low margin ⚠️",color:"#F9A26C"},
+      {msg:"No profit",color:"#6B7280"},{msg:"Slight loss 😬",color:"#E53E3E"},
+      {msg:"Significant loss ❌",color:"#E53E3E"},{msg:"Big loss, avoid 🚨",color:"#E53E3E"},
+    ]
+  };
+  const m=msgs[lang]||msgs.fr;
+  if(marginEur>=500) return m[0];
+  if(marginEur>=200) return m[1];
+  if(marginEur>=100) return m[2];
+  if(marginEur>=50)  return m[3];
+  if(marginPct>=50)  return m[4];
+  if(marginPct>=35)  return m[5];
+  if(marginPct>=25)  return m[6];
+  if(marginPct>=15)  return m[7];
+  if(marginPct>=8)   return m[8];
+  if(marginPct>=1)   return m[9];
+  if(marginPct===0)  return m[10];
+  if(marginPct>=-10) return m[11];
+  if(marginPct>=-30) return m[12];
+  return m[13];
 }
 function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||""};}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
@@ -1598,7 +1619,7 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.75)"}}>
-                      {getMargeMessage(marginPct,margin).msg}
+                      {getMargeMessage(marginPct,margin,lang).msg}
                     </div>
                   </>
                 ):(
@@ -1617,7 +1638,7 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(Math.abs(marginPct),100)}%`,height:"100%",background:"#E24B4A",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"#E24B4A"}}>
-                      {getMargeMessage(marginPct,margin).msg}
+                      {getMargeMessage(marginPct,margin,lang).msg}
                     </div>
                   </>
                 )
