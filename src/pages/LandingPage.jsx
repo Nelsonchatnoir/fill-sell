@@ -258,7 +258,7 @@ export default function LandingPage() {
                 placeholder={lang === 'fr' ? 'Vente €' : 'Sell €'}
                 value={cSell} onChange={e => setCSell(e.target.value)} />
               <input className="calc-inp" type="number" min="0" step="0.01"
-                placeholder={lang === 'fr' ? 'Frais €' : 'Fees €'}
+                placeholder={lang === 'fr' ? 'Frais annexes €' : 'Additional fees €'}
                 value={cFees} onChange={e => setCFees(e.target.value)} />
             </div>
             <div style={{ textAlign:"center", padding:"14px 16px", background: hasResult ? `${calcColor}18` : "rgba(255,255,255,0.06)", borderRadius:14, border:`1.5px solid ${hasResult ? calcColor + '55' : 'rgba(255,255,255,0.12)'}`, transition:"background 0.35s, border-color 0.35s" }}>
