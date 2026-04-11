@@ -949,7 +949,7 @@ export default function App({ loginOnly = false }){
         titre:row.titre,
         prix_achat:parseFloat(row.prix_achat)||0,
         prix_vente:parseFloat(row.prix_vente)||0,
-        benefice:parseFloat(row.margin)??0,
+        benefice:parseFloat(row.margin)||0,
         date:(row.date?String(row.date):now.toString()).slice(0,10),
         marque:row.marque||null,
       }));
