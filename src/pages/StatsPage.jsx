@@ -32,7 +32,6 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   const tr = t || (k=>k);
 
   if (!isPremium) {
-    triggerCheckout();
     onBack();
     return null;
   }

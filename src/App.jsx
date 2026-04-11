@@ -147,6 +147,7 @@ function SwipeRow({onDelete, children}){
 
 function PremiumBanner({ userEmail, compact=false, onDark=false }){
   const [loading, setLoading] = useState(false);
+  const { t: tb } = useTranslation(localStorage.getItem('fs_lang') || 'fr');
 
   async function handleCheckout(){
     setLoading(true);
@@ -183,7 +184,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false }){
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">Débloquer le premium ✨</span></>}
+        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">{tb('unlockPremium')}</span></>}
       </button>
     );
   }
@@ -193,8 +194,8 @@ function PremiumBanner({ userEmail, compact=false, onDark=false }){
       <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
         <div style={{fontSize:26,flexShrink:0}}>🔒</div>
         <div>
-          <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:4}}>Limite du plan gratuit atteinte</div>
-          <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}}>Tu as atteint 20 articles. Passe au plan premium pour un inventaire illimité.</div>
+          <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:4}}>{tb('limiteGratuit')}</div>
+          <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}}>{tb('limiteGratuitDesc')}</div>
         </div>
       </div>
       <button onClick={handleCheckout} disabled={loading}
@@ -202,7 +203,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false }){
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
-        {loading ? "Redirection..." : "✨ Débloquer le premium"}
+        {loading ? tb('redirection') : `✨ ${tb('debloquer')}`}
       </button>
     </div>
   );
@@ -363,7 +364,7 @@ function getFilteredData_unused(range, salesData){
 
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
-  const [tab,setTab]=useState(()=>parseInt(localStorage.getItem('tab')||'0'));
+  const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -950,9 +951,9 @@ export default function App({ loginOnly = false }){
   ];
 
   const headerStats=[
-    {label:"Bénéfices",value:fmt(totalM)},
-    {label:"Capital investi",value:fmt(invested)},
-    {label:"En stock",value:`${stock.length} art. · ${fmt(stockVal)}`},
+    {label:t('benefices'),value:fmt(totalM)},
+    {label:t('totalInvesti'),value:fmt(invested)},
+    {label:t('enStockLabel'),value:`${stock.length} art. · ${fmt(stockVal)}`},
   ];
 
   if(authLoading)return(
@@ -1144,17 +1145,17 @@ export default function App({ loginOnly = false }){
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} ce mois</div>
                   </div>
                   <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
-                  <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{sales.length} vente{sales.length!==1?"s":""} · marge moy. {fmt(sales.length?totalM/sales.length:0)}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{tpl('venteLabel',{n:sales.length})} · {t('margeMoyDash')} {fmt(sales.length?totalM/sales.length:0)}</div>
                   {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('unlocAnalyse')}</div>}
                   {isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('analyseComplete')}</div>}
                 </div>
 
                 {/* KPIs 2 colonnes */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <Kpi label={t('ceMois')} value={fmt(tm?.profit||0)} sub={`${tm?.count||0} vente${(tm?.count||0)!==1?"s":""}`} color="#1D9E75"/>
-                  <Kpi label={t('margeMoy')} value={fmtp(avgM)} sub="toutes ventes" color="#5DCAA5"/>
-                  <Kpi label={t('revenuBrutLabel')} value={fmt(totalR)} sub="total encaissé" color="#1D9E75"/>
-                  <Kpi label={t('enStock')} value={`${stock.length}`} sub={`${fmt(stockVal)} investi`} color="#A3A9A6"/>
+                  <Kpi label={t('ceMois')} value={fmt(tm?.profit||0)} sub={tpl('venteLabel',{n:tm?.count||0})} color="#1D9E75"/>
+                  <Kpi label={t('margeMoy')} value={fmtp(avgM)} sub={t('toutesVentes')} color="#5DCAA5"/>
+                  <Kpi label={t('revenuBrutLabel')} value={fmt(totalR)} sub={t('totalEncaisse')} color="#1D9E75"/>
+                  <Kpi label={t('enStock')} value={`${stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} color="#A3A9A6"/>
                 </div>
 
                 {/* Sélecteur de période */}
@@ -1177,8 +1178,8 @@ export default function App({ loginOnly = false }){
                       {!isPremium&&(
                         <div onClick={triggerCheckout} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
-                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>Débloquer l'analyse avancée</div>
-                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>Débloquer le premium ✨</button>
+                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
+                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
                         </div>
                       )}
                     </div>
@@ -1193,8 +1194,8 @@ export default function App({ loginOnly = false }){
                       {!isPremium&&(
                         <div onClick={triggerCheckout} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
-                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>Débloquer l'analyse avancée</div>
-                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>Débloquer le premium ✨</button>
+                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
+                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
                         </div>
                       )}
                     </div>
@@ -1226,19 +1227,19 @@ export default function App({ loginOnly = false }){
 
                 <div style={{display:"flex",justifyContent:"center"}}>
                   <div className="card" style={{padding:"28px 32px",border:`1px solid ${C.red}30`,background:"rgba(254,242,242,0.6)",borderRadius:20,maxWidth:480,width:"100%",textAlign:"center"}}>
-                    <div style={{fontSize:14,fontWeight:700,color:"#C53030",marginBottom:6}}>⚠️ Zone dangereuse</div>
-                    <div style={{fontSize:13,color:C.sub,marginBottom:20,lineHeight:1.6}}>Cette action supprime définitivement toutes tes ventes et ton inventaire. Elle est irréversible.</div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#C53030",marginBottom:6}}>⚠️ {t('zoneDangereuse')}</div>
+                    <div style={{fontSize:13,color:C.sub,marginBottom:20,lineHeight:1.6}}>{t('zoneDesc')}</div>
                     {resetStep===0&&(
                       <button onClick={handleReset} style={{padding:"10px 22px",background:"transparent",border:`1.5px solid ${C.red}99`,borderRadius:12,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",display:"block",margin:"0 auto"}}
                         onMouseEnter={e=>{e.currentTarget.style.background="rgba(229,62,62,0.08)";}}
                         onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
-                      >🗑️ Tout remettre à zéro</button>
+                      >🗑️ {t('toutRemettre')}</button>
                     )}
                     {resetStep===1&&(
                       <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-                        <div style={{fontSize:13,fontWeight:600,color:C.red}}>Confirme-tu ? Action irréversible.</div>
-                        <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>Oui, tout supprimer</button>
-                        <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>Annuler</button>
+                        <div style={{fontSize:13,fontWeight:600,color:C.red}}>{t('confirmeAction')}</div>
+                        <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{t('ouiToutSupprimer')}</button>
+                        <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>{t('annuler')}</button>
                       </div>
                     )}
                   </div>
@@ -1258,7 +1259,7 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,color:C.sub,lineHeight:1.6}}>Entre le nom et ton prix d'achat. Tu pourras ajouter le prix de vente plus tard.</div>
                 </div>
               ):(
-                <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>Ajouter un article</div>
+                <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
               )}
               <div>
                 <Field label="Nom" value={iTitle} set={setITitle} placeholder="Ex: Nike Air Max, Zara jean..." icon="🏷️"/>
@@ -1274,7 +1275,7 @@ export default function App({ loginOnly = false }){
               </div>
               {items.length>0&&(
                 <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
-                  💡 Sans prix → <strong>stock</strong>. Avec prix → <strong>vendu</strong>.
+                  💡 {t('prixHint')}
                 </div>
               )}
               {!isPremium&&items.length>=18&&items.length<20&&(
@@ -1285,7 +1286,7 @@ export default function App({ loginOnly = false }){
               {!isPremium&&items.length>=20
                 ? <PremiumBanner userEmail={user?.email}/>
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
-                    {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":"Ajouter un article"}
+                    {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":t('ajouterArticle')}
                   </Btn>
               }
               {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
@@ -1310,16 +1311,16 @@ export default function App({ loginOnly = false }){
               {/* ── Barre Import / Export ── */}
               {isPremium?(
                 <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                  <div style={{flex:1,fontSize:13,fontWeight:700,color:C.text}}>Outils Premium</div>
+                  <div style={{flex:1,fontSize:13,fontWeight:700,color:C.text}}>{t('outilsPremium')}</div>
                   <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
                   <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:C.tealLight,color:C.teal,border:`1px solid ${C.teal}44`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
                     onMouseEnter={e=>e.currentTarget.style.background="#C6EBE9"}
                     onMouseLeave={e=>e.currentTarget.style.background=C.tealLight}
-                  >📥 Importer</button>
+                  >📥 {t('importer')}</button>
                   <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#EDF2F7",color:C.sub,border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
                     onMouseEnter={e=>e.currentTarget.style.background="#E2E8F0"}
                     onMouseLeave={e=>e.currentTarget.style.background="#EDF2F7"}
-                  >📤 Exporter</button>
+                  >📤 {t('exporter')}</button>
                   {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
                 </div>
               ):(
@@ -1371,7 +1372,7 @@ export default function App({ loginOnly = false }){
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
-                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{sold.length} vente{sold.length>1?"s":""}</div>
+                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
                 </div>
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1411,8 +1412,8 @@ export default function App({ loginOnly = false }){
               {!isValid?(
                 <div style={{textAlign:"center",padding:"8px 0"}}>
                   <div style={{fontSize:36,marginBottom:10}}>🧮</div>
-                  <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>Calcule ta marge instantanément</div>
-                  <div style={{fontSize:13,color:C.sub}}>Entre le prix d'achat et de vente ci-dessous</div>
+                  <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{t('calculerHero')}</div>
+                  <div style={{fontSize:13,color:C.sub}}>{t('calculerSub')}</div>
                 </div>
               ):(
                 margin>=0?(
@@ -1469,7 +1470,7 @@ export default function App({ loginOnly = false }){
             </div>
             <div>
               <Field label={t('fraisAnnexes')} value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
-              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Livraison, emballage, commissions...</div>
+              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{t('fraisHint')}</div>
             </div>
 
             {/* ── Récap rapide ── */}
@@ -1504,9 +1505,9 @@ export default function App({ loginOnly = false }){
             {sales.length>0&&(
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:4}}>
                 {[
-                  {label:"Profit total",value:fmt(totalM),color:totalM>=0?"#1D9E75":C.red},
-                  {label:"Ventes",value:sales.length,color:"#4ECDC4"},
-                  {label:"Profit moyen",value:fmt(sales.length?totalM/sales.length:0),color:"#5DCAA5"},
+                  {label:t('profitTotal'),value:fmt(totalM),color:totalM>=0?"#1D9E75":C.red},
+                  {label:t('ventes'),value:sales.length,color:"#4ECDC4"},
+                  {label:t('profitMoyen'),value:fmt(sales.length?totalM/sales.length:0),color:"#5DCAA5"},
                 ].map((s,i)=>(
                   <div key={i} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
@@ -1528,8 +1529,8 @@ export default function App({ loginOnly = false }){
                   <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33"}}>
                     <div style={{fontSize:20}}>⭐</div>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>Analyse avancée disponible en Premium</div>
-                      <div style={{fontSize:11,color:C.sub}}>Graphiques, tendances et statistiques détaillées</div>
+                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>{t('analyseDisponible')}</div>
+                      <div style={{fontSize:11,color:C.sub}}>{t('analyseDesc')}</div>
                     </div>
                     <PremiumBanner userEmail={user?.email} compact/>
                   </div>
@@ -1556,8 +1557,8 @@ export default function App({ loginOnly = false }){
                   <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33",marginTop:4}}>
                     <div style={{fontSize:20}}>⭐</div>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>Analyse avancée disponible en Premium</div>
-                      <div style={{fontSize:11,color:C.sub}}>Graphiques, tendances et statistiques détaillées</div>
+                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>{t('analyseDisponible')}</div>
+                      <div style={{fontSize:11,color:C.sub}}>{t('analyseDesc')}</div>
                     </div>
                     <PremiumBanner userEmail={user?.email} compact/>
                   </div>
