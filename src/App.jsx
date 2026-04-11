@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
 import { supabase } from './lib/supabase';
 import Toast from './components/Toast';
@@ -145,11 +146,12 @@ function SwipeRow({onDelete, children}){
   );
 }
 
-function PremiumBanner({ userEmail, compact=false, onDark=false }){
+function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner' }){
   const [loading, setLoading] = useState(false);
   const { t: tb } = useTranslation(localStorage.getItem('fs_lang') || 'fr');
 
   async function handleCheckout(){
+    track('premium_click', { source });
     setLoading(true);
     try {
       const res = await fetch(
@@ -408,6 +410,7 @@ export default function App({ loginOnly = false }){
       const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email})});
       const{url,error}=await res.json();
       if(error)throw new Error(error);
+      track('begin_checkout', { currency: 'EUR', value: 4.99 });
       window.location.href=url;
     }catch(e){alert("Erreur : "+e.message);}
   }
@@ -452,6 +455,15 @@ export default function App({ loginOnly = false }){
   const marginPct=sell>0?(margin/sell)*100:0;
   const isValid=sell>0&&buy>=0;
   const mc=margin<0?C.red:C.green;
+
+  const calcWasComplete = useRef(false);
+  useEffect(()=>{
+    const complete = Boolean(cBuy && cSell && cShip);
+    if(complete && !calcWasComplete.current){
+      track('use_calculator', { has_result: true, is_positive: margin > 0 });
+    }
+    calcWasComplete.current = complete;
+  },[cBuy, cSell, cShip, margin]);
 
   const now=new Date();
 
@@ -559,6 +571,7 @@ export default function App({ loginOnly = false }){
     const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString()};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
+      track('add_item', { purchase_price: b, has_sell_price: hasS });
       setItems(prev=>[mapItem(data),...prev]);
       if(hasS){
         const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,date:new Date().toISOString().split('T')[0]};
@@ -582,7 +595,10 @@ export default function App({ loginOnly = false }){
     setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
     const srow={id:Date.now(),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
     const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
-    if(sd) setSales(prev=>[mapSale(sd),...prev]);
+    if(sd){
+      track('mark_sold', { profit: mg, margin_pct: Math.round(mgp * 10) / 10 });
+      setSales(prev=>[mapSale(sd),...prev]);
+    }
   }
 
   async function delItem(id){
@@ -918,6 +934,7 @@ export default function App({ loginOnly = false }){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{error}=await supabase.auth.signInWithPassword({email,password});
     if(error){alert(error.message);return;}
+    track('login', { method: 'email' });
     navigate("/app");
   }
 
@@ -933,6 +950,7 @@ export default function App({ loginOnly = false }){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{data,error}=await supabase.auth.signUp({email,password});
     if(error){alert(error.message);return;}
+    track('sign_up', { method: 'email' });
     if(data?.session) navigate("/app");
     else alert("Vérifie ton email pour confirmer ton compte !");
   }
@@ -1039,7 +1057,7 @@ export default function App({ loginOnly = false }){
           {/* Droite : premium + settings — toujours collé à droite */}
           <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto",flexShrink:0}}>
             {!isPremium?(
-              <PremiumBanner userEmail={user?.email} compact onDark/>
+              <PremiumBanner userEmail={user?.email} compact onDark source="topbar"/>
             ):(
               <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>{t('premium')}</div>
             )}
@@ -1080,9 +1098,9 @@ export default function App({ loginOnly = false }){
               </div>
             )}
             {!isPremium&&!loading&&items.length>=18&&(
-              <div onClick={triggerCheckout} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
+              <div onClick={()=>{track('premium_click',{source:'banner'});triggerCheckout();}} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>⚠️ Plus que {20-items.length} article{20-items.length>1?"s":""} disponible{20-items.length>1?"s":""}</div>
-                <button onClick={e=>{e.stopPropagation();triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
+                <button onClick={e=>{e.stopPropagation();track('premium_click',{source:'banner'});triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
               </div>
             )}
             {loading?(
@@ -1135,7 +1153,7 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {/* Hero card profit net */}
-                <div onClick={()=>{if(!isPremium)triggerCheckout();else{setTab(4);localStorage.setItem('tab',4);}}}
+                <div onClick={()=>{if(!isPremium){track('premium_click',{source:'hero_card'});triggerCheckout();}else{setTab(4);localStorage.setItem('tab',4);}}}
                   style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%"}}
                   onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
@@ -1176,7 +1194,7 @@ export default function App({ loginOnly = false }){
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
                       {!isPremium&&(
-                        <div onClick={triggerCheckout} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
+                        <div onClick={()=>{track('premium_click',{source:'chart'});triggerCheckout();}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
                           <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
@@ -1192,7 +1210,7 @@ export default function App({ loginOnly = false }){
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
                       {!isPremium&&(
-                        <div onClick={triggerCheckout} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
+                        <div onClick={()=>{track('premium_click',{source:'chart'});triggerCheckout();}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
                           <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
@@ -1575,7 +1593,7 @@ export default function App({ loginOnly = false }){
                 onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
               >{t('statsAvancees')}</button>
             ):(
-              <button onClick={triggerCheckout}
+              <button onClick={()=>{track('premium_click',{source:'stats'});triggerCheckout();}}
                 style={{width:"100%",marginTop:4,padding:"14px",background:"transparent",color:"#1D9E75",border:"2px solid #1D9E75",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(29,158,117,0.06)"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}
@@ -1776,7 +1794,7 @@ export default function App({ loginOnly = false }){
               <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('langue')}</span>
               <div style={{display:"flex",gap:6}}>
                 {['fr','en'].map(l=>(
-                  <button key={l} onClick={()=>setLang(l)}
+                  <button key={l} onClick={()=>{track('change_language',{language:l});setLang(l);}}
                     style={{padding:"5px 12px",borderRadius:99,border:"none",fontSize:12,fontWeight:800,cursor:"pointer",transition:"all 0.15s",background:lang===l?"#1D9E75":"rgba(0,0,0,0.06)",color:lang===l?"#fff":"#6B7280"}}>
                     {l.toUpperCase()}
                   </button>

@@ -1,6 +1,15 @@
+import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
+import { track } from '../analytics/analytics';
+
 export default function Success(){
   const nav = useNavigate();
+
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get('session_id') || '';
+    track('purchase', { currency: 'EUR', value: 4.99, transaction_id: sessionId });
+  }, []);
+
   return(
     <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#3EACA0,#E8956D)",padding:"24px",boxSizing:"border-box"}}>
       <div style={{width:"100%",maxWidth:420,textAlign:"center"}}>

@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
+import { track } from '../analytics/analytics';
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
@@ -96,6 +98,8 @@ const css = `
 export default function LandingPage() {
   const nav = useNavigate();
 
+  useEffect(() => { track('page_view', { page: 'landing' }); }, []);
+
   return (
     <div>
       <style>{css}</style>
@@ -156,10 +160,10 @@ export default function LandingPage() {
           </p>
 
           <div className="lp-hero-btns" style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className="lp-btn-main" style={{ fontSize: 17, padding: "16px 36px" }} onClick={() => nav("/login")}>
+            <button className="lp-btn-main" style={{ fontSize: 17, padding: "16px 36px" }} onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav("/login"); }}>
               Créer mon compte gratuit →
             </button>
-            <button className="lp-btn-sec" onClick={() => document.getElementById("features").scrollIntoView({ behavior: "smooth" })}>
+            <button className="lp-btn-sec" onClick={() => { track('cta_click', { cta: 'how_it_works', page: 'landing' }); document.getElementById("features").scrollIntoView({ behavior: "smooth" }); }}>
               Voir comment ça marche
             </button>
           </div>

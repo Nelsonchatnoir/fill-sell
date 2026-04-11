@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Line } from 'react-chartjs-2';
+import { track } from '../analytics/analytics';
 const fmt = n => (Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n => (Math.round(n*10)/10).toFixed(1)+"%";
 
@@ -31,6 +33,8 @@ const perfColor = pct => pct >= 50 ? "#1D9E75" : pct >= 25 ? "#F9A26C" : "#E24B4
 export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl }) {
   // Fallbacks if called without i18n props (shouldn't happen)
   const tr = t || (k=>k);
+
+  useEffect(() => { if (isPremium) track('view_advanced_stats'); }, [isPremium]);
 
   if (!isPremium) {
     onBack();
