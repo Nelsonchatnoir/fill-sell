@@ -18,14 +18,15 @@ function SectionTitle({ children }) {
 function KpiCard({ label, value, sub, color }) {
   return (
     <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-      <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
-      <div style={{fontSize:20,fontWeight:900,color:color||C.text,letterSpacing:"-0.03em",lineHeight:1.1}}>{value}</div>
+      <div style={{fontSize:11,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+      <div style={{fontSize:26,fontWeight:900,color:color||C.text,letterSpacing:"-0.03em",lineHeight:1.1}}>{value}</div>
       {sub&&<div style={{fontSize:10,fontWeight:700,color:C.label,marginTop:4}}>{sub}</div>}
     </div>
   );
 }
 
 const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+const perfColor = pct => pct >= 50 ? "#1D9E75" : pct >= 25 ? "#F9A26C" : "#E24B4A";
 
 export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl }) {
   // Fallbacks if called without i18n props (shouldn't happen)
@@ -118,7 +119,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
       </button>
 
       {/* Header */}
-      <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:10,alignSelf:"flex-start"}}>
+      <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"3px 12px",fontSize:11,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,alignSelf:"flex-start"}}>
         {tr('statsLabel')}
       </div>
       <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:20}}>
@@ -137,16 +138,16 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <KpiCard label={tr('profitTotal')} value={fmt(totalProfit)} color={totalProfit>=0?"#1D9E75":"#E53E3E"}/>
             <KpiCard label={tr('revenuTotal')} value={fmt(totalRevenue)} color="#4ECDC4"/>
-            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#A3A9A6"/>
-            <KpiCard label={tr('ventesTotales')} value={n} color="#1D9E75"/>
+            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#6B7280"/>
+            <KpiCard label={tr('ventesTotales')} value={n} color="#4ECDC4"/>
           </div>
 
           <SectionTitle>{tr('performance')}</SectionTitle>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <KpiCard label={tr('margeMoyenne')} value={fmtp(avgMargin)} color="#1D9E75"/>
-            <KpiCard label={tr('panierMoyen')} value={fmt(avgBasket)} color="#5DCAA5"/>
+            <KpiCard label={tr('margeMoyenne')} value={fmtp(avgMargin)} color={perfColor(avgMargin)}/>
+            <KpiCard label={tr('panierMoyen')} value={fmt(avgBasket)} color="#4ECDC4"/>
             <KpiCard label={tr('profitParVente')} value={fmt(avgProfit)} color="#1D9E75"/>
-            <KpiCard label={tr('tauxVente')} value={`${sellRate}%`} color="#4ECDC4" sub={`${soldItems.length}/${items.length} ${tr('articles')}`}/>
+            <KpiCard label={tr('tauxVente')} value={`${sellRate}%`} color={perfColor(sellRate)} sub={`${soldItems.length}/${items.length} ${tr('articles')}`}/>
           </div>
 
           {bestSale&&(
@@ -168,8 +169,8 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
             <KpiCard label={tr('meilleurMois')} value={bestMonthEntry?`${MONTHS[bestMonthEntry.month]} ${bestMonthEntry.year}`:"-"} sub={bestMonthEntry?`+${fmt(bestMonthEntry.profit)}`:undefined} color="#1D9E75"/>
             {avgDelay!==null
-              ? <KpiCard label={tr('delaiMoyen')} value={`${avgDelay} ${tr('jours')}`} color="#A3A9A6" sub={tr('entreAchatVente')}/>
-              : <KpiCard label={tr('delaiMoyen')} value="—" color="#A3A9A6" sub={tr('donneesInsuffisantes')}/>
+              ? <KpiCard label={tr('delaiMoyen')} value={`${avgDelay} ${tr('jours')}`} color="#6B7280" sub={tr('entreAchatVente')}/>
+              : <KpiCard label={tr('delaiMoyen')} value="—" color="#6B7280" sub={tr('donneesInsuffisantes')}/>
             }
           </div>
 
