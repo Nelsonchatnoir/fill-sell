@@ -5,7 +5,11 @@ import { landingTranslations } from '../i18n/translations';
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
 
-function getMargeMessage(marginPct){
+function getMargeMessage(marginPct,marginEur){
+  if(marginEur>=500) return{msg:"Jackpot 💎",color:"#1D9E75"};
+  if(marginEur>=200) return{msg:"Grosse affaire 🤑",color:"#1D9E75"};
+  if(marginEur>=100) return{msg:"Très belle vente 🚀",color:"#1D9E75"};
+  if(marginEur>=50)  return{msg:"Belle marge 💪",color:"#1D9E75"};
   if(marginPct>=50) return{msg:"Affaire en or 🏆",color:"#1D9E75"};
   if(marginPct>=35) return{msg:"Excellent deal 🔥",color:"#1D9E75"};
   if(marginPct>=25) return{msg:"Très bon deal ✅",color:"#1D9E75"};
@@ -154,7 +158,7 @@ export default function LandingPage() {
   const hasResult = calcBuy > 0 && calcSell > 0;
   const { msg: calcMsg, color: calcColor } = !hasResult
     ? { msg: '', color: '#6B7280' }
-    : getMargeMessage(calcPct);
+    : getMargeMessage(calcPct, calcMargin);
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
 

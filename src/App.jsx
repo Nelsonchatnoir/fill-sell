@@ -274,7 +274,11 @@ const Btn=({onClick,disabled,children,color,full=false})=>(
   >{children}</button>
 );
 
-function getMargeMessage(marginPct){
+function getMargeMessage(marginPct,marginEur){
+  if(marginEur>=500) return{msg:"Jackpot 💎",color:"#1D9E75"};
+  if(marginEur>=200) return{msg:"Grosse affaire 🤑",color:"#1D9E75"};
+  if(marginEur>=100) return{msg:"Très belle vente 🚀",color:"#1D9E75"};
+  if(marginEur>=50)  return{msg:"Belle marge 💪",color:"#1D9E75"};
   if(marginPct>=50) return{msg:"Affaire en or 🏆",color:"#1D9E75"};
   if(marginPct>=35) return{msg:"Excellent deal 🔥",color:"#1D9E75"};
   if(marginPct>=25) return{msg:"Très bon deal ✅",color:"#1D9E75"};
@@ -1594,7 +1598,7 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.75)"}}>
-                      {getMargeMessage(marginPct).msg}
+                      {getMargeMessage(marginPct,margin).msg}
                     </div>
                   </>
                 ):(
@@ -1613,7 +1617,7 @@ export default function App({ loginOnly = false }){
                       <div style={{width:`${Math.min(Math.abs(marginPct),100)}%`,height:"100%",background:"#E24B4A",borderRadius:99,transition:"width 0.4s ease"}}/>
                     </div>
                     <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"#E24B4A"}}>
-                      {getMargeMessage(marginPct).msg}
+                      {getMargeMessage(marginPct,margin).msg}
                     </div>
                   </>
                 )
