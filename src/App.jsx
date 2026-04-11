@@ -569,7 +569,7 @@ export default function App({ loginOnly = false }){
   const avgM=sales.length?sales.reduce((a,s)=>a+s.marginPct,0)/sales.length:0;
   const stock=items.filter(i=>i.statut==="stock");
   const sold=items.filter(i=>i.statut==="vendu");
-  const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||i.marque===filterMarque);
+  const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||(i.marque?.trim()===filterMarque.trim()));
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -681,12 +681,12 @@ export default function App({ loginOnly = false }){
   // ── Détection automatique des colonnes (v2) ─────────────────────────────
   // ── ÉTAPE 2 : Détection des colonnes ────────────────────────────────────
   function detectColumns(headers, rows){
-    const TITRE_RE=/nom|titre|article|produit|désign|libell[eé]|description|objet|item|cat[eé]gorie|notes?|taille/i;
-    const ACHAT_RE=/achat|achet[eé]|PA\b|prix.?achat|co[uû]t|cost|invest|d[eé]pense|d[eé]bours/i;
-    const VENTE_RE=/PV\b|prix.?vente|prix.?de.?vente|revente|cession|recette|encaiss/i;
-    const STATUT_RE=/statut|status|[eé]tat|state/i;
-    const DATE_VENTE_RE=/date.?vente|date.?de.?vente|vendu.?le|sold.?at|date.?sold/i;
-    const DATE_RE=/\bdate\b|jour|day/i;
+    const TITRE_RE=/nom|titre|article|produit|désign|libell[eé]|description|objet|item|cat[eé]gorie|notes?|taille|name|title|product|label|object/i;
+    const ACHAT_RE=/achat|achet[eé]|PA\b|prix.?achat|co[uû]t|invest|d[eé]pense|d[eé]bours|purchase|bought|buy\b|paid|spend/i;
+    const VENTE_RE=/PV\b|prix.?vente|prix.?de.?vente|revente|cession|recette|encaiss|sale\b|sold\b|sell\b|revenue|income|receipt/i;
+    const STATUT_RE=/statut|status|[eé]tat|available|listed/i;
+    const DATE_VENTE_RE=/date.?vente|date.?de.?vente|vendu.?le|sold.?at|sold.?on|sale.?date|date.?sold/i;
+    const DATE_RE=/\bdate\b|jour|day|purchase.?date|bought.?on/i;
     const MARQUE_RE=/marque|brand|make|fabricant/i;
     const mapping={titres:[],prix_achat:null,prix_vente:null,statut:null,date:null,marque_col:null};
 
@@ -721,7 +721,7 @@ export default function App({ loginOnly = false }){
   // ── Filtre lignes parasites ───────────────────────────────────────────────
   // Retourne null si la ligne est valide, sinon la catégorie de raison
   function classifyParasite(row, mapping){
-    const PARASITE_RE=/total|sous.?total|somme|bilan|virement|re[cç]u|comptabilis|r[eé]sum[eé]|r[eé]cap|moyenne|average|\bnote\b|\binfo\b|NaN/i;
+    const PARASITE_RE=/total|sous.?total|somme|bilan|virement|re[cç]u|comptabilis|r[eé]sum[eé]|r[eé]cap|moyenne|average|\bnote\b|\binfo\b|NaN|subtotal|sum\b|shipping|refund|return/i;
     const buyStr=String(row[mapping.prix_achat]??'').replace(',','.').trim();
     const buy=parseFloat(buyStr);
     // Prix achat invalide ou nul
@@ -749,12 +749,13 @@ export default function App({ loginOnly = false }){
   function detectMarque(titre,row,mapping){
     if(mapping.marque_col){
       const v=String(row[mapping.marque_col]??'').trim();
-      if(v) return MARQUE_KEEP_CASE.has(v)?v:v.charAt(0).toUpperCase()+v.slice(1).toLowerCase();
+      if(v){const n=MARQUE_KEEP_CASE.has(v)?v:v.charAt(0).toUpperCase()+v.slice(1).toLowerCase();return n.trim();}
     }
     const t=String(titre||'');
     for(const m of MARQUES_CONNUES){
       if(new RegExp('\\b'+m.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(t)){
-        return MARQUE_KEEP_CASE.has(m)?m:m.charAt(0).toUpperCase()+m.slice(1).toLowerCase();
+        const n=MARQUE_KEEP_CASE.has(m)?m:m.charAt(0).toUpperCase()+m.slice(1).toLowerCase();
+        return n.trim();
       }
     }
     return null;
@@ -928,19 +929,19 @@ export default function App({ loginOnly = false }){
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
     if(error){setImportLoading(false);setImportMsg("Erreur import : "+error.message);return;}
 
-    // Insère aussi dans ventes les lignes "vendu"
+    // Insère aussi dans ventes les lignes "vendu" (depuis data = retour Supabase avec vrais ids)
     const ventesRows=(data||[])
-      .filter(row=>row.statut==='vendu'&&row.prix_vente)
+      .filter(row=>row.statut==='vendu'&&row.prix_vente>0)
       .map(row=>({
-        id:row.id+1000000,
         user_id:user.id,
         titre:row.titre,
         prix_achat:row.prix_achat,
         prix_vente:row.prix_vente,
-        benefice:row.margin,
-        date:(row.date||now).split('T')[0],
+        benefice:row.margin??0,
+        date:String(row.date||now).split('T')[0],
         marque:row.marque||null,
       }));
+    console.log('[Import] ventesRows:',ventesRows);
     if(ventesRows.length){
       const{error:ve}=await supabase.from('ventes').insert(ventesRows);
       if(ve) console.warn('[Import] ventes insert error:',ve.message);
