@@ -418,6 +418,7 @@ export default function App({ loginOnly = false }){
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
   const [soldShowAll,setSoldShowAll]=useState(false);
+  const [showAllSales,setShowAllSales]=useState(false);
   const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
   const [cBuy,setCBuy]=useState("");
@@ -1738,7 +1739,7 @@ export default function App({ loginOnly = false }){
               </div>
             ):(
               <>
-                {sales.map(s=>{
+                {(showAllSales?sales:sales.slice(0,10)).map(s=>{
                   const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
                   return(
                     <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
@@ -1753,6 +1754,12 @@ export default function App({ loginOnly = false }){
                     </SwipeRow>
                   );
                 })}
+                {!showAllSales&&sales.length>10&&(
+                  <button onClick={()=>setShowAllSales(true)}
+                    style={{width:"100%",padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    Voir plus ({sales.length-10} autres)
+                  </button>
+                )}
                 {!isPremium&&(
                   <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33",marginTop:4}}>
                     <div style={{fontSize:20}}>⭐</div>
