@@ -909,7 +909,13 @@ export default function App({ loginOnly = false }){
       const marginPct=hasSell?(margin/sell)*100:null;
       const parsedDate=mapping.date?parseDate(r[mapping.date]):null;
       const rowDate=parsedDate?(parsedDate+'T00:00:00.000Z'):(r.__sheetDate||now);
-      const marque=detectMarque(titre,r,mapping);
+      let marque=null;
+      if(mapping.marque_col){
+        const v=String(r[mapping.marque_col]??'').trim();
+        if(v) marque=MARQUE_KEEP_CASE.has(v)?v:v.charAt(0).toUpperCase()+v.slice(1).toLowerCase();
+      } else {
+        marque=detectMarque(titre,r,{marque_col:null});
+      }
       return{
         id:Date.now()+idx,
         user_id:user.id,
