@@ -1142,7 +1142,7 @@ export default function App({ loginOnly = false }){
                 >
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>{t('profitNet')}</div>
-                    <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} ce mois</div>
+                    <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</div>
                   </div>
                   <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
                   <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{tpl('venteLabel',{n:sales.length})} · {t('margeMoyDash')} {fmt(sales.length?totalM/sales.length:0)}</div>
@@ -1705,15 +1705,8 @@ export default function App({ loginOnly = false }){
       {/* ── SETTINGS DRAWER ── */}
       {showSettings&&(
         <>
-          <div onClick={()=>setShowSettings(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",backdropFilter:"blur(4px)",zIndex:200,animation:"fadeInBd 0.2s ease"}}/>
-          <div style={{
-            position:"fixed",zIndex:201,background:"#fff",
-            boxShadow:"0 24px 80px rgba(0,0,0,0.2)",
-            ...(window.innerWidth<768
-              ? {bottom:0,left:"50%",transform:"translateX(-50%)",width:"min(85vw,480px)",borderRadius:"20px 20px 0 0",padding:"28px 24px 40px",animation:"slideUp 0.25s cubic-bezier(0.32,0.72,0,1)"}
-              : {top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:380,borderRadius:20,padding:"32px 28px",animation:"fadeInBd 0.2s ease"}
-            )
-          }}>
+          <div onClick={()=>setShowSettings(false)} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:384,padding:24,boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
               <div style={{fontSize:16,fontWeight:800,color:C.text}}>{t('parametres')}</div>
               <button onClick={()=>setShowSettings(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
@@ -1721,9 +1714,9 @@ export default function App({ loginOnly = false }){
 
             {/* Profil */}
             <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Mon compte</div>
+              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{t('monCompte')}</div>
               <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
-              {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ Abonnement Premium actif</div>}
+              {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
             </div>
 
             {/* Désabonnement — visible uniquement si premium */}
@@ -1738,7 +1731,7 @@ export default function App({ loginOnly = false }){
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(232,149,109,0.06)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                   >
-                    <span>📭</span> Se désabonner
+                    <span>📭</span> {t('seDesabonner')}
                   </button>
                 ):(
                   <div style={{background:"rgba(232,149,109,0.08)",border:"1.5px solid rgba(232,149,109,0.4)",borderRadius:12,padding:"14px"}}>
@@ -1764,7 +1757,7 @@ export default function App({ loginOnly = false }){
             >
               <span style={{fontSize:18,flexShrink:0}}>💬</span>
               <div>
-                <div style={{fontSize:14,fontWeight:600}}>Support</div>
+                <div style={{fontSize:14,fontWeight:600}}>{t('support')}</div>
                 <div style={{fontSize:12,color:C.sub}}>support@fillsell.app</div>
               </div>
             </a>
@@ -1775,7 +1768,7 @@ export default function App({ loginOnly = false }){
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >
               <span style={{fontSize:18,flexShrink:0}}>📄</span>
-              <div style={{fontSize:14,fontWeight:600}}>Mentions légales</div>
+              <div style={{fontSize:14,fontWeight:600}}>{t('mentionsLegales')}</div>
             </a>
 
             {/* Langue */}
@@ -1797,8 +1790,8 @@ export default function App({ loginOnly = false }){
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >{t('seDeconnecter')}</button>
           </div>
+          </div>
           <style>{`
-            @keyframes slideUp{from{transform:translateX(-50%) translateY(100%)}to{transform:translateX(-50%) translateY(0)}}
             @keyframes fadeInBd{from{opacity:0}to{opacity:1}}
           `}</style>
         </>

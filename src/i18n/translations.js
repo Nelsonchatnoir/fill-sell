@@ -118,6 +118,13 @@ export const translations = {
     limiteGratuit:"Limite du plan gratuit atteinte",
     limiteGratuitDesc:"Tu as atteint 20 articles. Passe au plan premium pour un inventaire illimité.",
     margeMoyDash:"marge moy.",
+    ceNoisPill:"ce mois",
+    monCompte:"MON COMPTE",
+    abonnementPremium:"Abonnement Premium actif",
+    seDesabonner:"Se désabonner",
+    mentionsLegales:"Mentions légales",
+    signOut:"Se déconnecter",
+    support:"Support",
   },
   en: {
     appName:"Fill & Sell",
@@ -238,5 +245,12 @@ export const translations = {
     limiteGratuit:"Free plan limit reached",
     limiteGratuitDesc:"You've reached 20 items. Upgrade to premium for unlimited inventory.",
     margeMoyDash:"avg. margin",
+    ceNoisPill:"this month",
+    monCompte:"MY ACCOUNT",
+    abonnementPremium:"Active Premium plan",
+    seDesabonner:"Unsubscribe",
+    mentionsLegales:"Legal notice",
+    signOut:"Sign out",
+    support:"Support",
   }
 };
