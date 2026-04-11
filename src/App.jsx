@@ -1045,7 +1045,8 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleForgot(){
-    if(!email){setForgotMsg("Saisis ton email ci-dessus.");return;}
+    const _lt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
+    if(!email){setForgotMsg(_lt==='en'?"Enter your email above.":"Saisis ton email ci-dessus.");return;}
     setForgotMsg("");
     const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://fillsell.app/reset-password"});
     if(error){setForgotMsg("Erreur : "+error.message);return;}
@@ -1086,12 +1087,23 @@ export default function App({ loginOnly = false }){
     </div>
   );
 
+  const loginLang=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
+  const loginTexts=loginLang==='en'?{
+    subtitle:"Sign in to continue",login:"Sign in",signup:"Create an account",
+    forgot:"Forgot your password?",forgotBtn:"Send reset link",
+    forgotMsg:"Enter your email above.",back:"← Back"
+  }:{
+    subtitle:"Connecte-toi pour continuer",login:"Se connecter",signup:"Créer un compte",
+    forgot:"Mot de passe oublié ?",forgotBtn:"Envoyer le lien de réinitialisation",
+    forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
+  };
+
   if(!user||loginOnly)return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
-          <div style={{fontSize:15,color:C.sub,fontWeight:500}}>Connecte-toi pour continuer</div>
+          <div style={{fontSize:15,color:C.sub,fontWeight:500}}>{loginTexts.subtitle}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
@@ -1103,15 +1115,15 @@ export default function App({ loginOnly = false }){
                 style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
               <button onClick={handleLogin}
                 style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
-                Se connecter
+                {loginTexts.login}
               </button>
               <button onClick={handleSignup}
                 style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}}>
-                Créer un compte
+                {loginTexts.signup}
               </button>
               <div style={{textAlign:"center"}}>
                 <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:C.teal,cursor:"pointer",textDecoration:"underline"}}>
-                  Mot de passe oublié ?
+                  {loginTexts.forgot}
                 </span>
               </div>
             </>
@@ -1120,7 +1132,7 @@ export default function App({ loginOnly = false }){
             <>
               <button onClick={handleForgot}
                 style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
-                Envoyer le lien de réinitialisation
+                {loginTexts.forgotBtn}
               </button>
               {forgotMsg&&(
                 <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?C.teal:C.red,fontWeight:600}}>
@@ -1129,7 +1141,7 @@ export default function App({ loginOnly = false }){
               )}
               <div style={{textAlign:"center"}}>
                 <span onClick={()=>{setForgotMode(false);setForgotMsg("");}} style={{fontSize:13,color:C.sub,cursor:"pointer"}}>
-                  ← Retour
+                  {loginTexts.back}
                 </span>
               </div>
             </>
