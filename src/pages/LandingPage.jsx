@@ -233,13 +233,6 @@ export default function LandingPage() {
             {l.heroFree} · {l.heroNoCard} · {l.heroReady}
           </p>
 
-          {/* ── Active users badge ── */}
-          <div style={{ marginTop:28, display:"flex", justifyContent:"center" }}>
-            <span style={{ display:"inline-flex", alignItems:"center", gap:8, background:"rgba(255,255,255,0.14)", backdropFilter:"blur(8px)", border:"1px solid rgba(255,255,255,0.22)", borderRadius:99, padding:"8px 20px", fontSize:13, fontWeight:600, color:"#fff", letterSpacing:0.1 }}>
-              🟢 {lang === 'fr' ? '12 revendeurs actifs aujourd\'hui' : '12 active resellers today'}
-            </span>
-          </div>
-
           {/* ── Hero calculator ── */}
           <div style={{ marginTop:28, background:"rgba(255,255,255,0.1)", backdropFilter:"blur(14px)", borderRadius:20, padding:"24px 28px", maxWidth:520, margin:"28px auto 0", border:"1px solid rgba(255,255,255,0.2)", boxShadow:"0 8px 32px rgba(0,0,0,0.1)" }}>
             <p style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.7)", textTransform:"uppercase", letterSpacing:"1.8px", marginBottom:16, textAlign:"center" }}>
@@ -486,8 +479,7 @@ export default function LandingPage() {
       {/* ── COMPAT BANDEAU ── */}
       <div style={{ background:"#F8F7F4", borderTop:"1px solid rgba(0,0,0,0.07)", padding:"16px 24px", textAlign:"center" }}>
         <p style={{ fontSize:13, color:C.sub, fontWeight:500, letterSpacing:0.1 }}>
-          {lang === 'fr' ? 'Compatible avec :' : 'Works with :'}&nbsp;
-          <span style={{ fontWeight:700, color:C.text }}>Vinted · eBay · Leboncoin · Depop · Beebeep · Vinted Pro</span>
+          {lang === 'fr' ? 'Fonctionne avec toutes tes ventes, peu importe la plateforme.' : 'Works with all your sales, whatever the platform.'}
         </p>
       </div>
 
