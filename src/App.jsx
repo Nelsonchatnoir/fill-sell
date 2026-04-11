@@ -681,11 +681,12 @@ export default function App({ loginOnly = false }){
   // ── Détection automatique des colonnes (v2) ─────────────────────────────
   // ── ÉTAPE 2 : Détection des colonnes ────────────────────────────────────
   function detectColumns(headers, rows){
-    const TITRE_RE=/nom|titre|article|marque|produit|désign|libell[eé]|description|objet|item|brand/i;
+    const TITRE_RE=/nom|titre|article|produit|désign|libell[eé]|description|objet|item|cat[eé]gorie|notes?|taille/i;
     const ACHAT_RE=/achat|achet[eé]|PA\b|prix.?achat|co[uû]t|cost|invest|d[eé]pense|d[eé]bours/i;
-    const VENTE_RE=/vente|vendu|PV\b|prix.?vente|revente|cession|recette|encaiss/i;
+    const VENTE_RE=/PV\b|prix.?vente|prix.?de.?vente|revente|cession|recette|encaiss/i;
     const STATUT_RE=/statut|status|[eé]tat|state/i;
-    const DATE_RE=/date|jour|day|vendu.?le|sold.?at|vente/i;
+    const DATE_VENTE_RE=/date.?vente|date.?de.?vente|vendu.?le|sold.?at|date.?sold/i;
+    const DATE_RE=/\bdate\b|jour|day/i;
     const MARQUE_RE=/marque|brand|make|fabricant/i;
     const mapping={titres:[],prix_achat:null,prix_vente:null,statut:null,date:null,marque_col:null};
 
@@ -696,7 +697,8 @@ export default function App({ loginOnly = false }){
       if(!mapping.prix_achat && ACHAT_RE.test(s)) mapping.prix_achat=h;
       else if(!mapping.prix_vente && VENTE_RE.test(s)) mapping.prix_vente=h;
       else if(!mapping.statut && STATUT_RE.test(s)) mapping.statut=h;
-      if(!mapping.date && DATE_RE.test(s)) mapping.date=h;
+      if(DATE_VENTE_RE.test(s)) mapping.date=h;
+      else if(!mapping.date && DATE_RE.test(s)) mapping.date=h;
     }
     console.log('[Import] detectColumns — headers:',headers,'→',mapping);
 
@@ -784,15 +786,16 @@ export default function App({ loginOnly = false }){
         const wb=XLSX.read(ev.target.result,{type:"array"});
 
         const MOIS={janvier:1,février:2,fevrier:2,mars:3,avril:4,mai:5,juin:6,juillet:7,août:8,aout:8,septembre:9,octobre:10,novembre:11,décembre:12,decembre:12};
-        const IGNORE_RE=/^(listes?|config|param[eè]tres?|r[eé]sum[eé]|summary|dashboard|feuil\d+|sheet\d+)$/i;
-        const KEYWORDS=/nom|titre|article|marque|produit|achat|vente|prix|libell[eé]|d[eé]sign|item|brand|statut/i;
+        const IGNORE_RE=/^(listes?|liste|config|param[eè]tres?|r[eé]sum[eé]|summary|dashboard|feuil\d+|sheet\d+)$/i;
+        const KEYWORDS=/nom|titre|article|marque|brand|achat|vente|prix|libell[eé]|d[eé]sign|item|statut|cat[eé]gorie|plateforme|b[eé]n[eé]fice|benefice|reception|date|taille|notes?/i;
 
         const allRows=[];
         const seenHeaders=new Set();
         let sheetsRead=0;
 
         for(const sheetName of wb.SheetNames){
-          if(IGNORE_RE.test(sheetName.trim())){
+          const cleanName=sheetName.replace(/\p{Emoji}/gu,'').trim();
+          if(IGNORE_RE.test(cleanName)){
             console.log(`[Import] Sheet "${sheetName}" — ignored (config/list sheet)`);
             continue;
           }
