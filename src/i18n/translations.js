@@ -309,7 +309,7 @@ export const landingTranslations = {
     ctaNote: "Gratuit · Sans carte bancaire · Prêt en 30 secondes",
     footerTagline: "L'outil simple pour les revendeurs malins.",
     footerRights: "© 2026 Fill & Sell. Tous droits réservés.",
-    platformsTitle: "Compatible avec toutes les plateformes",
+    platformsTitle: "Pensé pour tous les revendeurs",
     platformsSub: "Vinted · eBay · Depop · Leboncoin · Beebeep · Facebook Marketplace · Poshmark · Mercari · Wallapop · Vestiaire Collective · GOAT · StockX · et toutes les autres marketplaces",
     platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
     faqTitle: "Questions fréquentes",
