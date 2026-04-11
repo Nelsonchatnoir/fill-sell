@@ -388,7 +388,12 @@ export default function App({ loginOnly = false }){
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
-  const [lang,setLang]=useState(()=>localStorage.getItem('fs_lang')||'fr');
+  const [lang,setLang]=useState(()=>{
+    const saved=localStorage.getItem('fs_lang');
+    if(saved) return saved;
+    const bl=(navigator.language||navigator.userLanguage||'fr').toLowerCase().split('-')[0];
+    return bl==='fr'?'fr':'en';
+  });
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [selectedRange,setSelectedRange]=useState('6M');

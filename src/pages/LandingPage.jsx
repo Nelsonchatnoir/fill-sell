@@ -1,8 +1,16 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import { track } from '../analytics/analytics';
+import { landingTranslations } from '../i18n/translations';
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#111827", sub: "#6B7280", label: "#9CA3AF" };
+
+function getBrowserLang() {
+  const saved = localStorage.getItem('fs_lang');
+  if (saved) return saved;
+  const bl = (navigator.language || navigator.userLanguage || 'fr').toLowerCase().split('-')[0];
+  return bl === 'fr' ? 'fr' : 'en';
+}
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@1,700;1,800&display=swap');
@@ -95,10 +103,29 @@ const css = `
   }
 `;
 
+const FEAT_ICONS = ["📦","📊","🧮","📋","📤","📈"];
+
 export default function LandingPage() {
   const nav = useNavigate();
+  const [lang, setLang] = useState(getBrowserLang);
+  const l = landingTranslations[lang] || landingTranslations.fr;
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
+
+  function changeLang(code) {
+    setLang(code);
+    localStorage.setItem('fs_lang', code);
+    track('change_language', { language: code });
+  }
+
+  const features = [
+    { icon: FEAT_ICONS[0], title: l.feature1Title, desc: l.feature1Desc },
+    { icon: FEAT_ICONS[1], title: l.feature2Title, desc: l.feature2Desc },
+    { icon: FEAT_ICONS[2], title: l.feature3Title, desc: l.feature3Desc },
+    { icon: FEAT_ICONS[3], title: l.feature4Title, desc: l.feature4Desc },
+    { icon: FEAT_ICONS[4], title: l.feature5Title, desc: l.feature5Desc },
+    { icon: FEAT_ICONS[5], title: l.feature6Title, desc: l.feature6Desc },
+  ];
 
   return (
     <div>
@@ -107,22 +134,33 @@ export default function LandingPage() {
       {/* ── NAVBAR ── */}
       <nav className="lp-nav">
         <div className="lp-nav-inner">
-          {/* Logo premium */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => nav("/")}>
             <img src="/logo.png" style={{ height: 34, objectFit: "contain" }} alt="Fill & Sell" />
             <span className="brand-logo">Fill & Sell</span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Lang toggle */}
+            <div style={{ display:"flex", alignItems:"center", gap:2, background:"rgba(0,0,0,0.06)", borderRadius:99, padding:3 }}>
+              {['fr','en'].map(code => (
+                <button key={code} onClick={() => changeLang(code)}
+                  style={{ padding:"4px 10px", borderRadius:99, border:"none", fontSize:12, fontWeight:800, cursor:"pointer", transition:"all 0.15s",
+                           background: lang===code ? "#fff" : "transparent",
+                           color: lang===code ? "#0D0D0D" : "#6B7280",
+                           boxShadow: lang===code ? "0 1px 3px rgba(0,0,0,0.1)" : "none" }}>
+                  {code.toUpperCase()}
+                </button>
+              ))}
+            </div>
             <button onClick={() => nav("/login")} style={{
               padding: "8px 18px", background: "transparent", color: C.sub,
               border: "1px solid rgba(0,0,0,0.12)", borderRadius: 10,
               fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
             }}>
-              Connexion
+              {l.navLogin}
             </button>
             <button className="lp-btn-main lp-nav-cta" style={{ padding: "8px 20px", fontSize: 14 }} onClick={() => nav("/login")}>
-              Essai gratuit
+              {l.navCta}
             </button>
           </div>
         </div>
@@ -134,21 +172,18 @@ export default function LandingPage() {
         padding: "110px 24px 100px", textAlign: "center",
         position: "relative", overflow: "hidden"
       }}>
-        {/* Décorations */}
         <div style={{ position: "absolute", top: -100, right: -80, width: 360, height: 360, background: "rgba(255,255,255,0.06)", borderRadius: "50%", pointerEvents: "none" }} />
         <div style={{ position: "absolute", bottom: -60, left: -60, width: 260, height: 260, background: "rgba(255,255,255,0.04)", borderRadius: "50%", pointerEvents: "none" }} />
 
         <div style={{ maxWidth: 740, margin: "0 auto", position: "relative" }}>
-          <div className="hero-badge">
-            🚀 Déjà utilisé par des centaines de revendeurs
-          </div>
+          <div className="hero-badge">{l.badge}</div>
 
           <h1 className="hero-title" style={{
             fontSize: 54, fontWeight: 900, color: "#fff",
             letterSpacing: "-2px", lineHeight: 1.1, marginBottom: 24,
             textShadow: "0 2px 24px rgba(0,0,0,0.12)"
           }}>
-            Suis tes profits de revente<br />automatiquement 💰
+            {l.heroTitle1}<br />{l.heroTitle2} {l.heroEmoji}
           </h1>
 
           <p className="hero-sub" style={{
@@ -156,20 +191,22 @@ export default function LandingPage() {
             lineHeight: 1.65, maxWidth: 520, margin: "0 auto 48px",
             fontWeight: 400
           }}>
-            Arrête de deviner tes marges. Sache exactement combien tu gagnes — article par article.
+            {l.heroSub}
           </p>
 
           <div className="lp-hero-btns" style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className="lp-btn-main" style={{ fontSize: 17, padding: "16px 36px" }} onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav("/login"); }}>
-              Créer mon compte gratuit →
+            <button className="lp-btn-main" style={{ fontSize: 17, padding: "16px 36px" }}
+              onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav("/login"); }}>
+              {l.heroCta}
             </button>
-            <button className="lp-btn-sec" onClick={() => { track('cta_click', { cta: 'how_it_works', page: 'landing' }); document.getElementById("features").scrollIntoView({ behavior: "smooth" }); }}>
-              Voir comment ça marche
+            <button className="lp-btn-sec"
+              onClick={() => { track('cta_click', { cta: 'how_it_works', page: 'landing' }); document.getElementById("features").scrollIntoView({ behavior: "smooth" }); }}>
+              {l.heroSecondary}
             </button>
           </div>
 
           <p style={{ marginTop: 22, fontSize: 13, color: "rgba(255,255,255,0.55)", letterSpacing: "0.2px" }}>
-            ✓ Gratuit · ✓ Sans carte bancaire · ✓ Prêt en 30 secondes
+            {l.heroFree} · {l.heroNoCard} · {l.heroReady}
           </p>
         </div>
       </section>
@@ -179,14 +216,14 @@ export default function LandingPage() {
         <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px" }}>
           <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", textAlign: "center" }}>
             {[
-              ["500+", "Revendeurs actifs"],
-              ["12k€", "Profits trackés"],
-              ["98%", "Satisfaction"],
-              ["30s", "Pour démarrer"],
-            ].map(([v, l]) => (
-              <div key={l} style={{ padding: "30px 16px" }}>
+              [l.stat1Val, l.stat1Label],
+              [l.stat2Val, l.stat2Label],
+              [l.stat3Val, l.stat3Label],
+              [l.stat4Val, l.stat4Label],
+            ].map(([v, lbl]) => (
+              <div key={lbl} style={{ padding: "30px 16px" }}>
                 <div className="stat-value">{v}</div>
-                <div style={{ fontSize: 13, color: C.sub, marginTop: 6, fontWeight: 500 }}>{l}</div>
+                <div style={{ fontSize: 13, color: C.sub, marginTop: 6, fontWeight: 500 }}>{lbl}</div>
               </div>
             ))}
           </div>
@@ -198,25 +235,18 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 60 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>
-              Fonctionnalités
+              {l.featuresLabel}
             </div>
             <h2 style={{ fontSize: 38, fontWeight: 900, color: C.text, letterSpacing: "-1.2px", marginBottom: 16 }}>
-              Tout ce qu'il te faut pour scaler
+              {l.featuresTitle}{" "}
+              <span style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
+                {l.featuresTitleAccent}
+              </span>
             </h2>
-            <p style={{ fontSize: 17, color: C.sub, maxWidth: 460, margin: "0 auto", lineHeight: 1.65 }}>
-              Simple, rapide, efficace. Conçu pour les revendeurs qui veulent voir leurs profits augmenter.
-            </p>
           </div>
 
           <div className="lp-grid3">
-            {[
-              { icon: "📊", title: "Vois instantanément combien tu gagnes", desc: "Bénéfices du mois, marge moyenne, évolution sur 6 mois — tout d'un seul coup d'œil, sans calcul." },
-              { icon: "🧮", title: "Calcule tes marges sans effort", desc: "Entre le prix d'achat et de vente — Fill & Sell calcule ta marge nette instantanément." },
-              { icon: "📦", title: "Garde le contrôle sur ton stock", desc: "Suis chaque article de l'achat à la vente. Sache toujours ce que tu as en stock et ce que ça vaut." },
-              { icon: "📋", title: "Analyse ce qui te rapporte vraiment", desc: "Retrouve toutes tes ventes passées avec les détails : prix, marge, date. Optimise ta stratégie." },
-              { icon: "📱", title: "Enregistre une vente en 10 secondes", desc: "Depuis ton téléphone, juste après avoir vendu un article. Simple et rapide comme une notification." },
-              { icon: "🔒", title: "Tes données toujours disponibles", desc: "Stockées en sécurité sur nos serveurs. Accessibles depuis n'importe quel appareil, à tout moment." },
-            ].map(({ icon, title, desc }) => (
+            {features.map(({ icon, title, desc }) => (
               <div key={title} className="feat-card">
                 <div style={{ fontSize: 36, marginBottom: 16 }}>{icon}</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 10, letterSpacing: "-0.3px", lineHeight: 1.3 }}>{title}</div>
@@ -232,16 +262,15 @@ export default function LandingPage() {
         <div style={{ maxWidth: 860, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 52 }}>
             <h2 style={{ fontSize: 36, fontWeight: 900, color: C.text, letterSpacing: "-1.2px", marginBottom: 14 }}>
-              Visualise tes profits en un coup d'œil
+              {l.previewTitle}
             </h2>
             <p style={{ fontSize: 16, color: C.sub, lineHeight: 1.65, maxWidth: 480, margin: "0 auto" }}>
-              Des statistiques claires pour comprendre ce qui te rapporte vraiment.
+              {l.previewSub}
             </p>
           </div>
 
           {/* Mock dashboard */}
           <div style={{ background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.12)", border: "1px solid rgba(0,0,0,0.06)" }}>
-            {/* Header mock */}
             <div style={{ background: "linear-gradient(135deg,#3EACA0cc,#E8956Dcc)", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 32, height: 32, background: "rgba(255,255,255,0.3)", borderRadius: 9 }} />
               <div style={{ flex: 1, height: 8, background: "rgba(255,255,255,0.4)", borderRadius: 99, maxWidth: 140 }} />
@@ -249,7 +278,6 @@ export default function LandingPage() {
                 <div key={v} style={{ background: "rgba(255,255,255,0.2)", borderRadius: 10, padding: "5px 14px", fontSize: 12, fontWeight: 800, color: "#fff" }}>{v}</div>
               ))}
             </div>
-            {/* KPI mock */}
             <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
               {[
                 { icon: "💰", label: "Bénéfice ce mois", val: "143,00 €", color: "#3EACA0" },
@@ -264,7 +292,6 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            {/* Chart mock */}
             <div style={{ padding: "0 20px 20px" }}>
               <div style={{ background: "#F9FAFB", borderRadius: 14, padding: 16, height: 90, display: "flex", alignItems: "flex-end", gap: 8, border: "1px solid rgba(0,0,0,0.05)" }}>
                 {[30, 55, 40, 70, 45, 90].map((h, i) => (
@@ -276,35 +303,25 @@ export default function LandingPage() {
         </div>
       </section>
 
-
       {/* ── PRICING ── */}
       <section style={{ padding: "90px 24px", background: "#fff" }}>
         <div style={{ maxWidth: 860, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 56 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>Tarifs</div>
-            <h2 style={{ fontSize: 38, fontWeight: 900, color: C.text, letterSpacing: "-1px", marginBottom: 16 }}>Simple et transparent</h2>
-            <p style={{ fontSize: 16, color: C.sub, maxWidth: 420, margin: "0 auto" }}>Commence gratuitement, passe au premium quand tu es prêt à scaler.</p>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>{l.pricingLabel}</div>
+            <h2 style={{ fontSize: 38, fontWeight: 900, color: C.text, letterSpacing: "-1px", marginBottom: 16 }}>{l.pricingTitle}</h2>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24, maxWidth: 700, margin: "0 auto" }}>
             {/* Gratuit */}
             <div style={{ background: "#F9FAFB", borderRadius: 20, padding: "32px 28px", border: "1px solid rgba(0,0,0,0.08)", display:"flex", flexDirection:"column" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Gratuit</div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: C.text, letterSpacing: "-1.5px", marginBottom: 4 }}>0 €</div>
-              <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>Idéal pour débuter</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>{l.pricingFreeTitle}</div>
+              <div style={{ fontSize: 40, fontWeight: 900, color: C.text, letterSpacing: "-1.5px", marginBottom: 4 }}>{l.pricingFreePrice}</div>
+              <div style={{ fontSize: 13, color: C.sub, marginBottom: 28 }}>{l.pricingFreePeriod}</div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
-                {[
-                  { label: "📦 Articles en stock — 20 max" },
-                  { label: "📊 Dashboard" },
-                  { label: "🧮 Calcul des marges" },
-                  { label: "📋 Historique des ventes" },
-                  { label: "Support prioritaire", ok: false },
-                ].map(({ label, ok }) => (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>{ok === false ? "✗" : "✓"}</span>
-                    <span style={{ fontSize: 14, color: ok === false ? C.label : C.text }}>
-                      {label}
-                    </span>
+                {l.pricingFreeFeatures.map(feat => (
+                  <div key={feat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 14, color: C.text }}>{feat}</span>
                   </div>
                 ))}
               </div>
@@ -312,7 +329,7 @@ export default function LandingPage() {
                 onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = "#fff"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.teal; }}
               >
-                Commencer gratuitement
+                {l.pricingFreeCta}
               </button>
             </div>
 
@@ -320,24 +337,16 @@ export default function LandingPage() {
             <div style={{ background: "linear-gradient(135deg,#3EACA0,#E8956D)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden", boxShadow: "0 20px 60px rgba(62,172,160,0.3)", display:"flex", flexDirection:"column" }}>
               <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, background: "rgba(255,255,255,0.08)", borderRadius: "50%" }} />
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>Premium</div>
-                <span style={{ background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 99, padding: "3px 10px", border: "1px solid rgba(255,255,255,0.4)" }}>⭐ Le plus populaire</span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>{l.pricingProTitle}</div>
+                <span style={{ background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 99, padding: "3px 10px", border: "1px solid rgba(255,255,255,0.4)" }}>⭐ {l.pricingProBadge}</span>
               </div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 4 }}>4,99 €</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 8 }}>par mois · sans engagement</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 600, marginBottom: 20 }}>🚀 Débloque toutes les fonctionnalités en 1 clic</div>
+              <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 4 }}>{l.pricingProPrice}</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 20 }}>{l.pricingProPeriod}</div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, marginBottom: 0 }}>
-                {[
-                  "♾️ Articles illimités en stock",
-                  "📊 Dashboard complet",
-                  "🧮 Calcul des marges",
-                  "📈 Historique des ventes",
-                  "📊 Import & export Excel de tes données",
-                  "⭐ Support prioritaire",
-                ].map(label => (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {l.pricingProFeatures.map(feat => (
+                  <div key={feat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0, color: "#fff" }}>✓</span>
-                    <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>{label}</span>
+                    <span style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>{feat}</span>
                   </div>
                 ))}
               </div>
@@ -345,7 +354,7 @@ export default function LandingPage() {
                 onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.2)"; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)"; }}
               >
-                🔓 Débloquer l'illimité
+                {l.pricingProCta}
               </button>
             </div>
           </div>
@@ -356,31 +365,32 @@ export default function LandingPage() {
       <section style={{ padding: "96px 24px", textAlign: "center", background: "linear-gradient(135deg,#3EACA0,#E8956D)" }}>
         <div style={{ maxWidth: 620, margin: "0 auto" }}>
           <h2 style={{ fontSize: 42, fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", marginBottom: 18, lineHeight: 1.1 }}>
-            Commence à suivre tes profits<br />dès aujourd'hui
+            {l.ctaTitle}
           </h2>
           <p style={{ fontSize: 18, color: "rgba(255,255,255,0.82)", marginBottom: 44, lineHeight: 1.65 }}>
-            Rejoins des centaines de revendeurs qui ont repris le contrôle de leurs marges.
+            {l.ctaSub}
           </p>
           <button className="lp-btn-main" style={{
             fontSize: 18, padding: "18px 48px",
             background: "#fff", color: C.teal,
             boxShadow: "0 12px 40px rgba(0,0,0,0.15)"
           }} onClick={() => nav("/login")}>
-            Créer mon compte gratuit →
+            {l.ctaBtn}
           </button>
           <p style={{ marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.55)" }}>
-            ✓ Gratuit · ✓ Sans CB · ✓ Prêt en 30 secondes
+            {l.ctaNote}
           </p>
         </div>
       </section>
 
       {/* ── FOOTER ── */}
       <footer style={{ background: "#0F172A", padding: "36px 24px", textAlign: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
           <img src="/logo.png" style={{ height: 26, filter: "brightness(0) invert(1) opacity(0.5)" }} alt="Fill & Sell" />
           <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "-0.3px" }}>Fill & Sell</span>
         </div>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)" }}>© 2026 Fill & Sell · Conçu pour les revendeurs 🏷️</p>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>{l.footerTagline}</p>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)" }}>{l.footerRights}</p>
       </footer>
     </div>
   );
