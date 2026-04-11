@@ -569,6 +569,7 @@ export default function App({ loginOnly = false }){
   const avgM=sales.length?sales.reduce((a,s)=>a+s.marginPct,0)/sales.length:0;
   const stock=items.filter(i=>i.statut==="stock");
   const sold=items.filter(i=>i.statut==="vendu");
+  const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||i.marque===filterMarque);
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -1395,7 +1396,7 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
-                {(()=>{const marques=["Toutes",...new Set(items.map(i=>i.marque).filter(Boolean))];const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||i.marque===filterMarque);return marques.length>1&&(
+                {(()=>{const marques=["Toutes",...new Set(items.map(i=>i.marque).filter(Boolean))];return marques.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
                     {marques.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
