@@ -111,6 +111,8 @@ const css = `
   .calc-inp::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .calc-row { display: flex; gap: 10px; margin-bottom: 14px; }
   .calc-val { transition: color 0.35s ease; }
+  .calc-msg { animation: calcFadeIn 0.2s ease; }
+  @keyframes calcFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 
   .faq-details { border-bottom: 1px solid rgba(0,0,0,0.07); }
   .faq-details summary { list-style: none; cursor: pointer; padding: 18px 0; display: flex; justify-content: space-between; align-items: center; }
@@ -261,13 +263,18 @@ export default function LandingPage() {
                 placeholder={lang === 'fr' ? 'Frais annexes €' : 'Additional fees €'}
                 value={cFees} onChange={e => setCFees(e.target.value)} />
             </div>
-            <div style={{ textAlign:"center", padding:"14px 16px", background: hasResult ? `${calcColor}18` : "rgba(255,255,255,0.06)", borderRadius:14, border:`1.5px solid ${hasResult ? calcColor + '55' : 'rgba(255,255,255,0.12)'}`, transition:"background 0.35s, border-color 0.35s" }}>
+            <div style={{ textAlign:"center", padding:"14px 16px", background: hasResult ? `${calcColor}14` : "rgba(255,255,255,0.06)", borderRadius:14, border:`1px solid ${hasResult ? calcColor + '40' : 'rgba(255,255,255,0.12)'}`, transition:"background 0.3s ease, border-color 0.3s ease" }}>
               {hasResult ? (
                 <>
-                  <div className="calc-val" style={{ fontSize:28, fontWeight:900, color:calcColor, letterSpacing:"-0.5px" }}>
-                    {calcMargin >= 0 ? '+' : ''}{calcMargin.toFixed(2)} € <span style={{ fontSize:16, fontWeight:700 }}>({calcPct.toFixed(1)}%)</span>
+                  <div className="calc-val" style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:32, fontWeight:900, color:calcColor, letterSpacing:"-0.5px" }}>
+                      {calcMargin >= 0 ? '+' : ''}{calcMargin.toFixed(2)} €
+                    </span>
+                    <span style={{ fontSize:13, fontWeight:800, color:calcColor, background:`${calcColor}26`, borderRadius:99, padding:"2px 10px" }}>
+                      {calcPct.toFixed(1)}%
+                    </span>
                   </div>
-                  <p className="calc-val" style={{ fontSize:13, fontWeight:700, color:calcColor, marginTop:4 }}>{calcMsg}</p>
+                  <p key={calcMsg} className="calc-val calc-msg" style={{ fontSize:14, fontWeight:800, color:calcColor, marginTop:6 }}>{calcMsg}</p>
                 </>
               ) : (
                 <p style={{ fontSize:13, color:"rgba(255,255,255,0.4)", fontWeight:500 }}>
