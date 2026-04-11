@@ -475,12 +475,6 @@ export default function App({ loginOnly = false }){
     }
     calcWasComplete.current = complete;
   },[cBuy, cSell, cShip, margin]);
-  useEffect(()=>{
-    if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque)) setFilterMarque("Toutes");
-  },[stock,filterMarque]);
-  useEffect(()=>{
-    if(filterMarqueSold!=="Toutes"&&!sold.some(i=>i.marque===filterMarqueSold)) setFilterMarqueSold("Toutes");
-  },[sold,filterMarqueSold]);
 
   const now=new Date();
 
@@ -578,6 +572,10 @@ export default function App({ loginOnly = false }){
   const sold=items.filter(i=>i.statut==="vendu");
   const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||(i.marque?.trim()===filterMarque.trim()));
   const soldFiltre=sold.filter(i=>filterMarqueSold==="Toutes"||(i.marque?.trim()===filterMarqueSold.trim()));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque))setFilterMarque("Toutes");},[stock,filterMarque]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(filterMarqueSold!=="Toutes"&&!sold.some(i=>i.marque===filterMarqueSold))setFilterMarqueSold("Toutes");},[sold,filterMarqueSold]);
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
