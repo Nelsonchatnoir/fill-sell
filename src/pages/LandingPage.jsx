@@ -108,6 +108,8 @@ const css = `
   @media(max-width: 768px) {
     .lp-grid3 { grid-template-columns: 1fr; }
     .calc-row { flex-direction: column; }
+    .dash-kpi { grid-template-columns: repeat(2,1fr) !important; }
+    .dash-wrap { transform: none !important; }
     .hero-title { font-size: 36px !important; letter-spacing: -1px !important; }
     .hero-sub { font-size: 16px !important; }
     .lp-hero-btns { flex-direction: column !important; }
@@ -325,34 +327,73 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div style={{ background:"#fff", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.12)", border:"1px solid rgba(0,0,0,0.06)" }}
+          {/* Faux dashboard fidèle au design de l'app */}
+          <div className="dash-wrap" style={{ fontFamily:"'Nunito', 'Inter', sans-serif", background:"#fff", borderRadius:20, overflow:"hidden", boxShadow:"0 32px 80px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06)", border:"1px solid rgba(0,0,0,0.06)", transform:"rotate(-1deg)", transformOrigin:"center center" }}
             role="img" aria-label="Dashboard Fill & Sell - suivi profits revente Vinted eBay Depop">
-            <div style={{ background:"linear-gradient(135deg,#3EACA0cc,#E8956Dcc)", padding:"14px 20px", display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ width:32, height:32, background:"rgba(255,255,255,0.3)", borderRadius:9 }} />
-              <div style={{ flex:1, height:8, background:"rgba(255,255,255,0.4)", borderRadius:99, maxWidth:140 }} />
-              {["143,00 €","67,50 €","2 art."].map(v => (
-                <div key={v} style={{ background:"rgba(255,255,255,0.2)", borderRadius:10, padding:"5px 14px", fontSize:12, fontWeight:800, color:"#fff" }}>{v}</div>
-              ))}
+
+            {/* 1 — Header gradient */}
+            <div style={{ background:"linear-gradient(135deg,#4ECDC4,#F9A26C)", padding:"0 16px", height:44, display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:28, height:28, background:"rgba(255,255,255,0.9)", borderRadius:8, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <div style={{ width:14, height:14, background:"linear-gradient(135deg,#4ECDC4,#1D9E75)", borderRadius:3 }} />
+              </div>
+              <div style={{ flex:1, display:"flex", gap:8, justifyContent:"center" }}>
+                {["143,00 €","67,50 €","2 art."].map(v => (
+                  <div key={v} style={{ background:"rgba(255,255,255,0.22)", backdropFilter:"blur(4px)", borderRadius:99, padding:"3px 12px", fontSize:11, fontWeight:800, color:"#fff", border:"1px solid rgba(255,255,255,0.3)" }}>{v}</div>
+                ))}
+              </div>
+              <div style={{ background:"#1D9E75", borderRadius:99, padding:"3px 10px", fontSize:10, fontWeight:800, color:"#fff", flexShrink:0 }}>Premium ✨</div>
             </div>
-            <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
+
+            {/* 2 — KPI grid */}
+            <div className="dash-kpi" style={{ padding:"16px 16px 12px", display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
               {[
-                { icon:"💰", label:"Bénéfice ce mois", val:"143,00 €", color:"#3EACA0" },
-                { icon:"📊", label:"Marge moyenne", val:"38.2%", color:"#E8956D" },
-                { icon:"🏆", label:"Revenu brut", val:"374,00 €", color:"#3EACA0" },
-                { icon:"💸", label:"Capital investi", val:"231,00 €", color:"#DD6B20" },
+                { icon:"🟡", label:"Bénéfice ce mois", val:"143,00 €", color:"#1D9E75" },
+                { icon:"📊", label:"Marge moyenne",    val:"38,2 %",   color:"#1D9E75" },
+                { icon:"💰", label:"Revenu brut",      val:"374,00 €", color:"#1D9E75" },
+                { icon:"📦", label:"En stock",         val:"4 art.",   color:"#6B7280" },
               ].map(({ icon, label, val, color }) => (
-                <div key={label} style={{ background:"#F9FAFB", borderRadius:14, padding:"14px 16px", border:"1px solid rgba(0,0,0,0.05)" }}>
-                  <div style={{ fontSize:18, marginBottom:8 }}>{icon}</div>
-                  <div style={{ fontSize:9, fontWeight:700, color:C.label, textTransform:"uppercase", letterSpacing:0.8, marginBottom:4 }}>{label}</div>
-                  <div style={{ fontSize:18, fontWeight:900, color }}>{val}</div>
+                <div key={label} style={{ background:"#fff", borderRadius:14, padding:"12px 10px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
+                  <div style={{ fontSize:15, marginBottom:6 }}>{icon}</div>
+                  <div style={{ fontSize:8, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:3, lineHeight:1.3 }}>{label}</div>
+                  <div style={{ fontSize:16, fontWeight:900, color, fontFamily:"'Nunito', sans-serif" }}>{val}</div>
                 </div>
               ))}
             </div>
-            <div style={{ padding:"0 20px 20px" }}>
-              <div style={{ background:"#F9FAFB", borderRadius:14, padding:16, height:90, display:"flex", alignItems:"flex-end", gap:8, border:"1px solid rgba(0,0,0,0.05)" }}
-                role="img" aria-label="Graphique évolution profits - tracker revendeur Fill & Sell">
-                {[30,55,40,70,45,90].map((h,i) => (
-                  <div key={i} style={{ flex:1, background:i===5?"#3EACA0":"#3EACA025", borderRadius:"6px 6px 0 0", height:`${h}%`, transition:"all 0.3s" }} />
+
+            {/* 3 — Graphique barres */}
+            <div style={{ padding:"0 16px 12px" }}>
+              <div style={{ background:"#fff", borderRadius:14, padding:"12px 14px 8px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
+                <div style={{ fontSize:8, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:10 }}>Évolution des profits</div>
+                <div style={{ height:70, display:"flex", alignItems:"flex-end", gap:6 }}
+                  role="img" aria-label="Graphique barres évolution profits Fill & Sell">
+                  {[35,52,38,65,44,58,88].map((h,i) => (
+                    <div key={i} style={{ flex:1, background:i===6?"#0F6E56":"#1D9E7530", borderRadius:"5px 5px 0 0", height:`${h}%`, transition:"height 0.3s" }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 4 — Mini-liste ventes */}
+            <div style={{ padding:"0 16px 16px" }}>
+              <div style={{ background:"#fff", borderRadius:14, border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.05)", overflow:"hidden" }}>
+                <div style={{ padding:"8px 14px", borderBottom:"1px solid rgba(0,0,0,0.05)" }}>
+                  <div style={{ fontSize:8, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px" }}>Dernières ventes</div>
+                </div>
+                {[
+                  { titre:"Nike Air Max 90", date:"Aujourd'hui", montant:"+47,00 €", pct:"58,8%" },
+                  { titre:"Veste Levi's vintage", date:"Hier", montant:"+31,50 €", pct:"42,0%" },
+                  { titre:"Jordan 1 Retro High", date:"12 avril", montant:"+64,00 €", pct:"32,0%" },
+                ].map(({ titre, date, montant, pct }, i, arr) => (
+                  <div key={titre} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom: i < arr.length-1 ? "1px solid rgba(0,0,0,0.05)" : "none" }}>
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#0D0D0D", marginBottom:2 }}>{titre}</div>
+                      <div style={{ fontSize:9, color:"#A3A9A6", fontWeight:600 }}>{date}</div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:12, fontWeight:900, color:"#1D9E75" }}>{montant}</div>
+                      <div style={{ fontSize:9, fontWeight:700, color:"#1D9E7599" }}>{pct}</div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
