@@ -375,6 +375,8 @@ export default function App({ loginOnly = false }){
   const [iSell,setISell]=useState("");
   const [iMarque,setIMarque]=useState("");
   const [iDesc,setIDesc]=useState("");
+  const [iFrais,setIFrais]=useState("");
+  const [rememberFrais,setRememberFrais]=useState(false);
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [toast,setToast]=useState({visible:false,message:""});
@@ -591,7 +593,7 @@ export default function App({ loginOnly = false }){
     setISaved(true);setTimeout(()=>setISaved(false),1600);
     setToast({visible:true,message:`${t('articleAjoute')} · +${b.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
-    setITitle("");setIBuy("");setISell("");setIMarque("");setIDesc("");
+    setITitle("");setIBuy("");setISell("");setIMarque("");setIDesc("");if(!rememberFrais)setIFrais("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -1288,11 +1290,11 @@ export default function App({ loginOnly = false }){
                 <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
               )}
               <div>
-                <Field label="Nom" value={iTitle} set={setITitle} placeholder="Ex: Nike Air Max, Zara jean..." icon="🏷️"/>
+                <Field label="Nom" value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon="🏷️"/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
               </div>
               <div>
-                <Field label="Marque (optionnel)" value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, Levi's..." icon="🏷️"/>
+                <Field label="Marque (optionnel)" value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, H&M, Sans marque..." icon="✏️"/>
               </div>
               <div>
                 <Field label="Prix d'achat" value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
@@ -1301,6 +1303,14 @@ export default function App({ loginOnly = false }){
               <div>
                 <Field label="Prix de vente (optionnel)" value={iSell} set={setISell} placeholder="Vide = en stock" type="number" icon="📦" suffix="€"/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Optionnel — à remplir quand tu vends</div>}
+              </div>
+              <div>
+                <Field label="Frais (optionnel)" value={iFrais} set={setIFrais} placeholder="Ex: étiquette, enveloppe, livraison..." type="number" icon="📬" suffix="€"/>
+                <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={rememberFrais} onChange={e=>setRememberFrais(e.target.checked)}
+                    style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
+                  <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>Mémoriser ces frais pour les prochains articles</span>
+                </label>
               </div>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 Description (optionnel)</div>
