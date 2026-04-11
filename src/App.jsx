@@ -685,20 +685,24 @@ export default function App({ loginOnly = false }){
     const ACHAT_RE=/achat|achet[eé]|PA\b|prix.?achat|co[uû]t|cost|invest|d[eé]pense|d[eé]bours/i;
     const VENTE_RE=/vente|vendu|PV\b|prix.?vente|revente|cession|recette|encaiss/i;
     const STATUT_RE=/statut|status|[eé]tat|state/i;
-    const mapping={titres:[],prix_achat:null,prix_vente:null,statut:null};
+    const DATE_RE=/date|jour|day|vendu.?le|sold.?at|vente/i;
+    const MARQUE_RE=/marque|brand|make|fabricant/i;
+    const mapping={titres:[],prix_achat:null,prix_vente:null,statut:null,date:null,marque_col:null};
 
     for(const h of headers){
       const s=String(h).trim();
-      if(TITRE_RE.test(s)) mapping.titres.push(h);
-      else if(!mapping.prix_achat && ACHAT_RE.test(s)) mapping.prix_achat=h;
+      if(MARQUE_RE.test(s)&&!mapping.marque_col) mapping.marque_col=h;
+      else if(TITRE_RE.test(s)) mapping.titres.push(h);
+      if(!mapping.prix_achat && ACHAT_RE.test(s)) mapping.prix_achat=h;
       else if(!mapping.prix_vente && VENTE_RE.test(s)) mapping.prix_vente=h;
       else if(!mapping.statut && STATUT_RE.test(s)) mapping.statut=h;
+      if(!mapping.date && DATE_RE.test(s)) mapping.date=h;
     }
     console.log('[Import] detectColumns — headers:',headers,'→',mapping);
 
     // ÉTAPE 3 : Fallback numérique 80% sur 20 premières lignes
     const sample=rows.slice(0,20);
-    const assigned=new Set([...mapping.titres,mapping.prix_achat,mapping.prix_vente,mapping.statut].filter(Boolean));
+    const assigned=new Set([...mapping.titres,mapping.prix_achat,mapping.prix_vente,mapping.statut,mapping.date,mapping.marque_col].filter(Boolean));
     const numCols=headers.filter(h=>{
       if(assigned.has(h)) return false;
       const vals=sample.map(r=>String(r[h]??'').replace(',','.').trim()).filter(v=>v!=='');
@@ -736,6 +740,37 @@ export default function App({ loginOnly = false }){
     // Filtre les valeurs invalides
     if(!nom||/^[#\d.,\s]+$/.test(nom)) return "Article importé";
     return nom;
+  }
+
+  const MARQUES_CONNUES=["Nike","Adidas","Zara","H&M","Mango","Shein","Primark","Levi's","Levis","Ralph Lauren","Tommy Hilfiger","Lacoste","New Balance","Puma","Reebok","Under Armour","The North Face","Stone Island","Carhartt","Stussy","Supreme","Off-White","Balenciaga","Gucci","Louis Vuitton","Hermès","Hermes","Chanel","Dior","Givenchy","Burberry","Versace","Armani","Boss","Calvin Klein","Diesel","Guess","Michael Kors","Vans","Converse","Jordan","Timberland","UGG","Crocs","Uniqlo","Cos","Sandro","Maje","Ba&sh","Isabel Marant","Kiabi","Jules","Celio","Bershka","Pull&Bear","Stradivarius"];
+  const MARQUE_KEEP_CASE=new Set(["H&M","BA&SH","Ba&sh"]);
+  function detectMarque(titre,row,mapping){
+    if(mapping.marque_col){
+      const v=String(row[mapping.marque_col]??'').trim();
+      if(v) return MARQUE_KEEP_CASE.has(v)?v:v.charAt(0).toUpperCase()+v.slice(1).toLowerCase();
+    }
+    const t=String(titre||'');
+    for(const m of MARQUES_CONNUES){
+      if(new RegExp('\\b'+m.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(t)){
+        return MARQUE_KEEP_CASE.has(m)?m:m.charAt(0).toUpperCase()+m.slice(1).toLowerCase();
+      }
+    }
+    return null;
+  }
+
+  function parseDate(val){
+    if(!val) return null;
+    if(!isNaN(val)&&Number(val)>1000){
+      const d=new Date((Number(val)-25569)*86400000);
+      return isNaN(d)?null:d.toISOString().split('T')[0];
+    }
+    const s=String(val).trim();
+    const m1=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if(m1){const y=m1[3].length===2?"20"+m1[3]:m1[3];return `${y}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;}
+    const m2=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+    const d=new Date(s);
+    return isNaN(d)?null:d.toISOString().split('T')[0];
   }
 
   // ── Import Excel / CSV ───────────────────────────────────────────────────
@@ -868,7 +903,9 @@ export default function App({ loginOnly = false }){
       const hasSell=sell>0;
       const margin=hasSell?sell-buy:null;
       const marginPct=hasSell?(margin/sell)*100:null;
-      const rowDate=r.__sheetDate||now;
+      const parsedDate=mapping.date?parseDate(r[mapping.date]):null;
+      const rowDate=parsedDate?(parsedDate+'T00:00:00.000Z'):(r.__sheetDate||now);
+      const marque=detectMarque(titre,r,mapping);
       return{
         id:Date.now()+idx,
         user_id:user.id,
@@ -879,6 +916,7 @@ export default function App({ loginOnly = false }){
         margin_pct:marginPct,
         statut,
         date:rowDate,
+        marque,
         created_at:now,
       };
     }).filter(r=>r.prix_achat>0&&r.titre!=="Article importé");
@@ -898,6 +936,7 @@ export default function App({ loginOnly = false }){
         prix_vente:row.prix_vente,
         benefice:row.margin,
         date:(row.date||now).split('T')[0],
+        marque:row.marque||null,
       }));
     if(ventesRows.length){
       const{error:ve}=await supabase.from('ventes').insert(ventesRows);
@@ -1701,6 +1740,21 @@ export default function App({ loginOnly = false }){
                   }
                 </div>
                 {/* Prix achat */}
+                {/* Date + Marque — lignes fixes */}
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
+                  <span style={{fontSize:14,flexShrink:0}}>📅</span>
+                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>Date :</span>
+                  <span style={{fontWeight:700,color:importModal.mapping.date?C.teal:"#A3A9A6",flex:1}}>
+                    {importModal.mapping.date?`✓ « ${importModal.mapping.date} »`:"— non détectée —"}
+                  </span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
+                  <span style={{fontSize:14,flexShrink:0}}>🏷️</span>
+                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>Marque :</span>
+                  <span style={{fontWeight:700,color:"#A3A9A6",flex:1}}>
+                    {importModal.mapping.marque_col?`✓ colonne « ${importModal.mapping.marque_col} »`:"détection automatique par nom"}
+                  </span>
+                </div>
                 {[
                   {key:"prix_achat",label:"Prix d'achat",icon:"🛒",required:true},
                   {key:"prix_vente",label:"Prix de vente",icon:"💰",required:false},
