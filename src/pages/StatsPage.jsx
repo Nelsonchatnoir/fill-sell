@@ -52,7 +52,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   const n = sales.length;
   const totalProfit = sales.reduce((a,s)=>a+s.margin, 0);
   const totalRevenue = sales.reduce((a,s)=>a+s.sell, 0);
-  const totalInvested = sales.reduce((a,s)=>a+s.buy, 0);
+  const totalInvested = items.reduce((a,i)=>a+(i.buy||0), 0);
   const avgMargin = totalRevenue>0 ? (totalProfit/totalRevenue)*100 : 0;
   const avgBasket = n>0 ? totalRevenue/n : 0;
   const avgProfit = n>0 ? totalProfit/n : 0;
