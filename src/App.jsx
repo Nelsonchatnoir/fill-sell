@@ -421,6 +421,8 @@ export default function App({ loginOnly = false }){
   const [soldShowAll,setSoldShowAll]=useState(false);
   const [showAllStock,setShowAllStock]=useState(false);
   const [showAllSales,setShowAllSales]=useState(false);
+  const [search,setSearch]=useState("");
+  const [searchHistory,setSearchHistory]=useState("");
   const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
   const [cBuy,setCBuy]=useState("");
@@ -626,6 +628,15 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{if(filterMarqueSold!=="Toutes"&&!sold.some(i=>i.marque===filterMarqueSold))setFilterMarqueSold("Toutes");},[sold,filterMarqueSold]);
   useEffect(()=>{setSoldShowAll(false);},[filterMarqueSold]);
   useEffect(()=>{setShowAllStock(false);},[filterMarque]);
+  useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);},[search]);
+  function searchMatch(item,query){
+    if(!query.trim())return true;
+    const q=query.toLowerCase().trim();
+    return item.title?.toLowerCase().includes(q)||item.marque?.toLowerCase().includes(q)||item.description?.toLowerCase().includes(q);
+  }
+  const soldVisible=(soldShowAll?soldFiltre:soldFiltre.slice(0,10)).filter(i=>searchMatch(i,search));
+  const stockVisible=(showAllStock?stockFiltre:stockFiltre.slice(0,10)).filter(i=>searchMatch(i,search));
+  const visibleSales=(showAllSales?sales:sales.slice(0,10)).filter(s=>searchMatch(s,searchHistory));
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -1524,6 +1535,13 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
                 </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px",marginBottom:12}}>
+                  <span style={{fontSize:14,flexShrink:0}}>🔍</span>
+                  <input value={search} onChange={e=>setSearch(e.target.value)}
+                    placeholder={lang==='fr'?"Rechercher par nom, marque, description...":"Search by name, brand, description..."}
+                    style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                  {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
+                </div>
                 {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marquesSold.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
                     {marquesSold.map(m=>(
@@ -1538,7 +1556,7 @@ export default function App({ loginOnly = false }){
                 );})()}
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {(soldShowAll?soldFiltre:soldFiltre.slice(0,10)).map(item=>{
+                    {soldVisible.map(item=>{
                       const mc=getMargeColor(item.marginPct);
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:`4px solid ${mc}`}}>
@@ -1558,7 +1576,7 @@ export default function App({ loginOnly = false }){
                     })}
                     {soldFiltre.length>10&&!soldShowAll&&(
                       <button onClick={()=>setSoldShowAll(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
-                        Voir plus ({soldFiltre.length-10} articles)
+                        {lang==='fr'?`Voir plus (${soldFiltre.length-10} articles)`:`Show more (${soldFiltre.length-10} items)`}
                       </button>
                     )}
                   </div>
@@ -1600,7 +1618,7 @@ export default function App({ loginOnly = false }){
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {(showAllStock?stockFiltre:stockFiltre.slice(0,10)).map(item=>(
+                    {stockVisible.map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:"4px solid #F9A26C"}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -1617,7 +1635,7 @@ export default function App({ loginOnly = false }){
                     ))}
                     {stockFiltre.length>10&&!showAllStock&&(
                       <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
-                        Voir plus ({stockFiltre.length-10} articles)
+                        {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                       </button>
                     )}
                   </div>
@@ -1746,6 +1764,16 @@ export default function App({ loginOnly = false }){
               </div>
             )}
 
+            {sales.length>0&&(
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px",marginBottom:4}}>
+                <span style={{fontSize:14,flexShrink:0}}>🔍</span>
+                <input value={searchHistory} onChange={e=>setSearchHistory(e.target.value)}
+                  placeholder={lang==='fr'?"Rechercher par nom, marque, description...":"Search by name, brand, description..."}
+                  style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                {searchHistory&&<button onClick={()=>setSearchHistory("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
+              </div>
+            )}
+
             {sales.length===0?(
               <div>
                 <div className="card" style={{padding:"48px 28px",textAlign:"center",marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
@@ -1767,7 +1795,7 @@ export default function App({ loginOnly = false }){
               </div>
             ):(
               <>
-                {(showAllSales?sales:sales.slice(0,10)).map(s=>{
+                {visibleSales.map(s=>{
                   const d=new Date(s.date);const mc=getMargeColor(s.marginPct);
                   return(
                     <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
@@ -1789,7 +1817,7 @@ export default function App({ loginOnly = false }){
                 {!showAllSales&&sales.length>10&&(
                   <button onClick={()=>setShowAllSales(true)}
                     style={{width:"100%",padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    Voir plus ({sales.length-10} autres)
+                    {lang==='fr'?`Voir plus (${sales.length-10} autres)`:`Show more (${sales.length-10} more)`}
                   </button>
                 )}
                 {!isPremium&&(
