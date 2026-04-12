@@ -1366,16 +1366,16 @@ export default function App({ loginOnly = false }){
                     <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>{t('dernieresventes')}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {sales.slice(0,5).map(s=>{
-                        const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
+                        const d=new Date(s.date);const mc=getMargeColor(s.marginPct);
                         return(
-                          <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
+                          <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                               <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
                             </div>
-                            <div style={{textAlign:"right",paddingRight:36}}>
-                              <div style={{fontWeight:900,fontSize:14,color:smc}}>{smc===C.green?"+":""}{fmt(s.margin)}</div>
-                              <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(s.marginPct)}</div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontWeight:900,fontSize:16,color:mc}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                              <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
                             </div>
                           </SwipeRow>
                         );
