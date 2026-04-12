@@ -106,7 +106,7 @@ function SwipeRow({onDelete, children, style}){
       >
         {children}
         <button className="delx" onClick={onDelete}
-          style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0}}
+          style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:8}}
           onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
           onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
         >✕</button>
@@ -1532,7 +1532,7 @@ export default function App({ loginOnly = false }){
                             </div>
                             <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>Achat {fmt(item.buy)} → Vente {fmt(item.sell)}</div>
                           </div>
-                          <div style={{textAlign:"right",minWidth:90,flexShrink:0,paddingRight:36}}>
+                          <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
                             <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt(item.margin)}</div>
                             <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(item.marginPct)}</div>
                           </div>
@@ -1759,7 +1759,7 @@ export default function App({ loginOnly = false }){
                       <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
                         <div style={{fontSize:12,color:"#A3A9A6"}}>{fmt(s.buy)} → {fmt(s.sell)}</div>
                       </div>
-                      <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
+                      <div style={{textAlign:"right",flexShrink:0}}>
                         <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
                         <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
                         <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
