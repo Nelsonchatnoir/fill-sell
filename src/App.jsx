@@ -312,7 +312,22 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||""};}
+function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre"};}
+
+function detectType(titre,marque){
+  const t=((titre||'')+' '+(marque||'')).toLowerCase();
+  if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|gant|lunette|bijou|collier|bracelet|bague|montre|boucle|accessoire|imperméable/i.test(t)) return 'Mode';
+  if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|pc|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|ram|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe/i.test(t)) return 'High-Tech';
+  if(/canapé|sofa|table|chaise|bureau|armoire|commode|lit|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|drap|serviette|vase|bougie|déco|cuisine|assiette|bol|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde/i.test(t)) return 'Maison';
+  if(/lego|playmobil|hasbro|mattel|jouet|jeu|puzzle|peluche|figurine|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
+  if(/livre|bd|bande.?dessinée|manga|roman|magazine|comics|guide|encyclopédie|atlas|dictionnaire/i.test(t)) return 'Livres';
+  if(/vélo|trottinette|skateboard|ski|snowboard|raquette|ballon|football|basketball|tennis|badminton|golf|rugby|natation|plongée|surf|kayak|randonnée|camping|sport|fitness|musculation|haltère|kettlebell|yoga|pilates|course|running|trail|cyclisme|équitation|boxe|arts.?martiaux/i.test(t)) return 'Sport';
+  if(/voiture|auto|moto|scooter|véhicule|pneu|jante|casque.?moto|pièce.?auto|autoradio|gps/i.test(t)) return 'Auto-Moto';
+  if(/parfum|crème|sérum|mascara|rouge.?lèvre|fond.?teint|palette|blush|bronzer|correcteur|dissolvant|vernis|shampooing|après-shampooing|masque.?cheveux|huile|lotion|gel.?douche|savon|rasoir/i.test(t)) return 'Beauté';
+  if(/album|vinyle|cd|cassette|instrument|guitare|piano|violon|batterie|basse|synthé|micro.?musique/i.test(t)) return 'Musique';
+  if(/collectionn|carte|timbre|monnaie|pièce|funko|vintage|antique|brocante/i.test(t)) return 'Collection';
+  return 'Autre';
+}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
 function getFilteredData_unused(range, salesData){
@@ -412,12 +427,14 @@ export default function App({ loginOnly = false }){
   const [iBuy,setIBuy]=useState("");
   const [iSell,setISell]=useState("");
   const [iMarque,setIMarque]=useState("");
+  const [iType,setIType]=useState("");
   const [iDesc,setIDesc]=useState("");
   const [iFrais,setIFrais]=useState("");
   const [rememberFrais,setRememberFrais]=useState(false);
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
+  const [filterType,setFilterType]=useState("Tous");
   const [soldShowAll,setSoldShowAll]=useState(false);
   const [showAllStock,setShowAllStock]=useState(false);
   const [showAllSales,setShowAllSales]=useState(false);
@@ -620,8 +637,19 @@ export default function App({ loginOnly = false }){
   const avgM=sales.length?sales.reduce((a,s)=>a+s.marginPct,0)/sales.length:0;
   const stock=items.filter(i=>i.statut==="stock");
   const sold=items.filter(i=>i.statut==="vendu");
-  const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||(i.marque?.toLowerCase()===filterMarque.toLowerCase()));
-  const soldFiltre=sold.filter(i=>filterMarqueSold==="Toutes"||(i.marque?.toLowerCase()===filterMarqueSold.toLowerCase()));
+  function searchMatch(item,query){
+    if(!query.trim())return true;
+    const q=query.toLowerCase().trim();
+    return item.title?.toLowerCase().includes(q)||item.marque?.toLowerCase().includes(q)||item.description?.toLowerCase().includes(q)||item.type?.toLowerCase().includes(q);
+  }
+  const stockFiltre=stock
+    .filter(i=>filterType==="Tous"||i.type===filterType)
+    .filter(i=>filterMarque==="Toutes"||(i.marque?.toLowerCase()===filterMarque.toLowerCase()))
+    .filter(i=>searchMatch(i,search));
+  const soldFiltre=sold
+    .filter(i=>filterType==="Tous"||i.type===filterType)
+    .filter(i=>filterMarqueSold==="Toutes"||(i.marque?.toLowerCase()===filterMarqueSold.toLowerCase()))
+    .filter(i=>searchMatch(i,search));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque))setFilterMarque("Toutes");},[stock,filterMarque]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -629,13 +657,9 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{setSoldShowAll(false);},[filterMarqueSold]);
   useEffect(()=>{setShowAllStock(false);},[filterMarque]);
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);},[search]);
-  function searchMatch(item,query){
-    if(!query.trim())return true;
-    const q=query.toLowerCase().trim();
-    return item.title?.toLowerCase().includes(q)||item.marque?.toLowerCase().includes(q)||item.description?.toLowerCase().includes(q);
-  }
-  const soldVisible=(soldShowAll?soldFiltre:soldFiltre.slice(0,10)).filter(i=>searchMatch(i,search));
-  const stockVisible=(showAllStock?stockFiltre:stockFiltre.slice(0,10)).filter(i=>searchMatch(i,search));
+  useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);},[filterType]);
+  const soldVisible=soldShowAll?soldFiltre:soldFiltre.slice(0,10);
+  const stockVisible=showAllStock?stockFiltre:stockFiltre.slice(0,10);
   const visibleSales=(showAllSales?sales:sales.slice(0,10)).filter(s=>searchMatch(s,searchHistory));
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
@@ -647,7 +671,8 @@ export default function App({ loginOnly = false }){
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const f=parseFloat(iFrais)||0;const hasS=s>0;
     const mg=hasS?s-b-f:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=iMarque.trim()?iMarque.trim().charAt(0).toUpperCase()+iMarque.trim().slice(1).toLowerCase():null;
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null};
+    const typeAuto=iType||detectType(iTitle,marqueNormalized);
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
@@ -662,7 +687,7 @@ export default function App({ loginOnly = false }){
     setISaved(true);setTimeout(()=>setISaved(false),1600);
     setToast({visible:true,message:`${t('articleAjoute')} · +${mg.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
-    setITitle("");setIBuy("");setISell("");setIMarque("");setIDesc("");if(!rememberFrais)setIFrais("");
+    setITitle("");setIBuy("");setISell("");setIMarque("");setIType("");setIDesc("");if(!rememberFrais)setIFrais("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -984,6 +1009,7 @@ export default function App({ loginOnly = false }){
       } else {
         marque=detectMarque(titre,r,{marque_col:null});
       }
+      const typeAuto=detectType(titre,marque);
       return{
         id:Date.now()+idx,
         user_id:user.id,
@@ -995,6 +1021,7 @@ export default function App({ loginOnly = false }){
         statut,
         date:rowDate,
         marque,
+        type:typeAuto,
         created_at:now,
       };
     }).filter(r=>r.prix_achat>=0&&r.titre!=="Article importé");
@@ -1439,6 +1466,23 @@ export default function App({ loginOnly = false }){
                 <Field label="Marque (optionnel)" value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, H&M, Sans marque..." icon="✏️"/>
               </div>
               <div>
+                <select value={iType} onChange={e=>setIType(e.target.value)}
+                  style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
+                  <option value="">{lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detect category'}</option>
+                  <option value="Mode">👗 Mode</option>
+                  <option value="High-Tech">📱 High-Tech</option>
+                  <option value="Maison">🏠 Maison</option>
+                  <option value="Jouets">🧸 Jouets</option>
+                  <option value="Livres">📚 Livres</option>
+                  <option value="Sport">⚽ Sport</option>
+                  <option value="Auto-Moto">🚗 Auto-Moto</option>
+                  <option value="Beauté">💄 Beauté</option>
+                  <option value="Musique">🎵 Musique</option>
+                  <option value="Collection">🏆 Collection</option>
+                  <option value="Autre">📦 Autre</option>
+                </select>
+              </div>
+              <div>
                 <Field label="Prix d'achat" value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix auquel tu as acheté l'article</div>}
               </div>
@@ -1529,18 +1573,36 @@ export default function App({ loginOnly = false }){
                 </div>
               )}
 
+              {/* ── Barre de recherche + Filtres type ── */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px"}}>
+                <span style={{fontSize:14,flexShrink:0}}>🔍</span>
+                <input value={search} onChange={e=>setSearch(e.target.value)}
+                  placeholder={lang==='fr'?"Rechercher...":"Search..."}
+                  style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
+              </div>
+              {(()=>{
+                const allItems=[...stock,...sold];
+                const presentTypes=["Tous","Mode","High-Tech","Maison","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
+                return presentTypes.length>1&&(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {presentTypes.map(tp=>(
+                      <button key={tp} onClick={()=>setFilterType(tp)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
+                          background:filterType===tp?"#4ECDC4":"#E8FAFA",
+                          color:filterType===tp?"#fff":"#4ECDC4"}}>
+                        {tp}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* ── VENDUS (en premier) ── */}
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px",marginBottom:12}}>
-                  <span style={{fontSize:14,flexShrink:0}}>🔍</span>
-                  <input value={search} onChange={e=>setSearch(e.target.value)}
-                    placeholder={lang==='fr'?"Rechercher par nom, marque, description...":"Search by name, brand, description..."}
-                    style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
-                  {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
                 </div>
                 {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marquesSold.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
