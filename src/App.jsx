@@ -316,6 +316,7 @@ function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_ve
 
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
+  if(/louis.?vuitton|lv|chanel|dior|hermès|hermes|gucci|prada|burberry|versace|givenchy|balenciaga|off.?white|stone.?island|moncler|canada.?goose|ralph.?lauren|lacoste|tommy|boss|armani|valentino|bottega|fendi|celine|saint.?laurent|ysl|alexander.?mcqueen|vivienne.?westwood|rolex|omega|cartier|tag.?heuer|breitling|patek|audemars|richard.?mille|iwc|birkin|kelly|speedy|neverfull|louboutin|jimmy.?choo|manolo/i.test(t)) return 'Luxe';
   if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|gant|lunette|bijou|collier|bracelet|bague|montre|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset/i.test(t)) return 'Mode';
   if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|pc|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|ram|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
   if(/canapé|sofa|table|chaise|bureau|armoire|commode|lit|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|drap|serviette|vase|bougie|déco|cuisine|assiette|bol|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|bar|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|pot|jardinage|arrosoir/i.test(t)) return 'Maison';
@@ -342,6 +343,7 @@ function getTypeStyle(type){
     'Musique':       {bg:'#F5F3FF',color:'#5B21B6',border:'#C4B5FD',emoji:'🎵'},
     'Collection':    {bg:'#FEFCE8',color:'#854D0E',border:'#FDE047',emoji:'🏆'},
     'Électroménager':{bg:'#ECFDF5',color:'#065F46',border:'#6EE7B7',emoji:'⚡'},
+    'Luxe':          {bg:'#FDF8F0',color:'#92400E',border:'#F59E0B',emoji:'💎'},
     'Autre':         {bg:'#F9FAFB',color:'#6B7280',border:'#D1D5DB',emoji:'📦'},
   };
   return s[type]||s['Autre'];
@@ -1491,6 +1493,7 @@ export default function App({ loginOnly = false }){
                   <option value="High-Tech">📱 High-Tech</option>
                   <option value="Maison">🏠 Maison</option>
                   <option value="Électroménager">⚡ Électroménager</option>
+                  <option value="Luxe">💎 Luxe</option>
                   <option value="Jouets">🧸 Jouets</option>
                   <option value="Livres">📚 Livres</option>
                   <option value="Sport">⚽ Sport</option>
@@ -1602,7 +1605,7 @@ export default function App({ loginOnly = false }){
               </div>
               {(()=>{
                 const allItems=[...stock,...sold];
-                const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
+                const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
                 return presentTypes.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                     {presentTypes.map(tp=>{
