@@ -157,8 +157,7 @@ const css = `
     .stats-grid { grid-template-columns: repeat(2,1fr) !important; }
     .brand-logo { font-size: 18px; }
     .pricing-grid { grid-template-columns: 1fr !important; }
-    .waitlist-row { flex-direction: column !important; }
-    .waitlist-row input, .waitlist-row button { width: 100%; box-sizing: border-box; }
+
   }
 `;
 
@@ -170,8 +169,16 @@ export default function LandingPage() {
   const [cBuy, setCBuy] = useState('');
   const [cSell, setCSell] = useState('');
   const [cFees, setCFees] = useState('');
-  const [waitlistEmail, setWaitlistEmail] = useState('');
-  const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
+  const [earlyAdopter, setEarlyAdopter] = useState({ available: false, remaining: 0, loaded: false });
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-early-adopter`, {
+      headers: { "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => setEarlyAdopter({ ...d, loaded: true }))
+      .catch(() => setEarlyAdopter({ available: false, remaining: 0, loaded: true }));
+  }, []);
 
   const l = landingTranslations[lang] || landingTranslations.fr;
 
@@ -260,33 +267,23 @@ export default function LandingPage() {
             {l.heroSub}
           </p>
 
-          <div style={{maxWidth:560,margin:"0 auto 36px",borderRadius:14,padding:"16px 20px",background:"linear-gradient(135deg,#1D9E75,#4ECDC4)"}}>
-            {waitlistSubmitted?(
-              <div style={{textAlign:"center",padding:"10px 0",fontSize:15,fontWeight:800,color:"#fff"}}>✅ Tu seras notifié en priorité !</div>
-            ):(
-              <>
-                <div style={{marginBottom:10,display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
-                  <span style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 10px",fontSize:10,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.07em"}}>🚀 Offre lancement</span>
-                  <div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1.2}}>2,99€/mois pour les 50 premiers</div>
-                  <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>Au lieu de 4,99€ — à vie, sans engagement</div>
+          {earlyAdopter.loaded && earlyAdopter.available && (()=>{
+            const ea={fr:{badge:`🚀 Offre Early Adopter · Plus que ${earlyAdopter.remaining} places`,sub:'2,99€/mois à vie au lieu de 4,99€',cta:'Créer mon compte'},en:{badge:`🚀 Early Adopter Deal · Only ${earlyAdopter.remaining} spots left`,sub:'2.99€/month forever instead of 4.99€',cta:'Create my account'}};
+            const eaL=ea[lang]||ea.fr;
+            return(
+              <div style={{maxWidth:560,margin:"0 auto 36px",borderRadius:14,padding:"16px 20px",background:"linear-gradient(135deg,#1D9E75,#4ECDC4)"}}>
+                <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
+                  <span style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 10px",fontSize:10,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.07em"}}>{eaL.badge}</span>
+                  <div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1.2}}>{eaL.sub}</div>
                 </div>
-                <div className="waitlist-row" style={{display:"flex",gap:8,marginBottom:8}}>
-                  <input
-                    type="email"
-                    placeholder="ton@email.com"
-                    value={waitlistEmail}
-                    onChange={e=>setWaitlistEmail(e.target.value)}
-                    style={{flex:1,background:"rgba(255,255,255,0.95)",borderRadius:10,padding:"12px 16px",fontSize:14,border:"none",outline:"none",fontFamily:"inherit"}}
-                  />
-                  <button
-                    onClick={()=>{if(!waitlistEmail)return;localStorage.setItem('fs_waitlist_email',waitlistEmail);setWaitlistSubmitted(true);track('waitlist_signup',{email:waitlistEmail,page:'landing'});}}
-                    style={{background:"#fff",color:"#1D9E75",fontWeight:800,borderRadius:10,padding:"12px 20px",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit",fontSize:14}}
-                  >Je veux mon accès</button>
-                </div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.65)"}}>✓ Sans carte bancaire · ✓ Accès immédiat dès l'ouverture des paiements</div>
-              </>
-            )}
-          </div>
+                <button
+                  onClick={()=>{track('early_adopter_click',{source:'landing_banner',lang});nav('/app');}}
+                  style={{background:"#fff",color:"#1D9E75",fontWeight:800,borderRadius:10,padding:"12px 20px",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit",fontSize:14,width:"100%"}}
+                >{eaL.cta}</button>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.65)",marginTop:10}}>✓ Sans carte bancaire · ✓ Accès immédiat dès l'ouverture des paiements</div>
+              </div>
+            );
+          })()}
 
           <div className="lp-hero-btns" style={{ display:"flex", gap:14, justifyContent:"center", flexWrap:"wrap" }}>
             <button className="lp-btn-main" style={{ fontSize:17, padding:"16px 36px" }}

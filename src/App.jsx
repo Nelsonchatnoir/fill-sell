@@ -435,6 +435,7 @@ export default function App({ loginOnly = false }){
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
+  const [earlyAdopter,setEarlyAdopter]=useState({available:false,remaining:0});
   const [lang,setLang]=useState(()=>{
     const saved=localStorage.getItem('fs_lang');
     if(saved) return saved;
@@ -457,10 +458,15 @@ export default function App({ loginOnly = false }){
   const {t,tpl}=useTranslation(lang);
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
   useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
+  useEffect(()=>{
+    if(!user||isPremium)return;
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-early-adopter`,{headers:{"Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`}})
+      .then(r=>r.json()).then(d=>setEarlyAdopter(d)).catch(()=>{});
+  },[user,isPremium]);
 
-  async function triggerCheckout(){
+  async function triggerCheckout(coupon=null){
     try{
-      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email})});
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email,coupon})});
       const{url,error}=await res.json();
       if(error)throw new Error(error);
       track('begin_checkout', { currency: 'EUR', value: 4.99 });
@@ -1208,6 +1214,17 @@ export default function App({ loginOnly = false }){
       </div>
 
       <div className="wrap page-pad" style={{padding:"18px 14px 80px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)"}}>
+
+        {!isPremium&&earlyAdopter.available&&(()=>{
+          const ea={fr:{text:`🚀 Offre Early Adopter · ${earlyAdopter.remaining} places restantes · 2,99€/mois à vie`,cta:"J'en profite →"},en:{text:`🚀 Early Adopter Deal · ${earlyAdopter.remaining} spots left · 2.99€/month forever`,cta:"Claim my spot →"}};
+          const eaL=ea[lang]||ea.fr;
+          return(
+            <div style={{background:"linear-gradient(135deg,#1D9E75,#4ECDC4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:4}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#fff",flex:1}}>{eaL.text}</div>
+              <button onClick={()=>{track('early_adopter_click',{source:'app_banner'});triggerCheckout('EARLY50');}} style={{background:"#fff",color:"#1D9E75",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,fontFamily:"inherit"}}>{eaL.cta}</button>
+            </div>
+          );
+        })()}
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>

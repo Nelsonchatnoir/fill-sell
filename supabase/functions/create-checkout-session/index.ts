@@ -17,15 +17,18 @@ serve(async (req) => {
   }
 
   try {
-    const { email } = await req.json();
+    const { email, coupon } = await req.json();
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       line_items: [{ price: "price_1TITQzQZRA77vrWJvbgZKqX1", quantity: 1 }],
       success_url: "https://fillsell.app/success",
       cancel_url: "https://fillsell.app/cancel",
       customer_email: email || undefined,
-    });
+    };
+    if (coupon) sessionParams.discounts = [{ coupon }];
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: {
