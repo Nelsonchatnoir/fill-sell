@@ -612,8 +612,8 @@ export default function App({ loginOnly = false }){
   const avgM=sales.length?sales.reduce((a,s)=>a+s.marginPct,0)/sales.length:0;
   const stock=items.filter(i=>i.statut==="stock");
   const sold=items.filter(i=>i.statut==="vendu");
-  const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||(i.marque?.trim()===filterMarque.trim()));
-  const soldFiltre=sold.filter(i=>filterMarqueSold==="Toutes"||(i.marque?.trim()===filterMarqueSold.trim()));
+  const stockFiltre=stock.filter(i=>filterMarque==="Toutes"||(i.marque?.toLowerCase()===filterMarque.toLowerCase()));
+  const soldFiltre=sold.filter(i=>filterMarqueSold==="Toutes"||(i.marque?.toLowerCase()===filterMarqueSold.toLowerCase()));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque))setFilterMarque("Toutes");},[stock,filterMarque]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -629,7 +629,8 @@ export default function App({ loginOnly = false }){
     if(!isPremium&&items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const f=parseFloat(iFrais)||0;const hasS=s>0;
     const mg=hasS?s-b-f:0;const mgp=hasS?(mg/s)*100:0;
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:iMarque||null,description:iDesc||null};
+    const marqueNormalized=iMarque.trim()?iMarque.trim().charAt(0).toUpperCase()+iMarque.trim().slice(1).toLowerCase():null;
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
@@ -1506,7 +1507,7 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
                 </div>
-                {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque).filter(Boolean))];return marquesSold.length>1&&(
+                {(()=>{const marquesSold=["Toutes",...new Set(sold.map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marquesSold.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
                     {marquesSold.map(m=>(
                       <button key={m} onClick={()=>setFilterMarqueSold(m)}
@@ -1556,7 +1557,7 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
                 </div>
-                {(()=>{const marques=["Toutes",...new Set(stock.map(i=>i.marque).filter(Boolean))];return marques.length>1&&(
+                {(()=>{const marques=["Toutes",...new Set(stock.map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marques.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
                     {marques.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
