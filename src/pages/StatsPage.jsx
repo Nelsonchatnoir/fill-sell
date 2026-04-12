@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import { track } from '../analytics/analytics';
 const fmt = n => (Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
@@ -36,11 +36,27 @@ function KpiCard({ label, value, sub, color, progress }) {
 }
 
 const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-const perfColor = pct => pct >= 50 ? "#1D9E75" : pct >= 25 ? "#F9A26C" : "#E24B4A";
+
+const PERIODS = [
+  { val:'7d',  fr:'7 jours',   en:'7 days' },
+  { val:'1M',  fr:'1 mois',    en:'1 month' },
+  { val:'3M',  fr:'3 mois',    en:'3 months' },
+  { val:'6M',  fr:'6 mois',    en:'6 months' },
+  { val:'1Y',  fr:'1 an',      en:'1 year' },
+  { val:'all', fr:'Tout',      en:'All' },
+];
+
+const PERIOD_DAYS = { '7d':7, '1M':30, '3M':90, '6M':180, '1Y':365 };
+
+function filterByPeriod(arr, period) {
+  if (period === 'all') return arr;
+  const cutoff = new Date(Date.now() - PERIOD_DAYS[period]*86400000);
+  return arr.filter(s => new Date(s.date) >= cutoff);
+}
 
 export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl, lang='fr' }) {
-  // Fallbacks if called without i18n props (shouldn't happen)
   const tr = t || (k=>k);
+  const [period, setPeriod] = useState('all');
 
   useEffect(() => { if (isPremium) track('view_advanced_stats'); }, [isPremium]);
 
@@ -49,33 +65,36 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
     return null;
   }
 
-  const n = sales.length;
-  const totalProfit = sales.reduce((a,s)=>a+s.margin, 0);
-  const totalRevenue = sales.reduce((a,s)=>a+s.sell, 0);
-  const totalInvested = items.reduce((a,i)=>a+(i.buy||0), 0);
+  const now = new Date();
+  const cutoff = period !== 'all' ? new Date(now.getTime() - PERIOD_DAYS[period]*86400000) : null;
+
+  const filteredSales = filterByPeriod(sales, period);
+  const filteredItems = period === 'all' ? items : items.filter(i => new Date(i.date) >= cutoff);
+
+  const n = filteredSales.length;
+  const totalProfit = filteredSales.reduce((a,s)=>a+s.margin, 0);
+  const totalRevenue = filteredSales.reduce((a,s)=>a+s.sell, 0);
+  const totalInvested = filteredItems.reduce((a,i)=>a+(i.buy||0), 0);
   const avgMargin = totalRevenue>0 ? (totalProfit/totalRevenue)*100 : 0;
   const avgBasket = n>0 ? totalRevenue/n : 0;
   const avgProfit = n>0 ? totalProfit/n : 0;
 
-  const bestSale = n>0 ? [...sales].sort((a,b)=>b.margin-a.margin)[0] : null;
-  const bestPct = n>0 ? [...sales].sort((a,b)=>b.marginPct-a.marginPct)[0] : null;
+  const bestSale = n>0 ? [...filteredSales].sort((a,b)=>b.margin-a.margin)[0] : null;
+  const bestPct  = n>0 ? [...filteredSales].sort((a,b)=>b.marginPct-a.marginPct)[0] : null;
 
-  // Best month all-time
+  // Best month
   const monthMap = {};
-  sales.forEach(s=>{
+  filteredSales.forEach(s=>{
     const d=new Date(s.date);
     const key=`${d.getFullYear()}-${d.getMonth()}`;
     if(!monthMap[key]) monthMap[key]={profit:0,month:d.getMonth(),year:d.getFullYear()};
     monthMap[key].profit+=s.margin;
   });
   const bestMonthEntry = Object.values(monthMap).sort((a,b)=>b.profit-a.profit)[0]||null;
-  const bestMonthLabel = bestMonthEntry
-    ? `${MONTHS[bestMonthEntry.month]} ${bestMonthEntry.year} · +${fmt(bestMonthEntry.profit)}`
-    : "—";
 
-  // Avg sell delay (match by title)
-  const delays = sales.map(s=>{
-    const match = items.find(it=>it.title===s.title);
+  // Avg sell delay
+  const delays = filteredSales.map(s=>{
+    const match = filteredItems.find(it=>it.title===s.title);
     if(!match) return null;
     const days = Math.round((new Date(s.date)-new Date(match.date))/(1000*60*60*24));
     return days>=0?days:null;
@@ -83,18 +102,17 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   const avgDelay = delays.length>0 ? Math.round(delays.reduce((a,b)=>a+b,0)/delays.length) : null;
 
   // Sell rate
-  const soldItems = items.filter(i=>i.statut==='vendu');
-  const sellRate = items.length>0 ? Math.round((soldItems.length/items.length)*100) : 0;
+  const soldItems = filteredItems.filter(i=>i.statut==='vendu');
+  const sellRate = filteredItems.length>0 ? Math.round((soldItems.length/filteredItems.length)*100) : 0;
 
-  // Top 3 sales
-  const top3 = [...sales].sort((a,b)=>b.margin-a.margin).slice(0,3);
+  // Top 3
+  const top3 = [...filteredSales].sort((a,b)=>b.margin-a.margin).slice(0,3);
 
-  // Monthly chart (last 6 months)
-  const now = new Date();
+  // Chart (last 6 months within filtered sales)
   const chartData = Array.from({length:6},(_,i)=>{
     const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
     const m=d.getMonth();const y=d.getFullYear();
-    const ms=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
+    const ms=filteredSales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
     return{name:MONTHS[m],profit:ms.reduce((a,s)=>a+s.margin,0)};
   });
 
@@ -134,8 +152,20 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
       <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"3px 12px",fontSize:11,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,alignSelf:"flex-start"}}>
         {tr('statsLabel')}
       </div>
-      <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:20}}>
+      <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:16}}>
         {tr('tesPerformances')}
+      </div>
+
+      {/* Sélecteur de période */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+        {PERIODS.map(p=>(
+          <button key={p.val} onClick={()=>setPeriod(p.val)}
+            style={{padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,0,0,0.08)",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",
+              background:period===p.val?"#1D9E75":"#fff",
+              color:period===p.val?"#fff":"#A3A9A6"}}>
+            {lang==='fr'?p.fr:p.en}
+          </button>
+        ))}
       </div>
 
       {n===0?(
@@ -159,7 +189,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
             <KpiCard label={tr('margeMoyenne')} value={fmtp(avgMargin)} color="#1D9E75"/>
             <KpiCard label={tr('panierMoyen')} value={fmt(avgBasket)} color="#F9A26C"/>
             <KpiCard label={tr('profitParVente')} value={fmt(avgProfit)} color="#1D9E75"/>
-            <KpiCard label={tr('tauxVente')} value={`${sellRate}%`} color="#0D0D0D" sub={`${soldItems.length}/${items.length} ${tr('articles')}`} progress={sellRate}/>
+            <KpiCard label={tr('tauxVente')} value={`${sellRate}%`} color="#0D0D0D" sub={`${soldItems.length}/${filteredItems.length} ${tr('articles')}`} progress={sellRate}/>
           </div>
 
           {bestSale&&(
