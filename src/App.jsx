@@ -705,7 +705,7 @@ export default function App({ loginOnly = false }){
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
-    setToast({visible:true,message:`${t('articleAjoute')} · +${mg.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`});
+    setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${mg.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`:`${t('articleAjoute')} · Investi ${b.toFixed(2).replace(".",",")}€`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     setITitle("");setIBuy("");setISell("");setIMarque("");setIType("");setIDesc("");if(!rememberFrais)setIFrais("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
