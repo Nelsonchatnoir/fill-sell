@@ -329,6 +329,23 @@ function detectType(titre,marque){
   if(/aspirateur|robot.?aspirateur|roomba|dyson|lave.?linge|lave.?vaisselle|congélateur|four|hotte|plaque|induction|gazinière|sèche.?linge|sèche.?cheveux|fer.?repasser|climatiseur|ventilateur|radiateur|chauffage|chauffe.?eau|nespresso|dolce.?gusto|blender|robot.?cuisine|thermomix|friteuse|yaourtière|extracteur.?jus|centrifugeuse|bouilloire|épilateur|rasoir.?électrique|brosse.?dents/i.test(t)) return 'Électroménager';
   return 'Autre';
 }
+function getTypeStyle(type){
+  const s={
+    'Mode':          {bg:'#FDF2F8',color:'#9D174D',border:'#F9A8D4',emoji:'👗'},
+    'High-Tech':     {bg:'#EFF6FF',color:'#1D4ED8',border:'#93C5FD',emoji:'📱'},
+    'Maison':        {bg:'#F0FDF4',color:'#166534',border:'#86EFAC',emoji:'🏠'},
+    'Jouets':        {bg:'#FFFBEB',color:'#92400E',border:'#FCD34D',emoji:'🧸'},
+    'Livres':        {bg:'#FFF7ED',color:'#9A3412',border:'#FDBA74',emoji:'📚'},
+    'Sport':         {bg:'#F0F9FF',color:'#0C4A6E',border:'#7DD3FC',emoji:'⚽'},
+    'Auto-Moto':     {bg:'#F8FAFC',color:'#334155',border:'#94A3B8',emoji:'🚗'},
+    'Beauté':        {bg:'#FFF1F2',color:'#9F1239',border:'#FDA4AF',emoji:'💄'},
+    'Musique':       {bg:'#F5F3FF',color:'#5B21B6',border:'#C4B5FD',emoji:'🎵'},
+    'Collection':    {bg:'#FEFCE8',color:'#854D0E',border:'#FDE047',emoji:'🏆'},
+    'Électroménager':{bg:'#ECFDF5',color:'#065F46',border:'#6EE7B7',emoji:'⚡'},
+    'Autre':         {bg:'#F9FAFB',color:'#6B7280',border:'#D1D5DB',emoji:'📦'},
+  };
+  return s[type]||s['Autre'];
+}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
 function getFilteredData_unused(range, salesData){
@@ -1588,14 +1605,18 @@ export default function App({ loginOnly = false }){
                 const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
                 return presentTypes.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {presentTypes.map(tp=>(
-                      <button key={tp} onClick={()=>setFilterType(tp)}
-                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
-                          background:filterType===tp?"#4ECDC4":"#E8FAFA",
-                          color:filterType===tp?"#fff":"#4ECDC4"}}>
-                        {tp}
-                      </button>
-                    ))}
+                    {presentTypes.map(tp=>{
+                      const ts=tp==="Tous"?{bg:"#E8FAFA",color:"#4ECDC4",border:"#A5F3FC",emoji:""}:getTypeStyle(tp);
+                      return(
+                        <button key={tp} onClick={()=>setFilterType(tp)}
+                          style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",
+                            background:filterType===tp?ts.color:ts.bg,
+                            color:filterType===tp?"#fff":ts.color,
+                            border:`1px solid ${ts.border}`}}>
+                          {tp==="Tous"?tp:`${ts.emoji} ${tp}`}
+                        </button>
+                      );
+                    })}
                   </div>
                 );
               })()}
@@ -1622,12 +1643,14 @@ export default function App({ loginOnly = false }){
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {soldVisible.map(item=>{
                       const mc=getMargeColor(item.marginPct);
+                      const ts=getTypeStyle(item.type);
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:`4px solid ${mc}`}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                               {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                              {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {item.type}</span>}
                             </div>
                             <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>Achat {fmt(item.buy)} → Vente {fmt(item.sell)}</div>
                           </div>
@@ -1682,12 +1705,15 @@ export default function App({ loginOnly = false }){
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {stockVisible.map(item=>(
+                    {stockVisible.map(item=>{
+                      const ts=getTypeStyle(item.type);
+                      return(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:"4px solid #F9A26C"}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                             <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                             {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                            {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {item.type}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
                           <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
@@ -1696,7 +1722,7 @@ export default function App({ loginOnly = false }){
                           <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Vendu</button>
                         </div>
                       </SwipeRow>
-                    ))}
+                    );})}
                     {stockFiltre.length>10&&!showAllStock&&(
                       <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
                         {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
@@ -1860,12 +1886,15 @@ export default function App({ loginOnly = false }){
             ):(
               <>
                 {visibleSales.map(s=>{
-                  const d=new Date(s.date);const mc=getMargeColor(s.marginPct);
+                  const d=new Date(s.date);const mc=getMargeColor(s.marginPct);const ts=getTypeStyle(s.type);
                   return(
                     <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
+                          <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</span>
+                          {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {s.type}</span>}
+                        </div>
                       </div>
                       <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
                         <div style={{fontSize:12,color:"#A3A9A6"}}>{fmt(s.buy)} → {fmt(s.sell)}</div>
