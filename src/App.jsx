@@ -1419,7 +1419,7 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Optionnel — à remplir quand tu vends</div>}
               </div>
               <div>
-                <Field label="Frais (optionnel)" value={iFrais} set={setIFrais} placeholder="Ex: étiquette, enveloppe, livraison..." type="number" icon="📬" suffix="€"/>
+                <Field label="Frais (optionnel)" value={iFrais} set={setIFrais} placeholder="Ex: étiquette, enveloppe..." type="number" icon="📬" suffix="€"/>
                 <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={rememberFrais} onChange={e=>setRememberFrais(e.target.checked)}
                     style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
