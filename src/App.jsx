@@ -1366,7 +1366,7 @@ export default function App({ loginOnly = false }){
                     <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>{t('dernieresventes')}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {sales.slice(0,5).map(s=>{
-                        const d=new Date(s.date);const mc=getMargeColor(s.marginPct);
+                        const d=new Date(s.date);const mc=!s.marginPct||s.marginPct<5?"#E53E3E":s.marginPct<20?"#F9A26C":s.marginPct<40?"#5DCAA5":"#1D9E75";
                         return(
                           <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
                             <div style={{flex:1,minWidth:0}}>
