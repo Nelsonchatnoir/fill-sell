@@ -419,6 +419,7 @@ export default function App({ loginOnly = false }){
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
   const [soldShowAll,setSoldShowAll]=useState(false);
+  const [showAllStock,setShowAllStock]=useState(false);
   const [showAllSales,setShowAllSales]=useState(false);
   const [toast,setToast]=useState({visible:false,message:""});
   const [cTitle,setCTitle]=useState("");
@@ -617,6 +618,8 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque))setFilterMarque("Toutes");},[stock,filterMarque]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{if(filterMarqueSold!=="Toutes"&&!sold.some(i=>i.marque===filterMarqueSold))setFilterMarqueSold("Toutes");},[sold,filterMarqueSold]);
+  useEffect(()=>{setSoldShowAll(false);},[filterMarqueSold]);
+  useEffect(()=>{setShowAllStock(false);},[filterMarque]);
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -1517,7 +1520,7 @@ export default function App({ loginOnly = false }){
                 );})()}
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {(soldShowAll?soldFiltre:soldFiltre.slice(0,20)).map(item=>{
+                    {(soldShowAll?soldFiltre:soldFiltre.slice(0,10)).map(item=>{
                       const mc=getMargeColor(item.marginPct);
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:`4px solid ${mc}`}}>
@@ -1535,9 +1538,9 @@ export default function App({ loginOnly = false }){
                         </SwipeRow>
                       );
                     })}
-                    {soldFiltre.length>20&&!soldShowAll&&(
+                    {soldFiltre.length>10&&!soldShowAll&&(
                       <button onClick={()=>setSoldShowAll(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
-                        Voir plus ({soldFiltre.length-20} articles)
+                        Voir plus ({soldFiltre.length-10} articles)
                       </button>
                     )}
                   </div>
@@ -1579,7 +1582,7 @@ export default function App({ loginOnly = false }){
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {stockFiltre.map(item=>(
+                    {(showAllStock?stockFiltre:stockFiltre.slice(0,10)).map(item=>(
                       <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:"4px solid #F9A26C"}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -1592,6 +1595,11 @@ export default function App({ loginOnly = false }){
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
                       </SwipeRow>
                     ))}
+                    {stockFiltre.length>10&&!showAllStock&&(
+                      <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
+                        Voir plus ({stockFiltre.length-10} articles)
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
