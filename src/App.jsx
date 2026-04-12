@@ -88,8 +88,9 @@ const css = `
 
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
+const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 
-function SwipeRow({onDelete, children}){
+function SwipeRow({onDelete, children, style}){
   const isMobile = window.innerWidth < 768;
   const innerRef=useRef(null);
   const bgRef=useRef(null);
@@ -99,8 +100,8 @@ function SwipeRow({onDelete, children}){
 
   if(!isMobile){
     return(
-      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"background 0.15s",marginBottom:0}}
-        onMouseEnter={e=>{e.currentTarget.style.background="#F5F6F5";e.currentTarget.querySelector('.delx').style.opacity='1';}}
+      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"background 0.15s",marginBottom:0,...style}}
+        onMouseEnter={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity='1';}}
         onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.querySelector('.delx').style.opacity='0';}}
       >
         {children}
@@ -134,7 +135,7 @@ function SwipeRow({onDelete, children}){
     setTimeout(()=>onDelete(),200);
   }
   return(
-    <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+    <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...style}}>
       <div ref={bgRef} onClick={handleDelClick} style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}>
         <span style={{fontSize:22}}>🗑️</span>
       </div>
@@ -1517,20 +1518,19 @@ export default function App({ loginOnly = false }){
                 {sold.length===0?<Empty text="Aucune vente encore"/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {(soldShowAll?soldFiltre:soldFiltre.slice(0,20)).map(item=>{
-                      const smc=item.margin<0?C.red:C.green;
+                      const mc=getMargeColor(item.marginPct);
                       return(
-                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
+                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:`4px solid ${mc}`}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                              <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                               {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                             </div>
-                            {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{fmt(item.buy)} → <span style={{color:"#0D0D0D"}}>{fmt(item.sell)}</span></div>
+                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>Achat {fmt(item.buy)} → Vente {fmt(item.sell)}</div>
                           </div>
-                          <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
-                            <div style={{fontWeight:900,fontSize:14,color:smc}}>{fmt(item.margin)}</div>
-                            <div style={{fontSize:11,fontWeight:700,color:"#6B7280"}}>{fmtp(item.marginPct)}</div>
+                          <div style={{textAlign:"right",minWidth:90,flexShrink:0,paddingRight:36}}>
+                            <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt(item.margin)}</div>
+                            <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(item.marginPct)}</div>
                           </div>
                         </SwipeRow>
                       );
@@ -1580,14 +1580,14 @@ export default function App({ loginOnly = false }){
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stockFiltre.map(item=>(
-                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)}>
+                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:"4px solid #F9A26C"}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                            <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                            <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                             {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi <span style={{color:"#F9A26C"}}>{fmt(item.buy)}</span>{item.sell>0&&<> · <span style={{color:"#1D9E75"}}>{fmt(item.sell)}</span></>}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
                         </div>
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
                       </SwipeRow>
@@ -1740,16 +1740,20 @@ export default function App({ loginOnly = false }){
             ):(
               <>
                 {(showAllSales?sales:sales.slice(0,10)).map(s=>{
-                  const d=new Date(s.date);const smc=s.margin<0?C.red:C.green;
+                  const d=new Date(s.date);const mc=getMargeColor(s.marginPct);
                   return(
-                    <SwipeRow key={s.id} onDelete={()=>delSale(s.id)}>
+                    <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                        <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</div>
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</div>
+                      </div>
+                      <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
+                        <div style={{fontSize:12,color:"#A3A9A6"}}>{fmt(s.buy)} → {fmt(s.sell)}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0,paddingRight:36}}>
-                        <div style={{fontWeight:900,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
-                        <div style={{fontSize:11,fontWeight:700,color:smc,marginTop:2}}>{smc===C.green?"+":""}{fmt(s.margin)}</div>
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
+                        <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
                       </div>
                     </SwipeRow>
                   );
