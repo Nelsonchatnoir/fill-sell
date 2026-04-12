@@ -38,7 +38,7 @@ function KpiCard({ label, value, sub, color, progress }) {
 const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const perfColor = pct => pct >= 50 ? "#1D9E75" : pct >= 25 ? "#F9A26C" : "#E24B4A";
 
-export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl }) {
+export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl, lang='fr' }) {
   // Fallbacks if called without i18n props (shouldn't happen)
   const tr = t || (k=>k);
 
@@ -150,7 +150,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <KpiCard label={tr('profitTotal')} value={fmt(totalProfit)} color={totalProfit>=0?"#1D9E75":"#E53E3E"}/>
             <KpiCard label={tr('revenuTotal')} value={fmt(totalRevenue)} color="#4ECDC4"/>
-            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#F9A26C"/>
+            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#F9A26C" sub={lang==='fr'?"stock + articles vendus":"stock + sold items"}/>
             <KpiCard label={tr('ventesTotales')} value={n} color="#0D0D0D"/>
           </div>
 

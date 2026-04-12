@@ -1950,6 +1950,7 @@ export default function App({ loginOnly = false }){
             onBack={()=>{setTab(3);localStorage.setItem('tab',3);}}
             t={t}
             tpl={tpl}
+            lang={lang}
           />
         )}
       </div>
