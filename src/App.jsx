@@ -202,7 +202,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         </div>
       </div>
       <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"11px 20px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"flex-start"}}
+        style={{padding:"11px 20px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"center"}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
@@ -1806,19 +1806,13 @@ export default function App({ loginOnly = false }){
             )}
 
             {/* ── Bouton stats avancées ── */}
-            {isPremium?(
+            {isPremium&&(
               <button onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
                 style={{width:"100%",marginTop:4,padding:"14px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
                 onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                 onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
                 onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
               >{t('statsAvancees')}</button>
-            ):(
-              <button onClick={()=>{track('premium_click',{source:'stats'});triggerCheckout();}}
-                style={{width:"100%",marginTop:4,padding:"14px",background:"transparent",color:"#1D9E75",border:"2px solid #1D9E75",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(29,158,117,0.06)"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              >{t('debloquerStats')}</button>
             )}
           </div>
         )}
