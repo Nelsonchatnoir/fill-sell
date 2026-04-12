@@ -1593,7 +1593,9 @@ export default function App({ loginOnly = false }){
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
                           <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
                         </div>
-                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Vendu</button>
+                        <div style={{paddingRight:36,flexShrink:0}}>
+                          <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Vendu</button>
+                        </div>
                       </SwipeRow>
                     ))}
                     {stockFiltre.length>10&&!showAllStock&&(
