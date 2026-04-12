@@ -1468,7 +1468,7 @@ export default function App({ loginOnly = false }){
               <div>
                 <select value={iType} onChange={e=>setIType(e.target.value)}
                   style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
-                  <option value="">{lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detect category'}</option>
+                  <option value="">{(iTitle||iMarque)?(lang==='fr'?`🤖 Détecté : ${detectType(iTitle,iMarque)}`:`🤖 Detected: ${detectType(iTitle,iMarque)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
                   <option value="Mode">👗 Mode</option>
                   <option value="High-Tech">📱 High-Tech</option>
                   <option value="Maison">🏠 Maison</option>
