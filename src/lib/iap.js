@@ -32,6 +32,21 @@ export async function purchasePremium() {
   }
 }
 
+export async function checkEntitlements() {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const { purchases } = await NativePurchases.getPurchases({
+      onlyCurrentEntitlements: true,
+    });
+    return (purchases || []).some(
+      p => p.productIdentifier === PRODUCT_ID || p.productId === PRODUCT_ID
+    );
+  } catch (e) {
+    console.error('[IAP] entitlements check error:', e);
+    return false;
+  }
+}
+
 export async function restorePurchases() {
   if (!Capacitor.isNativePlatform()) return [];
   try {
