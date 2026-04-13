@@ -90,7 +90,7 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 
-function SwipeRow({onDelete, children, style}){
+function SwipeRow({onDelete, onEdit, children, style}){
   const isMobile = window.innerWidth < 768;
   const innerRef=useRef(null);
   const bgRef=useRef(null);
@@ -101,12 +101,19 @@ function SwipeRow({onDelete, children, style}){
   if(!isMobile){
     return(
       <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"background 0.15s",marginBottom:0,...style}}
-        onMouseEnter={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity='1';}}
-        onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.querySelector('.delx').style.opacity='0';}}
+        onMouseEnter={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity='1';if(onEdit)e.currentTarget.querySelector('.editx').style.opacity='1';}}
+        onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.querySelector('.delx').style.opacity='0';if(onEdit)e.currentTarget.querySelector('.editx').style.opacity='0';}}
       >
         {children}
+        {onEdit&&(
+          <button className="editx" onClick={()=>onEdit()}
+            style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:4}}
+            onMouseEnter={e=>{e.currentTarget.style.background="#EBF8FF";e.currentTarget.style.color="#3B82F6";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
+          >✏️</button>
+        )}
         <button className="delx" onClick={onDelete}
-          style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:8}}
+          style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:4}}
           onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
           onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
         >✕</button>
@@ -141,6 +148,12 @@ function SwipeRow({onDelete, children, style}){
       </div>
       <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12}}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+        {onEdit&&(
+          <button onClick={e=>{e.stopPropagation();onEdit();}}
+            style={{background:"#EBF8FF",color:"#3B82F6",border:"none",borderRadius:6,padding:"5px 7px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>
+            ✏️
+          </button>
+        )}
         {children}
       </div>
     </div>
@@ -493,6 +506,7 @@ export default function App({ loginOnly = false }){
   const importRef=useRef(null);
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
+  const [editItem,setEditItem]=useState(null);
 
   const {t,tpl}=useTranslation(lang);
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
@@ -754,6 +768,33 @@ export default function App({ loginOnly = false }){
         supabase.from('inventaire').delete().eq('user_id',user.id),
       ]);
       setSales([]);setItems([]);setResetStep(0);
+    }
+  }
+
+  async function handleEditSave(){
+    if(!editItem) return;
+    const b=parseFloat(editItem.buy)||0;
+    const s=parseFloat(editItem.sell)||0;
+    const f=parseFloat(editItem.frais)||0;
+    const hasS=s>0;
+    const mg=hasS?s-b-f:null;
+    const mgp=hasS?(mg/s)*100:null;
+    const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
+    const{error}=await supabase.from('inventaire').update({
+      titre:editItem.title,
+      marque:editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null,
+      type:typeAuto,
+      prix_achat:b,
+      prix_vente:hasS?s:null,
+      margin:mg,
+      margin_pct:mgp,
+      description:editItem.description||null,
+    }).eq('id',editItem.id);
+    if(!error){
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description}:i));
+      setEditItem(null);
+      setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
+      setTimeout(()=>setToast({visible:false,message:''}),3000);
     }
   }
 
@@ -1648,7 +1689,7 @@ export default function App({ loginOnly = false }){
                       const mc=getMargeColor(item.marginPct);
                       const ts=getTypeStyle(item.type);
                       return(
-                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:`4px solid ${mc}`}}>
+                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`4px solid ${mc}`}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -1711,7 +1752,7 @@ export default function App({ loginOnly = false }){
                     {stockVisible.map(item=>{
                       const ts=getTypeStyle(item.type);
                       return(
-                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderLeft:"4px solid #F9A26C"}}>
+                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:"4px solid #F9A26C"}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                             <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -1954,6 +1995,62 @@ export default function App({ loginOnly = false }){
           />
         )}
       </div>
+
+      {/* ── EDIT MODAL ── */}
+      {editItem&&(
+        <>
+          <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>✏️ {lang==='fr'?"Modifier l'article":"Edit item"}</div>
+              <button onClick={()=>setEditItem(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <Field label={lang==='fr'?"Nom":"Name"} value={editItem.title} set={v=>setEditItem(p=>({...p,title:v}))} placeholder="Ex: Air Max 90..." icon="🏷️"/>
+              <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={editItem.marque||""} set={v=>setEditItem(p=>({...p,marque:v}))} placeholder="Ex: Nike, Zara..." icon="✏️"/>
+              <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value}))}
+                style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:editItem.type?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
+                <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`🤖 Détecté : ${detectType(editItem.title,editItem.marque)}`:`🤖 Detected: ${detectType(editItem.title,editItem.marque)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
+                <option value="Luxe">💎 Luxe</option>
+                <option value="Mode">👗 Mode</option>
+                <option value="High-Tech">📱 High-Tech</option>
+                <option value="Maison">🏠 Maison</option>
+                <option value="Électroménager">⚡ Électroménager</option>
+                <option value="Jouets">🧸 Jouets</option>
+                <option value="Livres">📚 Livres</option>
+                <option value="Sport">⚽ Sport</option>
+                <option value="Auto-Moto">🚗 Auto-Moto</option>
+                <option value="Beauté">💄 Beauté</option>
+                <option value="Musique">🎵 Musique</option>
+                <option value="Collection">🏆 Collection</option>
+                <option value="Autre">📦 Autre</option>
+              </select>
+              <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")} set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
+              <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix="€"/>
+              <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix="€"/>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
+                <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
+                  placeholder={lang==='fr'?"Ex: Lot de 3 pièces, taille M...":"Ex: Bundle of 3, size M..."}
+                  maxLength={200} rows={2}
+                  style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${editItem.description?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
+                  onFocus={e=>e.currentTarget.style.borderColor=C.teal}
+                  onBlur={e=>e.currentTarget.style.borderColor=editItem.description?C.teal:"rgba(0,0,0,0.12)"}
+                />
+                <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/200</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              <button onClick={handleEditSave} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>
+                {lang==='fr'?"💾 Enregistrer":"💾 Save"}
+              </button>
+              <button onClick={()=>setEditItem(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+                {t('annuler')}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── IMPORT MODAL ── */}
       {importModal&&(
