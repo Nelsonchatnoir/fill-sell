@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { Capacitor } from '@capacitor/core';
 import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
+const isNative = Capacitor.isNativePlatform();
 import { supabase } from './lib/supabase';
 import Toast from './components/Toast';
 import StatsPage from './pages/StatsPage';
@@ -1285,11 +1287,11 @@ export default function App({ loginOnly = false }){
           </div>
           {/* Droite : premium + settings — toujours collé à droite */}
           <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto",flexShrink:0}}>
-            {!isPremium?(
+            {!isPremium&&!isNative?(
               <PremiumBanner userEmail={user?.email} compact onDark source="topbar"/>
-            ):(
+            ):isPremium?(
               <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>{t('premium')}</div>
-            )}
+            ):null}
             <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"5px 9px",color:"#fff",fontSize:16,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
               onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.2)"}
@@ -1314,7 +1316,7 @@ export default function App({ loginOnly = false }){
 
       <div className="wrap page-pad" style={{padding:"18px 14px 80px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)"}}>
 
-        {!isPremium&&earlyAdopter.available&&(()=>{
+        {!isNative&&!isPremium&&earlyAdopter.available&&(()=>{
           const ea={fr:{text:`🚀 Offre Early Adopter · ${earlyAdopter.remaining} places restantes · 2,99€/mois à vie`,cta:"J'en profite →"},en:{text:`🚀 Early Adopter Deal · ${earlyAdopter.remaining} spots left · 2.99€/month forever`,cta:"Claim my spot →"}};
           const eaL=ea[lang]||ea.fr;
           return(
@@ -1337,7 +1339,7 @@ export default function App({ loginOnly = false }){
                 </div>
               </div>
             )}
-            {!isPremium&&!loading&&items.length>=18&&(
+            {!isNative&&!isPremium&&!loading&&items.length>=18&&(
               <div onClick={()=>{track('premium_click',{source:'banner'});triggerCheckout();}} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>⚠️ Plus que {20-items.length} article{20-items.length>1?"s":""} disponible{20-items.length>1?"s":""}</div>
                 <button onClick={e=>{e.stopPropagation();track('premium_click',{source:'banner'});triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
@@ -1393,7 +1395,7 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {/* Hero card profit net */}
-                <div onClick={()=>{if(!isPremium){track('premium_click',{source:'hero_card'});triggerCheckout();}else{setTab(4);localStorage.setItem('tab',4);}}}
+                <div onClick={()=>{if(!isPremium&&!isNative){track('premium_click',{source:'hero_card'});triggerCheckout();}else if(isPremium){setTab(4);localStorage.setItem('tab',4);}}}
                   style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%"}}
                   onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
@@ -1434,10 +1436,10 @@ export default function App({ loginOnly = false }){
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
                       {!isPremium&&(
-                        <div onClick={()=>{track('premium_click',{source:'chart'});triggerCheckout();}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
+                        <div onClick={()=>{if(!isNative){track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:isNative?"default":"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
-                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
+                          {!isNative&&<button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>}
                         </div>
                       )}
                     </div>
@@ -1450,10 +1452,10 @@ export default function App({ loginOnly = false }){
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
                       {!isPremium&&(
-                        <div onClick={()=>{track('premium_click',{source:'chart'});triggerCheckout();}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
+                        <div onClick={()=>{if(!isNative){track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:isNative?"default":"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
-                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
+                          {!isNative&&<button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>}
                         </div>
                       )}
                     </div>
@@ -1585,9 +1587,9 @@ export default function App({ loginOnly = false }){
                   ⚠️ {20-items.length} article{20-items.length>1?"s":""} restant{20-items.length>1?"s":""} sur ton plan gratuit
                 </div>
               )}
-              {!isPremium&&items.length>=20
+              {!isPremium&&items.length>=20&&!isNative
                 ? <PremiumBanner userEmail={user?.email}/>
-                : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
+                : <Btn onClick={addItem} disabled={!iTitle||!iBuy||(!isPremium&&items.length>=20)} color={iSaved?"#38A169":"#1D9E75"} full>
                     {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":t('ajouterArticle')}
                   </Btn>
               }
@@ -1632,7 +1634,7 @@ export default function App({ loginOnly = false }){
                     <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('importExcel')}</div>
                     <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6"}}>{t('importDesc')}</div>
                   </div>
-                  <PremiumBanner userEmail={user?.email} compact/>
+                  {!isNative&&<PremiumBanner userEmail={user?.email} compact/>}
                 </div>
               )}
 
@@ -1871,7 +1873,7 @@ export default function App({ loginOnly = false }){
               {cSaved?"✓ Ajouté à ton suivi !":t('ajouterSuivi')}
             </Btn>
 
-            {!isPremium&&(
+            {!isPremium&&!isNative&&(
               <div style={{textAlign:"center",fontSize:11,color:C.label,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
                 🔓 <PremiumBanner userEmail={user?.email} compact/>
               </div>
@@ -1916,7 +1918,7 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",maxWidth:200,lineHeight:1.5}}>{t('profitsApparaitront')}</div>
                 </div>
 
-                {!isPremium&&(
+                {!isPremium&&!isNative&&(
                   <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33"}}>
                     <div style={{fontSize:20}}>⭐</div>
                     <div style={{flex:1}}>
@@ -1957,7 +1959,7 @@ export default function App({ loginOnly = false }){
                     {lang==='fr'?`Voir plus (${sales.length-10} autres)`:`Show more (${sales.length-10} more)`}
                   </button>
                 )}
-                {!isPremium&&(
+                {!isPremium&&!isNative&&(
                   <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33",marginTop:4}}>
                     <div style={{fontSize:20}}>⭐</div>
                     <div style={{flex:1}}>
@@ -1987,7 +1989,7 @@ export default function App({ loginOnly = false }){
             sales={sales}
             items={items}
             isPremium={isPremium}
-            triggerCheckout={triggerCheckout}
+            triggerCheckout={isNative?null:triggerCheckout}
             onBack={()=>{setTab(3);localStorage.setItem('tab',3);}}
             t={t}
             tpl={tpl}
