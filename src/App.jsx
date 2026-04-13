@@ -84,7 +84,6 @@ const css = `
     .page-pad{padding-bottom:90px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
-  input,select,textarea{max-width:100%!important;box-sizing:border-box!important;}
 `;
 
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
@@ -255,15 +254,15 @@ const Field=({label,value,set,placeholder,type="text",icon,suffix})=>(
     border:value?`1px solid ${C.teal}55`:`1px solid rgba(0,0,0,0.08)`,
     display:"flex",alignItems:"center",gap:12,
     boxShadow:value?`0 0 0 3px ${C.teal}11`:"0 2px 8px rgba(0,0,0,0.04)",
-    transition:"all 0.2s",width:"100%",maxWidth:"100%",boxSizing:"border-box"
+    transition:"all 0.2s"
   }}>
     <span style={{fontSize:20,flexShrink:0,opacity:0.7}}>{icon}</span>
-    <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",gap:2,minWidth:0}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",gap:2}}>
       <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1}}>{label}</div>
       <div style={{display:"flex",alignItems:"center",gap:4}}>
         <input type={type} value={value} onChange={e=>set(e.target.value)} placeholder={placeholder}
           inputMode={type==="number"?"decimal":undefined}
-          style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:15,fontWeight:600,width:"100%",maxWidth:"100%",boxSizing:"border-box",fontFamily:"inherit"}}/>
+          style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:15,fontWeight:600,width:"100%",fontFamily:"inherit"}}/>
         {suffix&&<span style={{color:C.label,fontSize:13,fontWeight:600,flexShrink:0}}>{suffix}</span>}
       </div>
     </div>
@@ -1510,7 +1509,7 @@ export default function App({ loginOnly = false }){
 
         {tab===1&&(
           <div className="grid-inv">
-            <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",width:"100%",maxWidth:"100%",boxSizing:"border-box",overflow:"hidden"}}>
+            <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
                   <div style={{fontSize:28,marginBottom:8}}>🧩</div>
@@ -1529,7 +1528,7 @@ export default function App({ loginOnly = false }){
               </div>
               <div>
                 <select value={iType} onChange={e=>setIType(e.target.value)}
-                  style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#0D0D0D":"#A3A9A6",width:"100%",maxWidth:"100%",boxSizing:"border-box",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
+                  style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
                   <option value="">{(iTitle||iMarque)?(lang==='fr'?`🤖 Détecté : ${detectType(iTitle,iMarque)}`:`🤖 Detected: ${detectType(iTitle,iMarque)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
                   <option value="Mode">👗 Mode</option>
                   <option value="High-Tech">📱 High-Tech</option>
@@ -1570,7 +1569,7 @@ export default function App({ loginOnly = false }){
                   placeholder="Ex: Lot de 3 pièces, taille M, état neuf..."
                   maxLength={200}
                   rows={2}
-                  style={{width:"100%",maxWidth:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${iDesc?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
+                  style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${iDesc?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
                   onFocus={e=>e.currentTarget.style.borderColor=C.teal}
                   onBlur={e=>e.currentTarget.style.borderColor=iDesc?C.teal:"rgba(0,0,0,0.12)"}
                 />
