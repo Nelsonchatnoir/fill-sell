@@ -314,11 +314,11 @@ export const landingTranslations = {
     platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
     faqTitle: "Questions fréquentes",
     faqItems: [
-      { q: "Fill & Sell est-il gratuit ?", a: "Oui, Fill & Sell est entièrement gratuit jusqu'à 20 articles. La version Premium à 4,99€/mois offre des articles illimités, des statistiques avancées et l'export Excel." },
-      { q: "Quelles plateformes sont compatibles ?", a: "Fill & Sell fonctionne avec Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop et toutes les autres marketplaces." },
-      { q: "Comment calculer ma marge sur Vinted ?", a: "Entre ton prix d'achat et ton prix de vente dans le calculateur. Fill & Sell calcule instantanément ta marge nette et ta rentabilité en pourcentage." },
+      { q: "Fill & Sell est-il gratuit ?", a: "Oui, Fill & Sell est entièrement gratuit jusqu'à 20 articles — suivi de tes profits vinted gratuit, sans carte bancaire. La version Premium à 4,99€/mois offre des articles illimités, des statistiques avancées et l'export Excel." },
+      { q: "Quelles plateformes sont compatibles ?", a: "Fill & Sell fonctionne avec toutes les plateformes d'achats revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop et toutes les autres marketplaces." },
+      { q: "Comment calculer ma marge sur Vinted ?", a: "Entre ton prix d'achat et ton prix de vente dans le calculateur pour un calcul marge vinted instantané. Fill & Sell calcule ta marge nette, ta rentabilité en pourcentage et assure le suivi ventes vinted article par article." },
       { q: "Puis-je importer et exporter mes données en Excel ?", a: "Oui, l'import ET l'export Excel sont disponibles en Premium à 4,99€/mois. Importe tes articles en masse en un clic, et exporte tout ton historique de ventes pour ta comptabilité." },
-      { q: "Fill & Sell fonctionne-t-il sur mobile ?", a: "Oui, l'app est optimisée mobile-first pour iPhone et Android, directement dans ton navigateur." }
+      { q: "Fill & Sell fonctionne-t-il sur mobile ?", a: "Oui, l'app est optimisée mobile-first pour iPhone et Android, directement dans ton navigateur. Suis tes profits vinted, eBay Leboncoin Depop où que tu sois, sans téléchargement." }
     ],
   },
   en: {
@@ -379,11 +379,11 @@ export const landingTranslations = {
     platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
     faqTitle: "Frequently asked questions",
     faqItems: [
-      { q: "Is Fill & Sell free?", a: "Yes, Fill & Sell is completely free for up to 20 items. The Premium plan at €4.99/month offers unlimited items, advanced stats and Excel export." },
-      { q: "Which platforms are supported?", a: "Fill & Sell works with Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop and all other marketplaces." },
-      { q: "How do I calculate my margin on Vinted?", a: "Enter your purchase price and selling price in the calculator. Fill & Sell instantly calculates your net margin and profitability percentage." },
+      { q: "Is Fill & Sell free?", a: "Yes, Fill & Sell is completely free for up to 20 items — track your profits vinted for free, no credit card needed. The Premium plan at €4.99/month offers unlimited items, advanced stats and Excel export." },
+      { q: "Which platforms are supported?", a: "Fill & Sell works with all resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop and all other marketplaces." },
+      { q: "How do I calculate my margin on Vinted?", a: "Enter your purchase price and selling price for an instant Vinted margin calculation. Fill & Sell tracks your net margin, profitability percentage and full sales history item by item — across Vinted, eBay, Leboncoin, Depop and more." },
       { q: "Can I import and export my data to Excel?", a: "Yes, both Excel import AND export are available in the Premium plan at €4.99/month. Import your items in bulk with one click, and export your full sales history for accounting." },
-      { q: "Does Fill & Sell work on mobile?", a: "Yes, the app is mobile-first optimized for iPhone and Android, directly in your browser." }
+      { q: "Does Fill & Sell work on mobile?", a: "Yes, the app is mobile-first optimized for iPhone and Android, directly in your browser. Track your resale profits on Vinted, eBay, Leboncoin, Depop wherever you are — no download needed." }
     ],
   },
 };

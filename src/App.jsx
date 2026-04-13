@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Capacitor } from '@capacitor/core';
+import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -222,6 +223,38 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
         {loading ? tb('redirection') : `✨ ${tb('debloquer')}`}
+      </button>
+    </div>
+  );
+}
+
+function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
+  return (
+    <div style={{background:"linear-gradient(135deg,#1D9E75,#4ECDC4)",borderRadius:16,padding:"20px 22px",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>
+        {lang==='fr'?'🔓 Passer Premium':'🔓 Go Premium'}
+      </div>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.8)"}}>
+        {lang==='fr'?'Inventaire illimité + stats avancées':'Unlimited inventory + advanced stats'}
+      </div>
+      {iapProduct&&(
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>
+          {iapProduct.priceString} / {lang==='fr'?'mois':'month'}
+        </div>
+      )}
+      <button
+        onClick={onPurchase}
+        disabled={iapLoading}
+        style={{padding:"12px 20px",background:"#fff",color:"#1D9E75",border:"none",borderRadius:10,fontSize:14,fontWeight:800,cursor:iapLoading?"not-allowed":"pointer",opacity:iapLoading?0.7:1,fontFamily:"inherit"}}
+      >
+        {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Débloquer':'✨ Unlock')}
+      </button>
+      <button
+        onClick={onRestore}
+        disabled={iapLoading}
+        style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.7)",fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
+      >
+        {lang==='fr'?'Restaurer mes achats':'Restore purchases'}
       </button>
     </div>
   );
@@ -490,6 +523,8 @@ export default function App({ loginOnly = false }){
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
   const [earlyAdopter,setEarlyAdopter]=useState({available:false,remaining:0});
+  const [iapProduct,setIapProduct]=useState(null);
+  const [iapLoading,setIapLoading]=useState(false);
   const [lang,setLang]=useState(()=>{
     const saved=localStorage.getItem('fs_lang');
     if(saved) return saved;
@@ -529,6 +564,37 @@ export default function App({ loginOnly = false }){
     }catch(e){alert("Erreur : "+e.message);}
   }
 
+  async function handleIAPPurchase(){
+    setIapLoading(true);
+    try{
+      const purchase=await purchasePremium();
+      if(purchase?.transactionId){
+        await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
+        setIsPremium(true);
+        setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
+        setTimeout(()=>setToast({visible:false,message:''}),3000);
+      }
+    }catch(e){console.error('[IAP] purchase failed:',e);}
+    finally{setIapLoading(false);}
+  }
+
+  async function handleIAPRestore(){
+    setIapLoading(true);
+    try{
+      const purchases=await restorePurchases();
+      const hasPremium=purchases.some(
+        p=>p.productIdentifier==='app.fillsell.app.premium'||p.productId==='app.fillsell.app.premium'
+      );
+      if(hasPremium){
+        await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
+        setIsPremium(true);
+        setToast({visible:true,message:lang==='fr'?'✅ Achat restauré !':'✅ Purchase restored!'});
+        setTimeout(()=>setToast({visible:false,message:''}),3000);
+      }
+    }catch(e){console.error('[IAP] restore failed:',e);}
+    finally{setIapLoading(false);}
+  }
+
   async function fetchAll(uid){
     setLoading(true);
     const [v,i,p]=await Promise.all([
@@ -552,6 +618,9 @@ export default function App({ loginOnly = false }){
       else setLoading(false);
       setAuthLoading(false);
     });
+    if(isNative){
+      initIAP().then(product=>setIapProduct(product));
+    }
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
       const u=session?.user??null;
       setUser(u);
@@ -1589,10 +1658,15 @@ export default function App({ loginOnly = false }){
               )}
               {!isPremium&&items.length>=20&&!isNative
                 ? <PremiumBanner userEmail={user?.email}/>
-                : <Btn onClick={addItem} disabled={!iTitle||!iBuy||(!isPremium&&items.length>=20)} color={iSaved?"#38A169":"#1D9E75"} full>
+                : !isPremium&&items.length>=20&&isNative
+                ? null
+                : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
                     {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":t('ajouterArticle')}
                   </Btn>
               }
+              {isNative&&!isPremium&&items.length>=20&&(
+                <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
+              )}
               {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
                 <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
                   Tu es à 1 étape de voir tes premiers profits 💰
@@ -1878,6 +1952,9 @@ export default function App({ loginOnly = false }){
                 🔓 <PremiumBanner userEmail={user?.email} compact/>
               </div>
             )}
+            {isNative&&!isPremium&&(
+              <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
+            )}
           </div>
         )}
 
@@ -1928,6 +2005,9 @@ export default function App({ loginOnly = false }){
                     <PremiumBanner userEmail={user?.email} compact/>
                   </div>
                 )}
+                {isNative&&!isPremium&&(
+                  <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
+                )}
               </div>
             ):(
               <>
@@ -1968,6 +2048,9 @@ export default function App({ loginOnly = false }){
                     </div>
                     <PremiumBanner userEmail={user?.email} compact/>
                   </div>
+                )}
+                {isNative&&!isPremium&&(
+                  <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
                 )}
               </>
             )}

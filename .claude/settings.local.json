@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(npx vite:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e ':*)",
+      "Bash(npm run:*)",
+      "Bash(git commit:*)",
+      "Bash(node:*)",
+      "Bash(curl -s http://localhost:5173)",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Vercel__list_teams",
+      "mcp__claude_ai_Vercel__list_projects",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(npx --yes acorn --ecma2020 --module src/App.jsx)",
+      "Bash(python3:*)",
+      "Bash(python -c \"from PIL import Image; img=Image.open\\('public/logo.png'\\); print\\(img.size\\)\")",
+      "Bash(py -c \"from PIL import Image; img=Image.open\\('public/logo.png'\\); print\\(img.size\\)\")",
+      "Bash(ls:*)",
+      "Bash(git rm:*)",
+      "Bash(npx cap:*)",
+      "Bash(npm search:*)",
+      "Bash(npm view:*)"
+    ]
+  }
+}
