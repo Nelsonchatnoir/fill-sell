@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#0F172A", sub: "#475569", label: "#94A3B8", border: "rgba(0,0,0,0.06)" };
 
@@ -72,8 +73,55 @@ const Section = ({ icon, title, children }) => (
   </div>
 );
 
+const privacyTexts = {
+  fr: {
+    title: "🔐 Politique de confidentialité (App Store)",
+    intro: "Fill & Sell collecte et traite les données utilisateur pour fournir ses fonctionnalités principales.",
+    collectedTitle: "Données collectées :",
+    collected: [
+      "Adresse email (création de compte et authentification)",
+      "Contenu utilisateur (inventaire, ventes, descriptions)",
+      "Statut d'abonnement (accès premium)",
+      "Données techniques (logs de sécurité)",
+    ],
+    usageTitle: "Ces données sont :",
+    usage: [
+      "Utilisées exclusivement pour faire fonctionner le service",
+      "Jamais vendues à des tiers",
+      "Jamais utilisées pour du tracking publicitaire",
+    ],
+    storage: "Les données sont stockées de manière sécurisée via Supabase (infrastructure EU) et protégées par des mesures de sécurité standard.",
+    rights: "Les utilisateurs peuvent demander l'accès, la modification ou la suppression de leurs données en contactant :",
+    noTrack: "Fill & Sell ne contient aucun SDK de tracking ou de publicité.",
+    compliance: "This app complies with Apple App Store privacy requirements.",
+  },
+  en: {
+    title: "🔐 Privacy Policy (App Store)",
+    intro: "Fill & Sell collects and processes user data to provide its core features.",
+    collectedTitle: "Data collected:",
+    collected: [
+      "Email address (account creation and authentication)",
+      "User content (inventory, sales, descriptions)",
+      "Subscription status (premium access)",
+      "Technical data (security logs)",
+    ],
+    usageTitle: "This data is:",
+    usage: [
+      "Used exclusively to operate the service",
+      "Never sold to third parties",
+      "Never used for advertising tracking",
+    ],
+    storage: "Data is stored securely via Supabase (EU infrastructure) and protected by standard security measures.",
+    rights: "Users may request access, modification, or deletion of their data by contacting:",
+    noTrack: "Fill & Sell contains no tracking or advertising SDKs.",
+    compliance: "This app complies with Apple App Store privacy requirements.",
+  },
+};
+
 export default function Legal() {
   const nav = useNavigate();
+  const [lang] = useState(() => localStorage.getItem('fs_lang') || 'fr');
+  const p = privacyTexts[lang] || privacyTexts.fr;
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F5F9", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -196,6 +244,26 @@ export default function Legal() {
         <Section icon="⚖️" title="6. Droit applicable et litiges">
           <p className="legal-p">Les présentes CGU et mentions légales sont régies par le <span className="legal-strong">droit français</span>. En cas de litige, une solution amiable sera recherchée en priorité. À défaut, les tribunaux compétents seront ceux du ressort du siège de Fill & Sell.</p>
           <p className="legal-p">Conformément à l'article L.612-1 du Code de la consommation, l'utilisateur peut recourir gratuitement à un médiateur de la consommation. Pour tout litige lié à un paiement en ligne, la plateforme de règlement en ligne des litiges de la Commission européenne est accessible à : <a href="https://ec.europa.eu/consumers/odr" className="legal-link" target="_blank" rel="noreferrer">ec.europa.eu/consumers/odr</a>.</p>
+        </Section>
+
+        {/* 7. App Store Privacy */}
+        <Section icon="🔐" title={p.title}>
+          <p className="legal-p">{p.intro}</p>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{p.collectedTitle}</span></p>
+          <ul className="legal-ul">
+            {p.collected.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{p.usageTitle}</span></p>
+          <ul className="legal-ul">
+            {p.usage.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}>{p.storage}</p>
+          <p className="legal-p">{p.rights} <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a></p>
+          <p className="legal-p">{p.noTrack}</p>
+          <p className="legal-p" style={{ fontStyle: "italic", color: "#94A3B8", fontSize: 12.5 }}>{p.compliance}</p>
         </Section>
 
         {/* Contact */}
