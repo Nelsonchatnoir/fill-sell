@@ -84,7 +84,7 @@ const css = `
     .logo-mobile{display:block!important;}
     .premium-full{display:none!important;}
     .premium-short{display:inline!important;}
-    .page-pad{padding-bottom:90px!important;}
+    .page-pad{padding-bottom:120px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
@@ -124,14 +124,23 @@ function SwipeRow({onDelete, onEdit, children, style}){
     );
   }
 
-  function onTouchStart(e){startX.current=e.touches[0].clientX;isDragging.current=true;innerRef.current.style.transition='none';}
-  function onTouchMove(e){
-    if(!isDragging.current)return;
-    const dx=e.touches[0].clientX-startX.current;
-    if(dx>=0){innerRef.current.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
-    innerRef.current.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
-    bgRef.current.style.right='0px';bgRef.current.style.opacity='1';bgRef.current.style.pointerEvents='auto';
-  }
+  const startY=useRef(0);
+  useEffect(()=>{
+    if(window.innerWidth>=768||!innerRef.current)return;
+    const el=innerRef.current;
+    function onTouchMove(e){
+      if(!isDragging.current)return;
+      const dx=e.touches[0].clientX-startX.current;
+      const dy=e.touches[0].clientY-startY.current;
+      if(Math.abs(dy)>Math.abs(dx)+2){isDragging.current=false;el.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
+      if(dx>=0){el.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
+      el.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
+      bgRef.current.style.right='0px';bgRef.current.style.opacity='1';bgRef.current.style.pointerEvents='auto';
+    }
+    el.addEventListener('touchmove',onTouchMove,{passive:true});
+    return()=>el.removeEventListener('touchmove',onTouchMove);
+  },[]);
+  function onTouchStart(e){startX.current=e.touches[0].clientX;startY.current=e.touches[0].clientY;isDragging.current=true;innerRef.current.style.transition='none';}
   function onTouchEnd(){
     isDragging.current=false;
     innerRef.current.style.transition='transform 0.25s ease';
@@ -150,7 +159,7 @@ function SwipeRow({onDelete, onEdit, children, style}){
         <span style={{fontSize:22}}>🗑️</span>
       </div>
       <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12}}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {onEdit&&(
           <button onClick={e=>{e.stopPropagation();onEdit();}}
             style={{background:"#EBF8FF",color:"#3B82F6",border:"none",borderRadius:6,padding:"5px 7px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>
@@ -1695,7 +1704,7 @@ export default function App({ loginOnly = false }){
               )}
             </div>
 
-            <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:120}}>
 
               {/* ── Barre Import / Export ── */}
               {isPremium?(
@@ -1797,6 +1806,7 @@ export default function App({ loginOnly = false }){
                         {lang==='fr'?`Voir plus (${soldFiltre.length-10} articles)`:`Show more (${soldFiltre.length-10} items)`}
                       </button>
                     )}
+                  <div style={{height:24}}/>
                   </div>
                 )}
               </div>
@@ -1859,6 +1869,7 @@ export default function App({ loginOnly = false }){
                         {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                       </button>
                     )}
+                  <div style={{height:24}}/>                  
                   </div>
                 )}
               </div>
