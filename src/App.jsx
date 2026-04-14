@@ -72,7 +72,7 @@ const css = `
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);gap:12px;}
     .grid2{grid-template-columns:1fr;gap:12px;}
-    .grid-inv{grid-template-columns:1fr;width:100%;box-sizing:border-box;}
+    .grid-inv{grid-template-columns:1fr;width:100%;overflow:visible;box-sizing:border-box;}
     .wrap{padding:0 16px;overflow-x:hidden;}
     .card{border-radius:14px;}
     .desktop-nav{display:none!important;}
@@ -84,7 +84,7 @@ const css = `
     .logo-mobile{display:block!important;}
     .premium-full{display:none!important;}
     .premium-short{display:inline!important;}
-    .page-pad{padding-bottom:calc(140px + env(safe-area-inset-bottom))!important;}
+    .page-pad{padding-bottom:70px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
