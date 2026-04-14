@@ -57,7 +57,7 @@ const css = `
   .wrap{width:100%;max-width:1280px;margin:0 auto;padding:0 24px;}
   .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  .grid-inv{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;width:100%;}
+  .grid-inv{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;width:100%;-webkit-overflow-scrolling:touch;}
   .desktop-nav{display:flex;}
   .mobile-nav{display:none;}
   .header-stats{display:flex;}
@@ -1616,7 +1616,7 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===1&&(
-          <div className="grid-inv">
+          <div className="grid-inv" style={{WebkitOverflowScrolling:"touch",overflowX:"hidden",overflowY:"visible",width:"100%",maxWidth:"100%"}}>
             <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
