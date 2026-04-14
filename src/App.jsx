@@ -1403,7 +1403,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"18px 14px 80px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)"}}>
+      <div className="wrap page-pad" style={{padding:"18px 14px 120px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)"}}>
 
         {!isNative&&!isPremium&&earlyAdopter.available&&(()=>{
           const ea={fr:{text:`🚀 Offre Early Adopter · ${earlyAdopter.remaining} places restantes · 2,99€/mois à vie`,cta:"J'en profite →"},en:{text:`🚀 Early Adopter Deal · ${earlyAdopter.remaining} spots left · 2.99€/month forever`,cta:"Claim my spot →"}};
