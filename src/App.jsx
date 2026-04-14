@@ -126,25 +126,32 @@ function SwipeRow({onDelete, onEdit, children, style}){
 
   const startY=useRef(0);
   const currentDx=useRef(0);
+  const isScrolling=useRef(false);
   useEffect(()=>{
     if(window.innerWidth>=768||!innerRef.current)return;
     const el=innerRef.current;
     function handleTouchStart(e){
       startX.current=e.touches[0].clientX;
       startY.current=e.touches[0].clientY;
-      isDragging.current=false;
+      isDragging.current=true;
+      isScrolling.current=false;
       currentDx.current=0;
       el.style.transition='none';
     }
     function handleTouchMove(e){
+      if(!isDragging.current)return;
       const dx=e.touches[0].clientX-startX.current;
       const dy=e.touches[0].clientY-startY.current;
-      if(!isDragging.current){
-        if(Math.abs(dy)>Math.abs(dx)+2)return;
-        if(Math.abs(dx)>4)isDragging.current=true;
-        else return;
+      if(!isScrolling.current&&Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>5){
+        isScrolling.current=true;
+        isDragging.current=false;
+        currentDx.current=0;
+        el.style.transform='translateX(0)';
+        bgRef.current.style.opacity='0';
+        bgRef.current.style.pointerEvents='none';
+        return;
       }
-      if(Math.abs(dy)>Math.abs(dx)+2){isDragging.current=false;currentDx.current=0;el.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
+      if(isScrolling.current)return;
       if(dx>=0){currentDx.current=0;el.style.transform='translateX(0)';bgRef.current.style.opacity='0';bgRef.current.style.pointerEvents='none';return;}
       currentDx.current=dx;
       el.style.transform=`translateX(${Math.max(dx,-(THRESHOLD+30))}px)`;
