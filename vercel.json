@@ -25,6 +25,10 @@
       ]
     }
   ],
+  "redirects": [
+    { "source": "/terms", "destination": "/legal", "permanent": true },
+    { "source": "/privacy", "destination": "/legal", "permanent": true }
+  ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
