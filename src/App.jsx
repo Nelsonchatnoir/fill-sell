@@ -84,7 +84,7 @@ const css = `
     .logo-mobile{display:block!important;}
     .premium-full{display:none!important;}
     .premium-short{display:inline!important;}
-    .page-pad{padding-bottom:70px!important;}
+    .page-pad{padding-bottom:90px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
