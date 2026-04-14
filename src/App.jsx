@@ -1623,7 +1623,7 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===1&&(
-          <div className="grid-inv" style={{WebkitOverflowScrolling:"touch",overflowX:"hidden",overflowY:"visible",width:"100%",maxWidth:"100%"}}>
+          <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
             <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
