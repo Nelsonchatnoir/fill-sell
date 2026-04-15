@@ -1783,7 +1783,7 @@ export default function App({ loginOnly = false }){
                             background:filterType===tp?ts.color:ts.bg,
                             color:filterType===tp?"#fff":ts.color,
                             border:`1px solid ${ts.border}`}}>
-                          {tp==="Tous"?tp:`${ts.emoji} ${tp}`}
+                          {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${tp}`}
                         </button>
                       );
                     })}
@@ -1804,7 +1804,7 @@ export default function App({ loginOnly = false }){
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
                           background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
                           color:filterMarqueSold===m?"#fff":"#6B7280"}}>
-                        {m}
+                        {m==="Toutes"&&lang==='en'?'All':m}
                       </button>
                     ))}
                   </div>
@@ -1857,7 +1857,7 @@ export default function App({ loginOnly = false }){
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
                           background:filterMarque===m?"#1D9E75":"#F3F4F6",
                           color:filterMarque===m?"#fff":"#6B7280"}}>
-                        {m}
+                        {m==="Toutes"&&lang==='en'?'All':m}
                       </button>
                     ))}
                   </div>
