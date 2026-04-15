@@ -89,6 +89,7 @@ const css = `
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
 
+const EUR_TO_USD = 1.08;
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
@@ -579,6 +580,9 @@ export default function App({ loginOnly = false }){
   const [editItem,setEditItem]=useState(null);
 
   const {t,tpl}=useTranslation(lang);
+  const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
+  // eslint-disable-next-line no-shadow
+  const fmt = formatCurrency;
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
   useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
   useEffect(()=>{
@@ -741,7 +745,7 @@ export default function App({ loginOnly = false }){
   const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
   const _scales=(unit)=>({
     x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},
-    y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:v=>v+unit}},
+    y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:unit==='€'&&lang==='en'?v=>'$'+(v*EUR_TO_USD).toFixed(0):v=>v+unit}},
   });
   const barChartData={
     labels:mData.map(d=>d.name),
@@ -772,7 +776,7 @@ export default function App({ loginOnly = false }){
   const barOpts={
     responsive:true,maintainAspectRatio:false,
     animation:{duration:700,easing:'easeOutQuart'},
-    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#1D9E75',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(2).replace('.',',')} €`}}},
+    plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#1D9E75',callbacks:{title:([i])=>i.label,label:ctx=>fmt(ctx.raw||0)}}},
     scales:_scales('€'),
   };
   const lineOpts={
@@ -834,14 +838,14 @@ export default function App({ loginOnly = false }){
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
-    setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${mg.toFixed(2).replace(".",",")}€ ${t('dansTonSuivi')}`:`${t('articleAjoute')} · Investi ${b.toFixed(2).replace(".",",")}€`});
+    setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(b)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     setITitle("");setIBuy("");setISell("");setIMarque("");setIType("");setIDesc("");if(!rememberFrais)setIFrais("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
   async function markSold(item){
-    const sv=parseFloat(prompt(`Prix de vente pour "${item.title}" ?`)||"0");
+    const sv=parseFloat(prompt(lang==='fr'?`Prix de vente pour "${item.title}" ?`:`Sell price for "${item.title}"?`)||"0");
     if(!sv||sv<=0)return;
     const mg=sv-item.buy;const mgp=(mg/sv)*100;
     await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu"}).eq('id',item.id);
@@ -1304,12 +1308,12 @@ export default function App({ loginOnly = false }){
   const headerStats=[
     {label:t('benefices'),value:fmt(totalM)},
     {label:t('totalInvesti'),value:fmt(invested)},
-    {label:t('enStockLabel'),value:`${stock.length} art. · ${fmt(stockVal)}`},
+    {label:t('enStockLabel'),value:`${stock.length} ${lang==='fr'?'art.':'items'} · ${fmt(stockVal)}`},
   ];
 
   if(authLoading)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)"}}>
-      <div style={{color:"#fff",fontSize:18,fontWeight:700}}>Chargement...</div>
+      <div style={{color:"#fff",fontSize:18,fontWeight:700}}>{lang==='fr'?'Chargement...':'Loading...'}</div>
     </div>
   );
 
@@ -1639,7 +1643,7 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
               </div>
               <div>
-                <Field label="Marque (optionnel)" value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, H&M, Sans marque..." icon="✏️"/>
+                <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, H&M, Sans marque..." icon="✏️"/>
               </div>
               <div>
                 <select value={iType} onChange={e=>setIType(e.target.value)}
@@ -1661,27 +1665,27 @@ export default function App({ loginOnly = false }){
                 </select>
               </div>
               <div>
-                <Field label="Prix d'achat" value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
-                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Prix auquel tu as acheté l'article</div>}
+                <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Prix auquel tu as acheté l'article":"Price you paid for the item"}</div>}
               </div>
               <div>
-                <Field label="Prix de vente (optionnel)" value={iSell} set={setISell} placeholder="Vide = en stock" type="number" icon="📦" suffix="€"/>
-                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Optionnel — à remplir quand tu vends</div>}
+                <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={iSell} set={setISell} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="📦" suffix="€"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Optionnel — à remplir quand tu vends":"Optional — fill when you sell"}</div>}
               </div>
               <div>
-                <Field label="Frais (optionnel)" value={iFrais} set={setIFrais} placeholder="Ex: étiquette, enveloppe..." type="number" icon="📬" suffix="€"/>
+                <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={iFrais} set={setIFrais} placeholder="Ex: étiquette, enveloppe..." type="number" icon="📬" suffix="€"/>
                 <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={rememberFrais} onChange={e=>setRememberFrais(e.target.checked)}
                     style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
-                  <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>Mémoriser ces frais pour les prochains articles</span>
+                  <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais pour les prochains articles':'Remember fees for next items'}</span>
                 </label>
               </div>
               <div>
-                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 Description (optionnel)</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
                 <textarea
                   value={iDesc}
                   onChange={e=>setIDesc(e.target.value.slice(0,200))}
-                  placeholder="Ex: Lot de 3 pièces, taille M, état neuf..."
+                  placeholder={lang==='fr'?"Ex: Lot de 3 pièces, taille M, état neuf...":"Ex: Bundle of 3, size M, brand new..."}
                   maxLength={200}
                   rows={2}
                   style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${iDesc?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
@@ -1697,7 +1701,7 @@ export default function App({ loginOnly = false }){
               )}
               {!isPremium&&items.length>=18&&items.length<20&&(
                 <div style={{background:"#FFFBEB",borderRadius:10,padding:"10px 14px",fontSize:11,color:"#92400E",border:"1px solid #FDE68A",fontWeight:600}}>
-                  ⚠️ {20-items.length} article{20-items.length>1?"s":""} restant{20-items.length>1?"s":""} sur ton plan gratuit
+                  ⚠️ {lang==='fr'?`${20-items.length} article${20-items.length>1?"s":""} restant${20-items.length>1?"s":""} sur ton plan gratuit`:`${20-items.length} item${20-items.length>1?"s":""} remaining on your free plan`}
                 </div>
               )}
               {!isPremium&&items.length>=20&&!isNative
@@ -1705,7 +1709,7 @@ export default function App({ loginOnly = false }){
                 : !isPremium&&items.length>=20&&isNative
                 ? null
                 : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
-                    {iSaved?"✓ Ajouté !":items.length===0?"Ajoute ton premier article → vois ton bénéfice 🚀":t('ajouterArticle')}
+                    {iSaved?(lang==='fr'?"✓ Ajouté !":"✓ Added!"):items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice 🚀":"Add your first item → see your profit 🚀"):t('ajouterArticle')}
                   </Btn>
               }
               {isNative&&!isPremium&&items.length>=20&&(
@@ -1713,17 +1717,17 @@ export default function App({ loginOnly = false }){
               )}
               {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
                 <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
-                  Tu es à 1 étape de voir tes premiers profits 💰
+                  {lang==='fr'?'Tu es à 1 étape de voir tes premiers profits 💰':'You are 1 step away from seeing your first profits 💰'}
                 </div>
               )}
               {items.length===0&&!iSaved&&iTitle&&iBuy&&(
                 <div style={{textAlign:"center",fontSize:12,color:C.teal,fontWeight:600,marginTop:-4}}>
-                  ✓ Prêt ! Clique pour ajouter et voir ton bénéfice instantanément
+                  {lang==='fr'?'✓ Prêt ! Clique pour ajouter et voir ton bénéfice instantanément':'✓ Ready! Click to add and see your profit instantly'}
                 </div>
               )}
               {firstItemAdded&&(
                 <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.green,border:"1px solid #C6F6D5",fontWeight:600,textAlign:"center"}}>
-                  ✅ Article ajouté ! Tu peux maintenant enregistrer une vente.
+                  {lang==='fr'?'✅ Article ajouté ! Tu peux maintenant enregistrer une vente.':'✅ Item added! You can now record a sale.'}
                 </div>
               )}
             </div>
@@ -1803,7 +1807,7 @@ export default function App({ loginOnly = false }){
                     ))}
                   </div>
                 );})()}
-                {sold.length===0?<Empty text="Aucune vente encore"/>:(
+                {sold.length===0?<Empty text={lang==='fr'?"Aucune vente encore":"No sales yet"}/>:(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {soldVisible.map(item=>{
                       const mc=getMargeColor(item.marginPct);
@@ -1816,7 +1820,7 @@ export default function App({ loginOnly = false }){
                               {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                               {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {item.type}</span>}
                             </div>
-                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>Achat {fmt(item.buy)} → Vente {fmt(item.sell)}</div>
+                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy)} → {lang==='fr'?'Vente':'Sold'} {fmt(item.sell)}</div>
                           </div>
                           <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
                             <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt(item.margin)}</div>
@@ -1840,9 +1844,9 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
-                    {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>Plan gratuit</span>}
+                    {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
                   </div>
-                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} art. · {fmt(stockVal)}</div>
+                  <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} {lang==='fr'?'art.':'items'} · {fmt(stockVal)}</div>
                 </div>
                 {(()=>{const marquesStockFiltreesParType=["Toutes",...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marquesStockFiltreesParType.length>1&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
@@ -1881,10 +1885,10 @@ export default function App({ loginOnly = false }){
                             {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {item.type}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>Investi <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
                         </div>
                         <div style={{paddingRight:36,flexShrink:0}}>
-                          <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Vendu</button>
+                          <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>
                         </div>
                       </SwipeRow>
                     );})}
@@ -1990,7 +1994,7 @@ export default function App({ loginOnly = false }){
 
             {/* ── CTA ── */}
             <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full>
-              {cSaved?"✓ Ajouté à ton suivi !":t('ajouterSuivi')}
+              {cSaved?(lang==='fr'?"✓ Ajouté à ton suivi !":"✓ Added to your tracker!"):t('ajouterSuivi')}
             </Btn>
 
             {!isPremium&&!isNative&&(
@@ -2189,25 +2193,25 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setImportModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(90vw,540px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"80vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>📥 Confirmer l'import</div>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>📥 {lang==='fr'?"Confirmer l'import":"Confirm import"}</div>
               <button onClick={()=>setImportModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
             </div>
 
             {/* ÉTAPE 6 : Mapping détecté */}
             <div style={{background:C.rowBg,borderRadius:12,padding:"14px 16px",marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
-                Correspondance — <span style={{color:C.teal}}>{importModal.sheetsRead} feuille{importModal.sheetsRead>1?"s":""} lue{importModal.sheetsRead>1?"s":""}, {importModal.validCount} ligne{importModal.validCount>1?"s":""} valide{importModal.validCount>1?"s":""} trouvée{importModal.validCount>1?"s":""}</span>
+                {lang==='fr'?'Correspondance':'Mapping'} — <span style={{color:C.teal}}>{lang==='fr'?`${importModal.sheetsRead} feuille${importModal.sheetsRead>1?"s":""} lue${importModal.sheetsRead>1?"s":""}, ${importModal.validCount} ligne${importModal.validCount>1?"s":""} valide${importModal.validCount>1?"s":""} trouvée${importModal.validCount>1?"s":""}`:`${importModal.sheetsRead} sheet${importModal.sheetsRead>1?"s":""} read, ${importModal.validCount} valid row${importModal.validCount>1?"s":""} found`}</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {/* Titre (peut être multiple) */}
                 <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
                   <span style={{fontSize:14,flexShrink:0}}>🏷️</span>
-                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>Titre / Nom * :</span>
+                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>{lang==='fr'?'Titre / Nom * :':'Title / Name * :'}</span>
                   {importModal.mapping.titres.length>0
                     ? <span style={{fontWeight:700,color:C.teal,flex:1}}>{importModal.mapping.titres.map(h=>`« ${h} »`).join(' + ')}</span>
                     : <select value="" onChange={e=>setImportModal(m=>({...m,mapping:{...m.mapping,titres:e.target.value?[e.target.value]:[]}}))}
                         style={{flex:1,fontSize:12,padding:"4px 8px",borderRadius:8,border:"1px solid #CBD5E0",background:"#fff",color:C.text,cursor:"pointer"}}>
-                        <option value="">— Choisir une colonne —</option>
+                        <option value="">{lang==='fr'?'— Choisir une colonne —':'— Choose a column —'}</option>
                         {importModal.headers.map(h=><option key={h} value={h}>{h}</option>)}
                       </select>
                   }
@@ -2216,31 +2220,31 @@ export default function App({ loginOnly = false }){
                 {/* Date + Marque — lignes fixes */}
                 <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
                   <span style={{fontSize:14,flexShrink:0}}>📅</span>
-                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>Date :</span>
+                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>{lang==='fr'?'Date :':'Date:'}</span>
                   <span style={{fontWeight:700,color:importModal.mapping.date?C.teal:"#A3A9A6",flex:1}}>
-                    {importModal.mapping.date?`✓ « ${importModal.mapping.date} »`:"— non détectée —"}
+                    {importModal.mapping.date?`✓ « ${importModal.mapping.date} »`:(lang==='fr'?"— non détectée —":"— not detected —")}
                   </span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
                   <span style={{fontSize:14,flexShrink:0}}>🏷️</span>
-                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>Marque :</span>
+                  <span style={{color:C.sub,minWidth:106,flexShrink:0}}>{lang==='fr'?'Marque :':'Brand:'}</span>
                   <span style={{fontWeight:700,color:"#A3A9A6",flex:1}}>
-                    {importModal.mapping.marque_col?`✓ colonne « ${importModal.mapping.marque_col} »`:"détection automatique par nom"}
+                    {importModal.mapping.marque_col?(lang==='fr'?`✓ colonne « ${importModal.mapping.marque_col} »`:`✓ column « ${importModal.mapping.marque_col} »`):(lang==='fr'?"détection automatique par nom":"auto-detection by name")}
                   </span>
                 </div>
                 {[
-                  {key:"prix_achat",label:"Prix d'achat",icon:"🛒",required:true},
-                  {key:"prix_vente",label:"Prix de vente",icon:"💰",required:false},
-                  {key:"statut",label:"Statut",icon:"📌",required:false},
-                ].map(({key,label,icon})=>(
+                  {key:"prix_achat",labelFr:"Prix d'achat",labelEn:"Purchase price",icon:"🛒",required:true},
+                  {key:"prix_vente",labelFr:"Prix de vente",labelEn:"Sell price",icon:"💰",required:false},
+                  {key:"statut",labelFr:"Statut",labelEn:"Status",icon:"📌",required:false},
+                ].map(({key,labelFr,labelEn,icon})=>(
                   <div key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,flexWrap:"wrap"}}>
                     <span style={{fontSize:14,flexShrink:0}}>{icon}</span>
-                    <span style={{color:C.sub,minWidth:106,flexShrink:0}}>{label} :</span>
+                    <span style={{color:C.sub,minWidth:106,flexShrink:0}}>{lang==='fr'?labelFr:labelEn} :</span>
                     {importModal.mapping[key]
                       ? <span style={{fontWeight:700,color:C.teal,flex:1}}>✓ « {importModal.mapping[key]} »</span>
                       : <select value="" onChange={e=>setImportModal(m=>({...m,mapping:{...m.mapping,[key]:e.target.value||null}}))}
                           style={{flex:1,fontSize:12,padding:"4px 8px",borderRadius:8,border:"1px solid #CBD5E0",background:"#fff",color:C.text,cursor:"pointer"}}>
-                          <option value="">— Choisir —</option>
+                          <option value="">{lang==='fr'?'— Choisir —':'— Choose —'}</option>
                           {importModal.headers.map(h=><option key={h} value={h}>{h}</option>)}
                         </select>
                     }
@@ -2279,13 +2283,13 @@ export default function App({ loginOnly = false }){
                     </div>
                   );
                 })}
-                {importModal.rows.length>3&&<div style={{fontSize:11,color:C.label,textAlign:"center"}}>+ {importModal.rows.length-3} autre(s)</div>}
+                {importModal.rows.length>3&&<div style={{fontSize:11,color:C.label,textAlign:"center"}}>+ {importModal.rows.length-3} {lang==='fr'?'autre(s)':'more'}</div>}
               </div>
             </div>
 
             {importModal.mapping.titres.length===0&&(
               <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#92400E",marginBottom:12}}>
-                ⚠️ Colonne titre non détectée. Sélectionne-la ci-dessus ou les articles seront importés sans nom.
+                {lang==='fr'?'⚠️ Colonne titre non détectée. Sélectionne-la ci-dessus ou les articles seront importés sans nom.':'⚠️ Title column not detected. Select it above or items will be imported without a name.'}
               </div>
             )}
 
@@ -2293,10 +2297,10 @@ export default function App({ loginOnly = false }){
 
             <div style={{display:"flex",gap:10}}>
               <button onClick={handleImportConfirm} disabled={importLoading} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:importLoading?"not-allowed":"pointer",opacity:importLoading?0.7:1,transition:"all 0.2s"}}>
-                {importLoading?"Import en cours...":"Importer les données →"}
+                {importLoading?(lang==='fr'?"Import en cours...":"Importing..."):(lang==='fr'?"Importer les données →":"Import data →")}
               </button>
               <button onClick={()=>setImportModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
-                Annuler
+                {lang==='fr'?'Annuler':'Cancel'}
               </button>
             </div>
           </div>
@@ -2336,14 +2340,14 @@ export default function App({ loginOnly = false }){
                   </button>
                 ):(
                   <div style={{background:"rgba(232,149,109,0.08)",border:"1.5px solid rgba(232,149,109,0.4)",borderRadius:12,padding:"14px"}}>
-                    <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}}>Confirmer la résiliation ?</div>
-                    <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>Tu conserveras l'accès Premium jusqu'à la fin de ta période en cours. Aucun remboursement au prorata.</div>
+                    <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}}>{lang==='fr'?'Confirmer la résiliation ?':'Confirm cancellation?'}</div>
+                    <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>{lang==='fr'?'Tu conserveras l\'accès Premium jusqu\'à la fin de ta période en cours. Aucun remboursement au prorata.':'You will keep Premium access until the end of your current period. No prorated refund.'}</div>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:C.peach,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
-                        {cancelLoading?"...":"Confirmer"}
+                        {cancelLoading?"...":(lang==='fr'?'Confirmer':'Confirm')}
                       </button>
                       <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
-                        Annuler
+                        {lang==='fr'?'Annuler':'Cancel'}
                       </button>
                     </div>
                   </div>
