@@ -15,6 +15,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const C = {
   // Design tokens Fill & Sell
@@ -716,7 +717,8 @@ export default function App({ loginOnly = false }){
       const d=new Date(now.getFullYear(),now.getMonth()-(n-1)+i,1);
       const m=d.getMonth();const y=d.getFullYear();
       const ms=salesArr.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
-      return{name:MONTHS_FR[m],profit:ms.reduce((a,s)=>a+s.margin,0),"Marge %":ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:0};
+      const MONTHS=lang==='en'?MONTHS_EN:MONTHS_FR;
+      return{name:MONTHS[m],profit:ms.reduce((a,s)=>a+s.margin,0),"Marge %":ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:0};
     });
     if(range==='7j'){
       return Array.from({length:7},(_,i)=>{
@@ -1504,7 +1506,7 @@ export default function App({ loginOnly = false }){
                 <div>
                   <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:10}}>
                     <div style={{width:4,height:4,borderRadius:"50%",background:"#1D9E75",flexShrink:0}}/>
-                    {MONTHS_FR[now.getMonth()]} {now.getFullYear()}
+                    {(lang==='en'?MONTHS_EN:MONTHS_FR)[now.getMonth()]} {now.getFullYear()}
                   </div>
                   <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
                     {(()=>{const title=t('dashTitle');const hi=t('dashTitleHighlight');const idx=title.lastIndexOf(hi);return idx<0?<span style={{color:"#1D9E75"}}>{title}</span>:<>{title.slice(0,idx)}<span style={{color:"#1D9E75"}}>{hi}</span></>;})()}
@@ -1539,7 +1541,7 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}>
                   {['7j','1M','6M','1A','YTD'].map(r=>(
                     <button key={r} onClick={()=>setSelectedRange(r)} style={{padding:"5px 12px",borderRadius:8,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",background:selectedRange===r?"#1D9E75":"#fff",color:selectedRange===r?"#fff":"#A3A9A6",boxShadow:selectedRange===r?"none":"0 1px 3px rgba(0,0,0,0.06)"}}>
-                      {r}
+                      {lang==='en'?({'7j':'7d','1A':'1Y'}[r]||r):r}
                     </button>
                   ))}
                 </div>
@@ -1673,7 +1675,7 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Optionnel — à remplir quand tu vends":"Optional — fill when you sell"}</div>}
               </div>
               <div>
-                <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={iFrais} set={setIFrais} placeholder="Ex: étiquette, enveloppe..." type="number" icon="📬" suffix="€"/>
+                <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={iFrais} set={setIFrais} placeholder={lang==='fr'?"Ex: étiquette, enveloppe...":"Ex: label, envelope..."} type="number" icon="📬" suffix="€"/>
                 <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={rememberFrais} onChange={e=>setRememberFrais(e.target.checked)}
                     style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
@@ -2068,7 +2070,7 @@ export default function App({ loginOnly = false }){
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
-                          <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {MONTHS_FR[d.getMonth()]} {d.getFullYear()}</span>
+                          <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
                           {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {s.type}</span>}
                         </div>
                       </div>
