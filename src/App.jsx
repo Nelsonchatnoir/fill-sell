@@ -825,7 +825,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&items.length>=20){alert("⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour continuer.");return;}
+    if(!isPremium&&items.length>=20){alert(lang==='en'?"⚠️ Free plan limit reached (20 items max).\nUpgrade to add unlimited items.":"⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour ajouter des articles illimités.");return;}
     const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const f=parseFloat(iFrais)||0;const hasS=s>0;
     const mg=hasS?s-b-f:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=iMarque.trim()?iMarque.trim().charAt(0).toUpperCase()+iMarque.trim().slice(1).toLowerCase():null;
@@ -1463,20 +1463,20 @@ export default function App({ loginOnly = false }){
             )}
             {!isNative&&!isPremium&&!loading&&items.length>=18&&(
               <div onClick={()=>{track('premium_click',{source:'banner'});triggerCheckout();}} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>⚠️ Plus que {20-items.length} article{20-items.length>1?"s":""} disponible{20-items.length>1?"s":""}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lang==='en'?`⚠️ Only ${20-items.length} item${20-items.length>1?"s":""} left on your free plan`:`⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} disponible${20-items.length>1?"s":""}`}</div>
                 <button onClick={e=>{e.stopPropagation();track('premium_click',{source:'banner'});triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
               </div>
             )}
             {loading?(
-              <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>Chargement des données...</div>
+              <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>{lang==='en'?"Loading data...":"Chargement des données..."}</div>
             ):items.length===0&&sales.length===0?(
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
                 <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
                 <div className="card" style={{padding:"40px 32px",textAlign:"center"}}>
                   <div style={{fontSize:48,marginBottom:16}}>👋</div>
-                  <div style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-0.5px",marginBottom:12}}>Bienvenue sur Fill & Sell</div>
+                  <div style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-0.5px",marginBottom:12}}>{lang==='en'?"Welcome to Fill & Sell":"Bienvenue sur Fill & Sell"}</div>
                   <div style={{fontSize:14,color:C.sub,lineHeight:1.7,marginBottom:32,maxWidth:380,margin:"0 auto 32px"}}>
-                    Suis tes profits de revente en quelques secondes.<br/>Commence par ajouter ton premier article.
+                    {lang==='en'?"Track your resale profits in seconds.":"Suis tes profits de revente en quelques secondes."}<br/>{lang==='en'?"Start by adding your first item.":"Commence par ajouter ton premier article."}
                   </div>
                   <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:36,flexWrap:"wrap"}}>
                     {[{icon:"📦",label:"Ajoute un article",tab:1},{icon:"💰",label:"Enregistre une vente",tab:1},{icon:"📊",label:"Analyse tes profits",tab:3}].map((step,i)=>(
