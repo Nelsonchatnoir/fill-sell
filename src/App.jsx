@@ -431,6 +431,9 @@ function getTypeStyle(type){
   };
   return s[type]||s['Autre'];
 }
+const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Auto-Moto':'Vehicles','Beauté':'Beauty','Autre':'Other'};
+function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
+function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
 
 function getFilteredData_unused(range, salesData){
@@ -1645,25 +1648,25 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
               </div>
               <div>
-                <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={iMarque} set={setIMarque} placeholder="Ex: Nike, Zara, H&M, Sans marque..." icon="✏️"/>
+                <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={iMarque} set={setIMarque} placeholder={lang==='en'?"Ex: Nike, Zara, H&M, Unbranded...":"Ex: Nike, Zara, H&M, Sans marque..."} icon="✏️"/>
               </div>
               <div>
                 <select value={iType} onChange={e=>setIType(e.target.value)}
                   style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
-                  <option value="">{(iTitle||iMarque)?(lang==='fr'?`🤖 Détecté : ${detectType(iTitle,iMarque)}`:`🤖 Detected: ${detectType(iTitle,iMarque)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
-                  <option value="Mode">👗 Mode</option>
+                  <option value="">{(iTitle||iMarque)?(lang==='fr'?`🤖 Détecté : ${detectType(iTitle,iMarque)}`:`🤖 Detected: ${typeLabel(detectType(iTitle,iMarque),lang)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
+                  <option value="Mode">👗 {typeLabel('Mode',lang)}</option>
                   <option value="High-Tech">📱 High-Tech</option>
-                  <option value="Maison">🏠 Maison</option>
-                  <option value="Électroménager">⚡ Électroménager</option>
-                  <option value="Luxe">💎 Luxe</option>
-                  <option value="Jouets">🧸 Jouets</option>
-                  <option value="Livres">📚 Livres</option>
+                  <option value="Maison">🏠 {typeLabel('Maison',lang)}</option>
+                  <option value="Électroménager">⚡ {typeLabel('Électroménager',lang)}</option>
+                  <option value="Luxe">💎 {typeLabel('Luxe',lang)}</option>
+                  <option value="Jouets">🧸 {typeLabel('Jouets',lang)}</option>
+                  <option value="Livres">📚 {typeLabel('Livres',lang)}</option>
                   <option value="Sport">⚽ Sport</option>
-                  <option value="Auto-Moto">🚗 Auto-Moto</option>
-                  <option value="Beauté">💄 Beauté</option>
+                  <option value="Auto-Moto">🚗 {typeLabel('Auto-Moto',lang)}</option>
+                  <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
                   <option value="Musique">🎵 Musique</option>
                   <option value="Collection">🏆 Collection</option>
-                  <option value="Autre">📦 Autre</option>
+                  <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
                 </select>
               </div>
               <div>
@@ -1783,7 +1786,7 @@ export default function App({ loginOnly = false }){
                             background:filterType===tp?ts.color:ts.bg,
                             color:filterType===tp?"#fff":ts.color,
                             border:`1px solid ${ts.border}`}}>
-                          {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${tp}`}
+                          {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${typeLabel(tp,lang)}`}
                         </button>
                       );
                     })}
@@ -1804,7 +1807,7 @@ export default function App({ loginOnly = false }){
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
                           background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
                           color:filterMarqueSold===m?"#fff":"#6B7280"}}>
-                        {m==="Toutes"&&lang==='en'?'All':m}
+                        {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
                       </button>
                     ))}
                   </div>
@@ -1819,8 +1822,8 @@ export default function App({ loginOnly = false }){
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                              {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                              {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {item.type}</span>}
+                              {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
+                              {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                             </div>
                             <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy)} → {lang==='fr'?'Vente':'Sold'} {fmt(item.sell)}</div>
                           </div>
@@ -1857,7 +1860,7 @@ export default function App({ loginOnly = false }){
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
                           background:filterMarque===m?"#1D9E75":"#F3F4F6",
                           color:filterMarque===m?"#fff":"#6B7280"}}>
-                        {m==="Toutes"&&lang==='en'?'All':m}
+                        {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
                       </button>
                     ))}
                   </div>
@@ -1883,8 +1886,8 @@ export default function App({ loginOnly = false }){
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                             <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                            {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                            {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {item.type}</span>}
+                            {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
+                            {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
                           <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
@@ -2071,7 +2074,7 @@ export default function App({ loginOnly = false }){
                         <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
                           <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
-                          {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {s.type}</span>}
+                          {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
                         </div>
                       </div>
                       <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
@@ -2147,20 +2150,20 @@ export default function App({ loginOnly = false }){
               <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={editItem.marque||""} set={v=>setEditItem(p=>({...p,marque:v}))} placeholder="Ex: Nike, Zara..." icon="✏️"/>
               <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value}))}
                 style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:editItem.type?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
-                <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`🤖 Détecté : ${detectType(editItem.title,editItem.marque)}`:`🤖 Detected: ${detectType(editItem.title,editItem.marque)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
-                <option value="Luxe">💎 Luxe</option>
-                <option value="Mode">👗 Mode</option>
+                <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`🤖 Détecté : ${detectType(editItem.title,editItem.marque)}`:`🤖 Detected: ${typeLabel(detectType(editItem.title,editItem.marque),lang)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
+                <option value="Luxe">💎 {typeLabel('Luxe',lang)}</option>
+                <option value="Mode">👗 {typeLabel('Mode',lang)}</option>
                 <option value="High-Tech">📱 High-Tech</option>
-                <option value="Maison">🏠 Maison</option>
-                <option value="Électroménager">⚡ Électroménager</option>
-                <option value="Jouets">🧸 Jouets</option>
-                <option value="Livres">📚 Livres</option>
+                <option value="Maison">🏠 {typeLabel('Maison',lang)}</option>
+                <option value="Électroménager">⚡ {typeLabel('Électroménager',lang)}</option>
+                <option value="Jouets">🧸 {typeLabel('Jouets',lang)}</option>
+                <option value="Livres">📚 {typeLabel('Livres',lang)}</option>
                 <option value="Sport">⚽ Sport</option>
-                <option value="Auto-Moto">🚗 Auto-Moto</option>
-                <option value="Beauté">💄 Beauté</option>
+                <option value="Auto-Moto">🚗 {typeLabel('Auto-Moto',lang)}</option>
+                <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
                 <option value="Musique">🎵 Musique</option>
                 <option value="Collection">🏆 Collection</option>
-                <option value="Autre">📦 Autre</option>
+                <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
               </select>
               <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")} set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
               <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix="€"/>
