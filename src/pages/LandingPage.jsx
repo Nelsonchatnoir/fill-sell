@@ -399,76 +399,127 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Faux dashboard fidèle au design de l'app */}
-          <div className="dash-wrap" style={{ fontFamily:"'Nunito', 'Inter', sans-serif", background:"#fff", borderRadius:20, overflow:"hidden", boxShadow:"0 32px 80px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06)", border:"1px solid rgba(0,0,0,0.06)",  }}
-            role="img" aria-label="Dashboard Fill & Sell - suivi profits revente Vinted eBay Depop">
+          {/* Faux dashboard — deux cards côte à côte */}
+          <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
 
-            {/* 1 — Header gradient */}
-            <div style={{ background:"linear-gradient(135deg,#4ECDC4,#F9A26C)", padding:"0 16px", height:44, display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:28, height:28, background:"rgba(255,255,255,0.9)", borderRadius:8, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <div style={{ width:14, height:14, background:"linear-gradient(135deg,#4ECDC4,#1D9E75)", borderRadius:3 }} />
-              </div>
-              <div style={{ flex:1, display:"flex", gap:8, justifyContent:"center" }}>
-                {["143,00 €","67,50 €","2 art."].map(v => (
-                  <div key={v} style={{ background:"rgba(255,255,255,0.22)", backdropFilter:"blur(4px)", borderRadius:99, padding:"3px 12px", fontSize:11, fontWeight:800, color:"#fff", border:"1px solid rgba(255,255,255,0.3)" }}>{v}</div>
-                ))}
-              </div>
-              <div style={{ background:"#1D9E75", borderRadius:99, padding:"3px 10px", fontSize:10, fontWeight:800, color:"#fff", flexShrink:0 }}>Premium ✨</div>
-            </div>
-
-            {/* 2 — KPI grid */}
-            <div className="dash-kpi" style={{ padding:"16px 16px 12px", display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
-              {[
-                { icon:"🟡", label:"Bénéfice ce mois", val:"143,00 €", color:"#1D9E75" },
-                { icon:"📊", label:"Marge moyenne",    val:"38,2 %",   color:"#1D9E75" },
-                { icon:"💰", label:"Revenu brut",      val:"374,00 €", color:"#1D9E75" },
-                { icon:"📦", label:"En stock",         val:"4 art.",   color:"#6B7280" },
-              ].map(({ icon, label, val, color }) => (
-                <div key={label} style={{ background:"#fff", borderRadius:14, padding:"12px 10px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
-                  <div style={{ fontSize:15, marginBottom:6 }}>{icon}</div>
-                  <div style={{ fontSize:8, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:3, lineHeight:1.3 }}>{label}</div>
-                  <div style={{ fontSize:16, fontWeight:900, color, fontFamily:"'Nunito', sans-serif" }}>{val}</div>
+            {/* ── Card gauche : Dashboard ── */}
+            <div style={{ flex:"1 1 300px", minWidth:0, fontFamily:"'Nunito','Inter',sans-serif", background:"#F5F6F5", borderRadius:20, overflow:"hidden", boxShadow:"0 24px 64px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06)", border:"1px solid rgba(0,0,0,0.06)" }}
+              role="img" aria-label="Dashboard Fill & Sell - suivi profits revente">
+              {/* Topbar */}
+              <div style={{ background:"linear-gradient(135deg,#1D9E75,#4ECDC4)", padding:"0 14px", height:44, display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, flex:1 }}>
+                  <img src="/logo.png" height={22} style={{ objectFit:"contain" }} alt="Fill & Sell" />
+                  <span style={{ fontSize:12, fontWeight:800, color:"#fff", fontFamily:"'Plus Jakarta Sans',sans-serif", fontStyle:"italic" }}>Fill & Sell</span>
                 </div>
-              ))}
-            </div>
-
-            {/* 3 — Graphique barres */}
-            <div style={{ padding:"0 16px 12px" }}>
-              <div style={{ background:"#fff", borderRadius:14, padding:"12px 14px 8px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
-                <div style={{ fontSize:8, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:10 }}>Évolution des profits</div>
-                <div style={{ height:70, display:"flex", alignItems:"flex-end", gap:6 }}
-                  role="img" aria-label="Graphique barres évolution profits Fill & Sell">
-                  {[35,52,38,65,44,58,88].map((h,i) => (
-                    <div key={i} style={{ flex:1, background:i===6?"#0F6E56":"#1D9E7530", borderRadius:"5px 5px 0 0", height:`${h}%`, transition:"height 0.3s" }} />
+                <div style={{ background:"rgba(255,255,255,0.22)", borderRadius:99, padding:"3px 10px", fontSize:9, fontWeight:800, color:"#fff", border:"1px solid rgba(255,255,255,0.3)" }}>✨ Premium</div>
+              </div>
+              {/* Body */}
+              <div style={{ padding:"12px 12px 14px" }}>
+                {/* KPIs 2×2 */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8, marginBottom:10 }}>
+                  {[
+                    { icon:"🟡", label:lang==='en'?"This month's profit":"Bénéfice ce mois", val:"143,00 €", color:"#1D9E75" },
+                    { icon:"📊", label:lang==='en'?"Avg. margin":"Marge moyenne",            val:"38,2 %",   color:"#1D9E75" },
+                    { icon:"💰", label:lang==='en'?"Gross revenue":"Revenu brut",            val:"374,00 €", color:"#1D9E75" },
+                    { icon:"📦", label:lang==='en'?"In stock":"En stock",                    val:`4 ${lang==='en'?'items':'art.'}`, color:"#6B7280" },
+                  ].map(({ icon, label, val, color }) => (
+                    <div key={label} style={{ background:"#fff", borderRadius:12, padding:"10px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                      <div style={{ fontSize:13, marginBottom:4 }}>{icon}</div>
+                      <div style={{ fontSize:7, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:2, lineHeight:1.3 }}>{label}</div>
+                      <div style={{ fontSize:14, fontWeight:900, color, fontFamily:"'Nunito',sans-serif" }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Bar chart */}
+                <div style={{ background:"#fff", borderRadius:12, padding:"10px 12px 8px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", marginBottom:10 }}>
+                  <div style={{ fontSize:7, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>
+                    {lang==='en'?"Profit evolution":"Évolution des profits"}
+                  </div>
+                  <div style={{ height:52, display:"flex", alignItems:"flex-end", gap:4 }}
+                    role="img" aria-label="Graphique barres évolution profits">
+                    {[35,52,38,65,44,58,88].map((h,i) => (
+                      <div key={i} style={{ flex:1, background:i===6?"#0F6E56":"#1D9E7530", borderRadius:"4px 4px 0 0", height:`${h}%` }} />
+                    ))}
+                  </div>
+                </div>
+                {/* Sales list */}
+                <div style={{ background:"#fff", borderRadius:12, border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", overflow:"hidden" }}>
+                  <div style={{ padding:"7px 12px", borderBottom:"1px solid rgba(0,0,0,0.05)" }}>
+                    <div style={{ fontSize:7, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                      {lang==='en'?"Latest sales":"Dernières ventes"}
+                    </div>
+                  </div>
+                  {[
+                    { titre:"Nike Air Max 90",      date:lang==='en'?"Today":"Aujourd'hui", montant:"+47,00 €", pct:"58,8%" },
+                    { titre:"Veste Levi's vintage", date:lang==='en'?"Yesterday":"Hier",    montant:"+31,50 €", pct:"42,0%" },
+                    { titre:"Jordan 1 Retro High",  date:"12 avr.",                          montant:"+64,00 €", pct:"32,0%" },
+                  ].map(({ titre, date, montant, pct }, i, arr) => (
+                    <div key={titre} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", borderBottom:i<arr.length-1?"1px solid rgba(0,0,0,0.04)":"none" }}>
+                      <div>
+                        <div style={{ fontSize:10, fontWeight:700, color:"#0D0D0D", marginBottom:1 }}>{titre}</div>
+                        <div style={{ fontSize:8, color:"#A3A9A6", fontWeight:600 }}>{date}</div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:11, fontWeight:900, color:"#1D9E75" }}>{montant}</div>
+                        <div style={{ fontSize:8, fontWeight:700, color:"#1D9E7599" }}>{pct}</div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* 4 — Mini-liste ventes */}
-            <div style={{ padding:"0 16px 16px" }}>
-              <div style={{ background:"#fff", borderRadius:14, border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.05)", overflow:"hidden" }}>
-                <div style={{ padding:"8px 14px", borderBottom:"1px solid rgba(0,0,0,0.05)" }}>
-                  <div style={{ fontSize:8, fontWeight:700, color:"#A3A9A6", textTransform:"uppercase", letterSpacing:"0.8px" }}>Dernières ventes</div>
+            {/* ── Card droite : Inventaire ── */}
+            <div style={{ flex:"1 1 300px", minWidth:0, fontFamily:"'Nunito','Inter',sans-serif", background:"#F5F6F5", borderRadius:20, overflow:"hidden", boxShadow:"0 24px 64px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06)", border:"1px solid rgba(0,0,0,0.06)" }}
+              role="img" aria-label="Inventaire Fill & Sell - gestion articles en stock">
+              {/* Topbar */}
+              <div style={{ background:"linear-gradient(135deg,#1D9E75,#4ECDC4)", padding:"0 14px", height:44, display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, flex:1 }}>
+                  <img src="/logo.png" height={22} style={{ objectFit:"contain" }} alt="Fill & Sell" />
+                  <span style={{ fontSize:12, fontWeight:800, color:"#fff", fontFamily:"'Plus Jakarta Sans',sans-serif", fontStyle:"italic" }}>Fill & Sell</span>
                 </div>
+                <div style={{ background:"rgba(255,255,255,0.22)", borderRadius:99, padding:"3px 10px", fontSize:9, fontWeight:800, color:"#fff", border:"1px solid rgba(255,255,255,0.3)" }}>✨ Premium</div>
+              </div>
+              {/* Body */}
+              <div style={{ padding:"12px 12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+                {/* Search bar */}
+                <div style={{ display:"flex", alignItems:"center", gap:8, background:"#fff", border:"1px solid rgba(0,0,0,0.08)", borderRadius:12, padding:"8px 12px" }}>
+                  <span style={{ fontSize:12, color:"#A3A9A6" }}>🔍</span>
+                  <span style={{ fontSize:11, color:"#A3A9A6", fontWeight:500 }}>{lang==='en'?"Search items...":"Rechercher..."}</span>
+                </div>
+                {/* Category pills */}
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {[
+                    { label:lang==='en'?"All":"Tous",           active:true  },
+                    { label:lang==='en'?"Fashion":"Mode",        active:false },
+                    { label:lang==='en'?"Home":"Maison",         active:false },
+                  ].map(({ label, active }) => (
+                    <div key={label} style={{ padding:"4px 12px", borderRadius:99, fontSize:10, fontWeight:700, background:active?"#1D9E75":"#E8F5F0", color:active?"#fff":"#1D9E75", border:`1px solid ${active?"#1D9E75":"#9FE1CB"}` }}>{label}</div>
+                  ))}
+                </div>
+                {/* Stock items */}
                 {[
-                  { titre:"Nike Air Max 90", date:"Aujourd'hui", montant:"+47,00 €", pct:"58,8%" },
-                  { titre:"Veste Levi's vintage", date:"Hier", montant:"+31,50 €", pct:"42,0%" },
-                  { titre:"Jordan 1 Retro High", date:"12 avril", montant:"+64,00 €", pct:"32,0%" },
-                ].map(({ titre, date, montant, pct }, i, arr) => (
-                  <div key={titre} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom: i < arr.length-1 ? "1px solid rgba(0,0,0,0.05)" : "none" }}>
-                    <div>
-                      <div style={{ fontSize:11, fontWeight:700, color:"#0D0D0D", marginBottom:2 }}>{titre}</div>
-                      <div style={{ fontSize:9, color:"#A3A9A6", fontWeight:600 }}>{date}</div>
+                  { name:"Nike Air Max 90",      brand:"Nike",   buy:"45,00 €", badge:{ emoji:"👗", label:lang==='en'?"Fashion":"Mode",    bg:"#FDF2F8", color:"#9D174D", border:"#F9A8D4" } },
+                  { name:"Veste Levi's vintage",  brand:"Levi's", buy:"25,00 €", badge:{ emoji:"👗", label:lang==='en'?"Fashion":"Mode",    bg:"#FDF2F8", color:"#9D174D", border:"#F9A8D4" } },
+                  { name:"PS5 Controller",        brand:"Sony",   buy:"35,00 €", badge:{ emoji:"📱", label:"High-Tech",                    bg:"#EFF6FF", color:"#1D4ED8", border:"#93C5FD" } },
+                ].map(({ name, brand, buy, badge }) => (
+                  <div key={name} style={{ background:"#fff", borderRadius:12, padding:"10px 12px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", marginBottom:4 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#0D0D0D", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{name}</div>
+                        <span style={{ background:"#E8F5F0", color:"#1D9E75", borderRadius:99, padding:"1px 7px", fontSize:8, fontWeight:700, flexShrink:0, border:"1px solid #9FE1CB" }}>{brand}</span>
+                      </div>
+                      <span style={{ background:badge.bg, color:badge.color, borderRadius:99, padding:"1px 7px", fontSize:8, fontWeight:700, border:`1px solid ${badge.border}` }}>{badge.emoji} {badge.label}</span>
                     </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:12, fontWeight:900, color:"#1D9E75" }}>{montant}</div>
-                      <div style={{ fontSize:9, fontWeight:700, color:"#1D9E7599" }}>{pct}</div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ fontSize:9, color:"#A3A9A6", fontWeight:600 }}>{lang==='en'?"Bought":"Investi"}</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:"#F9A26C" }}>{buy}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
         </div>
       </section>
