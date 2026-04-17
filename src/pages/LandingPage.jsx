@@ -650,7 +650,7 @@ export default function LandingPage() {
       {/* ── FOOTER ── */}
       <footer style={{ background:"#0F172A", padding:"36px 24px", textAlign:"center" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:8 }}>
-          <img src="/logo.png" height={26} style={{ filter:"brightness(0) invert(1) opacity(0.5)" }}
+          <img src="/logo.png" height={26} style={{ objectFit:"contain" }}
             alt="Fill & Sell - tracker profits revente" />
           <span style={{ fontSize:15, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"-0.3px" }}>Fill & Sell</span>
         </div>
