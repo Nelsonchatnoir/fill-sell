@@ -451,8 +451,8 @@ export default function LandingPage() {
                   </div>
                   {[
                     { titre:"Nike Air Max 90",      date:lang==='en'?"Today":"Aujourd'hui", montant:"+47,00 €", pct:"58,8%" },
-                    { titre:"Veste Levi's vintage", date:lang==='en'?"Yesterday":"Hier",    montant:"+31,50 €", pct:"42,0%" },
-                    { titre:"Jordan 1 Retro High",  date:"12 avr.",                          montant:"+64,00 €", pct:"32,0%" },
+                    { titre:lang==='en'?"Levi's Vintage Jacket":"Veste Levi's vintage", date:lang==='en'?"Yesterday":"Hier",    montant:"+31,50 €", pct:"42,0%" },
+                    { titre:"Jordan 1 Retro High",  date:lang==='en'?"Apr 12":"12 avr.",    montant:"+64,00 €", pct:"32,0%" },
                   ].map(({ titre, date, montant, pct }, i, arr) => (
                     <div key={titre} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", borderBottom:i<arr.length-1?"1px solid rgba(0,0,0,0.04)":"none" }}>
                       <div>
@@ -500,7 +500,7 @@ export default function LandingPage() {
                 {/* Stock items */}
                 {[
                   { name:"Nike Air Max 90",      brand:"Nike",   buy:"45,00 €", badge:{ emoji:"👗", label:lang==='en'?"Fashion":"Mode",    bg:"#FDF2F8", color:"#9D174D", border:"#F9A8D4" } },
-                  { name:"Veste Levi's vintage",  brand:"Levi's", buy:"25,00 €", badge:{ emoji:"👗", label:lang==='en'?"Fashion":"Mode",    bg:"#FDF2F8", color:"#9D174D", border:"#F9A8D4" } },
+                  { name:lang==='en'?"Levi's Vintage Jacket":"Veste Levi's vintage", brand:"Levi's", buy:"25,00 €", badge:{ emoji:"👗", label:lang==='en'?"Fashion":"Mode",    bg:"#FDF2F8", color:"#9D174D", border:"#F9A8D4" } },
                   { name:"PS5 Controller",        brand:"Sony",   buy:"35,00 €", badge:{ emoji:"📱", label:"High-Tech",                    bg:"#EFF6FF", color:"#1D4ED8", border:"#93C5FD" } },
                 ].map(({ name, brand, buy, badge }) => (
                   <div key={name} style={{ background:"#fff", borderRadius:12, padding:"10px 12px", border:"1px solid rgba(0,0,0,0.06)", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
