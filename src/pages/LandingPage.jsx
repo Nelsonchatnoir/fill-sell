@@ -169,17 +169,6 @@ export default function LandingPage() {
   const [cBuy, setCBuy] = useState('');
   const [cSell, setCSell] = useState('');
   const [cFees, setCFees] = useState('');
-  const [earlyAdopter, setEarlyAdopter] = useState({ available: false, remaining: 0, loaded: false });
-
-  useEffect(() => {
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-early-adopter`, {
-      headers: { "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` }
-    })
-      .then(r => r.json())
-      .then(d => setEarlyAdopter({ ...d, loaded: true }))
-      .catch(() => setEarlyAdopter({ available: false, remaining: 0, loaded: true }));
-  }, []);
-
   const l = landingTranslations[lang] || landingTranslations.fr;
 
   const calcBuy = parseFloat(cBuy) || 0;
@@ -266,24 +255,6 @@ export default function LandingPage() {
           <p className="hero-sub" style={{ fontSize:19, color:"rgba(255,255,255,0.88)", lineHeight:1.65, maxWidth:520, margin:"0 auto 48px", fontWeight:400 }}>
             {l.heroSub}
           </p>
-
-          {earlyAdopter.loaded && earlyAdopter.available && (()=>{
-            const ea={fr:{badge:`🚀 Offre Early Adopter · Plus que ${earlyAdopter.remaining} places`,sub:'2,99€/mois à vie au lieu de 4,99€',cta:'Créer mon compte'},en:{badge:`🚀 Early Adopter Deal · Only ${earlyAdopter.remaining} spots left`,sub:'2.99€/month forever instead of 4.99€',cta:'Create my account'}};
-            const eaL=ea[lang]||ea.fr;
-            return(
-              <div style={{maxWidth:560,margin:"0 auto 36px",borderRadius:14,padding:"16px 20px",background:"linear-gradient(135deg,#1D9E75,#4ECDC4)"}}>
-                <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
-                  <span style={{background:"rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 10px",fontSize:10,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.07em"}}>{eaL.badge}</span>
-                  <div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1.2}}>{eaL.sub}</div>
-                </div>
-                <button
-                  onClick={()=>{track('early_adopter_click',{source:'landing_banner',lang});nav('/app');}}
-                  style={{background:"#fff",color:"#1D9E75",fontWeight:800,borderRadius:10,padding:"12px 20px",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit",fontSize:14,width:"100%"}}
-                >{eaL.cta}</button>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.65)",marginTop:10}}>✓ Sans carte bancaire · ✓ Accès immédiat dès l'ouverture des paiements</div>
-              </div>
-            );
-          })()}
 
           <div className="lp-hero-btns" style={{ display:"flex", gap:14, justifyContent:"center", flexWrap:"wrap" }}>
             <button className="lp-btn-main" style={{ fontSize:17, padding:"16px 36px" }}

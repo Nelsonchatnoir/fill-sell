@@ -17,7 +17,7 @@ serve(async (req) => {
   }
 
   try {
-    const { email, coupon } = await req.json();
+    const { email } = await req.json();
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
@@ -26,7 +26,6 @@ serve(async (req) => {
       cancel_url: "https://fillsell.app/cancel",
       customer_email: email || undefined,
     };
-    if (coupon) sessionParams.discounts = [{ coupon }];
 
     const session = await stripe.checkout.sessions.create(sessionParams);
 
