@@ -590,13 +590,23 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
   useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
   async function triggerCheckout(){
+    console.log('[checkout] start — email:', user?.email);
     try{
-      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email})});
-      const{url,error}=await res.json();
+      const url_called=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`;
+      console.log('[checkout] calling:', url_called);
+      const res=await fetch(url_called,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email})});
+      console.log('[checkout] response status:', res.status);
+      const body=await res.json();
+      console.log('[checkout] response body:', body);
+      const{url,error}=body;
       if(error)throw new Error(error);
       track('begin_checkout', { currency: 'EUR', value: 4.99 });
+      console.log('[checkout] redirecting to:', url);
       window.location.href=url;
-    }catch(e){alert("Erreur : "+e.message);}
+    }catch(e){
+      console.error('[checkout] error:', e);
+      alert("Erreur : "+e.message);
+    }
   }
 
   async function handleIAPPurchase(){
