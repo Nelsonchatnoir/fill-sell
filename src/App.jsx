@@ -582,6 +582,7 @@ export default function App({ loginOnly = false }){
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
+  const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',fees:'',rememberFees:false}
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -849,18 +850,28 @@ export default function App({ loginOnly = false }){
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
-  async function markSold(item){
-    const sv=parseFloat(prompt(lang==='fr'?`Prix de vente pour "${item.title}" ?`:`Sell price for "${item.title}"?`)||"0");
+  function markSold(item){
+    const saved=localStorage.getItem('savedFees')||'';
+    setSellModal({item,sellPrice:'',fees:saved,rememberFees:!!saved});
+  }
+
+  async function confirmSell(){
+    if(!sellModal)return;
+    const sv=parseFloat(sellModal.sellPrice)||0;
     if(!sv||sv<=0)return;
-    const mg=sv-item.buy;const mgp=(mg/sv)*100;
+    const f=parseFloat(sellModal.fees)||0;
+    if(sellModal.rememberFees)localStorage.setItem('savedFees',String(f));
+    const{item}=sellModal;
+    const mg=sv-item.buy-f;const mgp=(mg/sv)*100;
     await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu"}).eq('id',item.id);
     setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
     const srow={id:Date.now(),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
     const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
     if(sd){
-      track('mark_sold', { profit: mg, margin_pct: Math.round(mgp * 10) / 10 });
+      track('mark_sold',{profit:mg,margin_pct:Math.round(mgp*10)/10});
       setSales(prev=>[mapSale(sd),...prev]);
     }
+    setSellModal(null);
   }
 
   async function delItem(id){
@@ -2185,6 +2196,36 @@ export default function App({ loginOnly = false }){
                 {lang==='fr'?"💾 Enregistrer":"💾 Save"}
               </button>
               <button onClick={()=>setEditItem(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+                {t('annuler')}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── SELL MODAL ── */}
+      {sellModal&&(
+        <>
+          <div onClick={()=>setSellModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>💰 {t('marquerVendu')}</div>
+              <button onClick={()=>setSellModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+            </div>
+            <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <Field label={t('prixDeVente')} value={sellModal.sellPrice} set={v=>setSellModal(p=>({...p,sellPrice:v}))} placeholder="0,00" type="number" icon="💰" suffix="€"/>
+              <Field label={`${t('fraisAnnexes')} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.fees} set={v=>setSellModal(p=>({...p,fees:v}))} placeholder="0,00" type="number" icon="📬" suffix="€"/>
+              <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
+                <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>
+                <span style={{fontSize:12,fontWeight:600,color:C.sub}}>{t('memoriserFrais')}</span>
+              </label>
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              <button onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,padding:"13px",background:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"#E5E7EB":`linear-gradient(135deg,${C.teal},${C.peach})`,color:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"not-allowed":"pointer",transition:"all 0.2s"}}>
+                {t('confirmer')} ✓
+              </button>
+              <button onClick={()=>setSellModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
                 {t('annuler')}
               </button>
             </div>

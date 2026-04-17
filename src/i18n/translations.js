@@ -125,6 +125,11 @@ export const translations = {
     mentionsLegales:"Mentions légales",
     signOut:"Se déconnecter",
     support:"Support",
+    marquerVendu:"Marquer comme vendu",
+    prixDeVente:"Prix de vente",
+    fraisAnnexes:"Frais annexes",
+    memoriserFrais:"Mémoriser pour mes prochaines ventes",
+    confirmer:"Confirmer",
   },
   en: {
     appName:"Fill & Sell",
@@ -252,6 +257,11 @@ export const translations = {
     mentionsLegales:"Legal notice",
     signOut:"Sign out",
     support:"Support",
+    marquerVendu:"Mark as sold",
+    prixDeVente:"Sell price",
+    fraisAnnexes:"Additional fees",
+    memoriserFrais:"Remember for next sales",
+    confirmer:"Confirm",
   }
 };
 
