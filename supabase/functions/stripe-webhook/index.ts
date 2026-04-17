@@ -29,6 +29,11 @@ serve(async (req) => {
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const email = session.customer_details?.email;
@@ -37,11 +42,6 @@ serve(async (req) => {
     if (!email) {
       return new Response("No email found", { status: 400 });
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     const { data: users } = await supabase
       .from("profiles")
@@ -58,6 +58,18 @@ serve(async (req) => {
         })
         .eq("email", email);
     }
+  }
+
+  if (event.type === "customer.subscription.deleted") {
+    const subscription = event.data.object as Stripe.Subscription;
+    const customerId = subscription.customer as string;
+
+    console.log("[webhook] subscription.deleted for customer:", customerId);
+
+    await supabase
+      .from("profiles")
+      .update({ is_premium: false })
+      .eq("stripe_customer_id", customerId);
   }
 
   return new Response(JSON.stringify({ received: true }), {

@@ -68,13 +68,13 @@ serve(async (req) => {
       is_premium: profile.is_premium,
     });
 
-    // Cas : pas de customer Stripe — force is_premium=false
+    // Cas : pas de customer Stripe — force is_premium=false immédiatement
     if (!profile.stripe_customer_id) {
-      const { error: upErr } = await supabaseAdmin
+      await supabaseAdmin
         .from("profiles")
         .update({ is_premium: false })
         .eq("id", user.id);
-      console.log("[cancel-subscription] No Stripe customer — UPDATE:", upErr?.message ?? "OK");
+      console.log("[cancel-subscription] No Stripe customer — is_premium=false");
       return new Response(
         JSON.stringify({ success: true, period_end: null }),
         { headers: { ...CORS, "Content-Type": "application/json" } }
@@ -96,27 +96,12 @@ serve(async (req) => {
       const canceled = await stripe.subscriptions.update(subscriptions.data[0].id, {
         cancel_at_period_end: true,
       });
-      if (canceled.cancel_at) {
-        periodEnd = new Date(canceled.cancel_at * 1000).toLocaleDateString("fr-FR");
-      }
-      console.log("[cancel-subscription] Stripe annulé, fin le:", periodEnd);
+      // current_period_end = date réelle de fin de période payée
+      periodEnd = new Date(canceled.current_period_end * 1000).toLocaleDateString("fr-FR");
+      console.log("[cancel-subscription] cancel_at_period_end=true, fin le:", periodEnd);
     }
 
-    // UPDATE is_premium=false via service role (bypass RLS garanti)
-    const { error: updateError } = await supabaseAdmin
-      .from("profiles")
-      .update({ is_premium: false })
-      .eq("id", user.id);
-
-    if (updateError) {
-      console.error("[cancel-subscription] UPDATE profiles FAILED:", updateError.message);
-      return new Response(
-        JSON.stringify({ error: "Échec mise à jour profil : " + updateError.message }),
-        { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log("[cancel-subscription] is_premium=false écrit pour user:", user.id);
+    // is_premium reste true — sera mis à false par le webhook customer.subscription.deleted
 
     return new Response(
       JSON.stringify({ success: true, period_end: periodEnd }),

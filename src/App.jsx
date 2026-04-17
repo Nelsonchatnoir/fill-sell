@@ -957,14 +957,14 @@ export default function App({ loginOnly = false }){
       );
       const json=await res.json();
       if(json.error) throw new Error(json.error);
-      // Optimistic update immédiat
-      setIsPremium(false);
-      // Resync depuis Supabase pour garantir la cohérence
-      await new Promise(r=>setTimeout(r,600));
-      await fetchAll(user.id);
+      // is_premium reste true jusqu'à la fin de la période — le webhook customer.subscription.deleted le passera à false
       const msg=json.period_end
-        ? `Abonnement annulé. Tu garderas l'accès jusqu'au ${json.period_end}.`
-        : "Abonnement annulé. Tu garderas l'accès jusqu'à la fin de la période.";
+        ? (lang==='fr'
+            ? `Abonnement annulé. Tu gardes l'accès premium jusqu'au ${json.period_end}.`
+            : `Subscription cancelled. You keep premium access until ${json.period_end}.`)
+        : (lang==='fr'
+            ? "Abonnement annulé. Tu gardes l'accès premium jusqu'à la fin de la période."
+            : "Subscription cancelled. You keep premium access until the end of the period.");
       setCancelMsg(msg);
       setCancelStep(0);
     }catch(e){
