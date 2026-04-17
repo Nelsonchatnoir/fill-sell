@@ -594,7 +594,10 @@ export default function App({ loginOnly = false }){
     try{
       const url_called=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`;
       console.log('[checkout] calling:', url_called);
-      const res=await fetch(url_called,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`},body:JSON.stringify({email:user?.email})});
+      const{data:{session}}=await supabase.auth.getSession();
+      const token=session?.access_token||import.meta.env.VITE_SUPABASE_ANON_KEY;
+      console.log('[checkout] token type:', session?.access_token?'user_jwt':'anon_fallback');
+      const res=await fetch(url_called,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({email:user?.email})});
       console.log('[checkout] response status:', res.status);
       const body=await res.json();
       console.log('[checkout] response body:', body);
