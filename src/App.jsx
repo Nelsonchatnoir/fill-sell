@@ -791,9 +791,10 @@ export default function App({ loginOnly = false }){
     plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#F9A26C',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(1)} %`}}},
     scales:_scales('%'),
   };
-  const totalM=sales.reduce((a,s)=>a+s.margin,0);
-  const totalR=sales.reduce((a,s)=>a+s.sell,0);
-  const avgM=sales.length?sales.reduce((a,s)=>a+s.marginPct,0)/sales.length:0;
+  const salesForKpis=filterSalesByRange(sales,selectedRange);
+  const totalM=salesForKpis.reduce((a,s)=>a+s.margin,0);
+  const totalR=salesForKpis.reduce((a,s)=>a+s.sell,0);
+  const avgM=totalR>0?(totalM/totalR)*100:0;
   const stock=items.filter(i=>i.statut==="stock");
   const sold=items.filter(i=>i.statut==="vendu");
   function searchMatch(item,query){
@@ -1538,7 +1539,7 @@ export default function App({ loginOnly = false }){
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</div>
                   </div>
                   <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
-                  <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{tpl('venteLabel',{n:sales.length})} · {t('margeMoyDash')} {fmt(sales.length?totalM/sales.length:0)}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(salesForKpis.length?totalM/salesForKpis.length:0)}</div>
                   {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('unlocAnalyse')}</div>}
                   {isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('analyseComplete')}</div>}
                 </div>
@@ -2032,8 +2033,8 @@ export default function App({ loginOnly = false }){
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:4}}>
                 {[
                   {label:t('profitTotal'),value:fmt(totalM),color:totalM>=0?"#1D9E75":C.red},
-                  {label:t('ventes'),value:sales.length,color:"#4ECDC4"},
-                  {label:t('profitMoyen'),value:fmt(sales.length?totalM/sales.length:0),color:"#5DCAA5"},
+                  {label:t('ventes'),value:salesForKpis.length,color:"#4ECDC4"},
+                  {label:t('profitMoyen'),value:fmt(salesForKpis.length?totalM/salesForKpis.length:0),color:"#5DCAA5"},
                 ].map((s,i)=>(
                   <div key={i} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>

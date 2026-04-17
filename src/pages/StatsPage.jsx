@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import { track } from '../analytics/analytics';
-const fmt = n => (Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
+const EUR_TO_USD = 1.08;
 const fmtp = n => (Math.round(n*10)/10).toFixed(1)+"%";
 
 const C = {
@@ -56,6 +56,9 @@ function filterByPeriod(arr, period) {
 
 export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl, lang='fr' }) {
   const tr = t || (k=>k);
+  const fmt = lang==='en'
+    ? n => '$' + (n * EUR_TO_USD).toFixed(2)
+    : n => (Math.round(n*100)/100).toFixed(2).replace(".",",") + ' €';
   const [period, setPeriod] = useState('all');
 
   useEffect(() => { if (isPremium) track('view_advanced_stats'); }, [isPremium]);
