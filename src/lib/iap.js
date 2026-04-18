@@ -1,7 +1,7 @@
 import { NativePurchases, PURCHASE_TYPE } from '@capgo/native-purchases';
 import { Capacitor } from '@capacitor/core';
 
-const PRODUCT_ID = 'app.fillsell.app.premium';
+const PRODUCT_ID = 'app.fillsell.premium.monthly';
 
 export async function initIAP() {
   if (!Capacitor.isNativePlatform()) return null;

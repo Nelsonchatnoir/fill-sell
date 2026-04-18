@@ -636,7 +636,7 @@ export default function App({ loginOnly = false }){
     try{
       const purchases=await restorePurchases();
       const hasPremium=purchases.some(
-        p=>p.productIdentifier==='app.fillsell.app.premium'||p.productId==='app.fillsell.app.premium'
+        p=>p.productIdentifier==='app.fillsell.premium.monthly'||p.productId==='app.fillsell.premium.monthly'
       );
       if(hasPremium){
         await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
