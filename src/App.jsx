@@ -85,7 +85,7 @@ const css = `
     .logo-mobile{display:block!important;}
     .premium-full{display:none!important;}
     .premium-short{display:inline!important;}
-    .page-pad{padding-bottom:90px!important;}
+    .page-pad{padding-bottom:16px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
@@ -1462,7 +1462,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"18px 14px 140px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)",overscrollBehaviorY:"none"}}>
+      <div className="wrap page-pad" style={{padding:"18px 14px 16px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)",overscrollBehaviorY:"none"}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
@@ -2456,7 +2456,7 @@ export default function App({ loginOnly = false }){
 
       <Toast message={toast.message} visible={toast.visible}/>
 
-      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:9999,padding:"0 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))",transform:"translate3d(0,0,0)",WebkitTransform:"translate3d(0,0,0)"}}>
+      <div className="mobile-nav" style={{position:"sticky",bottom:0,background:"#ffffff",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"0 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
         {TABS_MOBILE.map(t=>(
           <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"14px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s",position:"relative"}}>
             {tab===t.idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:"2.5px",background:"linear-gradient(to right,#0D9488,#F97316)"}}/>}
