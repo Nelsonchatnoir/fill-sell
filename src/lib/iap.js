@@ -1,19 +1,27 @@
-import { Purchases, LOG_LEVEL } from '@revenuecat/purchases-capacitor';
-
-export const initIAP = async () => {
-  await Purchases.setLogLevel({ level: LOG_LEVEL.DEBUG });
-  await Purchases.configure({ apiKey: 'appl_XXXX' }); // remplacer par la vraie clé RevenueCat
-};
+import { NativePurchases } from '@capgo/native-purchases';
 
 export const purchasePremium = async () => {
-  const { offerings } = await Purchases.getOfferings();
-  const pkg = offerings.current?.monthly;
-  if (!pkg) throw new Error('No package found');
-  const { customerInfo } = await Purchases.purchasePackage({ aPackage: pkg });
-  return customerInfo.entitlements.active['premium'] !== undefined;
+  try {
+    const { products } = await NativePurchases.getProducts({
+      productIdentifiers: ['app.fillsell.premium.monthly'],
+      productType: 'inapp',
+    });
+    if (!products || products.length === 0) throw new Error('Produit introuvable');
+    await NativePurchases.purchaseProduct({
+      productIdentifier: 'app.fillsell.premium.monthly',
+    });
+    return true;
+  } catch (e) {
+    if (e?.code === 'USER_CANCELLED') return false;
+    throw e;
+  }
 };
 
 export const restorePurchases = async () => {
-  const { customerInfo } = await Purchases.restorePurchases();
-  return customerInfo.entitlements.active['premium'] !== undefined;
+  try {
+    const restored = await NativePurchases.restorePurchases();
+    return restored?.activeSubscriptions?.includes('app.fillsell.premium.monthly') ?? false;
+  } catch (e) {
+    throw e;
+  }
 };

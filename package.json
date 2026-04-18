@@ -15,6 +15,7 @@
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.0",
     "@capacitor/splash-screen": "^8.0.1",
+    "@capgo/native-purchases": "^8.3.3",
     "@revenuecat/purchases-capacitor": "^13.0.0",
     "@supabase/supabase-js": "^2.101.1",
     "axios": "^1.14.0",
