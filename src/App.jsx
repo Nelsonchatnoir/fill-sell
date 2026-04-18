@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
@@ -1300,8 +1301,6 @@ export default function App({ loginOnly = false }){
 
   const handleAppleSignIn = async () => {
     try {
-      const { registerPlugin } = await import('@capacitor/core');
-      const AppleSignIn = registerPlugin('AppleSignIn');
       const { identityToken } = await AppleSignIn.signIn();
       const { error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
