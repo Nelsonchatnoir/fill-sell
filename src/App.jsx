@@ -68,7 +68,7 @@ const css = `
   .logo-mobile{display:none;}
   .premium-full{display:inline;}
   .premium-short{display:none;}
-  .app-root{min-height:100vh;width:100%;max-width:100vw;overflow-x:hidden;position:relative;}
+  .app-root{height:100dvh;width:100%;max-width:100vw;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;position:relative;}
   @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:768px){
     .grid4{grid-template-columns:repeat(2,1fr);gap:12px;}
@@ -85,7 +85,7 @@ const css = `
     .logo-mobile{display:block!important;}
     .premium-full{display:none!important;}
     .premium-short{display:inline!important;}
-    .page-pad{padding-bottom:80px!important;}
+    .page-pad{padding-bottom:16px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
 `;
@@ -1413,7 +1413,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
+    <div className="app-root" style={{height:"100dvh",overflowY:"auto",WebkitOverflowScrolling:"touch",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
       <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
@@ -1462,7 +1462,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"18px 14px 80px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)",overscrollBehavior:"none"}}>
+      <div className="wrap page-pad" style={{padding:"18px 14px 16px",background:"#F5F6F5",flex:"1"}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
@@ -2456,7 +2456,7 @@ export default function App({ loginOnly = false }){
 
       <Toast message={toast.message} visible={toast.visible}/>
 
-      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"0 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
+      <div className="mobile-nav" style={{background:"#ffffff",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"0 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
         {TABS_MOBILE.map(t=>(
           <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"14px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s",position:"relative"}}>
             {tab===t.idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:"2.5px",background:"linear-gradient(to right,#0D9488,#F97316)"}}/>}
