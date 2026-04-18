@@ -1300,19 +1300,19 @@ export default function App({ loginOnly = false }){
 
   const handleAppleSignIn = async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { registerPlugin } = await import('@capacitor/core');
+      const AppleSignIn = registerPlugin('AppleSignIn');
+      const { identityToken } = await AppleSignIn.signIn();
+      const { error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
-        options: {
-          redirectTo: 'app.fillsell.app://login-callback',
-        },
+        token: identityToken,
       });
       if (error) throw error;
-      if (data?.url) {
-        window.location.href = data.url;
-      }
     } catch (e) {
-      console.error('Apple Sign In error:', e);
-      alert('Erreur: ' + e.message);
+      if (e?.message !== 'USER_CANCELLED') {
+        console.error('Apple Sign In error:', e);
+        alert('Erreur Sign in with Apple: ' + e.message);
+      }
     }
   };
 
