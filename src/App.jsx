@@ -39,7 +39,7 @@ const C = {
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;overscroll-behavior:none;background:#ffffff;}
+  html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;background:#ffffff;}
   body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#ffffff;min-height:100vh;touch-action:pan-y;}
   *{box-sizing:border-box;max-width:100%;}
   svg,svg *{max-width:none!important;overflow:visible;}
@@ -1462,7 +1462,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"18px 14px 140px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)"}}>
+      <div className="wrap page-pad" style={{padding:"18px 14px 140px",background:"#F5F6F5",minHeight:"calc(100vh - 90px)",overscrollBehaviorY:"none"}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
@@ -2456,9 +2456,9 @@ export default function App({ loginOnly = false }){
 
       <Toast message={toast.message} visible={toast.visible}/>
 
-      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",borderTop:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"8px 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
+      <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"0 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
         {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s",position:"relative"}}>
+          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"14px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s",position:"relative"}}>
             {tab===t.idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:"2.5px",background:"linear-gradient(to right,#0D9488,#F97316)"}}/>}
             <div style={{fontSize:20,marginBottom:2,transform:tab===t.idx?"scale(1.1)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
             <div style={{fontSize:10,fontWeight:tab===t.idx?800:600,letterSpacing:0.2}}>{t.label}</div>
