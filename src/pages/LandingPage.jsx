@@ -86,10 +86,11 @@ const css = `
 
   .lp-nav {
     position: sticky; top: 0; z-index: 100;
-    background: rgba(255,255,255,0.92);
+    background: rgba(255,255,255,0.97);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(0,0,0,0.06);
     padding: 0 24px;
+    padding-top: env(safe-area-inset-top) !important;
   }
   .lp-nav-inner {
     max-width: 1100px; margin: 0 auto;
@@ -200,11 +201,11 @@ export default function LandingPage() {
   ];
 
   return (
-    <div>
+    <div style={{paddingTop:0,marginTop:0}}>
       <style>{css}</style>
 
       {/* ── NAVBAR ── */}
-      <nav className="lp-nav" style={{paddingTop:'env(safe-area-inset-top)'}} aria-label="Navigation principale">
+      <nav className="lp-nav" style={{paddingTop:'env(safe-area-inset-top)',marginTop:0}} aria-label="Navigation principale">
         <div className="lp-nav-inner">
           <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => nav("/")}>
             <img src="/logo.png" height={34} style={{ objectFit: "contain" }}
