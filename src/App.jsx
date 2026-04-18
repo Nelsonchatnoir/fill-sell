@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { Capacitor } from '@capacitor/core';
-import { SignInWithApple } from '@capacitor-community/apple-sign-in';
 import { initIAP, purchasePremium, restorePurchases, checkEntitlements } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
@@ -1304,21 +1303,25 @@ export default function App({ loginOnly = false }){
 
   const handleAppleSignIn = async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { SignInWithApple } = await import('@capacitor-community/apple-sign-in');
+      const result = await SignInWithApple.authorize({
+        clientId: 'app.fillsell.app',
+        redirectURI: 'https://fillsell.app',
+        scopes: 'email name',
+        state: '12345',
+        nonce: 'nonce',
+      });
+      const { identityToken, givenName, familyName, email } = result.response;
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
-        options: {
-          redirectTo: 'app.fillsell.app://callback',
-          skipBrowserRedirect: true,
-        },
+        token: identityToken,
       });
       if (error) throw error;
-      if (data?.url) {
-        const { Browser } = await import('@capacitor/browser');
-        await Browser.open({ url: data.url });
-      }
     } catch (e) {
       console.error('Apple Sign In error:', e);
-      alert('Erreur Sign in with Apple: ' + e.message);
+      if (e?.code !== 'USER_CANCELLED') {
+        alert('Erreur: ' + JSON.stringify(e));
+      }
     }
   };
 
