@@ -40,7 +40,7 @@ const css = `
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;}
-  body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#ffffff;min-height:100vh;touch-action:pan-y;}
+  body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#ffffff;min-height:100vh;touch-action:pan-y;overscroll-behavior:none;}
   *{box-sizing:border-box;max-width:100%;}
   svg,svg *{max-width:none!important;overflow:visible;}
   *::-webkit-scrollbar{display:none;}
@@ -1413,7 +1413,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
+    <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative",overflowY:"scroll",WebkitOverflowScrolling:"touch"}}>
       <style>{css}</style>
 
       <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
@@ -2457,9 +2457,9 @@ export default function App({ loginOnly = false }){
       <Toast message={toast.message} visible={toast.visible}/>
 
       <div className="mobile-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",borderTop:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"8px 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:"2.5px",background:"linear-gradient(to right,#0D9488,#F97316)"}}/>
         {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s"}}>
+          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s",position:"relative"}}>
+            {tab===t.idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:"2.5px",background:"linear-gradient(to right,#0D9488,#F97316)"}}/>}
             <div style={{fontSize:20,marginBottom:2,transform:tab===t.idx?"scale(1.1)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
             <div style={{fontSize:10,fontWeight:tab===t.idx?800:600,letterSpacing:0.2}}>{t.label}</div>
           </button>
