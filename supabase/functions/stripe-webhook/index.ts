@@ -68,8 +68,29 @@ serve(async (req) => {
 
     await supabase
       .from("profiles")
-      .update({ is_premium: false })
+      .update({ is_premium: false, subscription_cancel_at_period_end: false })
       .eq("stripe_customer_id", customerId);
+  }
+
+  if (event.type === "customer.subscription.updated") {
+    const subscription = event.data.object as Stripe.Subscription;
+    const customerId = subscription.customer as string;
+    const status = subscription.status;
+    const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+
+    console.log("[webhook] subscription.updated for customer:", customerId, "status:", status, "cancel_at_period_end:", cancelAtPeriodEnd);
+
+    if (status === "unpaid" || status === "incomplete_expired") {
+      await supabase
+        .from("profiles")
+        .update({ is_premium: false, subscription_cancel_at_period_end: false })
+        .eq("stripe_customer_id", customerId);
+    } else {
+      await supabase
+        .from("profiles")
+        .update({ subscription_cancel_at_period_end: cancelAtPeriodEnd })
+        .eq("stripe_customer_id", customerId);
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), {
