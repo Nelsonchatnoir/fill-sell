@@ -52,6 +52,7 @@
 
 body {
   margin: 0;
+  background-color: #4ECDC4; /* safe-area zone above header matches gradient start */
 }
 
 #root {

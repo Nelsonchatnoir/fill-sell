@@ -1420,7 +1420,7 @@ export default function App({ loginOnly = false }){
     <div className="app-root" style={{height:"100dvh",overflowY:"auto",WebkitOverflowScrolling:"touch",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
-      <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
+      <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",paddingTop:"calc(10px + env(safe-area-inset-top))",paddingRight:"16px",paddingBottom:"10px",paddingLeft:"16px"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:1280,margin:"0 auto",width:"100%"}}>
           {/* Gauche : logo cliquable → dashboard */}
           <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} style={{display:"flex",alignItems:"center",gap:8,background:"transparent",border:"none",padding:0,cursor:"pointer",flexShrink:0}}>
