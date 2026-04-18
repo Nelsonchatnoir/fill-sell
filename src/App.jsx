@@ -575,6 +575,7 @@ export default function App({ loginOnly = false }){
   const [cancelLoading,setCancelLoading]=useState(false);
   const [cancelMsg,setCancelMsg]=useState("");
   const [cancelAtPeriodEnd,setCancelAtPeriodEnd]=useState(false);
+  const [cancelPeriodEnd,setCancelPeriodEnd]=useState(null);
   const [importModal,setImportModal]=useState(null); // {rows, mapping, preview}
   const [importLoading,setImportLoading]=useState(false);
   const [importMsg,setImportMsg]=useState("");
@@ -649,7 +650,7 @@ export default function App({ loginOnly = false }){
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
-      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end').eq('id',uid).single(),
+      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end').eq('id',uid).single(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -658,6 +659,7 @@ export default function App({ loginOnly = false }){
     if(!p.error){
       setIsPremium(premiumValue);
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
+      setCancelPeriodEnd(p.data?.subscription_period_end||null);
     }
     // Sur iOS natif, si Supabase dit non-premium, vérifier silencieusement les entitlements Apple
     if(isNative&&!premiumValue){
@@ -971,6 +973,7 @@ export default function App({ loginOnly = false }){
             : "Subscription cancelled. You keep premium access until the end of the period.");
       setCancelMsg(msg);
       setCancelAtPeriodEnd(true);
+      setCancelPeriodEnd(json.period_end||null);
       setCancelStep(0);
     }catch(e){
       setCancelMsg("Erreur : "+e.message);
@@ -2376,7 +2379,9 @@ export default function App({ loginOnly = false }){
               <div style={{marginBottom:12}}>
                 {(cancelAtPeriodEnd||cancelMsg)?(
                   <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.5}}>
-                    ✅ {cancelMsg||(lang==='fr'?"Abonnement annulé. Tu gardes l'accès premium jusqu'à la fin de la période.":"Subscription cancelled. You keep premium access until the end of the period.")}
+                    ✅ {cancelMsg||(lang==='fr'
+                      ? `Abonnement annulé. Tu gardes l'accès premium jusqu'au${cancelPeriodEnd?` ${cancelPeriodEnd}`:" la fin de la période"}.`
+                      : `Subscription cancelled. You keep premium access until${cancelPeriodEnd?` ${cancelPeriodEnd}`:" the end of the period"}.`)}
                   </div>
                 ):cancelStep===0?(
                   <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:"1.5px solid rgba(232,149,109,0.6)",borderRadius:12,color:C.peach,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}

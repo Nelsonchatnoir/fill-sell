@@ -97,8 +97,10 @@ serve(async (req) => {
         cancel_at_period_end: true,
       });
       // current_period_end = date réelle de fin de période payée
-      periodEnd = new Date(canceled.current_period_end * 1000).toLocaleDateString("fr-FR");
+      const d = new Date(canceled.current_period_end * 1000);
+      periodEnd = `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`;
       console.log("[cancel-subscription] cancel_at_period_end=true, fin le:", periodEnd);
+      await supabaseAdmin.from("profiles").update({ subscription_period_end: periodEnd }).eq("id", user.id);
     }
 
     // is_premium reste true — sera mis à false par le webhook customer.subscription.deleted
