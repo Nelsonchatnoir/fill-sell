@@ -39,8 +39,8 @@ const C = {
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;}
-  body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#ffffff;min-height:100vh;touch-action:pan-y;overscroll-behavior:none;}
+  html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;overscroll-behavior:none;background:#ffffff;}
+  body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#ffffff;min-height:100vh;touch-action:pan-y;}
   *{box-sizing:border-box;max-width:100%;}
   svg,svg *{max-width:none!important;overflow:visible;}
   *::-webkit-scrollbar{display:none;}
@@ -1413,7 +1413,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative",overflowY:"scroll",WebkitOverflowScrolling:"touch"}}>
+    <div className="app-root" style={{overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
       <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",padding:"10px 16px"}}>
