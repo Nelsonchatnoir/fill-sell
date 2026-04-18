@@ -204,7 +204,7 @@ export default function LandingPage() {
       <style>{css}</style>
 
       {/* ── NAVBAR ── */}
-      <nav className="lp-nav" aria-label="Navigation principale">
+      <nav className="lp-nav" style={{paddingTop:'env(safe-area-inset-top)'}} aria-label="Navigation principale">
         <div className="lp-nav-inner">
           <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => nav("/")}>
             <img src="/logo.png" height={34} style={{ objectFit: "contain" }}
