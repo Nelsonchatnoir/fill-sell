@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Capacitor } from '@capacitor/core';
-import { initIAP, purchasePremium, restorePurchases, checkEntitlements } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -619,8 +619,8 @@ export default function App({ loginOnly = false }){
   async function handleIAPPurchase(){
     setIapLoading(true);
     try{
-      const purchase=await purchasePremium();
-      if(purchase?.transactionId){
+      const hasPremium=await purchasePremium();
+      if(hasPremium){
         await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
         setIsPremium(true);
         setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
@@ -633,10 +633,7 @@ export default function App({ loginOnly = false }){
   async function handleIAPRestore(){
     setIapLoading(true);
     try{
-      const purchases=await restorePurchases();
-      const hasPremium=purchases.some(
-        p=>p.productIdentifier==='app.fillsell.premium.monthly'||p.productId==='app.fillsell.premium.monthly'
-      );
+      const hasPremium=await restorePurchases();
       if(hasPremium){
         await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
         setIsPremium(true);
@@ -665,8 +662,8 @@ export default function App({ loginOnly = false }){
     }
     // Sur iOS natif, si Supabase dit non-premium, vérifier silencieusement les entitlements Apple
     if(isNative&&!premiumValue){
-      checkEntitlements().then(async hasEntitlement=>{
-        if(hasEntitlement){
+      restorePurchases().then(async hasPremium=>{
+        if(hasPremium){
           await supabase.from('profiles').update({is_premium:true}).eq('id',uid);
           setIsPremium(true);
           console.log('[IAP] silent restore: entitlement found, premium re-synced');
