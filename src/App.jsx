@@ -395,7 +395,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre"};}
+function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
@@ -434,7 +434,7 @@ function getTypeStyle(type){
 const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Auto-Moto':'Vehicles','Beauté':'Beauty','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
-function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date};}
+function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 function getFilteredData_unused(range, salesData){
   const now=new Date();
@@ -535,8 +535,9 @@ export default function App({ loginOnly = false }){
   const [iMarque,setIMarque]=useState("");
   const [iType,setIType]=useState("");
   const [iDesc,setIDesc]=useState("");
-  const [iFrais,setIFrais]=useState("");
-  const [rememberFrais,setRememberFrais]=useState(false);
+  const [iPurchaseCosts,setIPurchaseCosts]=useState("");
+  const [iSellingFees,setISellingFees]=useState("");
+  const [iAlreadySold,setIAlreadySold]=useState(false);
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
@@ -583,7 +584,7 @@ export default function App({ loginOnly = false }){
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
-  const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',fees:'',rememberFees:false}
+  const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -840,11 +841,11 @@ export default function App({ loginOnly = false }){
   async function addItem(){
     if(!iTitle||!iBuy)return;
     if(!isPremium&&items.length>=20){alert(lang==='en'?"⚠️ Free plan limit reached (20 items max).\nUpgrade to add unlimited items.":"⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour ajouter des articles illimités.");return;}
-    const b=parseFloat(iBuy)||0;const s=parseFloat(iSell)||0;const f=parseFloat(iFrais)||0;const hasS=s>0;
-    const mg=hasS?s-b-f:0;const mgp=hasS?(mg/s)*100:0;
+    const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
+    const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=iMarque.trim()?iMarque.trim().charAt(0).toUpperCase()+iMarque.trim().slice(1).toLowerCase():null;
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
@@ -857,26 +858,27 @@ export default function App({ loginOnly = false }){
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
-    setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(b)}`});
+    setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
-    setITitle("");setIBuy("");setISell("");setIMarque("");setIType("");setIDesc("");if(!rememberFrais)setIFrais("");
+    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
-    setSellModal({item,sellPrice:'',fees:saved,rememberFees:!!saved});
+    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved});
   }
 
   async function confirmSell(){
     if(!sellModal)return;
     const sv=parseFloat(sellModal.sellPrice)||0;
     if(!sv||sv<=0)return;
-    const f=parseFloat(sellModal.fees)||0;
-    if(sellModal.rememberFees)localStorage.setItem('savedFees',String(f));
+    const sf=parseFloat(sellModal.sellingFees)||0;
+    if(sellModal.rememberFees)localStorage.setItem('savedFees',String(sf));
     const{item}=sellModal;
-    const mg=sv-item.buy-f;const mgp=(mg/sv)*100;
-    await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu"}).eq('id',item.id);
+    const cogs=item.buy+(item.purchaseCosts||0);
+    const mg=sv-cogs-sf;const mgp=(mg/sv)*100;
+    await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
     setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
     const srow={id:Date.now(),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
     const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
@@ -1689,17 +1691,27 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Prix auquel tu as acheté l'article":"Price you paid for the item"}</div>}
               </div>
               <div>
-                <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={iSell} set={setISell} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="📦" suffix="€"/>
-                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Optionnel — à remplir quand tu vends":"Optional — fill when you sell"}</div>}
+                <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Ex: retrait, nettoyage...":"Ex: pickup, cleaning..."} type="number" icon="🛍️" suffix="€"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Frais liés à l'achat : retrait, transport, nettoyage...":"Purchase-side costs: pickup, transport, cleaning..."}</div>}
               </div>
               <div>
-                <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={iFrais} set={setIFrais} placeholder={lang==='fr'?"Ex: étiquette, enveloppe...":"Ex: label, envelope..."} type="number" icon="📬" suffix="€"/>
-                <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
-                  <input type="checkbox" checked={rememberFrais} onChange={e=>setRememberFrais(e.target.checked)}
-                    style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
-                  <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais pour les prochains articles':'Remember fees for next items'}</span>
+                <label onClick={()=>setIAlreadySold(v=>!v)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"12px 14px",background:iAlreadySold?"#E8F5F0":"#F9FAFB",borderRadius:12,border:`1.5px solid ${iAlreadySold?"#1D9E75":"rgba(0,0,0,0.1)"}`,transition:"all 0.2s",userSelect:"none"}}>
+                  <div style={{width:36,height:20,borderRadius:10,background:iAlreadySold?"#1D9E75":"#D1D5DB",transition:"background 0.2s",position:"relative",flexShrink:0}}>
+                    <div style={{position:"absolute",top:2,left:iAlreadySold?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:700,color:iAlreadySold?"#1D9E75":"#6B7280"}}>{lang==='fr'?'Déjà vendu ?':'Already sold?'}</span>
                 </label>
               </div>
+              {iAlreadySold&&(
+                <>
+                  <div>
+                    <Field label={lang==='fr'?"Prix de vente":"Sell price"} value={iSell} set={setISell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
+                  </div>
+                  <div>
+                    <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Ex: commission Vinted, envoi...":"Ex: Vinted fee, shipping..."} type="number" icon="📬" suffix="€"/>
+                  </div>
+                </>
+              )}
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
                 <textarea
@@ -1728,7 +1740,7 @@ export default function App({ loginOnly = false }){
                 ? <PremiumBanner userEmail={user?.email}/>
                 : !isPremium&&items.length>=20&&isNative
                 ? null
-                : <Btn onClick={addItem} disabled={!iTitle||!iBuy} color={iSaved?"#38A169":"#1D9E75"} full>
+                : <Btn onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} color={iSaved?"#38A169":"#1D9E75"} full>
                     {iSaved?(lang==='fr'?"✓ Ajouté !":"✓ Added!"):items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice 🚀":"Add your first item → see your profit 🚀"):t('ajouterArticle')}
                   </Btn>
               }
@@ -1840,7 +1852,7 @@ export default function App({ loginOnly = false }){
                               {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
                               {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                             </div>
-                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy)} → {lang==='fr'?'Vente':'Sold'} {fmt(item.sell)}</div>
+                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt(item.sell)}</div>
                           </div>
                           <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
                             <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt(item.margin)}</div>
@@ -1905,7 +1917,7 @@ export default function App({ loginOnly = false }){
                             {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy)}</span></div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy+(item.purchaseCosts||0))}</span></div>
                         </div>
                         <div style={{paddingRight:36,flexShrink:0}}>
                           <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>
@@ -2219,7 +2231,7 @@ export default function App({ loginOnly = false }){
             <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Field label={t('prixDeVente')} value={sellModal.sellPrice} set={v=>setSellModal(p=>({...p,sellPrice:v}))} placeholder="0,00" type="number" icon="💰" suffix="€"/>
-              <Field label={`${t('fraisAnnexes')} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.fees} set={v=>setSellModal(p=>({...p,fees:v}))} placeholder="0,00" type="number" icon="📬" suffix="€"/>
+              <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix="€"/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
                 <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>
                 <span style={{fontSize:12,fontWeight:600,color:C.sub}}>{t('memoriserFrais')}</span>
