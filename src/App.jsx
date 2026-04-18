@@ -536,7 +536,8 @@ export default function App({ loginOnly = false }){
   const [iType,setIType]=useState("");
   const [iDesc,setIDesc]=useState("");
   const [iPurchaseCosts,setIPurchaseCosts]=useState("");
-  const [iSellingFees,setISellingFees]=useState("");
+  const [iSellingFees,setISellingFees]=useState(()=>localStorage.getItem('savedFees')||"");
+  const [iRememberSellingFees,setIRememberSellingFees]=useState(()=>!!localStorage.getItem('savedFees'));
   const [iAlreadySold,setIAlreadySold]=useState(false);
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
@@ -860,7 +861,8 @@ export default function App({ loginOnly = false }){
     setISaved(true);setTimeout(()=>setISaved(false),1600);
     setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
-    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");
+    if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
+    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -1691,8 +1693,8 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Prix auquel tu as acheté l'article":"Price you paid for the item"}</div>}
               </div>
               <div>
-                <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Ex: retrait, nettoyage...":"Ex: pickup, cleaning..."} type="number" icon="🛍️" suffix="€"/>
-                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Frais liés à l'achat : retrait, transport, nettoyage...":"Purchase-side costs: pickup, transport, cleaning..."}</div>}
+                <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Livraison fournisseur, réparation...":"Supplier shipping, repair..."} type="number" icon="🛍️" suffix="€"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Frais liés à l'achat : livraison, réparation...":"Purchase-side costs: shipping, repair..."}</div>}
               </div>
               <div>
                 <label onClick={()=>setIAlreadySold(v=>!v)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"12px 14px",background:iAlreadySold?"#E8F5F0":"#F9FAFB",borderRadius:12,border:`1.5px solid ${iAlreadySold?"#1D9E75":"rgba(0,0,0,0.1)"}`,transition:"all 0.2s",userSelect:"none"}}>
@@ -1708,7 +1710,11 @@ export default function App({ loginOnly = false }){
                     <Field label={lang==='fr'?"Prix de vente":"Sell price"} value={iSell} set={setISell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
                   </div>
                   <div>
-                    <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Ex: commission Vinted, envoi...":"Ex: Vinted fee, shipping..."} type="number" icon="📬" suffix="€"/>
+                    <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix="€"/>
+                    <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
+                      <input type="checkbox" checked={iRememberSellingFees} onChange={e=>setIRememberSellingFees(e.target.checked)} style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
+                      <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais de vente':'Remember selling fees'}</span>
+                    </label>
                   </div>
                 </>
               )}
