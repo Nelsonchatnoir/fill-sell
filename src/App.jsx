@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Capacitor } from '@capacitor/core';
+import { SignInWithApple } from '@capacitor-community/apple-sign-in';
 import { initIAP, purchasePremium, restorePurchases, checkEntitlements } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate } from "react-router-dom";
@@ -1301,6 +1302,27 @@ export default function App({ loginOnly = false }){
     XLSX.writeFile(wb,`fillsell-export-${today}.xlsx`);
   }
 
+  const handleAppleSignIn = async () => {
+    try {
+      const result = await SignInWithApple.authorize({
+        clientId: 'app.fillsell.app',
+        redirectURI: 'https://fillsell.app',
+        scopes: 'email name',
+      });
+      const { identityToken } = result.response;
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: identityToken,
+      });
+      if (error) throw error;
+    } catch (e) {
+      if (e?.code !== 'USER_CANCELLED') {
+        console.error('Apple Sign In error:', e);
+        alert('Erreur Sign in with Apple');
+      }
+    }
+  };
+
   async function handleLogin(){
     if(!email||!password){alert("Remplis email et mot de passe");return;}
     const{error}=await supabase.auth.signInWithPassword({email,password});
@@ -1371,6 +1393,17 @@ export default function App({ loginOnly = false }){
           <div style={{fontSize:15,color:C.sub,fontWeight:500}}>{loginTexts.subtitle}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {isNative&&(
+            <div style={{marginBottom:16}}>
+              <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:12,padding:"14px 16px",fontSize:16,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
+                <span style={{fontSize:20}}>&#63743;</span>
+                {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
+              </button>
+              <div style={{textAlign:"center",color:"#999",fontSize:13,marginTop:12}}>
+                {lang==='fr'?'— ou —':'— or —'}
+              </div>
+            </div>
+          )}
           <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
           {!forgotMode&&(
