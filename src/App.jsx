@@ -1302,11 +1302,17 @@ export default function App({ loginOnly = false }){
   const handleAppleSignIn = async () => {
     try {
       const { identityToken } = await AppleSignIn.signIn();
-      const { error } = await supabase.auth.signInWithIdToken({
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: identityToken,
       });
       if (error) throw error;
+      if (data?.session) {
+        const u = data.session.user;
+        setUser(u);
+        await fetchAll(u.id);
+        navigate('/app');
+      }
     } catch (e) {
       if (e?.message !== 'USER_CANCELLED') {
         console.error('Apple Sign In error:', e);
