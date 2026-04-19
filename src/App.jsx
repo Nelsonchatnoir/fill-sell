@@ -2426,7 +2426,14 @@ export default function App({ loginOnly = false }){
             {/* Désabonnement — visible uniquement si premium */}
             {isPremium&&(
               <div style={{marginBottom:12}}>
-                {(cancelAtPeriodEnd||cancelMsg)?(
+                {isNative?(
+                  /* iOS IAP : géré par Apple, pas Stripe */
+                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
+                    ⭐ {lang==='fr'
+                      ? 'Pour gérer votre abonnement, allez dans Réglages → Apple ID → Abonnements.'
+                      : 'To manage your subscription, go to Settings → Apple ID → Subscriptions.'}
+                  </div>
+                ):(cancelAtPeriodEnd||cancelMsg)?(
                   <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.5}}>
                     ✅ {cancelMsg||(lang==='fr'
                       ? `Abonnement annulé. Tu gardes l'accès premium jusqu'au${cancelPeriodEnd?` ${cancelPeriodEnd}`:" la fin de la période"}.`
