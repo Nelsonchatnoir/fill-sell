@@ -10,8 +10,6 @@ import Toast from './components/Toast';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
-import { Share } from '@capacitor/share';
-import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
@@ -1302,20 +1300,19 @@ export default function App({ loginOnly = false }){
 
     if(isNative){
       try{
-        // 1. Génère en ArrayBuffer puis convertit en base64
+        const [{Share},{Filesystem,Directory}]=await Promise.all([
+          import('@capacitor/share'),
+          import('@capacitor/filesystem'),
+        ]);
+
         const wbout=XLSX.write(wb,{bookType:"xlsx",type:"array"});
         const bytes=new Uint8Array(wbout);
         let binary="";
         for(let i=0;i<bytes.byteLength;i++) binary+=String.fromCharCode(bytes[i]);
         const base64=btoa(binary);
 
-        // 2. Écrit dans le cache iOS
         await Filesystem.writeFile({path:filename,data:base64,directory:Directory.Cache});
-
-        // 3. Récupère l'URI native
         const {uri}=await Filesystem.getUri({path:filename,directory:Directory.Cache});
-
-        // 4. Share Sheet
         await Share.share({title:"Export Fill & Sell",url:uri,dialogTitle:"Exporter"});
       } catch(e){
         alert("Export disponible sur la version web : fillsell.app");
