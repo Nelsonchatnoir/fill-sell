@@ -10,6 +10,7 @@ import Toast from './components/Toast';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
+import { Share } from '@capacitor/share';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
@@ -1271,7 +1272,7 @@ export default function App({ loginOnly = false }){
   }
 
   // ── Export Excel ─────────────────────────────────────────────────────────
-  function handleExport(){
+  async function handleExport(){
     const today=new Date().toISOString().split("T")[0];
     const wb=XLSX.utils.book_new();
 
@@ -1296,7 +1297,30 @@ export default function App({ loginOnly = false }){
     }));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(invData),"Inventaire");
 
-    XLSX.writeFile(wb,`fillsell-export-${today}.xlsx`);
+    const filename=`fillsell-export-${today}.xlsx`;
+
+    if(isNative){
+      // iOS natif : Share Sheet
+      const wbout=XLSX.write(wb,{bookType:"xlsx",type:"base64"});
+      const fileUrl=`data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${wbout}`;
+      try{
+        const canShare=await Share.canShare();
+        if(canShare.value){
+          await Share.share({
+            title:"Export Fill & Sell",
+            text:"Mon inventaire Fill & Sell",
+            url:fileUrl,
+            dialogTitle:"Exporter",
+          });
+        } else {
+          alert("Export disponible sur la version web : fillsell.app");
+        }
+      } catch(e){
+        alert("Export disponible sur la version web : fillsell.app");
+      }
+    } else {
+      XLSX.writeFile(wb,filename);
+    }
   }
 
   const handleAppleSignIn = async () => {
