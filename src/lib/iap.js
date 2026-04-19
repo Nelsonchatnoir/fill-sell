@@ -1,5 +1,18 @@
 import { NativePurchases } from '@capgo/native-purchases';
 
+export const initIAP = async () => {
+  try {
+    const { products } = await NativePurchases.getProducts({
+      productIdentifiers: ['app.fillsell.premium.monthly'],
+      productType: 'inapp',
+    });
+    return products?.[0] || null;
+  } catch (e) {
+    console.error('[IAP] init error:', e);
+    return null;
+  }
+};
+
 export const purchasePremium = async () => {
   try {
     const { products } = await NativePurchases.getProducts({
