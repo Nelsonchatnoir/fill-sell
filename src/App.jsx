@@ -11,6 +11,7 @@ import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
 import { Share } from '@capacitor/share';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
@@ -1300,21 +1301,22 @@ export default function App({ loginOnly = false }){
     const filename=`fillsell-export-${today}.xlsx`;
 
     if(isNative){
-      // iOS natif : Share Sheet
-      const wbout=XLSX.write(wb,{bookType:"xlsx",type:"base64"});
-      const fileUrl=`data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${wbout}`;
       try{
-        const canShare=await Share.canShare();
-        if(canShare.value){
-          await Share.share({
-            title:"Export Fill & Sell",
-            text:"Mon inventaire Fill & Sell",
-            url:fileUrl,
-            dialogTitle:"Exporter",
-          });
-        } else {
-          alert("Export disponible sur la version web : fillsell.app");
-        }
+        // 1. Génère en ArrayBuffer puis convertit en base64
+        const wbout=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+        const bytes=new Uint8Array(wbout);
+        let binary="";
+        for(let i=0;i<bytes.byteLength;i++) binary+=String.fromCharCode(bytes[i]);
+        const base64=btoa(binary);
+
+        // 2. Écrit dans le cache iOS
+        await Filesystem.writeFile({path:filename,data:base64,directory:Directory.Cache});
+
+        // 3. Récupère l'URI native
+        const {uri}=await Filesystem.getUri({path:filename,directory:Directory.Cache});
+
+        // 4. Share Sheet
+        await Share.share({title:"Export Fill & Sell",url:uri,dialogTitle:"Exporter"});
       } catch(e){
         alert("Export disponible sur la version web : fillsell.app");
       }
