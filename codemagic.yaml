@@ -1,0 +1,54 @@
+workflows:
+  capacitor-ios:
+    name: Capacitor iOS Build
+    max_build_duration: 60
+    environment:
+      node: 18
+      xcode: latest
+      vars:
+        BUNDLE_ID: app.fillsell.app
+    integrations:
+      app_store_connect: Codemagic
+    scripts:
+      - name: Install dependencies
+        script: npm install
+      - name: Build web app
+        script: npm run build
+      - name: Fix capacitor.config.json
+        script: |
+          cat > ios/App/App/capacitor.config.json << 'EOF'
+          {
+            "appId": "app.fillsell.app",
+            "appName": "Fill & Sell",
+            "webDir": "dist",
+            "server": { "androidScheme": "https" },
+            "plugins": {
+              "SplashScreen": {
+                "launchShowDuration": 2000,
+                "backgroundColor": "#1D9E75",
+                "showSpinner": false
+              }
+            },
+            "packageClassList": [
+              "CAPBrowserPlugin",
+              "SplashScreenPlugin",
+              "NativePurchasesPlugin",
+              "PurchasesPlugin",
+              "AppleSignInPlugin"
+            ]
+          }
+          EOF
+      - name: Sync Capacitor
+        script: npx cap sync ios
+      - name: Build IPA
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --project ios/App/App.xcodeproj \
+            --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
