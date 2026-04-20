@@ -585,6 +585,7 @@ export default function App({ loginOnly = false }){
   const importRef=useRef(null);
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
+  const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
 
@@ -829,6 +830,7 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{setSoldShowAll(false);},[filterMarqueSold]);
   useEffect(()=>{setShowAllStock(false);},[filterMarque]);
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);},[search]);
+  useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=0;},[tab]);
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);setFilterMarque("Toutes");setFilterMarqueSold("Toutes");},[filterType]);
   const soldVisible=soldShowAll?soldFiltre:soldFiltre.slice(0,10);
   const stockVisible=showAllStock?stockFiltre:stockFiltre.slice(0,10);
@@ -1465,7 +1467,7 @@ export default function App({ loginOnly = false }){
   );
 
   return(
-    <div className="app-root" style={{height:"100dvh",overflowY:"auto",WebkitOverflowScrolling:"touch",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
+    <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
       <style>{css}</style>
 
       <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",paddingTop:"calc(10px + env(safe-area-inset-top))",paddingRight:"16px",paddingBottom:"10px",paddingLeft:"16px"}}>
@@ -1514,7 +1516,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div className="wrap page-pad" style={{padding:"18px 14px 16px",background:"#F5F6F5",flex:"1"}}>
+      <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"#F5F6F5",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
@@ -1951,7 +1953,7 @@ export default function App({ loginOnly = false }){
                     <span style={{fontSize:40}}>📦</span>
                     <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",textAlign:"center"}}>{t('premierArticle')}</div>
                     <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",textAlign:"center",maxWidth:200,lineHeight:1.5}}>{t('commenceSuivi')}</div>
-                    <button onClick={()=>{window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
+                    <button onClick={()=>{scrollRef.current?.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
                       style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:8,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
                       onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
                       onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
