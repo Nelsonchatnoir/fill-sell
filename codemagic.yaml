@@ -43,6 +43,8 @@ workflows:
           EOF
       - name: Sync Capacitor
         script: npx cap sync ios
+      - name: Set build number
+        script: cd ios/App && agvtool new-version -all $(expr 6 + $BUILD_NUMBER)
       - name: Build IPA
         script: |
           xcode-project use-profiles
