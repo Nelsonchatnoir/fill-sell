@@ -66,10 +66,36 @@ workflows:
           </dict>
           </plist>
           EOF
-          xcode-project build-ipa \
-            --project ios/App/App.xcodeproj \
-            --scheme App \
-            --config Release 2>&1 | tee /tmp/build.log || (grep -E "error:|ARCHIVE FAILED" /tmp/build.log | tail -30 && exit 1)
+          set -o pipefail
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -config Release \
+            -archivePath /tmp/App.xcarchive \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=W7268K9S7M \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="FillSell AppStore" \
+            2>&1 | tee /tmp/xcode_archive.log; ARCHIVE_STATUS=${PIPESTATUS[0]}
+          if [ $ARCHIVE_STATUS -ne 0 ]; then
+            echo "=== ARCHIVE ERRORS ==="
+            grep -E "error:|ARCHIVE FAILED|note:" /tmp/xcode_archive.log | tail -50
+            exit $ARCHIVE_STATUS
+          fi
+          xcodebuild \
+            -exportArchive \
+            -archivePath /tmp/App.xcarchive \
+            -exportPath /tmp/ipa \
+            -exportOptionsPlist /Users/builder/export_options.plist \
+            2>&1 | tee /tmp/xcode_export.log; EXPORT_STATUS=${PIPESTATUS[0]}
+          if [ $EXPORT_STATUS -ne 0 ]; then
+            echo "=== EXPORT ERRORS ==="
+            grep -E "error:|EXPORT FAILED" /tmp/xcode_export.log | tail -50
+            exit $EXPORT_STATUS
+          fi
+          mkdir -p build/ios/ipa
+          cp /tmp/ipa/*.ipa build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
