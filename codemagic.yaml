@@ -41,6 +41,10 @@ workflows:
             ]
           }
           EOF
+      - name: Verify capacitor.config.json
+        script: |
+          echo "=== capacitor.config.json content ==="
+          cat ios/App/App/capacitor.config.json
       - name: Sync Capacitor
         script: npx cap sync ios
       - name: Set build number
