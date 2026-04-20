@@ -3,7 +3,7 @@ workflows:
     name: Capacitor iOS Build
     max_build_duration: 60
     environment:
-      node: 18
+      node: 20
       xcode: latest
       vars:
         BUNDLE_ID: app.fillsell.app
