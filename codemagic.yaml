@@ -7,6 +7,9 @@ workflows:
       xcode: latest
       vars:
         BUNDLE_ID: app.fillsell.app
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: app.fillsell.app
     integrations:
       app_store_connect: Codemagic
     scripts:
@@ -42,7 +45,6 @@ workflows:
         script: npx cap sync ios
       - name: Build IPA
         script: |
-          xcode-project use-profiles
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
