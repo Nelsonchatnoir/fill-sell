@@ -17,6 +17,8 @@ workflows:
         script: npm install
       - name: Build web app
         script: npm run build
+      - name: Sync Capacitor
+        script: npx cap sync ios
       - name: Fix capacitor.config.json
         script: |
           cat > ios/App/App/capacitor.config.json << 'EOF'
@@ -45,8 +47,6 @@ workflows:
         script: |
           echo "=== capacitor.config.json content ==="
           cat ios/App/App/capacitor.config.json
-      - name: Sync Capacitor
-        script: npx cap sync ios
       - name: Set build number
         script: cd ios/App && agvtool new-version -all $(expr 6 + $BUILD_NUMBER)
       - name: Build IPA
