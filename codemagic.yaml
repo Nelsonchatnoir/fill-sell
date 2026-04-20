@@ -42,14 +42,11 @@ workflows:
         script: npx cap sync ios
       - name: Build IPA
         script: |
-          xcode-project use-profiles \
-            --type app-store \
-            --bundle-id app.fillsell.app \
-            --certificate-name "FillSell Distribution"
-
+          xcode-project use-profiles
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
-            --scheme App
+            --scheme App \
+            --config Release
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
