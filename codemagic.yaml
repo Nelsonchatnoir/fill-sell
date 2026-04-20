@@ -66,11 +66,10 @@ workflows:
           </dict>
           </plist>
           EOF
-          set -x
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
-            --config Release
+            --config Release 2>&1 | tee /tmp/build.log || (grep -E "error:|ARCHIVE FAILED" /tmp/build.log | tail -30 && exit 1)
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
