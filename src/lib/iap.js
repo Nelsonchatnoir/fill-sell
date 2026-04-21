@@ -1,6 +1,6 @@
 import { NativePurchases } from '@capgo/native-purchases';
 
-const PRODUCT_ID = 'app.fillsell.premium.monthly';
+const PRODUCT_ID = 'app.fillsell.premium.sub';
 
 export const initIAP = async () => {
   try {
