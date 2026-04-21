@@ -1319,6 +1319,9 @@ export default function App({ loginOnly = false }){
   }
 
   const handleAppleSignIn = async () => {
+    // FIX 1 : ne pas re-déclencher si session déjà active
+    const { data: { session: existingSession } } = await supabase.auth.getSession();
+    if (existingSession) { navigate('/app'); return; }
     try {
       const { identityToken } = await AppleSignIn.signIn();
       const { data, error } = await supabase.auth.signInWithIdToken({
@@ -1333,7 +1336,15 @@ export default function App({ loginOnly = false }){
         navigate('/app');
       }
     } catch (e) {
-      if (e?.message !== 'USER_CANCELLED') {
+      // FIX 2 : annulation silencieuse (code 1001 iOS ou USER_CANCELLED)
+      const isCancelled =
+        e?.code === 1001 ||
+        e?.code === '1001' ||
+        e?.message === 'USER_CANCELLED' ||
+        e?.message?.includes('1001') ||
+        e?.message?.includes('cancel') ||
+        e?.message?.includes('Cancel');
+      if (!isCancelled) {
         console.error('Apple Sign In error:', e);
         alert('Erreur Sign in with Apple: ' + e.message);
       }
