@@ -1,10 +1,13 @@
 import { NativePurchases } from '@capgo/native-purchases';
 
+const PRODUCT_ID = 'app.fillsell.premium.monthly';
+
 export const initIAP = async () => {
   try {
+    await NativePurchases.setup({ appUserID: null });
     const { products } = await NativePurchases.getProducts({
-      productIdentifiers: ['app.fillsell.premium.monthly'],
-      productType: 'inapp',
+      productIdentifiers: [PRODUCT_ID],
+      productType: 'subs',
     });
     return products?.[0] || null;
   } catch (e) {
@@ -16,14 +19,19 @@ export const initIAP = async () => {
 export const purchasePremium = async () => {
   try {
     const { products } = await NativePurchases.getProducts({
-      productIdentifiers: ['app.fillsell.premium.monthly'],
-      productType: 'inapp',
+      productIdentifiers: [PRODUCT_ID],
+      productType: 'subs',
     });
     if (!products || products.length === 0) throw new Error('Produit introuvable');
-    await NativePurchases.purchaseProduct({
-      productIdentifier: 'app.fillsell.premium.monthly',
+    const result = await NativePurchases.purchaseProduct({
+      productIdentifier: PRODUCT_ID,
+      productType: 'subs',
     });
-    return true;
+    const isActive =
+      result?.activeSubscriptions?.includes(PRODUCT_ID) ??
+      result?.allPurchasedProductIdentifiers?.includes(PRODUCT_ID) ??
+      false;
+    return isActive;
   } catch (e) {
     if (e?.code === 'USER_CANCELLED') return false;
     throw e;
@@ -33,7 +41,7 @@ export const purchasePremium = async () => {
 export const restorePurchases = async () => {
   try {
     const restored = await NativePurchases.restorePurchases();
-    return restored?.activeSubscriptions?.includes('app.fillsell.premium.monthly') ?? false;
+    return restored?.activeSubscriptions?.includes(PRODUCT_ID) ?? false;
   } catch (e) {
     throw e;
   }
