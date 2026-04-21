@@ -35,8 +35,13 @@ export const purchasePremium = async () => {
 
 export const restorePurchases = async () => {
   try {
-    const restored = await NativePurchases.restorePurchases();
-    return restored?.activeSubscriptions?.includes(PRODUCT_ID) ?? false;
+    await NativePurchases.restorePurchases();
+    const { purchases } = await NativePurchases.getPurchases();
+    const tx = purchases?.find(p => p.productIdentifier === PRODUCT_ID);
+    if (!tx) return false;
+    if (tx.isActive === true) return true;
+    if (tx.expirationDate && new Date(tx.expirationDate) > new Date()) return true;
+    return false;
   } catch (e) {
     throw e;
   }
