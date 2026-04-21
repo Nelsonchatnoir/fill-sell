@@ -64,7 +64,7 @@ workflows:
             <key>provisioningProfiles</key>
             <dict>
               <key>app.fillsell.app</key>
-              <string>FillSell AppStore</string>
+              <string>FillSell AppStore 3</string>
             </dict>
             <key>signingCertificate</key>
             <string>Apple Distribution</string>
