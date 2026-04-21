@@ -49,13 +49,28 @@ workflows:
           cat ios/App/App/capacitor.config.json
       - name: Set build number
         script: cd ios/App && agvtool new-version -all $(expr 6 + $BUILD_NUMBER)
+      - name: Create ExportOptions.plist
+        script: |
+          cat > /tmp/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>BQ379Y93X3</string>
+          </dict>
+          </plist>
+          EOF
       - name: Build IPA
         script: |
           xcode-project use-profiles
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
-            --config Release
+            --config Release \
+            --export-options-plist /tmp/ExportOptions.plist
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
