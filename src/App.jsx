@@ -635,7 +635,7 @@ export default function App({ loginOnly = false }){
   async function handleIAPRestore(){
     setIapLoading(true);
     try{
-      const hasPremium=await restorePurchases();
+      const hasPremium=await restorePurchases('button');
       if(hasPremium){
         await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
         setIsPremium(true);
@@ -664,7 +664,7 @@ export default function App({ loginOnly = false }){
     }
     // Sur iOS natif, si Supabase dit non-premium, vérifier silencieusement les entitlements Apple
     if(isNative&&!premiumValue){
-      restorePurchases().then(async hasPremium=>{
+      restorePurchases('silent-restore').then(async hasPremium=>{
         if(hasPremium){
           await supabase.from('profiles').update({is_premium:true}).eq('id',uid);
           setIsPremium(true);
