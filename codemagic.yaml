@@ -38,7 +38,6 @@ workflows:
               "CAPBrowserPlugin",
               "SplashScreenPlugin",
               "NativePurchasesPlugin",
-              "PurchasesPlugin",
               "AppleSignInPlugin"
             ]
           }
