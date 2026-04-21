@@ -662,16 +662,6 @@ export default function App({ loginOnly = false }){
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
     }
-    // Sur iOS natif, si Supabase dit non-premium, vérifier silencieusement les entitlements Apple
-    if(isNative&&!premiumValue){
-      restorePurchases().then(async hasPremium=>{
-        if(hasPremium){
-          await supabase.from('profiles').update({is_premium:true}).eq('id',uid);
-          setIsPremium(true);
-          console.log('[IAP] silent restore: entitlement found, premium re-synced');
-        }
-      }).catch(()=>{});
-    }
     setLoading(false);
   }
 
