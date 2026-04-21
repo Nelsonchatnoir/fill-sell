@@ -4,7 +4,6 @@ const PRODUCT_ID = 'app.fillsell.premium.monthly';
 
 export const initIAP = async () => {
   try {
-    await NativePurchases.setup({ appUserID: null });
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [PRODUCT_ID],
       productType: 'subs',
@@ -27,11 +26,7 @@ export const purchasePremium = async () => {
       productIdentifier: PRODUCT_ID,
       productType: 'subs',
     });
-    const isActive =
-      result?.activeSubscriptions?.includes(PRODUCT_ID) ??
-      result?.allPurchasedProductIdentifiers?.includes(PRODUCT_ID) ??
-      false;
-    return isActive;
+    return result?.productIdentifier === PRODUCT_ID;
   } catch (e) {
     if (e?.code === 'USER_CANCELLED') return false;
     throw e;
