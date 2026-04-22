@@ -579,6 +579,8 @@ export default function App({ loginOnly = false }){
   const [cancelMsg,setCancelMsg]=useState("");
   const [cancelAtPeriodEnd,setCancelAtPeriodEnd]=useState(false);
   const [cancelPeriodEnd,setCancelPeriodEnd]=useState(null);
+  const [deleteStep,setDeleteStep]=useState(0);
+  const [deleteLoading,setDeleteLoading]=useState(false);
   const [importModal,setImportModal]=useState(null); // {rows, mapping, preview}
   const [importLoading,setImportLoading]=useState(false);
   const [importMsg,setImportMsg]=useState("");
@@ -1381,6 +1383,31 @@ export default function App({ loginOnly = false }){
     await supabase.auth.signOut();
     setUser(null);setSales([]);setItems([]);setResetStep(0);
     navigate("/");
+  }
+
+  async function handleDeleteAccount(){
+    if(!user) return;
+    setDeleteLoading(true);
+    try {
+      await supabase.from("inventaire").delete().eq("user_id",user.id);
+      await supabase.from("ventes").delete().eq("user_id",user.id);
+      await supabase.from("profiles").delete().eq("id",user.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const jwt = session?.access_token;
+      const res = await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/delete-account", {
+        method:"POST",
+        headers:{ "Authorization":`Bearer ${jwt}`, "Content-Type":"application/json" },
+      });
+      if(!res.ok){ const e=await res.json(); throw new Error(e.error||"Erreur suppression compte"); }
+      await supabase.auth.signOut();
+      setUser(null);setSales([]);setItems([]);
+      navigate("/");
+    } catch(err){
+      alert(lang==='fr'?`Erreur : ${err.message}`:`Error: ${err.message}`);
+    } finally {
+      setDeleteLoading(false);
+      setDeleteStep(0);
+    }
   }
 
   const TABS_MOBILE=[
@@ -2439,11 +2466,11 @@ export default function App({ loginOnly = false }){
       {/* ── SETTINGS DRAWER ── */}
       {showSettings&&(
         <>
-          <div onClick={()=>setShowSettings(false)} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:384,padding:24,boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
               <div style={{fontSize:16,fontWeight:800,color:C.text}}>{t('parametres')}</div>
-              <button onClick={()=>setShowSettings(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
+              <button onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
             </div>
 
             {/* Profil */}
@@ -2532,6 +2559,58 @@ export default function App({ loginOnly = false }){
               onMouseEnter={e=>e.currentTarget.style.background="rgba(229,62,62,0.06)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >{t('seDeconnecter')}</button>
+
+            {/* Suppression de compte */}
+            <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid rgba(0,0,0,0.07)"}}>
+              {deleteStep===0&&(
+                <button onClick={()=>setDeleteStep(1)}
+                  style={{width:"100%",padding:"11px",background:"transparent",border:"none",borderRadius:12,color:"#9CA3AF",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.color=C.red}
+                  onMouseLeave={e=>e.currentTarget.style.color="#9CA3AF"}
+                >
+                  {lang==='fr'?'Supprimer mon compte':'Delete my account'}
+                </button>
+              )}
+              {deleteStep===1&&(
+                <div style={{background:C.redLight,border:`1.5px solid ${C.red}44`,borderRadius:12,padding:"14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>
+                    {lang==='fr'?'Êtes-vous sûr ?':'Are you sure?'}
+                  </div>
+                  <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>
+                    {lang==='fr'?'Cette action est irréversible.':'This action is irreversible.'}
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>setDeleteStep(2)} style={{flex:1,padding:"9px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      {lang==='fr'?'Continuer':'Continue'}
+                    </button>
+                    <button onClick={()=>setDeleteStep(0)} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                      {lang==='fr'?'Annuler':'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {deleteStep===2&&(
+                <div style={{background:C.redLight,border:`2px solid ${C.red}`,borderRadius:12,padding:"14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>
+                    {lang==='fr'?'Confirmation finale':'Final confirmation'}
+                  </div>
+                  <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>
+                    {lang==='fr'
+                      ?'Toutes vos données seront supprimées définitivement. Cette action ne peut pas être annulée.'
+                      :'All your data will be permanently deleted. This action cannot be undone.'}
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={handleDeleteAccount} disabled={deleteLoading}
+                      style={{flex:1,padding:"9px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:deleteLoading?"not-allowed":"pointer",opacity:deleteLoading?0.7:1}}>
+                      {deleteLoading?"...":(lang==='fr'?'Supprimer définitivement':'Delete permanently')}
+                    </button>
+                    <button onClick={()=>setDeleteStep(0)} disabled={deleteLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                      {lang==='fr'?'Annuler':'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           </div>
           <style>{`
