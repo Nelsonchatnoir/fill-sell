@@ -27,16 +27,19 @@ serve(async (req) => {
       });
     }
 
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
-
-    if (authError || !user) {
+    let userId: string;
+    try {
+      const payload = JSON.parse(atob(jwt.split(".")[1]));
+      userId = payload.sub;
+      if (!userId) throw new Error("sub manquant");
+    } catch {
       return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
         status: 401,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteError) {
       console.error("[delete-account] Erreur suppression auth:", deleteError.message);
@@ -46,7 +49,7 @@ serve(async (req) => {
       });
     }
 
-    console.log("[delete-account] Compte supprimé:", user.id);
+    console.log("[delete-account] Compte supprimé:", userId);
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
