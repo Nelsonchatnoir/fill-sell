@@ -1394,10 +1394,17 @@ export default function App({ loginOnly = false }){
       await supabase.from("profiles").delete().eq("id",user.id);
       const { data: { session } } = await supabase.auth.getSession();
       const jwt = session?.access_token;
-      const res = await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/delete-account", {
-        method:"POST",
-        headers:{ "Authorization":`Bearer ${jwt}`, "Content-Type":"application/json" },
-      });
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-account`,
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "Authorization":`Bearer ${jwt}`,
+            "apikey":import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+        }
+      );
       if(!res.ok){ const e=await res.json(); throw new Error(e.error||"Erreur suppression compte"); }
       await supabase.auth.signOut();
       setUser(null);setSales([]);setItems([]);
