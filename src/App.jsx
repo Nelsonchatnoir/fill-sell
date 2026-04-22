@@ -1389,11 +1389,15 @@ export default function App({ loginOnly = false }){
     if(!user) return;
     setDeleteLoading(true);
     try {
+      console.log("step 1 - delete inventaire");
       await supabase.from("inventaire").delete().eq("user_id",user.id);
+      console.log("step 2 - delete ventes");
       await supabase.from("ventes").delete().eq("user_id",user.id);
+      console.log("step 3 - delete profiles");
       await supabase.from("profiles").delete().eq("id",user.id);
       const { data: { session } } = await supabase.auth.getSession();
       const jwt = session?.access_token;
+      console.log("step 4 - fetch", import.meta.env.VITE_SUPABASE_URL, jwt ? "jwt ok" : "jwt null");
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-account`,
         {
@@ -1405,6 +1409,7 @@ export default function App({ loginOnly = false }){
           },
         }
       );
+      console.log("step 5 - res.ok:", res.ok);
       if(!res.ok){ const e=await res.json(); throw new Error(e.error||"Erreur suppression compte"); }
       await supabase.auth.signOut();
       setUser(null);setSales([]);setItems([]);
