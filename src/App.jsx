@@ -635,7 +635,7 @@ export default function App({ loginOnly = false }){
   async function handleIAPRestore(){
     setIapLoading(true);
     try{
-      const hasPremium=await restorePurchases();
+      const hasPremium=await restorePurchases('button');
       if(hasPremium){
         await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
         setIsPremium(true);
@@ -662,16 +662,6 @@ export default function App({ loginOnly = false }){
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
     }
-    // Sur iOS natif, si Supabase dit non-premium, vérifier silencieusement les entitlements Apple
-    if(isNative&&!premiumValue){
-      restorePurchases().then(async hasPremium=>{
-        if(hasPremium){
-          await supabase.from('profiles').update({is_premium:true}).eq('id',uid);
-          setIsPremium(true);
-          console.log('[IAP] silent restore: entitlement found, premium re-synced');
-        }
-      }).catch(()=>{});
-    }
     setLoading(false);
   }
 
@@ -679,19 +669,20 @@ export default function App({ loginOnly = false }){
     let mounted=true;
     supabase.auth.getSession().then(({data:{session}})=>{
       const u=session?.user??null;
-      setUser(u);
-      if(u) fetchAll(u.id);
+      if(u){ setUser(u); fetchAll(u.id); setAuthLoading(false); }
       else setLoading(false);
-      setAuthLoading(false);
     });
     if(isNative){
       initIAP().then(product=>{ if(mounted) setIapProduct(product); });
     }
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       const u=session?.user??null;
       setUser(u);
-      if(u) fetchAll(u.id);
-      else{setSales([]);setItems([]);setLoading(false);}
+      if(event==='INITIAL_SESSION') setAuthLoading(false);
+      if(u){
+        if(event==='SIGNED_IN'){ setTab(0); localStorage.setItem('tab','0'); }
+        fetchAll(u.id);
+      }else{setSales([]);setItems([]);setLoading(false);}
     });
     return()=>{ mounted=false; subscription.unsubscribe(); };
   },[]);
