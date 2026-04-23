@@ -1,6 +1,6 @@
 import { NativePurchases } from '@capgo/native-purchases';
 
-const PRODUCT_ID = 'app.fillsell.premium.monthly';
+const PRODUCT_ID = 'app.fillsell.premium.sub';
 
 export const initIAP = async () => {
   try {
@@ -37,9 +37,14 @@ export const purchasePremium = async () => {
 
 export const restorePurchases = async (source) => {
   try {
-    const restored = await NativePurchases.restorePurchases();
-    alert('[IAP] restorePurchases (' + (source||'?') + '): ' + JSON.stringify(restored)?.slice(0, 300));
-    return restored?.activeSubscriptions?.includes(PRODUCT_ID) ?? false;
+    await NativePurchases.restorePurchases();
+    const { purchases } = await NativePurchases.getPurchases();
+    alert('[IAP] restorePurchases (' + (source||'?') + '): ' + JSON.stringify(purchases)?.slice(0, 300));
+    const tx = purchases?.find(p => p.productIdentifier === PRODUCT_ID);
+    if (!tx) return false;
+    if (tx.isActive === true) return true;
+    if (tx.expirationDate && new Date(tx.expirationDate) > new Date()) return true;
+    return false;
   } catch (e) {
     alert('[IAP] restore error (' + (source||'?') + '): ' + e?.message);
     throw e;
