@@ -658,6 +658,7 @@ export default function App({ loginOnly = false }){
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
     let premiumValue=p.data?.is_premium===true;
+    alert('[DEBUG] fetchAll uid='+uid?.slice(0,8)+'\nis_premium='+p.data?.is_premium+'\nresolved='+premiumValue+'\nerror='+(p.error?.message||'none'));
     console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
