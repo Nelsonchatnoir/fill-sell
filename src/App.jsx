@@ -559,6 +559,8 @@ export default function App({ loginOnly = false }){
   const [authLoading,setAuthLoading]=useState(true);
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const emailRef=useRef(null);
+  const passwordRef=useRef(null);
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
@@ -1345,10 +1347,8 @@ export default function App({ loginOnly = false }){
   };
 
   async function handleLogin(){
-    const _email=email||document.getElementById('email-input')?.value||"";
-    const _password=password||document.getElementById('password-input')?.value||"";
-    if(!_email||!_password){alert("Remplis email et mot de passe");return;}
-    const{error}=await supabase.auth.signInWithPassword({email:_email,password:_password});
+    if(!emailRef.current?.value||!passwordRef.current?.value){alert("Remplis email et mot de passe");return;}
+    const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
     if(error){alert(error.message);return;}
     track('login', { method: 'email' });
     navigate("/app");
@@ -1464,11 +1464,11 @@ export default function App({ loginOnly = false }){
               </div>
             </div>
           )}
-          <input id="email-input" type="email" autoComplete="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
+          <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
             style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
           {!forgotMode&&(
             <>
-              <input id="password-input" type="password" autoComplete="current-password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)}
+              <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
                 onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                 style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
               <button onClick={handleLogin}
