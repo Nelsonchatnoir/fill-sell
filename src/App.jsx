@@ -1345,8 +1345,10 @@ export default function App({ loginOnly = false }){
   };
 
   async function handleLogin(){
-    if(!email||!password){alert("Remplis email et mot de passe");return;}
-    const{error}=await supabase.auth.signInWithPassword({email,password});
+    const _email=email||document.getElementById('email-input')?.value||"";
+    const _password=password||document.getElementById('password-input')?.value||"";
+    if(!_email||!_password){alert("Remplis email et mot de passe");return;}
+    const{error}=await supabase.auth.signInWithPassword({email:_email,password:_password});
     if(error){alert(error.message);return;}
     track('login', { method: 'email' });
     navigate("/app");
@@ -1462,11 +1464,11 @@ export default function App({ loginOnly = false }){
               </div>
             </div>
           )}
-          <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
+          <input id="email-input" type="email" autoComplete="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
           {!forgotMode&&(
             <>
-              <input type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)}
+              <input id="password-input" type="password" autoComplete="current-password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)}
                 onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                 style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
               <button onClick={handleLogin}
