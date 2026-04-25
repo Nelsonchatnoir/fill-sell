@@ -1350,9 +1350,11 @@ export default function App({ loginOnly = false }){
   async function handleLogin(){
     if(!emailRef.current?.value||!passwordRef.current?.value){alert("Remplis email et mot de passe");return;}
     setIsSigningIn(true);
-    const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
-    if(error){setIsSigningIn(false);alert(error.message);return;}
-    track('login', { method: 'email' });
+    try{
+      const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
+      if(error){alert(error.message);return;}
+      track('login', { method: 'email' });
+    }catch(e){alert(e.message);}finally{setIsSigningIn(false);}
   }
 
   async function handleForgot(){
@@ -1446,7 +1448,7 @@ export default function App({ loginOnly = false }){
     forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
   };
 
-  if(!isSigningIn&&(!user||loginOnly))return(
+  if(!authLoading&&!isSigningIn&&(!user||loginOnly))return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
