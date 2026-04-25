@@ -1453,7 +1453,7 @@ export default function App({ loginOnly = false }){
 
   if(!authLoading&&!isSigningIn&&(!user||loginOnly))return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
-      <button onClick={()=>navigate("/")} style={{position:"absolute",top:16,left:16,background:"none",border:"none",color:"rgba(255,255,255,0.85)",fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>←</button>
+      <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,background:"none",border:"none",color:"rgba(255,255,255,0.85)",fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>←</button>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
