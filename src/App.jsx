@@ -562,6 +562,7 @@ export default function App({ loginOnly = false }){
   const emailRef=useRef(null);
   const passwordRef=useRef(null);
   const [isSigningIn,setIsSigningIn]=useState(false);
+  const [loginError,setLoginError]=useState("");
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
@@ -1348,13 +1349,14 @@ export default function App({ loginOnly = false }){
   };
 
   async function handleLogin(){
-    if(!emailRef.current?.value||!passwordRef.current?.value){alert("Remplis email et mot de passe");return;}
+    setLoginError("");
+    if(!emailRef.current?.value||!passwordRef.current?.value){setLoginError("Remplis email et mot de passe");return;}
     setIsSigningIn(true);
     try{
       const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
-      if(error){alert(error.message);return;}
+      if(error){setLoginError(error.message);return;}
       track('login', { method: 'email' });
-    }catch(e){alert(e.message);}finally{setIsSigningIn(false);}
+    }catch(e){setLoginError(e.message);}finally{setIsSigningIn(false);}
   }
 
   async function handleForgot(){
@@ -1479,6 +1481,7 @@ export default function App({ loginOnly = false }){
                 style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
                 {loginTexts.login}
               </button>
+              {loginError&&<div style={{fontSize:13,textAlign:"center",color:C.red,fontWeight:600}}>{loginError}</div>}
               <button onClick={handleSignup}
                 style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}}>
                 {loginTexts.signup}
