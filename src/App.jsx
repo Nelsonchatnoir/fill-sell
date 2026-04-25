@@ -561,6 +561,7 @@ export default function App({ loginOnly = false }){
   const [password,setPassword]=useState("");
   const emailRef=useRef(null);
   const passwordRef=useRef(null);
+  const [isSigningIn,setIsSigningIn]=useState(false);
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
@@ -684,7 +685,7 @@ export default function App({ loginOnly = false }){
       setUser(u);
       if(event==='INITIAL_SESSION') setAuthLoading(false);
       if(u){
-        if(event==='SIGNED_IN'){ setTab(0); localStorage.setItem('tab','0'); }
+        if(event==='SIGNED_IN'){ setIsSigningIn(false); setTab(0); localStorage.setItem('tab','0'); }
         fetchAll(u.id);
       }else{setSales([]);setItems([]);setLoading(false);}
     });
@@ -1348,10 +1349,10 @@ export default function App({ loginOnly = false }){
 
   async function handleLogin(){
     if(!emailRef.current?.value||!passwordRef.current?.value){alert("Remplis email et mot de passe");return;}
+    setIsSigningIn(true);
     const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
-    if(error){alert(error.message);return;}
+    if(error){setIsSigningIn(false);alert(error.message);return;}
     track('login', { method: 'email' });
-    navigate("/app");
   }
 
   async function handleForgot(){
@@ -1445,7 +1446,7 @@ export default function App({ loginOnly = false }){
     forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
   };
 
-  if(!user||loginOnly)return(
+  if(!isSigningIn&&(!user||loginOnly))return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
