@@ -1356,6 +1356,7 @@ export default function App({ loginOnly = false }){
       const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
       if(error){setLoginError(error.message);return;}
       track('login', { method: 'email' });
+      navigate("/app");
     }catch(e){setLoginError(e.message);}finally{setIsSigningIn(false);}
   }
 
