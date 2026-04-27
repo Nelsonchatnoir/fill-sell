@@ -63,7 +63,7 @@ workflows:
       - name: Set build number
         script: |
           LATEST=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID")
-          cd ios/App && agvtool new-version -all $((LATEST + 1))
+          cd ios/App && agvtool new-marketing-version 1.1 && agvtool new-version -all $((LATEST + 1))
       - name: Build IPA
         script: |
           xcode-project use-profiles
