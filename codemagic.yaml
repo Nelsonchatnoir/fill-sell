@@ -61,7 +61,9 @@ workflows:
           echo "=== capacitor.config.json content ==="
           cat ios/App/App/capacitor.config.json
       - name: Set build number
-        script: cd ios/App && agvtool new-version -all $(expr 6 + $BUILD_NUMBER)
+        script: |
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID")
+          cd ios/App && agvtool new-version -all $((LATEST + 1))
       - name: Build IPA
         script: |
           xcode-project use-profiles
