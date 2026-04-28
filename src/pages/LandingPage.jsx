@@ -16,28 +16,193 @@ const PLATFORMS = [
   { name: 'GOAT' }, { name: 'StockX' },
 ];
 
-const FAQ_ITEMS = [
-  {
-    q: 'Fill & Sell est-il gratuit ?',
-    a: "Oui, Fill & Sell est entièrement gratuit jusqu'à 20 articles en stock. Tu as accès au dashboard, au calculateur de marge et à l'historique de tes ventes — sans carte bancaire requise. Pour aller plus loin (articles illimités, export Excel, stats avancées), passe au Premium à 4,99 €/mois.",
+const FAQ_ITEMS = {
+  fr: [
+    { q: 'Fill & Sell est-il gratuit ?', a: "Oui, Fill & Sell est entièrement gratuit jusqu'à 20 articles en stock. Tu as accès au dashboard, au calculateur de marge et à l'historique de tes ventes — sans carte bancaire requise. Pour aller plus loin (articles illimités, export Excel, stats avancées), passe au Premium à 4,99 €/mois." },
+    { q: 'Quelles plateformes sont compatibles ?', a: 'Toutes les grandes plateformes de revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. Tu peux étiqueter tes ventes par plateforme pour suivre tes meilleurs canaux.' },
+    { q: 'Comment calculer ma marge sur Vinted ?', a: "Avec le calculateur intégré, tu entres simplement le prix d'achat, le prix de vente et les frais (commission Vinted, livraison, emballage). Fill & Sell calcule ton bénéfice net et ton pourcentage de marge en temps réel — avant même que tu valides ton achat." },
+    { q: 'Puis-je importer et exporter mes données en Excel ?', a: 'Oui, avec un compte Premium tu peux importer ton stock existant depuis un fichier Excel ou CSV, et exporter toutes tes données quand tu veux. Tu gardes le contrôle total sur tes informations — elles sont à toi.' },
+    { q: 'Fill & Sell fonctionne-t-il sur mobile ?', a: "Bien sûr — Fill & Sell est conçu mobile-first. L'app marche dans ton navigateur sur iPhone et Android, et une version iOS native est disponible sur l'App Store. Tes données se synchronisent entre tous tes appareils." },
+  ],
+  en: [
+    { q: 'Is Fill & Sell free?', a: 'Yes, Fill & Sell is completely free for up to 20 items in stock. You get access to the dashboard, margin calculator and sales history — no credit card required. To go further (unlimited items, Excel export, advanced stats), upgrade to Premium at €4.99/month.' },
+    { q: 'Which platforms are compatible?', a: 'All major resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. You can tag your sales by platform to track your best channels.' },
+    { q: 'How do I calculate my margin on Vinted?', a: 'With the built-in calculator, you simply enter the buy price, sell price and fees (Vinted commission, shipping, packaging). Fill & Sell calculates your net profit and margin percentage in real time — before you even confirm your purchase.' },
+    { q: 'Can I import and export my data to Excel?', a: "Yes, with a Premium account you can import your existing stock from an Excel or CSV file, and export all your data whenever you want. You keep full control over your information — it's yours." },
+    { q: 'Does Fill & Sell work on mobile?', a: 'Of course — Fill & Sell is built mobile-first. The app works in your browser on iPhone and Android, and a native iOS version is available on the App Store. Your data syncs across all your devices.' },
+  ],
+};
+
+const T = {
+  fr: {
+    navFeatures: 'Fonctionnalités', navPricing: 'Tarifs', navFaq: 'FAQ',
+    navLogin: 'Se connecter', navCta: 'Commencer gratuitement',
+    heroBadge: '🚀 Déjà utilisé par des centaines de revendeurs',
+    heroTitle1: 'Suis tes ', heroTitleAccent: 'profits de revente', heroTitle2: ' automatiquement 💰',
+    heroSub: "Arrête de deviner tes marges. Sache exactement combien tu gagnes — article par article.",
+    heroCta: 'Créer mon compte gratuit →', heroSecondary: 'Voir comment ça marche',
+    heroFree: 'Gratuit', heroNoCard: 'Sans carte bancaire', heroReady: 'Prêt en 30 secondes',
+    appMonthTitle: "Ton mois en un coup d'œil",
+    appProfitLbl: 'Profit net', appSalesLbl: 'Ventes', appMarginLbl: 'Marge moy.', appStockLbl: 'En stock',
+    appThisMonth: 'ce mois', appChartTitle: 'Profit · 6 mois',
+    appMonths: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun'],
+    appLatestSales: 'Dernières ventes', appSeeAll: 'Voir tout →',
+    appSale1Date: "Aujourd'hui · Vinted", appSale2Date: 'Hier · eBay',
+    appNavDash: 'Tableau', appNavStock: 'Stock', appNavCalc: 'Calculer', appNavHist: 'Historique',
+    stat1Label: 'Revendeurs actifs', stat2Label: 'Profits trackés',
+    stat3Label: 'Satisfaction', stat4Label: 'Pour démarrer',
+    featEyebrow: 'Fonctionnalités',
+    featTitle1: "Tout ce qu'il te faut pour ", featTitleAccent: 'vendre plus malin',
+    featSub: "Un outil simple, conçu par des revendeurs pour des revendeurs. Ajoute, calcule, vends — Fill & Sell s'occupe du reste.",
+    f1Title: 'Suivi automatique',
+    f1Desc: 'Ajoute tes articles en quelques secondes. Fill & Sell calcule tes marges automatiquement.',
+    f1Header: '📦 Mon stock · 14 articles', f1Add: '+ Ajouter', f1BuyLabel: 'Achat → Vente',
+    f1CatFashion: '👗 Mode', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxe',
+    f2Title: 'Dashboard clair',
+    f2Desc: "Visualise tes profits, ventes et stocks en un coup d'œil. Plus besoin d'Excel ni de calculatrice.",
+    f2Evolution: 'Évolution', f2VsMois: 'vs mois -1', f2SalesCount: '23 ventes', f2Period: '6 mois',
+    f3Title: 'Calculateur de marge',
+    f3Desc: "Calcul de bénéfice instantané avant d'acheter. Ne fais plus jamais de mauvaise affaire.",
+    f3BuyPrice: "Prix d'achat", f3SellPrice: 'Prix de vente', f3Fees: 'Frais annexes', f3Verdict: 'Belle marge 💪',
+    f4Title: 'Historique complet',
+    f4Desc: 'Retrouve toutes tes ventes, triées par date et par profit. Filtres par catégorie, par marque, par plateforme.',
+    f4Header: '📋 Historique · 23 ventes',
+    f4Items: [
+      { name: 'Nike Air Max 90', date: '28 avr. 2026 · Vinted', amt: '+47,00 €', red: false },
+      { name: 'Sac Longchamp Pliage', date: '27 avr. 2026 · eBay', amt: '+31,50 €', red: false },
+      { name: 'Polo Ralph Lauren M', date: '25 avr. 2026 · Depop', amt: '+18,20 €', red: false },
+      { name: 'Casquette New Era', date: '23 avr. 2026 · Vinted', amt: '−2,40 €', red: true },
+      { name: 'Robe Maje neuve', date: '22 avr. 2026 · Vestiaire', amt: '+89,00 €', red: false },
+    ],
+    f5Title: 'Import & Export Excel',
+    f5Desc: "Importe ton stock et exporte tes données en un tap. Compatible avec Excel, Numbers et Google Sheets.",
+    f5TabStock: '📊 Stock', f5TabSales: '📋 Ventes', f5TabStats: '📈 Stats',
+    f5ColItem: 'Article', f5ColBuy: 'Achat', f5ColSell: 'Vente', f5ColMargin: 'Marge',
+    f6Title: 'Stats avancées',
+    f6Desc: 'Analyse tes meilleures ventes, ta marge moyenne et tes tendances. Trouve ce qui marche le mieux.',
+    f6Top3: '🏆 Top 3 du mois',
+    f6Items: [
+      { name: 'Sac Hermès Kelly', date: '22 avr. · Vestiaire', prefix: 'Vendu' },
+      { name: 'iPhone 12 Pro 128Go', date: '19 avr. · eBay', prefix: 'Vendu' },
+      { name: 'Robe Maje neuve', date: '22 avr. · Vestiaire', prefix: 'Vendu' },
+    ],
+    f6BestCat: 'Meilleure catégorie', f6BestCatVal: '💎 Luxe · 64% de marge',
+    showcaseEyebrow: 'Aperçu',
+    showcaseTitle1: 'Visualise tes profits ', showcaseTitleAccent: "en un coup d'œil",
+    showcaseSub: "Une interface pensée pour le mobile. Toutes tes données importantes, là où tu en as besoin.",
+    ph1CalcTitle: '🧮 Calcule ta marge', ph1CalcSub: 'Entre les prix ci-dessous',
+    ph1BuyPrice: "Prix d'achat", ph1SellPrice: 'Prix de vente', ph1Fees: 'Frais annexes', ph1Verdict: 'Belle marge 💪',
+    ph2Stock: '📦 Mon stock', ph2Search: 'Rechercher un article…',
+    ph2All: 'Tout · 14', ph2Fashion: '👗 Mode · 6', ph2Tech: '📱 Tech · 3', ph2Luxe: '💎 Luxe · 2',
+    ph2Buy: 'Achat', ph2Sold: 'Vendu', ph2CatFashion: '👗 Mode', ph2CatTech: '📱 Tech', ph2CatLuxe: '💎 Luxe',
+    platformsTitle: 'Compatible avec toutes tes plateformes', platformsSub: 'Suis tes ventes, peu importe où tu vends.',
+    pricingEyebrow: 'Tarifs',
+    pricingTitle1: 'Choisis le plan qui te ', pricingTitleAccent: 'correspond',
+    pricingSub: "Commence gratuitement. Passe au premium quand tu es prêt — pas de surprise, pas d'engagement.",
+    freeTier: 'Gratuit', freeName: 'Pour démarrer', freePer: '/ toujours',
+    freeTagline: 'Tout le nécessaire pour suivre tes premières ventes.',
+    freeF1: "Jusqu'à 20 articles", freeF2: 'Dashboard & stats de base',
+    freeF3: 'Calculateur de marge', freeF4: 'Historique des ventes', freeBtn: 'Commencer gratuitement',
+    premiumBadge: '⭐ Le plus populaire', premiumTier: 'Premium', premiumName: 'Pour aller plus loin',
+    premiumPer: '/ mois', premiumTagline: 'Débloque toutes les fonctionnalités. Sans limite.',
+    premiumF1: 'Articles illimités', premiumF2: 'Stats avancées & tendances',
+    premiumF3: 'Export Excel & CSV', premiumF4: 'Import en masse', premiumF5: 'Support prioritaire',
+    premiumBtn: 'Passer au premium ✨',
+    ctaTitle: 'Prêt à maximiser tes profits ?',
+    ctaSub: 'Rejoins des centaines de revendeurs qui suivent leurs profits avec Fill & Sell.',
+    ctaBtn: 'Créer mon compte gratuit →', ctaMicro: 'Gratuit · Sans carte bancaire · Prêt en 30 secondes',
+    faqEyebrow: 'FAQ', faqTitle: 'Tu as des questions ?',
+    faqSub: 'Voici les réponses aux questions les plus fréquentes. Tu peux aussi nous écrire à support@fillsell.app',
+    footerTagline: 'Suis tes profits de revente, automatiquement. Pour les revendeurs Vinted, eBay, Depop et plus.',
+    footerProduct: 'Produit', footerLegal: 'Légal', footerMentions: 'Mentions légales',
+    footerPrivacy: 'Confidentialité', footerCgu: 'CGU', footerContact: 'Contact',
+    footerCopy: '© 2026 Fill & Sell. Tous droits réservés. Fait avec 💛 pour les revendeurs.',
   },
-  {
-    q: 'Quelles plateformes sont compatibles ?',
-    a: 'Toutes les grandes plateformes de revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. Tu peux étiqueter tes ventes par plateforme pour suivre tes meilleurs canaux.',
+  en: {
+    navFeatures: 'Features', navPricing: 'Pricing', navFaq: 'FAQ',
+    navLogin: 'Log in', navCta: 'Start for free',
+    heroBadge: '🚀 Already used by hundreds of resellers',
+    heroTitle1: 'Track your ', heroTitleAccent: 'resale profits', heroTitle2: ' automatically 💰',
+    heroSub: "Stop guessing your margins. Know exactly how much you earn — item by item.",
+    heroCta: 'Create my free account →', heroSecondary: 'See how it works',
+    heroFree: 'Free', heroNoCard: 'No credit card', heroReady: 'Ready in 30 seconds',
+    appMonthTitle: 'Your month at a glance',
+    appProfitLbl: 'Net profit', appSalesLbl: 'Sales', appMarginLbl: 'Avg. margin', appStockLbl: 'In stock',
+    appThisMonth: 'this month', appChartTitle: 'Profit · 6 months',
+    appMonths: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    appLatestSales: 'Latest sales', appSeeAll: 'See all →',
+    appSale1Date: 'Today · Vinted', appSale2Date: 'Yesterday · eBay',
+    appNavDash: 'Dashboard', appNavStock: 'Stock', appNavCalc: 'Calculate', appNavHist: 'History',
+    stat1Label: 'Active resellers', stat2Label: 'Tracked profits',
+    stat3Label: 'Satisfaction', stat4Label: 'To get started',
+    featEyebrow: 'Features',
+    featTitle1: 'Everything you need to ', featTitleAccent: 'sell smarter',
+    featSub: "A simple tool, built by resellers for resellers. Add, calculate, sell — Fill & Sell handles the rest.",
+    f1Title: 'Automatic tracking',
+    f1Desc: 'Add your items in seconds. Fill & Sell calculates your margins automatically.',
+    f1Header: '📦 My stock · 14 items', f1Add: '+ Add', f1BuyLabel: 'Buy → Sell',
+    f1CatFashion: '👗 Fashion', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxury',
+    f2Title: 'Clear dashboard',
+    f2Desc: 'Visualize your profits, sales and stock at a glance. No more Excel or calculator needed.',
+    f2Evolution: 'Trend', f2VsMois: 'vs last month', f2SalesCount: '23 sales', f2Period: '6 months',
+    f3Title: 'Margin calculator',
+    f3Desc: "Instant profit calculation before you buy. Never make a bad deal again.",
+    f3BuyPrice: 'Buy price', f3SellPrice: 'Sell price', f3Fees: 'Other fees', f3Verdict: 'Great margin 💪',
+    f4Title: 'Full history',
+    f4Desc: 'Find all your sales, sorted by date and profit. Filter by category, brand, platform.',
+    f4Header: '📋 History · 23 sales',
+    f4Items: [
+      { name: 'Nike Air Max 90', date: 'Apr 28, 2026 · Vinted', amt: '+€47.00', red: false },
+      { name: 'Longchamp Pliage Bag', date: 'Apr 27, 2026 · eBay', amt: '+€31.50', red: false },
+      { name: 'Polo Ralph Lauren M', date: 'Apr 25, 2026 · Depop', amt: '+€18.20', red: false },
+      { name: 'New Era Cap', date: 'Apr 23, 2026 · Vinted', amt: '−€2.40', red: true },
+      { name: 'Maje dress (new)', date: 'Apr 22, 2026 · Vestiaire', amt: '+€89.00', red: false },
+    ],
+    f5Title: 'Excel Import & Export',
+    f5Desc: "Import your stock and export your data in one tap. Compatible with Excel, Numbers and Google Sheets.",
+    f5TabStock: '📊 Stock', f5TabSales: '📋 Sales', f5TabStats: '📈 Stats',
+    f5ColItem: 'Item', f5ColBuy: 'Buy', f5ColSell: 'Sell', f5ColMargin: 'Margin',
+    f6Title: 'Advanced stats',
+    f6Desc: 'Analyze your best sales, average margin and trends. Find what works best.',
+    f6Top3: '🏆 Top 3 of the month',
+    f6Items: [
+      { name: 'Hermès Kelly Bag', date: 'Apr 22 · Vestiaire', prefix: 'Sold' },
+      { name: 'iPhone 12 Pro 128GB', date: 'Apr 19 · eBay', prefix: 'Sold' },
+      { name: 'Maje dress (new)', date: 'Apr 22 · Vestiaire', prefix: 'Sold' },
+    ],
+    f6BestCat: 'Best category', f6BestCatVal: '💎 Luxury · 64% margin',
+    showcaseEyebrow: 'Preview',
+    showcaseTitle1: 'Visualize your profits ', showcaseTitleAccent: 'at a glance',
+    showcaseSub: "A mobile-first interface. All your important data, right where you need it.",
+    ph1CalcTitle: '🧮 Calculate your margin', ph1CalcSub: 'Enter the prices below',
+    ph1BuyPrice: 'Buy price', ph1SellPrice: 'Sell price', ph1Fees: 'Other fees', ph1Verdict: 'Great margin 💪',
+    ph2Stock: '📦 My stock', ph2Search: 'Search for an item…',
+    ph2All: 'All · 14', ph2Fashion: '👗 Fashion · 6', ph2Tech: '📱 Tech · 3', ph2Luxe: '💎 Luxury · 2',
+    ph2Buy: 'Buy', ph2Sold: 'Sold', ph2CatFashion: '👗 Fashion', ph2CatTech: '📱 Tech', ph2CatLuxe: '💎 Luxury',
+    platformsTitle: 'Compatible with all your platforms', platformsSub: 'Track your sales, wherever you sell.',
+    pricingEyebrow: 'Pricing',
+    pricingTitle1: 'Choose the plan that ', pricingTitleAccent: 'fits you',
+    pricingSub: "Start for free. Go premium when you're ready — no surprise, no commitment.",
+    freeTier: 'Free', freeName: 'To get started', freePer: '/ forever',
+    freeTagline: 'Everything you need to track your first sales.',
+    freeF1: 'Up to 20 items', freeF2: 'Dashboard & basic stats',
+    freeF3: 'Margin calculator', freeF4: 'Sales history', freeBtn: 'Start for free',
+    premiumBadge: '⭐ Most popular', premiumTier: 'Premium', premiumName: 'To go further',
+    premiumPer: '/ month', premiumTagline: 'Unlock all features. No limits.',
+    premiumF1: 'Unlimited items', premiumF2: 'Advanced stats & trends',
+    premiumF3: 'Excel & CSV export', premiumF4: 'Bulk import', premiumF5: 'Priority support',
+    premiumBtn: 'Go Premium ✨',
+    ctaTitle: 'Ready to maximize your profits?',
+    ctaSub: 'Join hundreds of resellers who track their profits with Fill & Sell.',
+    ctaBtn: 'Create my free account →', ctaMicro: 'Free · No credit card · Ready in 30 seconds',
+    faqEyebrow: 'FAQ', faqTitle: 'Have questions?',
+    faqSub: 'Here are answers to the most common questions. You can also reach us at support@fillsell.app',
+    footerTagline: 'Track your resale profits, automatically. For Vinted, eBay, Depop and more resellers.',
+    footerProduct: 'Product', footerLegal: 'Legal', footerMentions: 'Legal notice',
+    footerPrivacy: 'Privacy', footerCgu: 'Terms', footerContact: 'Contact',
+    footerCopy: '© 2026 Fill & Sell. All rights reserved. Made with 💛 for resellers.',
   },
-  {
-    q: 'Comment calculer ma marge sur Vinted ?',
-    a: "Avec le calculateur intégré, tu entres simplement le prix d'achat, le prix de vente et les frais (commission Vinted, livraison, emballage). Fill & Sell calcule ton bénéfice net et ton pourcentage de marge en temps réel — avant même que tu valides ton achat.",
-  },
-  {
-    q: 'Puis-je importer et exporter mes données en Excel ?',
-    a: 'Oui, avec un compte Premium tu peux importer ton stock existant depuis un fichier Excel ou CSV, et exporter toutes tes données quand tu veux. Tu gardes le contrôle total sur tes informations — elles sont à toi.',
-  },
-  {
-    q: 'Fill & Sell fonctionne-t-il sur mobile ?',
-    a: "Bien sûr — Fill & Sell est conçu mobile-first. L'app marche dans ton navigateur sur iPhone et Android, et une version iOS native est disponible sur l'App Store. Tes données se synchronisent entre tous tes appareils.",
-  },
-];
+};
 
 const css = `
 :root {
@@ -531,6 +696,9 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
 
+  const t = T[lang];
+  const faqItems = FAQ_ITEMS[lang];
+
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
   useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
 
@@ -592,9 +760,9 @@ export default function LandingPage() {
             <span className="lp-brand-name">Fill &amp; Sell</span>
           </button>
           <div className="lp-nav-links">
-            <a className="lp-nav-link" href="#features">Fonctionnalités</a>
-            <a className="lp-nav-link" href="#pricing">Tarifs</a>
-            <a className="lp-nav-link" href="#faq">FAQ</a>
+            <a className="lp-nav-link" href="#features">{t.navFeatures}</a>
+            <a className="lp-nav-link" href="#pricing">{t.navPricing}</a>
+            <a className="lp-nav-link" href="#faq">{t.navFaq}</a>
           </div>
           <div className="lp-nav-actions">
             <div className="lp-lang-seg" role="tablist" aria-label="Langue">
@@ -604,9 +772,9 @@ export default function LandingPage() {
                 </button>
               ))}
             </div>
-            <button className="btn btn-ghost" onClick={() => nav('/login')}>Se connecter</button>
+            <button className="btn btn-ghost" onClick={() => nav('/login')}>{t.navLogin}</button>
             <button className="btn btn-primary" onClick={() => { track('cta_click', { cta: 'nav_signup', page: 'landing' }); nav('/login'); }}>
-              Commencer gratuitement
+              {t.navCta}
             </button>
           </div>
         </div>
@@ -618,28 +786,26 @@ export default function LandingPage() {
           <div className="lp-hero-copy">
             <div className="badge-pill reveal">
               <span className="dot"></span>
-              🚀 Déjà utilisé par des centaines de revendeurs
+              {t.heroBadge}
             </div>
             <h1 className="lp-hero-title reveal delay-1">
-              Suis tes <span className="grad">profits de revente</span> automatiquement 💰
+              {t.heroTitle1}<span className="grad">{t.heroTitleAccent}</span>{t.heroTitle2}
             </h1>
-            <p className="lp-hero-sub reveal delay-2">
-              Arrête de deviner tes marges. Sache exactement combien tu gagnes — article par article.
-            </p>
+            <p className="lp-hero-sub reveal delay-2">{t.heroSub}</p>
             <div className="lp-hero-ctas reveal delay-3">
               <button className="btn btn-grad btn-lg"
                 onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav('/login'); }}>
-                Créer mon compte gratuit →
+                {t.heroCta}
               </button>
               <button className="btn btn-ghost btn-lg" style={{ border: '1.5px solid rgba(0,0,0,0.1)' }}
                 onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
-                Voir comment ça marche
+                {t.heroSecondary}
               </button>
             </div>
             <div className="lp-hero-micro reveal delay-4">
-              <span><span className="check">✓</span> Gratuit</span>
-              <span><span className="check">✓</span> Sans carte bancaire</span>
-              <span><span className="check">✓</span> Prêt en 30 secondes</span>
+              <span><span className="check">✓</span> {t.heroFree}</span>
+              <span><span className="check">✓</span> {t.heroNoCard}</span>
+              <span><span className="check">✓</span> {t.heroReady}</span>
             </div>
           </div>
 
@@ -655,34 +821,34 @@ export default function LandingPage() {
                     <span className="app-topbar-pill">⭐ Premium</span>
                   </div>
                   <div className="app-body">
-                    <div className="app-h2">Ton mois en un coup d'œil</div>
+                    <div className="app-h2">{t.appMonthTitle}</div>
                     <div className="app-kpis">
                       <div className="app-kpi">
                         <div className="ico">💰</div>
-                        <div className="lbl">Profit net</div>
+                        <div className="lbl">{t.appProfitLbl}</div>
                         <div className="val green">+847 €</div>
-                        <div className="sub">ce mois</div>
+                        <div className="sub">{t.appThisMonth}</div>
                       </div>
                       <div className="app-kpi">
                         <div className="ico">📊</div>
-                        <div className="lbl">Ventes</div>
+                        <div className="lbl">{t.appSalesLbl}</div>
                         <div className="val">23</div>
-                        <div className="sub" style={{ color: 'var(--sub)' }}>ce mois</div>
+                        <div className="sub" style={{ color: 'var(--sub)' }}>{t.appThisMonth}</div>
                       </div>
                       <div className="app-kpi">
                         <div className="ico">📈</div>
-                        <div className="lbl">Marge moy.</div>
+                        <div className="lbl">{t.appMarginLbl}</div>
                         <div className="val green">42,8 %</div>
                       </div>
                       <div className="app-kpi">
                         <div className="ico">📦</div>
-                        <div className="lbl">En stock</div>
+                        <div className="lbl">{t.appStockLbl}</div>
                         <div className="val" style={{ color: 'var(--sub)' }}>14 art.</div>
                       </div>
                     </div>
                     <div className="app-chart">
                       <div className="app-chart-head">
-                        <div className="app-chart-title">Profit · 6 mois</div>
+                        <div className="app-chart-title">{t.appChartTitle}</div>
                         <div className="app-chart-pill">+38%</div>
                       </div>
                       <div className="app-bars">
@@ -694,27 +860,27 @@ export default function LandingPage() {
                         <div className="bar top" style={{ height: '88%' }}></div>
                       </div>
                       <div className="app-xlabels">
-                        <span>Jan</span><span>Fév</span><span>Mar</span><span>Avr</span><span>Mai</span><span>Jun</span>
+                        {t.appMonths.map(m => <span key={m}>{m}</span>)}
                       </div>
                     </div>
                     <div className="app-sales-head">
-                      <div className="h">Dernières ventes</div>
-                      <div className="a">Voir tout →</div>
+                      <div className="h">{t.appLatestSales}</div>
+                      <div className="a">{t.appSeeAll}</div>
                     </div>
                     <div className="app-sale">
-                      <div><div className="t">Nike Air Max 90</div><div className="d">Aujourd'hui · Vinted</div></div>
+                      <div><div className="t">Nike Air Max 90</div><div className="d">{t.appSale1Date}</div></div>
                       <div><div className="amt">+47,00 €</div><div className="pct">38,2%</div></div>
                     </div>
                     <div className="app-sale">
-                      <div><div className="t">Sac Longchamp Pliage</div><div className="d">Hier · eBay</div></div>
+                      <div><div className="t">Sac Longchamp Pliage</div><div className="d">{t.appSale2Date}</div></div>
                       <div><div className="amt">+31,50 €</div><div className="pct">31,5%</div></div>
                     </div>
                   </div>
                   <div className="app-bnav">
-                    <div className="item on"><span className="ic">📊</span><span>Tableau</span></div>
-                    <div className="item"><span className="ic">📦</span><span>Stock</span></div>
-                    <div className="item"><span className="ic">🧮</span><span>Calculer</span></div>
-                    <div className="item"><span className="ic">📋</span><span>Historique</span></div>
+                    <div className="item on"><span className="ic">📊</span><span>{t.appNavDash}</span></div>
+                    <div className="item"><span className="ic">📦</span><span>{t.appNavStock}</span></div>
+                    <div className="item"><span className="ic">🧮</span><span>{t.appNavCalc}</span></div>
+                    <div className="item"><span className="ic">📋</span><span>{t.appNavHist}</span></div>
                   </div>
                 </div>
               </div>
@@ -727,10 +893,10 @@ export default function LandingPage() {
       <section className="lp-stats reveal">
         <div className="lp-container">
           <div className="lp-stats-grid">
-            <div><div className="stat-num" data-counter="500" data-suffix="+">0</div><div className="stat-label">Revendeurs actifs</div></div>
-            <div><div className="stat-num" data-counter="12" data-suffix="k€">0</div><div className="stat-label">Profits trackés</div></div>
-            <div><div className="stat-num" data-counter="98" data-suffix="%">0</div><div className="stat-label">Satisfaction</div></div>
-            <div><div className="stat-num" data-counter="30" data-suffix="s">0</div><div className="stat-label">Pour démarrer</div></div>
+            <div><div className="stat-num" data-counter="500" data-suffix="+">0</div><div className="stat-label">{t.stat1Label}</div></div>
+            <div><div className="stat-num" data-counter="12" data-suffix="k€">0</div><div className="stat-label">{t.stat2Label}</div></div>
+            <div><div className="stat-num" data-counter="98" data-suffix="%">0</div><div className="stat-label">{t.stat3Label}</div></div>
+            <div><div className="stat-num" data-counter="30" data-suffix="s">0</div><div className="stat-label">{t.stat4Label}</div></div>
           </div>
         </div>
       </section>
@@ -739,28 +905,28 @@ export default function LandingPage() {
       <section className="lp-section" id="features">
         <div className="lp-container">
           <div className="section-head reveal">
-            <span className="section-eyebrow">Fonctionnalités</span>
-            <h2 className="section-title">Tout ce qu'il te faut pour <span style={GRAD_STYLE}>vendre plus malin</span></h2>
-            <p className="section-sub">Un outil simple, conçu par des revendeurs pour des revendeurs. Ajoute, calcule, vends — Fill &amp; Sell s'occupe du reste.</p>
+            <span className="section-eyebrow">{t.featEyebrow}</span>
+            <h2 className="section-title">{t.featTitle1}<span style={GRAD_STYLE}>{t.featTitleAccent}</span></h2>
+            <p className="section-sub">{t.featSub}</p>
           </div>
 
           {/* Feature 1 */}
           <div className="lp-feature reveal">
             <div className="feature-copy">
               <div className="feature-icon-wrap">📦</div>
-              <h3 className="feature-title">Suivi automatique</h3>
-              <p className="feature-desc">Ajoute tes articles en quelques secondes. Fill &amp; Sell calcule tes marges automatiquement.</p>
+              <h3 className="feature-title">{t.f1Title}</h3>
+              <p className="feature-desc">{t.f1Desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '-0.01em' }}>📦 Mon stock · 14 articles</div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-strong)' }}>+ Ajouter</div>
+                  <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '-0.01em' }}>{t.f1Header}</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.f1Add}</div>
                 </div>
                 {[
-                  { name: "Veste Levi's vintage", catClass: 'cat-fashion', catLabel: '👗 Mode', brand: "Levi's", buy: '15€', sell: '42€' },
-                  { name: 'iPhone 12 Pro 128Go', catClass: 'cat-tech', catLabel: '📱 High-Tech', brand: 'Apple', buy: '280€', sell: '420€' },
-                  { name: 'Sac Hermès Kelly', catClass: 'cat-luxe', catLabel: '💎 Luxe', brand: 'Hermès', buy: '820€', sell: '1240€' },
+                  { name: "Veste Levi's vintage", catClass: 'cat-fashion', catLabel: t.f1CatFashion, brand: "Levi's", buy: '15€', sell: '42€' },
+                  { name: 'iPhone 12 Pro 128Go', catClass: 'cat-tech', catLabel: t.f1CatTech, brand: 'Apple', buy: '280€', sell: '420€' },
+                  { name: 'Sac Hermès Kelly', catClass: 'cat-luxe', catLabel: t.f1CatLuxe, brand: 'Hermès', buy: '820€', sell: '1240€' },
                 ].map(({ name, catClass, catLabel, brand, buy, sell }) => (
                   <div key={name} className="mini-row">
                     <div>
@@ -771,7 +937,7 @@ export default function LandingPage() {
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 9, color: 'var(--label)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Achat → Vente</div>
+                      <div style={{ fontSize: 9, color: 'var(--label)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t.f1BuyLabel}</div>
                       <div style={{ fontSize: 13, fontWeight: 900, marginTop: 3 }}>
                         <span style={{ color: 'var(--peach)' }}>{buy}</span> → <span style={{ color: 'var(--teal-strong)' }}>{sell}</span>
                       </div>
@@ -786,29 +952,29 @@ export default function LandingPage() {
           <div className="lp-feature reverse reveal">
             <div className="feature-copy">
               <div className="feature-icon-wrap">📊</div>
-              <h3 className="feature-title">Dashboard clair</h3>
-              <p className="feature-desc">Visualise tes profits, ventes et stocks en un coup d'œil. Plus besoin d'Excel ni de calculatrice.</p>
+              <h3 className="feature-title">{t.f2Title}</h3>
+              <p className="feature-desc">{t.f2Desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
                   <div style={{ background: 'var(--bg-warm)', padding: 14, borderRadius: 12 }}>
                     <div style={{ fontSize: 18 }}>💰</div>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6 }}>Profit net</div>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6 }}>{t.appProfitLbl}</div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--teal-strong)', letterSpacing: '-0.03em', lineHeight: 1, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>+847 €</div>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--teal-strong)', marginTop: 4 }}>↑ +38% vs mois -1</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--teal-strong)', marginTop: 4 }}>↑ +38% {t.f2VsMois}</div>
                   </div>
                   <div style={{ background: 'var(--bg-warm)', padding: 14, borderRadius: 12 }}>
                     <div style={{ fontSize: 18 }}>📈</div>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6 }}>Marge moy.</div>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6 }}>{t.appMarginLbl}</div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--teal-strong)', letterSpacing: '-0.03em', lineHeight: 1, marginTop: 4 }}>42,8 %</div>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--sub)', marginTop: 4 }}>23 ventes</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--sub)', marginTop: 4 }}>{t.f2SalesCount}</div>
                   </div>
                 </div>
                 <div style={{ background: 'var(--bg-warm)', padding: 14, borderRadius: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--label)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Évolution</div>
-                    <div style={{ fontSize: 9, fontWeight: 800, background: 'var(--teal-tint)', color: 'var(--teal-strong)', padding: '3px 9px', borderRadius: 99 }}>6 mois</div>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--label)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t.f2Evolution}</div>
+                    <div style={{ fontSize: 9, fontWeight: 800, background: 'var(--teal-tint)', color: 'var(--teal-strong)', padding: '3px 9px', borderRadius: 99 }}>{t.f2Period}</div>
                   </div>
                   <svg viewBox="0 0 280 90" style={{ width: '100%', height: 90, display: 'block' }}>
                     <defs>
@@ -831,12 +997,12 @@ export default function LandingPage() {
           <div className="lp-feature reveal">
             <div className="feature-copy">
               <div className="feature-icon-wrap">🧮</div>
-              <h3 className="feature-title">Calculateur de marge</h3>
-              <p className="feature-desc">Calcul de bénéfice instantané avant d'acheter. Ne fais plus jamais de mauvaise affaire.</p>
+              <h3 className="feature-title">{t.f3Title}</h3>
+              <p className="feature-desc">{t.f3Desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen calc-mock">
-                {[{ ico: '💶', lbl: "Prix d'achat", val: '15,00' }, { ico: '💰', lbl: 'Prix de vente', val: '42,00' }, { ico: '📦', lbl: 'Frais annexes', val: '3,50' }].map(({ ico, lbl, val }) => (
+                {[{ ico: '💶', lbl: t.f3BuyPrice, val: '15,00' }, { ico: '💰', lbl: t.f3SellPrice, val: '42,00' }, { ico: '📦', lbl: t.f3Fees, val: '3,50' }].map(({ ico, lbl, val }) => (
                   <div key={lbl} className="calc-input filled">
                     <span className="ico">{ico}</span>
                     <div className="meta"><div className="lbl">{lbl}</div><div className="val">{val}</div></div>
@@ -846,7 +1012,7 @@ export default function LandingPage() {
                 <div className="calc-result">
                   <div className="calc-big">+23,50 €</div>
                   <div className="calc-pct">55,9 %</div>
-                  <div className="calc-verdict">Belle marge 💪</div>
+                  <div className="calc-verdict">{t.f3Verdict}</div>
                 </div>
               </div>
             </div>
@@ -856,19 +1022,13 @@ export default function LandingPage() {
           <div className="lp-feature reverse reveal">
             <div className="feature-copy">
               <div className="feature-icon-wrap">📋</div>
-              <h3 className="feature-title">Historique complet</h3>
-              <p className="feature-desc">Retrouve toutes tes ventes, triées par date et par profit. Filtres par catégorie, par marque, par plateforme.</p>
+              <h3 className="feature-title">{t.f4Title}</h3>
+              <p className="feature-desc">{t.f4Desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
-                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 12 }}>📋 Historique · 23 ventes</div>
-                {[
-                  { name: 'Nike Air Max 90', date: '28 avr. 2026 · Vinted', amt: '+47,00 €', red: false },
-                  { name: 'Sac Longchamp Pliage', date: '27 avr. 2026 · eBay', amt: '+31,50 €', red: false },
-                  { name: 'Polo Ralph Lauren M', date: '25 avr. 2026 · Depop', amt: '+18,20 €', red: false },
-                  { name: 'Casquette New Era', date: '23 avr. 2026 · Vinted', amt: '−2,40 €', red: true },
-                  { name: 'Robe Maje neuve', date: '22 avr. 2026 · Vestiaire', amt: '+89,00 €', red: false },
-                ].map(({ name, date, amt, red }) => (
+                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 12 }}>{t.f4Header}</div>
+                {t.f4Items.map(({ name, date, amt, red }) => (
                   <div key={name} className="hist-row">
                     <div><div className="hist-name">{name}</div><div className="hist-date">{date}</div></div>
                     <div className={`hist-amt${red ? ' red' : ''}`}>{amt}</div>
@@ -883,18 +1043,18 @@ export default function LandingPage() {
             <div className="feature-copy">
               <span className="feature-tag">⭐ Premium</span>
               <div className="feature-icon-wrap">📥</div>
-              <h3 className="feature-title">Import &amp; Export Excel</h3>
-              <p className="feature-desc">Importe ton stock et exporte tes données en un tap. Compatible avec Excel, Numbers et Google Sheets.</p>
+              <h3 className="feature-title">{t.f5Title}</h3>
+              <p className="feature-desc">{t.f5Desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen excel-mock">
                 <div className="xlsx-tabs">
-                  <div className="xlsx-tab on">📊 Stock</div>
-                  <div className="xlsx-tab">📋 Ventes</div>
-                  <div className="xlsx-tab">📈 Stats</div>
+                  <div className="xlsx-tab on">{t.f5TabStock}</div>
+                  <div className="xlsx-tab">{t.f5TabSales}</div>
+                  <div className="xlsx-tab">{t.f5TabStats}</div>
                 </div>
                 <div className="xlsx-grid">
-                  <div className="h">Article</div><div className="h">Achat</div><div className="h">Vente</div><div className="h">Marge</div>
+                  <div className="h">{t.f5ColItem}</div><div className="h">{t.f5ColBuy}</div><div className="h">{t.f5ColSell}</div><div className="h">{t.f5ColMargin}</div>
                   <div>Veste Levi's vintage</div><div>15,00 €</div><div>42,00 €</div><div className="green">+23,50 €</div>
                   <div>iPhone 12 Pro</div><div>280,00 €</div><div>420,00 €</div><div className="green">+128,00 €</div>
                   <div>Sac Hermès Kelly</div><div>820,00 €</div><div>1240,00 €</div><div className="green">+395,00 €</div>
@@ -913,19 +1073,19 @@ export default function LandingPage() {
             <div className="feature-copy">
               <span className="feature-tag">⭐ Premium</span>
               <div className="feature-icon-wrap">✨</div>
-              <h3 className="feature-title">Stats avancées</h3>
-              <p className="feature-desc">Analyse tes meilleures ventes, ta marge moyenne et tes tendances. Trouve ce qui marche le mieux.</p>
+              <h3 className="feature-title">{t.f6Title}</h3>
+              <p className="feature-desc">{t.f6Desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
-                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 14 }}>🏆 Top 3 du mois</div>
-                <div className="stat-card"><div className="stat-medal">🥇</div><div><div className="t">Sac Hermès Kelly</div><div className="d">Vendu 22 avr. · Vestiaire</div></div><div className="amt">+395 €</div></div>
-                <div className="stat-card"><div className="stat-medal silver">🥈</div><div><div className="t">iPhone 12 Pro 128Go</div><div className="d">Vendu 19 avr. · eBay</div></div><div className="amt">+128 €</div></div>
-                <div className="stat-card"><div className="stat-medal bronze">🥉</div><div><div className="t">Robe Maje neuve</div><div className="d">Vendu 22 avr. · Vestiaire</div></div><div className="amt">+89 €</div></div>
+                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 14 }}>{t.f6Top3}</div>
+                <div className="stat-card"><div className="stat-medal">🥇</div><div><div className="t">{t.f6Items[0].name}</div><div className="d">{t.f6Items[0].prefix} {t.f6Items[0].date}</div></div><div className="amt">+395 €</div></div>
+                <div className="stat-card"><div className="stat-medal silver">🥈</div><div><div className="t">{t.f6Items[1].name}</div><div className="d">{t.f6Items[1].prefix} {t.f6Items[1].date}</div></div><div className="amt">+128 €</div></div>
+                <div className="stat-card"><div className="stat-medal bronze">🥉</div><div><div className="t">{t.f6Items[2].name}</div><div className="d">{t.f6Items[2].prefix} {t.f6Items[2].date}</div></div><div className="amt">+89 €</div></div>
                 <div style={{ background: 'linear-gradient(135deg,rgba(62,172,160,0.08),rgba(232,149,109,0.08))', padding: '12px 14px', borderRadius: 12, marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Meilleure catégorie</div>
-                    <div style={{ fontSize: 14, fontWeight: 900, marginTop: 3 }}>💎 Luxe · 64% de marge</div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t.f6BestCat}</div>
+                    <div style={{ fontSize: 14, fontWeight: 900, marginTop: 3 }}>{t.f6BestCatVal}</div>
                   </div>
                   <div style={{ fontSize: 18 }}>🔥</div>
                 </div>
@@ -939,9 +1099,9 @@ export default function LandingPage() {
       <section className="lp-showcase">
         <div className="lp-container">
           <div className="section-head reveal">
-            <span className="section-eyebrow">Aperçu</span>
-            <h2 className="section-title">Visualise tes profits <span style={GRAD_STYLE}>en un coup d'œil</span></h2>
-            <p className="section-sub">Une interface pensée pour le mobile. Toutes tes données importantes, là où tu en as besoin.</p>
+            <span className="section-eyebrow">{t.showcaseEyebrow}</span>
+            <h2 className="section-title">{t.showcaseTitle1}<span style={GRAD_STYLE}>{t.showcaseTitleAccent}</span></h2>
+            <p className="section-sub">{t.showcaseSub}</p>
           </div>
           <div className="showcase-phones reveal">
 
@@ -957,10 +1117,10 @@ export default function LandingPage() {
                   </div>
                   <div className="app-body">
                     <div style={{ textAlign: 'center', padding: '6px 0 14px' }}>
-                      <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em' }}>🧮 Calcule ta marge</div>
-                      <div style={{ fontSize: 10, color: 'var(--sub)', fontWeight: 600, marginTop: 3 }}>Entre les prix ci-dessous</div>
+                      <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em' }}>{t.ph1CalcTitle}</div>
+                      <div style={{ fontSize: 10, color: 'var(--sub)', fontWeight: 600, marginTop: 3 }}>{t.ph1CalcSub}</div>
                     </div>
-                    {[{ ico: '💶', lbl: "Prix d'achat", val: '12,00' }, { ico: '💰', lbl: 'Prix de vente', val: '35,00' }, { ico: '📦', lbl: 'Frais annexes', val: '2,80' }].map(({ ico, lbl, val }, i) => (
+                    {[{ ico: '💶', lbl: t.ph1BuyPrice, val: '12,00' }, { ico: '💰', lbl: t.ph1SellPrice, val: '35,00' }, { ico: '📦', lbl: t.ph1Fees, val: '2,80' }].map(({ ico, lbl, val }, i) => (
                       <div key={lbl} className="calc-input filled" style={{ marginBottom: i < 2 ? 8 : 12, padding: '10px 12px' }}>
                         <span className="ico" style={{ fontSize: 16 }}>{ico}</span>
                         <div className="meta"><div className="lbl" style={{ fontSize: 8 }}>{lbl}</div><div className="val" style={{ fontSize: 13 }}>{val}</div></div>
@@ -970,14 +1130,14 @@ export default function LandingPage() {
                     <div style={{ background: 'linear-gradient(135deg,rgba(29,158,117,0.06),rgba(78,205,196,0.06))', border: '1px solid rgba(29,158,117,0.2)', borderRadius: 14, padding: '18px 14px', textAlign: 'center' }}>
                       <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--teal-strong)', letterSpacing: '-0.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>+20,20 €</div>
                       <div style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 800, background: 'rgba(29,158,117,0.15)', color: 'var(--teal-strong)', padding: '3px 9px', borderRadius: 99 }}>57,7 %</div>
-                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: 'var(--teal-strong)' }}>Belle marge 💪</div>
+                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.ph1Verdict}</div>
                     </div>
                   </div>
                   <div className="app-bnav">
-                    <div className="item"><span className="ic">📊</span><span>Tableau</span></div>
-                    <div className="item"><span className="ic">📦</span><span>Stock</span></div>
-                    <div className="item on"><span className="ic">🧮</span><span>Calculer</span></div>
-                    <div className="item"><span className="ic">📋</span><span>Historique</span></div>
+                    <div className="item"><span className="ic">📊</span><span>{t.appNavDash}</span></div>
+                    <div className="item"><span className="ic">📦</span><span>{t.appNavStock}</span></div>
+                    <div className="item on"><span className="ic">🧮</span><span>{t.appNavCalc}</span></div>
+                    <div className="item"><span className="ic">📋</span><span>{t.appNavHist}</span></div>
                   </div>
                 </div>
               </div>
@@ -994,19 +1154,19 @@ export default function LandingPage() {
                     <span className="app-topbar-pill">⭐</span>
                   </div>
                   <div className="app-body">
-                    <div className="app-h2">📦 Mon stock</div>
-                    <div className="app-search">🔍 <span>Rechercher un article…</span></div>
+                    <div className="app-h2">{t.ph2Stock}</div>
+                    <div className="app-search">🔍 <span>{t.ph2Search}</span></div>
                     <div className="app-filters">
-                      <span className="app-filter on">Tout · 14</span>
-                      <span className="app-filter">👗 Mode · 6</span>
-                      <span className="app-filter">📱 Tech · 3</span>
-                      <span className="app-filter">💎 Luxe · 2</span>
+                      <span className="app-filter on">{t.ph2All}</span>
+                      <span className="app-filter">{t.ph2Fashion}</span>
+                      <span className="app-filter">{t.ph2Tech}</span>
+                      <span className="app-filter">{t.ph2Luxe}</span>
                     </div>
                     {[
-                      { name: "Veste Levi's vintage", tags: [{ s: { background: '#FDF2F8', color: '#9D174D', borderColor: '#F9A8D4' }, l: '👗 Mode' }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: "Levi's" }], side: 'Achat', val: '15€', valClass: 'peach' },
-                      { name: 'iPhone 12 Pro 128Go', tags: [{ s: { background: '#EFF6FF', color: '#1D4ED8', borderColor: '#93C5FD' }, l: '📱 Tech' }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: 'Apple' }], side: 'Vendu', val: '420€', valClass: 'green' },
-                      { name: 'Sac Hermès Kelly', tags: [{ s: { background: '#FDF8F0', color: '#92400E', borderColor: '#F59E0B' }, l: '💎 Luxe' }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: 'Hermès' }], side: 'Achat', val: '820€', valClass: 'peach' },
-                      { name: 'Polo Ralph Lauren M', tags: [{ s: { background: '#FDF2F8', color: '#9D174D', borderColor: '#F9A8D4' }, l: '👗 Mode' }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: 'Ralph L.' }], side: 'Vendu', val: '28€', valClass: 'green' },
+                      { name: "Veste Levi's vintage", tags: [{ s: { background: '#FDF2F8', color: '#9D174D', borderColor: '#F9A8D4' }, l: t.ph2CatFashion }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: "Levi's" }], side: t.ph2Buy, val: '15€', valClass: 'peach' },
+                      { name: 'iPhone 12 Pro 128Go', tags: [{ s: { background: '#EFF6FF', color: '#1D4ED8', borderColor: '#93C5FD' }, l: t.ph2CatTech }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: 'Apple' }], side: t.ph2Sold, val: '420€', valClass: 'green' },
+                      { name: 'Sac Hermès Kelly', tags: [{ s: { background: '#FDF8F0', color: '#92400E', borderColor: '#F59E0B' }, l: t.ph2CatLuxe }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: 'Hermès' }], side: t.ph2Buy, val: '820€', valClass: 'peach' },
+                      { name: 'Polo Ralph Lauren M', tags: [{ s: { background: '#FDF2F8', color: '#9D174D', borderColor: '#F9A8D4' }, l: t.ph2CatFashion }, { s: { background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }, l: 'Ralph L.' }], side: t.ph2Sold, val: '28€', valClass: 'green' },
                     ].map(({ name, tags, side, val, valClass }) => (
                       <div key={name} className="app-inv-row">
                         <div style={{ flex: 1 }}>
@@ -1018,10 +1178,10 @@ export default function LandingPage() {
                     ))}
                   </div>
                   <div className="app-bnav">
-                    <div className="item"><span className="ic">📊</span><span>Tableau</span></div>
-                    <div className="item on"><span className="ic">📦</span><span>Stock</span></div>
-                    <div className="item"><span className="ic">🧮</span><span>Calculer</span></div>
-                    <div className="item"><span className="ic">📋</span><span>Historique</span></div>
+                    <div className="item"><span className="ic">📊</span><span>{t.appNavDash}</span></div>
+                    <div className="item on"><span className="ic">📦</span><span>{t.appNavStock}</span></div>
+                    <div className="item"><span className="ic">🧮</span><span>{t.appNavCalc}</span></div>
+                    <div className="item"><span className="ic">📋</span><span>{t.appNavHist}</span></div>
                   </div>
                 </div>
               </div>
@@ -1034,8 +1194,8 @@ export default function LandingPage() {
       {/* ── PLATFORMS ── */}
       <section className="lp-platforms reveal">
         <div className="lp-container platforms-head">
-          <h3>Compatible avec toutes tes plateformes</h3>
-          <p>Suis tes ventes, peu importe où tu vends.</p>
+          <h3>{t.platformsTitle}</h3>
+          <p>{t.platformsSub}</p>
         </div>
         <div className="marquee">
           <div className="marquee-track">
@@ -1053,41 +1213,41 @@ export default function LandingPage() {
       <section className="lp-section lp-pricing" id="pricing">
         <div className="lp-container">
           <div className="section-head reveal">
-            <span className="section-eyebrow">Tarifs</span>
-            <h2 className="section-title">Choisis le plan qui te <span style={GRAD_STYLE}>correspond</span></h2>
-            <p className="section-sub">Commence gratuitement. Passe au premium quand tu es prêt — pas de surprise, pas d'engagement.</p>
+            <span className="section-eyebrow">{t.pricingEyebrow}</span>
+            <h2 className="section-title">{t.pricingTitle1}<span style={GRAD_STYLE}>{t.pricingTitleAccent}</span></h2>
+            <p className="section-sub">{t.pricingSub}</p>
           </div>
           <div className="pricing-grid">
             <div className="price-card free reveal">
-              <div className="price-tier">Gratuit</div>
-              <h3 className="price-name">Pour démarrer</h3>
-              <div className="price-amount"><span className="num">0 €</span><span className="per">/ toujours</span></div>
-              <div className="price-tagline">Tout le nécessaire pour suivre tes premières ventes.</div>
+              <div className="price-tier">{t.freeTier}</div>
+              <h3 className="price-name">{t.freeName}</h3>
+              <div className="price-amount"><span className="num">0 €</span><span className="per">{t.freePer}</span></div>
+              <div className="price-tagline">{t.freeTagline}</div>
               <ul className="price-features">
-                <li><span className="ck">✓</span> Jusqu'à 20 articles</li>
-                <li><span className="ck">✓</span> Dashboard &amp; stats de base</li>
-                <li><span className="ck">✓</span> Calculateur de marge</li>
-                <li><span className="ck">✓</span> Historique des ventes</li>
+                <li><span className="ck">✓</span> {t.freeF1}</li>
+                <li><span className="ck">✓</span> {t.freeF2}</li>
+                <li><span className="ck">✓</span> {t.freeF3}</li>
+                <li><span className="ck">✓</span> {t.freeF4}</li>
               </ul>
               <button className="btn btn-lg" onClick={() => { track('cta_click', { cta: 'pricing_free', page: 'landing' }); nav('/login'); }}>
-                Commencer gratuitement
+                {t.freeBtn}
               </button>
             </div>
             <div className="price-card premium reveal delay-1">
-              <div className="price-popular">⭐ Le plus populaire</div>
-              <div className="price-tier">Premium</div>
-              <h3 className="price-name">Pour aller plus loin</h3>
-              <div className="price-amount"><span className="num">4,99 €</span><span className="per">/ mois</span></div>
-              <div className="price-tagline">Débloque toutes les fonctionnalités. Sans limite.</div>
+              <div className="price-popular">{t.premiumBadge}</div>
+              <div className="price-tier">{t.premiumTier}</div>
+              <h3 className="price-name">{t.premiumName}</h3>
+              <div className="price-amount"><span className="num">4,99 €</span><span className="per">{t.premiumPer}</span></div>
+              <div className="price-tagline">{t.premiumTagline}</div>
               <ul className="price-features">
-                <li><span className="ck">✓</span> Articles <strong>illimités</strong></li>
-                <li><span className="ck">✓</span> Stats avancées &amp; tendances</li>
-                <li><span className="ck">✓</span> Export Excel &amp; CSV</li>
-                <li><span className="ck">✓</span> Import en masse</li>
-                <li><span className="ck">✓</span> Support prioritaire</li>
+                <li><span className="ck">✓</span> <strong>{t.premiumF1}</strong></li>
+                <li><span className="ck">✓</span> {t.premiumF2}</li>
+                <li><span className="ck">✓</span> {t.premiumF3}</li>
+                <li><span className="ck">✓</span> {t.premiumF4}</li>
+                <li><span className="ck">✓</span> {t.premiumF5}</li>
               </ul>
               <button className="btn btn-white btn-lg" onClick={() => { track('cta_click', { cta: 'pricing_premium', page: 'landing' }); nav('/login'); }}>
-                Passer au premium ✨
+                {t.premiumBtn}
               </button>
             </div>
           </div>
@@ -1097,14 +1257,14 @@ export default function LandingPage() {
       {/* ── CTA FINAL ── */}
       <section className="lp-cta-final">
         <div className="lp-container">
-          <h2 className="reveal">Prêt à maximiser tes profits ?</h2>
-          <p className="reveal delay-1">Rejoins des centaines de revendeurs qui suivent leurs profits avec Fill &amp; Sell.</p>
+          <h2 className="reveal">{t.ctaTitle}</h2>
+          <p className="reveal delay-1">{t.ctaSub}</p>
           <div className="reveal delay-2" style={{ display: 'flex', justifyContent: 'center' }}>
             <button className="btn btn-white btn-lg" onClick={() => { track('cta_click', { cta: 'final_cta', page: 'landing' }); nav('/login'); }}>
-              Créer mon compte gratuit →
+              {t.ctaBtn}
             </button>
           </div>
-          <div className="micro reveal delay-3">Gratuit · Sans carte bancaire · Prêt en 30 secondes</div>
+          <div className="micro reveal delay-3">{t.ctaMicro}</div>
         </div>
       </section>
 
@@ -1112,13 +1272,13 @@ export default function LandingPage() {
       <section className="lp-section lp-faq" id="faq">
         <div className="lp-container">
           <div className="section-head reveal">
-            <span className="section-eyebrow">FAQ</span>
-            <h2 className="section-title">Tu as des questions ?</h2>
-            <p className="section-sub">Voici les réponses aux questions les plus fréquentes. Tu peux aussi nous écrire à hello@fillandsell.app</p>
+            <span className="section-eyebrow">{t.faqEyebrow}</span>
+            <h2 className="section-title">{t.faqTitle}</h2>
+            <p className="section-sub">{t.faqSub}</p>
           </div>
           <div className="faq-list">
-            {FAQ_ITEMS.map((item, i) => (
-              <div key={i} className={`faq-item reveal${openFaq === i ? ' open' : ''}`}>
+            {faqItems.map((item, i) => (
+              <div key={i} className={`faq-item${openFaq === i ? ' open' : ''}`}>
                 <button className="faq-q" onClick={() => setOpenFaq(openFaq === i ? -1 : i)}>
                   <span>{item.q}</span>
                   <span className="plus">+</span>
@@ -1138,29 +1298,29 @@ export default function LandingPage() {
               <img src="/icon_180x180.png" alt="" />
               <span className="footer-brand-name">Fill &amp; Sell</span>
             </div>
-            <p className="footer-tagline">Suis tes profits de revente, automatiquement. Pour les revendeurs Vinted, eBay, Depop et plus.</p>
+            <p className="footer-tagline">{t.footerTagline}</p>
           </div>
           <div className="footer-links">
             <div className="footer-links-col">
-              <h4>Produit</h4>
+              <h4>{t.footerProduct}</h4>
               <ul>
-                <li><a href="#features">Fonctionnalités</a></li>
-                <li><a href="#pricing">Tarifs</a></li>
-                <li><a href="#faq">FAQ</a></li>
+                <li><a href="#features">{t.navFeatures}</a></li>
+                <li><a href="#pricing">{t.navPricing}</a></li>
+                <li><a href="#faq">{t.navFaq}</a></li>
               </ul>
             </div>
             <div className="footer-links-col">
-              <h4>Légal</h4>
+              <h4>{t.footerLegal}</h4>
               <ul>
-                <li><a href="#">Mentions légales</a></li>
-                <li><a href="#">Confidentialité</a></li>
-                <li><a href="#">CGU</a></li>
+                <li><a href="#">{t.footerMentions}</a></li>
+                <li><a href="#">{t.footerPrivacy}</a></li>
+                <li><a href="#">{t.footerCgu}</a></li>
               </ul>
             </div>
             <div className="footer-links-col">
-              <h4>Contact</h4>
+              <h4>{t.footerContact}</h4>
               <ul>
-                <li><a href="mailto:hello@fillandsell.app">hello@fillandsell.app</a></li>
+                <li><a href="mailto:support@fillsell.app">support@fillsell.app</a></li>
                 <li><a href="#">Twitter</a></li>
                 <li><a href="#">Instagram</a></li>
               </ul>
@@ -1168,7 +1328,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="lp-container">
-          <div className="footer-copy">© 2026 Fill &amp; Sell. Tous droits réservés. Fait avec 💛 pour les revendeurs.</div>
+          <div className="footer-copy">{t.footerCopy}</div>
         </div>
       </footer>
     </div>
