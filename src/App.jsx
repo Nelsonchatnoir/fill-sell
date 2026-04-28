@@ -246,8 +246,8 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 
   return(
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>Passe à l'illimité ✨</div>
-      <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>Inventaire illimité · Export Excel · Stats pro — 4,99€/mois</div>
+      <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{tb('limiteGratuit')}</div>
+      <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{tb('limiteGratuitDesc')}</div>
       <button onClick={handleCheckout} disabled={loading}
         style={{padding:"10px 22px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:99,fontSize:13,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",marginTop:2}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
@@ -1637,7 +1637,6 @@ export default function App({ loginOnly = false }){
                   onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                 >
-                  {!isPremium&&<div style={{position:"absolute",top:8,right:10,fontSize:13,opacity:0.4,lineHeight:1,zIndex:1,pointerEvents:"none"}}>🔒</div>}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>{t('profitNet')}</div>
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</div>
@@ -1887,8 +1886,8 @@ export default function App({ loginOnly = false }){
               ):(
                 <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});triggerCheckout();}}}
                   style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>📊 Import & Export Excel — Premium</div>
-                  <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>Importe ton stock et exporte tes données en un tap</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{t('importExcel')}</div>
+                  <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
                   {!isNative&&<PremiumBanner userEmail={user?.email} compact/>}
                 </div>
               )}
