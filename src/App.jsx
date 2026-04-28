@@ -245,16 +245,11 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   }
 
   return(
-    <div style={{background:"linear-gradient(135deg,#3EACA008,#E8956D0D)",border:"1.5px solid #E8956D55",borderRadius:16,padding:"20px 22px",display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-        <div style={{fontSize:26,flexShrink:0}}>🔒</div>
-        <div>
-          <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:4}}>{tb('limiteGratuit')}</div>
-          <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}}>{tb('limiteGratuitDesc')}</div>
-        </div>
-      </div>
+    <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>Passe à l'illimité ✨</div>
+      <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>Inventaire illimité · Export Excel · Stats pro — 4,99€/mois</div>
       <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"11px 20px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.35)",transition:"all 0.2s",alignSelf:"center"}}
+        style={{padding:"10px 22px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:99,fontSize:13,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",marginTop:2}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
       >
@@ -1638,10 +1633,11 @@ export default function App({ loginOnly = false }){
 
                 {/* Hero card profit net */}
                 <div onClick={()=>{if(!isPremium&&!isNative){track('premium_click',{source:'hero_card'});triggerCheckout();}else if(isPremium){setTab(4);localStorage.setItem('tab',4);}}}
-                  style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%"}}
+                  style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%",position:"relative"}}
                   onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                 >
+                  {!isPremium&&<div style={{position:"absolute",top:8,right:10,fontSize:13,opacity:0.4,lineHeight:1,zIndex:1,pointerEvents:"none"}}>🔒</div>}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>{t('profitNet')}</div>
                     <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</div>
@@ -1889,12 +1885,10 @@ export default function App({ loginOnly = false }){
                   {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
                 </div>
               ):(
-                <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:12,border:"1px solid rgba(249,162,108,0.3)"}}>
-                  <span style={{fontSize:18}}>🔒</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('importExcel')}</div>
-                    <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6"}}>{t('importDesc')}</div>
-                  </div>
+                <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});triggerCheckout();}}}
+                  style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>📊 Import & Export Excel — Premium</div>
+                  <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>Importe ton stock et exporte tes données en un tap</div>
                   {!isNative&&<PremiumBanner userEmail={user?.email} compact/>}
                 </div>
               )}
@@ -2137,9 +2131,7 @@ export default function App({ loginOnly = false }){
             </Btn>
 
             {!isPremium&&!isNative&&(
-              <div style={{textAlign:"center",fontSize:11,color:C.label,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                🔓 <PremiumBanner userEmail={user?.email} compact/>
-              </div>
+              <PremiumBanner userEmail={user?.email}/>
             )}
             {isNative&&!isPremium&&(
               <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
@@ -2185,14 +2177,7 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {!isPremium&&!isNative&&(
-                  <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33"}}>
-                    <div style={{fontSize:20}}>⭐</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>{t('analyseDisponible')}</div>
-                      <div style={{fontSize:11,color:C.sub}}>{t('analyseDesc')}</div>
-                    </div>
-                    <PremiumBanner userEmail={user?.email} compact/>
-                  </div>
+                  <PremiumBanner userEmail={user?.email}/>
                 )}
                 {isNative&&!isPremium&&(
                   <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
@@ -2229,14 +2214,7 @@ export default function App({ loginOnly = false }){
                   </button>
                 )}
                 {!isPremium&&!isNative&&(
-                  <div className="card" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,background:"linear-gradient(135deg,#3EACA008,#E8956D08)",border:"1px solid #E8956D33",marginTop:4}}>
-                    <div style={{fontSize:20}}>⭐</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:700,color:C.text}}>{t('analyseDisponible')}</div>
-                      <div style={{fontSize:11,color:C.sub}}>{t('analyseDesc')}</div>
-                    </div>
-                    <PremiumBanner userEmail={user?.email} compact/>
-                  </div>
+                  <PremiumBanner userEmail={user?.email}/>
                 )}
                 {isNative&&!isPremium&&(
                   <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
