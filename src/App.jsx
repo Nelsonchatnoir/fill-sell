@@ -266,7 +266,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
         {lang==='fr'?'Passe à l\'illimité ✨':'Go unlimited ✨'}
       </div>
       <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>
-        {lang==='fr'?'Inventaire illimité · Export Excel · Stats pro — 4,99€/mois':'Unlimited inventory · Excel export · Pro stats — €4.99/month'}
+        {lang==='fr'?'Inventaire illimité · Export Excel · Stats pro':'Unlimited inventory · Excel export · Pro stats'}
       </div>
       {iapProduct&&(
         <div style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>
@@ -1638,7 +1638,7 @@ export default function App({ loginOnly = false }){
                 </div>
 
                 {/* Hero card profit net */}
-                <div onClick={()=>{if(!isPremium&&!isNative){track('premium_click',{source:'hero_card'});triggerCheckout();}else if(isPremium){setTab(4);localStorage.setItem('tab',4);}}}
+                <div onClick={()=>{if(!isPremium&&isNative){handleIAPPurchase();}else if(!isPremium&&!isNative){track('premium_click',{source:'hero_card'});triggerCheckout();}else if(isPremium){setTab(4);localStorage.setItem('tab',4);}}}
                   style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%",position:"relative"}}
                   onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
@@ -1679,10 +1679,10 @@ export default function App({ loginOnly = false }){
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
                       {!isPremium&&(
-                        <div onClick={()=>{if(!isNative){track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:isNative?"default":"pointer"}}>
+                        <div onClick={()=>{if(isNative){handleIAPPurchase();}else{track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
-                          {!isNative&&<button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>}
+                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
                         </div>
                       )}
                     </div>
@@ -1695,10 +1695,10 @@ export default function App({ loginOnly = false }){
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
                       {!isPremium&&(
-                        <div onClick={()=>{if(!isNative){track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:isNative?"default":"pointer"}}>
+                        <div onClick={()=>{if(isNative){handleIAPPurchase();}else{track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
-                          {!isNative&&<button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>}
+                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
                         </div>
                       )}
                     </div>
