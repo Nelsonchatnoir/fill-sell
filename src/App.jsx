@@ -3,7 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
 import { track } from './analytics/analytics';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
 import { supabase } from './lib/supabase';
 import Toast from './components/Toast';
@@ -521,6 +521,8 @@ function getFilteredData_unused(range, salesData){
 
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
@@ -1437,11 +1439,11 @@ export default function App({ loginOnly = false }){
 
   const loginLang=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
   const loginTexts=loginLang==='en'?{
-    subtitle:"Sign in to continue",login:"Sign in",signup:"Create an account",
+    subtitle:"Sign in to continue",login:"Sign in",signup:"Create my account",
     forgot:"Forgot your password?",forgotBtn:"Send reset link",
     forgotMsg:"Enter your email above.",back:"← Back"
   }:{
-    subtitle:"Connecte-toi pour continuer",login:"Se connecter",signup:"Créer un compte",
+    subtitle:"Connecte-toi pour continuer",login:"Se connecter",signup:"Créer mon compte",
     forgot:"Mot de passe oublié ?",forgotBtn:"Envoyer le lien de réinitialisation",
     forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
   };
@@ -1450,9 +1452,17 @@ export default function App({ loginOnly = false }){
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
       <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,background:"none",border:"none",color:"rgba(255,255,255,0.85)",fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>←</button>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
-        <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{textAlign:"center",marginBottom:20}}>
           <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
           <div style={{fontSize:15,color:C.sub,fontWeight:500}}>{loginTexts.subtitle}</div>
+        </div>
+        <div style={{display:"flex",background:"rgba(0,0,0,0.05)",borderRadius:99,padding:3,marginBottom:18}}>
+          <button onClick={()=>setAuthMode('login')} style={{flex:1,padding:"9px 12px",borderRadius:99,border:"none",fontSize:14,fontWeight:700,cursor:"pointer",background:authMode==='login'?"#3EACA0":"transparent",color:authMode==='login'?"#fff":"#6B7280",transition:"all 0.15s"}}>
+            {loginTexts.login}
+          </button>
+          <button onClick={()=>setAuthMode('signup')} style={{flex:1,padding:"9px 12px",borderRadius:99,border:"none",fontSize:14,fontWeight:700,cursor:"pointer",background:authMode==='signup'?"#3EACA0":"transparent",color:authMode==='signup'?"#fff":"#6B7280",transition:"all 0.15s"}}>
+            {loginTexts.signup}
+          </button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           {isNative&&(
@@ -1473,15 +1483,11 @@ export default function App({ loginOnly = false }){
               <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
                 onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                 style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-              <button onClick={handleLogin}
+              <button onClick={authMode==='login'?handleLogin:handleSignup}
                 style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
-                {loginTexts.login}
+                {authMode==='login'?loginTexts.login:loginTexts.signup}
               </button>
               {loginError&&<div style={{fontSize:13,textAlign:"center",color:C.red,fontWeight:600}}>{loginError}</div>}
-              <button onClick={handleSignup}
-                style={{padding:"14px",background:"transparent",color:C.teal,border:`1px solid ${C.teal}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}}>
-                {loginTexts.signup}
-              </button>
               <div style={{textAlign:"center"}}>
                 <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:C.teal,cursor:"pointer",textDecoration:"underline"}}>
                   {loginTexts.forgot}

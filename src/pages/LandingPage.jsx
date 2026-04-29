@@ -672,9 +672,10 @@ h2.section-title {
   .iphone-sm:nth-child(1), .iphone-sm:nth-child(2) { transform: none; }
   .showcase-phones { gap: 24px; }
 }
+@media (max-width: 768px) {
+  .nav-cta-btn { display: none; }
+}
 @media (max-width: 540px) {
-  .lp-nav-actions .btn-ghost { display: none; }
-  .lp-lang-seg { display: none; }
   .lp-stats-grid { gap: 32px 16px; }
   h1.lp-hero-title { font-size: 40px; }
   .lp-hero-sub { font-size: 17px; }
@@ -773,7 +774,7 @@ export default function LandingPage() {
               ))}
             </div>
             <button className="btn btn-ghost" onClick={() => nav('/login')}>{t.navLogin}</button>
-            <button className="btn btn-primary" onClick={() => { track('cta_click', { cta: 'nav_signup', page: 'landing' }); nav('/login'); }}>
+            <button className="btn btn-primary nav-cta-btn" onClick={() => { track('cta_click', { cta: 'nav_signup', page: 'landing' }); nav('/login?mode=signup'); }}>
               {t.navCta}
             </button>
           </div>
@@ -794,7 +795,7 @@ export default function LandingPage() {
             <p className="lp-hero-sub reveal delay-2">{t.heroSub}</p>
             <div className="lp-hero-ctas reveal delay-3">
               <button className="btn btn-grad btn-lg"
-                onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav('/login'); }}>
+                onClick={() => { track('cta_click', { cta: 'hero_signup', page: 'landing' }); nav('/login?mode=signup'); }}>
                 {t.heroCta}
               </button>
               <button className="btn btn-ghost btn-lg" style={{ border: '1.5px solid rgba(0,0,0,0.1)' }}
@@ -1229,7 +1230,7 @@ export default function LandingPage() {
                 <li><span className="ck">✓</span> {t.freeF3}</li>
                 <li><span className="ck">✓</span> {t.freeF4}</li>
               </ul>
-              <button className="btn btn-lg" onClick={() => { track('cta_click', { cta: 'pricing_free', page: 'landing' }); nav('/login'); }}>
+              <button className="btn btn-lg" onClick={() => { track('cta_click', { cta: 'pricing_free', page: 'landing' }); nav('/login?mode=signup'); }}>
                 {t.freeBtn}
               </button>
             </div>
@@ -1260,7 +1261,7 @@ export default function LandingPage() {
           <h2 className="reveal">{t.ctaTitle}</h2>
           <p className="reveal delay-1">{t.ctaSub}</p>
           <div className="reveal delay-2" style={{ display: 'flex', justifyContent: 'center' }}>
-            <button className="btn btn-white btn-lg" onClick={() => { track('cta_click', { cta: 'final_cta', page: 'landing' }); nav('/login'); }}>
+            <button className="btn btn-white btn-lg" onClick={() => { track('cta_click', { cta: 'final_cta', page: 'landing' }); nav('/login?mode=signup'); }}>
               {t.ctaBtn}
             </button>
           </div>
