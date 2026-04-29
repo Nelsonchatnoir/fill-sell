@@ -16,7 +16,9 @@ workflows:
       - name: Install dependencies
         script: npm install
       - name: Build web app
-        script: npx vite build --force
+        script: |
+          rm -rf node_modules/.vite
+          npm run build
       - name: Sync Capacitor
         script: npx cap sync ios
       - name: Restore App.entitlements
