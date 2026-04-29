@@ -646,7 +646,7 @@ h2.section-title {
 .footer-brand-block { max-width: 360px; }
 .footer-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .footer-brand img { height: 32px; width: 32px; }
-.footer-brand-name { font-family: 'Plus Jakarta Sans', sans-serif; font-style: italic; font-weight: 800; font-size: 20px; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.footer-brand-name { font-family: 'Plus Jakarta Sans', sans-serif; font-style: italic; font-weight: 800; font-size: 20px; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; overflow: visible; white-space: nowrap; padding-right: 4px; }
 .footer-tagline { font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.65); margin: 0 0 18px; }
 .footer-copy { font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; }
 .footer-links { display: flex; gap: 28px; flex-wrap: wrap; }
