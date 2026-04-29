@@ -261,29 +261,29 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 
 function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
   return (
-    <div style={{background:"linear-gradient(135deg,#1D9E75,#4ECDC4)",borderRadius:16,padding:"20px 22px",display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>
-        {lang==='fr'?'🔓 Passer Premium':'🔓 Go Premium'}
+    <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>
+        {lang==='fr'?'Passe à l\'illimité ✨':'Go unlimited ✨'}
       </div>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.8)"}}>
-        {lang==='fr'?'Inventaire illimité + stats avancées':'Unlimited inventory + advanced stats'}
+      <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>
+        {lang==='fr'?'Inventaire illimité · Export Excel · Stats pro — 4,99€/mois':'Unlimited inventory · Excel export · Pro stats — €4.99/month'}
       </div>
       {iapProduct&&(
-        <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>
+        <div style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>
           {iapProduct.priceString} / {lang==='fr'?'mois':'month'}
         </div>
       )}
       <button
         onClick={onPurchase}
         disabled={iapLoading}
-        style={{padding:"12px 20px",background:"#fff",color:"#1D9E75",border:"none",borderRadius:10,fontSize:14,fontWeight:800,cursor:iapLoading?"not-allowed":"pointer",opacity:iapLoading?0.7:1,fontFamily:"inherit"}}
+        style={{padding:"10px 22px",background:iapLoading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:iapLoading?"#9CA3AF":"#fff",border:"none",borderRadius:99,fontSize:13,fontWeight:700,cursor:iapLoading?"not-allowed":"pointer",boxShadow:iapLoading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",marginTop:2,fontFamily:"inherit"}}
       >
         {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Débloquer':'✨ Unlock')}
       </button>
       <button
         onClick={onRestore}
         disabled={iapLoading}
-        style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.7)",fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
+        style={{background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
       >
         {lang==='fr'?'Restaurer mes achats':'Restore purchases'}
       </button>
