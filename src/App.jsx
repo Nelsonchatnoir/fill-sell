@@ -12,6 +12,8 @@ import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import { calculateDealScore } from './utils/dealScore';
+import { generateDealAnalysis } from './utils/dealAnalysis';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
 
@@ -519,6 +521,72 @@ function getFilteredData_unused(range, salesData){
   }
 }
 
+function DealScoreCard({result,analysis,analysisLoading,lang}){
+  if(!result) return null;
+  const {score,label,confidence,dataQuality,dimensions,pills}=result;
+  const scoreColor=score>=8?'#1D9E75':score>=6.5?'#4ECDC4':score>=5?'#F9A26C':'#E53E3E';
+  const dimLabels=lang==='en'
+    ?{profitPotentiel:'Profit potential',liquidite:'Liquidity',safety:'Safety',upside:'Upside'}
+    :{profitPotentiel:'Potentiel profit',liquidite:'Liquidité',safety:'Sécurité',upside:'Upside'};
+  return(
+    <div style={{background:'#fff',borderRadius:16,border:'1px solid #ECF0F4',boxShadow:'0 1px 4px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.04)',padding:'16px 18px',display:'flex',flexDirection:'column',gap:14}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
+        <div>
+          <div style={{fontSize:10,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Deal Score</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+            <span style={{fontSize:32,fontWeight:900,color:scoreColor,letterSpacing:'-0.03em',lineHeight:1}}>{score.toFixed(1)}</span>
+            <span style={{fontSize:13,color:'#A3A9A6',fontWeight:600}}>/10</span>
+          </div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{background:scoreColor+'18',color:scoreColor,borderRadius:99,padding:'5px 12px',fontSize:12,fontWeight:700,border:`1px solid ${scoreColor}33`}}>{label}</div>
+          <div style={{fontSize:10,color:'#A3A9A6',fontWeight:600,marginTop:6}}>{lang==='en'?`${confidence}% confidence`:`${confidence}% confiance`}</div>
+        </div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:9}}>
+        {Object.entries(dimensions).map(([key,val])=>(
+          <div key={key}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontSize:11,fontWeight:700,color:'#6B7280'}}>{dimLabels[key]}</span>
+              <span style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{val}/10</span>
+            </div>
+            <div style={{height:5,background:'#F3F4F6',borderRadius:99}}>
+              <div style={{width:`${val*10}%`,height:'100%',background:'linear-gradient(90deg,#4ECDC4,#1D9E75)',borderRadius:99,transition:'width 0.4s ease'}}/>
+            </div>
+          </div>
+        ))}
+      </div>
+      {pills.length>0&&(
+        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          {pills.map((pill,i)=>(
+            <span key={i} style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'4px 10px',fontSize:11,fontWeight:700,border:'1px solid #C6E8DF'}}>{pill}</span>
+          ))}
+        </div>
+      )}
+      <div style={{background:'#F5F6F5',borderRadius:10,padding:'10px 14px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+          <span style={{width:7,height:7,borderRadius:'50%',background:'#4ECDC4',display:'inline-block',flexShrink:0}}/>
+          <span style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>Analyse IA</span>
+        </div>
+        {analysisLoading?(
+          <div style={{display:'flex',gap:6,alignItems:'center',paddingTop:2}}>
+            {[60,90,50].map((w,i)=><span key={i} style={{width:w,height:10,background:'#E5E7EB',borderRadius:4,display:'inline-block'}}/>)}
+          </div>
+        ):analysis?(
+          <div style={{fontSize:12,fontWeight:600,color:'#374151',lineHeight:1.6}}>{analysis}</div>
+        ):(
+          <div style={{fontSize:11,color:'#A3A9A6',fontStyle:'italic'}}>{lang==='en'?'Analysis not available':'Analyse non disponible'}</div>
+        )}
+      </div>
+      {dataQuality==='low'&&(
+        <div style={{fontSize:10,color:'#A3A9A6',fontWeight:600}}>
+          {lang==='en'?'Limited precision — add more sales to improve':'Précision limitée — ajoute des ventes pour améliorer'}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -591,6 +659,10 @@ export default function App({ loginOnly = false }){
   const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
+  const [dealScore,setDealScore]=useState(null);
+  const [dealAnalysis,setDealAnalysis]=useState(null);
+  const [dealAnalysisLoading,setDealAnalysisLoading]=useState(false);
+  const dealAnalysisTimer=useRef(null);
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -707,6 +779,34 @@ export default function App({ loginOnly = false }){
     }
     calcWasComplete.current = complete;
   },[cBuy, cSell, cShip, margin]);
+
+  useEffect(()=>{
+    const prixAchat=parseFloat(cBuy)||0;
+    const prixVente=parseFloat(cSell)||0;
+    const frais=parseFloat(cShip)||0;
+    if(prixAchat>0&&prixVente>0){
+      const historique=sales.map(s=>({
+        prix_achat:s.buy,
+        prix_vente:s.sell,
+        frais:(s.sellingFees||0)+(s.purchaseCosts||0),
+        date_vente:s.date,
+      }));
+      const scoreResult=calculateDealScore({prixAchat,prixVente,frais,lang,historique});
+      setDealScore(scoreResult);
+      setDealAnalysisLoading(true);
+      clearTimeout(dealAnalysisTimer.current);
+      dealAnalysisTimer.current=setTimeout(async()=>{
+        const analysis=await generateDealAnalysis(scoreResult,lang);
+        setDealAnalysis(analysis);
+        setDealAnalysisLoading(false);
+      },1500);
+    }else{
+      setDealScore(null);
+      setDealAnalysis(null);
+      clearTimeout(dealAnalysisTimer.current);
+      setDealAnalysisLoading(false);
+    }
+  },[cBuy,cSell,cShip,lang,sales]);
 
   const now=new Date();
 
@@ -2102,6 +2202,9 @@ export default function App({ loginOnly = false }){
                 )
               )}
             </div>
+
+            {/* ── Deal Score ── */}
+            <DealScoreCard result={dealScore} analysis={dealAnalysis} analysisLoading={dealAnalysisLoading} lang={lang}/>
 
             {/* ── Inputs ── */}
             <div>

@@ -35,7 +35,10 @@
       "mcp__claude_ai_Vercel__deploy_to_vercel",
       "Bash(vercel *)",
       "Bash(npx vercel *)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(npx vitest *)"
     ]
   }
 }
