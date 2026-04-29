@@ -91,6 +91,7 @@ const css = `
     .page-pad{padding-bottom:16px!important;}
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
+  @keyframes fs-dot{0%,80%,100%{opacity:0.25;transform:scale(0.7);}40%{opacity:1;transform:scale(1);}}
 `;
 
 const EUR_TO_USD = 1.08;
@@ -595,6 +596,7 @@ export default function App({ loginOnly = false }){
   const [items,setItems]=useState([]);
   const [sales,setSales]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [appLoading,setAppLoading]=useState(true);
   const [iTitle,setITitle]=useState("");
   const [iBuy,setIBuy]=useState("");
   const [iSell,setISell]=useState("");
@@ -738,6 +740,7 @@ export default function App({ loginOnly = false }){
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
     }
     setLoading(false);
+    setAppLoading(false);
   }
 
   useEffect(()=>{
@@ -757,7 +760,7 @@ export default function App({ loginOnly = false }){
       if(u){
         if(event==='SIGNED_IN'){ setIsSigningIn(false); setTab(0); localStorage.setItem('tab','0'); }
         fetchAll(u.id);
-      }else{setSales([]);setItems([]);setLoading(false);}
+      }else{setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
     });
     return()=>{ mounted=false; subscription.unsubscribe(); };
   },[]);
@@ -1531,9 +1534,17 @@ export default function App({ loginOnly = false }){
     {label:t('enStockLabel'),value:`${stock.length} ${lang==='fr'?'art.':'items'} · ${fmt(stockVal)}`},
   ];
 
-  if(authLoading)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)"}}>
-      <div style={{color:"#fff",fontSize:18,fontWeight:700}}>{lang==='fr'?'Chargement...':'Loading...'}</div>
+  if(authLoading||appLoading)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",flexDirection:"column",gap:24}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
+        <img src="/icon_1024x1024.png" alt="Fill & Sell" style={{width:72,height:72,borderRadius:18,objectFit:"cover",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}/>
+        <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:"-0.02em"}}>Fill & Sell</div>
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {[0,1,2].map(i=>(
+          <span key={i} style={{width:8,height:8,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"inline-block",animation:`fs-dot 1.2s ease-in-out ${i*0.2}s infinite`}}/>
+        ))}
+      </div>
     </div>
   );
 
