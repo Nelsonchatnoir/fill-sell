@@ -1004,6 +1004,7 @@ export default function App({ loginOnly = false }){
 
   async function addItemsFromVoice(){
     if(!voiceParsed?.items?.length)return;
+    let idBase=Date.now();
     for(const item of voiceParsed.items){
       const qty=Math.max(1,item.quantite||1);
       const buy=item.prix_achat??0;
@@ -1015,7 +1016,7 @@ export default function App({ loginOnly = false }){
       const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
       for(let q=0;q<qty;q++){
         if(!isPremium&&items.length>=20)break;
-        const row={user_id:user.id,titre:item.nom||"Article",prix_achat:buy,prix_vente:hasS?sell:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+        const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:buy,prix_vente:hasS?sell:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
         const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
         if(!error){
           setItems(prev=>[mapItem(data),...prev]);
