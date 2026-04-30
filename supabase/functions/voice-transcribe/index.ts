@@ -38,7 +38,17 @@ serve(async (req) => {
       });
     }
 
-    const ext = ALLOWED_TYPES[audioFile.type];
+    let mimeType = audioFile.type;
+    if (!mimeType) {
+      const nameExt = (audioFile.name ?? "").split(".").pop()?.toLowerCase() ?? "";
+      const extToMime: Record<string, string> = {
+        webm: "audio/webm", mp4: "audio/mp4",
+        aac: "audio/aac",   mp3: "audio/mpeg", mpeg: "audio/mpeg",
+      };
+      mimeType = extToMime[nameExt] ?? "";
+    }
+
+    const ext = ALLOWED_TYPES[mimeType];
     if (!ext) {
       return new Response(JSON.stringify({ error: "Unsupported format" }), {
         status: 415,
