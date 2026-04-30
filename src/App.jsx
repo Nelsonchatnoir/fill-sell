@@ -1007,21 +1007,24 @@ export default function App({ loginOnly = false }){
     let idBase=Date.now();
     for(const item of voiceParsed.items){
       const qty=Math.max(1,item.quantite||1);
-      const buy=item.prix_achat??0;
-      const sell=item.prix_vente??0;
-      const hasS=sell>0;
-      const mg=hasS?sell-buy:0;
-      const mgp=hasS&&sell>0?(mg/sell)*100:0;
+      const b=parseFloat(item.prix_achat)||0;
+      const pc=0;
+      const s=parseFloat(item.prix_vente)||0;
+      const sf=0;
+      const hasS=s>0;
+      const cogs=b+pc;
+      const mg=hasS?s-cogs-sf:0;
+      const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
       const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
       for(let q=0;q<qty;q++){
         if(!isPremium&&items.length>=20)break;
-        const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:buy,prix_vente:hasS?sell:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+        const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0};
         const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
         if(!error){
           setItems(prev=>[mapItem(data),...prev]);
           if(hasS){
-            const srow={user_id:user.id,titre:item.nom||"Article",prix_achat:buy,prix_vente:sell,benefice:mg,date:item.date||new Date().toISOString().split('T')[0]};
+            const srow={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:s,benefice:mg,date:item.date||new Date().toISOString().split('T')[0]};
             const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
             if(sd)setSales(prev=>[mapSale(sd),...prev]);
           }
