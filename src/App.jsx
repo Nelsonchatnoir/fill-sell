@@ -92,6 +92,7 @@ const css = `
   }
   @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
   @keyframes fs-dot{0%,80%,100%{opacity:0.25;transform:scale(0.7);}40%{opacity:1;transform:scale(1);}}
+  @keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(229,62,62,0.4);}50%{box-shadow:0 0 0 10px rgba(229,62,62,0);}}
 `;
 
 const EUR_TO_USD = 1.08;
@@ -665,6 +666,15 @@ export default function App({ loginOnly = false }){
   const [dealAnalysis,setDealAnalysis]=useState(null);
   const [dealAnalysisLoading,setDealAnalysisLoading]=useState(false);
   const dealAnalysisTimer=useRef(null);
+  const [isRecording,setIsRecording]=useState(false);
+  const [voiceText,setVoiceText]=useState("");
+  const [voiceLoading,setVoiceLoading]=useState(false);
+  const [voiceStep,setVoiceStep]=useState("");
+  const [voiceParsed,setVoiceParsed]=useState(null);
+  const [voiceError,setVoiceError]=useState(null);
+  const [showManualForm,setShowManualForm]=useState(false);
+  const mediaRecorderRef=useRef(null);
+  const audioChunksRef=useRef([]);
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -935,6 +945,93 @@ export default function App({ loginOnly = false }){
   const invested=items.reduce((a,i)=>a+i.buy,0);
   const stockVal=stock.reduce((a,i)=>a+i.buy,0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
+
+  function resetVoiceFlow(){
+    setVoiceText("");setVoiceLoading(false);setVoiceStep("");
+    setVoiceParsed(null);setVoiceError(null);setIsRecording(false);
+  }
+
+  async function callVoiceParse(text){
+    setVoiceStep("parsing");setVoiceLoading(true);
+    try{
+      const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/voice-parse",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text,lang}),
+      });
+      if(!res.ok)throw new Error("Parse failed");
+      const result=await res.json();
+      if(result.error)throw new Error(result.error);
+      setVoiceParsed(result);setVoiceStep("done");
+    }catch(e){
+      setVoiceError(e.message||"Erreur analyse");setVoiceStep("error");
+    }
+    setVoiceLoading(false);
+  }
+
+  async function handleVoiceToggle(){
+    if(isRecording){mediaRecorderRef.current?.stop();setIsRecording(false);return;}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mimeType=MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/mp4";
+      const recorder=new MediaRecorder(stream,{mimeType});
+      audioChunksRef.current=[];
+      recorder.ondataavailable=e=>{if(e.data.size>0)audioChunksRef.current.push(e.data);};
+      recorder.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        const blob=new Blob(audioChunksRef.current,{type:mimeType});
+        setVoiceStep("transcribing");setVoiceLoading(true);
+        try{
+          const fd=new FormData();
+          fd.append("audio",blob,"audio."+mimeType.split("/")[1]);
+          fd.append("lang",lang);
+          const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/voice-transcribe",{method:"POST",body:fd});
+          if(!res.ok)throw new Error("Transcription failed");
+          const{text,error:err}=await res.json();
+          if(err)throw new Error(err);
+          setVoiceText(text);
+          await callVoiceParse(text);
+        }catch(e){
+          setVoiceError(e.message||"Erreur transcription");setVoiceStep("error");setVoiceLoading(false);
+        }
+      };
+      mediaRecorderRef.current=recorder;
+      recorder.start();
+      setIsRecording(true);setVoiceStep("recording");
+    }catch(e){
+      setVoiceError(e.message||"Micro non disponible");setVoiceStep("error");
+    }
+  }
+
+  async function addItemsFromVoice(){
+    if(!voiceParsed?.items?.length)return;
+    for(const item of voiceParsed.items){
+      const qty=Math.max(1,item.quantite||1);
+      const buy=item.prix_achat??0;
+      const sell=item.prix_vente??0;
+      const hasS=sell>0;
+      const mg=hasS?sell-buy:0;
+      const mgp=hasS&&sell>0?(mg/sell)*100:0;
+      const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
+      const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
+      for(let q=0;q<qty;q++){
+        if(!isPremium&&items.length>=20)break;
+        const row={user_id:user.id,titre:item.nom||"Article",prix_achat:buy,prix_vente:hasS?sell:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+        const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
+        if(!error){
+          setItems(prev=>[mapItem(data),...prev]);
+          if(hasS){
+            const srow={user_id:user.id,titre:item.nom||"Article",prix_achat:buy,prix_vente:sell,benefice:mg,date:item.date||new Date().toISOString().split('T')[0]};
+            const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
+            if(sd)setSales(prev=>[mapSale(sd),...prev]);
+          }
+        }
+      }
+    }
+    const n=voiceParsed.items.length;
+    setToast({visible:true,message:lang==='fr'?`✅ ${n} article${n>1?"s":""} ajouté${n>1?"s":""} !`:`✅ ${n} item${n>1?"s":""} added!`});
+    setTimeout(()=>setToast({visible:false,message:""}),3000);
+    resetVoiceFlow();
+  }
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
@@ -1866,6 +1963,78 @@ export default function App({ loginOnly = false }){
         {tab===1&&(
           <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
             <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              {/* ── Voice Capture ── */}
+              {voiceStep==="done"&&voiceParsed?(
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{background:voiceParsed.action==="achat"?"#E8F5F0":"#FFF4EE",color:voiceParsed.action==="achat"?"#1D9E75":"#F9A26C",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:700,border:`1px solid ${voiceParsed.action==="achat"?"#C6E8DF":"#FDDCB5"}`}}>
+                      {voiceParsed.action==="achat"?(lang==='fr'?"Achat":"Purchase"):(lang==='fr'?"Vente":"Sale")}
+                    </span>
+                    <span style={{fontSize:12,color:"#6B7280"}}>{voiceParsed.items.length} {lang==='fr'?`article${voiceParsed.items.length>1?"s":""}`:voiceParsed.items.length>1?"items":"item"} {lang==='fr'?"détecté(s)":"detected"}</span>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {voiceParsed.items.map((item,i)=>{
+                      const ts=getTypeStyle(item.categorie);
+                      return(
+                        <div key={i} style={{background:item.confidence<0.7?"#FFF4EE":"#F9FAFB",borderRadius:10,padding:"10px 12px",border:`1px solid ${item.confidence<0.7?"#FDDCB5":"rgba(0,0,0,0.06)"}`,display:"flex",flexDirection:"column",gap:4}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+                            <div style={{fontWeight:700,fontSize:13,color:C.text}}>
+                              {item.nom}{item.marque&&<span style={{color:"#6B7280",fontWeight:600}}> · {item.marque}</span>}{item.type&&<span style={{color:"#A3A9A6",fontWeight:500}}> {item.type}</span>}
+                            </div>
+                            <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`,flexShrink:0}}>{ts.emoji} {typeLabel(item.categorie,lang)}</span>
+                          </div>
+                          <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280",flexWrap:"wrap"}}>
+                            {item.prix_achat!==null&&<span>🛒 {item.prix_achat}€</span>}
+                            {item.prix_vente!==null&&<span>💰 {item.prix_vente}€</span>}
+                            {item.quantite>1&&<span>×{item.quantite}</span>}
+                            {item.date&&<span>📅 {item.date}</span>}
+                          </div>
+                          {item.confidence<0.7&&<div style={{fontSize:11,color:"#F9A26C",fontWeight:700}}>{lang==='fr'?"⚠️ À vérifier":"⚠️ To verify"}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button onClick={addItemsFromVoice} style={{width:"100%",padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?"✓ Ajouter à l'inventaire":"✓ Add to inventory"}
+                  </button>
+                  <button onClick={resetVoiceFlow} style={{width:"100%",padding:"12px",background:"transparent",color:"#6B7280",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?"✗ Recommencer":"✗ Start over"}
+                  </button>
+                </div>
+              ):voiceStep==="error"?(
+                <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",padding:"8px 0"}}>
+                  <div style={{fontSize:13,color:"#E53E3E",fontWeight:600,textAlign:"center"}}>{voiceError}</div>
+                  <button onClick={resetVoiceFlow} style={{padding:"10px 20px",background:"#FEF2F2",color:"#E53E3E",border:"1px solid #FCA5A5",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?"Réessayer":"Try again"}
+                  </button>
+                </div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
+                  <button onClick={handleVoiceToggle} disabled={voiceStep==="transcribing"||voiceStep==="parsing"}
+                    style={{width:64,height:64,borderRadius:"50%",border:"none",cursor:voiceLoading?"not-allowed":"pointer",background:isRecording?"#E53E3E":(voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#F9A26C)"),color:"#fff",fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:isRecording?"0 0 0 6px rgba(229,62,62,0.2)":"0 4px 16px rgba(78,205,196,0.4)",animation:isRecording?"pulse-red 1.2s ease-in-out infinite":undefined,transition:"all 0.2s",flexShrink:0}}>
+                    {voiceStep==="transcribing"||voiceStep==="parsing"?"⏳":"🎤"}
+                  </button>
+                  <div style={{fontSize:12,fontWeight:700,color:isRecording?"#E53E3E":"#6B7280",textAlign:"center",lineHeight:1.4}}>
+                    {voiceStep==="transcribing"?(lang==='fr'?"🎙️ Transcription...":"🎙️ Transcribing..."):voiceStep==="parsing"?(lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."):isRecording?(lang==='fr'?"En écoute... (retape pour arrêter)":"Listening... (tap to stop)"):(lang==='fr'?"Parle ou tape":"Speak or type")}
+                  </div>
+                  <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
+                    placeholder={lang==='fr'?"Ou tape : j'ai acheté une veste Zara 8€, des Nike 15€...":"Or type: I bought a Zara jacket 8€, Nike sneakers 15€..."}
+                    rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
+                  <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
+                    style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
+                    {lang==='fr'?"✨ Analyser":"✨ Analyze"}
+                  </button>
+                </div>
+              )}
+              {/* ── Toggle formulaire manuel ── */}
+              <button onClick={()=>setShowManualForm(v=>!v)}
+                style={{width:"100%",padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              >
+                {showManualForm?(lang==='fr'?"− Fermer le formulaire ▴":"− Close form ▴"):(lang==='fr'?"+ Ajouter manuellement ▾":"+ Add manually ▾")}
+              </button>
+              {showManualForm&&(<>
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
                   <div style={{fontSize:28,marginBottom:8}}>🧩</div>
@@ -1981,6 +2150,7 @@ export default function App({ loginOnly = false }){
                   {lang==='fr'?'✅ Article ajouté ! Tu peux maintenant enregistrer une vente.':'✅ Item added! You can now record a sale.'}
                 </div>
               )}
+              </>)}
             </div>
 
             <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
