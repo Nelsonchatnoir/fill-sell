@@ -33,16 +33,28 @@ RÈGLES MARQUE/TYPE (conservatrices) :
 - Ne JAMAIS inventer une marque non mentionnée → null
 - Ne JAMAIS inventer un prix non mentionné → null
 
-RÈGLES LOT :
-- Si plusieurs objets avec UN prix global → isLot: true, lotTotal: prix global
-- Expressions lot : "le tout pour X", "pour X les Y", "j'ai payé X pour tout",
-  "lot à X", "X€ les X", "X pour tout", "le tout X", "all for X", "X for all",
-  "I paid X for everything", "lot for X", "X for the lot", "X total"
-- Si isLot=true : répartir intelligemment selon valeur RELATIVE probable entre les objets
-  (cohérence relative, pas valeur marchande absolue)
-  La somme des prix_estime_lot DOIT être exactement égale à lotTotal
-  Si répartition impossible → diviser équitablement (lotTotal / nb_items)
-- Si prix individuels mentionnés → isLot: false, lotTotal: null, prix_estime_lot: null pour tous
+RÈGLES LOT vs ARTICLES INDIVIDUELS (CRITIQUE) :
+
+PRIX UNITAIRE — priorité absolue sur tout le reste :
+Si l'utilisateur donne un prix PAR article (mots-clés : "chacun", "chaque", "l'un",
+"la pièce", "par article", "par paire", "unitaire", ou le même prix répété pour chaque item) :
+→ isLot: false, prix_achat: prix_unitaire, quantite: N, prix_estime_lot: null
+Ne JAMAIS diviser ce prix. Ne JAMAIS traiter comme un lot.
+  ✅ "3 sacs à 8€ chacun" → isLot:false, prix_achat:8, quantite:3
+  ✅ "5 t-shirts à 5€ la pièce" → isLot:false, prix_achat:5, quantite:5
+  ✅ "j'ai pris 2 vestes à 12€ chaque" → isLot:false, prix_achat:12, quantite:2
+
+LOT — uniquement si prix global sans prix unitaire :
+Si plusieurs objets avec UN prix TOTAL et AUCUN prix unitaire mentionné :
+→ isLot: true, lotTotal: prix global
+Expressions lot : "le tout pour X", "pour X les Y", "j'ai payé X pour tout",
+"lot à X", "X pour tout", "le tout X"
+Si isLot=true : répartir selon valeur RELATIVE probable entre les objets.
+La somme des prix_estime_lot DOIT être exactement égale à lotTotal.
+  ✅ "3 sacs pour 25€" → isLot:true, lotTotal:25
+  ✅ "j'ai acheté 5 t-shirts pour 20€" → isLot:true, lotTotal:20
+
+- Si prix individuels différents mentionnés → isLot: false, lotTotal: null, prix_estime_lot: null pour tous
 - Ne JAMAIS inventer des prix individuels hors contexte lot
 
 Catégories autorisées (valeurs exactes) :
@@ -113,16 +125,28 @@ BRAND/TYPE RULES (conservative) :
 - NEVER invent a price not mentioned → null
 - NEVER invent a brand not mentioned → null
 
-LOT RULES :
-- If multiple items with ONE global price → isLot: true, lotTotal: global price
-- Lot expressions: "all for X", "X for all", "I paid X for everything",
-  "lot for X", "X for the lot", "X total", "le tout pour X", "pour X les Y",
-  "j'ai payé X pour tout", "lot à X", "X pour tout"
-- If isLot=true: distribute intelligently by relative probable value between items
-  (relative coherence, not absolute market value)
-  Sum of prix_estime_lot MUST equal exactly lotTotal
-  If distribution impossible → divide equally (lotTotal / nb_items)
-- If individual prices mentioned → isLot: false, lotTotal: null, prix_estime_lot: null for all
+LOT vs INDIVIDUAL ITEMS RULES (CRITICAL):
+
+UNIT PRICE — absolute priority:
+If the user states a price PER item (keywords: "each", "each one", "apiece",
+"per item", "per piece", "per pair", "chacun", "chaque", "la pièce", "l'un"):
+→ isLot: false, prix_achat: unit_price, quantite: N, prix_estime_lot: null
+NEVER divide this price. NEVER treat as a lot.
+  ✅ "3 bags at €8 each" → isLot:false, prix_achat:8, quantite:3
+  ✅ "5 t-shirts at €5 apiece" → isLot:false, prix_achat:5, quantite:5
+  ✅ "I bought 2 jackets at €12 each" → isLot:false, prix_achat:12, quantite:2
+
+LOT — only when global price with no unit price:
+If multiple items share ONE TOTAL price AND no per-item price is mentioned:
+→ isLot: true, lotTotal: global price
+Lot expressions: "all for X", "X for all", "I paid X for everything",
+"lot for X", "X for the lot", "X total"
+If isLot=true: distribute by relative probable value.
+Sum of prix_estime_lot MUST equal exactly lotTotal.
+  ✅ "3 bags for €25" → isLot:true, lotTotal:25
+  ✅ "I bought 5 t-shirts for €20" → isLot:true, lotTotal:20
+
+- If different individual prices mentioned → isLot: false, lotTotal: null, prix_estime_lot: null for all
 - NEVER invent individual prices outside lot context
 
 Allowed categories (exact values) :

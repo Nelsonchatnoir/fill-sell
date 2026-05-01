@@ -47,12 +47,18 @@ Règle inventory_lot vs inventory_add+quantite :
 inventory_lot = UNIQUEMENT si plusieurs articles DIFFÉRENTS avec UN prix global pour tout l'ensemble.
   ✅ "une veste, un jean et des Nike pour 40€" → inventory_lot
   ✅ "j'ai acheté une veste et des chaussures pour 30€" → inventory_lot
-Si tous les articles sont IDENTIQUES (même produit × N exemplaires) → inventory_add avec quantite + prix unitaire calculé (total÷quantite) :
-  ✅ "10 paquets de cartes pour 60€" → inventory_add, quantite:10, prix_achat:6
-  ✅ "un lot de 10 paquets de cartes pour 60€" → inventory_add, quantite:10, prix_achat:6
-  ✅ "3 Nike pour 45€" → inventory_add, quantite:3, prix_achat:15
+Si tous les articles sont IDENTIQUES (même produit × N exemplaires) → inventory_add avec quantite.
 Le mot "lot" seul ne déclenche PAS inventory_lot si les articles sont identiques.
 NE PAS générer inventory_lot + inventory_add pour le même groupe d'articles identiques.
+
+PRIX UNITAIRE vs PRIX TOTAL (CRITIQUE) :
+Si l'utilisateur donne un prix UNITAIRE (mots-clés : "chacun", "chaque", "l'un", "la pièce",
+"par article", "par paire") → prix_achat = prix unitaire. Ne JAMAIS diviser.
+  ✅ "3 Nike à 15€ chacun" → inventory_add, quantite:3, prix_achat:15
+  ✅ "5 t-shirts à 5€ la pièce" → inventory_add, quantite:5, prix_achat:5
+Si seulement un prix TOTAL est mentionné → prix_achat = total÷quantite.
+  ✅ "10 paquets de cartes pour 60€" → inventory_add, quantite:10, prix_achat:6
+  ✅ "3 Nike pour 45€" → inventory_add, quantite:3, prix_achat:15
 
 Structure retournée :
 {
@@ -133,12 +139,18 @@ Rule inventory_lot vs inventory_add+quantite:
 inventory_lot = ONLY when multiple DIFFERENT items share ONE global price for the whole set.
   ✅ "a jacket, jeans and Nike sneakers for €40" → inventory_lot
   ✅ "I bought a jacket and shoes for €30" → inventory_lot
-If all items are IDENTICAL (same product × N units) → inventory_add with quantite + unit price (total÷quantity):
-  ✅ "10 card packs for €60" → inventory_add, quantite:10, prix_achat:6
-  ✅ "a lot of 10 card packs for €60" → inventory_add, quantite:10, prix_achat:6
-  ✅ "3 Nikes for €45" → inventory_add, quantite:3, prix_achat:15
+If all items are IDENTICAL (same product × N units) → inventory_add with quantite.
 The word "lot" alone does NOT trigger inventory_lot if items are identical.
 Do NOT generate both inventory_lot AND inventory_add for the same group of identical items.
+
+UNIT PRICE vs TOTAL PRICE (CRITICAL):
+If the user states a UNIT price (keywords: "each", "each one", "apiece", "per item",
+"per piece", "per pair", "chacun", "chaque", "la pièce") → prix_achat = unit price. NEVER divide.
+  ✅ "3 Nikes at €15 each" → inventory_add, quantite:3, prix_achat:15
+  ✅ "5 t-shirts at €5 apiece" → inventory_add, quantite:5, prix_achat:5
+If only a TOTAL price is mentioned → prix_achat = total÷quantity.
+  ✅ "10 card packs for €60" → inventory_add, quantite:10, prix_achat:6
+  ✅ "3 Nikes for €45" → inventory_add, quantite:3, prix_achat:15
 
 Returned structure:
 {
