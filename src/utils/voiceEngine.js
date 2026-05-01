@@ -3,6 +3,14 @@ import { calculateDealScore } from './dealScore.js';
 const norm = s =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() ?? "";
 
+const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
+const getPrixAchat = s => s.prix_achat ?? s.buy ?? s.purchase_price ?? 0;
+const getFrais     = s => s.frais ?? s.sellingFees ?? s.selling_fees ?? 0;
+const getMargin    = s => {
+  const m = s.margin ?? s.benefice ?? s.profit;
+  return m != null ? m : getPrixVente(s) - getPrixAchat(s) - getFrais(s);
+};
+
 function getPeriodDates(periode, date_from, date_to) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -130,14 +138,11 @@ function handleAnalyticsQuery(task, context) {
 
   switch (type) {
     case "profit":
-      value = filtered.reduce(
-        (a, s) => a + (isNaN(s.margin) ? 0 : (s.margin ?? s.benefice ?? 0)),
-        0
-      );
+      value = filtered.reduce((a, s) => { const m=getMargin(s); return a+(isNaN(m)?0:m); }, 0);
       label = context.lang === "en" ? "Total profit" : "Bénéfice total";
       break;
     case "revenue":
-      value = filtered.reduce((a, s) => a + (s.prix_vente ?? 0), 0);
+      value = filtered.reduce((a, s) => a + getPrixVente(s), 0);
       label = context.lang === "en" ? "Total revenue" : "Chiffre d'affaires";
       break;
     case "count":
@@ -149,7 +154,7 @@ function handleAnalyticsQuery(task, context) {
         const sum = filtered.reduce((a, s) => {
           const mp =
             s.margin_pct ??
-            ((s.prix_vente - s.prix_achat - (s.frais ?? s.sellingFees ?? 0)) / Math.max(s.prix_achat, 1)) * 100;
+            ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100;
           return a + (isNaN(mp) ? 0 : mp);
         }, 0);
         value = sum / filtered.length;
@@ -159,7 +164,7 @@ function handleAnalyticsQuery(task, context) {
     case "avg_roi":
       if (filtered.length) {
         const sum = filtered.reduce((a, s) => {
-          const roi = (s.prix_vente - s.prix_achat) / Math.max(s.prix_achat, 1);
+          const roi = (getPrixVente(s) - getPrixAchat(s)) / Math.max(getPrixAchat(s), 1);
           return a + (isNaN(roi) ? 0 : roi);
         }, 0);
         value = sum / filtered.length;
@@ -167,14 +172,11 @@ function handleAnalyticsQuery(task, context) {
       label = context.lang === "en" ? "Avg ROI" : "ROI moyen";
       break;
     case "spend":
-      value = filtered.reduce((a, s) => a + (s.prix_achat ?? 0), 0);
+      value = filtered.reduce((a, s) => a + getPrixAchat(s), 0);
       label = context.lang === "en" ? "Total spend" : "Total dépensé";
       break;
     default:
-      value = filtered.reduce(
-        (a, s) => a + (isNaN(s.margin) ? 0 : (s.margin ?? s.benefice ?? 0)),
-        0
-      );
+      value = filtered.reduce((a, s) => { const m=getMargin(s); return a+(isNaN(m)?0:m); }, 0);
       label = context.lang === "en" ? "Total profit" : "Bénéfice total";
   }
 
@@ -209,8 +211,8 @@ function handleAnalyticsBest(task, context) {
           _sortVal:
             metric === "margin"
               ? (s.margin_pct ??
-                  ((s.prix_vente - s.prix_achat - (s.frais ?? s.sellingFees ?? 0)) / Math.max(s.prix_achat, 1)) * 100)
-              : (s.margin ?? s.benefice ?? s.prix_vente - s.prix_achat),
+                  ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100)
+              : getMargin(s),
         }))
         .filter(s => !isNaN(s._sortVal))
         .sort((a, b) => b._sortVal - a._sortVal)[0];
@@ -304,8 +306,8 @@ function handleAnalyticsDate(task, context) {
   const soldItems = items.filter(i => i._type === "sold");
   const summary = {
     count: items.length,
-    totalSpend: boughtItems.reduce((a, i) => a + (i.prix_achat ?? 0), 0),
-    totalRevenue: soldItems.reduce((a, s) => a + (s.prix_vente ?? 0), 0),
+    totalSpend: boughtItems.reduce((a, i) => a + getPrixAchat(i), 0),
+    totalRevenue: soldItems.reduce((a, s) => a + getPrixVente(s), 0),
   };
 
   return {
@@ -391,9 +393,9 @@ export async function executeVoiceTasks(tasks, context) {
           break;
         case "deal_score": {
           const historique = context.sales.map(s => ({
-            prix_vente: s.prix_vente ?? s.sell ?? 0,
-            prix_achat: s.prix_achat ?? s.buy ?? 0,
-            frais: s.frais ?? s.sellingFees ?? 0,
+            prix_vente: getPrixVente(s),
+            prix_achat: getPrixAchat(s),
+            frais: getFrais(s),
             categorie: s.categorie ?? s.category ?? null,
             marque: s.marque ?? s.brand ?? null,
             date_achat: s.date_achat ?? s.createdAt ?? null,
