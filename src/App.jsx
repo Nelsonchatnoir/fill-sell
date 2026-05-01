@@ -985,19 +985,29 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
               }
 
               if(status==="pending_confirmation"&&intent==="inventory_sell"){
+                const sellPv=vaEdits[idx]?.prix_vente??taskData?.prix_vente??null;
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"14px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:12}}>
                       {lang==="en"
-                        ?`Sell ${taskData?.nom||"item"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} at ${taskData?.prix_vente||"?"}€?`
-                        :`Vendre ${taskData?.nom||"l'article"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} à ${taskData?.prix_vente||"?"}€ ?`}
+                        ?`Sell ${taskData?.nom||"item"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} at ${sellPv||"?"}€?`
+                        :`Vendre ${taskData?.nom||"l'article"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} à ${sellPv||"?"}€ ?`}
                     </div>
+                    {!taskData?.prix_vente&&(
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+                        <input type="number" value={vaEdits[idx]?.prix_vente??""}
+                          onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],prix_vente:parseFloat(e.target.value)||0}}))}
+                          placeholder={lang==="en"?"Sell price":"Prix vente"}
+                          style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>€</span>
+                      </div>
+                    )}
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
-                        const q=(taskData?.nom||"").toLowerCase();
-                        const found=items.find(i=>(i.title||"").toLowerCase().includes(q)&&q);
+                        const q=(taskData?.nom||"").toLowerCase().trim();
+                        const found=items.find(i=>{const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
                         if(found){
-                          actions.confirmSellDirect(found,taskData?.prix_vente,taskData?.frais||0,taskData?.quantite_vendue||1)
+                          actions.confirmSellDirect(found,sellPv,taskData?.frais||0,taskData?.quantite_vendue||1)
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
@@ -2355,7 +2365,7 @@ export default function App({ loginOnly = false }){
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(error)throw new Error(error.message);
-      const mapped=mapItem(d);
+      const mapped=mapItem({...d,quantite:d.quantite??row.quantite});
       setItems(prev=>[mapped,...prev]);
       return mapped;
     },
