@@ -400,7 +400,8 @@ function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_ve
 
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
-  if(/louis.?vuitton|lv|chanel|dior|hermès|hermes|gucci|prada|burberry|versace|givenchy|balenciaga|off.?white|stone.?island|moncler|canada.?goose|ralph.?lauren|lacoste|tommy|boss|armani|valentino|bottega|fendi|celine|saint.?laurent|ysl|alexander.?mcqueen|vivienne.?westwood|rolex|omega|cartier|tag.?heuer|breitling|patek|audemars|richard.?mille|iwc|birkin|kelly|speedy|neverfull|louboutin|jimmy.?choo|manolo/i.test(t)) return 'Luxe';
+  // Luxury brands always take absolute priority over article type
+  if(/louis.?vuitton|\blv\b|gucci|hermès|hermes|chanel|dior|prada|balenciaga|givenchy|saint.?laurent|\bysl\b|burberry|versace|fendi|celine|céline|bottega.?veneta|valentino|moncler|off.?white|alexander.?mcqueen|vivienne.?westwood|rolex|omega|cartier|tag.?heuer|breitling|patek|audemars|richard.?mille|\biwc\b|birkin|kelly|speedy|neverfull|louboutin|jimmy.?choo|manolo|stone.?island|canada.?goose|ralph.?lauren|lacoste|tommy|boss|armani/i.test(t)) return 'Luxe';
   if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|gant|lunette|bijou|collier|bracelet|bague|montre|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset/i.test(t)) return 'Mode';
   if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|pc|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|ram|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
   if(/canapé|sofa|table|chaise|bureau|armoire|commode|lit|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|drap|serviette|vase|bougie|déco|cuisine|assiette|bol|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|bar|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|pot|jardinage|arrosoir/i.test(t)) return 'Maison';
@@ -1624,7 +1625,7 @@ export default function App({ loginOnly = false }){
       const mg=hasS?s-cogs-sf:0;
       const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
-      const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
+      const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
       if(!isPremium&&items.length>=20)continue;
       const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
@@ -1669,7 +1670,7 @@ export default function App({ loginOnly = false }){
       if(!isPremium&&items.length>=20)break;
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
-      const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
+      const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
       const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:1};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error)setItems(prev=>[mapItem(data),...prev]);
@@ -2378,7 +2379,7 @@ export default function App({ loginOnly = false }){
       if(!isPremium&&items.length>=20)throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");
       const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
       const marqueNorm=data.marque?data.marque.trim().charAt(0).toUpperCase()+data.marque.trim().slice(1).toLowerCase():null;
-      const typeAuto=data.categorie||detectType(data.nom||"",marqueNorm);
+      const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
       const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
