@@ -1557,8 +1557,8 @@ export default function App({ loginOnly = false }){
   const soldVisible=soldShowAll?soldFiltre:soldFiltre.slice(0,10);
   const stockVisible=showAllStock?stockFiltre:stockFiltre.slice(0,10);
   const visibleSales=(showAllSales?sales:sales.slice(0,10)).filter(s=>searchMatch(s,searchHistory));
-  const invested=items.reduce((a,i)=>a+i.buy,0);
-  const stockVal=stock.reduce((a,i)=>a+i.buy,0);
+  const invested=items.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
+  const stockVal=stock.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
 
   function resetVoiceFlow(){
