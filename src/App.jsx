@@ -612,7 +612,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
       recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
       recorder.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
-        const mimeType=recorder.mimeType||"audio/webm";
+        const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
         const blob=new Blob(vaChunksRef.current,{type:mimeType});
         setVaStep("thinking");
         try{
