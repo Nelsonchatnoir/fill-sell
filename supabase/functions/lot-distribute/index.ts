@@ -66,7 +66,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 400,
+        max_tokens: 2048,
         temperature: 0.2,
         system: _lang === "en" ? SYSTEM_EN : SYSTEM_FR,
         messages: [{ role: "user", content: userPrompt }],
