@@ -14,16 +14,35 @@ Règles absolues :
 - Détecter l'action principale : achat ou vente
 - Extraire TOUS les articles mentionnés, même implicitement
 - Si quantité > 1 : garder quantite dans l'objet, NE PAS dupliquer les items
-- Détecter la marque si mentionnée ou clairement impliquée → null sinon
-- Détecter le type d'article (veste, sneakers, téléphone...) → null sinon
 - Classer dans la bonne catégorie selon les mots-clés fournis
 - Si article collector/limité/vintage/scellé → privilégier Collection
-- Convertir les références temporelles en date ISO YYYY-MM-DD (aujourd'hui = 2026-04-30)
-  Exemples : 'hier' → 2026-04-29, 'lundi' → dernier lundi passé
 - confidence : 0.9-1.0 si tout clair, 0.6-0.8 si partiel, < 0.6 si ambigu
-- Ne JAMAIS inventer un prix non mentionné → null
+
+RÈGLES DATE (strictes) :
+- Parser UNIQUEMENT si une date est explicitement mentionnée dans le texte
+- Si aucune date explicite → date: null OBLIGATOIRE, ne jamais inventer
+- Si date mentionnée, convertir en ISO YYYY-MM-DD (aujourd'hui = 2026-05-01)
+  Exemples : 'hier' → 2026-04-30, 'lundi' → dernier lundi passé
+
+RÈGLES MARQUE/TYPE (conservatrices) :
+- Détecter seulement si clairement mentionné ou fortement implicite
+- "TN" → marque: "Nike", type: "sneakers"
+- "Jordan 1", "AJ1" → marque: "Nike", type: "sneakers"
+- Si le moindre doute → null (ne jamais halluciner marque ou type)
 - Ne JAMAIS inventer une marque non mentionnée → null
-- Gérer parfaitement les textes multi-lignes et multi-articles
+- Ne JAMAIS inventer un prix non mentionné → null
+
+RÈGLES LOT :
+- Si plusieurs objets avec UN prix global → isLot: true, lotTotal: prix global
+- Expressions lot : "le tout pour X", "pour X les Y", "j'ai payé X pour tout",
+  "lot à X", "X€ les X", "X pour tout", "le tout X", "all for X", "X for all",
+  "I paid X for everything", "lot for X", "X for the lot", "X total"
+- Si isLot=true : répartir intelligemment selon valeur RELATIVE probable entre les objets
+  (cohérence relative, pas valeur marchande absolue)
+  La somme des prix_estime_lot DOIT être exactement égale à lotTotal
+  Si répartition impossible → diviser équitablement (lotTotal / nb_items)
+- Si prix individuels mentionnés → isLot: false, lotTotal: null, prix_estime_lot: null pour tous
+- Ne JAMAIS inventer des prix individuels hors contexte lot
 
 Catégories autorisées (valeurs exactes) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Autre"]
@@ -46,6 +65,8 @@ AUTRE : tout ce qui ne correspond à aucune catégorie ci-dessus
 Format de réponse (JSON strict) :
 {
   "action": "achat" | "vente",
+  "isLot": boolean,
+  "lotTotal": number | null,
   "items": [
     {
       "nom": string,
@@ -53,6 +74,7 @@ Format de réponse (JSON strict) :
       "type": string | null,
       "prix_achat": number | null,
       "prix_vente": number | null,
+      "prix_estime_lot": number | null,
       "quantite": number,
       "categorie": string,
       "date": string | null,
@@ -70,16 +92,35 @@ Absolute rules :
 - Detect the main action : purchase or sale
 - Extract ALL mentioned items, even implicitly
 - If quantity > 1 : keep quantite in the object, DO NOT duplicate items
-- Detect brand if mentioned or clearly implied → null otherwise
-- Detect item type (jacket, sneakers, phone...) → null otherwise
 - Classify in the right category using the keywords below
 - If item is collector/limited/vintage/sealed → prefer Collection
-- Convert time references to ISO date YYYY-MM-DD (today = 2026-04-30)
-  Examples: 'yesterday' → 2026-04-29, 'last monday' → last monday's date
 - confidence : 0.9-1.0 if clear, 0.6-0.8 if partial, < 0.6 if ambiguous
+
+DATE RULES (strict) :
+- Parse ONLY if a date is explicitly mentioned in the text
+- If no explicit date → date: null MANDATORY, never invent
+- If date mentioned, convert to ISO YYYY-MM-DD (today = 2026-05-01)
+  Examples: 'yesterday' → 2026-04-30, 'last monday' → last monday's date
+
+BRAND/TYPE RULES (conservative) :
+- Detect only if clearly mentioned or strongly implied
+- "TN" → marque: "Nike", type: "sneakers"
+- "Jordan 1", "AJ1" → marque: "Nike", type: "sneakers"
+- If any doubt → null (never hallucinate brand or type)
 - NEVER invent a price not mentioned → null
 - NEVER invent a brand not mentioned → null
-- Handle multi-line and multi-item text perfectly
+
+LOT RULES :
+- If multiple items with ONE global price → isLot: true, lotTotal: global price
+- Lot expressions: "all for X", "X for all", "I paid X for everything",
+  "lot for X", "X for the lot", "X total", "le tout pour X", "pour X les Y",
+  "j'ai payé X pour tout", "lot à X", "X pour tout"
+- If isLot=true: distribute intelligently by relative probable value between items
+  (relative coherence, not absolute market value)
+  Sum of prix_estime_lot MUST equal exactly lotTotal
+  If distribution impossible → divide equally (lotTotal / nb_items)
+- If individual prices mentioned → isLot: false, lotTotal: null, prix_estime_lot: null for all
+- NEVER invent individual prices outside lot context
 
 Allowed categories (exact values) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Autre"]
@@ -102,6 +143,8 @@ AUTRE : anything that does not clearly match the above categories
 Response format (strict JSON) :
 {
   "action": "achat" | "vente",
+  "isLot": boolean,
+  "lotTotal": number | null,
   "items": [
     {
       "nom": string,
@@ -109,6 +152,7 @@ Response format (strict JSON) :
       "type": string | null,
       "prix_achat": number | null,
       "prix_vente": number | null,
+      "prix_estime_lot": number | null,
       "quantite": number,
       "categorie": string,
       "date": string | null,
@@ -143,7 +187,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 500,
+        max_tokens: 600,
         temperature: 0.1,
         system: _lang === "en" ? SYSTEM_EN : SYSTEM_FR,
         messages: [{ role: "user", content: text }],
