@@ -741,7 +741,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
               if(status==="success"&&intent==="inventory_search"){
                 const found=data?.items||[];
-                const anySellOpen=vaEdits[idx]?.sellOpen!=null;
+                const anyFormOpen=vaEdits[idx]?.sellOpen!=null||vaEdits[idx]?.deleteOpen!=null||vaEdits[idx]?.editOpen!=null;
+                const CATS=["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"];
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
@@ -751,22 +752,45 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           const isSellOpen=vaEdits[idx]?.sellOpen===i;
                           const sellPrice=vaEdits[idx]?.sellPrice??"";
                           const sellFees=vaEdits[idx]?.sellFees??"";
+                          const isDeleteOpen=vaEdits[idx]?.deleteOpen===i;
+                          const isEditOpen=vaEdits[idx]?.editOpen===i;
+                          const ef=vaEdits[idx]?.editFields||{};
                           const isSold=item.statut==="vendu"||item.statut==="sold";
+                          const nom=item.titre||item.title||item.nom||"";
+                          const inputSt={fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
                           return(
                             <div key={i} style={{paddingBottom:6,borderBottom:i<Math.min(found.length,8)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                              {/* Item row */}
                               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
-                                <div><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre||item.nom}</div>{item.type&&<div style={{fontSize:11,color:"#A3A9A6"}}>{item.type}</div>}</div>
-                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <div style={{minWidth:0,flex:1}}>
+                                  <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
+                                  {item.type&&<div style={{fontSize:11,color:"#A3A9A6"}}>{item.type}</div>}
+                                </div>
+                                <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
-                                  {!isSold&&!isSellOpen&&!anySellOpen&&(
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:""}}))}
-                                      style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+                                  {!anyFormOpen&&!isSold&&(
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:""}}))}
+                                      style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                                       {lang==="en"?"Mark as sold":"Marquer vendu"}
                                     </button>
                                   )}
-                                  {isSold&&<span style={{fontSize:10,fontWeight:700,color:"#A3A9A6"}}>✓</span>}
+                                  {isSold&&!anyFormOpen&&<span style={{fontSize:10,fontWeight:700,color:"#A3A9A6"}}>✓</span>}
+                                  {!anyFormOpen&&(
+                                    <>
+                                      <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:i,editFields:{nom,prix_achat:item.prix_achat||item.buy||"",marque:item.marque||item.brand||"",type:item.type||item.categorie||""}}}))}
+                                        style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
+                                        ✏️
+                                      </button>
+                                      <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{deleteOpen:i}}))}
+                                        style={{fontSize:10,fontWeight:700,color:"#E53E3E",border:"1px solid #E53E3E",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
+                                        ✕
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
+
+                              {/* Sell form */}
                               {isSellOpen&&(
                                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
                                   <div style={{display:"flex",gap:6,flex:1}}>
@@ -791,6 +815,79 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                     style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                                     ✕
                                   </button>
+                                </div>
+                              )}
+
+                              {/* Delete confirm */}
+                              {isDeleteOpen&&(
+                                <div style={{background:"#FFF5F5",borderRadius:8,padding:"10px 12px",marginTop:6,border:"1px solid #FCA5A5"}}>
+                                  <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>
+                                    {lang==="en"?`Delete "${nom}"?`:`Supprimer "${nom}" ?`}
+                                  </div>
+                                  <div style={{display:"flex",gap:6}}>
+                                    <button onClick={()=>{
+                                      actions.deleteItem(item.id);
+                                      replaceResult(idx,{...result,data:{...data,items:data.items.filter((_,j)=>j!==i)}});
+                                      setVaEdits(prev=>({...prev,[idx]:{deleteOpen:null}}));
+                                    }} style={{flex:1,padding:"6px",background:"#E53E3E",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                      {lang==="en"?"Delete":"Supprimer"}
+                                    </button>
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{deleteOpen:null}}))}
+                                      style={{flex:1,padding:"6px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,fontSize:12,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                                      {lang==="en"?"Cancel":"Annuler"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Edit form */}
+                              {isEditOpen&&(
+                                <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
+                                  <div style={{display:"flex",gap:6}}>
+                                    <input value={ef.nom??nom}
+                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,nom:e.target.value}}}))}
+                                      placeholder={lang==="en"?"Name":"Nom"}
+                                      style={{...inputSt,flex:2}}/>
+                                    <input type="number" value={ef.prix_achat??item.prix_achat??item.buy??""}
+                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,prix_achat:e.target.value}}}))}
+                                      placeholder="Prix €"
+                                      style={{...inputSt,flex:1}}/>
+                                  </div>
+                                  <div style={{display:"flex",gap:6}}>
+                                    <input value={ef.marque??item.marque??item.brand??""}
+                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,marque:e.target.value}}}))}
+                                      placeholder={lang==="en"?"Brand":"Marque"}
+                                      style={{...inputSt,flex:1}}/>
+                                    <select value={ef.type??item.type??item.categorie??""}
+                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,type:e.target.value}}}))}
+                                      style={{...inputSt,flex:1}}>
+                                      <option value="">{lang==="en"?"Category":"Catégorie"}</option>
+                                      {CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                  </div>
+                                  <div style={{display:"flex",gap:6}}>
+                                    <button onClick={async()=>{
+                                      try{
+                                        const fields={
+                                          titre:ef.nom!=null?ef.nom:nom,
+                                          prix_achat:parseFloat(ef.prix_achat)||item.prix_achat||0,
+                                          marque:ef.marque!=null?ef.marque||null:item.marque||null,
+                                          type:ef.type||item.type||null,
+                                        };
+                                        await actions.updateItem(item.id,fields);
+                                        replaceResult(idx,{...result,data:{...data,items:data.items.map((it,j)=>j===i?{...it,...fields}:it)}});
+                                        actions.fetchAll();
+                                        setVaEdits(prev=>({...prev,[idx]:{editOpen:null,editFields:{}}}));
+                                      }catch(e){setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editError:e.message}}));}
+                                    }} style={{flex:1,padding:"6px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                      ✓ {lang==="en"?"Save":"Sauvegarder"}
+                                    </button>
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:null,editFields:{}}}))}
+                                      style={{flex:1,padding:"6px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,fontSize:12,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                                      {lang==="en"?"Cancel":"Annuler"}
+                                    </button>
+                                  </div>
+                                  {vaEdits[idx]?.editError&&<div style={{fontSize:11,color:"#E53E3E"}}>{vaEdits[idx].editError}</div>}
                                 </div>
                               )}
                             </div>
@@ -2241,6 +2338,10 @@ export default function App({ loginOnly = false }){
     markSold:(item)=>markSold(item),
     deleteItem:(id)=>delItem(id),
     fetchAll:()=>fetchAll(user.id),
+    updateItem:async(id,fields)=>{
+      const{error}=await supabase.from('inventaire').update(fields).eq('id',id);
+      if(error)throw new Error(error.message);
+    },
   };
 
   return(
