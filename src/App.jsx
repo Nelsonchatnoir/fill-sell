@@ -612,12 +612,12 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
       recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
       recorder.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
-        const type=vaChunksRef.current[0]?.type||"audio/webm";
-        const blob=new Blob(vaChunksRef.current,{type});
+        const mimeType=recorder.mimeType||"audio/webm";
+        const blob=new Blob(vaChunksRef.current,{type:mimeType});
         setVaStep("thinking");
         try{
           const fd=new FormData();
-          const ext=type.split("/")[1]?.split(";")[0]||"webm";
+          const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",body:fd});
           if(!tRes.ok)throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");
