@@ -594,10 +594,12 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
 function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
+  const autoCloseRef=useRef(null);
   const [vaEdits,setVaEdits]=useState({});
   const SURL=import.meta.env.VITE_SUPABASE_URL;
 
   function resetVA(){
+    clearTimeout(autoCloseRef.current);
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
     setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
@@ -633,6 +635,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
           const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions});
           setVaResults(results);setVaStep("results");
+          const noActionNeeded=results.every(r=>r.status==="success"&&r.intent!=="inventory_search");
+          if(noActionNeeded)autoCloseRef.current=setTimeout(()=>resetVA(),4000);
         }catch(e){setVaError(e.message||"Error");setVaStep("");}
       };
       vaMediaRef.current=recorder;recorder.start();setVaStep("recording");
