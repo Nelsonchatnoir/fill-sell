@@ -17,6 +17,7 @@ Règles absolues :
 - Classer dans la bonne catégorie selon les mots-clés fournis
 - Si article collector/limité/vintage/scellé → privilégier Collection
 - confidence : 0.9-1.0 si tout clair, 0.6-0.8 si partiel, < 0.6 si ambigu
+- description : extraire les qualificatifs mentionnés — couleur, taille (S/M/L/XL ou numérique), état (neuf, bon état, usé, abîmé, vintage...), matière si précisée. Format court et lisible : "Noir, taille 36" ou "Usé, taille 44" ou "Cuir, neuf". null si aucun qualificatif mentionné.
 
 RÈGLES DATE (strictes) :
 - Parser UNIQUEMENT si une date est explicitement mentionnée dans le texte
@@ -77,6 +78,7 @@ Format de réponse (JSON strict) :
       "prix_estime_lot": number | null,
       "quantite": number,
       "categorie": string,
+      "description": string | null,
       "date": string | null,
       "confidence": number
     }
@@ -95,6 +97,7 @@ Absolute rules :
 - Classify in the right category using the keywords below
 - If item is collector/limited/vintage/sealed → prefer Collection
 - confidence : 0.9-1.0 if clear, 0.6-0.8 if partial, < 0.6 if ambiguous
+- description: extract any qualifiers mentioned — color, size (S/M/L/XL or numeric), condition (new, good condition, worn, damaged, vintage...), material if specified. Short readable format: "Black, size 36" or "Worn, size 44" or "Leather, new". null if no qualifiers mentioned.
 
 DATE RULES (strict) :
 - Parse ONLY if a date is explicitly mentioned in the text
@@ -155,6 +158,7 @@ Response format (strict JSON) :
       "prix_estime_lot": number | null,
       "quantite": number,
       "categorie": string,
+      "description": string | null,
       "date": string | null,
       "confidence": number
     }

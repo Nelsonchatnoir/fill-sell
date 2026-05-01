@@ -747,11 +747,13 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 const marque=data?.marque||taskData?.marque;
                 const nom=data?.title||data?.nom||taskData?.nom;
                 const prix=data?.buy??data?.prix_achat??taskData?.prix_achat;
+                const desc=data?.description||taskData?.description||null;
                 return(
                   <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:16}}>✅</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${prix}€`:""}{qAdded?` · ×${qAdded}`:""}</div>
+                      {desc&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:500,marginTop:2,opacity:0.85}}>{desc}</div>}
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
                         {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                         {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
@@ -2384,7 +2386,7 @@ export default function App({ loginOnly = false }){
       const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
       const marqueNorm=data.marque?data.marque.trim().charAt(0).toUpperCase()+data.marque.trim().slice(1).toLowerCase():null;
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(error)throw new Error(error.message);

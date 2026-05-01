@@ -68,7 +68,7 @@ Structure retournée :
 }
 
 Data par intent :
-inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite }
+inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description }
 inventory_lot:    { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -82,6 +82,10 @@ analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", "c'est rentable", calcul achat/vente explicite avec deux prix mentionnés
 unknown:          { originalText }
+
+Règle description (inventory_add uniquement) :
+Extraire les qualificatifs : couleur, taille (S/M/L/XL ou numérique), état (neuf, bon état, usé, abîmé...), matière si précisée.
+Format court : "Noir, taille 36" ou "Usé, taille 44". null si aucun qualificatif.
 
 Règle quantite/quantite_vendue :
 - inventory_add : quantite = nombre d'exemplaires achetés (défaut 1 si non mentionné).
@@ -150,7 +154,7 @@ Returned structure:
 }
 
 Data per intent:
-inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite }
+inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description }
 inventory_lot:    { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -164,6 +168,10 @@ analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", "is it worth it", explicit buy/sell calculation with two prices mentioned
 unknown:          { originalText }
+
+Description rule (inventory_add only):
+Extract qualifiers: color, size (S/M/L/XL or numeric), condition (new, good condition, worn, damaged...), material if specified.
+Short format: "Black, size 36" or "Worn, size 44". null if no qualifiers mentioned.
 
 Quantity rules:
 - inventory_add: quantite = number of units bought (default 1 if not mentioned).
