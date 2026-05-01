@@ -1160,6 +1160,21 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 );
               }
 
+              if(status==="success"&&intent==="inventory_sell"){
+                const pv=parseFloat(String(data?.prix_vente??taskData?.prix_vente??0).replace(",","."))||null;
+                const qv=(data?.quantite_vendue||taskData?.quantite_vendue)>1?(data?.quantite_vendue||taskData?.quantite_vendue):null;
+                const nom=data?.nom||taskData?.nom;
+                return(
+                  <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:16}}>✅</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{lang==="en"?"Sale registered":"Vente enregistrée"}{pv?` · ${pv}€`:""}{qv?` · ×${qv}`:""}</div>
+                      {nom&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:600,marginTop:2}}>{nom}</div>}
+                    </div>
+                  </div>
+                );
+              }
+
               if(status==="success"){
                 return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB"}}><div style={{fontSize:13,fontWeight:600,color:"#0F6E56"}}>✅ {message}</div></div>);
               }
