@@ -25,6 +25,7 @@ Intents disponibles :
 - analytics_best      → requiresConfirmation: false
 - analytics_dormant   → requiresConfirmation: false
 - analytics_date      → requiresConfirmation: false
+- deal_score          → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
 
 Structure retournée :
@@ -48,9 +49,12 @@ inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
 analytics_query:  { type ("profit"|"revenue"|"count"|"avg_margin"|"avg_roi"|"spend"), periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to, categorie, brand }
-analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode }
+analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, groupBy ("categorie"|null) }
+Si l'utilisateur demande les meilleurs deals PAR catégorie → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
+deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
+Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", "c'est rentable", calcul achat/vente explicite avec deux prix mentionnés
 unknown:          { originalText }`;
 
 const SYSTEM_EN = `You are the intent engine of Fill & Sell, an intelligent resale app.
@@ -73,6 +77,7 @@ Available intents:
 - analytics_best      → requiresConfirmation: false
 - analytics_dormant   → requiresConfirmation: false
 - analytics_date      → requiresConfirmation: false
+- deal_score          → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
 
 Returned structure:
@@ -96,9 +101,12 @@ inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
 analytics_query:  { type ("profit"|"revenue"|"count"|"avg_margin"|"avg_roi"|"spend"), periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to, categorie, brand }
-analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode }
+analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, groupBy ("categorie"|null) }
+If the user asks for best deals BY category → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
+deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
+Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", "is it worth it", explicit buy/sell calculation with two prices mentioned
 unknown:          { originalText }`;
 
 serve(async (req) => {

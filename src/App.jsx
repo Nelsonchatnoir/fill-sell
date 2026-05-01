@@ -639,7 +639,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
   function replaceResult(idx,patch){setVaResults(prev=>prev.map((r,i)=>i===idx?{...r,...patch}:r));}
 
-  const fabSize=vaStep==="results"?40:56;
+  const fabSize=56;
   const isIdle=vaStep==="";
   const isRec=vaStep==="recording";
   const isThink=vaStep==="thinking";
@@ -671,7 +671,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
         cursor:isThink?"not-allowed":"pointer",
         background:isRec?"#E53E3E":isThink?"#fff":"linear-gradient(135deg,#1D9E75,#E8956D)",
         boxShadow:isRec?"0 4px 20px rgba(229,62,62,0.4)":"0 4px 20px rgba(29,158,117,0.35)",
-        display:"flex",alignItems:"center",justifyContent:"center",
+        display:isRes?"none":"flex",alignItems:"center",justifyContent:"center",
         outline:"none",padding:0,overflow:"visible",
         transition:"width 0.2s,height 0.2s,background 0.2s,box-shadow 0.2s",
         animation:isIdle?"va-breathe 3s ease-in-out infinite":isRec?"va-pulse 1.2s ease-in-out infinite":"none",
@@ -682,8 +682,6 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
             <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
             <span style={{fontSize:22,position:"relative",zIndex:1}}>🎤</span>
           </div>
-        ):isRes?(
-          <span style={{fontSize:16,color:"#fff",fontWeight:800,lineHeight:1}}>✓</span>
         ):(
           <span style={{fontSize:22,lineHeight:1}}>🎤</span>
         )}
@@ -762,6 +760,24 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
               if(status==="success"&&intent==="analytics_query"){
                 return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",textAlign:"center"}}><div style={{fontSize:28,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.03em"}}>{data.value}</div><div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginTop:4}}>{data.label}</div>{data.periode&&data.periode!=="all"&&<div style={{fontSize:10,color:"#D1D5DB",marginTop:2}}>{data.periode}</div>}</div>);
+              }
+
+              if(status==="success"&&intent==="analytics_best"&&data?.byCategory){
+                const entries=Object.entries(data.byCategory);
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>{lang==="en"?"Best by category":"Meilleur par catégorie"}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      {entries.map(([cat,s],i)=>(
+                        <div key={i} style={{background:"#F5F6F5",borderRadius:10,padding:"10px 12px"}}>
+                          <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{cat}</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title||s.titre}</div>
+                          <div style={{fontSize:13,fontWeight:800,color:"#1D9E75"}}>+{Math.round((s.margin??s.benefice??s.prix_vente-s.prix_achat)*100)/100}€</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
               }
 
               if(status==="success"&&intent==="analytics_best"){
@@ -876,6 +892,42 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
               if(status==="pending_confirmation"&&intent==="inventory_update"){
                 return(<div key={idx} style={{background:"#FFFBEB",borderRadius:12,padding:"14px",border:"1px solid #FDE68A"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{lang==="en"?"Update:":"Mise à jour :"} {taskData?.nom} · {taskData?.field} → {taskData?.value}</div><div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"Manual update required":"Mise à jour manuelle requise"}</div></div>);
+              }
+
+              if(status==="success"&&intent==="deal_score"){
+                const{score,label,profitNet,margePercent,pills,dataQuality}=data||{};
+                const sc=score>=8?"#1D9E75":score>=6.5?"#4ECDC4":score>=5?"#F9A26C":"#E53E3E";
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{fontSize:36,fontWeight:900,color:sc,letterSpacing:"-0.04em",lineHeight:1}}>{score}</div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:800,color:sc}}>{label}</div>
+                        <div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"out of 10":"sur 10"}</div>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:20,marginBottom:10}}>
+                      <div>
+                        <div style={{fontSize:20,fontWeight:900,color:profitNet>=0?"#1D9E75":"#E53E3E"}}>{profitNet>=0?"+":""}{profitNet}€</div>
+                        <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Net profit":"Bénéfice net"}</div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D"}}>{margePercent}%</div>
+                        <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Margin":"Marge"}</div>
+                      </div>
+                    </div>
+                    {pills?.length>0&&(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                        {pills.slice(0,2).map((p,i)=>(
+                          <span key={i} style={{background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700}}>{p}</span>
+                        ))}
+                      </div>
+                    )}
+                    {dataQuality==="low"&&(
+                      <div style={{fontSize:10,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Based on limited data":"Basé sur peu de données"}</div>
+                    )}
+                  </div>
+                );
               }
 
               if(status==="success"){

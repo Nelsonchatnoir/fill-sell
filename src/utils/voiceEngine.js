@@ -1,3 +1,5 @@
+import { calculateDealScore } from './dealScore.js';
+
 const norm = s =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() ?? "";
 
@@ -147,7 +149,7 @@ function handleAnalyticsQuery(task, context) {
         const sum = filtered.reduce((a, s) => {
           const mp =
             s.margin_pct ??
-            ((s.prix_vente - s.prix_achat) / Math.max(s.prix_achat, 1)) * 100;
+            ((s.prix_vente - s.prix_achat - (s.frais ?? s.sellingFees ?? 0)) / Math.max(s.prix_achat, 1)) * 100;
           return a + (isNaN(mp) ? 0 : mp);
         }, 0);
         value = sum / filtered.length;
@@ -187,7 +189,7 @@ function handleAnalyticsQuery(task, context) {
 }
 
 function handleAnalyticsBest(task, context) {
-  const { metric = "profit", categorie, brand, periode } = task.data;
+  const { metric = "profit", categorie, brand, periode, groupBy } = task.data;
   let filtered = [...context.sales];
 
   if (periode) filtered = filterByPeriod(filtered, periode, null, null);
@@ -196,13 +198,40 @@ function handleAnalyticsBest(task, context) {
   if (brand)
     filtered = filtered.filter(s => norm(s.marque).includes(norm(brand)));
 
+  if (groupBy === "categorie") {
+    const byCategory = {};
+    const cats = [...new Set(filtered.map(s => s.categorie).filter(Boolean))];
+    for (const cat of cats) {
+      const top = filtered
+        .filter(s => s.categorie === cat)
+        .map(s => ({
+          ...s,
+          _sortVal:
+            metric === "margin"
+              ? (s.margin_pct ??
+                  ((s.prix_vente - s.prix_achat - (s.frais ?? s.sellingFees ?? 0)) / Math.max(s.prix_achat, 1)) * 100)
+              : (s.margin ?? s.benefice ?? s.prix_vente - s.prix_achat),
+        }))
+        .filter(s => !isNaN(s._sortVal))
+        .sort((a, b) => b._sortVal - a._sortVal)[0];
+      if (top) byCategory[cat] = top;
+    }
+    return {
+      intent: task.intent,
+      taskData: task.data,
+      status: "success",
+      data: { byCategory },
+      message: context.lang === "en" ? "Best by category" : "Meilleur par catégorie",
+    };
+  }
+
   const top5 = filtered
     .map(s => ({
       ...s,
       _sortVal:
         metric === "margin"
           ? (s.margin_pct ??
-              ((s.prix_vente - s.prix_achat) / Math.max(s.prix_achat, 1)) * 100)
+              ((s.prix_vente - s.prix_achat - (s.frais ?? s.sellingFees ?? 0)) / Math.max(s.prix_achat, 1)) * 100)
           : (s.margin ?? s.benefice ?? s.prix_vente - s.prix_achat),
     }))
     .filter(s => !isNaN(s._sortVal))
@@ -350,6 +379,41 @@ export async function executeVoiceTasks(tasks, context) {
         case "analytics_date":
           result = handleAnalyticsDate(task, context);
           break;
+        case "deal_score": {
+          const historique = context.sales.map(s => ({
+            prix_vente: s.prix_vente ?? s.sell ?? 0,
+            prix_achat: s.prix_achat ?? s.buy ?? 0,
+            frais: s.frais ?? s.sellingFees ?? 0,
+            categorie: s.categorie ?? s.category ?? null,
+            marque: s.marque ?? s.brand ?? null,
+            date_achat: s.date_achat ?? s.createdAt ?? null,
+            date_vente: s.date_vente ?? s.date ?? null,
+          }));
+          const ds = calculateDealScore({
+            prixAchat: task.data.prix_achat,
+            prixVente: task.data.prix_vente,
+            frais: task.data.frais || 0,
+            lang: context.lang,
+            historique,
+          });
+          result = {
+            intent: task.intent,
+            taskData: task.data,
+            status: "success",
+            data: {
+              score: ds.score,
+              label: ds.label,
+              profitNet: ds.context.profitNet,
+              margePercent: ds.context.margePercent,
+              dimensions: ds.dimensions,
+              pills: ds.pills,
+              confidence: ds.confidence,
+              dataQuality: ds.dataQuality,
+            },
+            message: `${ds.label} · ${ds.score}/10`,
+          };
+          break;
+        }
         case "unknown":
         default:
           result = {
