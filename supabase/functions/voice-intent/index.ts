@@ -43,13 +43,25 @@ Catégories canoniques (toujours utiliser la valeur exacte de la liste) :
 "beaute" → "Beauté", "fringues"|"vetements" → "Mode"
 "cartes pokemon"|"cartes yugioh"|"cartes yu-gi-oh"|"trading cards"|"cartes magic"|"cartes collector"|"booster pokemon"|"paquet de cartes"|"cartes" (contexte jeu/collection) → "Collection"
 
-Règle inventory_lot vs inventory_add+quantite :
-inventory_lot = UNIQUEMENT si plusieurs articles DIFFÉRENTS avec UN prix global pour tout l'ensemble.
-  ✅ "une veste, un jean et des Nike pour 40€" → inventory_lot
-  ✅ "j'ai acheté une veste et des chaussures pour 30€" → inventory_lot
+Règle inventory_lot vs inventory_add (CRITIQUE — lire attentivement) :
+
+inventory_lot = UNIQUEMENT si l'utilisateur donne UN SEUL prix GLOBAL pour un ensemble d'articles,
+sans prix individuel pour aucun des articles.
+  ✅ "une veste, un jean et des Nike pour 40€" → inventory_lot (1 prix global)
+  ✅ "j'ai acheté une veste et des chaussures pour 30€" → inventory_lot (1 prix global)
+  ✅ "lot de vêtements à 50€" → inventory_lot (1 prix global)
+
+inventory_add = dès que chaque article a SON PROPRE PRIX, même s'ils sont nombreux et variés.
+Peu importe le nombre d'articles (5, 10, 20, 40), si chaque article a son prix → TOUJOURS inventory_add.
+  ✅ "sac 25€, montre 35€, iPhone 120€" → 3 × inventory_add (prix par article)
+  ✅ "sac vert 25€, sac jaune 25€, montre 35€, iPhone 120€, Mac 60€" → 5 × inventory_add (prix par article)
+  ✅ "veste 15€, jean 10€, Nike 30€, casquette 5€, ceinture 8€, sac 20€" → 6 × inventory_add (prix par article)
+  ✅ "t-shirt 5€, hoodie 12€, pantalon 18€, chaussures 25€, casquette 7€, écharpe 4€, gants 3€" → 7 × inventory_add
+  ✅ "sac vert 25€, sac jaune 25€, montre 35€, iPhone 120€, Mac 60€, chaise 20€, oreiller 10€" → 7 × inventory_add
+INTERDIT : générer inventory_lot quand des prix individuels sont mentionnés.
+
 Si tous les articles sont IDENTIQUES (même produit × N exemplaires) → inventory_add avec quantite.
-Le mot "lot" seul ne déclenche PAS inventory_lot si les articles sont identiques.
-NE PAS générer inventory_lot + inventory_add pour le même groupe d'articles identiques.
+Le mot "lot" seul ne déclenche PAS inventory_lot si les articles ont des prix individuels.
 
 PRIX UNITAIRE vs PRIX TOTAL (CRITIQUE) :
 Si l'utilisateur donne un prix UNITAIRE (mots-clés : "chacun", "chaque", "l'un", "la pièce",
@@ -135,13 +147,25 @@ Canonical categories (always use the exact value from the allowed list):
 "beauty"|"beaute" → "Beauté", "clothes"|"fashion" → "Mode"
 "pokemon cards"|"yugioh cards"|"trading cards"|"magic cards"|"collector cards"|"pokemon booster"|"card pack"|"cartes pokemon"|"paquet de cartes" → "Collection"
 
-Rule inventory_lot vs inventory_add+quantite:
-inventory_lot = ONLY when multiple DIFFERENT items share ONE global price for the whole set.
-  ✅ "a jacket, jeans and Nike sneakers for €40" → inventory_lot
-  ✅ "I bought a jacket and shoes for €30" → inventory_lot
+Rule inventory_lot vs inventory_add (CRITICAL — read carefully):
+
+inventory_lot = ONLY when the user gives ONE SINGLE GLOBAL price for a set of items,
+with no individual price for any of the items.
+  ✅ "a jacket, jeans and Nike sneakers for €40" → inventory_lot (1 global price)
+  ✅ "I bought a jacket and shoes for €30" → inventory_lot (1 global price)
+  ✅ "clothing lot for €50" → inventory_lot (1 global price)
+
+inventory_add = whenever each item has ITS OWN PRICE, regardless of how many items there are.
+No matter the count (5, 10, 20, 40 items), if each item has its own price → ALWAYS inventory_add.
+  ✅ "bag €25, watch €35, iPhone €120" → 3 × inventory_add (price per item)
+  ✅ "green bag €25, yellow bag €25, watch €35, iPhone €120, Mac €60" → 5 × inventory_add (price per item)
+  ✅ "jacket €15, jeans €10, Nike €30, cap €5, belt €8, bag €20" → 6 × inventory_add (price per item)
+  ✅ "t-shirt €5, hoodie €12, pants €18, shoes €25, cap €7, scarf €4, gloves €3" → 7 × inventory_add
+  ✅ "green bag €25, yellow bag €25, watch €35, iPhone €120, Mac €60, chair €20, pillow €10" → 7 × inventory_add
+FORBIDDEN: generating inventory_lot when individual prices are mentioned.
+
 If all items are IDENTICAL (same product × N units) → inventory_add with quantite.
-The word "lot" alone does NOT trigger inventory_lot if items are identical.
-Do NOT generate both inventory_lot AND inventory_add for the same group of identical items.
+The word "lot" alone does NOT trigger inventory_lot if items have individual prices.
 
 UNIT PRICE vs TOTAL PRICE (CRITICAL):
 If the user states a UNIT price (keywords: "each", "each one", "apiece", "per item",
