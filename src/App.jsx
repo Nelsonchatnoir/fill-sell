@@ -2361,7 +2361,7 @@ export default function App({ loginOnly = false }){
   const vaActions={
     addItem:async(data)=>{
       if(!isPremium&&items.length>=20)throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");
-      const b=parseFloat(data.prix_achat||data.prix_estime_lot)||0;
+      const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
       const marqueNorm=data.marque?data.marque.trim().charAt(0).toUpperCase()+data.marque.trim().slice(1).toLowerCase():null;
       const typeAuto=data.categorie||detectType(data.nom||"",marqueNorm);
       const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
@@ -2374,9 +2374,9 @@ export default function App({ loginOnly = false }){
     },
     markSold:(item)=>markSold(item),
     confirmSellDirect:async(item,prix_vente,frais=0,quantite_vendue=1)=>{
-      const sv=parseFloat(prix_vente)||0;
+      const sv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       if(!sv||sv<=0)throw new Error("Prix vente invalide");
-      const sf=parseFloat(frais)||0;
+      const sf=parseFloat(String(frais??0).replace(",","."))||0;
       const cogs=item.buy+(item.purchaseCosts||0);
       const mg=sv-cogs-sf;const mgp=(mg/sv)*100;
       const qTotal=item.quantite||1;

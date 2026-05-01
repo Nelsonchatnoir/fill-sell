@@ -3,6 +3,8 @@ import { calculateDealScore } from './dealScore.js';
 const norm = s =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() ?? "";
 
+const parseNum = v => parseFloat(String(v ?? 0).replace(",", ".")) || 0;
+
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
 const getPrixAchat = s => s.prix_achat ?? s.buy ?? s.purchase_price ?? 0;
 const getFrais     = s => s.frais ?? s.sellingFees ?? s.selling_fees ?? 0;
@@ -374,13 +376,13 @@ export async function executeVoiceTasks(tasks, context) {
             if (matched) {
               if (context.actions.confirmSellDirect) {
                 await context.actions.confirmSellDirect(
-                  matched, task.data.prix_vente, task.data.frais || 0, task.data.quantite_vendue || 1
+                  matched, parseNum(task.data.prix_vente), parseNum(task.data.frais), task.data.quantite_vendue || 1
                 );
               } else {
                 await context.actions.markSold({
                   ...matched,
-                  prix_vente: task.data.prix_vente,
-                  frais: task.data.frais || 0,
+                  prix_vente: parseNum(task.data.prix_vente),
+                  frais: parseNum(task.data.frais),
                 });
               }
               hadMutation = true;
@@ -447,8 +449,10 @@ export async function executeVoiceTasks(tasks, context) {
           result = handleAnalyticsDate(task, context);
           break;
         case "deal_score": {
-          if (!Number.isFinite(task.data.prix_achat) || task.data.prix_achat <= 0 ||
-              !Number.isFinite(task.data.prix_vente) || task.data.prix_vente <= 0) {
+          const pA = parseNum(task.data.prix_achat);
+          const pV = parseNum(task.data.prix_vente);
+          const pF = parseNum(task.data.frais);
+          if (!pA || !pV) {
             result = {
               intent: task.intent,
               taskData: task.data,
@@ -468,9 +472,9 @@ export async function executeVoiceTasks(tasks, context) {
             date_vente: s.date_vente ?? s.date ?? null,
           }));
           const ds = calculateDealScore({
-            prixAchat: task.data.prix_achat,
-            prixVente: task.data.prix_vente,
-            frais: task.data.frais || 0,
+            prixAchat: pA,
+            prixVente: pV,
+            frais: pF,
             lang: context.lang,
             historique,
           });
