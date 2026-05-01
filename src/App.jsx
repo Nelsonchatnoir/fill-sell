@@ -14,6 +14,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement,
 import { Bar, Line } from 'react-chartjs-2';
 import { calculateDealScore } from './utils/dealScore';
 import { generateDealAnalysis } from './utils/dealAnalysis';
+import { executeVoiceTasks } from './utils/voiceEngine';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
 
@@ -589,6 +590,307 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
   );
 }
 
+function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem}){
+  const vaMediaRef=useRef(null);
+  const vaChunksRef=useRef([]);
+  const SURL=import.meta.env.VITE_SUPABASE_URL;
+
+  function resetVA(){
+    try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
+    vaMediaRef.current=null;vaChunksRef.current=[];
+    setVaStep("");setVaResults([]);setVaError(null);
+  }
+
+  async function handleFabClick(){
+    if(vaStep==="thinking")return;
+    if(vaStep==="recording"){vaMediaRef.current?.stop();return;}
+    if(vaStep==="results"){resetVA();return;}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const recorder=new MediaRecorder(stream);
+      vaChunksRef.current=[];
+      recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
+      recorder.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        const type=vaChunksRef.current[0]?.type||"audio/webm";
+        const blob=new Blob(vaChunksRef.current,{type});
+        setVaStep("thinking");
+        try{
+          const fd=new FormData();
+          const ext=type.split("/")[1]?.split(";")[0]||"webm";
+          fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
+          const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",body:fd});
+          if(!tRes.ok)throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");
+          const{text,error:tErr}=await tRes.json();
+          if(tErr)throw new Error(tErr);
+          if(!text?.trim())throw new Error(lang==="en"?"No speech detected":"Aucune parole détectée");
+          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,lang})});
+          if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
+          const{tasks,error:iErr}=await iRes.json();
+          if(iErr)throw new Error(iErr);
+          if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
+          const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions});
+          setVaResults(results);setVaStep("results");
+        }catch(e){setVaError(e.message||"Error");setVaStep("");}
+      };
+      vaMediaRef.current=recorder;recorder.start();setVaStep("recording");
+    }catch(e){setVaError(e.message||(lang==="en"?"Microphone unavailable":"Micro non disponible"));setVaStep("");}
+  }
+
+  function replaceResult(idx,patch){setVaResults(prev=>prev.map((r,i)=>i===idx?{...r,...patch}:r));}
+
+  const fabSize=vaStep==="results"?40:56;
+  const isIdle=vaStep==="";
+  const isRec=vaStep==="recording";
+  const isThink=vaStep==="thinking";
+  const isRes=vaStep==="results";
+
+  return(
+    <>
+      <style>{`
+        @keyframes va-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+        @keyframes va-pulse{0%,100%{box-shadow:0 0 0 0 rgba(229,62,62,0.5),0 4px 20px rgba(229,62,62,0.35)}50%{box-shadow:0 0 0 12px rgba(229,62,62,0),0 4px 20px rgba(229,62,62,0.35)}}
+        @keyframes va-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes va-w1{0%,100%{height:4px}50%{height:16px}}
+        @keyframes va-w2{0%,100%{height:8px}50%{height:24px}}
+        @keyframes va-w3{0%,100%{height:12px}50%{height:32px}}
+        @keyframes va-w4{0%,100%{height:6px}50%{height:20px}}
+        @keyframes va-w5{0%,100%{height:10px}50%{height:28px}}
+        @keyframes va-w6{0%,100%{height:5px}50%{height:18px}}
+        @keyframes va-w7{0%,100%{height:9px}50%{height:22px}}
+        @keyframes va-fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes va-slidein{from{transform:translateY(100%)}to{transform:translateY(0)}}
+      `}</style>
+
+      {/* FAB */}
+      <button onClick={handleFabClick} disabled={isThink} style={{
+        position:"fixed",
+        bottom:"calc(env(safe-area-inset-bottom,0px) + 72px)",
+        right:20,zIndex:1000,
+        width:fabSize,height:fabSize,borderRadius:"50%",border:"none",
+        cursor:isThink?"not-allowed":"pointer",
+        background:isRec?"#E53E3E":isThink?"#fff":"linear-gradient(135deg,#1D9E75,#E8956D)",
+        boxShadow:isRec?"0 4px 20px rgba(229,62,62,0.4)":"0 4px 20px rgba(29,158,117,0.35)",
+        display:"flex",alignItems:"center",justifyContent:"center",
+        outline:"none",padding:0,overflow:"visible",
+        transition:"width 0.2s,height 0.2s,background 0.2s,box-shadow 0.2s",
+        animation:isIdle?"va-breathe 3s ease-in-out infinite":isRec?"va-pulse 1.2s ease-in-out infinite":"none",
+        fontFamily:"inherit",
+      }}>
+        {isThink?(
+          <div style={{position:"relative",width:fabSize,height:fabSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
+            <span style={{fontSize:22,position:"relative",zIndex:1}}>🎤</span>
+          </div>
+        ):isRes?(
+          <span style={{fontSize:16,color:"#fff",fontWeight:800,lineHeight:1}}>✓</span>
+        ):(
+          <span style={{fontSize:22,lineHeight:1}}>🎤</span>
+        )}
+      </button>
+
+      {/* Listening overlay card */}
+      {isRec&&(
+        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 140px)",right:16,width:220,background:"#fff",borderRadius:16,border:"0.5px solid rgba(0,0,0,0.08)",padding:"12px 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.12)",zIndex:999,animation:"va-fadein 0.2s ease"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#E53E3E",marginBottom:10,textAlign:"center"}}>{lang==="en"?"Listening…":"Je t'écoute…"}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,height:36,marginBottom:10}}>
+            {[1,2,3,4,5,6,7].map(n=>(
+              <div key={n} style={{width:4,height:8,background:"linear-gradient(to top,#1D9E75,#E8956D)",borderRadius:99,animation:`va-w${n} ${0.7+n*0.1}s ease-in-out ${n*0.07}s infinite`}}/>
+            ))}
+          </div>
+          <div style={{fontSize:10,fontWeight:600,color:"#A3A9A6",textAlign:"center"}}>{lang==="en"?"Tap to stop":"Appuie pour arrêter"}</div>
+        </div>
+      )}
+
+      {/* Thinking indicator */}
+      {isThink&&(
+        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 140px)",right:16,background:"#fff",borderRadius:16,border:"0.5px solid rgba(0,0,0,0.08)",padding:"10px 16px",boxShadow:"0 8px 32px rgba(0,0,0,0.12)",zIndex:999,fontSize:12,fontWeight:700,color:"#1D9E75",animation:"va-fadein 0.2s ease"}}>
+          {lang==="en"?"Thinking…":"Je réfléchis…"}
+        </div>
+      )}
+
+      {/* Error bubble */}
+      {vaError&&vaStep===""&&(
+        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 140px)",right:16,background:"#FEF2F2",borderRadius:16,border:"1px solid #FCA5A5",padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.08)",zIndex:999,fontSize:12,fontWeight:600,color:"#E53E3E",maxWidth:240,display:"flex",gap:8,alignItems:"center",animation:"va-fadein 0.2s ease"}}>
+          <span style={{flex:1}}>{vaError}</span>
+          <button onClick={()=>setVaError(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#E53E3E",fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>✕</button>
+        </div>
+      )}
+
+      {/* Results drawer */}
+      {vaResults.length>0&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,maxHeight:"min(70vh,700px)",overflowY:"auto",background:"#fff",borderRadius:"20px 20px 0 0",borderTop:"0.5px solid rgba(0,0,0,0.08)",padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)",zIndex:999,boxShadow:"0 -8px 40px rgba(0,0,0,0.12)",animation:"va-slidein 0.3s ease"}}>
+          {/* Header */}
+          <div style={{display:"flex",alignItems:"center",marginBottom:16}}>
+            <div style={{flex:1,display:"flex",justifyContent:"center"}}>
+              <div style={{width:36,height:4,background:"rgba(0,0,0,0.12)",borderRadius:99}}/>
+            </div>
+            <button onClick={resetVA} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:28,height:28,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",color:"#6B7280",flexShrink:0}}>✕</button>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {vaResults.map((result,idx)=>{
+              const{intent,status,data,message,taskData}=result;
+
+              if(status==="error"||intent==="unknown"){
+                return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}><div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div></div>);
+              }
+
+              if(status==="success"&&intent==="inventory_add"){
+                return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>✅</span><div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{data.nom} {lang==="en"?"added":"ajouté"}{data.prix_achat?` · ${data.prix_achat}€`:""}</div></div>);
+              }
+
+              if(status==="success"&&intent==="inventory_search"){
+                const found=data?.items||[];
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
+                    {found.length===0?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>):(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {found.slice(0,8).map((item,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(found.length,8)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                            <div><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre||item.nom}</div>{item.type&&<div style={{fontSize:11,color:"#A3A9A6"}}>{item.type}</div>}</div>
+                            <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                          </div>
+                        ))}
+                        {found.length>8&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center"}}>+{found.length-8} {lang==="en"?"more":"autres"}</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              if(status==="success"&&intent==="analytics_query"){
+                return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",textAlign:"center"}}><div style={{fontSize:28,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.03em"}}>{data.value}</div><div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginTop:4}}>{data.label}</div>{data.periode&&data.periode!=="all"&&<div style={{fontSize:10,color:"#D1D5DB",marginTop:2}}>{data.periode}</div>}</div>);
+              }
+
+              if(status==="success"&&intent==="analytics_best"){
+                const top=data?.items||[];
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Top</div>
+                    {top.map((s,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<top.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{i+1}. {s.title||s.titre}</div>
+                        <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{Math.round((s.margin||s.benefice||0)*100)/100}€</div><div style={{fontSize:10,color:"#A3A9A6"}}>{Math.round((s.marginPct||s.margin_pct||0)*10)/10}%</div></div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+
+              if(status==="success"&&intent==="analytics_dormant"){
+                const dormant=data?.items||[];
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Dormant":"Dormants"} ({dormant.length})</div>
+                    {dormant.slice(0,6).map((item,i)=>{
+                      const d=Math.floor((Date.now()-new Date(item.date_achat||item.created_at||item.date))/86400000);
+                      return(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(dormant.length,6)-1?"1px solid rgba(0,0,0,0.04)":"none"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre}</div><span style={{background:"#FFF4EE",color:"#F9A26C",border:"1px solid #FDDCB5",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>{d}j</span></div>);
+                    })}
+                    {dormant.length>6&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center",marginTop:4}}>+{dormant.length-6} {lang==="en"?"more":"autres"}</div>}
+                  </div>
+                );
+              }
+
+              if(status==="success"&&intent==="analytics_date"){
+                const dateItems=data?.items||[];const summary=data?.summary||{};
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{display:"flex",gap:12,marginBottom:10,flexWrap:"wrap"}}>
+                      <div style={{fontSize:12,color:"#6B7280"}}><span style={{fontWeight:700,color:"#0D0D0D"}}>{summary.count||0}</span> {lang==="en"?"item(s)":"article(s)"}</div>
+                      {summary.totalSpend>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Spent":"Dépensé"}: <span style={{fontWeight:700,color:"#F9A26C"}}>{summary.totalSpend}€</span></div>}
+                      {summary.totalRevenue>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Revenue":"Revenu"}: <span style={{fontWeight:700,color:"#1D9E75"}}>{summary.totalRevenue}€</span></div>}
+                    </div>
+                    {dateItems.slice(0,5).map((item,i)=>(
+                      <div key={i} style={{fontSize:13,fontWeight:600,color:"#0D0D0D",padding:"4px 0"}}>{item.title||item.titre} <span style={{fontSize:11,color:item._type==="sold"?"#1D9E75":"#F9A26C"}}>{item._type}</span></div>
+                    ))}
+                  </div>
+                );
+              }
+
+              if(status==="pending_confirmation"&&intent==="inventory_sell"){
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:12}}>
+                      {lang==="en"?`Mark ${taskData?.nom||"item"} as sold${taskData?.prix_vente?` at ${taskData.prix_vente}€`:""}?`:`Marquer ${taskData?.nom||"l'article"} comme vendu${taskData?.prix_vente?` à ${taskData.prix_vente}€`:""}?`}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>{
+                        const q=(taskData?.nom||"").toLowerCase();
+                        const found=items.find(i=>(i.title||"").toLowerCase().includes(q)&&q);
+                        if(found){markSold(found);replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale initiated":"Vente initiée"});}
+                        else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
+                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✓ {lang==="en"?"Confirm":"Confirmer"}
+                      </button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if(status==="pending_confirmation"&&intent==="inventory_delete"){
+                return(
+                  <div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"14px",border:"1px solid #FCA5A5"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:12}}>
+                      {lang==="en"?`Delete ${taskData?.nom||"item"}?`:`Supprimer ${taskData?.nom||"l'article"} ?`}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>{
+                        const q=(taskData?.nom||"").toLowerCase();
+                        const found=items.find(i=>(i.title||"").toLowerCase().includes(q)&&q);
+                        if(found){deleteItem(found.id);replaceResult(idx,{...result,status:"success",message:lang==="en"?"Deleted":"Supprimé"});}
+                        else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
+                      }} style={{flex:1,padding:"10px",background:"#E53E3E",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {lang==="en"?"Delete":"Supprimer"}
+                      </button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if(status==="pending_confirmation"&&intent==="inventory_lot"){
+                const lotItems=data?.items||[];
+                return(
+                  <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>🛍️ Lot — {data?.lotTotal}€</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
+                      {lotItems.map((item,i)=>(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12}}><span style={{fontWeight:600,color:"#0D0D0D"}}>{item.nom}</span><span style={{color:"#1D4ED8",fontWeight:700}}>{item.prix_estime_lot}€</span></div>))}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={async()=>{
+                        try{
+                          for(const item of lotItems) await actions.addItem({...item,prix_achat:item.prix_estime_lot});
+                          replaceResult(idx,{...result,status:"success",message:lang==="en"?`${lotItems.length} items added`:`${lotItems.length} articles ajoutés`});
+                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
+                      }} style={{flex:1,padding:"10px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✓ {lang==="en"?"Confirm add":"Confirmer ajout"}
+                      </button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if(status==="pending_confirmation"&&intent==="inventory_update"){
+                return(<div key={idx} style={{background:"#FFFBEB",borderRadius:12,padding:"14px",border:"1px solid #FDE68A"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{lang==="en"?"Update:":"Mise à jour :"} {taskData?.nom} · {taskData?.field} → {taskData?.value}</div><div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"Manual update required":"Mise à jour manuelle requise"}</div></div>);
+              }
+
+              if(status==="success"){
+                return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB"}}><div style={{fontSize:13,fontWeight:600,color:"#0F6E56"}}>✅ {message}</div></div>);
+              }
+
+              return null;
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -680,6 +982,9 @@ export default function App({ loginOnly = false }){
   const [lotManualItems,setLotManualItems]=useState([{nom:""},{nom:""}]);
   const [lotDistributed,setLotDistributed]=useState(null);
   const [lotDistributing,setLotDistributing]=useState(false);
+  const [vaStep,setVaStep]=useState("");
+  const [vaResults,setVaResults]=useState([]);
+  const [vaError,setVaError]=useState(null);
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -1771,6 +2076,22 @@ export default function App({ loginOnly = false }){
       </div>
     </div>
   );
+
+  const vaActions={
+    addItem:async(data)=>{
+      if(!isPremium&&items.length>=20)throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");
+      const b=parseFloat(data.prix_achat||data.prix_estime_lot)||0;
+      const marqueNorm=data.marque?data.marque.trim().charAt(0).toUpperCase()+data.marque.trim().slice(1).toLowerCase():null;
+      const typeAuto=data.categorie||detectType(data.nom||"",marqueNorm);
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+      const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
+      if(error)throw new Error(error.message);
+      setItems(prev=>[mapItem(d),...prev]);
+    },
+    markSold:(item)=>markSold(item),
+    deleteItem:(id)=>delItem(id),
+    fetchAll:()=>fetchAll(user.id),
+  };
 
   return(
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
@@ -3032,6 +3353,16 @@ export default function App({ loginOnly = false }){
           </button>
         ))}
       </div>
+
+      <VoiceAssistant
+        items={items} sales={sales} lang={lang}
+        actions={vaActions}
+        vaStep={vaStep} setVaStep={setVaStep}
+        vaResults={vaResults} setVaResults={setVaResults}
+        vaError={vaError} setVaError={setVaError}
+        markSold={markSold}
+        deleteItem={delItem}
+      />
     </div>
   );
 }
