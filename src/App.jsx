@@ -750,6 +750,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                         {found.slice(0,8).map((item,i)=>{
                           const isSellOpen=vaEdits[idx]?.sellOpen===i;
                           const sellPrice=vaEdits[idx]?.sellPrice??"";
+                          const sellFees=vaEdits[idx]?.sellFees??"";
                           const isSold=item.statut==="vendu"||item.statut==="sold";
                           return(
                             <div key={i} style={{paddingBottom:6,borderBottom:i<Math.min(found.length,8)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
@@ -768,17 +769,25 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                               </div>
                               {isSellOpen&&(
                                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
-                                  <input type="number" value={sellPrice} autoFocus
-                                    onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrice:e.target.value}}))}
-                                    placeholder={lang==="en"?"Sale price (€)":"Prix de vente (€)"}
-                                    style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid #1D9E75",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                  <div style={{display:"flex",gap:6,flex:1}}>
+                                    <input type="number" value={sellPrice} autoFocus
+                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrice:e.target.value}}))}
+                                      placeholder={lang==="en"?"Sale price (€)":"Prix de vente (€)"}
+                                      style={{flex:2,fontSize:12,fontWeight:600,border:"1px solid #1D9E75",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                    <input type="number" value={sellFees}
+                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellFees:e.target.value}}))}
+                                      placeholder={lang==="en"?"Fees (€)":"Frais (€)"}
+                                      style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                  </div>
                                   <button onClick={()=>{
-                                    actions.markSold({...item,prix_vente:parseFloat(sellPrice)||undefined});
-                                    setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:""}}));
+                                    const pv=parseFloat(sellPrice)||undefined;
+                                    const pf=parseFloat(sellFees)||0;
+                                    actions.markSold({...item,prix_vente:pv,frais:pf||undefined});
+                                    setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:""}}));
                                   }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                                     {lang==="en"?"✓ Sold":"✓ Vendu"}
                                   </button>
-                                  <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:""}}))}
+                                  <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:""}}))}
                                     style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                                     ✕
                                   </button>
