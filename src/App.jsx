@@ -593,12 +593,13 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
 function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
+  const [vaEdits,setVaEdits]=useState({});
   const SURL=import.meta.env.VITE_SUPABASE_URL;
 
   function resetVA(){
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
-    setVaStep("");setVaResults([]);setVaError(null);
+    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
   }
 
   async function handleFabClick(){
@@ -867,19 +868,72 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 );
               }
 
+              if(status==="pending_confirmation"&&intent==="inventory_add"){
+                const editNom=vaEdits[idx]?.nom??taskData?.nom??"";
+                const editPrix=vaEdits[idx]?.prix??taskData?.prix_achat??"";
+                return(
+                  <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:10}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                      <input value={editNom}
+                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
+                        placeholder={lang==="en"?"Name":"Nom"}
+                        style={{fontSize:13,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"}}/>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <input type="number" value={editPrix}
+                          onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],prix:parseFloat(e.target.value)||0}}))}
+                          placeholder={lang==="en"?"Buy price":"Prix achat"}
+                          style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>€</span>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={async()=>{
+                        try{
+                          await actions.addItem({...taskData,nom:editNom,prix_achat:editPrix||taskData?.prix_achat});
+                          replaceResult(idx,{...result,status:"success",data:{nom:editNom,prix_achat:editPrix},message:lang==="en"?"Item added":"Article ajouté"});
+                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
+                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✓ {lang==="en"?"Confirm":"Confirmer"}
+                      </button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
+                    </div>
+                  </div>
+                );
+              }
+
               if(status==="pending_confirmation"&&intent==="inventory_lot"){
                 const lotItems=data?.items||[];
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>🛍️ Lot — {data?.lotTotal}€</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
-                      {lotItems.map((item,i)=>(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12}}><span style={{fontWeight:600,color:"#0D0D0D"}}>{item.nom}</span><span style={{color:"#1D4ED8",fontWeight:700}}>{item.prix_estime_lot}€</span></div>))}
+                    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                      {lotItems.map((item,i)=>{
+                        const editNom=vaEdits[idx]?.[i]?.nom??item.nom;
+                        const editPrix=vaEdits[idx]?.[i]?.prix??item.prix_estime_lot;
+                        return(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
+                            <input value={editNom}
+                              onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],nom:e.target.value}}}))}
+                              style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                            <input type="number" value={editPrix}
+                              onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
+                              style={{width:60,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#fff",textAlign:"right"}}/>
+                            <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>€</span>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={async()=>{
                         try{
-                          for(const item of lotItems) await actions.addItem({...item,prix_achat:item.prix_estime_lot});
-                          replaceResult(idx,{...result,status:"success",message:lang==="en"?`${lotItems.length} items added`:`${lotItems.length} articles ajoutés`});
+                          const toAdd=lotItems.map((item,i)=>({
+                            ...item,
+                            nom:vaEdits[idx]?.[i]?.nom??item.nom,
+                            prix_achat:vaEdits[idx]?.[i]?.prix??item.prix_estime_lot,
+                          }));
+                          for(const item of toAdd) await actions.addItem(item);
+                          replaceResult(idx,{...result,status:"success",message:lang==="en"?`${toAdd.length} items added`:`${toAdd.length} articles ajoutés`});
                         }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
                       }} style={{flex:1,padding:"10px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✓ {lang==="en"?"Confirm add":"Confirmer ajout"}

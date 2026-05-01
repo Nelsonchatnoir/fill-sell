@@ -330,7 +330,17 @@ export async function executeVoiceTasks(tasks, context) {
     try {
       switch (task.intent) {
         case "inventory_add":
-          result = await handleAdd(task, context);
+          if (task.requiresConfirmation) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: task.data,
+              message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?",
+            };
+          } else {
+            result = await handleAdd(task, context);
+          }
           break;
         case "inventory_lot":
           result = await handleLot(task, context);
