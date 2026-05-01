@@ -741,17 +741,52 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
               if(status==="success"&&intent==="inventory_search"){
                 const found=data?.items||[];
+                const anySellOpen=vaEdits[idx]?.sellOpen!=null;
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
                     {found.length===0?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {found.slice(0,8).map((item,i)=>(
-                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(found.length,8)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                            <div><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre||item.nom}</div>{item.type&&<div style={{fontSize:11,color:"#A3A9A6"}}>{item.type}</div>}</div>
-                            <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
-                          </div>
-                        ))}
+                        {found.slice(0,8).map((item,i)=>{
+                          const isSellOpen=vaEdits[idx]?.sellOpen===i;
+                          const sellPrice=vaEdits[idx]?.sellPrice??"";
+                          const isSold=item.statut==="vendu"||item.statut==="sold";
+                          return(
+                            <div key={i} style={{paddingBottom:6,borderBottom:i<Math.min(found.length,8)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
+                                <div><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre||item.nom}</div>{item.type&&<div style={{fontSize:11,color:"#A3A9A6"}}>{item.type}</div>}</div>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                                  {!isSold&&!isSellOpen&&!anySellOpen&&(
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:""}}))}
+                                      style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+                                      {lang==="en"?"Mark as sold":"Marquer vendu"}
+                                    </button>
+                                  )}
+                                  {isSold&&<span style={{fontSize:10,fontWeight:700,color:"#A3A9A6"}}>✓</span>}
+                                </div>
+                              </div>
+                              {isSellOpen&&(
+                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+                                  <input type="number" value={sellPrice} autoFocus
+                                    onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrice:e.target.value}}))}
+                                    placeholder={lang==="en"?"Sale price (€)":"Prix de vente (€)"}
+                                    style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid #1D9E75",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                  <button onClick={()=>{
+                                    actions.markSold({...item,prix_vente:parseFloat(sellPrice)||undefined});
+                                    setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:""}}));
+                                  }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                                    {lang==="en"?"✓ Sold":"✓ Vendu"}
+                                  </button>
+                                  <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:""}}))}
+                                    style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                                    ✕
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                         {found.length>8&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center"}}>+{found.length-8} {lang==="en"?"more":"autres"}</div>}
                       </div>
                     )}
