@@ -736,16 +736,19 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
               }
 
               if(status==="success"&&intent==="inventory_add"){
-                const cat=taskData?.categorie||taskData?.type;
+                const cat=data?.type||taskData?.categorie||taskData?.type;
                 const ts=cat?getTypeStyle(cat):null;
-                const qAdded=data?.quantite>1?data.quantite:null;
+                const qAdded=(data?.quantite||taskData?.quantite)>1?(data?.quantite||taskData?.quantite):null;
+                const marque=data?.marque||taskData?.marque;
+                const nom=data?.title||data?.nom||taskData?.nom;
+                const prix=data?.buy??data?.prix_achat??taskData?.prix_achat;
                 return(
                   <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:16}}>✅</span>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{data?.nom||taskData?.nom} {lang==="en"?"added":"ajouté"}{(data?.prix_achat??taskData?.prix_achat)?` · ${data?.prix_achat??taskData?.prix_achat}€`:""}{qAdded?` · ×${qAdded}`:""}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${prix}€`:""}{qAdded?` · ×${qAdded}`:""}</div>
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
-                        {taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{taskData.marque}</span>}
+                        {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                         {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
                       </div>
                     </div>
