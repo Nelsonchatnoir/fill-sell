@@ -675,6 +675,11 @@ export default function App({ loginOnly = false }){
   const [showManualForm,setShowManualForm]=useState(false);
   const mediaRecorderRef=useRef(null);
   const audioChunksRef=useRef([]);
+  const [manualMode,setManualMode]=useState("single");
+  const [lotManualTotal,setLotManualTotal]=useState("");
+  const [lotManualItems,setLotManualItems]=useState([{nom:""},{nom:""}]);
+  const [lotDistributed,setLotDistributed]=useState(null);
+  const [lotDistributing,setLotDistributing]=useState(false);
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -1035,6 +1040,43 @@ export default function App({ loginOnly = false }){
     setToast({visible:true,message:lang==='fr'?`✅ ${n} article${n>1?"s":""} ajouté${n>1?"s":""} !`:`✅ ${n} item${n>1?"s":""} added!`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     resetVoiceFlow();
+  }
+
+  async function handleLotDistribute(){
+    if(!lotManualTotal||lotManualItems.some(i=>!i.nom.trim()))return;
+    setLotDistributing(true);
+    try{
+      const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/lot-distribute",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({lotTotal:parseFloat(lotManualTotal),items:lotManualItems.filter(i=>i.nom.trim()),lang}),
+      });
+      if(!res.ok)throw new Error("Distribution failed");
+      const result=await res.json();
+      if(result.error)throw new Error(result.error);
+      setLotDistributed(result);
+    }catch(e){
+      setToast({visible:true,message:"❌ "+(e.message||"Erreur répartition")});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }
+    setLotDistributing(false);
+  }
+
+  async function addLotToInventory(){
+    if(!lotDistributed?.items?.length)return;
+    let idBase=Date.now();
+    for(const item of lotDistributed.items){
+      if(!isPremium&&items.length>=20)break;
+      const b=parseFloat(item.prix_estime_lot)||0;
+      const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
+      const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
+      const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+      const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
+      if(!error)setItems(prev=>[mapItem(data),...prev]);
+    }
+    const n=lotDistributed.items.length;
+    setToast({visible:true,message:lang==='fr'?`✅ ${n} article${n>1?"s":""} ajouté${n>1?"s":""} !`:`✅ ${n} item${n>1?"s":""} added!`});
+    setTimeout(()=>setToast({visible:false,message:""}),3000);
+    setLotDistributed(null);setLotManualItems([{nom:""},{nom:""}]);setLotManualTotal("");setManualMode("single");
   }
 
   async function addItem(){
@@ -1970,11 +2012,16 @@ export default function App({ loginOnly = false }){
               {/* ── Voice Capture ── */}
               {voiceStep==="done"&&voiceParsed?(
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <span style={{background:voiceParsed.action==="achat"?"#E8F5F0":"#FFF4EE",color:voiceParsed.action==="achat"?"#1D9E75":"#F9A26C",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:700,border:`1px solid ${voiceParsed.action==="achat"?"#C6E8DF":"#FDDCB5"}`}}>
                       {voiceParsed.action==="achat"?(lang==='fr'?"Achat":"Purchase"):(lang==='fr'?"Vente":"Sale")}
                     </span>
                     <span style={{fontSize:12,color:"#6B7280"}}>{voiceParsed.items.length} {lang==='fr'?`article${voiceParsed.items.length>1?"s":""}`:voiceParsed.items.length>1?"items":"item"} {lang==='fr'?"détecté(s)":"detected"}</span>
+                    {voiceParsed.isLot&&(
+                      <span style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #93C5FD",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:700}}>
+                        🛍️ {lang==='fr'?`Lot — ${voiceParsed.lotTotal}€ au total`:`Lot — €${voiceParsed.lotTotal} total`}
+                      </span>
+                    )}
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {voiceParsed.items.map((item,i)=>{
@@ -1987,9 +2034,18 @@ export default function App({ loginOnly = false }){
                             </div>
                             <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`,flexShrink:0}}>{ts.emoji} {typeLabel(item.categorie,lang)}</span>
                           </div>
-                          <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280",flexWrap:"wrap"}}>
-                            {item.prix_achat!==null&&<span>🛒 {item.prix_achat}€</span>}
-                            {item.prix_vente!==null&&<span>💰 {item.prix_vente}€</span>}
+                          <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280",flexWrap:"wrap",alignItems:"center"}}>
+                            {voiceParsed.isLot?(
+                              <span style={{display:"flex",alignItems:"center",gap:4}}>
+                                🛒 <input type="number" value={item.prix_estime_lot??""} onChange={e=>{const v=parseFloat(e.target.value)||0;setVoiceParsed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:60,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:11,fontFamily:"inherit",outline:"none"}}/>€
+                                <span style={{fontSize:10,color:"#9CA3AF",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée":"Estimated split"}</span>
+                              </span>
+                            ):(
+                              <>
+                                {item.prix_achat!==null&&<span>🛒 {item.prix_achat}€</span>}
+                                {item.prix_vente!==null&&<span>💰 {item.prix_vente}€</span>}
+                              </>
+                            )}
                             {item.quantite>1&&<span>×{item.quantite}</span>}
                             {item.date&&<span>📅 {item.date}</span>}
                           </div>
@@ -2039,6 +2095,16 @@ export default function App({ loginOnly = false }){
                 {showManualForm?(lang==='fr'?"− Fermer le formulaire ▴":"− Close form ▴"):(lang==='fr'?"+ Ajouter manuellement ▾":"+ Add manually ▾")}
               </button>
               {showManualForm&&(<>
+              {/* ── Mode toggle ── */}
+              <div style={{display:"flex",background:"rgba(0,0,0,0.05)",borderRadius:99,padding:3}}>
+                <button onClick={()=>{setManualMode("single");setLotDistributed(null);}} style={{flex:1,padding:"7px 12px",borderRadius:99,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",background:manualMode==="single"?"#1D9E75":"transparent",color:manualMode==="single"?"#fff":"#6B7280",transition:"all 0.15s",fontFamily:"inherit"}}>
+                  {lang==='fr'?"Article seul":"Single item"}
+                </button>
+                <button onClick={()=>setManualMode("lot")} style={{flex:1,padding:"7px 12px",borderRadius:99,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",background:manualMode==="lot"?"#1D9E75":"transparent",color:manualMode==="lot"?"#fff":"#6B7280",transition:"all 0.15s",fontFamily:"inherit"}}>
+                  Lot
+                </button>
+              </div>
+              {manualMode==="single"&&(<>
               {items.length===0?(
                 <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
                   <div style={{fontSize:28,marginBottom:8}}>🧩</div>
@@ -2152,6 +2218,58 @@ export default function App({ loginOnly = false }){
               {firstItemAdded&&(
                 <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.green,border:"1px solid #C6F6D5",fontWeight:600,textAlign:"center"}}>
                   {lang==='fr'?'✅ Article ajouté ! Tu peux maintenant enregistrer une vente.':'✅ Item added! You can now record a sale.'}
+                </div>
+              )}
+              </>)}
+              {manualMode==="lot"&&(
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>🛍️ {lang==='fr'?"Prix total du lot (€)":"Total lot price (€)"}</div>
+                    <div className="inp" style={{background:"#fff",borderRadius:14,padding:"0 16px",height:58,border:lotManualTotal?`1px solid ${C.teal}55`:"1px solid rgba(0,0,0,0.08)",display:"flex",alignItems:"center",gap:12,boxShadow:lotManualTotal?`0 0 0 3px ${C.teal}11`:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                      <span style={{fontSize:20,flexShrink:0,opacity:0.7}}>💰</span>
+                      <input type="number" value={lotManualTotal} onChange={e=>setLotManualTotal(e.target.value)} placeholder="0,00" inputMode="decimal" style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:15,fontWeight:600,flex:1,fontFamily:"inherit"}}/>
+                      <span style={{color:C.label,fontSize:13,fontWeight:600}}>€</span>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {lotManualItems.map((lotItem,i)=>(
+                      <div key={i} style={{display:"flex",flexDirection:"column",gap:4}}>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <input value={lotItem.nom} onChange={e=>{const v=e.target.value;setLotManualItems(prev=>prev.map((it,idx)=>idx===i?{...it,nom:v}:it));setLotDistributed(null);}}
+                            placeholder={lang==='fr'?`Article ${i+1}`:`Item ${i+1}`}
+                            style={{flex:1,padding:"10px 14px",borderRadius:10,border:"1px solid rgba(0,0,0,0.1)",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff",color:C.text,transition:"border-color 0.15s"}}
+                            onFocus={e=>e.currentTarget.style.borderColor=C.teal}
+                            onBlur={e=>e.currentTarget.style.borderColor="rgba(0,0,0,0.1)"}
+                          />
+                          {lotManualItems.length>2&&(
+                            <button onClick={()=>{setLotManualItems(prev=>prev.filter((_,idx)=>idx!==i));setLotDistributed(null);}} style={{background:"#FEF2F2",color:"#E53E3E",border:"1px solid #FCA5A5",borderRadius:8,padding:"8px 10px",fontSize:13,cursor:"pointer",fontFamily:"inherit",flexShrink:0,lineHeight:1}}>×</button>
+                          )}
+                        </div>
+                        {lotDistributed?.items?.[i]&&(
+                          <div style={{display:"flex",alignItems:"center",gap:8,paddingLeft:4,animation:"fadeIn 0.3s ease"}}>
+                            <input type="number" value={lotDistributed.items[i].prix_estime_lot} onChange={e=>{const v=parseFloat(e.target.value)||0;setLotDistributed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:64,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:12,fontFamily:"inherit",outline:"none",fontWeight:700,color:C.green}}/>
+                            <span style={{fontSize:12,color:C.label}}>€</span>
+                            {lotDistributed.items[i].categorie&&(()=>{const ts=getTypeStyle(lotDistributed.items[i].categorie);return <span style={{background:ts.bg,color:ts.color,border:`1px solid ${ts.border}`,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700}}>{ts.emoji} {typeLabel(lotDistributed.items[i].categorie,lang)}</span>;})()}
+                            {lotDistributed.items[i].marque&&<span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>{lotDistributed.items[i].marque}</span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={()=>{setLotManualItems(prev=>[...prev,{nom:""}]);setLotDistributed(null);}} style={{padding:"8px",background:"transparent",border:"1px dashed rgba(0,0,0,0.2)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",width:"100%",transition:"all 0.15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                  >+ {lang==='fr'?"Ajouter un article":"Add item"}</button>
+                  <button onClick={handleLotDistribute} disabled={lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())}
+                    style={{width:"100%",padding:"13px",background:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
+                    {lotDistributing?(lang==='fr'?"⏳ Répartition en cours...":"⏳ Distributing..."):(lang==='fr'?"✨ Répartir automatiquement":"✨ Auto distribute")}
+                  </button>
+                  {lotDistributed&&(
+                    <>
+                      <div style={{fontSize:12,color:"#6B7280",textAlign:"center",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée — modifiable":"Estimated split — editable"}</div>
+                      <button onClick={addLotToInventory} style={{width:"100%",padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?"✓ Ajouter le lot à l'inventaire":"✓ Add lot to inventory"}</button>
+                    </>
+                  )}
                 </div>
               )}
               </>)}
