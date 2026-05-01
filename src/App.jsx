@@ -1012,9 +1012,9 @@ export default function App({ loginOnly = false }){
     let idBase=Date.now();
     for(const item of voiceParsed.items){
       const qty=Math.max(1,item.quantite||1);
-      const b=parseFloat(item.prix_achat)||0;
+      const b=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0):(parseFloat(item.prix_achat)||0);
       const pc=0;
-      const s=parseFloat(item.prix_vente)||0;
+      const s=voiceParsed.isLot?0:(parseFloat(item.prix_vente)||0);
       const sf=0;
       const hasS=s>0;
       const cogs=b+pc;
