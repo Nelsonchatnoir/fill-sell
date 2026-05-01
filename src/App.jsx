@@ -2716,13 +2716,7 @@ export default function App({ loginOnly = false }){
                 </div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
-                  <button onClick={handleVoiceToggle} disabled={voiceStep==="transcribing"||voiceStep==="parsing"}
-                    style={{width:64,height:64,borderRadius:"50%",border:"none",cursor:voiceLoading?"not-allowed":"pointer",background:isRecording?"#E53E3E":(voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#F9A26C)"),color:"#fff",fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:isRecording?"0 0 0 6px rgba(229,62,62,0.2)":"0 4px 16px rgba(78,205,196,0.4)",animation:isRecording?"pulse-red 1.2s ease-in-out infinite":undefined,transition:"all 0.2s",flexShrink:0}}>
-                    {voiceStep==="transcribing"||voiceStep==="parsing"?"⏳":"🎤"}
-                  </button>
-                  <div style={{fontSize:12,fontWeight:700,color:isRecording?"#E53E3E":"#6B7280",textAlign:"center",lineHeight:1.4}}>
-                    {voiceStep==="transcribing"?(lang==='fr'?"🎙️ Transcription...":"🎙️ Transcribing..."):voiceStep==="parsing"?(lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."):isRecording?(lang==='fr'?"En écoute... (retape pour arrêter)":"Listening... (tap to stop)"):(lang==='fr'?"Parle ou tape":"Speak or type")}
-                  </div>
+                  {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
                   <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
                     placeholder={lang==='fr'?"Ou tape : j'ai acheté une veste Zara 8€, des Nike 15€...":"Or type: I bought a Zara jacket 8€, Nike sneakers 15€..."}
                     rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
