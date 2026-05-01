@@ -396,7 +396,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
+function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1};}
 
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
@@ -729,14 +729,28 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {vaResults.map((result,idx)=>{
-              const{intent,status,data,message,taskData}=result;
+              const{intent,status,data,message,taskData}=result||{};
 
               if(status==="error"||intent==="unknown"){
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}><div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div></div>);
               }
 
               if(status==="success"&&intent==="inventory_add"){
-                return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>✅</span><div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{data.nom} {lang==="en"?"added":"ajouté"}{data.prix_achat?` · ${data.prix_achat}€`:""}</div></div>);
+                const cat=taskData?.categorie||taskData?.type;
+                const ts=cat?getTypeStyle(cat):null;
+                const qAdded=data?.quantite>1?data.quantite:null;
+                return(
+                  <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:16}}>✅</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{data?.nom||taskData?.nom} {lang==="en"?"added":"ajouté"}{(data?.prix_achat??taskData?.prix_achat)?` · ${data?.prix_achat??taskData?.prix_achat}€`:""}{qAdded?` · ×${qAdded}`:""}</div>
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+                        {taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{taskData.marque}</span>}
+                        {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
               }
 
               if(status==="success"&&intent==="inventory_search"){
@@ -764,7 +778,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
                                 <div style={{minWidth:0,flex:1}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
-                                  {item.type&&<div style={{fontSize:11,color:"#A3A9A6"}}>{item.type}</div>}
+                                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                    {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
+                                  </div>
                                 </div>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
@@ -971,14 +988,19 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"14px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:12}}>
-                      {lang==="en"?`Mark ${taskData?.nom||"item"} as sold${taskData?.prix_vente?` at ${taskData.prix_vente}€`:""}?`:`Marquer ${taskData?.nom||"l'article"} comme vendu${taskData?.prix_vente?` à ${taskData.prix_vente}€`:""}?`}
+                      {lang==="en"
+                        ?`Sell ${taskData?.nom||"item"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} at ${taskData?.prix_vente||"?"}€?`
+                        :`Vendre ${taskData?.nom||"l'article"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} à ${taskData?.prix_vente||"?"}€ ?`}
                     </div>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
                         const q=(taskData?.nom||"").toLowerCase();
                         const found=items.find(i=>(i.title||"").toLowerCase().includes(q)&&q);
-                        if(found){markSold(found);replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale initiated":"Vente initiée"});}
-                        else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
+                        if(found){
+                          actions.confirmSellDirect(found,taskData?.prix_vente,taskData?.frais||0,taskData?.quantite_vendue||1)
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
                       }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✓ {lang==="en"?"Confirm":"Confirmer"}
                       </button>
@@ -1157,6 +1179,7 @@ export default function App({ loginOnly = false }){
   const [iSellingFees,setISellingFees]=useState(()=>localStorage.getItem('savedFees')||"");
   const [iRememberSellingFees,setIRememberSellingFees]=useState(()=>!!localStorage.getItem('savedFees'));
   const [iAlreadySold,setIAlreadySold]=useState(false);
+  const [iQuantite,setIQuantite]=useState(1);
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
@@ -1574,17 +1597,15 @@ export default function App({ loginOnly = false }){
       const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
       const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
-      for(let q=0;q<qty;q++){
-        if(!isPremium&&items.length>=20)break;
-        const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0};
-        const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
-        if(!error){
-          setItems(prev=>[mapItem(data),...prev]);
-          if(hasS){
-            const srow={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:s,benefice:mg,date:item.date||new Date().toISOString().split('T')[0]};
-            const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
-            if(sd)setSales(prev=>[mapSale(sd),...prev]);
-          }
+      if(!isPremium&&items.length>=20)continue;
+      const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty};
+      const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
+      if(!error){
+        setItems(prev=>[mapItem(data),...prev]);
+        if(hasS){
+          const srow={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:s,benefice:mg,date:item.date||new Date().toISOString().split('T')[0]};
+          const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
+          if(sd)setSales(prev=>[mapSale(sd),...prev]);
         }
       }
     }
@@ -1621,7 +1642,7 @@ export default function App({ loginOnly = false }){
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
       const typeAuto=item.categorie||detectType(item.nom||"",marqueNorm);
-      const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+      const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:1};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error)setItems(prev=>[mapItem(data),...prev]);
     }
@@ -1638,7 +1659,7 @@ export default function App({ loginOnly = false }){
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=iMarque.trim()?iMarque.trim().charAt(0).toUpperCase()+iMarque.trim().slice(1).toLowerCase():null;
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
@@ -1654,7 +1675,7 @@ export default function App({ loginOnly = false }){
     setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
-    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");
+    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -2330,12 +2351,37 @@ export default function App({ loginOnly = false }){
       const b=parseFloat(data.prix_achat||data.prix_estime_lot)||0;
       const marqueNorm=data.marque?data.marque.trim().charAt(0).toUpperCase()+data.marque.trim().slice(1).toLowerCase():null;
       const typeAuto=data.categorie||detectType(data.nom||"",marqueNorm);
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
+      console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(error)throw new Error(error.message);
-      setItems(prev=>[mapItem(d),...prev]);
+      const mapped=mapItem(d);
+      setItems(prev=>[mapped,...prev]);
+      return mapped;
     },
     markSold:(item)=>markSold(item),
+    confirmSellDirect:async(item,prix_vente,frais=0,quantite_vendue=1)=>{
+      const sv=parseFloat(prix_vente)||0;
+      if(!sv||sv<=0)throw new Error("Prix vente invalide");
+      const sf=parseFloat(frais)||0;
+      const cogs=item.buy+(item.purchaseCosts||0);
+      const mg=sv-cogs-sf;const mgp=(mg/sv)*100;
+      const qTotal=item.quantite||1;
+      const qVendue=Math.min(quantite_vendue||1,qTotal);
+      const remaining=qTotal-qVendue;
+      if(remaining>0){
+        await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
+        setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+      }else{
+        await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
+        setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
+      }
+      for(let q=0;q<qVendue;q++){
+        const srow={id:Date.now()+q,user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
+        const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
+        if(sd)setSales(prev=>[mapSale(sd),...prev]);
+      }
+    },
     deleteItem:(id)=>delItem(id),
     fetchAll:()=>fetchAll(user.id),
     updateItem:async(id,fields)=>{
@@ -2691,6 +2737,9 @@ export default function App({ loginOnly = false }){
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
               </div>
               <div>
+                <Field label={lang==='fr'?"Quantité":"Quantity"} value={String(iQuantite)} set={v=>setIQuantite(Math.max(1,parseInt(v)||1))} placeholder="1" type="number" icon="🔢"/>
+              </div>
+              <div>
                 <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={iMarque} set={setIMarque} placeholder={lang==='en'?"Ex: Nike, Zara, H&M, Unbranded...":"Ex: Nike, Zara, H&M, Sans marque..."} icon="✏️"/>
               </div>
               <div>
@@ -2996,6 +3045,7 @@ export default function App({ loginOnly = false }){
                             <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                             {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
                             {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
+                            {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
                           <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy+(item.purchaseCosts||0))}</span></div>

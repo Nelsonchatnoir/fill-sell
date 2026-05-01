@@ -41,18 +41,20 @@ function filterByPeriod(records, periode, date_from, date_to) {
 // ─── handlers ────────────────────────────────────────────────────────────────
 
 async function handleAdd(task, context) {
-  await context.actions.addItem(task.data);
+  console.log("[handleAdd] task.data complet:", JSON.stringify(task.data));
+  const added = await context.actions.addItem(task.data);
   return {
     intent: task.intent,
     taskData: task.data,
     status: "success",
-    data: { nom: task.data.nom, prix_achat: task.data.prix_achat },
+    data: added || { nom: task.data.nom, prix_achat: task.data.prix_achat },
     message: context.lang === "en" ? "Item added" : "Article ajouté",
   };
 }
 
 async function handleLot(task, context) {
   const { lotTotal, items } = task.data;
+  console.log("[handleLot] start", { lotTotal, items });
   const res = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lot-distribute`,
     {
@@ -61,8 +63,9 @@ async function handleLot(task, context) {
       body: JSON.stringify({ lotTotal, items, lang: context.lang }),
     }
   );
-  if (!res.ok) throw new Error("lot-distribute failed");
+  if (!res.ok) { console.error("[handleLot] fetch failed", res.status); throw new Error("lot-distribute failed"); }
   const distributed = await res.json();
+  console.log("[handleLot] distributed", distributed);
   if (distributed.error) throw new Error(distributed.error);
   return {
     intent: task.intent,
@@ -80,8 +83,12 @@ function handleSearch(task, context) {
 
   if (brand)
     filtered = filtered.filter(i => norm(i.marque).includes(norm(brand)));
-  if (categorie)
-    filtered = filtered.filter(i => i.categorie === categorie || i.type === categorie);
+  if (categorie) {
+    const normCat = norm(categorie);
+    filtered = filtered.filter(i =>
+      norm(i.categorie || "") === normCat || norm(i.type || "") === normCat
+    );
+  }
   if (status === "stock")
     filtered = filtered.filter(i => i.statut !== "vendu" && i.statut !== "sold");
   else if (status === "sold")
@@ -326,6 +333,8 @@ function handleAnalyticsDate(task, context) {
 
 export async function executeVoiceTasks(tasks, context) {
   const results = [];
+  const executedResultsMap = {};
+  let hadMutation = false;
 
   for (const task of tasks) {
     let result;
@@ -341,21 +350,67 @@ export async function executeVoiceTasks(tasks, context) {
               message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?",
             };
           } else {
+            console.log("[inventory_add] quantite reçu:", task.data.quantite);
             result = await handleAdd(task, context);
+            if (result.status === "success") {
+              executedResultsMap[norm(task.data.nom || "")] = result.data || task.data;
+              hadMutation = true;
+            }
           }
           break;
         case "inventory_lot":
           result = await handleLot(task, context);
           break;
-        case "inventory_sell":
-          result = {
-            intent: task.intent,
-            taskData: task.data,
-            status: "pending_confirmation",
-            data: task.data,
-            message: context.lang === "en" ? "Confirm sale?" : "Confirmer la vente ?",
-          };
+        case "inventory_sell": {
+          if (!task.requiresConfirmation) {
+            const q = norm(task.data.nom || "");
+            const fromMap = q ? executedResultsMap[q] : null;
+            const matched = fromMap || (q
+              ? context.items.find(i =>
+                  norm(i.title || i.titre || i.nom || "").includes(q) ||
+                  q.includes(norm(i.title || i.titre || i.nom || ""))
+                )
+              : null);
+            if (matched) {
+              if (context.actions.confirmSellDirect) {
+                await context.actions.confirmSellDirect(
+                  matched, task.data.prix_vente, task.data.frais || 0, task.data.quantite_vendue || 1
+                );
+              } else {
+                await context.actions.markSold({
+                  ...matched,
+                  prix_vente: task.data.prix_vente,
+                  frais: task.data.frais || 0,
+                });
+              }
+              hadMutation = true;
+              result = {
+                intent: task.intent,
+                taskData: task.data,
+                status: "success",
+                data: task.data,
+                message: context.lang === "en" ? "Sale registered" : "Vente enregistrée",
+              };
+            } else {
+              result = {
+                intent: task.intent,
+                taskData: task.data,
+                status: "pending_confirmation",
+                data: task.data,
+                message: context.lang === "en" ? "Confirm sale?" : "Confirmer la vente ?",
+              };
+            }
+          } else {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: task.data,
+              message: context.lang === "en" ? "Confirm sale?" : "Confirmer la vente ?",
+            };
+          }
           break;
+        }
         case "inventory_delete":
           result = {
             intent: task.intent,
@@ -392,6 +447,17 @@ export async function executeVoiceTasks(tasks, context) {
           result = handleAnalyticsDate(task, context);
           break;
         case "deal_score": {
+          if (!Number.isFinite(task.data.prix_achat) || task.data.prix_achat <= 0 ||
+              !Number.isFinite(task.data.prix_vente) || task.data.prix_vente <= 0) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "error",
+              data: {},
+              message: context.lang === "en" ? "Need buy and sell prices" : "Prix achat et vente requis",
+            };
+            break;
+          }
           const historique = context.sales.map(s => ({
             prix_vente: getPrixVente(s),
             prix_achat: getPrixAchat(s),
@@ -451,6 +517,13 @@ export async function executeVoiceTasks(tasks, context) {
     results.push(result);
   }
 
-  console.log("[VoiceEngine]", { tasks, results, timestamp: Date.now() });
+  if (hadMutation) {
+    try { await context.actions.fetchAll(); } catch {}
+  }
+
+  console.group("[VoiceEngine]");
+  console.log("tasks", tasks);
+  console.log("results", results);
+  console.groupEnd();
   return { results };
 }

@@ -17,7 +17,7 @@ Aujourd'hui = 2026-05-01, hier = 2026-04-30.
 Intents disponibles :
 - inventory_add       → requiresConfirmation: false
 - inventory_lot       → requiresConfirmation: true OBLIGATOIRE
-- inventory_sell      → requiresConfirmation: true OBLIGATOIRE
+- inventory_sell      → requiresConfirmation: true OBLIGATOIRE (false si achat+vente simultané, confidence ≥ 0.85)
 - inventory_search    → requiresConfirmation: false
 - inventory_delete    → requiresConfirmation: true OBLIGATOIRE
 - inventory_update    → requiresConfirmation: true OBLIGATOIRE
@@ -27,6 +27,31 @@ Intents disponibles :
 - analytics_date      → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Règle multi-articles :
+Si achat ET vente sont mentionnés pour le même article → génère 3 tâches dans l'ordre :
+  1. inventory_add  (requiresConfirmation: false)
+  2. inventory_sell (requiresConfirmation: false, confidence ≥ 0.85)
+  3. deal_score
+Si plusieurs articles différents → répéter la triple par article.
+
+Catégories canoniques (toujours utiliser la valeur exacte de la liste) :
+"high tech"|"hightech"|"tech" → "High-Tech"
+"electromenager"|"electro" → "Électroménager"
+"auto"|"moto"|"auto moto" → "Auto-Moto"
+"beaute" → "Beauté", "fringues"|"vetements" → "Mode"
+"cartes pokemon"|"cartes yugioh"|"cartes yu-gi-oh"|"trading cards"|"cartes magic"|"cartes collector"|"booster pokemon"|"paquet de cartes"|"cartes" (contexte jeu/collection) → "Collection"
+
+Règle inventory_lot vs inventory_add+quantite :
+inventory_lot = UNIQUEMENT si plusieurs articles DIFFÉRENTS avec UN prix global pour tout l'ensemble.
+  ✅ "une veste, un jean et des Nike pour 40€" → inventory_lot
+  ✅ "j'ai acheté une veste et des chaussures pour 30€" → inventory_lot
+Si tous les articles sont IDENTIQUES (même produit × N exemplaires) → inventory_add avec quantite + prix unitaire calculé (total÷quantite) :
+  ✅ "10 paquets de cartes pour 60€" → inventory_add, quantite:10, prix_achat:6
+  ✅ "un lot de 10 paquets de cartes pour 60€" → inventory_add, quantite:10, prix_achat:6
+  ✅ "3 Nike pour 45€" → inventory_add, quantite:3, prix_achat:15
+Le mot "lot" seul ne déclenche PAS inventory_lot si les articles sont identiques.
+NE PAS générer inventory_lot + inventory_add pour le même groupe d'articles identiques.
 
 Structure retournée :
 {
@@ -44,7 +69,7 @@ Structure retournée :
 Data par intent :
 inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite }
 inventory_lot:    { lotTotal, items: [{nom, marque}] }
-inventory_sell:   { nom, marque, prix_vente, date }
+inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -55,7 +80,12 @@ analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", "c'est rentable", calcul achat/vente explicite avec deux prix mentionnés
-unknown:          { originalText }`;
+unknown:          { originalText }
+
+Règle quantite/quantite_vendue :
+- inventory_add : quantite = nombre d'exemplaires achetés (défaut 1 si non mentionné).
+- inventory_sell : quantite_vendue = nombre d'exemplaires vendus (défaut 1 si non mentionné).
+  Ex: "je vends 2 de mes iphones" → quantite_vendue: 2`;
 
 const SYSTEM_EN = `You are the intent engine of Fill & Sell, an intelligent resale app.
 You receive a sentence from a reseller. You extract ALL intentions present
@@ -69,7 +99,7 @@ Today = 2026-05-01, yesterday = 2026-04-30.
 Available intents:
 - inventory_add       → requiresConfirmation: false
 - inventory_lot       → requiresConfirmation: true MANDATORY
-- inventory_sell      → requiresConfirmation: true MANDATORY
+- inventory_sell      → requiresConfirmation: true MANDATORY (false if simultaneous buy+sell, confidence ≥ 0.85)
 - inventory_search    → requiresConfirmation: false
 - inventory_delete    → requiresConfirmation: true MANDATORY
 - inventory_update    → requiresConfirmation: true MANDATORY
@@ -79,6 +109,30 @@ Available intents:
 - analytics_date      → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Multi-article rule:
+If a purchase AND sale are mentioned for the same item → generate 3 tasks in order:
+  1. inventory_add  (requiresConfirmation: false)
+  2. inventory_sell (requiresConfirmation: false, confidence ≥ 0.85)
+  3. deal_score
+If multiple different items → repeat the triple per item.
+
+Canonical categories (always use the exact value from the allowed list):
+"high tech"|"hightech"|"tech" → "High-Tech"
+"electromenager" → "Électroménager", "auto"|"moto"|"auto moto" → "Auto-Moto"
+"beauty"|"beaute" → "Beauté", "clothes"|"fashion" → "Mode"
+"pokemon cards"|"yugioh cards"|"trading cards"|"magic cards"|"collector cards"|"pokemon booster"|"card pack"|"cartes pokemon"|"paquet de cartes" → "Collection"
+
+Rule inventory_lot vs inventory_add+quantite:
+inventory_lot = ONLY when multiple DIFFERENT items share ONE global price for the whole set.
+  ✅ "a jacket, jeans and Nike sneakers for €40" → inventory_lot
+  ✅ "I bought a jacket and shoes for €30" → inventory_lot
+If all items are IDENTICAL (same product × N units) → inventory_add with quantite + unit price (total÷quantity):
+  ✅ "10 card packs for €60" → inventory_add, quantite:10, prix_achat:6
+  ✅ "a lot of 10 card packs for €60" → inventory_add, quantite:10, prix_achat:6
+  ✅ "3 Nikes for €45" → inventory_add, quantite:3, prix_achat:15
+The word "lot" alone does NOT trigger inventory_lot if items are identical.
+Do NOT generate both inventory_lot AND inventory_add for the same group of identical items.
 
 Returned structure:
 {
@@ -96,7 +150,7 @@ Returned structure:
 Data per intent:
 inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite }
 inventory_lot:    { lotTotal, items: [{nom, marque}] }
-inventory_sell:   { nom, marque, prix_vente, date }
+inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -107,7 +161,12 @@ analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", "is it worth it", explicit buy/sell calculation with two prices mentioned
-unknown:          { originalText }`;
+unknown:          { originalText }
+
+Quantity rules:
+- inventory_add: quantite = number of units bought (default 1 if not mentioned).
+- inventory_sell: quantite_vendue = number of units sold (default 1 if not mentioned).
+  Ex: "I'm selling 2 of my iphones" → quantite_vendue: 2`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
