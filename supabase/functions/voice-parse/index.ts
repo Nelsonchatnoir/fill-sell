@@ -36,33 +36,8 @@ RÈGLES MARQUE/TYPE (conservatrices) :
 NORMALISATION MARQUE (obligatoire) :
 Le champ "marque" doit toujours être le nom officiel et canonique de la marque,
 tel qu'il apparaît sur les produits ou le site officiel.
-Utilise ta connaissance des marques mondiales pour normaliser :
-"loreal", "l oreal", "l'oreal", "loréal" → "L'Oréal"
-"nike", "NIKE", "niké" → "Nike"
-"lv", "louis vuiton", "louisvuitton" → "Louis Vuitton"
-"adidas", "ADIDAS" → "Adidas"
-"apple", "APPLE" → "Apple"
-"samsung", "SAMSUNG" → "Samsung"
-"zara", "ZARA" → "Zara"
-"hm", "h&m", "H&M" → "H&M"
-"lacoste", "LACOSTE" → "Lacoste"
-"ralph lauren", "RALPH LAUREN", "polo ralph lauren" → "Ralph Lauren"
-"stone island", "STONE ISLAND" → "Stone Island"
-"supreme", "SUPREME" → "Supreme"
-"jordan", "AIR JORDAN", "air jordan" → "Jordan"
-"converse", "CONVERSE" → "Converse"
-"vans", "VANS" → "Vans"
-"puma", "PUMA" → "Puma"
-"gucci", "GUCCI" → "Gucci"
-"prada", "PRADA" → "Prada"
-"chanel", "CHANEL" → "Chanel"
-"dior", "DIOR", "christian dior" → "Dior"
-"hermes", "hermès", "HERMÈS" → "Hermès"
-"rolex", "ROLEX" → "Rolex"
-"lego", "LEGO" → "Lego"
-"dyson", "DYSON" → "Dyson"
-"ikea", "IKEA" → "Ikea"
-Applique cette règle à toutes les marques connues mondialement.
+Utilise ta connaissance encyclopédique des marques mondiales pour normaliser toute variante
+(fautes, abréviations, casse incorrecte, accents manquants) vers le nom exact de la marque.
 Si la marque est inconnue ou non reconnue → retourne-la telle quelle avec une majuscule initiale.
 
 RÈGLES LOT vs ARTICLES INDIVIDUELS (CRITIQUE) :
@@ -195,33 +170,8 @@ BRAND/TYPE RULES (conservative) :
 BRAND NORMALIZATION (mandatory):
 The "marque" field must always be the official canonical brand name,
 as it appears on the product or official website.
-Use your knowledge of global brands to normalize:
-"loreal", "l oreal", "l'oreal", "loréal" → "L'Oréal"
-"nike", "NIKE", "niké" → "Nike"
-"lv", "louis vuiton", "louisvuitton" → "Louis Vuitton"
-"adidas", "ADIDAS" → "Adidas"
-"apple", "APPLE" → "Apple"
-"samsung", "SAMSUNG" → "Samsung"
-"zara", "ZARA" → "Zara"
-"hm", "h&m", "H&M" → "H&M"
-"lacoste", "LACOSTE" → "Lacoste"
-"ralph lauren", "RALPH LAUREN", "polo ralph lauren" → "Ralph Lauren"
-"stone island", "STONE ISLAND" → "Stone Island"
-"supreme", "SUPREME" → "Supreme"
-"jordan", "AIR JORDAN", "air jordan" → "Jordan"
-"converse", "CONVERSE" → "Converse"
-"vans", "VANS" → "Vans"
-"puma", "PUMA" → "Puma"
-"gucci", "GUCCI" → "Gucci"
-"prada", "PRADA" → "Prada"
-"chanel", "CHANEL" → "Chanel"
-"dior", "DIOR", "christian dior" → "Dior"
-"hermes", "hermès", "HERMÈS" → "Hermès"
-"rolex", "ROLEX" → "Rolex"
-"lego", "LEGO" → "Lego"
-"dyson", "DYSON" → "Dyson"
-"ikea", "IKEA" → "Ikea"
-Apply this rule to all globally known brands.
+Use your encyclopedic knowledge of global brands to normalize any variant
+(typos, abbreviations, wrong case, missing accents) to the exact brand name.
 If the brand is unknown or unrecognized → return it as-is with an initial capital letter.
 
 LOT vs INDIVIDUAL ITEMS RULES (CRITICAL):
