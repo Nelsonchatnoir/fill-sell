@@ -57,6 +57,30 @@ La somme des prix_estime_lot DOIT être exactement égale à lotTotal.
 - Si prix individuels différents mentionnés → isLot: false, lotTotal: null, prix_estime_lot: null pour tous
 - Ne JAMAIS inventer des prix individuels hors contexte lot
 
+RÈGLES FRAIS D'ACHAT :
+
+CAS 1 — Frais globaux (sans "chacun/chaque/pièce" sur les frais) :
+Si des frais sont mentionnés pour un groupe d'articles sans précision unitaire :
+→ frais_global = montant total des frais, frais_unitaire = arrondi(frais_global ÷ quantite, 2)
+→ prix_achat par article = prix_unitaire_de_base + frais_unitaire
+  ✅ "4 tableaux pour 20€ avec 1€ de frais"
+     frais_global:1, frais_unitaire:0.25, prix_achat:(20÷4)+0.25=5.25, quantite:4
+  ✅ "10 t-shirts pour 30€ avec 2€ de livraison"
+     frais_global:2, frais_unitaire:0.2, prix_achat:(30÷10)+0.2=3.2, quantite:10
+  ✅ "3 sacs à 8€ chacun avec 3€ de frais de port" (frais globaux, pas unitaires)
+     frais_global:3, frais_unitaire:1, prix_achat:8+1=9, quantite:3
+
+CAS 2 — Frais unitaires (avec "chacun/chaque/pièce" sur les frais) :
+Si les frais sont précisés par article (mots-clés "chacun/chaque/pièce" portent sur les frais) :
+→ frais_unitaire = montant indiqué, frais_global = null
+→ prix_achat par article = prix_unitaire_de_base + frais_unitaire
+  ✅ "4 tableaux à 5€ avec 1€ de frais chacun"
+     frais_global:null, frais_unitaire:1, prix_achat:5+1=6, quantite:4
+  ✅ "3 Nike à 15€ avec 3€ de livraison chaque"
+     frais_global:null, frais_unitaire:3, prix_achat:15+3=18, quantite:3
+
+Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat inchangé).
+
 Catégories autorisées (valeurs exactes) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Autre"]
 
@@ -88,6 +112,8 @@ Format de réponse (JSON strict) :
       "prix_achat": number | null,
       "prix_vente": number | null,
       "prix_estime_lot": number | null,
+      "frais_global": number | null,
+      "frais_unitaire": number | null,
       "quantite": number,
       "categorie": string,
       "description": string | null,
@@ -149,6 +175,30 @@ Sum of prix_estime_lot MUST equal exactly lotTotal.
 - If different individual prices mentioned → isLot: false, lotTotal: null, prix_estime_lot: null for all
 - NEVER invent individual prices outside lot context
 
+PURCHASE FEE RULES:
+
+CASE 1 — Global fees (no "each/apiece/per piece" qualifier on fees):
+If fees are mentioned for a group of items without a per-unit qualifier:
+→ frais_global = total fee amount, frais_unitaire = round(frais_global ÷ quantity, 2)
+→ prix_achat per item = base_unit_price + frais_unitaire
+  ✅ "4 paintings for €20 with €1 shipping"
+     frais_global:1, frais_unitaire:0.25, prix_achat:(20÷4)+0.25=5.25, quantite:4
+  ✅ "10 t-shirts for €30 with €2 delivery"
+     frais_global:2, frais_unitaire:0.2, prix_achat:(30÷10)+0.2=3.2, quantite:10
+  ✅ "3 bags at €8 each with €3 shipping" (global fees, not per-unit)
+     frais_global:3, frais_unitaire:1, prix_achat:8+1=9, quantite:3
+
+CASE 2 — Per-unit fees (with "each/apiece/per piece" qualifier on fees):
+If fees are specified per item (keywords "each/apiece/per piece" apply to fees):
+→ frais_unitaire = stated amount, frais_global = null
+→ prix_achat per item = base_unit_price + frais_unitaire
+  ✅ "4 paintings at €5 with €1 fees each"
+     frais_global:null, frais_unitaire:1, prix_achat:5+1=6, quantite:4
+  ✅ "3 Nikes at €15 with €3 shipping each"
+     frais_global:null, frais_unitaire:3, prix_achat:15+3=18, quantite:3
+
+If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unchanged).
+
 Allowed categories (exact values) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Autre"]
 
@@ -180,6 +230,8 @@ Response format (strict JSON) :
       "prix_achat": number | null,
       "prix_vente": number | null,
       "prix_estime_lot": number | null,
+      "frais_global": number | null,
+      "frais_unitaire": number | null,
       "quantite": number,
       "categorie": string,
       "description": string | null,
