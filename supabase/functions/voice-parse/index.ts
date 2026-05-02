@@ -33,6 +33,38 @@ RÈGLES MARQUE/TYPE (conservatrices) :
 - Ne JAMAIS inventer une marque non mentionnée → null
 - Ne JAMAIS inventer un prix non mentionné → null
 
+NORMALISATION MARQUE (obligatoire) :
+Le champ "marque" doit toujours être le nom officiel et canonique de la marque,
+tel qu'il apparaît sur les produits ou le site officiel.
+Utilise ta connaissance des marques mondiales pour normaliser :
+"loreal", "l oreal", "l'oreal", "loréal" → "L'Oréal"
+"nike", "NIKE", "niké" → "Nike"
+"lv", "louis vuiton", "louisvuitton" → "Louis Vuitton"
+"adidas", "ADIDAS" → "Adidas"
+"apple", "APPLE" → "Apple"
+"samsung", "SAMSUNG" → "Samsung"
+"zara", "ZARA" → "Zara"
+"hm", "h&m", "H&M" → "H&M"
+"lacoste", "LACOSTE" → "Lacoste"
+"ralph lauren", "RALPH LAUREN", "polo ralph lauren" → "Ralph Lauren"
+"stone island", "STONE ISLAND" → "Stone Island"
+"supreme", "SUPREME" → "Supreme"
+"jordan", "AIR JORDAN", "air jordan" → "Jordan"
+"converse", "CONVERSE" → "Converse"
+"vans", "VANS" → "Vans"
+"puma", "PUMA" → "Puma"
+"gucci", "GUCCI" → "Gucci"
+"prada", "PRADA" → "Prada"
+"chanel", "CHANEL" → "Chanel"
+"dior", "DIOR", "christian dior" → "Dior"
+"hermes", "hermès", "HERMÈS" → "Hermès"
+"rolex", "ROLEX" → "Rolex"
+"lego", "LEGO" → "Lego"
+"dyson", "DYSON" → "Dyson"
+"ikea", "IKEA" → "Ikea"
+Applique cette règle à toutes les marques connues mondialement.
+Si la marque est inconnue ou non reconnue → retourne-la telle quelle avec une majuscule initiale.
+
 RÈGLES LOT vs ARTICLES INDIVIDUELS (CRITIQUE) :
 
 PRIX UNITAIRE — priorité absolue sur tout le reste :
@@ -159,6 +191,38 @@ BRAND/TYPE RULES (conservative) :
 - If any doubt → null (never hallucinate brand or type)
 - NEVER invent a price not mentioned → null
 - NEVER invent a brand not mentioned → null
+
+BRAND NORMALIZATION (mandatory):
+The "marque" field must always be the official canonical brand name,
+as it appears on the product or official website.
+Use your knowledge of global brands to normalize:
+"loreal", "l oreal", "l'oreal", "loréal" → "L'Oréal"
+"nike", "NIKE", "niké" → "Nike"
+"lv", "louis vuiton", "louisvuitton" → "Louis Vuitton"
+"adidas", "ADIDAS" → "Adidas"
+"apple", "APPLE" → "Apple"
+"samsung", "SAMSUNG" → "Samsung"
+"zara", "ZARA" → "Zara"
+"hm", "h&m", "H&M" → "H&M"
+"lacoste", "LACOSTE" → "Lacoste"
+"ralph lauren", "RALPH LAUREN", "polo ralph lauren" → "Ralph Lauren"
+"stone island", "STONE ISLAND" → "Stone Island"
+"supreme", "SUPREME" → "Supreme"
+"jordan", "AIR JORDAN", "air jordan" → "Jordan"
+"converse", "CONVERSE" → "Converse"
+"vans", "VANS" → "Vans"
+"puma", "PUMA" → "Puma"
+"gucci", "GUCCI" → "Gucci"
+"prada", "PRADA" → "Prada"
+"chanel", "CHANEL" → "Chanel"
+"dior", "DIOR", "christian dior" → "Dior"
+"hermes", "hermès", "HERMÈS" → "Hermès"
+"rolex", "ROLEX" → "Rolex"
+"lego", "LEGO" → "Lego"
+"dyson", "DYSON" → "Dyson"
+"ikea", "IKEA" → "Ikea"
+Apply this rule to all globally known brands.
+If the brand is unknown or unrecognized → return it as-is with an initial capital letter.
 
 LOT vs INDIVIDUAL ITEMS RULES (CRITICAL):
 

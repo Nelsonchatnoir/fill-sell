@@ -98,6 +98,8 @@ const css = `
 
 const EUR_TO_USD = 1.08;
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
+// Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
+const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 
@@ -1634,7 +1636,7 @@ export default function App({ loginOnly = false }){
       const cogs=b+pc;
       const mg=hasS?s-cogs-sf:0;
       const mgp=hasS?(mg/s)*100:0;
-      const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
+      const marqueNorm=normalizeMarque(item.marque);
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
       if(!isPremium&&items.length>=20)continue;
       const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty};
@@ -1679,7 +1681,7 @@ export default function App({ loginOnly = false }){
     for(const item of lotDistributed.items){
       if(!isPremium&&items.length>=20)break;
       const b=parseFloat(item.prix_estime_lot)||0;
-      const marqueNorm=item.marque?item.marque.trim().charAt(0).toUpperCase()+item.marque.trim().slice(1).toLowerCase():null;
+      const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
       const row={id:idBase++,user_id:user.id,titre:item.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:1};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
@@ -1696,7 +1698,7 @@ export default function App({ loginOnly = false }){
     if(!isPremium&&items.length>=20){alert(lang==='en'?"⚠️ Free plan limit reached (20 items max).\nUpgrade to add unlimited items.":"⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour ajouter des articles illimités.");return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
-    const marqueNormalized=iMarque.trim()?iMarque.trim().charAt(0).toUpperCase()+iMarque.trim().slice(1).toLowerCase():null;
+    const marqueNormalized=normalizeMarque(iMarque);
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
     const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
@@ -2388,7 +2390,7 @@ export default function App({ loginOnly = false }){
     addItem:async(data)=>{
       if(!isPremium&&items.length>=20)throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");
       const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
-      const marqueNorm=data.marque?data.marque.trim().charAt(0).toUpperCase()+data.marque.trim().slice(1).toLowerCase():null;
+      const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
       const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:data.nom||"Article",prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
