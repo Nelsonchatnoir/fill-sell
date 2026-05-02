@@ -736,6 +736,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
             {vaResults.map((result,idx)=>{
               const{intent,status,data,message,taskData}=result||{};
 
+              if(intent==="deal_score"&&!taskData?.prix_vente) return null;
+
               if(status==="error"||intent==="unknown"){
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}><div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div></div>);
               }
@@ -1622,7 +1624,8 @@ export default function App({ loginOnly = false }){
     let idBase=Date.now();
     for(const item of voiceParsed.items){
       const qty=Math.max(1,item.quantite||1);
-      const b=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0):(parseFloat(item.prix_achat)||0);
+      const fraisU=parseFloat(item.frais_unitaire)||0;
+      const b=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)+fraisU:(parseFloat(item.prix_achat)||0);
       const pc=0;
       const s=voiceParsed.isLot?0:(parseFloat(item.prix_vente)||0);
       const sf=0;
@@ -3077,7 +3080,7 @@ export default function App({ loginOnly = false }){
                             {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
                           </div>
                           {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy+(item.purchaseCosts||0))}</span></div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
                         </div>
                         <div style={{paddingRight:36,flexShrink:0}}>
                           <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>
