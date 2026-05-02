@@ -69,8 +69,12 @@ Si l'utilisateur donne un prix UNITAIRE (mots-clés : "chacun", "chaque", "l'un"
   ✅ "3 Nike à 15€ chacun" → inventory_add, quantite:3, prix_achat:15
   ✅ "5 t-shirts à 5€ la pièce" → inventory_add, quantite:5, prix_achat:5
 Si seulement un prix TOTAL est mentionné → prix_achat = total÷quantite.
+JAMAIS inventory_lot pour N exemplaires du MÊME article avec un prix total.
   ✅ "10 paquets de cartes pour 60€" → inventory_add, quantite:10, prix_achat:6
   ✅ "3 Nike pour 45€" → inventory_add, quantite:3, prix_achat:15
+  ✅ "10 tableaux pour 100€" → inventory_add, quantite:10, prix_achat:10
+  ✅ "5 vestes pour 50€" → inventory_add, quantite:5, prix_achat:10
+  ✅ "3 sacs pour 30€" → inventory_add, quantite:3, prix_achat:10
 
 Structure retournée :
 {
@@ -173,8 +177,12 @@ If the user states a UNIT price (keywords: "each", "each one", "apiece", "per it
   ✅ "3 Nikes at €15 each" → inventory_add, quantite:3, prix_achat:15
   ✅ "5 t-shirts at €5 apiece" → inventory_add, quantite:5, prix_achat:5
 If only a TOTAL price is mentioned → prix_achat = total÷quantity.
+NEVER inventory_lot for N units of the SAME item with a total price.
   ✅ "10 card packs for €60" → inventory_add, quantite:10, prix_achat:6
   ✅ "3 Nikes for €45" → inventory_add, quantite:3, prix_achat:15
+  ✅ "10 paintings for €100" → inventory_add, quantite:10, prix_achat:10
+  ✅ "5 jackets for €50" → inventory_add, quantite:5, prix_achat:10
+  ✅ "3 bags for €30" → inventory_add, quantite:3, prix_achat:10
 
 Returned structure:
 {

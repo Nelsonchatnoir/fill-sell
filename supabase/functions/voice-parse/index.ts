@@ -44,15 +44,24 @@ Ne JAMAIS diviser ce prix. Ne JAMAIS traiter comme un lot.
   ✅ "5 t-shirts à 5€ la pièce" → isLot:false, prix_achat:5, quantite:5
   ✅ "j'ai pris 2 vestes à 12€ chaque" → isLot:false, prix_achat:12, quantite:2
 
-LOT — uniquement si prix global sans prix unitaire :
-Si plusieurs objets avec UN prix TOTAL et AUCUN prix unitaire mentionné :
+ARTICLES IDENTIQUES avec prix total (PRIORITÉ ABSOLUE) :
+Si N exemplaires du MÊME article (même produit × N) avec un prix TOTAL :
+→ isLot: false, prix_achat = total÷N, quantite: N, lotTotal: null, prix_estime_lot: null
+Ne JAMAIS utiliser isLot:true pour des articles identiques.
+  ✅ "10 tableaux pour 100€" → isLot:false, prix_achat:10, quantite:10
+  ✅ "3 sacs pour 25€" → isLot:false, prix_achat:8.33, quantite:3
+  ✅ "j'ai acheté 5 t-shirts pour 20€" → isLot:false, prix_achat:4, quantite:5
+  ✅ "4 boîtes pour 20€" → isLot:false, prix_achat:5, quantite:4
+
+LOT — uniquement si articles DIFFÉRENTS avec prix global sans prix unitaire :
+Si des articles de TYPES DIFFÉRENTS ont UN prix TOTAL et AUCUN prix unitaire :
 → isLot: true, lotTotal: prix global
 Expressions lot : "le tout pour X", "pour X les Y", "j'ai payé X pour tout",
 "lot à X", "X pour tout", "le tout X"
 Si isLot=true : répartir selon valeur RELATIVE probable entre les objets.
 La somme des prix_estime_lot DOIT être exactement égale à lotTotal.
-  ✅ "3 sacs pour 25€" → isLot:true, lotTotal:25
-  ✅ "j'ai acheté 5 t-shirts pour 20€" → isLot:true, lotTotal:20
+  ✅ "une veste, un jean et des Nike pour 40€" → isLot:true, lotTotal:40
+  ✅ "j'ai acheté une veste et des chaussures pour 30€" → isLot:true, lotTotal:30
 
 - Si prix individuels différents mentionnés → isLot: false, lotTotal: null, prix_estime_lot: null pour tous
 - Ne JAMAIS inventer des prix individuels hors contexte lot
@@ -162,15 +171,24 @@ NEVER divide this price. NEVER treat as a lot.
   ✅ "5 t-shirts at €5 apiece" → isLot:false, prix_achat:5, quantite:5
   ✅ "I bought 2 jackets at €12 each" → isLot:false, prix_achat:12, quantite:2
 
-LOT — only when global price with no unit price:
-If multiple items share ONE TOTAL price AND no per-item price is mentioned:
+IDENTICAL ITEMS with total price (ABSOLUTE PRIORITY):
+If N units of the SAME item (same product × N) share ONE TOTAL price:
+→ isLot: false, prix_achat = total÷N, quantite: N, lotTotal: null, prix_estime_lot: null
+NEVER use isLot:true for identical items.
+  ✅ "10 paintings for €100" → isLot:false, prix_achat:10, quantite:10
+  ✅ "3 bags for €25" → isLot:false, prix_achat:8.33, quantite:3
+  ✅ "I bought 5 t-shirts for €20" → isLot:false, prix_achat:4, quantite:5
+  ✅ "4 boxes for €20" → isLot:false, prix_achat:5, quantite:4
+
+LOT — only when DIFFERENT item types share a global price with no unit price:
+If items of DIFFERENT TYPES share ONE TOTAL price AND no per-item price is mentioned:
 → isLot: true, lotTotal: global price
 Lot expressions: "all for X", "X for all", "I paid X for everything",
 "lot for X", "X for the lot", "X total"
 If isLot=true: distribute by relative probable value.
 Sum of prix_estime_lot MUST equal exactly lotTotal.
-  ✅ "3 bags for €25" → isLot:true, lotTotal:25
-  ✅ "I bought 5 t-shirts for €20" → isLot:true, lotTotal:20
+  ✅ "a jacket, jeans and Nike for €40" → isLot:true, lotTotal:40
+  ✅ "I bought a jacket and shoes for €30" → isLot:true, lotTotal:30
 
 - If different individual prices mentioned → isLot: false, lotTotal: null, prix_estime_lot: null for all
 - NEVER invent individual prices outside lot context

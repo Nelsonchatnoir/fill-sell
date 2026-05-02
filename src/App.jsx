@@ -1624,8 +1624,9 @@ export default function App({ loginOnly = false }){
     let idBase=Date.now();
     for(const item of voiceParsed.items){
       const qty=Math.max(1,item.quantite||1);
-      const fraisU=parseFloat(item.frais_unitaire)||0;
-      const b=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)+fraisU:(parseFloat(item.prix_achat)||0);
+      const fraisG=parseFloat(item.frais_global)||0;
+      const fraisU=fraisG>0?fraisG/qty:(parseFloat(item.frais_unitaire)||0);
+      const b=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty+fraisU:(parseFloat(item.prix_achat)||0);
       const pc=0;
       const s=voiceParsed.isLot?0:(parseFloat(item.prix_vente)||0);
       const sf=0;
