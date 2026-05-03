@@ -1186,6 +1186,52 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 );
               }
 
+              if(status==="success"&&intent==="query_stats"&&(data?.metric==="best_sales"||data?.metric==="worst_sales")){
+                const sItems=data?.items||[];
+                const isWorst=data?.metric==="worst_sales";
+                const lim=data?.limit??sItems.length;
+                const title=isWorst
+                  ?(lim===1?(lang==="en"?"Worst sale":"Pire vente"):(lang==="en"?`${lim} worst sales`:`${lim} pires ventes`))
+                  :(lim===1?(lang==="en"?"Best sale":"Meilleure vente"):(lang==="en"?`Top ${lim} sales`:`Top ${lim} ventes`));
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{isWorst?"📉":"🏆"} {title}</div>
+                    {sItems.length===0
+                      ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No sales yet":"Aucune vente"}</div>
+                      :sItems.map((s,i)=>{
+                        const profit=Math.round((s._sortVal??s.margin??s.benefice??0)*100)/100;
+                        return(
+                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<sItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                            <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lim>1?`${i+1}. `:""}{s.title||s.titre||s.nom}</div>
+                            <div style={{fontSize:12,fontWeight:700,color:profit>=0?"#1D9E75":"#E53E3E"}}>{profit>=0?"+":""}{profit}€</div>
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+                );
+              }
+
+              if(status==="success"&&intent==="query_stats"&&(data?.metric==="profit_mois"||data?.metric==="marge_moyenne"||data?.metric==="stock_immobilise")){
+                const metricEmoji={profit_mois:"💰",marge_moyenne:"📊",stock_immobilise:"🔒"};
+                const metricTitle={
+                  profit_mois:lang==="en"?`Profit – ${data?.monthName}`:`Bénéfice – ${data?.monthName}`,
+                  marge_moyenne:lang==="en"?"Avg margin":"Marge moyenne",
+                  stock_immobilise:lang==="en"?"Locked capital":"Stock immobilisé",
+                };
+                const isCurrency=data?.metric!=="marge_moyenne";
+                const suffix=isCurrency?"€":"%";
+                const val=data?.value??0;
+                const valColor=data?.metric==="stock_immobilise"?"#F9A26C":val>=0?"#1D9E75":"#E53E3E";
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",textAlign:"center"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
+                    <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{isCurrency&&val>0?"+":""}{val}{suffix}</div>
+                    {data?.metric==="stock_immobilise"&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{data?.count} {lang==="en"?"item(s) in stock":"article(s) en stock"}</div>}
+                  </div>
+                );
+              }
+
               if(status==="success"){
                 return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB"}}><div style={{fontSize:13,fontWeight:600,color:"#0F6E56"}}>✅ {message}</div></div>);
               }

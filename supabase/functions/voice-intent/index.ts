@@ -26,6 +26,7 @@ Intents disponibles :
 - analytics_best      → requiresConfirmation: false
 - analytics_dormant   → requiresConfirmation: false
 - analytics_date      → requiresConfirmation: false
+- query_stats         → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
 
@@ -101,6 +102,7 @@ analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, group
 Si l'utilisateur demande les meilleurs deals PAR catégorie → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
+query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", "c'est rentable", calcul achat/vente explicite avec deux prix mentionnés
 unknown:          { originalText }
@@ -112,7 +114,21 @@ Format court : "Noir, taille 36" ou "Usé, taille 44". null si aucun qualificati
 Règle quantite/quantite_vendue :
 - inventory_add : quantite = nombre d'exemplaires achetés (défaut 1 si non mentionné).
 - inventory_sell : quantite_vendue = nombre d'exemplaires vendus (défaut 1 si non mentionné).
-  Ex: "je vends 2 de mes iphones" → quantite_vendue: 2`;
+  Ex: "je vends 2 de mes iphones" → quantite_vendue: 2
+
+Règles query_stats (PRIORITÉ sur analytics_best et analytics_query pour les cas couverts) :
+Utilise query_stats pour classements meilleur/pire, marge moyenne, stock immobilisé, bénéfice mensuel.
+analytics_best reste UNIQUEMENT pour "par catégorie" (groupBy: "categorie").
+Métriques :
+  best_sales       → "meilleure(s) vente(s)", "top ventes", "meilleures affaires"
+  worst_sales      → "pire(s) vente(s)", "moins bonne(s) vente(s)", "mauvaise(s) vente(s)"
+  profit_mois      → "bénéfice du mois", "profit du mois", "gains du mois", "j'ai gagné ce mois"
+  marge_moyenne    → "marge moyenne", "taux de marge", "ma marge habituelle"
+  stock_immobilise → "stock immobilisé", "argent immobilisé", "capital bloqué"
+Règle limit (CRITIQUE — respecter exactement le nombre mentionné) :
+  "ma meilleure" / "ma pire" → limit: 1 (TOUJOURS 1 pour "ma" sans nombre)
+  "mes N meilleures" / "les N pires" → limit: N exact (N = nombre mentionné)
+  "mes meilleures" / "mes pires" (sans nombre) → limit: 5 (défaut)`;
 
 const SYSTEM_EN = `You are the intent engine of Fill & Sell, an intelligent resale app.
 You receive a sentence from a reseller. You extract ALL intentions present
@@ -135,6 +151,7 @@ Available intents:
 - analytics_best      → requiresConfirmation: false
 - analytics_dormant   → requiresConfirmation: false
 - analytics_date      → requiresConfirmation: false
+- query_stats         → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
 
@@ -209,6 +226,7 @@ analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, group
 If the user asks for best deals BY category → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
+query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", "is it worth it", explicit buy/sell calculation with two prices mentioned
 unknown:          { originalText }
@@ -220,7 +238,21 @@ Short format: "Black, size 36" or "Worn, size 44". null if no qualifiers mention
 Quantity rules:
 - inventory_add: quantite = number of units bought (default 1 if not mentioned).
 - inventory_sell: quantite_vendue = number of units sold (default 1 if not mentioned).
-  Ex: "I'm selling 2 of my iphones" → quantite_vendue: 2`;
+  Ex: "I'm selling 2 of my iphones" → quantite_vendue: 2
+
+query_stats rules (PRIORITY over analytics_best and analytics_query for covered cases):
+Use query_stats for best/worst rankings, average margin, locked stock capital, monthly profit.
+analytics_best is ONLY for "by category" queries (groupBy: "categorie").
+Metrics:
+  best_sales       → "best sale(s)", "top sales", "best deals"
+  worst_sales      → "worst sale(s)", "bad sale(s)", "least profitable"
+  profit_mois      → "monthly profit", "profit this month", "earnings this month"
+  marge_moyenne    → "average margin", "margin rate", "typical margin"
+  stock_immobilise → "locked stock", "locked capital", "immobilized stock"
+Limit rule (CRITICAL — respect the exact number stated):
+  "my best sale" / "my worst sale" → limit: 1 (ALWAYS 1 for "my" without a number)
+  "my N best" / "the N worst" → limit: N exact (N = stated number)
+  "my best sales" / "my worst sales" (no number) → limit: 5 (default)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

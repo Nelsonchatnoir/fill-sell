@@ -236,7 +236,8 @@ function handleAnalyticsBest(task, context) {
     };
   }
 
-  const top5 = filtered
+  const lim = task.data.limit ? Math.max(1, parseInt(task.data.limit)) : 5;
+  const topN = filtered
     .map(s => ({
       ...s,
       _sortVal:
@@ -247,17 +248,17 @@ function handleAnalyticsBest(task, context) {
     }))
     .filter(s => !isNaN(s._sortVal))
     .sort((a, b) => b._sortVal - a._sortVal)
-    .slice(0, 5);
+    .slice(0, lim);
 
   return {
     intent: task.intent,
     taskData: task.data,
     status: "success",
-    data: { items: top5 },
+    data: { items: topN, limit: lim },
     message:
       context.lang === "en"
-        ? `Top ${top5.length} by ${metric}`
-        : `Top ${top5.length} par ${metric}`,
+        ? `Top ${lim} by ${metric}`
+        : `Top ${lim} par ${metric}`,
   };
 }
 
@@ -329,6 +330,66 @@ function handleAnalyticsDate(task, context) {
         ? `${items.length} item(s) on ${target}`
         : `${items.length} article(s) le ${target}`,
   };
+}
+
+function handleQueryStats(task, context) {
+  const { metric, limit, periode, date_from, date_to } = task.data;
+  const lim = limit ? Math.max(1, parseInt(limit)) : 5;
+
+  switch (metric) {
+    case "best_sales": {
+      let filtered = [...context.sales];
+      if (periode) filtered = filterByPeriod(filtered, periode, date_from, date_to);
+      const top = filtered
+        .map(s => ({ ...s, _sortVal: getMargin(s) }))
+        .filter(s => !isNaN(s._sortVal))
+        .sort((a, b) => b._sortVal - a._sortVal)
+        .slice(0, lim);
+      const label = lim === 1
+        ? (context.lang === "en" ? "Best sale" : "Meilleure vente")
+        : (context.lang === "en" ? `Top ${lim} sales` : `Top ${lim} ventes`);
+      return { intent: task.intent, taskData: task.data, status: "success", data: { items: top, metric, limit: lim }, message: label };
+    }
+    case "worst_sales": {
+      let filtered = [...context.sales];
+      if (periode) filtered = filterByPeriod(filtered, periode, date_from, date_to);
+      const bottom = filtered
+        .map(s => ({ ...s, _sortVal: getMargin(s) }))
+        .filter(s => !isNaN(s._sortVal))
+        .sort((a, b) => a._sortVal - b._sortVal)
+        .slice(0, lim);
+      const label = lim === 1
+        ? (context.lang === "en" ? "Worst sale" : "Pire vente")
+        : (context.lang === "en" ? `${lim} worst sales` : `${lim} pires ventes`);
+      return { intent: task.intent, taskData: task.data, status: "success", data: { items: bottom, metric, limit: lim }, message: label };
+    }
+    case "profit_mois": {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthSales = context.sales.filter(s => new Date(s.date || s.created_at) >= startOfMonth);
+      const total = monthSales.reduce((a, s) => { const m = getMargin(s); return a + (isNaN(m) ? 0 : m); }, 0);
+      const monthName = now.toLocaleString(context.lang === "en" ? "en-US" : "fr-FR", { month: "long" });
+      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, monthName }, message: `${Math.round(total * 100) / 100}€` };
+    }
+    case "marge_moyenne": {
+      let filtered = [...context.sales];
+      if (periode) filtered = filterByPeriod(filtered, periode, date_from, date_to);
+      const avg = filtered.length
+        ? filtered.reduce((a, s) => {
+            const mp = s.margin_pct ?? ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100;
+            return a + (isNaN(mp) ? 0 : mp);
+          }, 0) / filtered.length
+        : 0;
+      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(avg * 10) / 10, metric }, message: `${Math.round(avg * 10) / 10}%` };
+    }
+    case "stock_immobilise": {
+      const stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
+      const total = stock.reduce((a, i) => a + getPrixAchat(i) * Math.max(1, i.quantite || 1), 0);
+      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, count: stock.length }, message: `${Math.round(total * 100) / 100}€` };
+    }
+    default:
+      return { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Unknown metric" : "Métrique inconnue" };
+  }
 }
 
 // ─── main export ──────────────────────────────────────────────────────────────
@@ -447,6 +508,9 @@ export async function executeVoiceTasks(tasks, context) {
           break;
         case "analytics_date":
           result = handleAnalyticsDate(task, context);
+          break;
+        case "query_stats":
+          result = handleQueryStats(task, context);
           break;
         case "deal_score": {
           const pA = parseNum(task.data.prix_achat);
