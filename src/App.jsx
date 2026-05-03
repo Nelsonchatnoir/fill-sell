@@ -599,7 +599,34 @@ function DonutChart({segments}){
   );
 }
 
-function StatsTab({sales,items,lang,SURL}){
+function normalizeCat(raw){
+  if(!raw) return 'Autre';
+  const v=raw.toLowerCase()
+    .replace(/[éèêë]/g,'e').replace(/[àâ]/g,'a').replace(/[ùû]/g,'u').replace(/[îï]/g,'i').replace(/[ôö]/g,'o')
+    .replace(/[^a-z]/g,'');
+  if(v==='mode'||v==='fashion') return 'Mode';
+  if(v==='hightech'||v==='tech'||v==='hitech') return 'High-Tech';
+  if(v==='luxe'||v==='luxury') return 'Luxe';
+  if(v==='maison'||v==='home') return 'Maison';
+  if(v==='sport') return 'Sport';
+  if(v==='musique'||v==='music') return 'Musique';
+  if(v==='beaute'||v==='beauty') return 'Beauté';
+  if(v==='collection') return 'Collection';
+  if(v==='livres'||v==='books') return 'Livres';
+  if(v==='automoto'||v==='auto') return 'Auto-Moto';
+  if(v==='electromenager'||v==='electro') return 'Électroménager';
+  if(v==='jouets'||v==='toys') return 'Jouets';
+  return 'Autre';
+}
+
+const CAT_COLORS_MAP={
+  'Mode':'#DB2777','High-Tech':'#2563EB','Luxe':'#D97706','Maison':'#16A34A',
+  'Sport':'#7C3AED','Musique':'#9333EA','Beauté':'#EC4899','Collection':'#F59E0B',
+  'Livres':'#84CC16','Auto-Moto':'#EF4444','Électroménager':'#06B6D4','Jouets':'#F97316',
+  'Autre':'#6B7280',
+};
+
+function StatsTab({sales,items,lang}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
   const [aiText,setAiText]=useState('');
@@ -607,8 +634,8 @@ function StatsTab({sales,items,lang,SURL}){
 
   const now=new Date();
   const cutoff=useMemo(()=>{
-    const d=new Date(now);
-    if(range==='1M'||range==='1M'){d.setMonth(d.getMonth()-1);}
+    const d=new Date();
+    if(range==='1M'){d.setMonth(d.getMonth()-1);}
     else if(range==='3M'){d.setMonth(d.getMonth()-3);}
     else if(range==='6M'){d.setMonth(d.getMonth()-6);}
     else if(range==='1A'||range==='1Y'){d.setFullYear(d.getFullYear()-1);}
@@ -627,16 +654,21 @@ function StatsTab({sales,items,lang,SURL}){
 
   const catMap={};
   filtered.forEach(s=>{
-    const c=s.type||'Autre';
+    const raw=s.type||s.categorie;
+    console.log('[StatsTab] sale cat raw:',raw);
+    const c=normalizeCat(raw);
     catMap[c]=(catMap[c]||0)+(s.margin||0);
   });
   const catEntries=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
   const bestCategory=catEntries[0]?.[0]||null;
-  const bestItem=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0))[0]?.title||null;
+  const bestCatProfit=catEntries[0]?.[1]||0;
+  const bestCategoryPct=totalProfit>0?Math.round((bestCatProfit/totalProfit)*100):0;
+  const bestItem=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0))[0];
+  const bestItemName=bestItem?.title||null;
+  const bestItemProfit=bestItem?.margin||0;
 
-  const CAT_COLORS={Mode:'#DB2777','High-Tech':'#2563EB',Luxe:'#D97706',Maison:'#16A34A',Sport:'#7C3AED',Autre:'#6B7280'};
   const totalCatProfit=catEntries.reduce((a,[,v])=>a+(v>0?v:0),0)||1;
-  const donutSegs=catEntries.filter(([,v])=>v>0).map(([c,v])=>({color:CAT_COLORS[c]||'#6B7280',pct:(v/totalCatProfit)*100,label:c}));
+  const donutSegs=catEntries.filter(([,v])=>v>0).map(([c,v])=>({color:CAT_COLORS_MAP[c]||'#6B7280',pct:(v/totalCatProfit)*100,label:c}));
 
   const monthlyMap={};
   filtered.forEach(s=>{
@@ -650,6 +682,10 @@ function StatsTab({sales,items,lang,SURL}){
   const topSellers=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
 
   const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)).slice(0,3);
+  const slowCount=[...items].filter(i=>{
+    if(i.statut==='vendu') return false;
+    return (now-new Date(i.created_at||0))>30*24*3600*1000;
+  }).length;
 
   const cells=Array.from({length:84},(_,i)=>{
     const d=new Date(now);
@@ -661,26 +697,36 @@ function StatsTab({sales,items,lang,SURL}){
   }).reverse();
 
   useEffect(()=>{
-    if(!SURL||filtered.length===0){setAiText('');return;}
+    if(filtered.length===0){setAiText('');return;}
+    const apiKey=import.meta.env.VITE_ANTHROPIC_API_KEY;
+    if(!apiKey){console.error('[StatsTab] VITE_ANTHROPIC_API_KEY not set');setAiText('');return;}
     setAiLoading(true);
     setAiText('');
-    const statsData={
-      totalProfit:Math.round(totalProfit*100)/100,
-      totalRev:Math.round(totalRev*100)/100,
-      avgMargin,
-      salesCount:filtered.length,
-      bestCategory,
-      bestItem,
-      range,
-    };
-    fetch(`${SURL}/functions/v1/stats-analysis`,{
+    const rangeLabel=range==='Tout'||range==='All'?'tout':'6M';
+    const systemPrompt=lang==='en'
+      ?'You are a financial assistant for resellers. Analyze these sales stats and generate a short insight (3-4 sentences), personalized, actionable. Be direct and concrete.'
+      :'Tu es un assistant financier pour revendeurs. Analyse ces stats de vente et génère un insight court (3-4 phrases), personnalisé, actionnable, en FR. Sois direct et concret.';
+    const userMsg=lang==='en'
+      ?`Period: ${range}. Profit: ${Math.round(totalProfit)}€. Sales: ${filtered.length}. Avg margin: ${avgMargin}%.${bestCategory?` Best category: ${bestCategory} (${bestCategoryPct}% of profit).`:''}${bestItemName?` Best item: ${bestItemName} (+${Math.round(bestItemProfit)}€).`:''} Items in stock for over 30 days: ${slowCount}.`
+      :`Période : ${range}. Profit : ${Math.round(totalProfit)}€. Ventes : ${filtered.length}. Marge moyenne : ${avgMargin}%.${bestCategory?` Meilleure catégorie : ${bestCategory} (${bestCategoryPct}% du profit).`:''}${bestItemName?` Meilleur article : ${bestItemName} (+${Math.round(bestItemProfit)}€).`:''} Articles en stock depuis plus de 30j : ${slowCount}.`;
+    fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({statsData,lang}),
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:200,
+        system:systemPrompt,
+        messages:[{role:'user',content:userMsg}],
+      }),
     })
-      .then(r=>r.json())
-      .then(d=>{setAiText(d.analysis||'');setAiLoading(false);})
-      .catch(()=>setAiLoading(false));
+      .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+      .then(d=>{setAiText(d?.content?.[0]?.text?.trim()||'');setAiLoading(false);})
+      .catch(err=>{console.error('[StatsTab] AI error:',err);setAiLoading(false);});
   },[range,filtered.length]);
 
   const fmt2=n=>(Math.round(n*100)/100).toFixed(2).replace('.',',')+' €';
@@ -701,7 +747,7 @@ function StatsTab({sales,items,lang,SURL}){
           <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',opacity:0.7,marginBottom:4}}>{lang==='en'?'Total profit':'Profit total'}</div>
           <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',lineHeight:1}}>{fmt2(totalProfit)}</div>
         </div>
-        <div className="kpi-hero" style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',backdropFilter:'blur(8px)'}}>
+        <div className="kpi-hero" style={{background:'#fff',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
           <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',color:'#6B7280',marginBottom:4}}>{lang==='en'?'Revenue':'Revenu'}</div>
           <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',color:'#0D0D0D',lineHeight:1}}>{fmt2(totalRev)}</div>
         </div>
@@ -721,20 +767,21 @@ function StatsTab({sales,items,lang,SURL}){
         </div>
       </div>
 
-      {/* AI Analysis */}
-      <div className="ai-banner">
+      {/* AI Analysis card */}
+      <div style={{background:'#F0FAF7',borderRadius:14,padding:'16px',borderLeft:'3px solid #1D9E75',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-          <span style={{width:8,height:8,borderRadius:'50%',background:'#4ECDC4',display:'inline-block'}}/>
-          <span style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>Analyse IA</span>
+          <span style={{fontSize:16}}>🤖</span>
+          <span style={{fontSize:12,fontWeight:800,color:'#0D0D0D'}}>{lang==='en'?'AI Analysis':'Analyse IA'}</span>
+          <span style={{marginLeft:'auto',background:'#1D9E75',color:'#fff',borderRadius:99,padding:'2px 9px',fontSize:10,fontWeight:800,letterSpacing:'0.04em'}}>{lang==='en'?'Predictive':'Prédictif'}</span>
         </div>
         {aiLoading?(
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {[100,80,60].map((w,i)=><div key={i} style={{height:10,background:'#E5E7EB',borderRadius:4,width:`${w}%`}}/>)}
+            {[100,80,60].map((w,i)=><div key={i} style={{height:10,background:'#C6E8DF',borderRadius:4,width:`${w}%`}}/>)}
           </div>
         ):aiText?(
-          <div style={{fontSize:13,color:'#374151',lineHeight:1.65,fontWeight:500}}>{aiText}</div>
+          <div style={{fontSize:13,color:'#1A4A3A',lineHeight:1.65,fontWeight:500}}>{aiText}</div>
         ):(
-          <div style={{fontSize:12,color:'#A3A9A6',fontStyle:'italic'}}>{filtered.length===0?(lang==='en'?'No sales in this period':'Aucune vente sur cette période'):(lang==='en'?'Analysis unavailable':'Analyse non disponible')}</div>
+          <div style={{fontSize:12,color:'#5DCAA5',fontStyle:'italic'}}>{filtered.length===0?(lang==='en'?'No sales in this period':'Aucune vente sur cette période'):(lang==='en'?'Analysis unavailable':'Analyse non disponible')}</div>
         )}
       </div>
 
@@ -757,6 +804,25 @@ function StatsTab({sales,items,lang,SURL}){
         </div>
       )}
 
+      {/* Evolution chart placeholder */}
+      {chartData.length>1&&(
+        <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'📊 Profit evolution':'📊 Évolution du profit'}</div>
+          <div style={{display:'flex',gap:4,alignItems:'flex-end',height:60}}>
+            {chartData.map((d,i)=>{
+              const maxP=Math.max(...chartData.map(x=>x.profit),1);
+              const h=Math.max(4,Math.round((d.profit/maxP)*56));
+              return(
+                <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                  <div style={{width:'100%',height:h,background:'linear-gradient(180deg,#4ECDC4,#1D9E75)',borderRadius:'3px 3px 0 0'}}/>
+                  <span style={{fontSize:9,color:'#A3A9A6',fontWeight:600}}>{d.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Heatmap */}
       <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
         <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Activity (84 days)':'Activité (84 jours)'}</div>
@@ -768,7 +834,7 @@ function StatsTab({sales,items,lang,SURL}){
       {/* Top sellers */}
       {topSellers.length>0&&(
         <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Top 3 sales':'Top 3 ventes'}</div>
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'🏆 Top sellers':'🏆 Meilleurs vendeurs'}</div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {topSellers.map((s,i)=>(
               <div key={i} className="leader-row">
@@ -784,7 +850,7 @@ function StatsTab({sales,items,lang,SURL}){
       {/* Slow movers */}
       {slowStock.length>0&&(
         <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Slow movers':'Lents à vendre'}</div>
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'🐌 Slow movers':'🐌 Articles lents'}</div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {slowStock.map((s,i)=>(
               <div key={i} className="leader-row">
@@ -3564,7 +3630,7 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===4&&(
-          <StatsTab sales={sales} items={items} lang={lang} SURL={import.meta.env.VITE_SUPABASE_URL}/>
+          <StatsTab sales={sales} items={items} lang={lang}/>
         )}
       </div>
 
