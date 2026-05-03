@@ -597,6 +597,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const autoCloseRef=useRef(null);
+  const drawerRef=useRef(null);
+  const swipeRef=useRef({startY:0,active:false});
   const [vaEdits,setVaEdits]=useState({});
   const SURL=import.meta.env.VITE_SUPABASE_URL;
 
@@ -638,7 +640,18 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions});
           setVaResults(results);setVaStep("results");
           const noActionNeeded=results.every(r=>r.status==="success"&&r.intent!=="inventory_search");
-          if(noActionNeeded)autoCloseRef.current=setTimeout(()=>resetVA(),4000);
+          if(noActionNeeded){
+            const blocs=results.reduce((n,r)=>{
+              if(!r||r.status!=="success")return n;
+              if(r.intent==="query_stats"&&(r.data?.metric==="best_sales"||r.data?.metric==="worst_sales"))return n+(r.data?.items?.length||0);
+              if(r.intent==="analytics_best")return n+(r.data?.byCategory?Object.keys(r.data.byCategory).length:(r.data?.items?.length||0));
+              if(r.intent==="analytics_dormant")return n+Math.min(r.data?.items?.length||0,6);
+              if(r.intent==="analytics_date")return n+Math.min(r.data?.items?.length||0,5);
+              return n+1;
+            },0);
+            const delay=Math.min(2000+blocs*1500,12000);
+            autoCloseRef.current=setTimeout(()=>resetVA(),delay);
+          }
         }catch(e){setVaError(e.message||"Error");setVaStep("");}
       };
       vaMediaRef.current=recorder;recorder.start();setVaStep("recording");
@@ -725,7 +738,23 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
       {/* Results drawer */}
       {vaResults.length>0&&(
-        <div style={{position:"fixed",bottom:0,left:0,right:0,maxHeight:"min(70vh,700px)",overflowY:"auto",background:"#fff",borderRadius:"20px 20px 0 0",borderTop:"0.5px solid rgba(0,0,0,0.08)",padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)",zIndex:999,boxShadow:"0 -8px 40px rgba(0,0,0,0.12)",animation:"va-slidein 0.3s ease"}}>
+        <div ref={drawerRef}
+          onTouchStart={e=>{
+            swipeRef.current.startY=e.touches[0].clientY;
+            swipeRef.current.active=(drawerRef.current?.scrollTop??0)===0;
+          }}
+          onTouchMove={e=>{
+            if(!swipeRef.current.active)return;
+            const dy=e.touches[0].clientY-swipeRef.current.startY;
+            if(dy>0&&drawerRef.current){drawerRef.current.style.transition="none";drawerRef.current.style.transform=`translateY(${dy}px)`;}
+          }}
+          onTouchEnd={e=>{
+            if(!swipeRef.current.active)return;
+            const dy=e.changedTouches[0].clientY-swipeRef.current.startY;
+            if(dy>60){resetVA();}
+            else if(drawerRef.current){drawerRef.current.style.transition="transform 0.2s ease";drawerRef.current.style.transform="translateY(0)";}
+          }}
+          style={{position:"fixed",bottom:0,left:0,right:0,maxHeight:"min(70vh,700px)",overflowY:"auto",background:"#fff",borderRadius:"20px 20px 0 0",borderTop:"0.5px solid rgba(0,0,0,0.08)",padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)",zIndex:999,boxShadow:"0 -8px 40px rgba(0,0,0,0.12)",animation:"va-slidein 0.3s ease"}}>
           {/* Header */}
           <div style={{display:"flex",alignItems:"center",marginBottom:16}}>
             <div style={{flex:1,display:"flex",justifyContent:"center"}}>
