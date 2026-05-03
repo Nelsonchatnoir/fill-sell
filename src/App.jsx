@@ -17,6 +17,7 @@ import { generateDealAnalysis } from './utils/dealAnalysis';
 import { executeVoiceTasks } from './utils/voiceEngine';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
+import './app.css';
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -40,61 +41,40 @@ const C = {
   rowBg:"#F5F6F5", rowHover:"#EAEBEA",
 };
 
-const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{margin:0;padding:0;width:100%;max-width:100vw;overflow-x:hidden !important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;background:#ffffff;}
-  body{font-family:'Nunito',-apple-system,BlinkMacSystemFont,sans-serif;background:#ffffff;min-height:100vh;touch-action:pan-y;}
-  *{box-sizing:border-box;max-width:100%;}
-  svg,svg *{max-width:none!important;overflow:visible;}
-  *::-webkit-scrollbar{display:none;}
-  *{-ms-overflow-style:none;scrollbar-width:none;}
-  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
-  input[type=number]{-moz-appearance:textfield;}
-  .inp{transition:all 0.2s ease;}
-  .inp:focus-within{border-color:${C.teal}!important;box-shadow:0 0 0 3px ${C.teal}18!important;}
-  .btn{transition:all 0.2s ease;cursor:pointer;}
-  .btn:hover:not(:disabled){opacity:0.92;transform:translateY(-2px);}
-  .card{background:#fff;border-radius:16px;border:1px solid #ECF0F4;box-shadow:0 1px 4px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.04);transition:box-shadow 0.2s ease,transform 0.2s ease;}
-  .kpi{transition:transform 0.18s ease,box-shadow 0.18s ease;cursor:pointer;}
-  .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.09)!important;}
-  .kpi:active{transform:scale(0.98)!important;box-shadow:0 1px 4px rgba(0,0,0,0.06)!important;}
-  .wrap{width:100%;max-width:1280px;margin:0 auto;padding:0 24px;}
-  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  .grid-inv{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;width:100%;-webkit-overflow-scrolling:touch;}
-  .desktop-nav{display:flex;}
-  .mobile-nav{display:none;}
-  .header-stats{display:flex;}
-  .header-centre{display:flex;flex-direction:column;align-items:center;}
-  .header-brand-text{display:inline;}
-  .logo-desktop{display:block;}
-  .logo-mobile{display:none;}
-  .premium-full{display:inline;}
-  .premium-short{display:none;}
-  .app-root{height:100dvh;width:100%;max-width:100vw;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;position:relative;}
-  @media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr);}}
-  @media(max-width:768px){
-    .grid4{grid-template-columns:repeat(2,1fr);gap:12px;}
-    .grid2{grid-template-columns:1fr;gap:12px;}
-    .grid-inv{grid-template-columns:1fr;width:100%;overflow:visible;box-sizing:border-box;}
-    .wrap{padding:0 16px;overflow-x:hidden;}
-    .card{border-radius:14px;}
-    .desktop-nav{display:none!important;}
-    .mobile-nav{display:flex!important;}
-    .header-stats{display:none!important;}
-    .header-centre{display:none!important;}
-    .header-brand-text{display:none!important;}
-    .logo-desktop{display:none!important;}
-    .logo-mobile{display:block!important;}
-    .premium-full{display:none!important;}
-    .premium-short{display:inline!important;}
-    .page-pad{padding-bottom:16px!important;}
-  }
-  @media(max-width:480px){.grid4{grid-template-columns:1fr;}}
-  @keyframes fs-dot{0%,80%,100%{opacity:0.25;transform:scale(0.7);}40%{opacity:1;transform:scale(1);}}
-  @keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(229,62,62,0.4);}50%{box-shadow:0 0 0 10px rgba(229,62,62,0);}}
-`;
+function useCounter(target, duration = 1200, deps = []) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf, start;
+    const step = (t) => {
+      if (!start) start = t;
+      const p = Math.min((t - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(target * eased);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, deps);
+  return val;
+}
+
+function Sparkline({ data, color = '#2DB89A', width = 80, height = 28 }) {
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const points = data.map((v, i) => {
+    const x = (width * i) / (data.length - 1);
+    const y = height - ((v - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+  const last = data.map((v, i) => [(width * i) / (data.length - 1), height - ((v - min) / range) * height]).pop();
+  return (
+    <svg width={width} height={height} style={{display:'block'}}>
+      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="2.5" fill={color} />
+    </svg>
+  );
+}
 
 const EUR_TO_USD = 1.08;
 const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
@@ -683,20 +663,15 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
       `}</style>
 
       {/* FAB */}
-      <button onClick={handleFabClick} disabled={isThink} style={{
-        position:"fixed",
-        bottom:"calc(env(safe-area-inset-bottom,0px) + 72px)",
-        right:20,zIndex:1000,
-        width:fabSize,height:fabSize,borderRadius:"50%",border:"none",
-        cursor:isThink?"not-allowed":"pointer",
-        background:isRec?"#E53E3E":isThink?"#fff":"linear-gradient(135deg,#1D9E75,#E8956D)",
-        boxShadow:isRec?"0 4px 20px rgba(229,62,62,0.4)":"0 4px 20px rgba(29,158,117,0.35)",
-        display:isRes?"none":"flex",alignItems:"center",justifyContent:"center",
-        outline:"none",padding:0,overflow:"visible",
-        transition:"width 0.2s,height 0.2s,background 0.2s,box-shadow 0.2s",
-        animation:isIdle?"va-breathe 3s ease-in-out infinite":isRec?"va-pulse 1.2s ease-in-out infinite":"none",
-        fontFamily:"inherit",
-      }}>
+      <button
+        onClick={handleFabClick}
+        disabled={isThink}
+        className={"fab-vocal"+(isRec?" listening":"")+(isThink?" thinking":"")}
+        style={{
+          display: isRes ? "none" : "flex",
+          animation: isIdle ? "va-breathe 3s ease-in-out infinite" : isRec ? "va-pulse 1.2s ease-in-out infinite" : "none",
+        }}
+      >
         {isThink?(
           <div style={{position:"relative",width:fabSize,height:fabSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
@@ -2353,10 +2328,11 @@ export default function App({ loginOnly = false }){
   }
 
   const TABS_MOBILE=[
-    {icon:"📊",label:t('dashboard'),idx:0},
-    {icon:"📦",label:t('inventaire'),idx:1},
-    {icon:"🧮",label:t('calculer'),idx:2},
-    {icon:"📋",label:t('historique'),idx:3},
+    {icon:"📊",label:lang==='fr'?"Tableau":"Board",idx:0},
+    {icon:"🤖",label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
+    {icon:"🎯",label:"Deal",idx:2},
+    {icon:"📋",label:lang==='fr'?"Ventes":"Sales",idx:3},
+    {icon:"📈",label:"Stats",idx:4},
   ];
 
   const headerStats=[
@@ -2507,44 +2483,39 @@ export default function App({ loginOnly = false }){
 
   return(
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
-      <style>{css}</style>
 
-      <div style={{background:"linear-gradient(135deg,#4ECDC4,#F9A26C)",paddingTop:"calc(10px + env(safe-area-inset-top))",paddingRight:"16px",paddingBottom:"10px",paddingLeft:"16px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:1280,margin:"0 auto",width:"100%"}}>
-          {/* Gauche : logo cliquable → dashboard */}
-          <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} style={{display:"flex",alignItems:"center",gap:8,background:"transparent",border:"none",padding:0,cursor:"pointer",flexShrink:0}}>
-            <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:42,width:"auto",objectFit:"contain",flexShrink:0,imageRendering:"auto"}}/>
-            <img src="/icon_1024x1024.png" alt="Fill & Sell" className="logo-mobile" style={{width:36,height:36,borderRadius:11,objectFit:"cover",flexShrink:0,imageRendering:"auto"}}/>
-            <span style={{fontSize:15,fontWeight:900,color:"#fff",fontStyle:"italic",letterSpacing:"-0.02em",lineHeight:1,whiteSpace:"nowrap"}}>Fill & Sell</span>
-          </button>
-          {/* Centre : stats dynamiques (masquées sur mobile) */}
-          <div className="header-centre" style={{textAlign:"center",flex:1}}>
-            <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-0.02em",lineHeight:1}}>
-              {fmt(tm.profit)}<span style={{opacity:0.65,fontSize:12,fontWeight:700}}> {t('profit')}</span>
-            </div>
-            <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",marginTop:2,whiteSpace:"nowrap"}}>
-              {tm.count} {t('ventesMonth')}
-            </div>
+      <div className="topbar">
+        <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} className="tb-logo">
+          <img src="/icon_1024x1024.png" alt="Fill & Sell" className="logo-mobile" style={{width:30,height:30,borderRadius:9,objectFit:"cover",flexShrink:0}}/>
+          <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:34,width:"auto",objectFit:"contain",flexShrink:0}}/>
+          <span className="name">Fill &amp; Sell</span>
+        </button>
+        <div className="header-centre" style={{flex:1,textAlign:"center"}}>
+          <div style={{fontSize:13,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",lineHeight:1}}>
+            {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
           </div>
-          {/* Droite : premium + settings — toujours collé à droite */}
-          <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto",flexShrink:0}}>
-            {!isPremium&&!isNative?(
-              <PremiumBanner userEmail={user?.email} compact onDark source="topbar"/>
-            ):isPremium?(
-              <div style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.32)",borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:800,color:"#fff",whiteSpace:"nowrap"}}>{t('premium')}</div>
-            ):null}
-            <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"5px 9px",color:"#fff",fontSize:16,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.2)"}
-            >⚙️</button>
+          <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",marginTop:2,whiteSpace:"nowrap"}}>
+            {tm.count} {t('ventesMonth')}
           </div>
         </div>
+        {!isPremium&&!isNative?(
+          <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar"/>
+        ):isPremium?(
+          <div className="tb-premium">⭐ Premium</div>
+        ):null}
+        <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
       </div>
 
       <div className="desktop-nav" style={{background:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
         <div className="wrap">
           <div style={{display:"flex",padding:"0 14px",gap:0,overflowX:"auto"}}>
-            {[t('dashboard'),t('inventaire'),t('calculer'),t('historique')].map((tabLabel,i)=>(
+            {[
+              lang==='fr'?"Tableau":"Board",
+              lang==='fr'?"Stock IA":"AI Stock",
+              "Deal Score",
+              lang==='fr'?"Ventes":"Sales",
+              "Stats"
+            ].map((tabLabel,i)=>(
               <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
                 style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
                 onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color="#5DCAA5";}}
@@ -2555,7 +2526,7 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"#F5F6F5",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
+      <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
         {tab===0&&(
           <div style={{display:"flex",flexDirection:"column",gap:28,width:"100%",overflow:"hidden"}}>
@@ -2579,7 +2550,6 @@ export default function App({ loginOnly = false }){
               <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>{lang==='en'?"Loading data...":"Chargement des données..."}</div>
             ):items.length===0&&sales.length===0?(
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
-                <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
                 <div className="card" style={{padding:"40px 32px",textAlign:"center"}}>
                   <div style={{fontSize:48,marginBottom:16}}>👋</div>
                   <div style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-0.5px",marginBottom:12}}>{lang==='en'?"Welcome to Fill & Sell":"Bienvenue sur Fill & Sell"}</div>
@@ -2626,18 +2596,20 @@ export default function App({ loginOnly = false }){
 
                 {/* Hero card profit net */}
                 <div onClick={()=>{if(!isPremium&&isNative){handleIAPPurchase();}else if(!isPremium&&!isNative){track('premium_click',{source:'hero_card'});triggerCheckout();}else if(isPremium){setTab(4);localStorage.setItem('tab',4);}}}
-                  style={{background:"linear-gradient(135deg,#1D9E75 0%,#0A5A44 100%)",borderRadius:14,padding:18,marginBottom:10,cursor:"pointer",transition:"opacity 0.15s,filter 0.15s",overflow:"hidden",width:"100%",position:"relative"}}
+                  className="profit-hero card-enter"
                   onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
                   onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                 >
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                    <div style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em"}}>{t('profitNet')}</div>
-                    <div style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</div>
+                  <div className="lbl" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span>{t('profitNet')}</span>
+                    <span style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</span>
                   </div>
-                  <div style={{fontSize:42,fontWeight:900,color:"#fff",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(totalM)}</div>
-                  <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",marginTop:6}}>{tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(salesForKpis.length?totalM/salesForKpis.length:0)}</div>
-                  {!isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('unlocAnalyse')}</div>}
-                  {isPremium&&<div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:8,textAlign:"center"}}>{t('analyseComplete')}</div>}
+                  <div className="amt">{fmt(totalM)}</div>
+                  <div className="meta">
+                    <span>{tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(salesForKpis.length?totalM/salesForKpis.length:0)}</span>
+                  </div>
+                  {!isPremium&&<div className="sub-text">{t('unlocAnalyse')}</div>}
+                  {isPremium&&<div className="sub-text">{t('analyseComplete')}</div>}
                 </div>
 
                 {/* KPIs 2 colonnes */}
@@ -3754,12 +3726,12 @@ export default function App({ loginOnly = false }){
 
       <Toast message={toast.message} visible={toast.visible}/>
 
-      <div className="mobile-nav" style={{background:"#ffffff",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",zIndex:100,padding:"0 12px",gap:4,paddingBottom:"calc(8px + env(safe-area-inset-bottom))"}}>
-        {TABS_MOBILE.map(t=>(
-          <button key={t.idx} onClick={()=>{setTab(t.idx);localStorage.setItem('tab',t.idx);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"14px 0 8px",background:"transparent",border:"none",cursor:"pointer",color:tab===t.idx?"#1D9E75":"#A3A9A6",transition:"all 0.15s",position:"relative"}}>
-            {tab===t.idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:"2.5px",background:"linear-gradient(to right,#0D9488,#F97316)"}}/>}
-            <div style={{fontSize:20,marginBottom:2,transform:tab===t.idx?"scale(1.1)":"scale(1)",transition:"transform 0.15s"}}>{t.icon}</div>
-            <div style={{fontSize:10,fontWeight:tab===t.idx?800:600,letterSpacing:0.2}}>{t.label}</div>
+      <div className="bnav">
+        {TABS_MOBILE.map(tm=>(
+          <button key={tm.idx} onClick={()=>{setTab(tm.idx);localStorage.setItem('tab',tm.idx);}} className={"bnav-item "+(tab===tm.idx?"on":"")}>
+            <span className="ic">{tm.icon}</span>
+            <span className="lbl">{tm.label}</span>
+            <span className="ind"/>
           </button>
         ))}
       </div>
