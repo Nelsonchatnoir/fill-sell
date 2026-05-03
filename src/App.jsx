@@ -2793,12 +2793,14 @@ export default function App({ loginOnly = false }){
             {tm.count} {t('ventesMonth')}
           </div>
         </div>
-        {!isPremium&&!isNative?(
-          <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar"/>
-        ):isPremium?(
-          <div className="tb-premium">⭐ Premium</div>
-        ):null}
-        <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
+        <div className="tb-right">
+          {!isPremium&&!isNative?(
+            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar"/>
+          ):isPremium?(
+            <div className="tb-premium">⭐ Premium</div>
+          ):null}
+          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
+        </div>
       </div>
 
       <div className="desktop-nav" style={{background:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>

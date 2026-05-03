@@ -79,7 +79,7 @@ input, textarea { font-family: inherit; }
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 12px;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
   position: relative;
@@ -125,6 +125,10 @@ input, textarea { font-family: inherit; }
   transition: background 0.15s;
 }
 .tb-icon-btn-light:active { background: rgba(0,0,0,0.1); transform: scale(0.97); }
+.tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+@media (max-width: 480px) {
+  .topbar { padding-left: 12px; padding-right: 12px; }
+}
 
 /* Desktop / mobile nav visibility */
 .desktop-nav { display: flex; }
