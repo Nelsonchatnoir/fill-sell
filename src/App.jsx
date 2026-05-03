@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
@@ -82,6 +82,7 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
+const getCatBorder = type => ({Mode:"#DB2777","High-Tech":"#2563EB",Luxe:"#D97706",Maison:"#16A34A",Sport:"#7C3AED"})[type]||"#6B7280";
 
 function SwipeRow({onDelete, onEdit, children, style}){
   const isMobile = window.innerWidth < 768;
@@ -292,8 +293,9 @@ const Empty=({text="Aucune donnée"})=>(
   </div>
 );
 
-const Kpi=({label,value,sub,color})=>(
+const Kpi=({label,value,sub,color,icon})=>(
   <div className="kpi" style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+    {icon&&<div style={{fontSize:18,marginBottom:4}}>{icon}</div>}
     <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
     <div style={{fontSize:22,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
     {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#6B7280",marginTop:4}}>{sub}</div>}
@@ -507,9 +509,16 @@ function getFilteredData_unused(range, salesData){
 }
 
 function DealScoreCard({result,analysis,analysisLoading,lang}){
+  const [barsAnim,setBarsAnim]=useState(false);
+  useEffect(()=>{
+    if(!result) return;
+    setBarsAnim(false);
+    const t=setTimeout(()=>setBarsAnim(true),80);
+    return()=>clearTimeout(t);
+  },[result?.score]);
   if(!result) return null;
   const {score,label,confidence,dataQuality,dimensions,pills}=result;
-  const scoreColor=score>=8?'#1D9E75':score>=6.5?'#4ECDC4':score>=5?'#F9A26C':'#E53E3E';
+  const scoreClass=score>=7?'#1D9E75':score>=4?'#F9A26C':'#E53E3E';
   const dimLabels=lang==='en'
     ?{profitPotentiel:'Profit potential',liquidite:'Liquidity',safety:'Safety',upside:'Upside'}
     :{profitPotentiel:'Potentiel profit',liquidite:'Liquidité',safety:'Sécurité',upside:'Upside'};
@@ -519,36 +528,36 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
         <div>
           <div style={{fontSize:10,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Deal Score</div>
           <div style={{display:'flex',alignItems:'baseline',gap:6}}>
-            <span style={{fontSize:32,fontWeight:900,color:scoreColor,letterSpacing:'-0.03em',lineHeight:1}}>{score.toFixed(1)}</span>
+            <span className="score-num" style={{color:scoreClass}}>{score.toFixed(1)}</span>
             <span style={{fontSize:13,color:'#A3A9A6',fontWeight:600}}>/10</span>
           </div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div style={{background:scoreColor+'18',color:scoreColor,borderRadius:99,padding:'5px 12px',fontSize:12,fontWeight:700,border:`1px solid ${scoreColor}33`}}>{label}</div>
+          <div className="score-tag" style={{background:scoreClass+'18',color:scoreClass,border:`1px solid ${scoreClass}33`}}>{label}</div>
           <div style={{fontSize:10,color:'#A3A9A6',fontWeight:600,marginTop:6}}>{lang==='en'?`${confidence}% confidence`:`${confidence}% confiance`}</div>
         </div>
       </div>
-      <div style={{display:'flex',flexDirection:'column',gap:9}}>
+      <div className="bar-block">
         {Object.entries(dimensions).map(([key,val])=>(
-          <div key={key}>
+          <div key={key} className="bar-row">
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
               <span style={{fontSize:11,fontWeight:700,color:'#6B7280'}}>{dimLabels[key]}</span>
               <span style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{val}/10</span>
             </div>
-            <div style={{height:5,background:'#F3F4F6',borderRadius:99}}>
-              <div style={{width:`${val*10}%`,height:'100%',background:'linear-gradient(90deg,#4ECDC4,#1D9E75)',borderRadius:99,transition:'width 0.4s ease'}}/>
+            <div className="bar-track">
+              <div className="bar-fill" style={{width:barsAnim?`${val*10}%`:'0%'}}/>
             </div>
           </div>
         ))}
       </div>
       {pills.length>0&&(
-        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+        <div className="tag-row">
           {pills.map((pill,i)=>(
             <span key={i} style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'4px 10px',fontSize:11,fontWeight:700,border:'1px solid #C6E8DF'}}>{pill}</span>
           ))}
         </div>
       )}
-      <div style={{background:'#F5F6F5',borderRadius:10,padding:'10px 14px'}}>
+      <div className="ai-insight">
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
           <span style={{width:7,height:7,borderRadius:'50%',background:'#4ECDC4',display:'inline-block',flexShrink:0}}/>
           <span style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>Analyse IA</span>
@@ -568,6 +577,226 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
           {lang==='en'?'Limited precision — add more sales to improve':'Précision limitée — ajoute des ventes pour améliorer'}
         </div>
       )}
+    </div>
+  );
+}
+
+function DonutChart({segments}){
+  const r=54,cx=60,cy=60,circ=2*Math.PI*r;
+  let offset=0;
+  return(
+    <svg width={120} height={120} viewBox="0 0 120 120">
+      <g transform="rotate(-90 60 60)">
+        {segments.map((s,i)=>{
+          const dash=(s.pct/100)*circ;
+          const gap=circ-dash;
+          const el=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.color} strokeWidth={12} strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-offset}/>;
+          offset+=dash;
+          return el;
+        })}
+      </g>
+    </svg>
+  );
+}
+
+function StatsTab({sales,items,lang,SURL}){
+  const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
+  const [range,setRange]=useState('6M');
+  const [aiText,setAiText]=useState('');
+  const [aiLoading,setAiLoading]=useState(false);
+
+  const now=new Date();
+  const cutoff=useMemo(()=>{
+    const d=new Date(now);
+    if(range==='1M'||range==='1M'){d.setMonth(d.getMonth()-1);}
+    else if(range==='3M'){d.setMonth(d.getMonth()-3);}
+    else if(range==='6M'){d.setMonth(d.getMonth()-6);}
+    else if(range==='1A'||range==='1Y'){d.setFullYear(d.getFullYear()-1);}
+    else d.setFullYear(2000);
+    return d;
+  },[range]);
+
+  const filtered=useMemo(()=>sales.filter(s=>{
+    const d=new Date(s.created_at||s.date||0);
+    return d>=cutoff;
+  }),[sales,cutoff]);
+
+  const totalProfit=filtered.reduce((a,s)=>a+(s.margin||0),0);
+  const totalRev=filtered.reduce((a,s)=>a+(s.sell||0),0);
+  const avgMargin=filtered.length?Math.round(filtered.reduce((a,s)=>a+(s.marginPct||0),0)/filtered.length*10)/10:0;
+
+  const catMap={};
+  filtered.forEach(s=>{
+    const c=s.type||'Autre';
+    catMap[c]=(catMap[c]||0)+(s.margin||0);
+  });
+  const catEntries=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const bestCategory=catEntries[0]?.[0]||null;
+  const bestItem=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0))[0]?.title||null;
+
+  const CAT_COLORS={Mode:'#DB2777','High-Tech':'#2563EB',Luxe:'#D97706',Maison:'#16A34A',Sport:'#7C3AED',Autre:'#6B7280'};
+  const totalCatProfit=catEntries.reduce((a,[,v])=>a+(v>0?v:0),0)||1;
+  const donutSegs=catEntries.filter(([,v])=>v>0).map(([c,v])=>({color:CAT_COLORS[c]||'#6B7280',pct:(v/totalCatProfit)*100,label:c}));
+
+  const monthlyMap={};
+  filtered.forEach(s=>{
+    const d=new Date(s.created_at||s.date||0);
+    const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    monthlyMap[k]=(monthlyMap[k]||0)+(s.margin||0);
+  });
+  const monthKeys=Object.keys(monthlyMap).sort();
+  const chartData=monthKeys.map(k=>({name:k.slice(5),profit:Math.round(monthlyMap[k]*100)/100}));
+
+  const topSellers=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
+
+  const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)).slice(0,3);
+
+  const cells=Array.from({length:84},(_,i)=>{
+    const d=new Date(now);
+    d.setDate(d.getDate()-i);
+    const k=d.toISOString().slice(0,10);
+    const count=sales.filter(s=>(s.created_at||s.date||'').slice(0,10)===k).length;
+    const lvl=count===0?'':count===1?'l1':count===2?'l2':count<=4?'l3':'l4';
+    return lvl;
+  }).reverse();
+
+  useEffect(()=>{
+    if(!SURL||filtered.length===0){setAiText('');return;}
+    setAiLoading(true);
+    setAiText('');
+    const statsData={
+      totalProfit:Math.round(totalProfit*100)/100,
+      totalRev:Math.round(totalRev*100)/100,
+      avgMargin,
+      salesCount:filtered.length,
+      bestCategory,
+      bestItem,
+      range,
+    };
+    fetch(`${SURL}/functions/v1/stats-analysis`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({statsData,lang}),
+    })
+      .then(r=>r.json())
+      .then(d=>{setAiText(d.analysis||'');setAiLoading(false);})
+      .catch(()=>setAiLoading(false));
+  },[range,filtered.length]);
+
+  const fmt2=n=>(Math.round(n*100)/100).toFixed(2).replace('.',',')+' €';
+  const fmtp2=n=>(Math.round(n*10)/10).toFixed(1)+'%';
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+      {/* Range pills */}
+      <div className="range-row">
+        {RANGES.map(r=>(
+          <button key={r} className={`range-pill${range===r?' on':''}`} onClick={()=>setRange(r)}>{r}</button>
+        ))}
+      </div>
+
+      {/* Hero KPIs */}
+      <div className="kpi-hero-row">
+        <div className="kpi-hero" style={{background:'linear-gradient(135deg,#0F6E56,#1D9E75)',color:'#fff'}}>
+          <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',opacity:0.7,marginBottom:4}}>{lang==='en'?'Total profit':'Profit total'}</div>
+          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',lineHeight:1}}>{fmt2(totalProfit)}</div>
+        </div>
+        <div className="kpi-hero" style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',backdropFilter:'blur(8px)'}}>
+          <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',color:'#6B7280',marginBottom:4}}>{lang==='en'?'Revenue':'Revenu'}</div>
+          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',color:'#0D0D0D',lineHeight:1}}>{fmt2(totalRev)}</div>
+        </div>
+      </div>
+
+      {/* Spark cards */}
+      <div className="spark-row">
+        <div className="spark-card">
+          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Sales':'Ventes'}</div>
+          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length}</div>
+          <Sparkline data={chartData.length?chartData.map(d=>d.profit):[0]} color="#1D9E75"/>
+        </div>
+        <div className="spark-card">
+          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg margin':'Marge moy.'}</div>
+          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{fmtp2(avgMargin)}</div>
+          <Sparkline data={chartData.length?chartData.map(d=>d.profit):[0]} color="#4ECDC4"/>
+        </div>
+      </div>
+
+      {/* AI Analysis */}
+      <div className="ai-banner">
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:'#4ECDC4',display:'inline-block'}}/>
+          <span style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>Analyse IA</span>
+        </div>
+        {aiLoading?(
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {[100,80,60].map((w,i)=><div key={i} style={{height:10,background:'#E5E7EB',borderRadius:4,width:`${w}%`}}/>)}
+          </div>
+        ):aiText?(
+          <div style={{fontSize:13,color:'#374151',lineHeight:1.65,fontWeight:500}}>{aiText}</div>
+        ):(
+          <div style={{fontSize:12,color:'#A3A9A6',fontStyle:'italic'}}>{filtered.length===0?(lang==='en'?'No sales in this period':'Aucune vente sur cette période'):(lang==='en'?'Analysis unavailable':'Analyse non disponible')}</div>
+        )}
+      </div>
+
+      {/* Donut by category */}
+      {donutSegs.length>0&&(
+        <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'Profit by category':'Profit par catégorie'}</div>
+          <div style={{display:'flex',alignItems:'center',gap:16}}>
+            <DonutChart segments={donutSegs}/>
+            <div style={{display:'flex',flexDirection:'column',gap:6,flex:1}}>
+              {donutSegs.map((s,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{width:10,height:10,borderRadius:3,background:s.color,flexShrink:0}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:'#374151',flex:1}}>{s.label}</span>
+                  <span style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{Math.round(s.pct)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Heatmap */}
+      <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Activity (84 days)':'Activité (84 jours)'}</div>
+        <div className="heatmap-grid">
+          {cells.map((lvl,i)=><div key={i} className={`heatmap-cell${lvl?' '+lvl:''}`}/>)}
+        </div>
+      </div>
+
+      {/* Top sellers */}
+      {topSellers.length>0&&(
+        <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Top 3 sales':'Top 3 ventes'}</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {topSellers.map((s,i)=>(
+              <div key={i} className="leader-row">
+                <span style={{fontSize:14,fontWeight:900,color:'#4ECDC4',width:20,flexShrink:0}}>#{i+1}</span>
+                <span style={{flex:1,fontSize:13,fontWeight:700,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
+                <span style={{fontSize:13,fontWeight:900,color:'#1D9E75',flexShrink:0}}>{fmt2(s.margin||0)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Slow movers */}
+      {slowStock.length>0&&(
+        <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Slow movers':'Lents à vendre'}</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {slowStock.map((s,i)=>(
+              <div key={i} className="leader-row">
+                <span style={{flex:1,fontSize:13,fontWeight:700,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
+                <span style={{fontSize:11,color:'#F9A26C',fontWeight:700,flexShrink:0}}>{lang==='en'?'In stock':'En stock'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{height:16}}/>
     </div>
   );
 }
@@ -2330,7 +2559,7 @@ export default function App({ loginOnly = false }){
   const TABS_MOBILE=[
     {icon:"📊",label:lang==='fr'?"Tableau":"Board",idx:0},
     {icon:"🤖",label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
-    {icon:"🎯",label:"Deal",idx:2},
+    {icon:"🎯",label:"Deal Score",idx:2},
     {icon:"📋",label:lang==='fr'?"Ventes":"Sales",idx:3},
     {icon:"📈",label:"Stats",idx:4},
   ];
@@ -2614,10 +2843,10 @@ export default function App({ loginOnly = false }){
 
                 {/* KPIs 2 colonnes */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <Kpi label={t('ceMois')} value={fmt(tm?.profit||0)} sub={tpl('venteLabel',{n:tm?.count||0})} color="#1D9E75"/>
-                  <Kpi label={t('margeMoy')} value={fmtp(avgM)} sub={t('toutesVentes')} color="#5DCAA5"/>
-                  <Kpi label={t('revenuBrutLabel')} value={fmt(totalR)} sub={t('totalEncaisse')} color="#1D9E75"/>
-                  <Kpi label={t('enStock')} value={`${stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} color="#A3A9A6"/>
+                  <Kpi label={t('ceMois')} value={fmt(tm?.profit||0)} sub={tpl('venteLabel',{n:tm?.count||0})} color="#1D9E75" icon="📊"/>
+                  <Kpi label={t('margeMoy')} value={fmtp(avgM)} sub={t('toutesVentes')} color="#5DCAA5" icon="📈"/>
+                  <Kpi label={t('revenuBrutLabel')} value={fmt(totalR)} sub={t('totalEncaisse')} color="#1D9E75" icon="💎"/>
+                  <Kpi label={t('enStock')} value={`${stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} color="#A3A9A6" icon="📦"/>
                 </div>
 
                 {/* Sélecteur de période */}
@@ -2712,6 +2941,11 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===1&&(
+          <>
+          <div className="ai-zone-header">
+            <div className="ico-wrap">🤖</div>
+            <div><div className="t">{lang==='en'?'AI Stock':'Stock IA'}</div><div className="d">{lang==='en'?'Manage your inventory with AI':'Gérez votre inventaire avec l\'IA'}</div></div>
+          </div>
           <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
             <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               {/* ── Voice Capture ── */}
@@ -2900,9 +3134,9 @@ export default function App({ loginOnly = false }){
                 ? <PremiumBanner userEmail={user?.email}/>
                 : !isPremium&&items.length>=20&&isNative
                 ? null
-                : <Btn onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} color={iSaved?"#38A169":"#1D9E75"} full>
+                : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
                     {iSaved?(lang==='fr'?"✓ Ajouté !":"✓ Added!"):items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice 🚀":"Add your first item → see your profit 🚀"):t('ajouterArticle')}
-                  </Btn>
+                  </button>
               }
               {isNative&&!isPremium&&items.length>=20&&(
                 <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
@@ -3014,16 +3248,14 @@ export default function App({ loginOnly = false }){
               {(()=>{
                 const allItems=[...stock,...sold];
                 const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
+                const cpClass=tp=>tp==="Tous"?"cp-all":tp==="Mode"?"cp-mode":tp==="High-Tech"?"cp-tech":tp==="Luxe"?"cp-luxe":tp==="Maison"?"cp-maison":tp==="Sport"?"cp-sport":"cp-autre";
                 return presentTypes.length>1&&(
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <div className="filter-row">
                     {presentTypes.map(tp=>{
-                      const ts=tp==="Tous"?{bg:"#E8FAFA",color:"#4ECDC4",border:"#A5F3FC",emoji:""}:getTypeStyle(tp);
+                      const ts=tp==="Tous"?{emoji:""}:getTypeStyle(tp);
                       return(
                         <button key={tp} onClick={()=>setFilterType(tp)}
-                          style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",
-                            background:filterType===tp?ts.color:ts.bg,
-                            color:filterType===tp?"#fff":ts.color,
-                            border:`1px solid ${ts.border}`}}>
+                          className={`cat-pill ${cpClass(tp)}${filterType===tp?' on':''}`}>
                           {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${typeLabel(tp,lang)}`}
                         </button>
                       );
@@ -3056,7 +3288,7 @@ export default function App({ loginOnly = false }){
                       const mc=getMargeColor(item.marginPct);
                       const ts=getTypeStyle(item.type);
                       return(
-                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`4px solid ${mc}`}}>
+                        <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -3120,7 +3352,7 @@ export default function App({ loginOnly = false }){
                     {stockVisible.map(item=>{
                       const ts=getTypeStyle(item.type);
                       return(
-                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:"4px solid #F9A26C"}}>
+                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                             <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -3141,103 +3373,86 @@ export default function App({ loginOnly = false }){
                         {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                       </button>
                     )}
-                  <div style={{height:24}}/>                  
+                  <div style={{height:24}}/>
                   </div>
                 )}
               </div>
             </div>
           </div>
+          </>
         )}
 
         {tab===2&&(
           <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
 
-            {/* ── Bloc résultat principal ── */}
-            <div style={{
-              background:isValid?(margin>=0?"#0F6E56":"#FEF2F2"):"#fff",
-              borderRadius:12,padding:"14px 16px",
-              border:isValid?"none":`1px solid rgba(0,0,0,0.06)`,
-              boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
-              transition:"all 0.3s ease"
-            }}>
-              {!isValid?(
-                <div style={{textAlign:"center",padding:"8px 0"}}>
-                  <div style={{fontSize:36,marginBottom:10}}>🧮</div>
-                  <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{t('calculerHero')}</div>
-                  <div style={{fontSize:13,color:C.sub}}>{t('calculerSub')}</div>
-                </div>
-              ):(
-                margin>=0?(
-                  <>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <div>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>{t('profitEstime')}</div>
-                        <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
-                      </div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"rgba(255,255,255,0.55)",letterSpacing:"0.07em",marginBottom:4}}>{t('rentabilite')}</div>
-                        <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
-                      </div>
-                    </div>
-                    <div style={{marginTop:10,height:4,background:"rgba(255,255,255,0.15)",borderRadius:99}}>
-                      <div style={{width:`${Math.min(100,Math.max(0,marginPct))}%`,height:"100%",background:"rgba(255,255,255,0.7)",borderRadius:99,transition:"width 0.4s ease"}}/>
-                    </div>
-                    <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.75)"}}>
-                      {getMargeMessage(marginPct,margin,lang).msg}
-                    </div>
-                  </>
-                ):(
-                  <>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <div>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>{t('perteEstimee')}</div>
-                        <div style={{fontSize:28,fontWeight:900,color:"#E24B4A",letterSpacing:"-0.03em",lineHeight:1,transition:"color 0.3s"}}>{fmt(margin)}</div>
-                      </div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase",color:"#E24B4A",letterSpacing:"0.07em",marginBottom:4}}>{t('rentabilite')}</div>
-                        <div style={{fontSize:28,fontWeight:900,color:"#E24B4A",letterSpacing:"-0.03em"}}>{fmtp(marginPct)}</div>
-                      </div>
-                    </div>
-                    <div style={{marginTop:10,height:4,background:"rgba(226,75,74,0.15)",borderRadius:99}}>
-                      <div style={{width:`${Math.min(Math.abs(marginPct),100)}%`,height:"100%",background:"#E24B4A",borderRadius:99,transition:"width 0.4s ease"}}/>
-                    </div>
-                    <div style={{marginTop:8,fontSize:11,fontWeight:700,color:"#E24B4A"}}>
-                      {getMargeMessage(marginPct,margin,lang).msg}
-                    </div>
-                  </>
-                )
-              )}
+            {/* ── Badge header ── */}
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:18}}>🎯</span>
+              <span style={{fontSize:13,fontWeight:800,color:'#1D9E75'}}>{lang==='en'?'Analyzed by AI':'Analysé par l\'IA'}</span>
             </div>
+
+            {/* ── Profit hero ── */}
+            {isValid?(
+              <div className="profit-hero">
+                <div className="lbl">{margin>=0?t('profitEstime'):t('perteEstimee')}</div>
+                <div className="amt" style={{color:margin>=0?'#fff':'#FCA5A5'}}>{fmt(margin)}</div>
+                <div className="meta">
+                  <span>{fmtp(marginPct)}</span>
+                  <span className="delta">{getMargeMessage(marginPct,margin,lang).msg}</span>
+                </div>
+              </div>
+            ):(
+              <div style={{background:'#fff',borderRadius:14,padding:'20px',textAlign:'center',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+                <div style={{fontSize:36,marginBottom:10}}>🧮</div>
+                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{t('calculerHero')}</div>
+                <div style={{fontSize:13,color:C.sub}}>{t('calculerSub')}</div>
+              </div>
+            )}
 
             {/* ── Deal Score ── */}
             <DealScoreCard result={dealScore} analysis={dealAnalysis} analysisLoading={dealAnalysisLoading} lang={lang}/>
 
-            {/* ── Inputs ── */}
-            <div>
-              <Field label={t('nomArticle')} value={cTitle} set={setCTitle} placeholder="Ex: Nike Air Max 90" icon="🏷️"/>
-            </div>
-            <div>
-              <Field label={t('prixAchat')} value={cBuy} set={setCBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
-            </div>
-            <div>
-              <Field label={t('prixVente')} value={cSell} set={setCSell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
-            </div>
-            <div>
-              <Field label={t('fraisAnnexes')} value={cShip} set={setCShip} placeholder="0,00" type="number" icon="➕" suffix="€"/>
-              <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{t('fraisHint')}</div>
-            </div>
-
-            {/* ── Récap rapide ── */}
-            {isValid&&(
-              <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-around",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                {[{label:t('coutTotal'),value:fmt(buy+ship),color:C.sub},{label:t('revenuBrut'),value:fmt(sell),color:C.teal},{label:t('beneficeNet'),value:fmt(margin),color:mc}].map((item,i)=>(
-                  <div key={i} style={{textAlign:"center"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{item.label}</div>
-                    <div style={{fontSize:16,fontWeight:800,color:item.color}}>{item.value}</div>
-                  </div>
-                ))}
+            {/* ── field-card inputs ── */}
+            <div className="field-card">
+              <div className="row">
+                <div className="ico">🏷️</div>
+                <div className="meta">
+                  <div className="lbl">{t('nomArticle')}</div>
+                  <input value={cTitle} onChange={e=>setCTitle(e.target.value)} placeholder="Ex: Nike Air Max 90"/>
+                </div>
               </div>
-            )}
+            </div>
+            <div className="field-card">
+              <div className="row">
+                <div className="ico">🛒</div>
+                <div className="meta">
+                  <div className="lbl">{t('prixAchat')}</div>
+                  <input type="number" inputMode="decimal" value={cBuy} onChange={e=>setCBuy(e.target.value)} placeholder="0,00"/>
+                </div>
+                <div className="suf">€</div>
+              </div>
+            </div>
+            <div className="field-card">
+              <div className="row">
+                <div className="ico">💰</div>
+                <div className="meta">
+                  <div className="lbl">{t('prixVente')}</div>
+                  <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)} placeholder="0,00"/>
+                </div>
+                <div className="suf">€</div>
+              </div>
+            </div>
+            <div className="field-card">
+              <div className="row">
+                <div className="ico">➕</div>
+                <div className="meta">
+                  <div className="lbl">{t('fraisAnnexes')}</div>
+                  <input type="number" inputMode="decimal" value={cShip} onChange={e=>setCShip(e.target.value)} placeholder="0,00"/>
+                </div>
+                <div className="suf">€</div>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:C.label,marginTop:-4,paddingLeft:4}}>{t('fraisHint')}</div>
 
             {/* ── CTA ── */}
             <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full>
@@ -3349,16 +3564,7 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===4&&(
-          <StatsPage
-            sales={sales}
-            items={items}
-            isPremium={isPremium}
-            triggerCheckout={isNative?null:triggerCheckout}
-            onBack={()=>{setTab(3);localStorage.setItem('tab',3);}}
-            t={t}
-            tpl={tpl}
-            lang={lang}
-          />
+          <StatsTab sales={sales} items={items} lang={lang} SURL={import.meta.env.VITE_SUPABASE_URL}/>
         )}
       </div>
 

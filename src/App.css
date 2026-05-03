@@ -653,3 +653,42 @@ input, textarea { font-family: inherit; }
 @keyframes va-fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes va-slidein { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes tipIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ─── AI Zone Header (Stock IA tab) ─── */
+.ai-zone-header { display:flex; align-items:center; gap:12; background:linear-gradient(135deg,#0F6E56,#1D9E75); border-radius:14px; padding:14px 16px; margin-bottom:4px; }
+.ai-zone-header .ico-wrap { width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.18); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.ai-zone-header .t { font-size:15px; font-weight:900; color:#fff; letter-spacing:-0.02em; line-height:1.2; }
+.ai-zone-header .d { font-size:11px; font-weight:600; color:rgba(255,255,255,0.72); margin-top:2px; }
+
+/* ─── Category filter pills (Stock IA tab) ─── */
+.filter-row { display:flex; gap:6px; flex-wrap:wrap; }
+.cat-pill { padding:5px 13px; border-radius:99px; font-size:11px; font-weight:700; cursor:pointer; border:none; transition:all 0.15s; font-family:inherit; }
+.cp-all  { background:#E8FAFA; color:#4ECDC4; }
+.cp-all.on  { background:#4ECDC4; color:#fff; }
+.cp-mode { background:#FDF2F8; color:#DB2777; }
+.cp-mode.on { background:#DB2777; color:#fff; }
+.cp-tech { background:#EFF6FF; color:#2563EB; }
+.cp-tech.on { background:#2563EB; color:#fff; }
+.cp-luxe { background:#FFFBEB; color:#D97706; }
+.cp-luxe.on { background:#D97706; color:#fff; }
+.cp-maison { background:#F0FDF4; color:#16A34A; }
+.cp-maison.on { background:#16A34A; color:#fff; }
+.cp-sport { background:#F5F3FF; color:#7C3AED; }
+.cp-sport.on { background:#7C3AED; color:#fff; }
+.cp-autre { background:#F3F4F6; color:#6B7280; }
+.cp-autre.on { background:#6B7280; color:#fff; }
+
+/* ─── Add button primary pill ─── */
+.btn-pill-primary { background:#1D9E75; color:#fff; border:none; border-radius:12px; font-weight:800; font-size:14px; padding:14px 24px; cursor:pointer; transition:all 0.15s; font-family:inherit; box-shadow:0 4px 14px rgba(29,158,117,0.3); width:100%; }
+.btn-pill-primary:active { transform:scale(0.96); }
+
+/* ─── Tag row (Deal Score pills) ─── */
+.tag-row { display:flex; flex-wrap:wrap; gap:6px; }
+
+/* ─── Heatmap ─── */
+.heatmap-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:3px; margin-top:4px; }
+.heatmap-cell { aspect-ratio:1; border-radius:3px; background:#F3F4F6; }
+.heatmap-cell.l1 { background:#C6E8DF; }
+.heatmap-cell.l2 { background:#5DCAA5; }
+.heatmap-cell.l3 { background:#1D9E75; }
+.heatmap-cell.l4 { background:#0F6E56; }
