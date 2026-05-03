@@ -260,7 +260,7 @@ const T = {
     ctaSub: 'Rejoins des centaines de revendeurs qui suivent leurs profits avec Fill & Sell.',
     ctaBtn: 'Créer mon compte gratuit →', ctaMicro: 'Gratuit · Sans carte bancaire · Prêt en 30 secondes',
     faqEyebrow: 'FAQ', faqTitle: 'Tu as des questions ?',
-    faqSub: 'Voici les réponses aux questions les plus fréquentes. Tu peux aussi nous écrire à hello@fillandsell.app',
+    faqSub: 'Voici les réponses aux questions les plus fréquentes. Tu peux aussi nous écrire à support@fillsell.app',
     footerTagline: 'Suis tes profits de revente, automatiquement. Pour les revendeurs Vinted, eBay, Depop et plus.',
     footerProduct: 'Produit', footerLegal: 'Légal', footerMentions: 'Mentions légales',
     footerPrivacy: 'Confidentialité', footerCgu: 'CGU', footerContact: 'Contact',
@@ -393,7 +393,7 @@ const T = {
     ctaSub: 'Join hundreds of resellers who track their profits with Fill & Sell.',
     ctaBtn: 'Create my free account →', ctaMicro: 'Free · No credit card · Ready in 30 seconds',
     faqEyebrow: 'FAQ', faqTitle: 'Have questions?',
-    faqSub: 'Here are answers to the most common questions. You can also reach us at hello@fillandsell.app',
+    faqSub: 'Here are answers to the most common questions. You can also reach us at support@fillsell.app',
     footerTagline: 'Track your resale profits, automatically. For Vinted, eBay, Depop and more resellers.',
     footerProduct: 'Product', footerLegal: 'Legal', footerMentions: 'Legal notice',
     footerPrivacy: 'Privacy', footerCgu: 'Terms', footerContact: 'Contact',
@@ -1125,7 +1125,7 @@ export default function LandingPage() {
           </div>
           <div className="faq-list">
             {faqItems.map((item, i) => (
-              <div key={i} className={`faq-item${openFaq === i ? ' open' : ''} reveal`}>
+              <div key={i} className={`faq-item${openFaq === i ? ' open' : ''}`}>
                 <button className="faq-q" onClick={() => setOpenFaq(openFaq === i ? -1 : i)}>
                   <span>{item.q}</span>
                   <span className="plus">+</span>
@@ -1167,7 +1167,7 @@ export default function LandingPage() {
             <div className="footer-links-col">
               <h4>{t.footerContact}</h4>
               <ul>
-                <li><a href="mailto:hello@fillandsell.app">hello@fillandsell.app</a></li>
+                <li><a href="mailto:support@fillsell.app">support@fillsell.app</a></li>
                 <li>
                   <a href="https://www.tiktok.com/@fill.sell" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.01-.07z"/></svg>
