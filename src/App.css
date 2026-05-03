@@ -371,6 +371,19 @@ input, textarea { font-family: inherit; }
 }
 .fab-vocal::after { animation-delay: 1.2s; }
 .fab-vocal:active { transform: scale(0.92); }
+.fab-vocal.listening {
+  background: linear-gradient(135deg, #E53E3E 0%, #C53030 100%);
+  box-shadow: 0 4px 20px rgba(229,62,62,0.45), 0 2px 8px rgba(229,62,62,0.25);
+}
+.fab-vocal.listening::before, .fab-vocal.listening::after {
+  border-color: rgba(229,62,62,0.45);
+}
+.fab-vocal.thinking {
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  cursor: not-allowed;
+}
+.fab-vocal.thinking::before, .fab-vocal.thinking::after { display: none; }
 
 /* Sound bars */
 .sound-bars { display: inline-flex; gap: 3px; align-items: flex-end; height: 22px; }
