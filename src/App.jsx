@@ -652,10 +652,16 @@ function StatsTab({sales,items,lang}){
   const totalRev=filtered.reduce((a,s)=>a+(s.sell||0),0);
   const avgMargin=filtered.length?Math.round(filtered.reduce((a,s)=>a+(s.marginPct||0),0)/filtered.length*10)/10:0;
 
+  // Table ventes n'a pas de colonne type → lookup depuis inventaire (items)
+  const titleToType=useMemo(()=>{
+    const m={};
+    items.forEach(i=>{if(i.title)m[i.title.toLowerCase().trim()]=i.type;});
+    return m;
+  },[items]);
+
   const catMap={};
   filtered.forEach(s=>{
-    const raw=s.type||s.categorie;
-    console.log('[StatsTab] sale cat raw:',raw);
+    const raw=s.type||s.categorie||titleToType[s.title?.toLowerCase()?.trim()]||'';
     const c=normalizeCat(raw);
     catMap[c]=(catMap[c]||0)+(s.margin||0);
   });
