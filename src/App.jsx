@@ -698,35 +698,29 @@ function StatsTab({sales,items,lang}){
 
   useEffect(()=>{
     if(filtered.length===0){setAiText('');return;}
-    const apiKey=import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if(!apiKey){console.error('[StatsTab] VITE_ANTHROPIC_API_KEY not set');setAiText('');return;}
+    const SURL=import.meta.env.VITE_SUPABASE_URL;
+    if(!SURL){setAiText('');return;}
     setAiLoading(true);
     setAiText('');
-    const rangeLabel=range==='Tout'||range==='All'?'tout':'6M';
-    const systemPrompt=lang==='en'
-      ?'You are a financial assistant for resellers. Analyze these sales stats and generate a short insight (3-4 sentences), personalized, actionable. Be direct and concrete.'
-      :'Tu es un assistant financier pour revendeurs. Analyse ces stats de vente et génère un insight court (3-4 phrases), personnalisé, actionnable, en FR. Sois direct et concret.';
-    const userMsg=lang==='en'
-      ?`Period: ${range}. Profit: ${Math.round(totalProfit)}€. Sales: ${filtered.length}. Avg margin: ${avgMargin}%.${bestCategory?` Best category: ${bestCategory} (${bestCategoryPct}% of profit).`:''}${bestItemName?` Best item: ${bestItemName} (+${Math.round(bestItemProfit)}€).`:''} Items in stock for over 30 days: ${slowCount}.`
-      :`Période : ${range}. Profit : ${Math.round(totalProfit)}€. Ventes : ${filtered.length}. Marge moyenne : ${avgMargin}%.${bestCategory?` Meilleure catégorie : ${bestCategory} (${bestCategoryPct}% du profit).`:''}${bestItemName?` Meilleur article : ${bestItemName} (+${Math.round(bestItemProfit)}€).`:''} Articles en stock depuis plus de 30j : ${slowCount}.`;
-    fetch('https://api.anthropic.com/v1/messages',{
+    fetch(`${SURL}/functions/v1/stats-analysis`,{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':apiKey,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true',
-      },
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:200,
-        system:systemPrompt,
-        messages:[{role:'user',content:userMsg}],
+        periode:range,
+        profit:Math.round(totalProfit),
+        ventes:filtered.length,
+        marge:avgMargin,
+        meilleure_cat:bestCategory||'',
+        meilleure_cat_pct:bestCategoryPct,
+        meilleur_article:bestItemName||'',
+        meilleur_article_profit:Math.round(bestItemProfit),
+        articles_lents:slowCount,
+        lang,
       }),
     })
       .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
-      .then(d=>{setAiText(d?.content?.[0]?.text?.trim()||'');setAiLoading(false);})
-      .catch(err=>{console.error('[StatsTab] AI error:',err);setAiLoading(false);});
+      .then(d=>{setAiText(d?.analysis||'');setAiLoading(false);})
+      .catch(err=>{console.error('[StatsTab] stats-analysis error:',err);setAiLoading(false);});
   },[range,filtered.length]);
 
   const fmt2=n=>(Math.round(n*100)/100).toFixed(2).replace('.',',')+' €';
