@@ -99,9 +99,10 @@ function handleSearch(task, context) {
     const q = norm(query);
     filtered = filtered.filter(
       i =>
-        norm(i.titre || i.nom).includes(q) ||
+        norm(i.titre || i.nom || i.title || "").includes(q) ||
         norm(i.marque).includes(q) ||
-        norm(i.type).includes(q)
+        norm(i.type).includes(q) ||
+        norm(i.description).includes(q)
     );
   }
   if (date_from) {
@@ -386,6 +387,10 @@ function handleQueryStats(task, context) {
       const stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
       const total = stock.reduce((a, i) => a + getPrixAchat(i) * Math.max(1, i.quantite || 1), 0);
       return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, count: stock.length }, message: `${Math.round(total * 100) / 100}€` };
+    }
+    case "stock_count": {
+      const stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
+      return { intent: task.intent, taskData: task.data, status: "success", data: { value: stock.length, metric, count: stock.length }, message: `${stock.length}` };
     }
     default:
       return { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Unknown metric" : "Métrique inconnue" };

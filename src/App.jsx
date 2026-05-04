@@ -380,7 +380,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1};}
+function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1};}
 
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
@@ -419,7 +419,7 @@ function getTypeStyle(type){
 const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
-function mapSale(v){return{id:v.id,title:v.titre,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 function getFilteredData_unused(range, salesData){
   const now=new Date();
@@ -560,7 +560,7 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
       <div className="ai-insight">
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
           <span style={{width:7,height:7,borderRadius:'50%',background:'#4ECDC4',display:'inline-block',flexShrink:0}}/>
-          <span style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>Analyse IA</span>
+          <span style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>{lang==='en'?'AI Analysis':'Analyse IA'}</span>
         </div>
         {analysisLoading?(
           <div style={{display:'flex',gap:6,alignItems:'center',paddingTop:2}}>
@@ -1096,14 +1096,26 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                   </div>
                                 </div>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8}}>
-                                  <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                                  <div style={{textAlign:"right"}}>
+                                    {isSold?(
+                                      <>
+                                        <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{item.buy||item.prix_achat}€</div>
+                                        <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{item.sell||item.prix_vente||"?"}€</div>
+                                      </>
+                                    ):(
+                                      <>
+                                        <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                                        {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6"}}>{Math.floor((Date.now()-new Date(item.date_ajout))/86400000)}{lang==="en"?"d":"j"}</div>}
+                                      </>
+                                    )}
+                                  </div>
                                   {!anyFormOpen&&!isSold&&(
                                     <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:""}}))}
                                       style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                                       {lang==="en"?"Mark as sold":"Marquer vendu"}
                                     </button>
                                   )}
-                                  {isSold&&!anyFormOpen&&<span style={{fontSize:10,fontWeight:700,color:"#A3A9A6"}}>✓</span>}
+                                  {isSold&&!anyFormOpen&&<span style={{fontSize:10,fontWeight:700,color:"#1D9E75"}}>{lang==="en"?"✓ sold":"✓ vendu"}</span>}
                                   {!anyFormOpen&&(
                                     <>
                                       <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:i,editFields:{nom,prix_achat:item.prix_achat||item.buy||"",marque:item.marque||item.brand||"",type:item.type||item.categorie||""}}}))}
@@ -1510,15 +1522,16 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 );
               }
 
-              if(status==="success"&&intent==="query_stats"&&(data?.metric==="profit_mois"||data?.metric==="marge_moyenne"||data?.metric==="stock_immobilise")){
-                const metricEmoji={profit_mois:"💰",marge_moyenne:"📊",stock_immobilise:"🔒"};
+              if(status==="success"&&intent==="query_stats"&&(data?.metric==="profit_mois"||data?.metric==="marge_moyenne"||data?.metric==="stock_immobilise"||data?.metric==="stock_count")){
+                const metricEmoji={profit_mois:"💰",marge_moyenne:"📊",stock_immobilise:"🔒",stock_count:"📦"};
                 const metricTitle={
                   profit_mois:lang==="en"?`Profit – ${data?.monthName}`:`Bénéfice – ${data?.monthName}`,
                   marge_moyenne:lang==="en"?"Avg margin":"Marge moyenne",
                   stock_immobilise:lang==="en"?"Locked capital":"Stock immobilisé",
+                  stock_count:lang==="en"?"Items in stock":"Articles en stock",
                 };
-                const isCurrency=data?.metric!=="marge_moyenne";
-                const suffix=isCurrency?"€":"%";
+                const isCurrency=data?.metric!=="marge_moyenne"&&data?.metric!=="stock_count";
+                const suffix=isCurrency?"€":data?.metric==="stock_count"?"":"%";
                 const val=data?.value??0;
                 const valColor=data?.metric==="stock_immobilise"?"#F9A26C":val>=0?"#1D9E75":"#E53E3E";
                 return(
