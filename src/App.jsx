@@ -1530,6 +1530,32 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 );
               }
 
+              if(status==="success"&&intent==="query_stats"&&data?.metric==="stock_by_period"){
+                const sbpItems=data?.items||[];
+                const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {lang==="en"?"In stock":"En stock"} ({data?.count??sbpItems.length})</div>
+                    {sbpItems.length===0
+                      ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items":"Aucun article"}</div>
+                      :sbpItems.slice(0,6).map((item,i)=>{
+                        const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
+                        return(
+                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(sbpItems.length,6)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                            <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title||item.titre}</div>
+                            <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
+                              <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                              {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6"}}>{lang==="en"?"since ":"depuis le "}{fmtDate(item.date_ajout)}{days!==null?` (${days}${lang==="en"?"d":"j"})`:""}</div>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    }
+                    {sbpItems.length>6&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center",marginTop:4}}>+{sbpItems.length-6} {lang==="en"?"more":"autres"}</div>}
+                  </div>
+                );
+              }
+
               if(status==="success"&&intent==="query_stats"&&(data?.metric==="profit_mois"||data?.metric==="marge_moyenne"||data?.metric==="stock_immobilise"||data?.metric==="stock_count")){
                 const metricEmoji={profit_mois:"💰",marge_moyenne:"📊",stock_immobilise:"🔒",stock_count:"📦"};
                 const metricTitle={

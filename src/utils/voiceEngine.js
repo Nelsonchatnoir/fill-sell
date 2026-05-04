@@ -99,14 +99,25 @@ function handleSearch(task, context) {
       filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
   }
   if (query) {
-    const q = norm(query);
-    filtered = filtered.filter(
-      i =>
-        norm(i.titre || i.nom || i.title || "").includes(q) ||
-        norm(i.marque).includes(q) ||
-        norm(i.type).includes(q) ||
-        norm(i.description).includes(q)
-    );
+    const words = norm(query).split(/\s+/).filter(Boolean);
+    if (words.length > 0) {
+      // majority = more than half → for n words, need floor(n/2)+1 matches
+      const threshold = Math.floor(words.length / 2) + 1;
+      const scored = filtered.map(i => {
+        const haystack = [
+          norm(i.titre || i.nom || i.title || ""),
+          norm(i.marque),
+          norm(i.type),
+          norm(i.description),
+        ].join(" ");
+        const matchCount = words.filter(w => haystack.includes(w)).length;
+        return { item: i, score: matchCount };
+      });
+      filtered = scored
+        .filter(s => s.score >= threshold)
+        .sort((a, b) => b.score - a.score)
+        .map(s => s.item);
+    }
   }
   if (date_from) {
     const df = new Date(date_from);
@@ -407,6 +418,23 @@ function handleQueryStats(task, context) {
     case "stock_count": {
       const stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
       return { intent: task.intent, taskData: task.data, status: "success", data: { value: stock.length, metric, count: stock.length }, message: `${stock.length}` };
+    }
+    case "stock_by_period": {
+      const { from, to } = getPeriodDates(periode || "all", date_from, date_to);
+      let stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
+      if (from || to) {
+        stock = stock.filter(i => {
+          const d = new Date(i.date_ajout || i.date_achat || i.date || i.created_at);
+          if (from && d < from) return false;
+          if (to && d > to) return false;
+          return true;
+        });
+      }
+      return {
+        intent: task.intent, taskData: task.data, status: "success",
+        data: { items: stock, count: stock.length, metric, periode: periode || "all" },
+        message: context.lang === "en" ? `${stock.length} item(s) in stock` : `${stock.length} article(s) en stock`,
+      };
     }
     default:
       return { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Unknown metric" : "Métrique inconnue" };
