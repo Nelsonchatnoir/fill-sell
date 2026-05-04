@@ -419,7 +419,7 @@ function getTypeStyle(type){
 const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -1167,6 +1167,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                                       <span style={{fontSize:11,color:"#6B7280",flex:1}}>{lang==="en"?"Qty to sell":"Qté à vendre"}</span>
                                       <input type="number" min={1} max={item.quantite} value={sellQty}
+                                        onFocus={e=>e.target.select()}
                                         onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellQty:Math.max(1,Math.min(parseInt(e.target.value)||1,item.quantite))}}))}
                                         style={{width:60,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",textAlign:"center",fontFamily:"inherit"}}/>
                                       <span style={{fontSize:11,color:"#A3A9A6"}}>/ {item.quantite}</span>
@@ -2190,14 +2191,19 @@ export default function App({ loginOnly = false }){
     const mgpUnit=svUnit>0?(mgUnit/svUnit)*100:0;
     const remaining=qTotal-qVendue;
     if(remaining>0){
+      // Reduce stock quantity — prix_achat is never touched
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+      // Create a separate sold entry so sold units appear in inventory
+      const soldRow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+      const{data:si}=await supabase.from('inventaire').insert([soldRow]).select().single();
+      if(si)setItems(prev=>[mapItem(si),...prev]);
     }else{
       await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
     }
     for(let q=0;q<qVendue;q++){
-      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,date:new Date().toISOString().split('T')[0]};
+      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,date:new Date().toISOString().split('T')[0]};
       const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
       if(sd){
         if(q===0)track('mark_sold',{profit:mgUnit*qVendue,margin_pct:Math.round(mgpUnit*10)/10});
@@ -2875,14 +2881,19 @@ export default function App({ loginOnly = false }){
       const qVendue=Math.min(quantite_vendue||1,qTotal);
       const remaining=qTotal-qVendue;
       if(remaining>0){
+        // Reduce stock quantity — prix_achat is never touched
         await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+        // Create a separate sold entry so sold units appear in inventory
+        const soldRow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+        const{data:si}=await supabase.from('inventaire').insert([soldRow]).select().single();
+        if(si)setItems(prev=>[mapItem(si),...prev]);
       }else{
         await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
       }
       for(let q=0;q<qVendue;q++){
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,date:new Date().toISOString().split('T')[0]};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -3093,7 +3104,11 @@ export default function App({ loginOnly = false }){
                                 <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
                                 {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
                               </div>
-                              <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
+                              <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",marginTop:2}}>
+                                <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</span>
+                                {s.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marqueLabel(s.marque,lang)}</span>}
+                                {s.type&&s.type!=="Autre"&&(()=>{const ts2=getTypeStyle(s.type);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji}</span>;})()}
+                              </div>
                             </div>
                             <div style={{textAlign:"right"}}>
                               <div style={{fontWeight:900,fontSize:16,color:mc}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
@@ -3715,6 +3730,7 @@ export default function App({ loginOnly = false }){
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
                           <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
+                          {s.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marqueLabel(s.marque,lang)}</span>}
                           {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
                         </div>
                       </div>
@@ -3833,6 +3849,7 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:13,fontWeight:600,color:C.sub,flex:1}}>{lang==='fr'?'Quantité à vendre':'Quantity to sell'}</span>
                   <input type="number" min={1} max={sellModal.item.quantite} value={sellModal.sellQty??1}
+                    onFocus={e=>e.target.select()}
                     onChange={e=>setSellModal(p=>({...p,sellQty:Math.max(1,Math.min(parseInt(e.target.value)||1,p.item.quantite))}))}
                     style={{width:70,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.15)",borderRadius:8,padding:"8px 10px",textAlign:"center",fontFamily:"inherit"}}/>
                   <span style={{fontSize:12,color:C.sub}}>/ {sellModal.item.quantite}</span>
