@@ -82,7 +82,7 @@ const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
 const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
-const getCatBorder = type => ({Mode:"#DB2777","High-Tech":"#2563EB",Luxe:"#D97706",Maison:"#16A34A",Sport:"#7C3AED"})[type]||"#6B7280";
+const getCatBorder = type => getTypeStyle(type).border;
 
 function SwipeRow({onDelete, onEdit, children, style}){
   const isMobile = window.innerWidth < 768;
@@ -417,7 +417,9 @@ function getTypeStyle(type){
     'Bricolage':     {bg:'#FFF7ED',color:'#C2410C',border:'#FB923C',emoji:'🔧'},
     'Autre':         {bg:'#F9FAFB',color:'#6B7280',border:'#D1D5DB',emoji:'📦'},
   };
-  return s[type]||s['Autre'];
+  if(s[type]) return s[type];
+  const key=Object.keys(s).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  return key?s[key]:s['Autre'];
 }
 const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
@@ -1087,7 +1089,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
               if(status==="success"&&intent==="inventory_search"){
                 const found=data?.items||[];
                 const anyFormOpen=vaEdits[idx]?.sellOpen!=null||vaEdits[idx]?.deleteOpen!=null||vaEdits[idx]?.editOpen!=null;
-                const CATS=["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"];
+                const CATS=["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"];
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
@@ -3279,6 +3281,9 @@ export default function App({ loginOnly = false }){
                   <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
                   <option value="Musique">🎵 Musique</option>
                   <option value="Collection">🏆 Collection</option>
+                  <option value="Multimédia">📺 {typeLabel('Multimédia',lang)}</option>
+                  <option value="Jardin">🌿 {typeLabel('Jardin',lang)}</option>
+                  <option value="Bricolage">🔧 {typeLabel('Bricolage',lang)}</option>
                   <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
                 </select>
               </div>
@@ -3453,7 +3458,7 @@ export default function App({ loginOnly = false }){
               </div>
               {(()=>{
                 const allItems=[...stock,...sold];
-                const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
+                const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
                 const cpClass=tp=>tp==="Tous"?"cp-all":tp==="Mode"?"cp-mode":tp==="High-Tech"?"cp-tech":tp==="Luxe"?"cp-luxe":tp==="Maison"?"cp-maison":tp==="Sport"?"cp-sport":"cp-autre";
                 return presentTypes.length>1&&(
                   <div className="filter-row">
@@ -3805,9 +3810,12 @@ export default function App({ loginOnly = false }){
                 <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
                 <option value="Musique">🎵 Musique</option>
                 <option value="Collection">🏆 Collection</option>
+                <option value="Multimédia">📺 {typeLabel('Multimédia',lang)}</option>
+                <option value="Jardin">🌿 {typeLabel('Jardin',lang)}</option>
+                <option value="Bricolage">🔧 {typeLabel('Bricolage',lang)}</option>
                 <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
               </select>
-              <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")} set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
+              <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")}set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
               <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix="€"/>
               <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix="€"/>
               <div>

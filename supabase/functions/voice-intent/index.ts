@@ -12,6 +12,7 @@ Sans texte ni markdown. Si incompréhensible → intent: "unknown".
 Si ambiguïté sur quel article → ambiguous: true + requiresConfirmation: true.
 Ne jamais inventer de données non mentionnées.
 Tous les montants doivent être des nombres JSON avec point décimal (ex: 3.89 et non "3,89").
+Ne jamais convertir les chiffres romains en chiffres arabes dans les noms de produits. Conserver le nom exact tel qu'il est prononcé (ex: "iPhone X" reste "iPhone X", jamais "iPhone 10"; "Galaxy S20" reste "Galaxy S20").
 
 Aujourd'hui = 2026-05-01, hier = 2026-04-30.
 
@@ -139,6 +140,7 @@ No text or markdown. If incomprehensible → intent: "unknown".
 If ambiguity about which item → ambiguous: true + requiresConfirmation: true.
 Never invent data not mentioned.
 All amounts must be JSON numbers with a dot decimal separator (e.g., 3.89 not "3,89").
+Never convert Roman numerals to Arabic numerals in product names. Keep the exact name as spoken (e.g., "iPhone X" stays "iPhone X", never "iPhone 10"; "Galaxy S20" stays "Galaxy S20").
 
 Today = 2026-05-01, yesterday = 2026-04-30.
 
