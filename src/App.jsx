@@ -1074,7 +1074,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
                     {found.length===0?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {found.slice(0,8).map((item,i)=>{
+                        {found.map((item,i)=>{
                           const isSellOpen=vaEdits[idx]?.sellOpen===i;
                           const sellPrice=vaEdits[idx]?.sellPrice??"";
                           const sellFees=vaEdits[idx]?.sellFees??"";
@@ -1085,7 +1085,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           const nom=item.titre||item.title||item.nom||"";
                           const inputSt={fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
                           return(
-                            <div key={i} style={{paddingBottom:6,borderBottom:i<Math.min(found.length,8)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                            <div key={i} style={{paddingBottom:6,borderBottom:i<found.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                               {/* Item row */}
                               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
                                 <div style={{minWidth:0,flex:1}}>
@@ -1242,7 +1242,6 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                             </div>
                           );
                         })}
-                        {found.length>8&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center"}}>+{found.length-8} {lang==="en"?"more":"autres"}</div>}
                       </div>
                     )}
                   </div>

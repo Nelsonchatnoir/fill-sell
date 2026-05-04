@@ -3,6 +3,13 @@ import { calculateDealScore } from './dealScore.js';
 const norm = s =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() ?? "";
 
+const STOP_WORDS = new Set([
+  "a","à","au","aux","de","du","des","le","la","les","l","un","une","d","en","et","ou",
+  "est","il","elle","je","j","me","mon","ma","mes","ce","qui","que","qu","se","sa","ses",
+  "si","on","y","là","par","sur","sous","dans","avec","pour","comme","mais","donc","car",
+  "ni","or","the","an","of","in","at","to","for","with","is","it","i","my","and","but",
+]);
+
 const parseNum = v => parseFloat(String(v ?? 0).replace(",", ".")) || 0;
 
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
@@ -99,7 +106,7 @@ function handleSearch(task, context) {
       filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
   }
   if (query) {
-    const words = norm(query).split(/\s+/).filter(Boolean);
+    const words = norm(query).split(/\s+/).filter(w => w && !STOP_WORDS.has(w));
     if (words.length > 0) {
       // majority = more than half → for n words, need floor(n/2)+1 matches
       const threshold = Math.floor(words.length / 2) + 1;
