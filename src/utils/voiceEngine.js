@@ -489,8 +489,10 @@ export async function executeVoiceTasks(tasks, context) {
             const fromMap = q ? executedResultsMap[q] : null;
             const matched = fromMap || (q
               ? context.items.find(i =>
-                  norm(i.title || i.titre || i.nom || "").includes(q) ||
-                  q.includes(norm(i.title || i.titre || i.nom || ""))
+                  i.statut !== "vendu" && (
+                    norm(i.title || i.titre || i.nom || "").includes(q) ||
+                    q.includes(norm(i.title || i.titre || i.nom || ""))
+                  )
                 )
               : null);
             if (matched) {

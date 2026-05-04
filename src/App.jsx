@@ -1401,7 +1401,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
                         const q=(taskData?.nom||"").toLowerCase().trim();
-                        const found=items.find(i=>{const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
+                        const found=items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
                         if(found){
                           actions.confirmSellDirect(found,sellPv,taskData?.frais||0,taskData?.quantite_vendue||1)
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
@@ -3459,14 +3459,14 @@ export default function App({ loginOnly = false }){
               {(()=>{
                 const allItems=[...stock,...sold];
                 const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(t=>t==="Tous"||allItems.some(i=>i.type===t));
-                const cpClass=tp=>tp==="Tous"?"cp-all":tp==="Mode"?"cp-mode":tp==="High-Tech"?"cp-tech":tp==="Luxe"?"cp-luxe":tp==="Maison"?"cp-maison":tp==="Sport"?"cp-sport":"cp-autre";
                 return presentTypes.length>1&&(
                   <div className="filter-row">
                     {presentTypes.map(tp=>{
-                      const ts=tp==="Tous"?{emoji:""}:getTypeStyle(tp);
+                      const ts=tp==="Tous"?{bg:"#F0FDF4",color:"#1D9E75",border:"#6EE7B7",emoji:""}:getTypeStyle(tp);
+                      const isActive=filterType===tp;
                       return(
                         <button key={tp} onClick={()=>setFilterType(tp)}
-                          className={`cat-pill ${cpClass(tp)}${filterType===tp?' on':''}`}>
+                          style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:`1px solid ${isActive?ts.color:ts.border}`,background:isActive?ts.color:ts.bg,color:isActive?"#fff":ts.color,whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s",fontFamily:"inherit"}}>
                           {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${typeLabel(tp,lang)}`}
                         </button>
                       );
@@ -3498,18 +3498,20 @@ export default function App({ loginOnly = false }){
                     {soldVisible.map(item=>{
                       const mc=getMargeColor(item.marginPct);
                       const ts=getTypeStyle(item.type);
+                      const qty=item.quantite||1;
                       return(
                         <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                              {qty>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>×{qty}</span>}
                               {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
                               {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                             </div>
-                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt(item.sell)}</div>
+                            <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
                           </div>
                           <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
-                            <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt(item.margin)}</div>
+                            <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
                             <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(item.marginPct)}</div>
                           </div>
                         </SwipeRow>
