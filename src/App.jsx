@@ -421,6 +421,22 @@ function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):ty
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
+// Groups consecutive rows with same title+date+sell price into one display row
+function groupSales(arr){
+  const groups=[];
+  for(const s of arr){
+    const last=groups[groups.length-1];
+    if(last&&last.title===s.title&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
+      last._qty=(last._qty||1)+1;
+      last.margin=(last.margin||0)+(s.margin||0);
+      last.marginPct=(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:0;
+    }else{
+      groups.push({...s,_qty:1});
+    }
+  }
+  return groups;
+}
+
 function getFilteredData_unused(range, salesData){
   const now=new Date();
   const hasSales=salesData.length>0;
@@ -1079,6 +1095,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           const sellPrice=vaEdits[idx]?.sellPrice??"";
                           const sellFees=vaEdits[idx]?.sellFees??"";
                           const sellQty=vaEdits[idx]?.sellQty??1;
+                          const sellPrixMode=vaEdits[idx]?.sellPrixMode??"total";
+                          const sellFeesMode=vaEdits[idx]?.sellFeesMode??"total";
                           const isDeleteOpen=vaEdits[idx]?.deleteOpen===i;
                           const isEditOpen=vaEdits[idx]?.editOpen===i;
                           const ef=vaEdits[idx]?.editFields||{};
@@ -1121,7 +1139,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                     })()}
                                   </div>
                                   {!anyFormOpen&&!isSold&&(
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:"",sellQty:1}}))}
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
                                       style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                                       {lang==="en"?"Mark as sold":"Marquer vendu"}
                                     </button>
@@ -1154,6 +1172,27 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                       <span style={{fontSize:11,color:"#A3A9A6"}}>/ {item.quantite}</span>
                                     </div>
                                   )}
+                                  {sellQty>1&&(
+                                    <>
+                                      <div style={{display:"flex",gap:4}}>
+                                        {["total","unit"].map(m=>(
+                                          <button key={m} onClick={()=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrixMode:m}}))}
+                                            style={{flex:1,padding:"3px 0",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid #1D9E75",background:sellPrixMode===m?"#1D9E75":"transparent",color:sellPrixMode===m?"#fff":"#1D9E75",cursor:"pointer",fontFamily:"inherit"}}>
+                                            {m==="total"?(lang==="en"?"Total price":"Prix total"):(lang==="en"?"Per unit":"Par unité")}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <div style={{display:"flex",gap:4}}>
+                                        {["total","unit"].map(m=>(
+                                          <button key={m} onClick={()=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellFeesMode:m}}))}
+                                            style={{flex:1,padding:"3px 0",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid #F9A26C",background:sellFeesMode===m?"#F9A26C":"transparent",color:sellFeesMode===m?"#fff":"#F9A26C",cursor:"pointer",fontFamily:"inherit"}}>
+                                            {m==="total"?(lang==="en"?"Fees on total":"Frais total"):(lang==="en"?"Fees/unit":"Frais/unité")}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {parseFloat(sellPrice)>0&&<div style={{fontSize:10,color:"#6B7280",textAlign:"center"}}>{sellPrixMode==="total"?`= ${(parseFloat(sellPrice)/sellQty).toFixed(2)}€/unité`:`= ${(parseFloat(sellPrice)*sellQty).toFixed(2)}€ total`}</div>}
+                                    </>
+                                  )}
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <div style={{display:"flex",gap:6,flex:1}}>
                                       <input type="number" value={sellPrice} autoFocus
@@ -1169,13 +1208,17 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                       const pv=parseFloat(sellPrice)||0;
                                       const pf=parseFloat(sellFees)||0;
                                       const qty=Math.max(1,Math.min(parseInt(sellQty)||1,item.quantite||1));
-                                      if(pv>0){await actions.confirmSellDirect(item,pv,pf,qty);}
-                                      else{actions.markSold(item);}
-                                      setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1}}));
+                                      const svUnit=sellPrixMode==="total"&&qty>1?pv/qty:pv;
+                                      const sfUnit=sellFeesMode==="total"&&qty>1?pf/qty:pf;
+                                      if(svUnit>0){
+                                        await actions.confirmSellDirect(item,svUnit,sfUnit,qty);
+                                        await actions.fetchAll();
+                                      }
+                                      setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}));
                                     }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                                       {lang==="en"?"✓ Sold":"✓ Vendu"}
                                     </button>
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1}}))}
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
                                       style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                                       ✕
                                     </button>
@@ -1964,7 +2007,8 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);setFilterMarque("Toutes");setFilterMarqueSold("Toutes");},[filterType]);
   const soldVisible=soldShowAll?soldFiltre:soldFiltre.slice(0,10);
   const stockVisible=showAllStock?stockFiltre:stockFiltre.slice(0,10);
-  const visibleSales=(showAllSales?sales:sales.slice(0,10)).filter(s=>searchMatch(s,searchHistory));
+  const groupedSales=groupSales(sales);
+  const visibleSales=(showAllSales?groupedSales:groupedSales.slice(0,10)).filter(s=>searchMatch(s,searchHistory));
   const invested=items.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
   const stockVal=stock.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -2126,7 +2170,7 @@ export default function App({ loginOnly = false }){
 
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
-    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1});
+    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total'});
   }
 
   async function confirmSell(){
@@ -2138,25 +2182,30 @@ export default function App({ loginOnly = false }){
     const{item}=sellModal;
     const qTotal=item.quantite||1;
     const qVendue=Math.max(1,Math.min(parseInt(sellModal.sellQty)||1,qTotal));
-    const cogs=item.buy+(item.purchaseCosts||0);
-    const mg=sv-cogs-sf;const mgp=(mg/sv)*100;
+    // Compute per-unit values based on selected price/fees mode
+    const svUnit=sellModal.prixMode==="unit"||qVendue<=1?sv:sv/qVendue;
+    const sfUnit=sellModal.feesMode==="unit"||qVendue<=1?sf:sf/qVendue;
+    const cogsUnit=item.buy+(item.purchaseCosts||0);
+    const mgUnit=svUnit-cogsUnit-sfUnit;
+    const mgpUnit=svUnit>0?(mgUnit/svUnit)*100:0;
     const remaining=qTotal-qVendue;
     if(remaining>0){
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
     }else{
-      await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
-      setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
+      await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit}).eq('id',item.id);
+      setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
     }
     for(let q=0;q<qVendue;q++){
-      const srow={id:Date.now()+q,user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
+      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,date:new Date().toISOString().split('T')[0]};
       const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
       if(sd){
-        if(q===0)track('mark_sold',{profit:mg,margin_pct:Math.round(mgp*10)/10});
+        if(q===0)track('mark_sold',{profit:mgUnit*qVendue,margin_pct:Math.round(mgpUnit*10)/10});
         setSales(prev=>[mapSale(sd),...prev]);
       }
     }
     setSellModal(null);
+    await fetchAll(user.id);
   }
 
   async function delItem(id){
@@ -2833,7 +2882,7 @@ export default function App({ loginOnly = false }){
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
       }
       for(let q=0;q<qVendue;q++){
-        const srow={id:Date.now()+q,user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -3035,12 +3084,15 @@ export default function App({ loginOnly = false }){
                   <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                     <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>{t('dernieresventes')}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {sales.slice(0,5).map(s=>{
+                      {groupSales(sales).slice(0,5).map(s=>{
                         const d=new Date(s.date);const mc=!s.marginPct||s.marginPct<5?"#E53E3E":s.marginPct<20?"#F9A26C":s.marginPct<40?"#5DCAA5":"#1D9E75";
                         return(
                           <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                              <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
+                                {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+                              </div>
                               <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</div>
                             </div>
                             <div style={{textAlign:"right"}}>
@@ -3657,7 +3709,10 @@ export default function App({ loginOnly = false }){
                   return(
                     <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                          <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
+                          {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+                        </div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
                           <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
                           {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
@@ -3674,10 +3729,10 @@ export default function App({ loginOnly = false }){
                     </SwipeRow>
                   );
                 })}
-                {!showAllSales&&sales.length>10&&(
+                {!showAllSales&&groupedSales.length>10&&(
                   <button onClick={()=>setShowAllSales(true)}
                     style={{width:"100%",padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    {lang==='fr'?`Voir plus (${sales.length-10} autres)`:`Show more (${sales.length-10} more)`}
+                    {lang==='fr'?`Voir plus (${groupedSales.length-10} autres)`:`Show more (${groupedSales.length-10} more)`}
                   </button>
                 )}
                 {!isPremium&&!isNative&&(
@@ -3782,6 +3837,33 @@ export default function App({ loginOnly = false }){
                     style={{width:70,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.15)",borderRadius:8,padding:"8px 10px",textAlign:"center",fontFamily:"inherit"}}/>
                   <span style={{fontSize:12,color:C.sub}}>/ {sellModal.item.quantite}</span>
                 </div>
+              )}
+              {(sellModal.sellQty||1)>1&&(
+                <>
+                  <div style={{display:"flex",gap:6}}>
+                    {["total","unit"].map(m=>(
+                      <button key={m} onClick={()=>setSellModal(p=>({...p,prixMode:m}))}
+                        style={{flex:1,padding:"7px 0",fontSize:11,fontWeight:700,borderRadius:8,border:`1px solid ${C.teal}`,background:sellModal.prixMode===m?C.teal:"transparent",color:sellModal.prixMode===m?"#fff":C.teal,cursor:"pointer",fontFamily:"inherit"}}>
+                        {m==="total"?(lang==='fr'?'Prix total lot':'Total lot price'):(lang==='fr'?'Prix par unité':'Price per unit')}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    {["total","unit"].map(m=>(
+                      <button key={m} onClick={()=>setSellModal(p=>({...p,feesMode:m}))}
+                        style={{flex:1,padding:"7px 0",fontSize:11,fontWeight:700,borderRadius:8,border:"1px solid #F9A26C",background:sellModal.feesMode===m?"#F9A26C":"transparent",color:sellModal.feesMode===m?"#fff":"#F9A26C",cursor:"pointer",fontFamily:"inherit"}}>
+                        {m==="total"?(lang==='fr'?'Frais sur le total':'Fees on total'):(lang==='fr'?'Frais par unité':'Fees per unit')}
+                      </button>
+                    ))}
+                  </div>
+                  {parseFloat(sellModal.sellPrice)>0&&(
+                    <div style={{fontSize:11,color:"#6B7280",textAlign:"center",background:"#F9FAFB",borderRadius:6,padding:"4px 0"}}>
+                      {sellModal.prixMode==="total"
+                        ?`= ${(parseFloat(sellModal.sellPrice)/(sellModal.sellQty||1)).toFixed(2)}€ ${lang==='fr'?'/ unité':'/ unit'}`
+                        :`= ${(parseFloat(sellModal.sellPrice)*(sellModal.sellQty||1)).toFixed(2)}€ total`}
+                    </div>
+                  )}
+                </>
               )}
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix="€"/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
