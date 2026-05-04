@@ -106,13 +106,15 @@ function handleSearch(task, context) {
       const scored = filtered.map(i => {
         const haystack = [
           norm(i.titre || i.nom || i.title || ""),
-          norm(i.marque),
-          norm(i.type),
-          norm(i.description),
+          norm(i.marque || ""),
+          norm(i.type || ""),
+          norm(i.description || ""),
         ].join(" ");
         const matchCount = words.filter(w => haystack.includes(w)).length;
         return { item: i, score: matchCount };
       });
+      console.log("[VoiceSearch]", { query, words, threshold });
+      console.log("[VoiceSearch] scores:", scored.map(s => ({ title: s.item.title || s.item.titre, score: s.score })));
       filtered = scored
         .filter(s => s.score >= threshold)
         .sort((a, b) => b.score - a.score)

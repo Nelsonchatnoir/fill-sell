@@ -913,7 +913,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
           const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions});
           setVaResults(results);setVaStep("results");
-          const noActionNeeded=results.every(r=>r.status==="success"&&r.intent!=="inventory_search");
+          const noActionNeeded=results.every(r=>r.status==="success"&&r.intent!=="inventory_search"&&!(r.intent==="query_stats"&&r.data?.metric==="stock_by_period"));
           if(noActionNeeded){
             const blocs=results.reduce((n,r)=>{
               if(!r||r.status!=="success")return n;
@@ -1538,10 +1538,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {lang==="en"?"In stock":"En stock"} ({data?.count??sbpItems.length})</div>
                     {sbpItems.length===0
                       ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items":"Aucun article"}</div>
-                      :sbpItems.slice(0,6).map((item,i)=>{
+                      :sbpItems.map((item,i)=>{
                         const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
                         return(
-                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(sbpItems.length,6)-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<sbpItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                             <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title||item.titre}</div>
                             <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                               <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
@@ -1550,8 +1550,6 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           </div>
                         );
                       })
-                    }
-                    {sbpItems.length>6&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center",marginTop:4}}>+{sbpItems.length-6} {lang==="en"?"more":"autres"}</div>}
                   </div>
                 );
               }
