@@ -412,11 +412,14 @@ function getTypeStyle(type){
     'Collection':    {bg:'#FEFCE8',color:'#854D0E',border:'#FDE047',emoji:'🏆'},
     'Électroménager':{bg:'#ECFDF5',color:'#065F46',border:'#6EE7B7',emoji:'⚡'},
     'Luxe':          {bg:'#FDF8F0',color:'#92400E',border:'#F59E0B',emoji:'💎'},
+    'Multimédia':    {bg:'#F3E8FF',color:'#6B21A8',border:'#D8B4FE',emoji:'📺'},
+    'Jardin':        {bg:'#ECFDF5',color:'#14532D',border:'#4ADE80',emoji:'🌿'},
+    'Bricolage':     {bg:'#FFF7ED',color:'#C2410C',border:'#FB923C',emoji:'🔧'},
     'Autre':         {bg:'#F9FAFB',color:'#6B7280',border:'#D1D5DB',emoji:'📦'},
   };
   return s[type]||s['Autre'];
 }
-const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Autre':'Other'};
+const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
@@ -2191,9 +2194,12 @@ export default function App({ loginOnly = false }){
     const mgpUnit=svUnit>0?(mgUnit/svUnit)*100:0;
     const remaining=qTotal-qVendue;
     if(remaining>0){
-      // Partial sell: decrement quantity only — prix_achat is never touched
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+      const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy*qVendue,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+      const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
+      if(siErr)console.error("[confirmSell] soldRow insert failed:",siErr.message);
+      if(si)setItems(prev=>[mapItem(si),...prev]);
     }else{
       await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
@@ -2877,9 +2883,12 @@ export default function App({ loginOnly = false }){
       const qVendue=Math.min(quantite_vendue||1,qTotal);
       const remaining=qTotal-qVendue;
       if(remaining>0){
-        // Partial sell: decrement quantity only — prix_achat is never touched
         await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy*qVendue,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+        const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
+        if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message);
+        if(si)setItems(prev=>[mapItem(si),...prev]);
       }else{
         await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
