@@ -1549,7 +1549,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                             </div>
                           </div>
                         );
-                      })
+                      })}
                   </div>
                 );
               }
