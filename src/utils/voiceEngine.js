@@ -86,8 +86,10 @@ async function handleLot(task, context) {
 }
 
 function handleSearch(task, context) {
-  const { brand, categorie, status, query, date_from, date_to, min_price, max_price } =
+  const { brand, categorie, status, date_from, date_to, min_price, max_price, nom, marque: taskMarque } =
     task.data;
+  // Build query from nom+marque when voice-intent returns query:null
+  const query = task.data.query || [nom, taskMarque].filter(Boolean).join(" ") || null;
   let filtered = [...context.items];
 
   if (brand)
