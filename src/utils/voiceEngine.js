@@ -88,8 +88,8 @@ async function handleLot(task, context) {
 function handleSearch(task, context) {
   const { brand, categorie, status, date_from, date_to, min_price, max_price, nom, marque: taskMarque, type: taskType, description: taskDesc } =
     task.data;
-  // Build query from all text fields when voice-intent returns query:null
-  const query = task.data.query || [nom, taskMarque, taskType, taskDesc].filter(Boolean).join(" ") || null;
+  // Always combine all text fields so "robe" + query "rose" → "robe rose" → threshold 2
+  const query = [nom, taskMarque, taskType, taskDesc, task.data.query].filter(Boolean).join(" ") || null;
   let filtered = [...context.items];
 
   if (brand)

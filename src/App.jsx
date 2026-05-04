@@ -1078,6 +1078,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           const isSellOpen=vaEdits[idx]?.sellOpen===i;
                           const sellPrice=vaEdits[idx]?.sellPrice??"";
                           const sellFees=vaEdits[idx]?.sellFees??"";
+                          const sellQty=vaEdits[idx]?.sellQty??1;
                           const isDeleteOpen=vaEdits[idx]?.deleteOpen===i;
                           const isEditOpen=vaEdits[idx]?.editOpen===i;
                           const ef=vaEdits[idx]?.editFields||{};
@@ -1120,7 +1121,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                     })()}
                                   </div>
                                   {!anyFormOpen&&!isSold&&(
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:""}}))}
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:"",sellQty:1}}))}
                                       style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                                       {lang==="en"?"Mark as sold":"Marquer vendu"}
                                     </button>
@@ -1143,29 +1144,42 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
                               {/* Sell form */}
                               {isSellOpen&&(
-                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
-                                  <div style={{display:"flex",gap:6,flex:1}}>
-                                    <input type="number" value={sellPrice} autoFocus
-                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrice:e.target.value}}))}
-                                      placeholder={lang==="en"?"Sale price (€)":"Prix de vente (€)"}
-                                      style={{flex:2,fontSize:12,fontWeight:600,border:"1px solid #1D9E75",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                                    <input type="number" value={sellFees}
-                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellFees:e.target.value}}))}
-                                      placeholder={lang==="en"?"Fees (€)":"Frais (€)"}
-                                      style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+                                  {(item.quantite||1)>1&&(
+                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                      <span style={{fontSize:11,color:"#6B7280",flex:1}}>{lang==="en"?"Qty to sell":"Qté à vendre"}</span>
+                                      <input type="number" min={1} max={item.quantite} value={sellQty}
+                                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellQty:Math.max(1,Math.min(parseInt(e.target.value)||1,item.quantite))}}))}
+                                        style={{width:60,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",textAlign:"center",fontFamily:"inherit"}}/>
+                                      <span style={{fontSize:11,color:"#A3A9A6"}}>/ {item.quantite}</span>
+                                    </div>
+                                  )}
+                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                    <div style={{display:"flex",gap:6,flex:1}}>
+                                      <input type="number" value={sellPrice} autoFocus
+                                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrice:e.target.value}}))}
+                                        placeholder={lang==="en"?"Sale price (€)":"Prix de vente (€)"}
+                                        style={{flex:2,fontSize:12,fontWeight:600,border:"1px solid #1D9E75",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                      <input type="number" value={sellFees}
+                                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellFees:e.target.value}}))}
+                                        placeholder={lang==="en"?"Fees (€)":"Frais (€)"}
+                                        style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                    </div>
+                                    <button onClick={async()=>{
+                                      const pv=parseFloat(sellPrice)||0;
+                                      const pf=parseFloat(sellFees)||0;
+                                      const qty=Math.max(1,Math.min(parseInt(sellQty)||1,item.quantite||1));
+                                      if(pv>0){await actions.confirmSellDirect(item,pv,pf,qty);}
+                                      else{actions.markSold(item);}
+                                      setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1}}));
+                                    }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                                      {lang==="en"?"✓ Sold":"✓ Vendu"}
+                                    </button>
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1}}))}
+                                      style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                                      ✕
+                                    </button>
                                   </div>
-                                  <button onClick={()=>{
-                                    const pv=parseFloat(sellPrice)||undefined;
-                                    const pf=parseFloat(sellFees)||0;
-                                    actions.markSold({...item,prix_vente:pv,frais:pf||undefined});
-                                    setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:""}}));
-                                  }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                                    {lang==="en"?"✓ Sold":"✓ Vendu"}
-                                  </button>
-                                  <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:""}}))}
-                                    style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                                    ✕
-                                  </button>
                                 </div>
                               )}
 
@@ -2112,7 +2126,7 @@ export default function App({ loginOnly = false }){
 
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
-    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved});
+    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1});
   }
 
   async function confirmSell(){
@@ -2122,15 +2136,25 @@ export default function App({ loginOnly = false }){
     const sf=parseFloat(sellModal.sellingFees)||0;
     if(sellModal.rememberFees)localStorage.setItem('savedFees',String(sf));
     const{item}=sellModal;
+    const qTotal=item.quantite||1;
+    const qVendue=Math.max(1,Math.min(parseInt(sellModal.sellQty)||1,qTotal));
     const cogs=item.buy+(item.purchaseCosts||0);
     const mg=sv-cogs-sf;const mgp=(mg/sv)*100;
-    await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
-    setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
-    const srow={id:Date.now(),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
-    const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
-    if(sd){
-      track('mark_sold',{profit:mg,margin_pct:Math.round(mgp*10)/10});
-      setSales(prev=>[mapSale(sd),...prev]);
+    const remaining=qTotal-qVendue;
+    if(remaining>0){
+      await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
+      setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+    }else{
+      await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
+      setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
+    }
+    for(let q=0;q<qVendue;q++){
+      const srow={id:Date.now()+q,user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,date:new Date().toISOString().split('T')[0]};
+      const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
+      if(sd){
+        if(q===0)track('mark_sold',{profit:mg,margin_pct:Math.round(mgp*10)/10});
+        setSales(prev=>[mapSale(sd),...prev]);
+      }
     }
     setSellModal(null);
   }
@@ -3750,6 +3774,15 @@ export default function App({ loginOnly = false }){
             <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Field label={t('prixDeVente')} value={sellModal.sellPrice} set={v=>setSellModal(p=>({...p,sellPrice:v}))} placeholder="0,00" type="number" icon="💰" suffix="€"/>
+              {(sellModal.item.quantite||1)>1&&(
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:13,fontWeight:600,color:C.sub,flex:1}}>{lang==='fr'?'Quantité à vendre':'Quantity to sell'}</span>
+                  <input type="number" min={1} max={sellModal.item.quantite} value={sellModal.sellQty??1}
+                    onChange={e=>setSellModal(p=>({...p,sellQty:Math.max(1,Math.min(parseInt(e.target.value)||1,p.item.quantite))}))}
+                    style={{width:70,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.15)",borderRadius:8,padding:"8px 10px",textAlign:"center",fontFamily:"inherit"}}/>
+                  <span style={{fontSize:12,color:C.sub}}>/ {sellModal.item.quantite}</span>
+                </div>
+              )}
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix="€"/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
                 <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>
