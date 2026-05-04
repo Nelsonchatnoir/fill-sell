@@ -2191,14 +2191,9 @@ export default function App({ loginOnly = false }){
     const mgpUnit=svUnit>0?(mgUnit/svUnit)*100:0;
     const remaining=qTotal-qVendue;
     if(remaining>0){
-      // Reduce stock quantity — prix_achat is never touched
+      // Partial sell: decrement quantity only — prix_achat is never touched
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-      // Create a separate sold entry so sold units appear in inventory
-      const soldRow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:item.purchaseCosts||0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
-      const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
-      if(siErr)console.error("[confirmSell] soldRow insert failed:",siErr.message,JSON.stringify(soldRow));
-      if(si)setItems(prev=>[mapItem(si),...prev]);
     }else{
       await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
@@ -2882,14 +2877,9 @@ export default function App({ loginOnly = false }){
       const qVendue=Math.min(quantite_vendue||1,qTotal);
       const remaining=qTotal-qVendue;
       if(remaining>0){
-        // Reduce stock quantity — prix_achat is never touched
+        // Partial sell: decrement quantity only — prix_achat is never touched
         await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-        // Create a separate sold entry so sold units appear in inventory
-        const soldRow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:item.purchaseCosts||0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
-        const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
-        if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message,JSON.stringify(soldRow));
-        if(si)setItems(prev=>[mapItem(si),...prev]);
       }else{
         await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
