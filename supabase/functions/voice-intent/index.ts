@@ -102,7 +102,7 @@ analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, group
 Si l'utilisateur demande les meilleurs deals PAR catégorie → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
-query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
+query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", "c'est rentable", calcul achat/vente explicite avec deux prix mentionnés
 unknown:          { originalText }
@@ -117,7 +117,7 @@ Règle quantite/quantite_vendue :
   Ex: "je vends 2 de mes iphones" → quantite_vendue: 2
 
 Règles query_stats (PRIORITÉ sur analytics_best et analytics_query pour les cas couverts) :
-Utilise query_stats pour classements meilleur/pire, marge moyenne, stock immobilisé, bénéfice mensuel.
+Utilise query_stats pour classements meilleur/pire, marge moyenne, stock immobilisé, bénéfice mensuel, nombre d'articles en stock.
 analytics_best reste UNIQUEMENT pour "par catégorie" (groupBy: "categorie").
 Métriques :
   best_sales       → "meilleure(s) vente(s)", "top ventes", "meilleures affaires"
@@ -125,6 +125,7 @@ Métriques :
   profit_mois      → "bénéfice du mois", "profit du mois", "gains du mois", "j'ai gagné ce mois"
   marge_moyenne    → "marge moyenne", "taux de marge", "ma marge habituelle"
   stock_immobilise → "stock immobilisé", "argent immobilisé", "capital bloqué"
+  stock_count      → "combien d'articles en stock", "nombre d'articles", "j'ai combien en stock", "combien j'en ai", "taille de mon stock"
 Règle limit (CRITIQUE — respecter exactement le nombre mentionné) :
   "ma meilleure" / "ma pire" → limit: 1 (TOUJOURS 1 pour "ma" sans nombre)
   "mes N meilleures" / "les N pires" → limit: N exact (N = nombre mentionné)
@@ -226,7 +227,7 @@ analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, group
 If the user asks for best deals BY category → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
-query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
+query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", "is it worth it", explicit buy/sell calculation with two prices mentioned
 unknown:          { originalText }
@@ -249,6 +250,7 @@ Metrics:
   profit_mois      → "monthly profit", "profit this month", "earnings this month"
   marge_moyenne    → "average margin", "margin rate", "typical margin"
   stock_immobilise → "locked stock", "locked capital", "immobilized stock"
+  stock_count      → "how many items in stock", "how many articles", "number of items", "how many do I have", "stock size"
 Limit rule (CRITICAL — respect the exact number stated):
   "my best sale" / "my worst sale" → limit: 1 (ALWAYS 1 for "my" without a number)
   "my N best" / "the N worst" → limit: N exact (N = stated number)

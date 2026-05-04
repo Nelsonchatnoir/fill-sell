@@ -1097,17 +1097,25 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                 </div>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8}}>
                                   <div style={{textAlign:"right"}}>
-                                    {isSold?(
-                                      <>
-                                        <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{item.buy||item.prix_achat}€</div>
-                                        <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{item.sell||item.prix_vente||"?"}€</div>
-                                      </>
-                                    ):(
-                                      <>
-                                        <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
-                                        {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6"}}>{Math.floor((Date.now()-new Date(item.date_ajout))/86400000)}{lang==="en"?"d":"j"}</div>}
-                                      </>
-                                    )}
+                                    {isSold?(()=>{
+                                      const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
+                                      return(
+                                        <>
+                                          <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{item.buy||item.prix_achat}€</div>
+                                          <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{item.sell||item.prix_vente||"?"}€</div>
+                                          {item.date_vente&&<div style={{fontSize:10,color:"#1D9E75",marginTop:1}}>{lang==="en"?"sold on ":"vendu le "}{fmtDate(item.date_vente)}</div>}
+                                        </>
+                                      );
+                                    })():(()=>{
+                                      const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
+                                      const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
+                                      return(
+                                        <>
+                                          <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                                          {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6",marginTop:1}}>{lang==="en"?`in stock since `:`en stock depuis le `}{fmtDate(item.date_ajout)}{days!==null?` (${days}${lang==="en"?"d":"j"})`:""}</div>}
+                                        </>
+                                      );
+                                    })()}
                                   </div>
                                   {!anyFormOpen&&!isSold&&(
                                     <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:""}}))}

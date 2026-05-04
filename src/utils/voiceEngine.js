@@ -91,10 +91,13 @@ function handleSearch(task, context) {
       norm(i.categorie || "") === normCat || norm(i.type || "") === normCat
     );
   }
-  if (status === "stock")
-    filtered = filtered.filter(i => i.statut !== "vendu" && i.statut !== "sold");
-  else if (status === "sold")
-    filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
+  // Status filter only when no specific query — a named-item lookup must search all statuses
+  if (!query) {
+    if (status === "stock")
+      filtered = filtered.filter(i => i.statut !== "vendu" && i.statut !== "sold");
+    else if (status === "sold")
+      filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
+  }
   if (query) {
     const q = norm(query);
     filtered = filtered.filter(
@@ -108,13 +111,13 @@ function handleSearch(task, context) {
   if (date_from) {
     const df = new Date(date_from);
     filtered = filtered.filter(
-      i => new Date(i.date_achat || i.date || i.created_at) >= df
+      i => new Date(i.date_ajout || i.date_achat || i.date || i.created_at) >= df
     );
   }
   if (date_to) {
     const dt = new Date(date_to);
     filtered = filtered.filter(
-      i => new Date(i.date_achat || i.date || i.created_at) <= dt
+      i => new Date(i.date_ajout || i.date_achat || i.date || i.created_at) <= dt
     );
   }
   if (min_price != null)
@@ -122,15 +125,28 @@ function handleSearch(task, context) {
   if (max_price != null)
     filtered = filtered.filter(i => (i.prix_achat ?? 0) <= max_price);
 
+  // Enrich sold items with sale date from ventes (match by title)
+  const enriched = filtered.map(item => {
+    const isSold = item.statut === "vendu" || item.statut === "sold";
+    if (isSold && !item.date_vente) {
+      const normTitle = norm(item.title || item.titre || "");
+      const match = normTitle
+        ? context.sales.find(s => norm(s.title || s.titre || "") === normTitle)
+        : null;
+      if (match) return { ...item, date_vente: match.date_vente || match.date };
+    }
+    return item;
+  });
+
   return {
     intent: task.intent,
     taskData: task.data,
     status: "success",
-    data: { items: filtered },
+    data: { items: enriched },
     message:
       context.lang === "en"
-        ? `${filtered.length} item(s) found`
-        : `${filtered.length} article(s) trouvé(s)`,
+        ? `${enriched.length} item(s) found`
+        : `${enriched.length} article(s) trouvé(s)`,
   };
 }
 
