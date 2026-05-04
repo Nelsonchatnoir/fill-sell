@@ -92,6 +92,12 @@ function handleSearch(task, context) {
   const query = [nom, taskMarque, taskType, taskDesc, task.data.query].filter(Boolean).join(" ") || null;
   let filtered = [...context.items];
 
+  // Status filter always applied first — sets the pool before scoring
+  if (status === "stock")
+    filtered = filtered.filter(i => i.statut !== "vendu" && i.statut !== "sold");
+  else if (status === "sold")
+    filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
+
   if (brand)
     filtered = filtered.filter(i => norm(i.marque).includes(norm(brand)));
   if (categorie) {
@@ -99,13 +105,6 @@ function handleSearch(task, context) {
     filtered = filtered.filter(i =>
       norm(i.categorie || "") === normCat || norm(i.type || "") === normCat
     );
-  }
-  // Status filter only when no specific query — a named-item lookup must search all statuses
-  if (!query) {
-    if (status === "stock")
-      filtered = filtered.filter(i => i.statut !== "vendu" && i.statut !== "sold");
-    else if (status === "sold")
-      filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
   }
   if (query) {
     const words = norm(query).split(/\s+/).filter(w => w && !STOP_WORDS.has(w));
