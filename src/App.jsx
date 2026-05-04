@@ -1093,7 +1093,9 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                   <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
                                     {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                                     {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
+                                    {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
                                   </div>
+                                  {(item.description||item.desc)&&<div style={{fontSize:11,color:"#6B7280",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description||item.desc}</div>}
                                 </div>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8}}>
                                   <div style={{textAlign:"right"}}>
