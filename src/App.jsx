@@ -1374,35 +1374,58 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
               if(status==="pending_confirmation"&&intent==="inventory_sell"){
                 const sellPv=vaEdits[idx]?.prix_vente??taskData?.prix_vente??null;
+                const qv=taskData?.quantite_vendue||1;
+                const q=(taskData?.nom||"").toLowerCase().trim();
+                const found=items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
+                const pv=parseFloat(sellPv)||0;
+                const sf=parseFloat(taskData?.frais)||0;
+                const buyU=found?(found.buy+(found.purchaseCosts||0)):0;
+                const mgU=pv-buyU-sf;
+                const mgpU=pv>0?(mgU/pv)*100:0;
+                const ts=found?getTypeStyle(found.type):null;
+                const daysInStock=found&&(found.date_ajout||found.date)?Math.floor((Date.now()-new Date(found.date_ajout||found.date).getTime())/(1000*60*60*24)):null;
                 return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:12}}>
-                      {lang==="en"
-                        ?`Sell ${taskData?.nom||"item"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} at ${sellPv||"?"}€?`
-                        :`Vendre ${taskData?.nom||"l'article"}${taskData?.quantite_vendue>1?` ×${taskData.quantite_vendue}`:""} à ${sellPv||"?"}€ ?`}
+                  <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
+                    {/* Article header */}
+                    <div>
+                      <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
+                        {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
+                        {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
+                        {daysInStock!==null&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:600}}>{daysInStock}j en stock</span>}
+                      </div>
                     </div>
+                    {/* Prix achat → vente */}
+                    <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(buyU)}</span>
+                      <span style={{color:"#D1D5DB",fontWeight:400}}>→</span>
+                      {pv>0
+                        ?<span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
+                        :<span style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Price to confirm":"Prix à confirmer"}</span>
+                      }
+                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:900,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)} <span style={{fontSize:11,fontWeight:600,opacity:0.8}}>({fmtp(mgpU)})</span></span>}
+                    </div>
+                    {/* Champ prix si absent */}
                     {!taskData?.prix_vente&&(
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <input type="number" value={vaEdits[idx]?.prix_vente??""}
                           onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],prix_vente:parseFloat(e.target.value)||0}}))}
-                          placeholder={lang==="en"?"Sell price":"Prix vente"}
-                          style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>€</span>
+                          placeholder={lang==="en"?"Sell price (€)":"Prix de vente (€)"}
+                          style={{flex:1,fontSize:14,fontWeight:700,border:"1.5px solid #1D9E75",borderRadius:10,padding:"10px 12px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",outline:"none"}}/>
                       </div>
                     )}
+                    {/* Boutons */}
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
-                        const q=(taskData?.nom||"").toLowerCase().trim();
-                        const found=items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
-                        if(found){
-                          actions.confirmSellDirect(found,sellPv,taskData?.frais||0,taskData?.quantite_vendue||1)
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
-                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm":"Confirmer"}
+                        if(!found){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
+                        actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv)
+                          .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                          .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
+                        ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
                       </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
                     </div>
                   </div>
                 );
@@ -3603,91 +3626,114 @@ export default function App({ loginOnly = false }){
           </>
         )}
 
-        {tab===2&&(
-          <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
+        {tab===2&&(()=>{
+          const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
+          const globalAvgMargePct=allSalesValid.length?allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length:null;
+          const simBuy=parseFloat(cBuy)||0;
+          const simSuggestedSell=globalAvgMargePct!=null&&simBuy>0?(simBuy/(1-Math.max(0.01,globalAvgMargePct/100))):0;
+          const simMargin=simBuy>0&&simSuggestedSell>0?simSuggestedSell-simBuy:0;
+          const simMarginPct=simSuggestedSell>0?(simMargin/simSuggestedSell)*100:0;
+          const vsAvg=globalAvgMargePct!=null?simMarginPct-globalAvgMargePct:null;
+          return(
+          <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
-            {/* ── Badge header ── */}
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:18}}>🎯</span>
-              <span style={{fontSize:13,fontWeight:800,color:'#1D9E75'}}>{lang==='en'?'Analyzed by AI':'Analysé par l\'IA'}</span>
-            </div>
-
-            {/* ── Profit hero ── */}
-            {isValid?(
-              <div className="profit-hero">
-                <div className="lbl">{margin>=0?t('profitEstime'):t('perteEstimee')}</div>
-                <div className="amt" style={{color:margin>=0?'#fff':'#FCA5A5'}}>{fmt(margin)}</div>
-                <div className="meta">
-                  <span>{fmtp(marginPct)}</span>
-                  <span className="delta">{getMargeMessage(marginPct,margin,lang).msg}</span>
+            {/* ── Section 1 : Simulateur ── */}
+            <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+                <span style={{fontSize:20}}>🧮</span>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Smart Simulator":"Simulateur intelligent"}</div>
+                  <div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"Based on your sales history":"Basé sur ton historique de ventes"}</div>
                 </div>
               </div>
-            ):(
-              <div style={{background:'#fff',borderRadius:14,padding:'20px',textAlign:'center',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:36,marginBottom:10}}>🧮</div>
-                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{t('calculerHero')}</div>
-                <div style={{fontSize:13,color:C.sub}}>{t('calculerSub')}</div>
+              {/* Champ prix achat */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:14}}>
+                <span style={{fontSize:16,flexShrink:0}}>🛒</span>
+                <input type="number" inputMode="decimal" value={cBuy} onChange={e=>setCBuy(e.target.value)}
+                  placeholder={lang==="en"?"Purchase price":"Prix d'achat"}
+                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
               </div>
-            )}
+              {/* Résultat simulateur */}
+              {simBuy>0&&globalAvgMargePct!=null?(
+                <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:12,padding:"16px",border:"1px solid #9FE1CB"}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>{lang==="en"?"AI Recommendation":"Recommandation IA"}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:"#6B7280",fontWeight:600,marginBottom:2}}>{lang==="en"?"Suggested sell price":"Prix de vente suggéré"}</div>
+                      <div style={{fontSize:28,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(simSuggestedSell)}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:11,color:"#6B7280",fontWeight:600,marginBottom:2}}>{lang==="en"?"Est. profit":"Profit estimé"}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:simMargin>=0?"#1D9E75":"#EF4444"}}>{simMargin>=0?"+":""}{fmt(simMargin)}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <span style={{background:"#fff",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,color:simMarginPct>=0?"#1D9E75":"#EF4444",border:`1px solid ${simMarginPct>=0?"#9FE1CB":"#FCA5A5"}`}}>{fmtp(simMarginPct)} {lang==="en"?"margin":"marge"}</span>
+                    <span style={{background:"#fff",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:600,color:"#6B7280",border:"1px solid #E5E7EB"}}>{lang==="en"?"Your avg":"Ta moyenne"} {fmtp(globalAvgMargePct)}</span>
+                    {vsAvg!==null&&Math.abs(vsAvg)>0.5&&<span style={{background:"#fff",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,color:vsAvg>=0?"#1D9E75":"#F59E0B",border:`1px solid ${vsAvg>=0?"#9FE1CB":"#FCD34D"}`}}>{vsAvg>=0?"✓ Dans la moyenne":"↗ Sous la moyenne"}</span>}
+                  </div>
+                </div>
+              ):simBuy>0&&globalAvgMargePct===null?(
+                <div style={{background:"#FFFBEB",borderRadius:12,padding:"14px",border:"1px solid #FDE68A",fontSize:13,color:"#92400E",fontWeight:600}}>
+                  {lang==="en"?"Make a few sales first to get personalized suggestions 📈":"Fais quelques ventes pour obtenir des suggestions personnalisées 📈"}
+                </div>
+              ):(
+                <div style={{textAlign:"center",padding:"8px 0",fontSize:13,color:"#A3A9A6"}}>{lang==="en"?"Enter a purchase price above":"Entre un prix d'achat ci-dessus"}</div>
+              )}
+            </div>
 
             {/* ── Deal Score ── */}
-            <DealScoreCard result={dealScore} analysis={dealAnalysis} analysisLoading={dealAnalysisLoading} lang={lang}/>
+            <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                <span style={{fontSize:20}}>🎯</span>
+                <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D"}}>Deal Score</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:10}}>
+                <span style={{fontSize:16,flexShrink:0}}>💰</span>
+                <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)}
+                  placeholder={lang==="en"?"Sell price":"Prix de vente"}
+                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:14}}>
+                <span style={{fontSize:16,flexShrink:0}}>➕</span>
+                <input type="number" inputMode="decimal" value={cShip} onChange={e=>setCShip(e.target.value)}
+                  placeholder={lang==="en"?"Fees (optional)":"Frais (optionnel)"}
+                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
+              </div>
+              <DealScoreCard result={dealScore} analysis={dealAnalysis} analysisLoading={dealAnalysisLoading} lang={lang}/>
+              {isValid&&<Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full style={{marginTop:12}}>
+                {cSaved?(lang==='fr'?"✓ Ajouté à ton suivi !":"✓ Added to your tracker!"):t('ajouterSuivi')}
+              </Btn>}
+            </div>
 
-            {/* ── field-card inputs ── */}
-            <div className="field-card">
-              <div className="row">
-                <div className="ico">🏷️</div>
-                <div className="meta">
-                  <div className="lbl">{t('nomArticle')}</div>
-                  <input value={cTitle} onChange={e=>setCTitle(e.target.value)} placeholder="Ex: Nike Air Max 90"/>
-                </div>
+            {/* ── Section 2 : Fill & Sell Lens teaser ── */}
+            <div style={{background:"linear-gradient(135deg,#0D0D0D,#1a1a2e)",borderRadius:16,padding:"24px",border:"1px solid rgba(255,255,255,0.08)",boxShadow:"0 4px 20px rgba(0,0,0,0.15)",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:0.06,pointerEvents:"none"}}>📸</div>
+              <div style={{fontSize:36,marginBottom:10}}>📸</div>
+              <div style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Fill &amp; Sell Lens</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#1D9E75",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.08em"}}>{lang==="en"?"Coming soon":"Bientôt disponible"}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.65)",lineHeight:1.6,marginBottom:16}}>
+                {lang==="en"
+                  ?"Take a photo of any item — AI identifies it and pre-fills everything automatically."
+                  :"Prends en photo un article, l'IA l'identifie et pré-remplit tout automatiquement."}
               </div>
+              <button onClick={()=>{setToast({visible:true,message:lang==="en"?"✅ You'll be notified!":"✅ Tu seras notifié !"});setTimeout(()=>setToast({visible:false,message:""}),2500);}}
+                style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,padding:"12px 20px",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(29,158,117,0.4)",transition:"all 0.15s"}}
+                onMouseDown={e=>e.currentTarget.style.transform="scale(0.96)"}
+                onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+                {lang==="en"?"Notify me 🔔":"M'avertir 🔔"}
+              </button>
             </div>
-            <div className="field-card">
-              <div className="row">
-                <div className="ico">🛒</div>
-                <div className="meta">
-                  <div className="lbl">{t('prixAchat')}</div>
-                  <input type="number" inputMode="decimal" value={cBuy} onChange={e=>setCBuy(e.target.value)} placeholder="0,00"/>
-                </div>
-                <div className="suf">€</div>
-              </div>
-            </div>
-            <div className="field-card">
-              <div className="row">
-                <div className="ico">💰</div>
-                <div className="meta">
-                  <div className="lbl">{t('prixVente')}</div>
-                  <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)} placeholder="0,00"/>
-                </div>
-                <div className="suf">€</div>
-              </div>
-            </div>
-            <div className="field-card">
-              <div className="row">
-                <div className="ico">➕</div>
-                <div className="meta">
-                  <div className="lbl">{t('fraisAnnexes')}</div>
-                  <input type="number" inputMode="decimal" value={cShip} onChange={e=>setCShip(e.target.value)} placeholder="0,00"/>
-                </div>
-                <div className="suf">€</div>
-              </div>
-            </div>
-            <div style={{fontSize:11,color:C.label,marginTop:-4,paddingLeft:4}}>{t('fraisHint')}</div>
 
-            {/* ── CTA ── */}
-            <Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full>
-              {cSaved?(lang==='fr'?"✓ Ajouté à ton suivi !":"✓ Added to your tracker!"):t('ajouterSuivi')}
-            </Btn>
-
-            {!isPremium&&!isNative&&(
-              <PremiumBanner userEmail={user?.email}/>
-            )}
-            {isNative&&!isPremium&&(
-              <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
-            )}
+            {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
+            {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
           </div>
-        )}
+          );
+        })()}
 
         {tab===3&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
