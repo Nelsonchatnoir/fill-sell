@@ -1569,15 +1569,41 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
               }
 
               if(status==="success"&&intent==="inventory_sell"){
-                const pv=parseFloat(String(data?.prix_vente??taskData?.prix_vente??0).replace(",","."))||null;
-                const qv=(data?.quantite_vendue||taskData?.quantite_vendue)>1?(data?.quantite_vendue||taskData?.quantite_vendue):null;
-                const nom=data?.nom||taskData?.nom;
+                const svUnit=parseFloat(String(data?.prix_vente??taskData?.prix_vente??0).replace(",","."))||0;
+                const sfUnit=parseFloat(String(taskData?.frais??0).replace(",","."))||0;
+                const qv=Math.max(1,(data?.quantite_vendue||taskData?.quantite_vendue||1));
+                const nom=data?.nom||taskData?.nom||"";
+                const q=nom.toLowerCase().trim();
+                const soldItem=items.find(i=>{const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
+                const marque=soldItem?.marque||data?.marque||taskData?.marque||null;
+                const type=soldItem?.type||null;
+                const ts=type?getTypeStyle(type):null;
+                const cogs=soldItem?(soldItem.buy+(soldItem.purchaseCosts||0)):0;
+                const mgUnit=svUnit>0?svUnit-cogs-sfUnit:null;
+                const mgpUnit=svUnit>0&&mgUnit!=null?(mgUnit/svUnit)*100:null;
+                const totalSell=svUnit*qv;
+                const totalProfit=mgUnit!=null?mgUnit*qv:null;
                 return(
-                  <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:16}}>✅</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{lang==="en"?"Sale registered":"Vente enregistrée"}{pv?` · ${pv}€`:""}{qv?` · ×${qv}`:""}</div>
-                      {nom&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:600,marginTop:2}}>{nom}</div>}
+                  <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB",boxShadow:"0 1px 4px rgba(29,158,117,0.1)",display:"flex",flexDirection:"column",gap:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                      <span style={{fontSize:15}}>✅</span>
+                      <span style={{fontSize:12,fontWeight:800,color:"#0F6E56",textTransform:"uppercase",letterSpacing:"0.06em"}}>{lang==="en"?"Sale registered":"Vente enregistrée"}</span>
+                    </div>
+                    <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D"}}>{nom||"Article"}</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                      {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
+                      {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
+                      {ts&&type&&type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {type}</span>}
+                    </div>
+                    <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
+                        <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
+                      </div>
+                      {totalProfit!=null&&<div style={{textAlign:"right"}}>
+                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Profit":"Profit"}</div>
+                        <div style={{fontSize:18,fontWeight:900,color:totalProfit>=0?"#1D9E75":"#EF4444"}}>{totalProfit>=0?"+":""}{fmt(totalProfit)} <span style={{fontSize:12,fontWeight:600,opacity:0.8}}>({fmtp(mgpUnit)})</span></div>
+                      </div>}
                     </div>
                   </div>
                 );
