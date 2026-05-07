@@ -25,6 +25,9 @@ serve(async (req) => {
       success_url: "https://fillsell.app/success",
       cancel_url: "https://fillsell.app/cancel",
       customer_email: email || undefined,
+      subscription_data: {
+        trial_period_days: 7,
+      },
     };
 
     const session = await stripe.checkout.sessions.create(sessionParams);

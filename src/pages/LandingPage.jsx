@@ -140,7 +140,7 @@ const T = {
     heroTitle1: 'Parle. ', heroTitleAccent: "L'IA fait le reste.", heroTitle2: '',
     heroSub: "Ton assistant IA dans la poche. Ajoute, vends, supprime, demande tes meilleures ventes, gère un lot — à la voix. Il connaît tout ton stock et exécute en moins de 3 secondes.",
     heroCta: 'Essayer le vocal IA gratuit →', heroSecondary: 'Voir une démo',
-    heroFree: 'Vocal IA illimité', heroNoCard: 'Sans carte bancaire', heroReady: '30 sec pour démarrer',
+    heroFree: 'Essai Premium 7 jours', heroNoCard: 'Sans carte bancaire', heroReady: '30 sec pour démarrer',
     heroTickerLbl: 'Action exécutée', heroTickerReady: 'Prêt',
     heroGreeting: 'Salut Léo 👋',
     stat1Label: 'Revendeurs actifs', stat2Label: 'Profits trackés',
@@ -239,23 +239,24 @@ const T = {
       { quote: "Je dicte le prix d'achat, l'IA classe l'article et calcule ma marge dès que je rentre la vente. Plus de tableurs, plus de calculs à la main.", avatar: 'JD', name: 'Julien D.', role: 'Reseller luxe · Vestiaire Collective' },
     ],
     voiceCtaTitle: 'Essaie le vocal IA gratuitement',
-    voiceCtaSub: 'Sans carte bancaire. Passe en illimité quand tu es prêt — 9,99 €/mois.',
+    voiceCtaSub: 'Sans carte bancaire. Essaie le Premium 7 jours gratuit — puis 9,99 €/mois.',
     voiceCtaBtn: 'Activer le vocal IA →',
     pricingEyebrow: 'Tarifs',
     pricingTitle1: 'Choisis le plan qui te ', pricingTitleAccent: 'correspond',
-    pricingSub: "Commence gratuitement. Passe au premium quand tu es prêt — pas de surprise, pas d'engagement.",
+    pricingSub: "Commence gratuitement. Essaie le Premium 7 jours sans carte bancaire — sans surprise, sans engagement.",
     freeTier: 'Gratuit', freeName: 'Pour démarrer', freePer: '/ toujours',
     freeTagline: 'Tout le nécessaire pour suivre tes premières ventes.',
-    freeF1: "Jusqu'à 20 articles", freeF2: 'Dashboard & stats de base',
-    freeF3: 'Calculateur de marge', freeF4: 'Historique des ventes',
-    freeF5: '🎤 Vocal IA illimité',
+    freeF1: "Jusqu'à 20 articles/mois", freeF2: 'Dashboard & stats de base',
+    freeF3: 'Calculateur de marge avec analyse IA', freeF4: 'Historique des ventes',
+    freeF5: '🎤 IA vocale · 5 requêtes/jour',
     freeBtn: 'Commencer gratuitement',
     premiumBadge: '⭐ Le plus populaire', premiumTier: 'Premium', premiumName: 'Pour aller plus loin',
-    premiumPer: '/ mois', premiumTagline: 'Débloque toutes les fonctionnalités. Sans limite.',
-    premiumF1: 'Articles illimités', premiumF2: 'Vocal IA illimité 🎙️',
-    premiumF3: 'Stats avancées & tendances', premiumF4: 'Export Excel & CSV',
-    premiumF5: 'Import en masse', premiumF6: 'Support prioritaire',
-    premiumBtn: 'Passer au premium ✨',
+    premiumPer: '/ mois', premiumTagline: '7 jours gratuits · puis 9,99 €/mois · Sans engagement.',
+    premiumTrialBadge: "7 jours d'essai gratuit",
+    premiumF1: 'Tout le plan Gratuit inclus', premiumF2: 'Articles illimités',
+    premiumF3: 'IA vocale illimitée 🎙️', premiumF4: 'Stats avancées analysées par IA',
+    premiumF5: 'Import / Export Excel', premiumF6: 'Support prioritaire',
+    premiumBtn: "Commencer l'essai gratuit ✨",
     ctaTitle: 'Prêt à maximiser tes profits ?',
     ctaSub: 'Rejoins des centaines de revendeurs qui suivent leurs profits avec Fill & Sell.',
     ctaBtn: 'Créer mon compte gratuit →', ctaMicro: 'Gratuit · Sans carte bancaire · Prêt en 30 secondes',
@@ -273,7 +274,7 @@ const T = {
     heroTitle1: 'Speak. ', heroTitleAccent: 'AI does the rest.', heroTitle2: '',
     heroSub: "Your AI assistant in your pocket. Add, sell, delete, ask your best sales, manage a batch — by voice. It knows your entire stock and executes in under 3 seconds.",
     heroCta: 'Try Voice AI free →', heroSecondary: 'See a demo',
-    heroFree: 'Unlimited Voice AI', heroNoCard: 'No credit card', heroReady: '30 sec to start',
+    heroFree: '7-day Premium trial', heroNoCard: 'No credit card', heroReady: '30 sec to start',
     heroTickerLbl: 'Action done', heroTickerReady: 'Ready',
     heroGreeting: 'Hey Leo 👋',
     stat1Label: 'Active resellers', stat2Label: 'Tracked profits',
@@ -372,23 +373,24 @@ const T = {
       { quote: "I dictate the buy price, AI classifies the item and calculates my margin when I record the sale. No more spreadsheets, no more manual calculations.", avatar: 'JD', name: 'Julien D.', role: 'Luxury reseller · Vestiaire Collective' },
     ],
     voiceCtaTitle: 'Try Voice AI for free',
-    voiceCtaSub: 'No credit card. Go unlimited when you\'re ready — €9.99/month.',
+    voiceCtaSub: 'No credit card. Try Premium free for 7 days — then €9.99/month.',
     voiceCtaBtn: 'Activate Voice AI →',
     pricingEyebrow: 'Pricing',
     pricingTitle1: 'Choose the plan that ', pricingTitleAccent: 'fits you',
-    pricingSub: "Start for free. Go premium when you're ready — no surprise, no commitment.",
+    pricingSub: "Start for free. Try Premium 7 days, no card needed — no surprise, no commitment.",
     freeTier: 'Free', freeName: 'To get started', freePer: '/ forever',
     freeTagline: 'Everything you need to track your first sales.',
-    freeF1: 'Up to 20 items', freeF2: 'Dashboard & basic stats',
-    freeF3: 'Margin calculator', freeF4: 'Sales history',
-    freeF5: '🎤 Unlimited Voice AI',
+    freeF1: 'Up to 20 items/month', freeF2: 'Dashboard & basic stats',
+    freeF3: 'Margin calculator with AI analysis', freeF4: 'Sales history',
+    freeF5: '🎤 Voice AI · 5 requests/day',
     freeBtn: 'Start for free',
     premiumBadge: '⭐ Most popular', premiumTier: 'Premium', premiumName: 'To go further',
-    premiumPer: '/ month', premiumTagline: 'Unlock all features. No limits.',
-    premiumF1: 'Unlimited items', premiumF2: 'Unlimited Voice AI 🎙️',
-    premiumF3: 'Advanced stats & trends', premiumF4: 'Excel & CSV export',
-    premiumF5: 'Bulk import', premiumF6: 'Priority support',
-    premiumBtn: 'Go Premium ✨',
+    premiumPer: '/ month', premiumTagline: '7 days free · then €9.99/month · No commitment.',
+    premiumTrialBadge: '7-day free trial',
+    premiumF1: 'Everything in Free, included', premiumF2: 'Unlimited items',
+    premiumF3: 'Unlimited Voice AI 🎙️', premiumF4: 'Advanced stats analyzed by AI',
+    premiumF5: 'Import / Export Excel', premiumF6: 'Priority support',
+    premiumBtn: 'Start your free trial ✨',
     ctaTitle: 'Ready to maximize your profits?',
     ctaSub: 'Join hundreds of resellers who track their profits with Fill & Sell.',
     ctaBtn: 'Create my free account →', ctaMicro: 'Free · No credit card · Ready in 30 seconds',
@@ -405,7 +407,7 @@ const FAQ_ITEMS = {
   fr: [
     { q: 'Comment fonctionne le Vocal IA ?', a: "Tu appuies sur le micro et tu décris ton article naturellement (\"veste Levi's vintage achetée 15 € en friperie\"). L'IA transcrit, identifie marque, catégorie, état, taille, couleur et prix d'achat, puis l'ajoute à ton stock. Le tout en moins de 3 secondes — fonctionne en français et en anglais." },
     { q: 'Le Vocal IA est-il fiable sur les marques de luxe ?', a: "Oui — l'IA est entraînée sur les marques de luxe (Hermès, Chanel, Louis Vuitton, etc.) et reconnaît même les modèles spécifiques à partir d'une description partielle. Tu peux toujours corriger avant validation. Précision moyenne : 94 % sur catégorie + marque à partir d'une phrase courte." },
-    { q: 'Fill & Sell est-il gratuit ?', a: "Oui, Fill & Sell est entièrement gratuit jusqu'à 20 articles en stock. Tu as accès au dashboard, au calculateur de marge, à l'historique de tes ventes et au Vocal IA illimité — sans carte bancaire requise. Pour aller plus loin (articles illimités, export Excel, stats avancées), passe au Premium à 9,99 €/mois." },
+    { q: 'Fill & Sell est-il gratuit ?', a: "Oui, Fill & Sell est gratuit pour démarrer. Tu as accès jusqu'à 20 articles/mois, au calculateur de marge avec analyse IA, à l'historique de tes ventes et à l'IA vocale (5 requêtes/jour) — sans carte bancaire. Pour aller plus loin (articles illimités, IA vocale illimitée, stats avancées analysées par IA, import/export Excel), essaie le Premium gratuitement pendant 7 jours, puis 9,99 €/mois." },
     { q: 'Quelles plateformes sont compatibles ?', a: 'Toutes les grandes plateformes de revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. Tu peux étiqueter tes ventes par plateforme pour suivre tes meilleurs canaux.' },
     { q: 'Comment calculer ma marge sur Vinted ?', a: "Avec le calculateur intégré, tu entres simplement le prix d'achat, le prix de vente et les frais (commission Vinted, livraison, emballage). Fill & Sell calcule ton bénéfice net et ton pourcentage de marge en temps réel — avant même que tu valides ton achat." },
     { q: 'Puis-je importer et exporter mes données en Excel ?', a: 'Oui, avec un compte Premium tu peux importer ton stock existant depuis un fichier Excel ou CSV, et exporter toutes tes données quand tu veux. Tu gardes le contrôle total sur tes informations — elles sont à toi.' },
@@ -414,7 +416,7 @@ const FAQ_ITEMS = {
   en: [
     { q: 'How does Voice AI work?', a: 'You press the mic and describe your item naturally ("vintage Levi\'s jacket bought for £15 at a flea market"). AI transcribes, identifies brand, category, condition, size, color and buy price, then adds it to your stock. All in under 3 seconds — works in French and English.' },
     { q: 'Is Voice AI reliable for luxury brands?', a: "Yes — AI is trained on luxury brands (Hermès, Chanel, Louis Vuitton, etc.) and recognizes even specific models from a partial description. You can always correct before confirming. Average accuracy: 94% on category + brand from a short sentence." },
-    { q: 'Is Fill & Sell free?', a: 'Yes, Fill & Sell is completely free for up to 20 items in stock. You get access to the dashboard, margin calculator, sales history and unlimited Voice AI — no credit card required. To go further (unlimited items, Excel export, advanced stats), upgrade to Premium at €9.99/month.' },
+    { q: 'Is Fill & Sell free?', a: 'Yes, Fill & Sell is free to start. You get up to 20 items/month, the margin calculator with AI analysis, sales history and Voice AI (5 requests/day) — no credit card required. To go further (unlimited items, unlimited Voice AI, advanced stats analyzed by AI, Excel import/export), try Premium free for 7 days, then €9.99/month.' },
     { q: 'Which platforms are compatible?', a: 'All major resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. You can tag your sales by platform to track your best channels.' },
     { q: 'How do I calculate my margin on Vinted?', a: 'With the built-in calculator, you simply enter the buy price, sell price and fees (Vinted commission, shipping, packaging). Fill & Sell calculates your net profit and margin percentage in real time — before you even confirm your purchase.' },
     { q: 'Can I import and export my data to Excel?', a: "Yes, with a Premium account you can import your existing stock from an Excel or CSV file, and export all your data whenever you want. You keep full control over your information — it's yours." },
@@ -1082,17 +1084,18 @@ export default function LandingPage() {
               <div className="price-tier">{t.premiumTier}</div>
               <h3 className="price-name">{t.premiumName}</h3>
               <div className="price-amount"><span className="num">9,99 €</span><span className="per">{t.premiumPer}</span></div>
+              <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
               <div className="price-tagline">{t.premiumTagline}</div>
               <ul className="price-features">
-                <li><span className="ck">✓</span> <strong>{t.premiumF1}</strong></li>
+                <li><span className="ck">✓</span> {t.premiumF1}</li>
                 <li><span className="ck">✓</span> <strong>{t.premiumF2}</strong></li>
-                <li><span className="ck">✓</span> {t.premiumF3}</li>
+                <li><span className="ck">✓</span> <strong>{t.premiumF3}</strong></li>
                 <li><span className="ck">✓</span> {t.premiumF4}</li>
                 <li><span className="ck">✓</span> {t.premiumF5}</li>
                 <li><span className="ck">✓</span> {t.premiumF6}</li>
               </ul>
               <button className="btn btn-white btn-lg"
-                onClick={() => { track('cta_click', { cta: 'pricing_premium', page: 'landing' }); nav('/login'); }}>
+                onClick={() => { track('cta_click', { cta: 'pricing_premium', page: 'landing' }); nav('/login?mode=signup'); }}>
                 {t.premiumBtn}
               </button>
             </div>
