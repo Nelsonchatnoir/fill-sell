@@ -190,7 +190,8 @@ function SwipeRow({onDelete, onEdit, children, style}){
 
 function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner' }){
   const [loading, setLoading] = useState(false);
-  const { t: tb } = useTranslation(localStorage.getItem('fs_lang') || 'fr');
+  const lang = localStorage.getItem('fs_lang') || 'fr';
+  const { t: tb } = useTranslation(lang);
 
   async function handleCheckout(){
     track('premium_click', { source });
@@ -238,14 +239,17 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
       <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {tb('trialNoCost')}</div>
       <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{tb('limiteGratuit')}</div>
       <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{tb('limiteGratuitDesc')}</div>
-      <button onClick={handleCheckout} disabled={loading}
-        style={{padding:"10px 22px",background:loading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:loading?"#9CA3AF":"#fff",border:"none",borderRadius:99,fontSize:13,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",marginTop:2}}
-        onMouseEnter={e=>{if(!loading)e.currentTarget.style.transform="translateY(-2px)";}}
-        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
+      <button
+        onClick={handleCheckout}
+        disabled={loading}
+        className="cta-premium"
+        style={{width:"100%", opacity: loading ? 0.7 : 1, cursor: loading ? "not-allowed" : "pointer"}}
       >
-        {loading ? tb('redirection') : `✨ ${tb('debloquer')}`}
+        {loading ? tb('redirection') : `✨ ${tb('unlockPremium')}`}
       </button>
-      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:-4}}>{tb('trialSubtext')}</div>
+      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:6}}>
+        {lang==='fr' ? '7 jours gratuits · Puis 9,99€/mois' : '7 days free · Then €9.99/month'}
+      </div>
     </div>
   );
 }
@@ -270,12 +274,13 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
       <button
         onClick={onPurchase}
         disabled={iapLoading}
-        style={{padding:"10px 22px",background:iapLoading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:iapLoading?"#9CA3AF":"#fff",border:"none",borderRadius:99,fontSize:13,fontWeight:700,cursor:iapLoading?"not-allowed":"pointer",boxShadow:iapLoading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",marginTop:2,fontFamily:"inherit"}}
+        className="cta-premium"
+        style={{width:"100%", opacity: iapLoading ? 0.7 : 1, cursor: iapLoading ? "not-allowed" : "pointer"}}
       >
-        {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai':'✨ Start trial')}
+        {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai gratuit →':'✨ Start free trial →')}
       </button>
-      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:-4}}>
-        {lang==='fr'?'Puis 9,99€/mois · Annulable à tout moment':'Then €9.99/month · Cancel anytime'}
+      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:6}}>
+        {lang==='fr'?'7 jours gratuits · Puis 9,99€/mois':'7 days free · Then €9.99/month'}
       </div>
       <button
         onClick={onRestore}
@@ -738,6 +743,64 @@ function ActivityCurve({sales, lang}){
   );
 }
 
+function DashboardEmptyState({lang, setTab}) {
+  const EXAMPLES_FR = [
+    "J'ai acheté une veste Zara 8€",
+    "J'ai vendu 3 paquets Pokémon à 15€",
+    "Combien j'ai gagné ce mois-ci ?",
+    "C'est quoi mes articles les plus rentables ?",
+    "Combien d'articles Nike j'ai en stock ?"
+  ];
+  const EXAMPLES_EN = [
+    "I bought a Zara jacket for 8€",
+    "I sold 3 Pokémon packs for 15€",
+    "How much did I earn this month?",
+    "What are my most profitable items?",
+    "How many Nike items do I have in stock?"
+  ];
+  const examples = lang === 'en' ? EXAMPLES_EN : EXAMPLES_FR;
+  const [exIdx, setExIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => { setExIdx(0); setVisible(true); }, [lang]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => { setExIdx(i => (i + 1) % examples.length); setVisible(true); }, 350);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [examples.length]);
+
+  return (
+    <div className="empty-hero card-enter">
+      <div className="empty-hero-art">
+        <span className="glyph">📈</span>
+      </div>
+      <h1>{lang==='en' ? 'Track every euro of profit.' : 'Suis chaque euro de profit.'}</h1>
+      <p>{lang==='en' ? 'Talk to your AI or type — it understands everything' : 'Parle à ton IA ou tape — elle comprend tout'}</p>
+      <div className="empty-typewriter">
+        <span style={{opacity: visible ? 1 : 0, transition: 'opacity 0.35s ease'}}>
+          "{examples[exIdx]}"
+        </span>
+      </div>
+      <div className="empty-hero-stats">
+        <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Auto-categorized':'Catégories auto'}</span>
+        <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Real-time stats':'Stats temps réel'}</span>
+        <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Free up to 20':'Gratuit jusqu\'à 20'}</span>
+      </div>
+      <div className="empty-hero-cta-stack">
+        <button className="cta-premium" onClick={()=>{setTab(1); localStorage.setItem('tab',1);}}>
+          ➕ {lang==='en' ? 'Add my first item' : 'Ajouter mon premier article'}
+        </button>
+        <button className="empty-hero-secondary" onClick={()=>{setTab(1); localStorage.setItem('tab',1);}}>
+          🎤 {lang==='en' ? 'Or talk to your AI →' : 'Ou parle à ton IA →'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function normalizeCat(raw){
   if(!raw) return 'Autre';
   const v=raw.toLowerCase()
@@ -1103,10 +1166,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
         {isThink?(
           <div style={{position:"relative",width:fabSize,height:fabSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
-            <span style={{fontSize:22,position:"relative",zIndex:1}}>🎤</span>
+            <span style={{fontSize:28,position:"relative",zIndex:1}}>🎤</span>
           </div>
         ):(
-          <span style={{fontSize:22,lineHeight:1}}>🎤</span>
+          <span style={{fontSize:28,lineHeight:1}}>🎤</span>
         )}
       </button>
 
@@ -3157,30 +3220,7 @@ export default function App({ loginOnly = false }){
               <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>{lang==='en'?"Loading data...":"Chargement des données..."}</div>
             ):items.length===0&&sales.length===0?(
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
-                <div className="empty-hero card-enter">
-                  <div className="empty-hero-art">
-                    <span className="glyph">📈</span>
-                  </div>
-                  <h1>{lang==='en' ? 'Track every euro of profit.' : 'Suis chaque euro de profit.'}</h1>
-                  <p>
-                    {lang==='en'
-                      ? 'Add an item, set your buy & sell price — see your real margin in seconds.'
-                      : 'Ajoute un article, renseigne achat & vente — vois ta vraie marge en quelques secondes.'}
-                  </p>
-                  <div className="empty-hero-stats">
-                    <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Auto-categorized':'Catégories auto'}</span>
-                    <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Real-time stats':'Stats temps réel'}</span>
-                    <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Free up to 20':'Gratuit jusqu\'à 20'}</span>
-                  </div>
-                  <div className="empty-hero-cta-stack">
-                    <button className="cta-premium" onClick={()=>{setTab(1); localStorage.setItem('tab',1);}}>
-                      ➕ {lang==='en' ? 'Add my first item' : 'Ajouter mon premier article'}
-                    </button>
-                    <button className="empty-hero-secondary" onClick={()=>{setTab(2); localStorage.setItem('tab',2);}}>
-                      🧮 {lang==='en' ? 'Try the calculator' : 'Tester le calculateur'}
-                    </button>
-                  </div>
-                </div>
+                <DashboardEmptyState lang={lang} setTab={setTab} />
               </div>
             ):(
               <>
