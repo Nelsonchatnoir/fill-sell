@@ -932,7 +932,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           const{tasks,error:iErr}=await iRes.json();
           if(iErr)throw new Error(iErr);
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
-          const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions});
+          const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions,supabaseUrl:SURL});
           setVaResults(results);setVaStep("results");
           const noActionNeeded=results.every(r=>r.status==="success"&&r.intent!=="inventory_search"&&!(r.intent==="query_stats"&&r.data?.metric==="stock_by_period"));
           if(noActionNeeded){
@@ -1635,6 +1635,22 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
                     <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{isCurrency&&val>0?"+":""}{val}{suffix}</div>
                     {data?.metric==="stock_immobilise"&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{data?.count} {lang==="en"?"item(s) in stock":"article(s) en stock"}</div>}
+                  </div>
+                );
+              }
+
+              if(status==="success"&&intent==="off_topic"){
+                return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}><div style={{fontSize:13,fontWeight:600,color:"#6B7280",lineHeight:1.5}}>{message}</div></div>);
+              }
+
+              if(status==="success"&&intent==="business_advice"){
+                const lines=(data?.analysis||message||"").split("\n").filter(l=>l.trim());
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>🤖 {lang==="en"?"Business Advice":"Analyse personnalisée"}</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {lines.map((l,i)=><div key={i} style={{fontSize:13,color:"#0D0D0D",lineHeight:1.6,fontWeight:400}}>{l.replace(/\*\*/g,"").replace(/\*/g,"")}</div>)}
+                    </div>
                   </div>
                 );
               }

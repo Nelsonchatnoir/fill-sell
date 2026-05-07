@@ -29,7 +29,14 @@ Intents disponibles :
 - analytics_date      → requiresConfirmation: false
 - query_stats         → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
+- off_topic           → requiresConfirmation: false
+- business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Règles off_topic et business_advice (CRITIQUE) :
+off_topic = quand la demande n'a AUCUN rapport avec le business de revente : météo, recettes, vie perso, actualités, blagues, définitions, etc.
+business_advice = quand l'utilisateur pose une question ouverte sur son business : "comment je m'en sors ?", "qu'est-ce que tu me conseilles ?", "est-ce que je suis rentable ?", "quels articles dois-je vendre ?", "ma stratégie", "mes points forts/faibles", "donne-moi des conseils", "analyse mon activité", etc.
+Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
 Règle multi-articles :
 Si achat ET vente sont mentionnés pour le même article → génère 3 tâches dans l'ordre :
@@ -157,7 +164,14 @@ Available intents:
 - analytics_date      → requiresConfirmation: false
 - query_stats         → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
+- off_topic           → requiresConfirmation: false
+- business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Rules for off_topic and business_advice (CRITICAL):
+off_topic = when the request has NO relation to the resale business: weather, recipes, personal life, news, jokes, definitions, etc.
+business_advice = when the user asks an open question about their business: "how am I doing?", "what do you advise?", "am I profitable?", "what items should I sell?", "my strategy", "my strengths/weaknesses", "give me advice", "analyze my activity", etc.
+Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
 Multi-article rule:
 If a purchase AND sale are mentioned for the same item → generate 3 tasks in order:

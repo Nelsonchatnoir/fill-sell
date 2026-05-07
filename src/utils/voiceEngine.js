@@ -451,6 +451,59 @@ function handleQueryStats(task, context) {
   }
 }
 
+async function handleBusinessAdvice(task, context) {
+  const { items = [], sales = [], lang, supabaseUrl } = context;
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const salesMonth = sales.filter(s => new Date(s.date || s.date_vente || 0) >= monthStart);
+  const profit = salesMonth.reduce((a, s) => a + (s.margin ?? s.benefice ?? 0), 0);
+  const ventes = salesMonth.length;
+  const avgMargin = ventes > 0 ? salesMonth.reduce((a, s) => {
+    const pv = getPrixVente(s); return a + (pv > 0 ? ((s.margin ?? s.benefice ?? 0) / pv) * 100 : 0);
+  }, 0) / ventes : 0;
+  const catProfit = {};
+  for (const s of sales) {
+    const c = s.type || s.categorie || "Autre";
+    catProfit[c] = (catProfit[c] || 0) + (s.margin ?? s.benefice ?? 0);
+  }
+  const totalSalesProfit = Object.values(catProfit).reduce((a, v) => a + v, 0);
+  const bestCat = Object.entries(catProfit).sort((a, b) => b[1] - a[1])[0];
+  const bestSale = [...sales].sort((a, b) => (b.margin ?? b.benefice ?? 0) - (a.margin ?? a.benefice ?? 0))[0];
+  const slowItems = items.filter(i => {
+    if (i.statut === "vendu") return false;
+    const d = new Date(i.date_ajout || i.date || i.created_at || 0);
+    return (now - d) > 30 * 24 * 60 * 60 * 1000;
+  });
+  if (!supabaseUrl) {
+    return { intent: "business_advice", taskData: task.data, status: "error", data: {}, message: lang === "en" ? "Service unavailable" : "Service indisponible" };
+  }
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/stats-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        periode: lang === "en" ? "this month" : "ce mois",
+        profit: Math.round(profit),
+        ventes,
+        marge: Math.round(avgMargin * 10) / 10,
+        meilleure_cat: bestCat?.[0] || "",
+        meilleure_cat_pct: bestCat && totalSalesProfit > 0 ? Math.round((bestCat[1] / totalSalesProfit) * 100) : 0,
+        meilleur_article: bestSale ? (bestSale.title || bestSale.titre || "") : "",
+        meilleur_article_profit: bestSale ? Math.round(bestSale.margin ?? bestSale.benefice ?? 0) : 0,
+        articles_lents: slowItems.length,
+        lang,
+        question: task.data?.originalText || "",
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const analysis = d?.analysis || (lang === "en" ? "No data available yet." : "Pas encore assez de données.");
+    return { intent: "business_advice", taskData: task.data, status: "success", data: { analysis }, message: analysis };
+  } catch (e) {
+    return { intent: "business_advice", taskData: task.data, status: "error", data: {}, message: lang === "en" ? "Analysis failed" : "Analyse échouée" };
+  }
+}
+
 // ─── main export ──────────────────────────────────────────────────────────────
 
 export async function executeVoiceTasks(tasks, context) {
@@ -619,6 +672,21 @@ export async function executeVoiceTasks(tasks, context) {
             },
             message: `${ds.label} · ${ds.score}/10`,
           };
+          break;
+        }
+        case "off_topic":
+          result = {
+            intent: "off_topic",
+            taskData: task.data,
+            status: "success",
+            data: {},
+            message: context.lang === "en"
+              ? "I'm only here to help with your resale business 😊 You can ask me about your stats, inventory, sales, or add an item."
+              : "Je suis uniquement disponible pour t'aider avec ton business d'achat-revente 😊 Tu peux me demander tes stats, tes articles, tes ventes, ou ajouter un article.",
+          };
+          break;
+        case "business_advice": {
+          result = await handleBusinessAdvice(task, context);
           break;
         }
         case "unknown":
