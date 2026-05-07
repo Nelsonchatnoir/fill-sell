@@ -234,6 +234,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 
   return(
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {tb('trialNoCost')}</div>
       <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{tb('limiteGratuit')}</div>
       <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{tb('limiteGratuitDesc')}</div>
       <button onClick={handleCheckout} disabled={loading}
@@ -243,6 +244,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
       >
         {loading ? tb('redirection') : `✨ ${tb('debloquer')}`}
       </button>
+      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:-4}}>{tb('trialSubtext')}</div>
     </div>
   );
 }
@@ -250,15 +252,18 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
   return (
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
+        🎁 {lang==='fr'?'7 jours gratuits · Aucun débit immédiat':'7 days free · No charge today'}
+      </div>
       <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>
-        {lang==='fr'?'Passe à l\'illimité ✨':'Go unlimited ✨'}
+        {lang==='fr'?'Essai gratuit 7 jours ✨':'7-day free trial ✨'}
       </div>
       <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>
-        {lang==='fr'?'Inventaire illimité · Export Excel · Stats pro':'Unlimited inventory · Excel export · Pro stats'}
+        {lang==='fr'?'Articles illimités · IA vocale · Stats IA':'Unlimited items · Voice AI · AI stats'}
       </div>
       {iapProduct&&(
         <div style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>
-          {iapProduct.priceString} / {lang==='fr'?'mois':'month'}
+          {lang==='fr'?'puis ':'then '}{iapProduct.priceString} / {lang==='fr'?'mois':'month'}
         </div>
       )}
       <button
@@ -266,8 +271,11 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
         disabled={iapLoading}
         style={{padding:"10px 22px",background:iapLoading?"#E5E7EB":"linear-gradient(135deg,#3EACA0,#E8956D)",color:iapLoading?"#9CA3AF":"#fff",border:"none",borderRadius:99,fontSize:13,fontWeight:700,cursor:iapLoading?"not-allowed":"pointer",boxShadow:iapLoading?"none":"0 4px 14px rgba(62,172,160,0.3)",transition:"all 0.2s",marginTop:2,fontFamily:"inherit"}}
       >
-        {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Débloquer':'✨ Unlock')}
+        {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai':'✨ Start trial')}
       </button>
+      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:-4}}>
+        {lang==='fr'?'Puis 9,99€/mois · Annulable à tout moment':'Then €9.99/month · Cancel anytime'}
+      </div>
       <button
         onClick={onRestore}
         disabled={iapLoading}
@@ -1825,7 +1833,7 @@ export default function App({ loginOnly = false }){
       console.log('[checkout] response body:', body);
       const{url,error}=body;
       if(error)throw new Error(error);
-      track('begin_checkout', { currency: 'EUR', value: 4.99 });
+      track('begin_checkout', { currency: 'EUR', value: 9.99 });
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
     }catch(e){
@@ -3129,6 +3137,7 @@ export default function App({ loginOnly = false }){
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
                           <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
+                          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,textAlign:"center"}}>{t('trialSubtext')}</div>
                         </div>
                       )}
                     </div>
@@ -3145,6 +3154,7 @@ export default function App({ loginOnly = false }){
                           <span style={{fontSize:20}}>🔒</span>
                           <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
                           <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
+                          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,textAlign:"center"}}>{t('trialSubtext')}</div>
                         </div>
                       )}
                     </div>

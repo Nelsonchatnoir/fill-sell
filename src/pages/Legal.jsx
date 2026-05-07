@@ -211,13 +211,13 @@ export default function Legal() {
 
           {en ? (
             <p className="legal-p"><span className="legal-strong">3.4 Premium Subscription</span><br />
-              The Premium plan is offered at <span className="legal-strong">€4.99 per month</span>, no commitment required. It gives access to unlimited items and advanced analytics.<br /><br />
+              The Premium plan is offered at <span className="legal-strong">€9.99 per month</span> after a 7-day free trial, no commitment required. It gives access to unlimited items and advanced analytics.<br /><br />
               <span className="legal-strong">On web:</span> payment is securely processed by <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">On iOS:</span> payment is managed via the Apple App Store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your Apple account settings.
             </p>
           ) : (
             <p className="legal-p"><span className="legal-strong">3.4 Abonnement Premium</span><br />
-              Le plan Premium est proposé au tarif de <span className="legal-strong">4,99 € TTC par mois</span>, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées.<br /><br />
+              Le plan Premium est proposé au tarif de <span className="legal-strong">9,99 € TTC par mois</span> après une période d'essai gratuite de 7 jours, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées.<br /><br />
               <span className="legal-strong">Sur le web :</span> le paiement est traité de manière sécurisée par <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">Sur iOS :</span> le paiement est géré via l'App Store Apple (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte Apple.
             </p>
