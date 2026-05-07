@@ -934,18 +934,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
           const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions,supabaseUrl:SURL});
           setVaResults(results);setVaStep("results");
-          const noActionNeeded=results.every(r=>r.status==="success"&&r.intent!=="inventory_search"&&!(r.intent==="query_stats"&&r.data?.metric==="stock_by_period"));
-          if(noActionNeeded){
-            const blocs=results.reduce((n,r)=>{
-              if(!r||r.status!=="success")return n;
-              if(r.intent==="query_stats"&&(r.data?.metric==="best_sales"||r.data?.metric==="worst_sales"))return n+(r.data?.items?.length||0);
-              if(r.intent==="analytics_best")return n+(r.data?.byCategory?Object.keys(r.data.byCategory).length:(r.data?.items?.length||0));
-              if(r.intent==="analytics_dormant")return n+Math.min(r.data?.items?.length||0,6);
-              if(r.intent==="analytics_date")return n+Math.min(r.data?.items?.length||0,5);
-              return n+1;
-            },0);
-            const delay=Math.min(2000+blocs*1500,12000);
-            autoCloseRef.current=setTimeout(()=>resetVA(),delay);
+          const QUICK_INTENTS=new Set(["inventory_add","inventory_sell","inventory_delete","inventory_update","inventory_lot"]);
+          const isQuickOnly=results.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));
+          if(isQuickOnly){
+            autoCloseRef.current=setTimeout(()=>resetVA(),3500);
           }
         }catch(e){setVaError(e.message||"Error");setVaStep("");}
       };
