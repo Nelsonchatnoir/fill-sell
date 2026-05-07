@@ -21,7 +21,7 @@ serve(async (req) => {
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
-      line_items: [{ price: "price_1TNI72QZRA77vrWJ1Yq0TxDB", quantity: 1 }],
+      line_items: [{ price: "price_1TUYAuQZRA77vrWJclhNe2fg", quantity: 1 }],
       success_url: "https://fillsell.app/success",
       cancel_url: "https://fillsell.app/cancel",
       customer_email: email || undefined,
