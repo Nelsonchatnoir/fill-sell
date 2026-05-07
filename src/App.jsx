@@ -239,17 +239,12 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
       <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {tb('trialNoCost')}</div>
       <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{tb('limiteGratuit')}</div>
       <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{tb('limiteGratuitDesc')}</div>
-      <button
+      <CtaPremium
         onClick={handleCheckout}
+        label={loading ? tb('redirection') : `✨ ${tb('unlockPremium')}`}
         disabled={loading}
-        className="cta-premium"
-        style={{width:"100%", opacity: loading ? 0.7 : 1, cursor: loading ? "not-allowed" : "pointer"}}
-      >
-        {loading ? tb('redirection') : `✨ ${tb('unlockPremium')}`}
-      </button>
-      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:6}}>
-        {lang==='fr' ? '7 jours gratuits · Puis 9,99€/mois' : '7 days free · Then €9.99/month'}
-      </div>
+        sub={lang==='fr' ? '7 jours gratuits · Puis 9,99€/mois' : '7 days free · Then €9.99/month'}
+      />
     </div>
   );
 }
@@ -271,17 +266,12 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
           {lang==='fr'?'puis ':'then '}{iapProduct.priceString} / {lang==='fr'?'mois':'month'}
         </div>
       )}
-      <button
+      <CtaPremium
         onClick={onPurchase}
+        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai gratuit →':'✨ Start free trial →')}
         disabled={iapLoading}
-        className="cta-premium"
-        style={{width:"100%", opacity: iapLoading ? 0.7 : 1, cursor: iapLoading ? "not-allowed" : "pointer"}}
-      >
-        {iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai gratuit →':'✨ Start free trial →')}
-      </button>
-      <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,marginTop:6}}>
-        {lang==='fr'?'7 jours gratuits · Puis 9,99€/mois':'7 days free · Then €9.99/month'}
-      </div>
+        sub={lang==='fr'?'7 jours gratuits · Puis 9,99€/mois':'7 days free · Then €9.99/month'}
+      />
       <button
         onClick={onRestore}
         disabled={iapLoading}
@@ -290,6 +280,24 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
         {lang==='fr'?'Restaurer mes achats':'Restore purchases'}
       </button>
     </div>
+  );
+}
+
+function CtaPremium({ onClick, label = "✨ Commencer l'essai gratuit →", disabled, sub }) {
+  return (
+    <>
+      <button
+        className="cta-premium"
+        onClick={onClick}
+        disabled={disabled}
+        style={disabled ? {opacity:0.7,cursor:"not-allowed"} : undefined}
+      >
+        {label}
+      </button>
+      <div className="cta-premium-sub">
+        {sub || "Puis 9,99 €/mois — annulable à tout moment"}
+      </div>
+    </>
   );
 }
 
@@ -743,60 +751,137 @@ function ActivityCurve({sales, lang}){
   );
 }
 
-function DashboardEmptyState({lang, setTab}) {
-  const EXAMPLES_FR = [
-    "J'ai acheté une veste Zara 8€",
-    "J'ai vendu 3 paquets Pokémon à 15€",
-    "Combien j'ai gagné ce mois-ci ?",
-    "C'est quoi mes articles les plus rentables ?",
-    "Combien d'articles Nike j'ai en stock ?"
-  ];
-  const EXAMPLES_EN = [
-    "I bought a Zara jacket for 8€",
-    "I sold 3 Pokémon packs for 15€",
-    "How much did I earn this month?",
-    "What are my most profitable items?",
-    "How many Nike items do I have in stock?"
-  ];
-  const examples = lang === 'en' ? EXAMPLES_EN : EXAMPLES_FR;
-  const [exIdx, setExIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
+const VOICE_EXAMPLES_FR = [
+  { text: "J'ai acheté une veste Zara pour 8€",        tag: "Ajouter",  cls: "add"   },
+  { text: "J'ai vendu 3 paquets Pokémon à 15€ chacun", tag: "Vendre",   cls: "sell"  },
+  { text: "Combien j'ai gagné ce mois-ci ?",           tag: "Demander", cls: "query" },
+  { text: "Mes articles les plus rentables ?",         tag: "Demander", cls: "query" },
+  { text: "Combien d'articles Nike en stock ?",        tag: "Demander", cls: "query" },
+  { text: "Analyse mes profits de la semaine",         tag: "Demander", cls: "query" },
+  { text: "Ajoute 10 iPhone 12 à 100€ le lot",         tag: "Ajouter",  cls: "add"   },
+  { text: "Qu'est-ce que j'ai vendu cette semaine ?",  tag: "Demander", cls: "query" },
+];
+const VOICE_EXAMPLES_EN = [
+  { text: "I bought a Zara jacket for 8€",              tag: "Add",  cls: "add"   },
+  { text: "I sold 3 Pokémon packs for 15€ each",        tag: "Sell", cls: "sell"  },
+  { text: "How much did I earn this month?",             tag: "Ask",  cls: "query" },
+  { text: "What are my most profitable items?",          tag: "Ask",  cls: "query" },
+  { text: "How many Nike items in stock?",               tag: "Ask",  cls: "query" },
+  { text: "Analyze my profits this week",                tag: "Ask",  cls: "query" },
+  { text: "Add 10 iPhone 12 at 100€ the lot",            tag: "Add",  cls: "add"   },
+  { text: "What did I sell this week?",                  tag: "Ask",  cls: "query" },
+];
 
-  useEffect(() => { setExIdx(0); setVisible(true); }, [lang]);
+function VoiceTicker({lang}) {
+  const examples = lang === 'en' ? VOICE_EXAMPLES_EN : VOICE_EXAMPLES_FR;
+  const [idx, setIdx] = useState(0);
+  const [text, setText] = useState("");
+  const stateRef = useRef({ char: 0, mode: "type" });
+
+  useEffect(() => { stateRef.current = { char: 0, mode: "type" }; setText(""); }, [lang]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => { setExIdx(i => (i + 1) % examples.length); setVisible(true); }, 350);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [examples.length]);
+    let alive = true;
+    let timer;
+    const tick = () => {
+      if (!alive) return;
+      const cur = examples[idx];
+      const s = stateRef.current;
+      if (s.mode === "type") {
+        s.char++;
+        setText(cur.text.slice(0, s.char));
+        if (s.char >= cur.text.length) { s.mode = "hold"; timer = setTimeout(tick, 1800); return; }
+        timer = setTimeout(tick, 32 + Math.random() * 30);
+      } else if (s.mode === "hold") {
+        s.mode = "erase"; timer = setTimeout(tick, 30);
+      } else {
+        s.char -= 3;
+        setText(cur.text.slice(0, Math.max(0, s.char)));
+        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % examples.length); }
+        else { timer = setTimeout(tick, 14); }
+      }
+    };
+    tick();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [idx, lang]);
 
+  const cur = examples[idx];
   return (
-    <div className="empty-hero card-enter">
-      <div className="empty-hero-art">
-        <span className="glyph">📈</span>
-      </div>
-      <h1>{lang==='en' ? 'Track every euro of profit.' : 'Suis chaque euro de profit.'}</h1>
-      <p>{lang==='en' ? 'Talk to your AI or type — it understands everything' : 'Parle à ton IA ou tape — elle comprend tout'}</p>
-      <div className="empty-typewriter">
-        <span style={{opacity: visible ? 1 : 0, transition: 'opacity 0.35s ease'}}>
-          "{examples[exIdx]}"
-        </span>
-      </div>
-      <div className="empty-hero-stats">
-        <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Auto-categorized':'Catégories auto'}</span>
-        <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Real-time stats':'Stats temps réel'}</span>
-        <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Free up to 20':'Gratuit jusqu\'à 20'}</span>
+    <div className="voice-ticker">
+      <span className="vt-quote">«</span>
+      <span className="vt-text">{text}</span>
+      <span className="vt-cursor" />
+      <span className={`vt-tag ${cur.cls}`}>{cur.tag}</span>
+    </div>
+  );
+}
+
+function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
+  return (
+    <div className="empty-hero">
+      <div className="empty-hero-art">🎙️</div>
+      <h1>{lang==='en' ? "Talk, the AI does the rest." : "Parle, l'IA fait le reste."}</h1>
+      <p>
+        {lang==='en'
+          ? <><>No forms, no tutorial. </><b>You talk, the AI understands.</b></>
+          : <><>Pas de formulaire, pas de tutoriel. </><b>Tu parles, l'IA comprend.</b></>
+        }
+      </p>
+      <VoiceTicker lang={lang} />
+      <div className="voice-categories">
+        <div className="voice-cat"><div className="ico">➕</div><div className="lbl">{lang==='en'?'Add':'Ajouter'}</div></div>
+        <div className="voice-cat"><div className="ico">💰</div><div className="lbl">{lang==='en'?'Sell':'Vendre'}</div></div>
+        <div className="voice-cat"><div className="ico">🔍</div><div className="lbl">{lang==='en'?'Ask':'Demander'}</div></div>
       </div>
       <div className="empty-hero-cta-stack">
-        <button className="cta-premium" onClick={()=>{setTab(1); localStorage.setItem('tab',1);}}>
-          ➕ {lang==='en' ? 'Add my first item' : 'Ajouter mon premier article'}
+        <button className="cta-premium" onClick={onTryVoice}>
+          🎙️ {lang==='en' ? 'Try voice AI · 7 days free' : 'Essayer le vocal IA · 7 jours gratuits'}
         </button>
-        <button className="empty-hero-secondary" onClick={()=>{setTab(1); localStorage.setItem('tab',1);}}>
-          🎤 {lang==='en' ? 'Or talk to your AI →' : 'Ou parle à ton IA →'}
+        <button className="empty-hero-secondary" onClick={onAddManual}>
+          ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
         </button>
       </div>
+      <div style={{fontSize:11,fontWeight:700,color:"#6B7280",marginTop:14}}>
+        {lang==='en'
+          ? 'Premium €9.99/month after the 7-day trial · cancel anytime'
+          : "Premium 9,99 €/mois après les 7 jours d'essai · annulable à tout moment"}
+      </div>
+    </div>
+  );
+}
+
+function FabVocal({ onClick, isRec, isThink, isRes }) {
+  if (isRes) return null;
+  return (
+    <div className="fab-wrap">
+      <div className="fab-orbit" aria-hidden="true">
+        <svg viewBox="0 0 120 120">
+          <defs>
+            <path id="fabOrbitPath" d="M 60,60 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"/>
+          </defs>
+          <text>
+            <textPath href="#fabOrbitPath" startOffset="0">
+              PARLE À TON IA · APPUIE POUR PARLER · {" "}
+            </textPath>
+          </text>
+        </svg>
+      </div>
+      <button
+        className={"fab-vocal" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
+        onClick={onClick}
+        disabled={isThink}
+        aria-label="Parler à l'IA"
+      >
+        {isThink ? (
+          <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",width:28,height:28}}>
+            <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
+            <span style={{fontSize:20,position:"relative",zIndex:1}}>🎤</span>
+          </div>
+        ) : (
+          <span style={{fontSize:26,lineHeight:1}}>🎙️</span>
+        )}
+      </button>
+      <div className="fab-tooltip">Parle à ton IA</div>
     </div>
   );
 }
@@ -1154,24 +1239,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
       `}</style>
 
       {/* FAB */}
-      <button
-        onClick={handleFabClick}
-        disabled={isThink}
-        className={"fab-vocal"+(isRec?" listening":"")+(isThink?" thinking":"")}
-        style={{
-          display: isRes ? "none" : "flex",
-          animation: isIdle ? "va-breathe 3s ease-in-out infinite" : isRec ? "va-pulse 1.2s ease-in-out infinite" : "none",
-        }}
-      >
-        {isThink?(
-          <div style={{position:"relative",width:fabSize,height:fabSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
-            <span style={{fontSize:28,position:"relative",zIndex:1}}>🎤</span>
-          </div>
-        ):(
-          <span style={{fontSize:28,lineHeight:1}}>🎤</span>
-        )}
-      </button>
+      <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} />
 
       {/* Listening overlay card */}
       {isRec&&(
@@ -3220,7 +3288,11 @@ export default function App({ loginOnly = false }){
               <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>{lang==='en'?"Loading data...":"Chargement des données..."}</div>
             ):items.length===0&&sales.length===0?(
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
-                <DashboardEmptyState lang={lang} setTab={setTab} />
+                <EmptyStateDashboard
+                  lang={lang}
+                  onTryVoice={()=>{setTab(1); localStorage.setItem('tab',1);}}
+                  onAddManual={()=>{setTab(1); localStorage.setItem('tab',1);}}
+                />
               </div>
             ):(
               <>
