@@ -18,6 +18,7 @@ import { executeVoiceTasks } from './utils/voiceEngine';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
+import './App.redesign.css';
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -610,21 +611,130 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
   );
 }
 
-function DonutChart({segments}){
-  const r=54,cx=60,cy=60,circ=2*Math.PI*r;
-  let offset=0;
-  return(
-    <svg width={120} height={120} viewBox="0 0 120 120">
-      <g transform="rotate(-90 60 60)">
-        {segments.map((s,i)=>{
-          const dash=(s.pct/100)*circ;
-          const gap=circ-dash;
-          const el=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.color} strokeWidth={12} strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-offset}/>;
-          offset+=dash;
-          return el;
-        })}
-      </g>
-    </svg>
+function DonutChart({segments, totalLabel, totalValue}){
+  const r = 56, cx = 70, cy = 70, circ = 2 * Math.PI * r;
+  const GAP = 2;
+  let offset = 0;
+  return (
+    <div className="donut-svg">
+      <svg width={140} height={140} viewBox="0 0 140 140">
+        <g transform="rotate(-90 70 70)">
+          <circle className="track" cx={cx} cy={cy} r={r} />
+          {segments.map((s, i) => {
+            const dash = Math.max(0, (s.pct / 100) * circ - GAP);
+            const gap = circ - dash;
+            const el = (
+              <circle
+                key={i}
+                className="seg"
+                cx={cx}
+                cy={cy}
+                r={r}
+                stroke={s.color}
+                strokeDasharray={`${dash} ${gap}`}
+                strokeDashoffset={-offset}
+                style={{ animation: `legendGrow 0.9s cubic-bezier(0.65,0,0.35,1) ${0.1 + i * 0.08}s both` }}
+              />
+            );
+            offset += dash + GAP;
+            return el;
+          })}
+        </g>
+      </svg>
+      {totalValue !== undefined && (
+        <div className="center-stack">
+          <div className="lbl">{totalLabel || 'Total'}</div>
+          <div className="v">{totalValue}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityCurve({sales, lang}){
+  const [hover, setHover] = useState(null);
+  const W = 320, H = 130, P = 8;
+
+  const days = useMemo(() => {
+    const now = new Date();
+    return Array.from({length: 84}, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (83 - i));
+      const key = d.toISOString().slice(0, 10);
+      const dayProfit = sales
+        .filter(s => (s.created_at || s.date || '').slice(0,10) === key)
+        .reduce((a, s) => a + (s.margin || 0), 0);
+      return { date: d, key, profit: dayProfit };
+    });
+  }, [sales]);
+
+  const max = Math.max(1, ...days.map(d => d.profit));
+  const min = Math.min(0, ...days.map(d => d.profit));
+  const total = days.reduce((a, d) => a + d.profit, 0);
+
+  const pts = days.map((d, i) => [
+    P + (i / (days.length - 1)) * (W - 2*P),
+    H - P - ((d.profit - min) / (max - min || 1)) * (H - 2*P)
+  ]);
+  const path = pts.reduce((acc, [x,y], i) => {
+    if (i === 0) return `M${x},${y}`;
+    const [px, py] = pts[i-1];
+    const cx = (px + x) / 2;
+    return `${acc} Q${px},${py} ${cx},${(py+y)/2} T${x},${y}`;
+  }, '');
+  const area = `${path} L${pts[pts.length-1][0]},${H-P} L${pts[0][0]},${H-P} Z`;
+
+  const fmtDate = d => d.toLocaleDateString(lang==='en'?'en-US':'fr-FR', {day:'numeric',month:'short'});
+  const fmtMoney = n => (Math.round(n*100)/100).toFixed(2).replace('.',',') + ' €';
+
+  const handleMove = e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    const idx = Math.max(0, Math.min(days.length-1,
+      Math.round(((x - P) / (W - 2*P)) * (days.length - 1))));
+    setHover({idx, ...days[idx], px: pts[idx][0], py: pts[idx][1]});
+  };
+
+  return (
+    <div className="activity-curve-card">
+      <div className="activity-curve-head">
+        <div>
+          <div className="t">{lang==='en'?'Activity':'Activité'}</div>
+          <div className="sub">{lang==='en'?'Last 84 days':'84 derniers jours'}</div>
+        </div>
+        <div className="total">{fmtMoney(total)}</div>
+      </div>
+      <div style={{position:'relative'}}>
+        <svg
+          className="activity-curve-svg"
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          onMouseMove={handleMove}
+          onMouseLeave={()=>setHover(null)}
+        >
+          <defs>
+            <linearGradient id="acGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#1D9E75" stopOpacity="0.30"/>
+              <stop offset="100%" stopColor="#1D9E75" stopOpacity="0"/>
+            </linearGradient>
+          </defs>
+          <path className="ac-area" d={area}/>
+          <path className="ac-line" d={path}/>
+          {hover && (
+            <>
+              <line className="ac-crosshair" x1={hover.px} y1={P} x2={hover.px} y2={H-P}/>
+              <circle className="ac-dot" cx={hover.px} cy={hover.py} r={5}/>
+            </>
+          )}
+        </svg>
+        {hover && (
+          <div className="ac-tooltip" style={{left: `${(hover.px/W)*100}%`, top: `${(hover.py/H)*100}%`}}>
+            <div className="v">{fmtMoney(hover.profit)}</div>
+            <div className="d">{fmtDate(hover.date)}</div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -722,15 +832,6 @@ function StatsTab({sales,items,lang}){
     return (now-new Date(i.created_at||0))>30*24*3600*1000;
   }).length;
 
-  const cells=Array.from({length:84},(_,i)=>{
-    const d=new Date(now);
-    d.setDate(d.getDate()-i);
-    const k=d.toISOString().slice(0,10);
-    const count=sales.filter(s=>(s.created_at||s.date||'').slice(0,10)===k).length;
-    const lvl=count===0?'':count===1?'l1':count===2?'l2':count<=4?'l3':'l4';
-    return lvl;
-  }).reverse();
-
   useEffect(()=>{
     if(filtered.length===0){setAiText('');return;}
     const SURL=import.meta.env.VITE_SUPABASE_URL;
@@ -815,19 +916,35 @@ function StatsTab({sales,items,lang}){
       </div>
 
       {/* Donut by category */}
-      {donutSegs.length>0&&(
-        <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'Profit by category':'Profit par catégorie'}</div>
-          <div style={{display:'flex',alignItems:'center',gap:16}}>
-            <DonutChart segments={donutSegs}/>
-            <div style={{display:'flex',flexDirection:'column',gap:6,flex:1}}>
-              {donutSegs.map((s,i)=>(
-                <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
-                  <span style={{width:10,height:10,borderRadius:3,background:s.color,flexShrink:0}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:'#374151',flex:1}}>{s.label}</span>
-                  <span style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{Math.round(s.pct)}%</span>
-                </div>
-              ))}
+      {donutSegs.length > 0 && (
+        <div className="donut-card">
+          <div className="head">{lang==='en'?'Profit by category':'Profit par catégorie'}</div>
+          <div className="donut-row">
+            <DonutChart
+              segments={donutSegs}
+              totalLabel={lang==='en'?'Total':'Total'}
+              totalValue={fmt2(totalProfit)}
+            />
+            <div className="donut-legend">
+              {donutSegs.map((s, i) => {
+                const emoji = {
+                  'Mode':'👗','Luxe':'💎','High-Tech':'📱','Maison':'🏠',
+                  'Sport':'⚽','Musique':'🎵','Beauté':'💄','Collection':'🏆',
+                  'Livres':'📚','Auto-Moto':'🚗','Électroménager':'⚡','Jouets':'🧸',
+                  'Autre':'📦'
+                }[s.label] || '📦';
+                return (
+                  <div key={i} className="donut-legend-row">
+                    <div className="top">
+                      <span className="name"><span className="emo">{emoji}</span>{s.label}</span>
+                      <span className="pct">{Math.round(s.pct)}%</span>
+                    </div>
+                    <div className="donut-legend-bar">
+                      <span style={{ width: `${s.pct}%`, background: s.color }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -852,13 +969,8 @@ function StatsTab({sales,items,lang}){
         </div>
       )}
 
-      {/* Heatmap */}
-      <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'Activity (84 days)':'Activité (84 jours)'}</div>
-        <div className="heatmap-grid">
-          {cells.map((lvl,i)=><div key={i} className={`heatmap-cell${lvl?' '+lvl:''}`}/>)}
-        </div>
-      </div>
+      {/* Activity curve (84 days) */}
+      <ActivityCurve sales={sales} lang={lang} />
 
       {/* Top sellers */}
       {topSellers.length>0&&(
@@ -3045,34 +3157,28 @@ export default function App({ loginOnly = false }){
               <div style={{textAlign:"center",padding:"60px 0",color:C.sub,fontSize:14,fontWeight:600}}>{lang==='en'?"Loading data...":"Chargement des données..."}</div>
             ):items.length===0&&sales.length===0?(
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
-                <div className="card" style={{padding:"40px 32px",textAlign:"center"}}>
-                  <div style={{fontSize:48,marginBottom:16}}>👋</div>
-                  <div style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-0.5px",marginBottom:12}}>{lang==='en'?"Welcome to Fill & Sell":"Bienvenue sur Fill & Sell"}</div>
-                  <div style={{fontSize:14,color:C.sub,lineHeight:1.7,marginBottom:32,maxWidth:380,margin:"0 auto 32px"}}>
-                    {lang==='en'?"Track your resale profits in seconds.":"Suis tes profits de revente en quelques secondes."}<br/>{lang==='en'?"Start by adding your first item.":"Commence par ajouter ton premier article."}
+                <div className="empty-hero card-enter">
+                  <div className="empty-hero-art">
+                    <span className="glyph">📈</span>
                   </div>
-                  <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:36,flexWrap:"wrap"}}>
-                    {[{icon:"📦",label:"Ajoute un article",tab:1},{icon:"💰",label:"Enregistre une vente",tab:1},{icon:"📊",label:"Analyse tes profits",tab:3}].map((step,i)=>(
-                      <div key={i} onClick={()=>{setTab(step.tab);localStorage.setItem('tab',step.tab);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"14px 18px",background:C.rowBg,borderRadius:14,border:"1px solid rgba(0,0,0,0.06)",minWidth:100,cursor:"pointer",transition:"transform 0.15s,box-shadow 0.15s"}}
-                        onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.08)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}
-                        onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
-                        onMouseUp={e=>e.currentTarget.style.transform="translateY(-2px)"}
-                      >
-                        <div style={{fontSize:26}}>{step.icon}</div>
-                        <div style={{fontSize:11,fontWeight:700,color:C.sub,textAlign:"center"}}>{step.label}</div>
-                      </div>
-                    ))}
+                  <h1>{lang==='en' ? 'Track every euro of profit.' : 'Suis chaque euro de profit.'}</h1>
+                  <p>
+                    {lang==='en'
+                      ? 'Add an item, set your buy & sell price — see your real margin in seconds.'
+                      : 'Ajoute un article, renseigne achat & vente — vois ta vraie marge en quelques secondes.'}
+                  </p>
+                  <div className="empty-hero-stats">
+                    <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Auto-categorized':'Catégories auto'}</span>
+                    <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Real-time stats':'Stats temps réel'}</span>
+                    <span className="empty-hero-stat"><span className="dot"></span>{lang==='en'?'Free up to 20':'Gratuit jusqu\'à 20'}</span>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                    <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}} style={{padding:"14px 24px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(62,172,160,0.35)",transition:"all 0.2s"}}
-                      onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
-                      onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}
-                    >➕ Ajouter mon premier article</button>
-                    <button onClick={()=>{setTab(2);localStorage.setItem('tab',2);}} style={{padding:"14px 24px",background:"transparent",color:C.teal,border:`1.5px solid ${C.teal}`,borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
-                      onMouseEnter={e=>{e.currentTarget.style.background=C.tealLight;}}
-                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
-                    >🧮 Tester le calculateur</button>
+                  <div className="empty-hero-cta-stack">
+                    <button className="cta-premium" onClick={()=>{setTab(1); localStorage.setItem('tab',1);}}>
+                      ➕ {lang==='en' ? 'Add my first item' : 'Ajouter mon premier article'}
+                    </button>
+                    <button className="empty-hero-secondary" onClick={()=>{setTab(2); localStorage.setItem('tab',2);}}>
+                      🧮 {lang==='en' ? 'Try the calculator' : 'Tester le calculateur'}
+                    </button>
                   </div>
                 </div>
               </div>
