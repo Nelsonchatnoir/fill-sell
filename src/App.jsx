@@ -1386,6 +1386,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
   const drawerRef=useRef(null);
   const swipeRef=useRef({startY:0,active:false});
   const [vaEdits,setVaEdits]=useState({});
+  const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
   const SURL=import.meta.env.VITE_SUPABASE_URL;
 
   function resetVA(){
@@ -2329,7 +2330,6 @@ export default function App({ loginOnly = false }){
   const [vaStep,setVaStep]=useState("");
   const [vaResults,setVaResults]=useState([]);
   const [vaError,setVaError]=useState(null);
-  const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
   const fabTriggerRef=useRef(null);
 
   const {t,tpl}=useTranslation(lang);
