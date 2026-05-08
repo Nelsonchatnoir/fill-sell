@@ -447,6 +447,19 @@ const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électro
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 
+const VOICE_EXAMPLES = [
+  { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
+  { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
+  { text: "J'ai vendu le jean Levis à 38€ avec 3€ de frais Vinted",                                                    tag: "Vendre",      cls: "sell"  },
+  { text: "J'ai acheté une perceuse Makita 18V avec 2 batteries état correct pour 45€ et revendue 89€",                tag: "Achat+Vente", cls: "sell"  },
+  { text: "Combien j'ai gagné ce mois-ci et quels sont mes articles les plus rentables ?",                              tag: "Stats",       cls: "query" },
+  { text: "Qu'est-ce que j'ai comme articles Nike en stock et depuis combien de temps ?",                               tag: "Stock",       cls: "query" },
+  { text: "Analyse mes profits et dis-moi sur quoi je dois me concentrer",                                             tag: "Analyse",     cls: "query" },
+  { text: "J'ai acheté un sac Kelly Hermès vert petit modèle bon état pour 180€",                                      tag: "Ajouter",     cls: "add"   },
+  { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
+  { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
+];
+
 const SKELETON_ITEMS=[
   {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},
   {title:'Lot Pokémon x20',      type:'Collection', marque:'Pokémon', buy:8,   qty:20, days:null},
@@ -826,19 +839,6 @@ function AvgDaysChart({filtered, items, lang}) {
     </div>
   );
 }
-
-const VOICE_EXAMPLES = [
-  { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
-  { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
-  { text: "J'ai vendu le jean Levis à 38€ avec 3€ de frais Vinted",                                                    tag: "Vendre",      cls: "sell"  },
-  { text: "J'ai acheté une perceuse Makita 18V avec 2 batteries état correct pour 45€ et revendue 89€",                tag: "Achat+Vente", cls: "sell"  },
-  { text: "Combien j'ai gagné ce mois-ci et quels sont mes articles les plus rentables ?",                              tag: "Stats",       cls: "query" },
-  { text: "Qu'est-ce que j'ai comme articles Nike en stock et depuis combien de temps ?",                               tag: "Stock",       cls: "query" },
-  { text: "Analyse mes profits et dis-moi sur quoi je dois me concentrer",                                             tag: "Analyse",     cls: "query" },
-  { text: "J'ai acheté un sac Kelly Hermès vert petit modèle bon état pour 180€",                                      tag: "Ajouter",     cls: "add"   },
-  { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
-  { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
-];
 
 function VoiceTicker() {
   const [idx, setIdx] = useState(0);
