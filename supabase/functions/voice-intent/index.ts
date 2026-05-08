@@ -35,29 +35,41 @@ Intents disponibles :
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
 
-Règle price_advice (CRITIQUE) :
-price_advice = question STANDALONE sur le prix de revente d'un article, SANS ajout au stock simultané.
-Déclencheurs : "à combien je peux vendre X ?", "je peux revendre combien X ?", "c'est quoi le prix pour X ?",
-"combien ça vaut X ?", "c'est un bon prix X à Y€ ?", "quel prix pour X ?", "je vends X à combien ?".
-DISTINCTIONS :
-- Si inventory_add est aussi présent → utiliser price_question (pas price_advice).
-- Si l'utilisateur donne DEUX prix (achat + vente) pour un calcul → utiliser deal_score.
-- Si question générale sur le business sans article précis → utiliser business_advice.
-Ne JAMAIS générer business_advice pour une demande de prix sur un article précis.
+Règle price_advice (CRITIQUE — PRIORITAIRE) :
+RÈGLE PRINCIPALE : si l'utterance contient un article précis (nom/marque/modèle) + une question sur son prix de revente → TOUJOURS price_advice. JAMAIS business_advice.
+Peu importe si l'utilisateur dit "j'ai acheté" ou "j'ai trouvé" ou "j'ai un" : la mention d'un achat passé ne déclenche PAS inventory_add si l'intention principale est une question de prix.
+
+Déclencheurs price_advice : "tu penses que je peux le/la revendre combien ?", "à combien je peux vendre X ?",
+"je peux revendre combien X ?", "combien ça vaut X ?", "c'est un bon prix X à Y€ ?",
+"quel prix pour X ?", "à combien tu estimes X ?", "ça vaut combien à la revente ?", "je peux en tirer combien ?".
+
+Exemples OBLIGATOIRES price_advice :
+✅ "j'ai acheté un iphone 13 256go tu penses que je peux le revendre combien ?" → price_advice {nom:"iPhone 13 256Go", marque:"Apple"}
+✅ "combien je peux vendre mon iPhone 13 ?" → price_advice {nom:"iPhone 13", marque:"Apple"}
+✅ "à combien tu estimes un iPhone 13 256go ?" → price_advice {nom:"iPhone 13 256Go", marque:"Apple"}
+✅ "j'ai un Nike Air Max 90 ça vaut combien à la revente ?" → price_advice {nom:"Nike Air Max 90", marque:"Nike"}
+✅ "j'ai trouvé une PS5 tu penses que je peux la vendre combien ?" → price_advice {nom:"PS5", marque:"Sony"}
+✅ "j'ai acheté un sac Zara 12€ je peux le revendre combien ?" → price_advice {nom:"Sac Zara", marque:"Zara", prix_achat:12}
+
+DISTINCTIONS price_advice :
+- price_question UNIQUEMENT si l'utilisateur demande explicitement d'ajouter ET pose une question de prix (ex: "ajoute un iPhone 13 à 80€, ça vaut combien ?") → inventory_add + price_question.
+- deal_score : si l'utilisateur donne DEUX prix (achat ET vente) pour un calcul de marge.
+- business_advice UNIQUEMENT si aucun article précis n'est mentionné.
+INTERDIT : générer business_advice quand un article précis est mentionné avec une question de prix.
 Data price_advice : { nom, marque, prix_achat, categorie, description }
 
-Règle price_question (CRITIQUE — lire attentivement) :
-price_question = quand l'utilisateur pose une question sur le prix de revente ou la rentabilité d'un article, SANS donner un prix de vente explicite :
-"à combien je peux le revendre ?", "tu penses que je peux en tirer combien ?", "ça vaut combien sur Vinted ?",
-"c'est un bon deal ?", "vaut le coup ?", "bon deal ?", "je peux vendre à combien ?", "combien ça peut valoir ?".
-DISTINCTION avec deal_score : deal_score = l'utilisateur donne DEUX prix (achat ET vente). price_question = l'utilisateur donne seulement le prix d'achat et DEMANDE combien il peut vendre.
-RÈGLE OBLIGATOIRE : si inventory_add ET price_question sont générés pour le même article → inventory_add.requiresConfirmation = true.
+Règle price_question (CRITIQUE — s'applique uniquement si inventory_add est aussi présent) :
+price_question = l'utilisateur demande EXPLICITEMENT d'ajouter un article au stock ET pose une question de prix dans la même phrase.
+Exemple : "ajoute un iPhone 13 à 80€, ça vaut combien ?" → inventory_add (requiresConfirmation:true) + price_question.
+DISTINCTION avec price_advice : si l'utilisateur dit juste "j'ai acheté X" sans demander à l'ajouter → price_advice SEULEMENT.
+RÈGLE OBLIGATOIRE : si inventory_add ET price_question sont générés → inventory_add.requiresConfirmation = true.
 La price_question doit être listée AVANT inventory_add dans les tasks.
 Data price_question : { nom, marque, prix_achat, description, categorie }
 
 Règles off_topic et business_advice (CRITIQUE) :
 off_topic = quand la demande n'a AUCUN rapport avec le business de revente : météo, recettes, vie perso, actualités, blagues, définitions, etc.
-business_advice = quand l'utilisateur pose une question ouverte sur son business : "comment je m'en sors ?", "qu'est-ce que tu me conseilles ?", "est-ce que je suis rentable ?", "quels articles dois-je vendre ?", "ma stratégie", "mes points forts/faibles", "donne-moi des conseils", "analyse mon activité", etc.
+business_advice = quand l'utilisateur pose une question ouverte sur son business SANS mentionner d'article précis : "comment je m'en sors ?", "qu'est-ce que tu me conseilles ?", "est-ce que je suis rentable ?", "quels articles dois-je vendre ?", "ma stratégie", "mes points forts/faibles", "donne-moi des conseils", "analyse mon activité", etc.
+INTERDIT : générer business_advice si un article précis (nom, marque, modèle) est mentionné avec une question de prix.
 Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
 Règle multi-articles :
@@ -194,29 +206,41 @@ Available intents:
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
 
-Rule price_advice (CRITICAL):
-price_advice = STANDALONE question about the resale price of a specific item, with NO simultaneous stock add.
-Triggers: "how much can I sell X for?", "what price should I sell X at?", "what's X worth?",
-"is €Y a good price for X?", "what should I charge for X?", "how much can I get for X?".
-DISTINCTIONS:
-- If inventory_add is also present → use price_question (not price_advice).
-- If user gives TWO prices (buy + sell) for a calculation → use deal_score.
-- If general business question without a specific item → use business_advice.
-NEVER generate business_advice for a price question on a specific item.
+Rule price_advice (CRITICAL — TOP PRIORITY):
+MAIN RULE: if the utterance contains a specific item (name/brand/model) + a question about its resale price → ALWAYS price_advice. NEVER business_advice.
+Regardless of whether the user says "I bought", "I found", or "I have": mentioning a past purchase does NOT trigger inventory_add if the main intent is a price question.
+
+Triggers price_advice: "how much do you think I can sell X for?", "how much can I sell X for?",
+"how much can I resell X for?", "what's X worth?", "is €Y a good price for X?",
+"what price for X?", "how much do you estimate X at?", "what's it worth resold?", "how much can I get for it?".
+
+Mandatory examples price_advice:
+✅ "I bought an iPhone 13 256GB, how much do you think I can sell it for?" → price_advice {nom:"iPhone 13 256GB", marque:"Apple"}
+✅ "how much can I sell my iPhone 13 for?" → price_advice {nom:"iPhone 13", marque:"Apple"}
+✅ "how much do you estimate an iPhone 13 256GB at?" → price_advice {nom:"iPhone 13 256GB", marque:"Apple"}
+✅ "I have a Nike Air Max 90, what's it worth resold?" → price_advice {nom:"Nike Air Max 90", marque:"Nike"}
+✅ "I found a PS5, how much do you think I can sell it for?" → price_advice {nom:"PS5", marque:"Sony"}
+✅ "I bought a Zara bag for €12, how much can I sell it for?" → price_advice {nom:"Zara bag", marque:"Zara", prix_achat:12}
+
+DISTINCTIONS price_advice:
+- price_question ONLY if the user explicitly asks to add AND asks a price question (e.g.: "add an iPhone 13 at €80, how much is it worth?") → inventory_add + price_question.
+- deal_score: if the user gives TWO prices (buy AND sell) for a margin calculation.
+- business_advice ONLY if no specific item is mentioned.
+FORBIDDEN: generating business_advice when a specific item is mentioned with a price question.
 Data price_advice: { nom, marque, prix_achat, categorie, description }
 
-Rule price_question (CRITICAL — read carefully):
-price_question = when the user asks about resale price or profitability WITHOUT giving an explicit sell price:
-"how much can I resell it for?", "how much do you think I can get?", "what's it worth on eBay?",
-"is it a good deal?", "worth buying?", "what should I sell it for?", "how much could it go for?".
-DISTINCTION from deal_score: deal_score = user gives TWO prices (buy AND sell). price_question = user gives only buy price and ASKS how much they can sell for.
-MANDATORY RULE: if inventory_add AND price_question are generated for the same item → inventory_add.requiresConfirmation = true.
+Rule price_question (CRITICAL — applies ONLY if inventory_add is also present):
+price_question = the user EXPLICITLY asks to add an item to stock AND asks a price question in the same sentence.
+Example: "add an iPhone 13 at €80, how much is it worth?" → inventory_add (requiresConfirmation:true) + price_question.
+DISTINCTION from price_advice: if the user just says "I bought X" without asking to add it → price_advice ONLY.
+MANDATORY RULE: if inventory_add AND price_question are generated → inventory_add.requiresConfirmation = true.
 price_question must be listed BEFORE inventory_add in the tasks array.
 Data price_question: { nom, marque, prix_achat, description, categorie }
 
 Rules for off_topic and business_advice (CRITICAL):
 off_topic = when the request has NO relation to the resale business: weather, recipes, personal life, news, jokes, definitions, etc.
-business_advice = when the user asks an open question about their business: "how am I doing?", "what do you advise?", "am I profitable?", "what items should I sell?", "my strategy", "my strengths/weaknesses", "give me advice", "analyze my activity", etc.
+business_advice = when the user asks an open question about their business WITHOUT mentioning a specific item: "how am I doing?", "what do you advise?", "am I profitable?", "what items should I sell?", "my strategy", "my strengths/weaknesses", "give me advice", "analyze my activity", etc.
+FORBIDDEN: generating business_advice if a specific item (name, brand, model) is mentioned with a price question.
 Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
 Multi-article rule:
