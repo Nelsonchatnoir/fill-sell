@@ -356,7 +356,7 @@ body.bg-dots {
 }
 
 /* ============================================================
-   5. FAB VOCAL — halo concentrique animé
+   5. FAB VOCAL — halo concentrique + texte orbital
    ============================================================ */
 .fab-wrap {
   position: fixed;
@@ -389,9 +389,10 @@ body.bg-dots {
   z-index: 2;
 }
 
-.fab-vocal:hover { transform: scale(1.04); }
-.fab-vocal:active { transform: scale(0.93); box-shadow: 0 0 28px rgba(13,148,136,0.65), 0 4px 12px rgba(29,158,117,0.55); }
+.fab-vocal:hover  { transform: scale(1.04); }
+.fab-vocal:active { transform: scale(0.93); }
 
+/* Halos concentriques — 2 cercles décalés */
 .fab-vocal::before,
 .fab-vocal::after {
   content: "";
@@ -410,21 +411,69 @@ body.bg-dots {
   100% { transform: scale(1.8); opacity: 0; }
 }
 
-.fab-vocal.listening {
-  background: linear-gradient(135deg, #C53030 0%, #E53E3E 50%, #FC8181 100%);
+/* Texte orbital qui tourne autour */
+.fab-orbit {
+  position: absolute;
+  inset: -16px;
+  pointer-events: none;
+  animation: fabOrbitSpin 18s linear infinite;
+  opacity: 0.85;
 }
-.fab-vocal.listening::before,
-.fab-vocal.listening::after {
-  border-color: rgba(229, 62, 62, 0.5);
-  animation-duration: 1.6s;
+.fab-orbit svg { width: 100%; height: 100%; overflow: visible; }
+.fab-orbit text {
+  font-family: 'Nunito', sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: #1D9E75;
 }
 
-.fab-vocal.thinking {
-  background: #fff;
-  cursor: not-allowed;
+@keyframes fabOrbitSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
-.fab-vocal.thinking::before,
-.fab-vocal.thinking::after { display: none; }
+
+/* Tooltip au hover/focus */
+.fab-tooltip {
+  position: absolute;
+  right: 78px;
+  top: 50%;
+  transform: translateY(-50%) translateX(8px);
+  background: #1A1A1A;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fab-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-left-color: #1A1A1A;
+}
+.fab-wrap:hover .fab-tooltip,
+.fab-wrap:focus-within .fab-tooltip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab-vocal::before,
+  .fab-vocal::after,
+  .fab-orbit { animation: none !important; }
+  .fab-vocal::before, .fab-vocal::after { opacity: 0; }
+}
 
 /* ============================================================
    6. PREMIUM CTA — gradient animé teal → vert + essai gratuit
@@ -1142,59 +1191,99 @@ body.bg-dots {
 .sales-kpi .v.teal { color: var(--teal-strong); }
 
 /* ============================================================
-   12b. VOICE EXAMPLES — rotating ticker + categorized list
+   12b. VOICE ZONE — Stock IA examples + typewriter ticker
    ============================================================ */
 
-/* Typewriter ticker (Stock IA, sous voice-zone) */
+.voice-zone {
+  background: #fff;
+  border-radius: 18px;
+  padding: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.05),
+    0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.voice-zone .vz-prompt {
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4B5563;
+  line-height: 1.5;
+}
+.voice-zone .vz-prompt b {
+  background: linear-gradient(110deg, #0E7C5F, #3EACA0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+}
+
+/* Typewriter ticker */
 .voice-ticker {
-  display: flex; align-items: center; gap: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-top: 12px;
-  padding: 11px 14px;
-  background: rgba(15,23,42,0.03);
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.03);
   border-radius: 12px;
   font-family: 'Nunito', sans-serif;
-  min-height: 40px;
+  min-height: 42px;
 }
+
 .voice-ticker .vt-quote {
-  font-size: 11px; font-weight: 900;
-  color: var(--teal-strong);
-  letter-spacing: -0.005em;
+  font-size: 14px;
+  font-weight: 900;
+  color: #1D9E75;
   flex-shrink: 0;
 }
+
 .voice-ticker .vt-text {
   flex: 1;
   font-size: 13px;
   font-weight: 700;
-  color: var(--text);
+  color: #0D0D0D;
   letter-spacing: -0.005em;
   font-style: italic;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .voice-ticker .vt-cursor {
   display: inline-block;
-  width: 2px; height: 14px;
-  background: var(--teal-strong);
+  width: 2px;
+  height: 14px;
+  background: #1D9E75;
   vertical-align: middle;
   margin-left: 2px;
   animation: vtBlink 0.9s steps(1) infinite;
 }
-@keyframes vtBlink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
+
 .voice-ticker .vt-tag {
   flex-shrink: 0;
-  font-size: 9px; font-weight: 900;
-  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 3px 8px;
   border-radius: 99px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  transition: all 0.3s ease;
 }
-.voice-ticker .vt-tag.add   { background: rgba(29,158,117,0.12); color: var(--teal-strong); }
-.voice-ticker .vt-tag.sell  { background: rgba(217,119,6,0.12);  color: #B45309; }
-.voice-ticker .vt-tag.query { background: rgba(37,99,235,0.10);  color: #1D4ED8; }
+.voice-ticker .vt-tag.add   { background: rgba(29, 158, 117, 0.12); color: #0E7C5F; }
+.voice-ticker .vt-tag.sell  { background: rgba(217, 119, 6, 0.12);  color: #B45309; }
+.voice-ticker .vt-tag.query { background: rgba(37, 99, 235, 0.10);  color: #1D4ED8; }
+
+@keyframes vtBlink {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-ticker .vt-cursor { animation: none; }
+}
 
 /* Voice examples list (empty state Dashboard) */
 .voice-examples {

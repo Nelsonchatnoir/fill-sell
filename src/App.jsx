@@ -751,7 +751,7 @@ function ActivityCurve({sales, lang}){
   );
 }
 
-const VOICE_EXAMPLES_FR = [
+const VOICE_EXAMPLES = [
   { text: "J'ai acheté une veste Zara pour 8€",        tag: "Ajouter",  cls: "add"   },
   { text: "J'ai vendu 3 paquets Pokémon à 15€ chacun", tag: "Vendre",   cls: "sell"  },
   { text: "Combien j'ai gagné ce mois-ci ?",           tag: "Demander", cls: "query" },
@@ -761,31 +761,18 @@ const VOICE_EXAMPLES_FR = [
   { text: "Ajoute 10 iPhone 12 à 100€ le lot",         tag: "Ajouter",  cls: "add"   },
   { text: "Qu'est-ce que j'ai vendu cette semaine ?",  tag: "Demander", cls: "query" },
 ];
-const VOICE_EXAMPLES_EN = [
-  { text: "I bought a Zara jacket for 8€",              tag: "Add",  cls: "add"   },
-  { text: "I sold 3 Pokémon packs for 15€ each",        tag: "Sell", cls: "sell"  },
-  { text: "How much did I earn this month?",             tag: "Ask",  cls: "query" },
-  { text: "What are my most profitable items?",          tag: "Ask",  cls: "query" },
-  { text: "How many Nike items in stock?",               tag: "Ask",  cls: "query" },
-  { text: "Analyze my profits this week",                tag: "Ask",  cls: "query" },
-  { text: "Add 10 iPhone 12 at 100€ the lot",            tag: "Add",  cls: "add"   },
-  { text: "What did I sell this week?",                  tag: "Ask",  cls: "query" },
-];
 
-function VoiceTicker({lang}) {
-  const examples = lang === 'en' ? VOICE_EXAMPLES_EN : VOICE_EXAMPLES_FR;
+function VoiceTicker() {
   const [idx, setIdx] = useState(0);
   const [text, setText] = useState("");
   const stateRef = useRef({ char: 0, mode: "type" });
-
-  useEffect(() => { stateRef.current = { char: 0, mode: "type" }; setText(""); }, [lang]);
 
   useEffect(() => {
     let alive = true;
     let timer;
     const tick = () => {
       if (!alive) return;
-      const cur = examples[idx];
+      const cur = VOICE_EXAMPLES[idx];
       const s = stateRef.current;
       if (s.mode === "type") {
         s.char++;
@@ -793,25 +780,37 @@ function VoiceTicker({lang}) {
         if (s.char >= cur.text.length) { s.mode = "hold"; timer = setTimeout(tick, 1800); return; }
         timer = setTimeout(tick, 32 + Math.random() * 30);
       } else if (s.mode === "hold") {
-        s.mode = "erase"; timer = setTimeout(tick, 30);
+        s.mode = "erase";
+        timer = setTimeout(tick, 30);
       } else {
         s.char -= 3;
         setText(cur.text.slice(0, Math.max(0, s.char)));
-        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % examples.length); }
+        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % VOICE_EXAMPLES.length); }
         else { timer = setTimeout(tick, 14); }
       }
     };
     tick();
     return () => { alive = false; clearTimeout(timer); };
-  }, [idx, lang]);
+  }, [idx]);
 
-  const cur = examples[idx];
+  const cur = VOICE_EXAMPLES[idx];
   return (
     <div className="voice-ticker">
       <span className="vt-quote">«</span>
       <span className="vt-text">{text}</span>
       <span className="vt-cursor" />
       <span className={`vt-tag ${cur.cls}`}>{cur.tag}</span>
+    </div>
+  );
+}
+
+function VoiceZone() {
+  return (
+    <div className="voice-zone">
+      <div className="vz-prompt">
+        Dis simplement <b>« j'ai acheté une veste Zara 8 € »</b> — l'IA détecte la catégorie, le prix marché, et l'ajoute à ton stock.
+      </div>
+      <VoiceTicker />
     </div>
   );
 }
@@ -850,36 +849,30 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
   );
 }
 
-function FabVocal({ onClick, isRec, isThink, isRes }) {
-  if (isRes) return null;
+function FabVocal({ onClick }) {
   return (
     <div className="fab-wrap">
       <div className="fab-orbit" aria-hidden="true">
         <svg viewBox="0 0 120 120">
           <defs>
-            <path id="fabOrbitPath" d="M 60,60 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"/>
+            <path
+              id="fabOrbitPath"
+              d="M 60,60 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"
+            />
           </defs>
           <text>
             <textPath href="#fabOrbitPath" startOffset="0">
-              PARLE À TON IA · APPUIE POUR PARLER · {" "}
+              APPUIE POUR PARLER · PARLE À TON IA ·{" "}
             </textPath>
           </text>
         </svg>
       </div>
       <button
-        className={"fab-vocal" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
+        className="fab-vocal"
         onClick={onClick}
-        disabled={isThink}
         aria-label="Parler à l'IA"
       >
-        {isThink ? (
-          <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",width:28,height:28}}>
-            <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(0,0,0,0.08)",borderTopColor:"#1D9E75",borderRightColor:"#E8956D",animation:"va-spin 0.8s linear infinite"}}/>
-            <span style={{fontSize:20,position:"relative",zIndex:1}}>🎤</span>
-          </div>
-        ) : (
-          <span style={{fontSize:26,lineHeight:1}}>🎙️</span>
-        )}
+        🎙️
       </button>
       <div className="fab-tooltip">Parle à ton IA</div>
     </div>
@@ -3532,10 +3525,10 @@ export default function App({ loginOnly = false }){
               </div>
               {manualMode==="single"&&(<>
               {items.length===0?(
-                <div style={{textAlign:"center",paddingBottom:4,animation:"fadeIn 0.4s ease"}}>
-                  <div style={{fontSize:28,marginBottom:8}}>🧩</div>
-                  <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:6}}>{t('premierArticle')}</div>
-                  <div style={{fontSize:13,color:C.sub,lineHeight:1.6}}>Entre le nom et ton prix d'achat. Tu pourras ajouter le prix de vente plus tard.</div>
+                <div style={{textAlign:"center",padding:"6px 0 10px",animation:"fadeIn 0.4s ease"}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#0E7C5F,#34D399)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 12px",boxShadow:"0 4px 16px rgba(29,158,117,0.3)"}}>📦</div>
+                  <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:6}}>{lang==='en'?'Add your first item':'Ajoute ton premier article'}</div>
+                  <div style={{fontSize:12,color:C.sub,lineHeight:1.6,maxWidth:220,margin:"0 auto"}}>{lang==='en'?'Name + buy price is enough to start tracking your profit.':'Nom + prix d\'achat suffit pour commencer à suivre tes marges.'}</div>
                 </div>
               ):(
                 <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
@@ -3708,6 +3701,8 @@ export default function App({ loginOnly = false }){
             </div>
 
             <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
+
+              <VoiceZone />
 
               {/* ── Barre Import / Export ── */}
               {isPremium?(
