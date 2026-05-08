@@ -446,6 +446,14 @@ function getTypeStyle(type){
 const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
+
+const SKELETON_ITEMS=[
+  {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},
+  {title:'Lot Pokémon x20',      type:'Collection', marque:'Pokémon', buy:8,   qty:20, days:null},
+  {title:'iPhone 12 64Go',       type:'High-Tech',  marque:'Apple',   buy:180, qty:1,  days:5},
+  {title:'Sac Kelly Hermès',     type:'Luxe',       marque:'Hermès',  buy:125, qty:1,  days:1},
+  {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15,  qty:1,  days:null},
+];
 function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
@@ -751,6 +759,68 @@ function ActivityCurve({sales, lang}){
   );
 }
 
+function AvgDaysChart({filtered, items, lang}) {
+  const itemDateMap = useMemo(() => {
+    const m = {};
+    items.forEach(i => { if (i.title && (i.date_ajout || i.created_at)) m[i.title.toLowerCase().trim()] = i.date_ajout || i.created_at; });
+    return m;
+  }, [items]);
+
+  const catDays = useMemo(() => {
+    const acc = {};
+    filtered.forEach(s => {
+      const key = s.title?.toLowerCase().trim();
+      const purchaseDate = key && itemDateMap[key];
+      if (!purchaseDate || !s.date) return;
+      const diff = Math.max(0, Math.round((new Date(s.date) - new Date(purchaseDate)) / 86400000));
+      const cat = normalizeCat(s.type || s.categorie || '');
+      if (!acc[cat]) acc[cat] = {total:0, count:0};
+      acc[cat].total += diff;
+      acc[cat].count++;
+    });
+    return Object.entries(acc)
+      .map(([cat, {total, count}]) => ({cat, avg: Math.round(total / count)}))
+      .sort((a, b) => b.avg - a.avg)
+      .slice(0, 7);
+  }, [filtered, itemDateMap]);
+
+  const maxAvg = Math.max(...catDays.map(d => d.avg), 1);
+  const card = {background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'};
+
+  return (
+    <div style={card}>
+      <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>
+        {lang==='en'?'⏱ Avg. days to sell by category':'⏱ Délai moy. vente par catégorie'}
+      </div>
+      {catDays.length===0?(
+        <div style={{fontSize:12,color:'#A3A9A6',fontWeight:600,fontStyle:'italic',textAlign:'center',padding:'12px 0'}}>
+          {lang==='en'?'Will appear after your first sales':'Apparaîtra après tes premières ventes'}
+        </div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {catDays.map(({cat, avg}) => {
+            const ts = getTypeStyle(cat);
+            const pct = (avg / maxAvg) * 100;
+            return (
+              <div key={cat} style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{width:82,flexShrink:0,fontSize:11,fontWeight:700,color:ts.color,textAlign:'right',whiteSpace:'nowrap'}}>
+                  {ts.emoji} {cat}
+                </div>
+                <div style={{flex:1,height:8,background:'#F3F4F6',borderRadius:99,overflow:'hidden'}}>
+                  <div style={{width:`${pct}%`,height:'100%',background:ts.color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
+                </div>
+                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:800,color:'#0D0D0D',textAlign:'right'}}>
+                  {avg}{lang==='en'?'d':'j'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const VOICE_EXAMPLES = [
   { text: "J'ai acheté une veste Zara pour 8€",        tag: "Ajouter",  cls: "add"   },
   { text: "J'ai vendu 3 paquets Pokémon à 15€ chacun", tag: "Vendre",   cls: "sell"  },
@@ -1012,6 +1082,11 @@ function StatsTab({sales,items,lang}){
   },[filtered,items]);
 
   const topSellers=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
+  const topSellerDaysMap=useMemo(()=>{
+    const m={};
+    items.forEach(i=>{if(i.title&&(i.date_ajout||i.created_at))m[i.title.toLowerCase().trim()]=i.date_ajout||i.created_at;});
+    return m;
+  },[items]);
 
   const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)).slice(0,3);
   const slowCount=[...items].filter(i=>{
@@ -1217,21 +1292,35 @@ function StatsTab({sales,items,lang}){
         </div>
       </div>
 
-      {/* Activity curve (84 days) */}
-      <ActivityCurve sales={sales} lang={lang} />
+      {/* Avg days to sell by category */}
+      <AvgDaysChart filtered={filtered} items={items} lang={lang} />
 
       {/* Top sellers */}
       {topSellers.length>0&&(
         <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'🏆 Top sellers':'🏆 Meilleurs vendeurs'}</div>
-          <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            {topSellers.map((s,i)=>(
-              <div key={i} className="leader-row">
-                <span style={{fontSize:14,fontWeight:900,color:'#4ECDC4',width:20,flexShrink:0}}>#{i+1}</span>
-                <span style={{flex:1,fontSize:13,fontWeight:700,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
-                <span style={{fontSize:13,fontWeight:900,color:'#1D9E75',flexShrink:0}}>{fmt2(s.margin||0)}</span>
-              </div>
-            ))}
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'🏆 Top sellers':'🏆 Meilleurs vendeurs'}</div>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {topSellers.map((s,i)=>{
+              const ts=getTypeStyle(s.type||'Autre');
+              const medal=['🥇','🥈','🥉'][i]||`#${i+1}`;
+              const purchDate=topSellerDaysMap[s.title?.toLowerCase().trim()];
+              const daysHeld=purchDate&&s.date?Math.max(0,Math.round((new Date(s.date)-new Date(purchDate))/86400000)):null;
+              return(
+                <div key={i} style={{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',background:'#F9FAFB',borderRadius:12,border:'1px solid rgba(0,0,0,0.05)'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{medal}</span>
+                    <span style={{flex:1,fontSize:13,fontWeight:800,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
+                    <span style={{fontSize:14,fontWeight:900,color:'#1D9E75',flexShrink:0}}>{fmt2(s.margin||0)}</span>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                    {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{s.marque}</span>}
+                    {s.type&&s.type!=='Autre'&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
+                    {daysHeld!==null&&<span style={{fontSize:10,fontWeight:700,color:'#A3A9A6'}}>{daysHeld}{lang==='en'?'d in stock':'j en stock'}</span>}
+                    {s.buy>0&&s.sell>0&&<span style={{fontSize:10,fontWeight:700,color:'#6B7280',marginLeft:'auto'}}>{fmt2(s.buy)} → {fmt2(s.sell)} · <span style={{color:'#1D9E75'}}>{fmtp2(s.marginPct||0)}</span></span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1239,14 +1328,25 @@ function StatsTab({sales,items,lang}){
       {/* Slow movers */}
       {slowStock.length>0&&(
         <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'🐌 Slow movers':'🐌 Articles lents'}</div>
-          <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            {slowStock.map((s,i)=>(
-              <div key={i} className="leader-row">
-                <span style={{flex:1,fontSize:13,fontWeight:700,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
-                <span style={{fontSize:11,color:'#F9A26C',fontWeight:700,flexShrink:0}}>{lang==='en'?'In stock':'En stock'}</span>
-              </div>
-            ))}
+          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'🐌 Slow movers':'🐌 Articles lents'}</div>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {slowStock.map((s,i)=>{
+              const ts=getTypeStyle(s.type||'Autre');
+              const days=s.date_ajout||s.created_at?Math.floor((Date.now()-new Date(s.date_ajout||s.created_at))/86400000):null;
+              return(
+                <div key={i} style={{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',background:'#FFFBEB',borderRadius:12,border:'1px solid rgba(249,162,108,0.2)'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{flex:1,fontSize:13,fontWeight:800,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
+                    {days!==null&&<span style={{fontSize:11,fontWeight:800,color:'#F9A26C',flexShrink:0}}>{days}{lang==='en'?'d':'j'} {lang==='en'?'in stock':'en stock'}</span>}
+                  </div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                    {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{s.marque}</span>}
+                    {s.type&&s.type!=='Autre'&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
+                    {s.buy>0&&<span style={{fontSize:10,fontWeight:700,color:'#6B7280',marginLeft:'auto'}}>{lang==='en'?'Invested':'Investi'} <span style={{color:'#F9A26C'}}>{fmt2(s.buy*(s.quantite||1))}</span></span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1340,26 +1440,6 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
       {/* FAB */}
       <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />
-
-      {/* Listening overlay card */}
-      {isRec&&(
-        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 140px)",right:16,width:220,background:"#fff",borderRadius:16,border:"0.5px solid rgba(0,0,0,0.08)",padding:"12px 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.12)",zIndex:999,animation:"va-fadein 0.2s ease"}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#E53E3E",marginBottom:10,textAlign:"center"}}>{lang==="en"?"Listening…":"Je t'écoute…"}</div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,height:36,marginBottom:10}}>
-            {[1,2,3,4,5,6,7].map(n=>(
-              <div key={n} style={{width:4,height:8,background:"linear-gradient(to top,#1D9E75,#E8956D)",borderRadius:99,animation:`va-w${n} ${0.7+n*0.1}s ease-in-out ${n*0.07}s infinite`}}/>
-            ))}
-          </div>
-          <div style={{fontSize:10,fontWeight:600,color:"#A3A9A6",textAlign:"center"}}>{lang==="en"?"Tap to stop":"Appuie pour arrêter"}</div>
-        </div>
-      )}
-
-      {/* Thinking indicator */}
-      {isThink&&(
-        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 140px)",right:16,background:"#fff",borderRadius:16,border:"0.5px solid rgba(0,0,0,0.08)",padding:"10px 16px",boxShadow:"0 8px 32px rgba(0,0,0,0.12)",zIndex:999,fontSize:12,fontWeight:700,color:"#1D9E75",animation:"va-fadein 0.2s ease"}}>
-          {lang==="en"?"Thinking…":"Je réfléchis…"}
-        </div>
-      )}
 
       {/* Error bubble */}
       {vaError&&vaStep===""&&(
@@ -3936,16 +4016,48 @@ export default function App({ loginOnly = false }){
                   </div>
                 );})()}
                 {stock.length===0?(
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 16px",gap:12}}>
-                    <span style={{fontSize:40}}>📦</span>
-                    <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",textAlign:"center"}}>{t('premierArticle')}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",textAlign:"center",maxWidth:200,lineHeight:1.5}}>{t('commenceSuivi')}</div>
-                    <button onClick={()=>{scrollRef.current?.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
-                      style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:8,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
-                      onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
-                      onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
-                      onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-                    >{t('ajouterArticle')} 🚀</button>
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    {/* Skeleton preview items */}
+                    <div style={{position:"relative"}}>
+                      <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
+                        {lang==='en'?'Preview':'Exemple'}
+                      </span>
+                      <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.4,pointerEvents:"none",userSelect:"none"}}>
+                        {SKELETON_ITEMS.map((sk,i)=>{
+                          const ts=getTypeStyle(sk.type);
+                          return(
+                            <div key={i} className="skeleton-item-row" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${ts.border}`}}>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                                  <span style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{sk.title}</span>
+                                  <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
+                                  <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {sk.type}</span>
+                                  {sk.qty>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{sk.qty}</span>}
+                                </div>
+                                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>
+                                  {lang==='en'?'Invested':'Investi'} <span style={{color:"#F9A26C"}}>{sk.buy}€</span>
+                                  {sk.days!==null&&<span style={{marginLeft:8}}>{lang==='en'?`in stock ${sk.days}d`:`en stock ${sk.days}j`}</span>}
+                                </div>
+                              </div>
+                              <div style={{flexShrink:0,paddingLeft:12}}>
+                                <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700}}>{lang==='en'?'Sold':'Vendu'}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {/* CTA */}
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"16px 0 8px"}}>
+                      <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",textAlign:"center"}}>{t('premierArticle')}</div>
+                      <div style={{fontSize:13,color:"#A3A9A6",textAlign:"center",maxWidth:220,lineHeight:1.5}}>{t('commenceSuivi')}</div>
+                      <button onClick={()=>{scrollRef.current?.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
+                        style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:4,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
+                        onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
+                        onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+                      >{t('ajouterArticle')} 🚀</button>
+                    </div>
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
