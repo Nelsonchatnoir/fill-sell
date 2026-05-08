@@ -447,6 +447,21 @@ const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électro
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 
+const DEAL_PLACEHOLDERS_FR = [
+  "C'est quoi la marge si j'achète un iPhone 13 85€ et je le revends 150€ ?",
+  "J'ai trouvé une perceuse Makita à 45€, bon deal ?",
+  "À combien je devrais vendre ce sac Zara acheté 12€ ?",
+  "Vaut mieux vendre sur Vinted ou eBay pour du High-Tech ?",
+  "J'ai acheté 20 paquets Pokémon 8€, je les revends 3€ chacun, c'est rentable ?",
+];
+const DEAL_PLACEHOLDERS_EN = [
+  "What's my margin if I buy an iPhone 13 for €85 and sell it for €150?",
+  "Found a Makita drill for €45, good deal?",
+  "How much should I sell this Zara bag I bought for €12?",
+  "Better to sell on Vinted or eBay for electronics?",
+  "I bought 20 Pokémon packs for €8, selling them at €3 each — profitable?",
+];
+
 const VOICE_EXAMPLES = [
   { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
   { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
@@ -2237,6 +2252,11 @@ export default function App({ loginOnly = false }){
   const [dealIALoading,setDealIALoading]=useState(false);
   const [dealMicActive,setDealMicActive]=useState(false);
   const dealMicRef=useRef(null);
+  const [dealPlaceholderIdx,setDealPlaceholderIdx]=useState(0);
+  useEffect(()=>{
+    const t=setInterval(()=>setDealPlaceholderIdx(i=>(i+1)%DEAL_PLACEHOLDERS_FR.length),4000);
+    return()=>clearInterval(t);
+  },[]);
   const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
   const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
@@ -3427,14 +3447,11 @@ export default function App({ loginOnly = false }){
     const SURL=import.meta.env.VITE_SUPABASE_URL;
     if(!SURL)return;
     setDealIALoading(true);setDealIAResult(null);
-    const prixAchat=parseFloat(cBuy)||null;
-    const prixVente=parseFloat(cSell)||null;
-    const frais=parseFloat(cShip)||null;
     try{
       const r=await fetch(`${SURL}/functions/v1/deal-analysis`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({item:dealIADesc.trim(),prixAchat,prixVente,frais,lang}),
+        body:JSON.stringify({question:dealIADesc.trim(),lang}),
       });
       if(!r.ok)throw new Error(`HTTP ${r.status}`);
       const{analysis,error:iErr}=await r.json();
@@ -4184,70 +4201,100 @@ export default function App({ loginOnly = false }){
           </>
         )}
 
-        {tab===2&&(()=>{
-          return(
+        {tab===2&&(
           <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
             {/* ── Deal Score ── */}
             <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-                <span style={{fontSize:20}}>🎯</span>
-                <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D"}}>Deal Score</div>
+              {/* Titre */}
+              <div style={{marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:22}}>🎯</span>
+                  <div style={{fontSize:16,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>Deal Score</div>
+                </div>
+                <div style={{fontSize:12,color:"#6B7280",fontWeight:600,lineHeight:1.4,paddingLeft:30}}>
+                  {lang==="en"
+                    ?"Ask a question about a deal or item — AI analyzes it for you"
+                    :"Pose une question sur un deal ou un article, l'IA analyse pour toi"}
+                </div>
               </div>
-              {/* Champ texte + mic */}
-              <div style={{position:"relative",marginBottom:8}}>
-                <textarea value={dealIADesc} onChange={e=>{setDealIADesc(e.target.value);setDealIAResult(null);}}
-                  placeholder={lang==="en"?"Describe the item (e.g. iPhone 12 64GB, good condition...)":"Décris l'article (ex : iPhone 12 64Go état correct, perceuse Makita 18V...)"}
-                  rows={2} style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${dealIADesc?"#1D9E75":dealMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",transition:"border-color 0.15s"}}/>
-                <button onClick={toggleDealMic}
+
+              {/* Zone de texte + mic */}
+              <div style={{position:"relative",marginBottom:12}}>
+                <textarea
+                  value={dealIADesc}
+                  onChange={e=>{setDealIADesc(e.target.value);setDealIAResult(null);}}
+                  placeholder={(lang==="en"?DEAL_PLACEHOLDERS_EN:DEAL_PLACEHOLDERS_FR)[dealPlaceholderIdx]}
+                  rows={4}
+                  style={{
+                    width:"100%",
+                    padding:"14px 48px 14px 16px",
+                    borderRadius:14,
+                    border:`1.5px solid ${dealMicActive?"#EF4444":dealIADesc?"#1D9E75":"rgba(0,0,0,0.1)"}`,
+                    fontSize:14,
+                    fontFamily:"inherit",
+                    resize:"none",
+                    outline:"none",
+                    background:"#F9FAFB",
+                    boxSizing:"border-box",
+                    lineHeight:1.6,
+                    color:"#0D0D0D",
+                    transition:"border-color 0.15s",
+                  }}
+                />
+                <button
+                  onClick={toggleDealMic}
                   title={dealMicActive?(lang==="en"?"Stop":"Arrêter"):(lang==="en"?"Dictate":"Dicter")}
-                  style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:32,height:32,borderRadius:"50%",border:"none",background:dealMicActive?"#EF4444":"rgba(0,0,0,0.06)",color:dealMicActive?"#fff":"#6B7280",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}}>
+                  style={{
+                    position:"absolute",right:10,bottom:10,
+                    width:34,height:34,borderRadius:"50%",border:"none",
+                    background:dealMicActive?"#EF4444":"rgba(0,0,0,0.07)",
+                    color:dealMicActive?"#fff":"#6B7280",
+                    fontSize:16,cursor:"pointer",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    transition:"all 0.15s",
+                    boxShadow:dealMicActive?"0 0 0 3px rgba(239,68,68,0.2)":"none",
+                  }}
+                >
                   {dealMicActive?"⏹":"🎙️"}
                 </button>
               </div>
-              {/* Prix achat */}
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:8}}>
-                <span style={{fontSize:16,flexShrink:0}}>🛒</span>
-                <input type="number" inputMode="decimal" value={cBuy} onChange={e=>setCBuy(e.target.value)}
-                  placeholder={lang==="en"?"Purchase price":"Prix d'achat"}
-                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
-                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
-              </div>
-              {/* Prix vente (optionnel) */}
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:8}}>
-                <span style={{fontSize:16,flexShrink:0}}>💰</span>
-                <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)}
-                  placeholder={lang==="en"?"Sell price (optional — AI will suggest)":"Prix de vente (optionnel — l'IA suggère)"}
-                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
-                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
-              </div>
-              {/* Frais (optionnel) */}
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:12}}>
-                <span style={{fontSize:16,flexShrink:0}}>➕</span>
-                <input type="number" inputMode="decimal" value={cShip} onChange={e=>setCShip(e.target.value)}
-                  placeholder={lang==="en"?"Fees (optional)":"Frais (optionnel)"}
-                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
-                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
-              </div>
-              {/* Bouton analyser */}
-              <button onClick={analyzeDealWithIA} disabled={!dealIADesc.trim()||dealIALoading}
-                style={{width:"100%",padding:"12px",background:!dealIADesc.trim()||dealIALoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!dealIADesc.trim()||dealIALoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:!dealIADesc.trim()||dealIALoading?"not-allowed":"pointer",marginBottom:12,fontFamily:"inherit",transition:"all 0.2s"}}>
-                {dealIALoading?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours..."):(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
+
+              {/* Bouton Analyser */}
+              <button
+                onClick={analyzeDealWithIA}
+                disabled={!dealIADesc.trim()||dealIALoading}
+                style={{
+                  width:"100%",padding:"13px",
+                  background:!dealIADesc.trim()||dealIALoading
+                    ?"#E5E7EB"
+                    :"linear-gradient(135deg,#4ECDC4,#1D9E75)",
+                  color:!dealIADesc.trim()||dealIALoading?"#9CA3AF":"#fff",
+                  border:"none",borderRadius:12,fontSize:15,fontWeight:800,
+                  cursor:!dealIADesc.trim()||dealIALoading?"not-allowed":"pointer",
+                  fontFamily:"inherit",transition:"all 0.2s",
+                  boxShadow:!dealIADesc.trim()||dealIALoading?"none":"0 4px 14px rgba(29,158,117,0.3)",
+                }}
+              >
+                {dealIALoading
+                  ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
+                  :(lang==="en"?"✨ Analyze":"✨ Analyser")}
               </button>
+
               {/* Résultat IA */}
               {dealIAResult&&(
-                <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:12,padding:"14px 16px",border:"1px solid #9FE1CB",marginBottom:14,fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.7,whiteSpace:"pre-wrap"}}>
-                  <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>🤖 {lang==="en"?"AI Analysis":"Analyse IA"}</div>
-                  {dealIAResult}
+                <div style={{marginTop:14,background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB"}}>
+                  <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
+                    🤖 {lang==="en"?"AI Analysis":"Analyse IA"}
+                  </div>
+                  <div style={{fontSize:14,fontWeight:600,color:"#0D0D0D",lineHeight:1.75,whiteSpace:"pre-wrap"}}>
+                    {dealIAResult}
+                  </div>
                 </div>
               )}
-              <DealScoreCard result={dealScore} analysis={dealAnalysis} analysisLoading={dealAnalysisLoading} lang={lang}/>
-              {isValid&&<Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full style={{marginTop:12}}>
-                {cSaved?(lang==='fr'?"✓ Ajouté à ton suivi !":"✓ Added to your tracker!"):t('ajouterSuivi')}
-              </Btn>}
             </div>
 
-            {/* ── Section 2 : Fill & Sell Lens teaser ── */}
+            {/* ── Fill & Sell Lens teaser ── */}
             <div style={{background:"linear-gradient(135deg,#0D0D0D,#1a1a2e)",borderRadius:16,padding:"24px",border:"1px solid rgba(255,255,255,0.08)",boxShadow:"0 4px 20px rgba(0,0,0,0.15)",position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:0.06,pointerEvents:"none"}}>📸</div>
               <div style={{fontSize:36,marginBottom:10}}>📸</div>
@@ -4270,8 +4317,7 @@ export default function App({ loginOnly = false }){
             {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
             {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
           </div>
-          );
-        })()}
+        )}
 
         {tab===3&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>

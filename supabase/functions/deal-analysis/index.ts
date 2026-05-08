@@ -18,35 +18,19 @@ Your tone is direct, intelligent and human — never cringe, never generic.
 Write ONE analysis of 1-2 sentences maximum, only based on the data provided.
 Never invent data not provided. No markdown. No emojis. No lists. Vary your phrasing.`;
 
-const SYSTEM_FREEFORM_FR = `Tu es expert en achat-revente sur Vinted, eBay et Leboncoin.
-Tu aides les revendeurs à évaluer leurs deals rapidement.
-Réponds sans astérisques, avec des emojis, en français, de façon concise (4-6 lignes max).
-Commence toujours ta réponse par le nom de l'article.`;
+const SYSTEM_QA_FR = `Tu es expert en achat-revente sur Vinted, eBay et Leboncoin.
+Tu aides les revendeurs à évaluer leurs deals et maximiser leurs profits.
+Réponds uniquement aux questions business achat-revente (prix, marges, plateformes, articles).
+Si la question est hors sujet, réponds brièvement que tu es spécialisé achat-revente et invite à poser une question sur un deal.
+Réponds sans astérisques, avec des emojis, en français, de façon concise (5-7 lignes max).
+Utilise des retours à la ligne pour aérer la réponse.`;
 
-const SYSTEM_FREEFORM_EN = `You are an expert in reselling on Vinted, eBay and Leboncoin.
-You help resellers evaluate their deals quickly.
-Reply without asterisks, with emojis, in English, concisely (4-6 lines max).
-Always start your reply with the item name.`;
-
-function buildFreeformPrompt(item: string, prixAchat: number | null, prixVente: number | null, frais: number | null, lang: string): string {
-  const lines = [`Article : ${item}`];
-  if (prixAchat != null) lines.push(lang === "en" ? `Purchase price: €${prixAchat}` : `Prix d'achat : ${prixAchat}€`);
-  if (prixVente != null) lines.push(lang === "en" ? `Planned sell price: €${prixVente}` : `Prix de vente envisagé : ${prixVente}€`);
-  if (frais != null) lines.push(lang === "en" ? `Fees: €${frais}` : `Frais : ${frais}€`);
-
-  if (lang === "en") {
-    if (prixVente == null) {
-      lines.push("No sell price provided. Suggest a recommended sell price range based on the item name and market.");
-    }
-    lines.push("Reply with: 💰 recommended sell price (or range), 📈 estimated margin, ✅/❌ good deal or not, 📦 best platform to sell on.");
-  } else {
-    if (prixVente == null) {
-      lines.push("Pas de prix de vente fourni. Suggère une fourchette de prix de revente recommandée basée sur le nom de l'article et le marché.");
-    }
-    lines.push("Réponds avec : 💰 prix de revente recommandé (ou fourchette), 📈 marge estimée, ✅/❌ bon deal ou pas, 📦 meilleure plateforme pour vendre.");
-  }
-  return lines.join("\n");
-}
+const SYSTEM_QA_EN = `You are an expert in reselling on Vinted, eBay and Leboncoin.
+You help resellers evaluate deals and maximize profits.
+Only answer business resale questions (prices, margins, platforms, items).
+If off-topic, briefly say you specialize in resale and invite a deal-related question.
+Reply without asterisks, with emojis, in English, concisely (5-7 lines max).
+Use line breaks to keep the answer readable.`;
 
 function buildScorePrompt(scoreResult: any, lang: string): string {
   const { score, label, dimensions, pills, context } = scoreResult;
@@ -100,14 +84,11 @@ serve(async (req) => {
     let userMsg: string;
     let maxTokens: number;
 
-    if (body.item) {
-      // Freeform mode: item description + optional prices
-      const prixAchat = body.prixAchat != null ? parseFloat(body.prixAchat) : null;
-      const prixVente = body.prixVente != null ? parseFloat(body.prixVente) : null;
-      const frais = body.frais != null ? parseFloat(body.frais) : null;
-      systemPrompt = _lang === 'en' ? SYSTEM_FREEFORM_EN : SYSTEM_FREEFORM_FR;
-      userMsg = buildFreeformPrompt(body.item, prixAchat, prixVente, frais, _lang);
-      maxTokens = 250;
+    if (body.question) {
+      // Q&A mode: free-form resale question
+      systemPrompt = _lang === 'en' ? SYSTEM_QA_EN : SYSTEM_QA_FR;
+      userMsg = body.question;
+      maxTokens = 300;
     } else {
       // Score card mode: scoreResult object
       systemPrompt = _lang === 'en' ? SYSTEM_EN : SYSTEM_FR;
