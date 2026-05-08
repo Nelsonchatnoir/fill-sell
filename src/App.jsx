@@ -1429,7 +1429,19 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           const{tasks,error:iErr}=await iRes.json();
           if(iErr)throw new Error(iErr);
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
-          const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions,supabaseUrl:SURL});
+          // Client-side guard: price question patterns always → price_advice, never inventory_add
+          const tl=text.toLowerCase();
+          const isPriceQ=lang==="en"
+            ?["how much can i sell","how much can i resell","how much do you think i can","how much is it worth","how much can i get","what's it worth"].some(p=>tl.includes(p))
+            :(tl.includes("combien")&&tl.includes("revendr"))||(tl.includes("combien")&&tl.includes("vendre"))||tl.includes("ça vaut combien")||tl.includes("combien ça vaut")||tl.includes("en tirer combien");
+          let finalTasks=tasks;
+          if(isPriceQ){
+            const existingPA=tasks.find(t=>t.intent==="price_advice");
+            const existingAdd=tasks.find(t=>t.intent==="inventory_add");
+            const src=existingPA?.data||existingAdd?.data||{};
+            finalTasks=[existingPA||{intent:"price_advice",confidence:0.97,requiresConfirmation:false,ambiguous:false,data:{nom:src.nom||null,marque:src.marque||null,prix_achat:src.prix_achat||null,categorie:src.categorie||null,description:src.description||null}}];
+          }
+          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,actions,supabaseUrl:SURL});
           setVaResults(results);setVaStep("results");
           const QUICK_INTENTS=new Set(["inventory_add","inventory_sell","inventory_delete","inventory_update","inventory_lot"]);
           const isQuickOnly=results.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));

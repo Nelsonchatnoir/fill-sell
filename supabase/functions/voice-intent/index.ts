@@ -444,6 +444,34 @@ serve(async (req) => {
       });
     }
 
+    // Server-side guard: price question patterns → force price_advice, eject inventory_add/business_advice
+    const textLow = text.toLowerCase();
+    const PRICE_Q_TRIGGERS = _lang === "en"
+      ? ["how much can i sell","how much can i resell","how much do you think i can","how much is it worth","how much can i get","what's it worth"]
+      : ["revendre combien","vendre combien","en tirer combien","ça vaut combien","combien ça vaut","à combien tu estimes"];
+    const isPriceQ = PRICE_Q_TRIGGERS.some(p => textLow.includes(p)) ||
+      (_lang === "fr" && textLow.includes("combien") && textLow.includes("revendr"));
+
+    if (isPriceQ) {
+      const tasks = parsed.tasks as any[];
+      const existingPA = tasks.find(t => t.intent === "price_advice");
+      const existingAdd = tasks.find(t => t.intent === "inventory_add");
+      const src: Record<string, unknown> = existingPA?.data ?? existingAdd?.data ?? {};
+      parsed.tasks = [{
+        intent: "price_advice",
+        confidence: 0.97,
+        requiresConfirmation: false,
+        ambiguous: false,
+        data: {
+          nom: src.nom ?? null,
+          marque: src.marque ?? null,
+          prix_achat: src.prix_achat ?? null,
+          categorie: src.categorie ?? null,
+          description: src.description ?? null,
+        },
+      }];
+    }
+
     return new Response(JSON.stringify({ tasks: parsed.tasks }), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
