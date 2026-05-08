@@ -2257,6 +2257,25 @@ export default function App({ loginOnly = false }){
     const t=setInterval(()=>setDealPlaceholderIdx(i=>(i+1)%DEAL_PLACEHOLDERS_FR.length),4000);
     return()=>clearInterval(t);
   },[]);
+  // Lens tab
+  const [userCountry,setUserCountry]=useState(null); // {code,name}
+  const [lensPhotoPreview,setLensPhotoPreview]=useState(null);
+  const [lensPhotoBase64,setLensPhotoBase64]=useState(null);
+  const [lensPhotoMime,setLensPhotoMime]=useState("image/jpeg");
+  const [lensDesc,setLensDesc]=useState("");
+  const [lensBuy,setLensBuy]=useState("");
+  const [lensResult,setLensResult]=useState(null); // {analysis, itemData}
+  const [lensLoading,setLensLoading]=useState(false);
+  const [lensAdded,setLensAdded]=useState(false);
+  const [lensMicActive,setLensMicActive]=useState(false);
+  const lensMicRef=useRef(null);
+  const lensFileRef=useRef(null);
+  useEffect(()=>{
+    fetch("https://ipapi.co/json/")
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{if(d?.country_code)setUserCountry({code:d.country_code,name:d.country_name});})
+      .catch(()=>{});
+  },[]);
   const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
   const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
@@ -3287,7 +3306,7 @@ export default function App({ loginOnly = false }){
   const TABS_MOBILE=[
     {icon:"📊",label:lang==='fr'?"Tableau":"Board",idx:0},
     {icon:"🤖",label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
-    {icon:"🎯",label:"Deal Score",idx:2},
+    {icon:"📸",label:"Lens",idx:2},
     {icon:"📋",label:lang==='fr'?"Ventes":"Sales",idx:3},
     {icon:"📈",label:"Stats",idx:4},
   ];
@@ -3490,6 +3509,91 @@ export default function App({ loginOnly = false }){
     setDealMicActive(true);
   }
 
+  function handleLensPhoto(e){
+    const file=e.target.files?.[0];
+    if(!file)return;
+    if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo). Prends une photo moins détaillée.":"Image too large (max 8MB). Try a lower resolution photo.");return;}
+    setLensResult(null);setLensAdded(false);
+    setLensPhotoMime(file.type||"image/jpeg");
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const dataUrl=ev.target.result;
+      setLensPhotoPreview(dataUrl);
+      setLensPhotoBase64(dataUrl.split(",")[1]);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function toggleLensMic(){
+    if(lensMicActive){
+      lensMicRef.current?.stop();lensMicRef.current?.abort();lensMicRef.current=null;
+      setLensMicActive(false);return;
+    }
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR)return;
+    const rec=new SR();
+    rec.lang=lang==="en"?"en-US":"fr-FR";
+    rec.interimResults=false;rec.continuous=false;
+    rec.onresult=e=>{const t=Array.from(e.results).map(r=>r[0].transcript).join(" ");setLensDesc(prev=>(prev?prev+" ":"")+t);};
+    rec.onend=()=>{setLensMicActive(false);lensMicRef.current=null;};
+    rec.onerror=()=>{setLensMicActive(false);lensMicRef.current=null;};
+    lensMicRef.current=rec;rec.start();setLensMicActive(true);
+  }
+
+  async function analyzeLens(){
+    if(!lensPhotoBase64)return;
+    const SURL=import.meta.env.VITE_SUPABASE_URL;
+    if(!SURL)return;
+    setLensLoading(true);setLensResult(null);setLensAdded(false);
+    // Build user stats context
+    const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
+    const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
+    const catProfit={};
+    for(const s of sales){const c=s.type||s.categorie||"Autre";catProfit[c]=(catProfit[c]||0)+(s.margin??0);}
+    const topCats=Object.entries(catProfit).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
+    try{
+      const r=await fetch(`${SURL}/functions/v1/lens-analysis`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          imageBase64:lensPhotoBase64,
+          mimeType:lensPhotoMime,
+          description:lensDesc.trim()||null,
+          prixAchat:parseFloat(lensBuy)||null,
+          lang,
+          userCountry,
+          userStats:{avgMargin,topCategories:topCats},
+        }),
+      });
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      const{analysis,itemData,error:iErr}=await r.json();
+      if(iErr)throw new Error(iErr);
+      setLensResult({analysis:analysis||"",itemData:itemData||null});
+    }catch(e){
+      setLensResult({analysis:`❌ ${e.message}`,itemData:null});
+    }finally{
+      setLensLoading(false);
+    }
+  }
+
+  async function addLensItem(){
+    if(!lensResult?.itemData||lensAdded)return;
+    try{
+      await vaActions.addItem({
+        nom:lensResult.itemData.nom||"Article",
+        marque:lensResult.itemData.marque||null,
+        categorie:lensResult.itemData.categorie||"Autre",
+        description:lensResult.itemData.description||(lensDesc.trim()||null),
+        prix_achat:parseFloat(lensBuy)||0,
+        prix_vente:lensResult.itemData.prixVenteEstime||null,
+        quantite:1,
+      });
+      setLensAdded(true);
+    }catch(e){
+      alert(e.message);
+    }
+  }
+
   return(
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
 
@@ -3523,7 +3627,7 @@ export default function App({ loginOnly = false }){
             {[
               lang==='fr'?"Tableau":"Board",
               lang==='fr'?"Stock IA":"AI Stock",
-              "Deal Score",
+              "Lens",
               lang==='fr'?"Ventes":"Sales",
               "Stats"
             ].map((tabLabel,i)=>(
@@ -4204,114 +4308,133 @@ export default function App({ loginOnly = false }){
         {tab===2&&(
           <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
-            {/* ── Deal Score ── */}
-            <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-              {/* Titre */}
-              <div style={{marginBottom:16}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                  <span style={{fontSize:22}}>🎯</span>
-                  <div style={{fontSize:16,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>Deal Score</div>
-                </div>
-                <div style={{fontSize:12,color:"#6B7280",fontWeight:600,lineHeight:1.4,paddingLeft:30}}>
-                  {lang==="en"
-                    ?"Ask a question about a deal or item — AI analyzes it for you"
-                    :"Pose une question sur un deal ou un article, l'IA analyse pour toi"}
-                </div>
+            {/* ── Header ── */}
+            <div style={{paddingTop:4}}>
+              <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",marginBottom:4}}>Fill &amp; Sell Lens 📸</div>
+              <div style={{fontSize:13,color:"#6B7280",fontWeight:600,lineHeight:1.5}}>
+                {lang==="en"
+                  ?"Take a photo of an item — AI analyzes the price and tells you if it's a good deal"
+                  :"Prends en photo un article, l'IA analyse le prix et te dit si c'est un bon deal"}
               </div>
+              {userCountry&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>📍 {userCountry.name}</div>}
+            </div>
 
-              {/* Zone de texte + mic */}
-              <div style={{position:"relative",marginBottom:12}}>
+            {/* ── Zone photo ── */}
+            <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+              <input
+                ref={lensFileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{display:"none"}}
+                onChange={handleLensPhoto}
+              />
+              {lensPhotoPreview?(
+                <div style={{position:"relative",borderRadius:12,overflow:"hidden",marginBottom:12}}>
+                  <img src={lensPhotoPreview} alt="" style={{width:"100%",maxHeight:260,objectFit:"cover",borderRadius:12,display:"block"}}/>
+                  <button
+                    onClick={()=>{setLensPhotoPreview(null);setLensPhotoBase64(null);setLensResult(null);setLensAdded(false);if(lensFileRef.current)lensFileRef.current.value="";}}
+                    style={{position:"absolute",top:8,right:8,width:30,height:30,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.55)",color:"#fff",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}
+                  >×</button>
+                  <button
+                    onClick={()=>lensFileRef.current?.click()}
+                    style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                  >{lang==="en"?"Change":"Changer"}</button>
+                </div>
+              ):(
+                <button
+                  onClick={()=>lensFileRef.current?.click()}
+                  style={{width:"100%",padding:"32px 20px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:10,transition:"all 0.15s",marginBottom:12}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="#1D9E75";e.currentTarget.style.background="#F0FDF4";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,0.12)";e.currentTarget.style.background="#F9FAFB";}}
+                >
+                  <span style={{fontSize:40}}>📸</span>
+                  <div style={{fontSize:14,fontWeight:700,color:"#6B7280"}}>
+                    {lang==="en"?"Take a photo / Import":"Prendre une photo / Importer"}
+                  </div>
+                  <div style={{fontSize:12,color:"#A3A9A6"}}>
+                    {lang==="en"?"Tap to open camera or gallery":"Appuie pour ouvrir l'appareil photo ou la galerie"}
+                  </div>
+                </button>
+              )}
+
+              {/* Champ description optionnel + mic */}
+              <div style={{position:"relative",marginBottom:10}}>
                 <textarea
-                  value={dealIADesc}
-                  onChange={e=>{setDealIADesc(e.target.value);setDealIAResult(null);}}
-                  placeholder={(lang==="en"?DEAL_PLACEHOLDERS_EN:DEAL_PLACEHOLDERS_FR)[dealPlaceholderIdx]}
-                  rows={4}
-                  style={{
-                    width:"100%",
-                    padding:"14px 48px 14px 16px",
-                    borderRadius:14,
-                    border:`1.5px solid ${dealMicActive?"#EF4444":dealIADesc?"#1D9E75":"rgba(0,0,0,0.1)"}`,
-                    fontSize:14,
-                    fontFamily:"inherit",
-                    resize:"none",
-                    outline:"none",
-                    background:"#F9FAFB",
-                    boxSizing:"border-box",
-                    lineHeight:1.6,
-                    color:"#0D0D0D",
-                    transition:"border-color 0.15s",
-                  }}
+                  value={lensDesc}
+                  onChange={e=>setLensDesc(e.target.value)}
+                  placeholder={lang==="en"
+                    ?"Optional details: condition, size, color... e.g. cracked screen, size L, a few scratches"
+                    :"Détails optionnels : état, taille, couleur... Ex: écran cassé, taille L, quelques rayures"}
+                  rows={2}
+                  style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${lensMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",transition:"border-color 0.15s"}}
                 />
                 <button
-                  onClick={toggleDealMic}
-                  title={dealMicActive?(lang==="en"?"Stop":"Arrêter"):(lang==="en"?"Dictate":"Dicter")}
-                  style={{
-                    position:"absolute",right:10,bottom:10,
-                    width:34,height:34,borderRadius:"50%",border:"none",
-                    background:dealMicActive?"#EF4444":"rgba(0,0,0,0.07)",
-                    color:dealMicActive?"#fff":"#6B7280",
-                    fontSize:16,cursor:"pointer",
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    transition:"all 0.15s",
-                    boxShadow:dealMicActive?"0 0 0 3px rgba(239,68,68,0.2)":"none",
-                  }}
+                  onClick={toggleLensMic}
+                  style={{position:"absolute",right:8,bottom:8,width:30,height:30,borderRadius:"50%",border:"none",background:lensMicActive?"#EF4444":"rgba(0,0,0,0.07)",color:lensMicActive?"#fff":"#6B7280",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",boxShadow:lensMicActive?"0 0 0 3px rgba(239,68,68,0.2)":"none"}}
                 >
-                  {dealMicActive?"⏹":"🎙️"}
+                  {lensMicActive?"⏹":"🎙️"}
                 </button>
+              </div>
+
+              {/* Prix d'achat optionnel */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"11px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:12}}>
+                <span style={{fontSize:15,flexShrink:0}}>🛒</span>
+                <input
+                  type="number" inputMode="decimal"
+                  value={lensBuy}
+                  onChange={e=>{setLensBuy(e.target.value);setLensResult(null);setLensAdded(false);}}
+                  placeholder={lang==="en"?"Purchase price or planned price (optional)":"Prix payé ou envisagé (optionnel)"}
+                  style={{flex:1,border:"none",outline:"none",fontSize:14,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}
+                />
+                <span style={{fontSize:13,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
               </div>
 
               {/* Bouton Analyser */}
               <button
-                onClick={analyzeDealWithIA}
-                disabled={!dealIADesc.trim()||dealIALoading}
-                style={{
-                  width:"100%",padding:"13px",
-                  background:!dealIADesc.trim()||dealIALoading
-                    ?"#E5E7EB"
-                    :"linear-gradient(135deg,#4ECDC4,#1D9E75)",
-                  color:!dealIADesc.trim()||dealIALoading?"#9CA3AF":"#fff",
-                  border:"none",borderRadius:12,fontSize:15,fontWeight:800,
-                  cursor:!dealIADesc.trim()||dealIALoading?"not-allowed":"pointer",
-                  fontFamily:"inherit",transition:"all 0.2s",
-                  boxShadow:!dealIADesc.trim()||dealIALoading?"none":"0 4px 14px rgba(29,158,117,0.3)",
-                }}
+                onClick={analyzeLens}
+                disabled={!lensPhotoBase64||lensLoading}
+                style={{width:"100%",padding:"13px",background:!lensPhotoBase64||lensLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotoBase64||lensLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:!lensPhotoBase64||lensLoading?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotoBase64||lensLoading?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
               >
-                {dealIALoading
+                {lensLoading
                   ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
-                  :(lang==="en"?"✨ Analyze":"✨ Analyser")}
+                  :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
               </button>
 
-              {/* Résultat IA */}
-              {dealIAResult&&(
-                <div style={{marginTop:14,background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB"}}>
-                  <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
-                    🤖 {lang==="en"?"AI Analysis":"Analyse IA"}
+              {/* Résultat */}
+              {lensResult&&(
+                <div style={{marginTop:14}}>
+                  <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB",marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
+                      🤖 {lang==="en"?"AI Analysis":"Analyse IA"}
+                    </div>
+                    <div style={{fontSize:14,fontWeight:600,color:"#0D0D0D",lineHeight:1.8,whiteSpace:"pre-wrap"}}>
+                      {lensResult.analysis}
+                    </div>
                   </div>
-                  <div style={{fontSize:14,fontWeight:600,color:"#0D0D0D",lineHeight:1.75,whiteSpace:"pre-wrap"}}>
-                    {dealIAResult}
-                  </div>
+                  {lensResult.itemData&&(
+                    <button
+                      onClick={addLensItem}
+                      disabled={lensAdded}
+                      style={{width:"100%",padding:"12px",background:lensAdded?"#E8F5F0":"linear-gradient(135deg,#1D9E75,#0F6E56)",color:lensAdded?"#1D9E75":"#fff",border:lensAdded?"1px solid #9FE1CB":"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?"default":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
+                    >
+                      {lensAdded
+                        ?(lang==="en"?"✅ Added to stock!":"✅ Ajouté au stock !")
+                        :(lang==="en"?"➕ Add to my stock":"➕ Ajouter à mon stock")}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* ── Fill & Sell Lens teaser ── */}
-            <div style={{background:"linear-gradient(135deg,#0D0D0D,#1a1a2e)",borderRadius:16,padding:"24px",border:"1px solid rgba(255,255,255,0.08)",boxShadow:"0 4px 20px rgba(0,0,0,0.15)",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:0.06,pointerEvents:"none"}}>📸</div>
-              <div style={{fontSize:36,marginBottom:10}}>📸</div>
-              <div style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Fill &amp; Sell Lens</div>
-              <div style={{fontSize:12,fontWeight:700,color:"#1D9E75",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.08em"}}>{lang==="en"?"Coming soon":"Bientôt disponible"}</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.65)",lineHeight:1.6,marginBottom:16}}>
+            {/* ── Teaser ── */}
+            <div style={{background:"#F9FAFB",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:18,flexShrink:0}}>🔜</span>
+              <div style={{fontSize:12,color:"#6B7280",fontWeight:600,lineHeight:1.5}}>
                 {lang==="en"
-                  ?"Take a photo of any item — AI identifies it and pre-fills everything automatically."
-                  :"Prends en photo un article, l'IA l'identifie et pré-remplit tout automatiquement."}
+                  ?"Coming soon: automatic comparison with real-time market prices"
+                  :"Bientôt : comparaison automatique avec les prix du marché en temps réel"}
               </div>
-              <button onClick={()=>{setToast({visible:true,message:lang==="en"?"✅ You'll be notified!":"✅ Tu seras notifié !"});setTimeout(()=>setToast({visible:false,message:""}),2500);}}
-                style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,padding:"12px 20px",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(29,158,117,0.4)",transition:"all 0.15s"}}
-                onMouseDown={e=>e.currentTarget.style.transform="scale(0.96)"}
-                onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
-                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-                {lang==="en"?"Notify me 🔔":"M'avertir 🔔"}
-              </button>
             </div>
 
             {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
