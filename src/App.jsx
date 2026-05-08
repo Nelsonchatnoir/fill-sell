@@ -1956,9 +1956,20 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
               if(status==="pending_confirmation"&&intent==="inventory_add"){
                 const editNom=vaEdits[idx]?.nom??taskData?.nom??"";
                 const editPrix=vaEdits[idx]?.prix??taskData?.prix_achat??"";
+                const confMarque=taskData?.marque||null;
+                const confCat=taskData?.categorie||null;
+                const confTs=confCat?getTypeStyle(confCat):null;
+                const confDesc=taskData?.description||null;
                 return(
                   <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:10}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
+                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
+                    {(confMarque||(confTs&&confCat!=="Autre"))&&(
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+                        {confMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{confMarque}</span>}
+                        {confTs&&confCat!=="Autre"&&<span style={{background:confTs.bg,color:confTs.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${confTs.border}`}}>{confTs.emoji} {typeLabel(confCat,lang)}</span>}
+                      </div>
+                    )}
+                    {confDesc&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:8,fontStyle:"italic",lineHeight:1.4}}>{confDesc}</div>}
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       <input value={editNom}
                         onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
@@ -1976,7 +1987,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                       <button onClick={async()=>{
                         try{
                           await actions.addItem({...taskData,nom:editNom,prix_achat:editPrix||taskData?.prix_achat});
-                          replaceResult(idx,{...result,status:"success",data:{nom:editNom,prix_achat:editPrix},message:lang==="en"?"Item added":"Article ajouté"});
+                          replaceResult(idx,{...result,status:"success",data:{nom:editNom,prix_achat:editPrix,marque:confMarque,type:confCat,description:confDesc},message:lang==="en"?"Item added":"Article ajouté"});
                         }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
                       }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✓ {lang==="en"?"Confirm":"Confirmer"}
