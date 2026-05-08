@@ -111,12 +111,20 @@ Si achat ET vente sont mentionnés pour le même article → génère 3 tâches 
   3. deal_score
 Si plusieurs articles différents → répéter la triple par article.
 
-Catégories canoniques (toujours utiliser la valeur exacte de la liste) :
-"high tech"|"hightech"|"tech" → "High-Tech"
-"electromenager"|"electro" → "Électroménager"
-"auto"|"moto"|"auto moto" → "Auto-Moto"
-"beaute" → "Beauté", "fringues"|"vetements" → "Mode"
-"cartes pokemon"|"cartes yugioh"|"cartes yu-gi-oh"|"trading cards"|"cartes magic"|"cartes collector"|"booster pokemon"|"paquet de cartes"|"cartes" (contexte jeu/collection) → "Collection"
+Catégories canoniques (utiliser la valeur exacte — 13 catégories possibles) :
+"high tech"|"hightech"|"tech"|"smartphone"|"téléphone"|"console"|"pc"|"ordinateur"|"tablette"|"casque"|"écouteurs" → "High-Tech"
+"electromenager"|"electro"|"aspirateur"|"frigo"|"lave-linge"|"micro-onde"|"cafetière" → "Électroménager"
+"auto"|"moto"|"auto moto"|"voiture"|"scooter"|"pièce auto" → "Auto-Moto"
+"beaute"|"cosmétique"|"parfum"|"crème"|"maquillage"|"sérum" → "Beauté"
+"fringues"|"vetements"|"veste"|"jean"|"robe"|"pull"|"chaussures"|"baskets"|"sneakers"|"manteau" → "Mode"
+"guitare"|"piano"|"basse"|"ampli"|"synthé"|"instrument de musique"|"Fender"|"Gibson"|"Stratocaster"|"Marshall"|"Roland"|"saxophone"|"ukulele"|"violon"|"trompette" → "Musique"
+"cartes pokemon"|"cartes yugioh"|"trading cards"|"cartes magic"|"cartes collector"|"booster pokemon"|"paquet de cartes"|"vinyle"|"disque rare" → "Collection"
+"livre"|"roman"|"BD"|"manga"|"bouquin"|"bande dessinée" → "Livres"
+"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"sac de luxe"|"montre de luxe" → "Luxe"
+"jouet"|"lego"|"playmobil"|"puzzle"|"jeu de société"|"peluche" → "Jouets"
+"vélo"|"tapis de course"|"haltères"|"raquette de tennis"|"skate"|"rollers"|"ski" → "Sport"
+"canapé"|"table"|"chaise"|"lampe"|"vaisselle"|"meuble"|"tapis"|"miroir"|"décoration" → "Maison"
+Si aucune catégorie ne correspond → "Autre"
 
 Règle inventory_lot vs inventory_add (CRITIQUE — lire attentivement) :
 
@@ -326,11 +334,20 @@ If a purchase AND sale are mentioned for the same item → generate 3 tasks in o
   3. deal_score
 If multiple different items → repeat the triple per item.
 
-Canonical categories (always use the exact value from the allowed list):
-"high tech"|"hightech"|"tech" → "High-Tech"
-"electromenager" → "Électroménager", "auto"|"moto"|"auto moto" → "Auto-Moto"
-"beauty"|"beaute" → "Beauté", "clothes"|"fashion" → "Mode"
-"pokemon cards"|"yugioh cards"|"trading cards"|"magic cards"|"collector cards"|"pokemon booster"|"card pack"|"cartes pokemon"|"paquet de cartes" → "Collection"
+Canonical categories (always use the exact value from the allowed list — 13 categories):
+"high tech"|"tech"|"smartphone"|"phone"|"console"|"pc"|"laptop"|"tablet"|"headphones"|"earbuds" → "High-Tech"
+"electromenager"|"appliance"|"vacuum"|"fridge"|"washing machine"|"microwave" → "Électroménager"
+"auto"|"moto"|"car"|"scooter"|"motorcycle" → "Auto-Moto"
+"beauty"|"cosmetics"|"perfume"|"cream"|"makeup"|"serum"|"skincare" → "Beauté"
+"clothes"|"fashion"|"jacket"|"jeans"|"dress"|"sneakers"|"shoes"|"coat"|"hoodie" → "Mode"
+"guitar"|"piano"|"bass guitar"|"amp"|"synth"|"musical instrument"|"Fender"|"Gibson"|"Stratocaster"|"Marshall"|"Roland"|"saxophone"|"ukulele"|"violin"|"trumpet" → "Musique"
+"pokemon cards"|"yugioh cards"|"trading cards"|"magic cards"|"collector cards"|"pokemon booster"|"card pack"|"vinyl record" → "Collection"
+"book"|"novel"|"comic"|"manga"|"graphic novel" → "Livres"
+"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"luxury bag"|"luxury watch" → "Luxe"
+"toy"|"lego"|"playmobil"|"puzzle"|"board game"|"stuffed animal" → "Jouets"
+"bike"|"treadmill"|"weights"|"tennis racket"|"skateboard"|"rollerblades"|"ski" → "Sport"
+"couch"|"table"|"chair"|"lamp"|"dishes"|"furniture"|"rug"|"mirror"|"decoration" → "Maison"
+If no category matches → "Autre"
 
 Rule inventory_lot vs inventory_add (CRITICAL — read carefully):
 

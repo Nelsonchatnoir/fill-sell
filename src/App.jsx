@@ -1968,6 +1968,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 const confCat=taskData?.categorie||null;
                 const confTs=confCat?getTypeStyle(confCat):null;
                 const confDesc=taskData?.description||null;
+                const _locRe=/^(acheté[e]?\s+(?:[àa]|en|au|aux)\b|bought\s+in\b)/i;
+                const _dParts=confDesc?confDesc.split(/,\s*/).map(p=>p.trim()).filter(Boolean):[];
+                const confLoc=_dParts.filter(p=>_locRe.test(p)).join(", ")||null;
+                const confDescRest=_dParts.filter(p=>!_locRe.test(p)).join(", ")||null;
                 return(
                   <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
@@ -1977,7 +1981,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                         {confTs&&confCat!=="Autre"&&<span style={{background:confTs.bg,color:confTs.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${confTs.border}`}}>{confTs.emoji} {typeLabel(confCat,lang)}</span>}
                       </div>
                     )}
-                    {confDesc&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:8,fontStyle:"italic",lineHeight:1.4}}>{confDesc}</div>}
+                    {confDescRest&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:confLoc?4:8,fontStyle:"italic",lineHeight:1.4}}>{confDescRest}</div>}
+                    {confLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:8,lineHeight:1.4}}>📍 {confLoc}</div>}
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       <input value={editNom}
                         onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
