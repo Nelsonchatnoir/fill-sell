@@ -1132,10 +1132,10 @@ function StatsTab({sales,items,lang}){
     return m;
   },[items]);
 
-  const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)).slice(0,3);
+  const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.date_ajout||a.date||0)-new Date(b.date_ajout||b.date||0)).slice(0,3);
   const slowCount=[...items].filter(i=>{
     if(i.statut==='vendu') return false;
-    return (now-new Date(i.created_at||0))>30*24*3600*1000;
+    return (now-new Date(i.date_ajout||i.date||0))>30*24*3600*1000;
   }).length;
 
   useEffect(()=>{
@@ -3848,7 +3848,7 @@ export default function App({ loginOnly = false }){
                       {groupSales(sales).slice(0,5).map(s=>{
                         const d=new Date(s.date);const mc=!s.marginPct||s.marginPct<5?"#E53E3E":s.marginPct<20?"#F9A26C":s.marginPct<40?"#5DCAA5":"#1D9E75";
                         return(
-                          <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
+                          <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`3px solid ${getCatBorder(s.type)}`}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
                                 <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
@@ -4632,7 +4632,7 @@ export default function App({ loginOnly = false }){
                 {visibleSales.map(s=>{
                   const d=new Date(s.date);const mc=getMargeColor(s.marginPct);const ts=getTypeStyle(s.type);
                   return(
-                    <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`4px solid ${mc}`}}>
+                    <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`3px solid ${getCatBorder(s.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
                           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
