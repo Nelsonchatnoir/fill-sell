@@ -3425,11 +3425,27 @@ export default function App({ loginOnly = false }){
     const SURL=import.meta.env.VITE_SUPABASE_URL;
     if(!SURL)return;
     setDealIALoading(true);setDealIAResult(null);
-    const buy=parseFloat(cBuy)||0;const sell=parseFloat(cSell)||0;
-    let q=dealIADesc.trim();
-    if(buy>0)q+=`. Prix d'achat : ${buy}€`;
-    if(sell>0)q+=`. Prix de vente envisagé : ${sell}€`;
-    q+=". Est-ce un bon deal ? Donne une estimation du prix de revente recommandé, une fourchette de prix marché, et un conseil.";
+    const buy=parseFloat(cBuy)||0;
+    const sell=parseFloat(cSell)||0;
+    const itemName=dealIADesc.trim();
+    let q=lang==="en"
+      ? `Analyze this resale deal: "${itemName}".`
+      : `Analyse ce deal de revente : "${itemName}".`;
+    if(buy>0) q+=lang==="en"
+      ? ` Purchase price: ${buy}€.`
+      : ` Prix d'achat : ${buy}€.`;
+    if(sell>0){
+      q+=lang==="en"
+        ? ` Planned sell price: ${sell}€. Is this a good deal?`
+        : ` Prix de vente envisagé : ${sell}€. Est-ce un bon deal ?`;
+    } else {
+      q+=lang==="en"
+        ? ` No sell price set yet. Based on the item name${buy>0?` and purchase price of ${buy}€`:""}, suggest a recommended sell price range and explain why.`
+        : ` Pas encore de prix de vente. En te basant sur le nom de l'article${buy>0?` et le prix d'achat de ${buy}€`:""}, suggère une fourchette de prix de vente recommandée et explique pourquoi.`;
+    }
+    q+=lang==="en"
+      ? ` Start your reply with "For a ${itemName}..." and give: market price range, margin estimate, one concrete tip to sell faster.`
+      : ` Commence ta réponse par "Pour ${itemName}..." et donne : fourchette de prix marché, estimation de marge, un conseil concret pour vendre plus vite.`;
     try{
       const r=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:q,lang})});
       if(!r.ok)throw new Error("Erreur IA");
