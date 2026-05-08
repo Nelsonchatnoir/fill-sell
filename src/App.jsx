@@ -1364,7 +1364,7 @@ function StatsTab({sales,items,lang}){
   );
 }
 
-function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem}){
+function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const autoCloseRef=useRef(null);
@@ -1420,6 +1420,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
       vaMediaRef.current=recorder;recorder.start();setVaStep("recording");
     }catch(e){setVaError(e.message||(lang==="en"?"Microphone unavailable":"Micro non disponible"));setVaStep("");}
   }
+  if(triggerRef)triggerRef.current=handleFabClick;
 
   function replaceResult(idx,patch){setVaResults(prev=>prev.map((r,i)=>i===idx?{...r,...patch}:r));}
 
@@ -2248,6 +2249,7 @@ export default function App({ loginOnly = false }){
   const [vaStep,setVaStep]=useState("");
   const [vaResults,setVaResults]=useState([]);
   const [vaError,setVaError]=useState(null);
+  const fabTriggerRef=useRef(null);
 
   const {t,tpl}=useTranslation(lang);
   const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
@@ -3483,7 +3485,7 @@ export default function App({ loginOnly = false }){
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
                 <EmptyStateDashboard
                   lang={lang}
-                  onTryVoice={handleFabClick}
+                  onTryVoice={()=>fabTriggerRef.current?.()}
                   onAddManual={()=>{setTab(1); localStorage.setItem('tab',1);}}
                 />
               </div>
@@ -4756,6 +4758,7 @@ export default function App({ loginOnly = false }){
         vaError={vaError} setVaError={setVaError}
         markSold={markSold}
         deleteItem={delItem}
+        triggerRef={fabTriggerRef}
       />
     </div>
   );
