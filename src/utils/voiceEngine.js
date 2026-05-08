@@ -674,6 +674,46 @@ export async function executeVoiceTasks(tasks, context) {
           };
           break;
         }
+        case "price_question": {
+          const { nom, marque, prix_achat, description, categorie } = task.data;
+          const SURL = import.meta.env.VITE_SUPABASE_URL;
+          if (!SURL) {
+            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Service unavailable" : "Service indisponible" };
+            break;
+          }
+          try {
+            const itemLabel = [nom, marque].filter(Boolean).join(" ");
+            const descPart = description ? ` (${description})` : "";
+            const pricePart = prix_achat
+              ? (context.lang === "en" ? `, bought for €${prix_achat}` : `, acheté ${prix_achat}€`)
+              : "";
+            const catPart = categorie ? (context.lang === "en" ? `, category: ${categorie}` : `, catégorie : ${categorie}`) : "";
+            const question = context.lang === "en"
+              ? `How much can I resell this item: ${itemLabel}${descPart}${pricePart}${catPart}? Give: 💰 recommended sell price range, 📈 estimated margin, 📦 best platform (Vinted / eBay / Leboncoin). Factor in the condition if mentioned.`
+              : `À combien puis-je revendre cet article : ${itemLabel}${descPart}${pricePart}${catPart} ? Donne : 💰 fourchette de prix de revente recommandée, 📈 marge estimée, 📦 meilleure plateforme (Vinted / eBay / Leboncoin). Tiens compte de l'état si mentionné.`;
+            const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ question, lang: context.lang }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const d = await res.json();
+            const analysis = d?.analysis || (context.lang === "en" ? "No analysis available." : "Analyse non disponible.");
+            const addPrompt = context.lang === "en"
+              ? "\n\nWant me to add it to your stock?"
+              : "\n\nVeux-tu que je l'ajoute à ton stock ?";
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "success",
+              data: { analysis, hasAddPrompt: true },
+              message: analysis + addPrompt,
+            };
+          } catch (e) {
+            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Analysis failed" : "Analyse échouée" };
+          }
+          break;
+        }
         case "off_topic":
           result = {
             intent: "off_topic",

@@ -29,9 +29,19 @@ Intents disponibles :
 - analytics_date      → requiresConfirmation: false
 - query_stats         → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
+- price_question      → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Règle price_question (CRITIQUE — lire attentivement) :
+price_question = quand l'utilisateur pose une question sur le prix de revente ou la rentabilité d'un article, SANS donner un prix de vente explicite :
+"à combien je peux le revendre ?", "tu penses que je peux en tirer combien ?", "ça vaut combien sur Vinted ?",
+"c'est un bon deal ?", "vaut le coup ?", "bon deal ?", "je peux vendre à combien ?", "combien ça peut valoir ?".
+DISTINCTION avec deal_score : deal_score = l'utilisateur donne DEUX prix (achat ET vente). price_question = l'utilisateur donne seulement le prix d'achat et DEMANDE combien il peut vendre.
+RÈGLE OBLIGATOIRE : si inventory_add ET price_question sont générés pour le même article → inventory_add.requiresConfirmation = true.
+La price_question doit être listée AVANT inventory_add dans les tasks.
+Data price_question : { nom, marque, prix_achat, description, categorie }
 
 Règles off_topic et business_advice (CRITIQUE) :
 off_topic = quand la demande n'a AUCUN rapport avec le business de revente : météo, recettes, vie perso, actualités, blagues, définitions, etc.
@@ -112,7 +122,8 @@ analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
-Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", "c'est rentable", calcul achat/vente explicite avec deux prix mentionnés
+Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", calcul achat/vente EXPLICITE avec les deux prix mentionnés
+price_question:   { nom, marque, prix_achat, description, categorie }
 unknown:          { originalText }
 
 Règle description (inventory_add uniquement) :
@@ -164,9 +175,19 @@ Available intents:
 - analytics_date      → requiresConfirmation: false
 - query_stats         → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
+- price_question      → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Rule price_question (CRITICAL — read carefully):
+price_question = when the user asks about resale price or profitability WITHOUT giving an explicit sell price:
+"how much can I resell it for?", "how much do you think I can get?", "what's it worth on eBay?",
+"is it a good deal?", "worth buying?", "what should I sell it for?", "how much could it go for?".
+DISTINCTION from deal_score: deal_score = user gives TWO prices (buy AND sell). price_question = user gives only buy price and ASKS how much they can sell for.
+MANDATORY RULE: if inventory_add AND price_question are generated for the same item → inventory_add.requiresConfirmation = true.
+price_question must be listed BEFORE inventory_add in the tasks array.
+Data price_question: { nom, marque, prix_achat, description, categorie }
 
 Rules for off_topic and business_advice (CRITICAL):
 off_topic = when the request has NO relation to the resale business: weather, recipes, personal life, news, jokes, definitions, etc.
@@ -246,7 +267,8 @@ analytics_dormant:{ days }
 analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
-Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", "is it worth it", explicit buy/sell calculation with two prices mentioned
+Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", EXPLICIT buy/sell calculation with both prices mentioned
+price_question:   { nom, marque, prix_achat, description, categorie }
 unknown:          { originalText }
 
 Description rule (inventory_add only):
