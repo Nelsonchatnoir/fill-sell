@@ -1449,12 +1449,20 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           const isPriceQ=lang==="en"
             ?["how much can i sell","how much can i resell","how much do you think i can","how much is it worth","how much can i get","what's it worth"].some(p=>tl.includes(p))
             :(tl.includes("combien")&&tl.includes("revendr"))||(tl.includes("combien")&&tl.includes("vendre"))||tl.includes("ça vaut combien")||tl.includes("combien ça vaut")||tl.includes("en tirer combien");
+          const BUY_SIGNALS=lang==="en"
+            ?["should i buy","is it a good deal","worth buying","should i get it","is it worth it"]
+            :["devrais l'acheter","je devrais acheter","ça vaut le coup","c'est une bonne affaire","bonne affaire","vaut le coup","devrais-je acheter"];
+          const isBuyQ=!isPriceQ&&BUY_SIGNALS.some(p=>tl.includes(p));
           const EXPLICIT_ADD_SIGNALS=lang==="en"
             ?["add it anyway","and add it","add it to my stock","add it as well","also add it","add it too"]
             :["ajoute le quand même","ajoute la quand même","et ajoute le","et ajoute la","mets le dans mon stock","mets la dans mon stock","ajoute le aussi","ajoute la aussi","ajoute quand même","ajoute-le quand même","ajoute-la quand même"];
           const hasExplicitAdd=EXPLICIT_ADD_SIGNALS.some(p=>tl.includes(p));
           let finalTasks=tasks;
-          if(isPriceQ){
+          if(isBuyQ&&!tasks.some(t=>t.intent==="buy_advice")){
+            const existing=tasks.find(t=>t.intent==="inventory_add"||t.intent==="business_advice");
+            const src=existing?.data||{};
+            finalTasks=[{intent:"buy_advice",confidence:0.95,requiresConfirmation:false,ambiguous:false,data:{nom:src.nom||null,marque:src.marque||null,prix_propose:src.prix_propose||src.prix_achat||null,etat:src.etat||src.description||null,plateforme_source:src.plateforme_source||null,categorie:src.categorie||null}}];
+          } else if(isPriceQ){
             const existingPA=tasks.find(t=>t.intent==="price_advice");
             const existingAdd=tasks.find(t=>t.intent==="inventory_add");
             const src=existingPA?.data||existingAdd?.data||{};
@@ -2196,8 +2204,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}><div style={{fontSize:13,fontWeight:600,color:"#6B7280",lineHeight:1.5}}>{message}</div></div>);
               }
 
-              if(status==="success"&&(intent==="business_advice"||intent==="price_advice"||intent==="price_question")){
-                const label=intent==="price_advice"|intent==="price_question"
+              if(status==="success"&&(intent==="business_advice"||intent==="price_advice"||intent==="price_question"||intent==="buy_advice")){
+                const label=intent==="buy_advice"
+                  ?(lang==="en"?"🛒 Buy Analysis":"🛒 Analyse achat")
+                  :intent==="price_advice"||intent==="price_question"
                   ?(lang==="en"?"💰 Price Advice":"💰 Conseil prix")
                   :(lang==="en"?"🤖 Business Advice":"🤖 Analyse personnalisée");
                 const raw=data?.analysis||message||"";

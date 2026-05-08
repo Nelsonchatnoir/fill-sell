@@ -38,9 +38,28 @@ Intents disponibles :
 - deal_score          → requiresConfirmation: false
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
+- buy_advice          → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Règle buy_advice (CRITIQUE) :
+buy_advice = l'utilisateur envisage d'ACHETER un article qu'il n'a PAS encore et demande si c'est une bonne affaire / s'il doit acheter.
+DISTINCT de price_advice : price_advice = l'utilisateur A DÉJÀ l'article et demande à quel prix le REVENDRE.
+Déclencheurs buy_advice : "je devrais l'acheter ?", "tu penses que je devrais acheter", "ça vaut le coup ?", "c'est une bonne affaire ?",
+"bonne affaire ?", "j'en ai vu un à X€", "vaut le coup d'être acheté", "est-ce que j'achète",
+"je l'achète ?", "ça vaut le coup d'acheter", "tu me conseilles de l'acheter".
+Data buy_advice : { nom, marque, prix_propose, etat, plateforme_source, categorie }
+  - prix_propose = le prix demandé/vu pour l'article
+  - etat = état décrit (ex: "écran cassé", "très bon état", "neuf", null si non mentionné)
+  - plateforme_source = plateforme où l'article est vu (ex: "Leboncoin", null si non mentionné)
+
+Exemples OBLIGATOIRES buy_advice :
+✅ "j'aimerais acheter un iphone 13 256go avec l'écran cassé j'en ai vu un à 65€ sur leboncoin tu penses que je devrais l'acheter ?" → [buy_advice {nom:"iPhone 13 256Go", marque:"Apple", prix_propose:65, etat:"écran cassé", plateforme_source:"Leboncoin"}]
+✅ "j'ai vu une paire de Nike Air Max 90 à 40€ en friperie ça vaut le coup ?" → [buy_advice {nom:"Nike Air Max 90", marque:"Nike", prix_propose:40, etat:null, plateforme_source:null}]
+✅ "je devrais acheter cette PS5 à 250€ sur Vinted ?" → [buy_advice {nom:"PS5", marque:"Sony", prix_propose:250, etat:null, plateforme_source:"Vinted"}]
+❌ "j'aimerais acheter un iphone 13 tu penses que je devrais l'acheter ?" → business_advice (FAUX — article précis avec question d'achat = buy_advice)
+❌ "j'aimerais acheter un iphone 13 à 65€ ça vaut le coup ?" → inventory_add (FAUX — question d'achat sans ajout explicite = buy_advice)
 
 Règle price_advice (CRITIQUE — PRIORITAIRE) :
 RÈGLE PRINCIPALE : si l'utterance contient un article précis (nom/marque/modèle) + une question sur son prix de revente → TOUJOURS price_advice. JAMAIS business_advice.
@@ -162,6 +181,7 @@ deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", calcul achat/vente EXPLICITE avec les deux prix mentionnés
 price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
+buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
 
 Règle description (inventory_add uniquement) :
@@ -222,9 +242,27 @@ Available intents:
 - deal_score          → requiresConfirmation: false
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
+- buy_advice          → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Rule buy_advice (CRITICAL):
+buy_advice = the user is considering BUYING an item they do NOT yet own, and asks if it's a good deal / whether they should buy it.
+DISTINCT from price_advice: price_advice = the user ALREADY HAS the item and asks what to SELL it for.
+Triggers buy_advice: "should I buy it?", "do you think I should buy", "is it worth it?", "is it a good deal?",
+"I saw one for €X", "worth buying?", "should I get it?", "is it worth buying?", "would you recommend buying it?".
+Data buy_advice: { nom, marque, prix_propose, etat, plateforme_source, categorie }
+  - prix_propose = the price being asked for the item
+  - etat = described condition (e.g., "cracked screen", "very good condition", "new", null if not mentioned)
+  - plateforme_source = platform where item was seen (e.g., "eBay", null if not mentioned)
+
+Mandatory examples buy_advice:
+✅ "I saw an iPhone 13 256GB with a cracked screen for €65 on eBay, should I buy it?" → [buy_advice {nom:"iPhone 13 256GB", marque:"Apple", prix_propose:65, etat:"cracked screen", plateforme_source:"eBay"}]
+✅ "I found some Nike Air Max 90 for €40 at a thrift store, is it worth it?" → [buy_advice {nom:"Nike Air Max 90", marque:"Nike", prix_propose:40, etat:null, plateforme_source:null}]
+✅ "should I buy this PS5 for €250 on Vinted?" → [buy_advice {nom:"PS5", marque:"Sony", prix_propose:250, etat:null, plateforme_source:"Vinted"}]
+❌ "should I buy an iPhone 13?" → business_advice (WRONG — specific item with a buy question = buy_advice)
+❌ "I want to buy an iPhone 13 for €65, is it a good deal?" → inventory_add (WRONG — buy question without explicit "add" = buy_advice)
 
 Rule price_advice (CRITICAL — TOP PRIORITY):
 MAIN RULE: if the utterance contains a specific item (name/brand/model) + a question about its resale price → ALWAYS price_advice. NEVER business_advice.
@@ -345,6 +383,7 @@ deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", EXPLICIT buy/sell calculation with both prices mentioned
 price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
+buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
 
 Description rule (inventory_add only):
@@ -444,8 +483,34 @@ serve(async (req) => {
       });
     }
 
-    // Server-side guard: price question → price_advice first; explicit add signal → also inventory_add
+    // Server-side guard: buy advice patterns → enforce buy_advice
     const textLow = text.toLowerCase();
+    const BUY_TRIGGERS = _lang === "en"
+      ? ["should i buy","is it a good deal","worth buying","should i get it","good deal","is it worth it","would you recommend buying","worth it?"]
+      : ["devrais l'acheter","je devrais acheter","ça vaut le coup","c'est une bonne affaire","bonne affaire","vaut le coup","devrais-je acheter","est-ce que j'achète","je l'achète ?","tu me conseilles de l'acheter"];
+    const isBuyAdvice = BUY_TRIGGERS.some(p => textLow.includes(p));
+
+    if (isBuyAdvice && !((parsed.tasks as any[]).some(t => t.intent === "buy_advice"))) {
+      const tasks = parsed.tasks as any[];
+      const existing = tasks.find(t => t.intent === "buy_advice" || t.intent === "inventory_add" || t.intent === "business_advice");
+      const src: Record<string, unknown> = existing?.data ?? {};
+      parsed.tasks = [{
+        intent: "buy_advice",
+        confidence: 0.95,
+        requiresConfirmation: false,
+        ambiguous: false,
+        data: {
+          nom: src.nom ?? null,
+          marque: src.marque ?? null,
+          prix_propose: src.prix_propose ?? src.prix_achat ?? null,
+          etat: src.etat ?? src.description ?? null,
+          plateforme_source: src.plateforme_source ?? null,
+          categorie: src.categorie ?? null,
+        },
+      }];
+    }
+
+    // Server-side guard: price question → price_advice first; explicit add signal → also inventory_add
     const PRICE_Q_TRIGGERS = _lang === "en"
       ? ["how much can i sell","how much can i resell","how much do you think i can","how much is it worth","how much can i get","what's it worth"]
       : ["revendre combien","vendre combien","en tirer combien","ça vaut combien","combien ça vaut","à combien tu estimes"];

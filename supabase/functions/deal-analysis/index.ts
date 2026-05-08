@@ -48,6 +48,28 @@ Reply ONLY with:
 💡 1 short tip to sell faster
 No general business analysis. Short reply (5-6 lines max). With emojis. No asterisks.`;
 
+const SYSTEM_BUY_FR = `Tu es expert en achat-revente occasion (Vinted, eBay, Leboncoin, Backmarket...).
+L'utilisateur envisage d'acheter un article d'occasion et te demande si c'est une bonne affaire.
+Analyse le deal proposé et réponds UNIQUEMENT avec :
+🛒 Verdict : ✅ Bonne affaire / ⚠️ Risqué / ❌ Trop cher
+💰 Fourchette de revente estimée (prix marché actuel)
+📈 Marge potentielle brute (si prix d'achat mentionné, déduis ~15% de frais estimés)
+⚠️ Points de vigilance (état, réparations à prévoir, pièges fréquents pour ce type d'article)
+💡 1 conseil concret (négociation possible ? plateforme optimale ? timing ?)
+Si l'état est ambigu ou l'article rare/peu courant → ajoute cette ligne exactement : 📸 Envoie des photos dans l'onglet Lens pour une analyse plus précise
+Sans astérisques. Avec emojis. Court (6-8 lignes max).`;
+
+const SYSTEM_BUY_EN = `You are an expert in secondhand resale (Vinted, eBay, Facebook Marketplace, Backmarket...).
+The user is considering buying a secondhand item and asks if it's a good deal.
+Analyze the proposed deal and reply ONLY with:
+🛒 Verdict: ✅ Good deal / ⚠️ Risky / ❌ Too expensive
+💰 Estimated resale price range (current market)
+📈 Potential gross margin (if purchase price mentioned, deduct ~15% estimated fees)
+⚠️ Watch out for (condition, repairs needed, common traps for this type of item)
+💡 1 concrete tip (can you negotiate? best platform? timing?)
+If condition is ambiguous or item is rare/uncommon → add this exact line: 📸 Send photos in the Lens tab for a more precise analysis
+No asterisks. With emojis. Short (6-8 lines max).`;
+
 function buildScorePrompt(scoreResult: any, lang: string): string {
   const { score, label, dimensions, pills, context } = scoreResult;
   const { margePercent, profitNet, vsMoyenne, topPercent } = context;
@@ -100,7 +122,12 @@ serve(async (req) => {
     let userMsg: string;
     let maxTokens: number;
 
-    if (body.priceAdvice) {
+    if (body.buyAdvice) {
+      // Buy advice mode: should the user buy this item?
+      systemPrompt = _lang === 'en' ? SYSTEM_BUY_EN : SYSTEM_BUY_FR;
+      userMsg = body.buyAdvice;
+      maxTokens = 300;
+    } else if (body.priceAdvice) {
       // Price advice mode: focused recommendation for a specific item
       systemPrompt = _lang === 'en' ? SYSTEM_PRICE_ADVICE_EN : SYSTEM_PRICE_ADVICE_FR;
       userMsg = body.priceAdvice;
