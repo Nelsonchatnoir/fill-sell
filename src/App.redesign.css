@@ -817,10 +817,11 @@ body.bg-dots {
    8. TOPBAR — refined glass + premium badge + lang switch
    ============================================================ */
 .topbar {
-  background: rgba(250,250,248,0.78) !important;
+  background: rgba(250,250,248,0.55) !important;
   backdrop-filter: blur(14px) !important;
   -webkit-backdrop-filter: blur(14px) !important;
-  border-bottom: 1px solid transparent !important;
+  border-bottom: 1px solid rgba(0,0,0,0.06) !important;
+  box-shadow: 0 1px 16px rgba(0,0,0,0.07) !important;
   position: sticky !important;
   top: 0 !important;
   z-index: 100 !important;
