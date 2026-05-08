@@ -1444,17 +1444,27 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           const{tasks,error:iErr}=await iRes.json();
           if(iErr)throw new Error(iErr);
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
-          // Client-side guard: price question patterns always → price_advice, never inventory_add
+          // Client-side guard: price question patterns → price_advice first; explicit add → also inventory_add
           const tl=text.toLowerCase();
           const isPriceQ=lang==="en"
             ?["how much can i sell","how much can i resell","how much do you think i can","how much is it worth","how much can i get","what's it worth"].some(p=>tl.includes(p))
             :(tl.includes("combien")&&tl.includes("revendr"))||(tl.includes("combien")&&tl.includes("vendre"))||tl.includes("ça vaut combien")||tl.includes("combien ça vaut")||tl.includes("en tirer combien");
+          const EXPLICIT_ADD_SIGNALS=lang==="en"
+            ?["add it anyway","and add it","add it to my stock","add it as well","also add it","add it too"]
+            :["ajoute le quand même","ajoute la quand même","et ajoute le","et ajoute la","mets le dans mon stock","mets la dans mon stock","ajoute le aussi","ajoute la aussi","ajoute quand même","ajoute-le quand même","ajoute-la quand même"];
+          const hasExplicitAdd=EXPLICIT_ADD_SIGNALS.some(p=>tl.includes(p));
           let finalTasks=tasks;
           if(isPriceQ){
             const existingPA=tasks.find(t=>t.intent==="price_advice");
             const existingAdd=tasks.find(t=>t.intent==="inventory_add");
             const src=existingPA?.data||existingAdd?.data||{};
-            finalTasks=[existingPA||{intent:"price_advice",confidence:0.97,requiresConfirmation:false,ambiguous:false,data:{nom:src.nom||null,marque:src.marque||null,prix_achat:src.prix_achat||null,categorie:src.categorie||null,description:src.description||null}}];
+            const paTask=existingPA||{intent:"price_advice",confidence:0.97,requiresConfirmation:false,ambiguous:false,data:{nom:src.nom||null,marque:src.marque||null,prix_achat:src.prix_achat||null,categorie:src.categorie||null,description:src.description||null}};
+            if(hasExplicitAdd){
+              const addTask=existingAdd||{intent:"inventory_add",confidence:0.97,requiresConfirmation:false,ambiguous:false,data:{nom:src.nom||null,marque:src.marque||null,prix_achat:src.prix_achat||null,categorie:src.categorie||null,description:src.description||null,quantite:1}};
+              finalTasks=[paTask,addTask];
+            }else{
+              finalTasks=[paTask];
+            }
           }
           const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,actions,supabaseUrl:SURL});
           // Store price_advice data for potential follow-up "ajoute le au stock"

@@ -444,7 +444,7 @@ serve(async (req) => {
       });
     }
 
-    // Server-side guard: price question patterns → force price_advice, eject inventory_add/business_advice
+    // Server-side guard: price question → price_advice first; explicit add signal → also inventory_add
     const textLow = text.toLowerCase();
     const PRICE_Q_TRIGGERS = _lang === "en"
       ? ["how much can i sell","how much can i resell","how much do you think i can","how much is it worth","how much can i get","what's it worth"]
@@ -452,12 +452,17 @@ serve(async (req) => {
     const isPriceQ = PRICE_Q_TRIGGERS.some(p => textLow.includes(p)) ||
       (_lang === "fr" && textLow.includes("combien") && textLow.includes("revendr"));
 
+    const EXPLICIT_ADD_SIGNALS = _lang === "en"
+      ? ["add it anyway","and add it","add it to my stock","add it as well","also add it","add it too"]
+      : ["ajoute le quand même","ajoute la quand même","et ajoute le","et ajoute la","mets le dans mon stock","mets la dans mon stock","ajoute le aussi","ajoute la aussi","ajoute quand même","ajoute-le quand même","ajoute-la quand même"];
+    const hasExplicitAdd = EXPLICIT_ADD_SIGNALS.some(p => textLow.includes(p));
+
     if (isPriceQ) {
       const tasks = parsed.tasks as any[];
       const existingPA = tasks.find(t => t.intent === "price_advice");
       const existingAdd = tasks.find(t => t.intent === "inventory_add");
       const src: Record<string, unknown> = existingPA?.data ?? existingAdd?.data ?? {};
-      parsed.tasks = [{
+      const paTask = {
         intent: "price_advice",
         confidence: 0.97,
         requiresConfirmation: false,
@@ -469,7 +474,26 @@ serve(async (req) => {
           categorie: src.categorie ?? null,
           description: src.description ?? null,
         },
-      }];
+      };
+      if (hasExplicitAdd) {
+        const addTask = existingAdd ?? {
+          intent: "inventory_add",
+          confidence: 0.97,
+          requiresConfirmation: false,
+          ambiguous: false,
+          data: {
+            nom: src.nom ?? null,
+            marque: src.marque ?? null,
+            prix_achat: src.prix_achat ?? null,
+            categorie: src.categorie ?? null,
+            description: src.description ?? null,
+            quantite: 1,
+          },
+        };
+        parsed.tasks = [paTask, addTask];
+      } else {
+        parsed.tasks = [paTask];
+      }
     }
 
     return new Response(JSON.stringify({ tasks: parsed.tasks }), {
