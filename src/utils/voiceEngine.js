@@ -674,6 +674,56 @@ export async function executeVoiceTasks(tasks, context) {
           };
           break;
         }
+        case "price_advice": {
+          const { nom, marque, prix_achat, description, categorie } = task.data;
+          const SURL = import.meta.env.VITE_SUPABASE_URL;
+          if (!SURL) {
+            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Service unavailable" : "Service indisponible" };
+            break;
+          }
+          try {
+            const itemLabel = [nom, marque].filter(Boolean).join(" ");
+            const lines = [];
+            if (context.lang === "en") {
+              lines.push(`Item: ${itemLabel}`);
+              if (description) lines.push(`Condition/details: ${description}`);
+              if (prix_achat) lines.push(`Purchase price: €${prix_achat}`);
+              if (categorie) lines.push(`Category: ${categorie}`);
+            } else {
+              lines.push(`Article : ${itemLabel}`);
+              if (description) lines.push(`État/détails : ${description}`);
+              if (prix_achat) lines.push(`Prix d'achat : ${prix_achat}€`);
+              if (categorie) lines.push(`Catégorie : ${categorie}`);
+            }
+            // Enrich with past similar sales
+            const normQ = norm(itemLabel);
+            const similar = context.sales.filter(s => {
+              const t = norm(s.titre || s.title || s.nom || "");
+              const m = norm(s.marque || "");
+              return (normQ && (t.includes(normQ) || normQ.includes(t) || m.includes(norm(marque || ""))));
+            }).slice(0, 3);
+            if (similar.length) {
+              const avgSell = similar.reduce((a, s) => a + getPrixVente(s), 0) / similar.length;
+              const avgMargin = similar.reduce((a, s) => a + getMargin(s), 0) / similar.length;
+              lines.push(context.lang === "en"
+                ? `Your past sales of similar items: avg sell price €${Math.round(avgSell)}, avg margin €${Math.round(avgMargin)}`
+                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)}€, marge moyenne ${Math.round(avgMargin)}€`);
+            }
+            const priceAdvice = lines.join("\n");
+            const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ priceAdvice, lang: context.lang }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const d = await res.json();
+            const analysis = d?.analysis || (context.lang === "en" ? "No analysis available." : "Analyse non disponible.");
+            result = { intent: task.intent, taskData: task.data, status: "success", data: { analysis }, message: analysis };
+          } catch (e) {
+            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Analysis failed" : "Analyse échouée" };
+          }
+          break;
+        }
         case "price_question": {
           const { nom, marque, prix_achat, description, categorie } = task.data;
           const SURL = import.meta.env.VITE_SUPABASE_URL;

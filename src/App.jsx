@@ -2144,14 +2144,15 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}><div style={{fontSize:13,fontWeight:600,color:"#6B7280",lineHeight:1.5}}>{message}</div></div>);
               }
 
-              if(status==="success"&&intent==="business_advice"){
-                const lines=(data?.analysis||message||"").split("\n").filter(l=>l.trim());
+              if(status==="success"&&(intent==="business_advice"||intent==="price_advice"||intent==="price_question")){
+                const label=intent==="price_advice"|intent==="price_question"
+                  ?(lang==="en"?"💰 Price Advice":"💰 Conseil prix")
+                  :(lang==="en"?"🤖 Business Advice":"🤖 Analyse personnalisée");
+                const raw=data?.analysis||message||"";
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>🤖 {lang==="en"?"Business Advice":"Analyse personnalisée"}</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {lines.map((l,i)=><div key={i} style={{fontSize:13,color:"#0D0D0D",lineHeight:1.6,fontWeight:400}}>{l.replace(/\*\*/g,"").replace(/\*/g,"")}</div>)}
-                    </div>
+                    <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>{label}</div>
+                    <div style={{fontSize:13,color:"#0D0D0D",lineHeight:1.7,fontWeight:500,whiteSpace:"pre-wrap"}}>{raw.replace(/\*\*/g,"").replace(/\*/g,"")}</div>
                   </div>
                 );
               }

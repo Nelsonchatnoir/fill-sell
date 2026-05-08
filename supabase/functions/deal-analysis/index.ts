@@ -32,6 +32,22 @@ If off-topic, briefly say you specialize in resale and invite a deal-related que
 Reply without asterisks, with emojis, in English, concisely (5-7 lines max).
 Use line breaks to keep the answer readable.`;
 
+const SYSTEM_PRICE_ADVICE_FR = `L'utilisateur te demande un conseil de prix de revente pour un article précis.
+Réponds UNIQUEMENT avec :
+💰 Prix de revente recommandé (fourchette réaliste)
+📈 Si prix d'achat mentionné : marge estimée + verdict (🔥 excellent / ✅ bon / ⚠️ moyen / ❌ éviter)
+📦 Plateforme conseillée (1-2 max)
+💡 1 conseil court pour vendre plus vite
+Pas d'analyse business générale. Réponse courte (5-6 lignes max). Avec emojis. Sans astérisques.`;
+
+const SYSTEM_PRICE_ADVICE_EN = `The user is asking for a resale price recommendation for a specific item.
+Reply ONLY with:
+💰 Recommended resale price (realistic range)
+📈 If purchase price mentioned: estimated margin + verdict (🔥 excellent / ✅ good / ⚠️ average / ❌ avoid)
+📦 Recommended platform(s) (1-2 max)
+💡 1 short tip to sell faster
+No general business analysis. Short reply (5-6 lines max). With emojis. No asterisks.`;
+
 function buildScorePrompt(scoreResult: any, lang: string): string {
   const { score, label, dimensions, pills, context } = scoreResult;
   const { margePercent, profitNet, vsMoyenne, topPercent } = context;
@@ -84,7 +100,12 @@ serve(async (req) => {
     let userMsg: string;
     let maxTokens: number;
 
-    if (body.question) {
+    if (body.priceAdvice) {
+      // Price advice mode: focused recommendation for a specific item
+      systemPrompt = _lang === 'en' ? SYSTEM_PRICE_ADVICE_EN : SYSTEM_PRICE_ADVICE_FR;
+      userMsg = body.priceAdvice;
+      maxTokens = 250;
+    } else if (body.question) {
       // Q&A mode: free-form resale question
       systemPrompt = _lang === 'en' ? SYSTEM_QA_EN : SYSTEM_QA_FR;
       userMsg = body.question;
