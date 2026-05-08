@@ -730,7 +730,7 @@ body.bg-dots {
 /* Voice ticker (typewriter) */
 .empty-hero .voice-ticker {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin: 18px 0;
   padding: 12px 14px;
@@ -748,7 +748,7 @@ body.bg-dots {
   font-size: 13px; font-weight: 700;
   color: #0D0D0D; letter-spacing: -0.005em;
   font-style: italic; text-align: left;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: normal; overflow-wrap: break-word; min-height: 42px;
 }
 .empty-hero .voice-ticker .vt-cursor {
   display: inline-block;
@@ -1301,7 +1301,7 @@ body.bg-dots {
 /* Typewriter ticker */
 .voice-ticker {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-top: 12px;
   padding: 12px 14px;
@@ -1326,9 +1326,9 @@ body.bg-dots {
   letter-spacing: -0.005em;
   font-style: italic;
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-height: 42px;
 }
 
 .voice-ticker .vt-cursor {

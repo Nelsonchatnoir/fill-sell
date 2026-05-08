@@ -906,13 +906,13 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
       </p>
       <VoiceTicker lang={lang} />
       <div className="voice-categories">
-        <div className="voice-cat"><div className="ico">➕</div><div className="lbl">{lang==='en'?'Add':'Ajouter'}</div></div>
-        <div className="voice-cat"><div className="ico">💰</div><div className="lbl">{lang==='en'?'Sell':'Vendre'}</div></div>
-        <div className="voice-cat"><div className="ico">🔍</div><div className="lbl">{lang==='en'?'Ask':'Demander'}</div></div>
+        <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">➕</div><div className="lbl">{lang==='en'?'Add':'Ajouter'}</div></div>
+        <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">💰</div><div className="lbl">{lang==='en'?'Sell':'Vendre'}</div></div>
+        <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">🔍</div><div className="lbl">{lang==='en'?'Ask':'Demander'}</div></div>
       </div>
       <div className="empty-hero-cta-stack">
         <button className="cta-premium" onClick={onTryVoice}>
-          🎙️ {lang==='en' ? 'Try voice AI · 7 days free' : 'Essayer le vocal IA · 7 jours gratuits'}
+          🎙️ {lang==='en' ? 'Try voice AI' : 'Essayer le vocal IA'}
         </button>
         <button className="empty-hero-secondary" onClick={onAddManual}>
           ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
@@ -1380,6 +1380,12 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
     setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
   }
 
+  useEffect(()=>{
+    if(!vaError)return;
+    const t=setTimeout(()=>setVaError(null),2000);
+    return()=>clearTimeout(t);
+  },[vaError]);
+
   async function handleFabClick(){
     if(vaStep==="thinking")return;
     if(vaStep==="recording"){vaMediaRef.current?.stop();return;}
@@ -1452,9 +1458,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
 
       {/* Error bubble */}
       {vaError&&vaStep===""&&(
-        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 140px)",right:16,background:"#FEF2F2",borderRadius:16,border:"1px solid #FCA5A5",padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.08)",zIndex:999,fontSize:12,fontWeight:600,color:"#E53E3E",maxWidth:240,display:"flex",gap:8,alignItems:"center",animation:"va-fadein 0.2s ease"}}>
-          <span style={{flex:1}}>{vaError}</span>
-          <button onClick={()=>setVaError(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#E53E3E",fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>✕</button>
+        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:"#1A1A1A",color:"#fff",borderRadius:12,padding:"10px 18px",boxShadow:"0 4px 20px rgba(0,0,0,0.25)",zIndex:999,fontSize:13,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
+          {vaError}
         </div>
       )}
 
@@ -2227,6 +2232,9 @@ export default function App({ loginOnly = false }){
   const [dealAnalysis,setDealAnalysis]=useState(null);
   const [dealAnalysisLoading,setDealAnalysisLoading]=useState(false);
   const dealAnalysisTimer=useRef(null);
+  const [dealIADesc,setDealIADesc]=useState("");
+  const [dealIAResult,setDealIAResult]=useState(null);
+  const [dealIALoading,setDealIALoading]=useState(false);
   const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
   const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
@@ -3412,6 +3420,32 @@ export default function App({ loginOnly = false }){
     },
   };
 
+  async function analyzeDealWithIA(){
+    if(!dealIADesc.trim())return;
+    const SURL=import.meta.env.VITE_SUPABASE_URL;
+    if(!SURL)return;
+    setDealIALoading(true);setDealIAResult(null);
+    const buy=parseFloat(cBuy)||0;const sell=parseFloat(cSell)||0;
+    let q=dealIADesc.trim();
+    if(buy>0)q+=`. Prix d'achat : ${buy}€`;
+    if(sell>0)q+=`. Prix de vente envisagé : ${sell}€`;
+    q+=". Est-ce un bon deal ? Donne une estimation du prix de revente recommandé, une fourchette de prix marché, et un conseil.";
+    try{
+      const r=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:q,lang})});
+      if(!r.ok)throw new Error("Erreur IA");
+      const{tasks,error:iErr}=await r.json();
+      if(iErr)throw new Error(iErr);
+      if(!Array.isArray(tasks)||!tasks.length)throw new Error("Pas de réponse");
+      const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions:vaActions,supabaseUrl:SURL});
+      const first=results?.[0];
+      setDealIAResult(first?.message||first?.data?.analysis||first?.data?.conseil||(lang==="fr"?"Analyse terminée.":"Analysis complete."));
+    }catch(e){
+      setDealIAResult(`❌ ${e.message}`);
+    }finally{
+      setDealIALoading(false);
+    }
+  }
+
   return(
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
 
@@ -4186,6 +4220,20 @@ export default function App({ loginOnly = false }){
                 <span style={{fontSize:20}}>🎯</span>
                 <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D"}}>Deal Score</div>
               </div>
+              {/* ── Zone IA ── */}
+              <textarea value={dealIADesc} onChange={e=>{setDealIADesc(e.target.value);setDealIAResult(null);}}
+                placeholder={lang==="en"?"Describe the item (e.g. iPhone 12 64GB, good condition, Makita drill 18V...)":"Décris l'article (ex : iPhone 12 64Go état correct, perceuse Makita 18V, sac Zara noir...)"}
+                rows={2} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${dealIADesc?"#1D9E75":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",marginBottom:8,transition:"border-color 0.15s"}}/>
+              <button onClick={analyzeDealWithIA} disabled={!dealIADesc.trim()||dealIALoading}
+                style={{width:"100%",padding:"10px",background:!dealIADesc.trim()||dealIALoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!dealIADesc.trim()||dealIALoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:!dealIADesc.trim()||dealIALoading?"not-allowed":"pointer",marginBottom:12,fontFamily:"inherit",transition:"all 0.2s"}}>
+                {dealIALoading?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours..."):(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
+              </button>
+              {dealIAResult&&(
+                <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:12,padding:"14px 16px",border:"1px solid #9FE1CB",marginBottom:14,fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.6}}>
+                  <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>🤖 {lang==="en"?"AI Analysis":"Analyse IA"}</div>
+                  {dealIAResult}
+                </div>
+              )}
               <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:10}}>
                 <span style={{fontSize:16,flexShrink:0}}>💰</span>
                 <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)}
