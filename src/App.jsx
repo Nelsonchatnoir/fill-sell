@@ -2235,6 +2235,8 @@ export default function App({ loginOnly = false }){
   const [dealIADesc,setDealIADesc]=useState("");
   const [dealIAResult,setDealIAResult]=useState(null);
   const [dealIALoading,setDealIALoading]=useState(false);
+  const [dealMicActive,setDealMicActive]=useState(false);
+  const dealMicRef=useRef(null);
   const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
   const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
@@ -3425,41 +3427,50 @@ export default function App({ loginOnly = false }){
     const SURL=import.meta.env.VITE_SUPABASE_URL;
     if(!SURL)return;
     setDealIALoading(true);setDealIAResult(null);
-    const buy=parseFloat(cBuy)||0;
-    const sell=parseFloat(cSell)||0;
-    const itemName=dealIADesc.trim();
-    let q=lang==="en"
-      ? `Analyze this resale deal: "${itemName}".`
-      : `Analyse ce deal de revente : "${itemName}".`;
-    if(buy>0) q+=lang==="en"
-      ? ` Purchase price: ${buy}€.`
-      : ` Prix d'achat : ${buy}€.`;
-    if(sell>0){
-      q+=lang==="en"
-        ? ` Planned sell price: ${sell}€. Is this a good deal?`
-        : ` Prix de vente envisagé : ${sell}€. Est-ce un bon deal ?`;
-    } else {
-      q+=lang==="en"
-        ? ` No sell price set yet. Based on the item name${buy>0?` and purchase price of ${buy}€`:""}, suggest a recommended sell price range and explain why.`
-        : ` Pas encore de prix de vente. En te basant sur le nom de l'article${buy>0?` et le prix d'achat de ${buy}€`:""}, suggère une fourchette de prix de vente recommandée et explique pourquoi.`;
-    }
-    q+=lang==="en"
-      ? ` Start your reply with "For a ${itemName}..." and give: market price range, margin estimate, one concrete tip to sell faster.`
-      : ` Commence ta réponse par "Pour ${itemName}..." et donne : fourchette de prix marché, estimation de marge, un conseil concret pour vendre plus vite.`;
+    const prixAchat=parseFloat(cBuy)||null;
+    const prixVente=parseFloat(cSell)||null;
+    const frais=parseFloat(cShip)||null;
     try{
-      const r=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:q,lang})});
-      if(!r.ok)throw new Error("Erreur IA");
-      const{tasks,error:iErr}=await r.json();
+      const r=await fetch(`${SURL}/functions/v1/deal-analysis`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({item:dealIADesc.trim(),prixAchat,prixVente,frais,lang}),
+      });
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      const{analysis,error:iErr}=await r.json();
       if(iErr)throw new Error(iErr);
-      if(!Array.isArray(tasks)||!tasks.length)throw new Error("Pas de réponse");
-      const{results}=await executeVoiceTasks(tasks,{items,sales,lang,actions:vaActions,supabaseUrl:SURL});
-      const first=results?.[0];
-      setDealIAResult(first?.message||first?.data?.analysis||first?.data?.conseil||(lang==="fr"?"Analyse terminée.":"Analysis complete."));
+      setDealIAResult(analysis||(lang==="fr"?"Analyse terminée.":"Analysis complete."));
     }catch(e){
       setDealIAResult(`❌ ${e.message}`);
     }finally{
       setDealIALoading(false);
     }
+  }
+
+  function toggleDealMic(){
+    if(dealMicActive){
+      dealMicRef.current?.stop();
+      dealMicRef.current?.abort();
+      dealMicRef.current=null;
+      setDealMicActive(false);
+      return;
+    }
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR)return;
+    const rec=new SR();
+    rec.lang=lang==="en"?"en-US":"fr-FR";
+    rec.interimResults=false;
+    rec.continuous=false;
+    rec.onresult=e=>{
+      const transcript=Array.from(e.results).map(r=>r[0].transcript).join(" ");
+      setDealIADesc(prev=>(prev?prev+" ":"")+transcript);
+      setDealIAResult(null);
+    };
+    rec.onend=()=>{setDealMicActive(false);dealMicRef.current=null;};
+    rec.onerror=()=>{setDealMicActive(false);dealMicRef.current=null;};
+    dealMicRef.current=rec;
+    rec.start();
+    setDealMicActive(true);
   }
 
   return(
@@ -4174,61 +4185,8 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===2&&(()=>{
-          const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
-          const globalAvgMargePct=allSalesValid.length?allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length:null;
-          const simBuy=parseFloat(cBuy)||0;
-          const simSuggestedSell=globalAvgMargePct!=null&&simBuy>0?(simBuy/(1-Math.max(0.01,globalAvgMargePct/100))):0;
-          const simMargin=simBuy>0&&simSuggestedSell>0?simSuggestedSell-simBuy:0;
-          const simMarginPct=simSuggestedSell>0?(simMargin/simSuggestedSell)*100:0;
-          const vsAvg=globalAvgMargePct!=null?simMarginPct-globalAvgMargePct:null;
           return(
           <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
-
-            {/* ── Section 1 : Simulateur ── */}
-            <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-                <span style={{fontSize:20}}>🧮</span>
-                <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Smart Simulator":"Simulateur intelligent"}</div>
-                  <div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"Based on your sales history":"Basé sur ton historique de ventes"}</div>
-                </div>
-              </div>
-              {/* Champ prix achat */}
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:14}}>
-                <span style={{fontSize:16,flexShrink:0}}>🛒</span>
-                <input type="number" inputMode="decimal" value={cBuy} onChange={e=>setCBuy(e.target.value)}
-                  placeholder={lang==="en"?"Purchase price":"Prix d'achat"}
-                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
-                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
-              </div>
-              {/* Résultat simulateur */}
-              {simBuy>0&&globalAvgMargePct!=null?(
-                <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:12,padding:"16px",border:"1px solid #9FE1CB"}}>
-                  <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>{lang==="en"?"AI Recommendation":"Recommandation IA"}</div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:10}}>
-                    <div>
-                      <div style={{fontSize:11,color:"#6B7280",fontWeight:600,marginBottom:2}}>{lang==="en"?"Suggested sell price":"Prix de vente suggéré"}</div>
-                      <div style={{fontSize:28,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(simSuggestedSell)}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:11,color:"#6B7280",fontWeight:600,marginBottom:2}}>{lang==="en"?"Est. profit":"Profit estimé"}</div>
-                      <div style={{fontSize:20,fontWeight:800,color:simMargin>=0?"#1D9E75":"#EF4444"}}>{simMargin>=0?"+":""}{fmt(simMargin)}</div>
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#fff",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,color:simMarginPct>=0?"#1D9E75":"#EF4444",border:`1px solid ${simMarginPct>=0?"#9FE1CB":"#FCA5A5"}`}}>{fmtp(simMarginPct)} {lang==="en"?"margin":"marge"}</span>
-                    <span style={{background:"#fff",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:600,color:"#6B7280",border:"1px solid #E5E7EB"}}>{lang==="en"?"Your avg":"Ta moyenne"} {fmtp(globalAvgMargePct)}</span>
-                    {vsAvg!==null&&Math.abs(vsAvg)>0.5&&<span style={{background:"#fff",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,color:vsAvg>=0?"#1D9E75":"#F59E0B",border:`1px solid ${vsAvg>=0?"#9FE1CB":"#FCD34D"}`}}>{vsAvg>=0?"✓ Dans la moyenne":"↗ Sous la moyenne"}</span>}
-                  </div>
-                </div>
-              ):simBuy>0&&globalAvgMargePct===null?(
-                <div style={{background:"#FFFBEB",borderRadius:12,padding:"14px",border:"1px solid #FDE68A",fontSize:13,color:"#92400E",fontWeight:600}}>
-                  {lang==="en"?"Make a few sales first to get personalized suggestions 📈":"Fais quelques ventes pour obtenir des suggestions personnalisées 📈"}
-                </div>
-              ):(
-                <div style={{textAlign:"center",padding:"8px 0",fontSize:13,color:"#A3A9A6"}}>{lang==="en"?"Enter a purchase price above":"Entre un prix d'achat ci-dessus"}</div>
-              )}
-            </div>
 
             {/* ── Deal Score ── */}
             <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
@@ -4236,34 +4194,53 @@ export default function App({ loginOnly = false }){
                 <span style={{fontSize:20}}>🎯</span>
                 <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D"}}>Deal Score</div>
               </div>
-              {/* ── Zone IA ── */}
-              <textarea value={dealIADesc} onChange={e=>{setDealIADesc(e.target.value);setDealIAResult(null);}}
-                placeholder={lang==="en"?"Describe the item (e.g. iPhone 12 64GB, good condition, Makita drill 18V...)":"Décris l'article (ex : iPhone 12 64Go état correct, perceuse Makita 18V, sac Zara noir...)"}
-                rows={2} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${dealIADesc?"#1D9E75":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",marginBottom:8,transition:"border-color 0.15s"}}/>
-              <button onClick={analyzeDealWithIA} disabled={!dealIADesc.trim()||dealIALoading}
-                style={{width:"100%",padding:"10px",background:!dealIADesc.trim()||dealIALoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!dealIADesc.trim()||dealIALoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:!dealIADesc.trim()||dealIALoading?"not-allowed":"pointer",marginBottom:12,fontFamily:"inherit",transition:"all 0.2s"}}>
-                {dealIALoading?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours..."):(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
-              </button>
-              {dealIAResult&&(
-                <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:12,padding:"14px 16px",border:"1px solid #9FE1CB",marginBottom:14,fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.6}}>
-                  <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>🤖 {lang==="en"?"AI Analysis":"Analyse IA"}</div>
-                  {dealIAResult}
-                </div>
-              )}
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:10}}>
-                <span style={{fontSize:16,flexShrink:0}}>💰</span>
-                <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)}
-                  placeholder={lang==="en"?"Sell price":"Prix de vente"}
+              {/* Champ texte + mic */}
+              <div style={{position:"relative",marginBottom:8}}>
+                <textarea value={dealIADesc} onChange={e=>{setDealIADesc(e.target.value);setDealIAResult(null);}}
+                  placeholder={lang==="en"?"Describe the item (e.g. iPhone 12 64GB, good condition...)":"Décris l'article (ex : iPhone 12 64Go état correct, perceuse Makita 18V...)"}
+                  rows={2} style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${dealIADesc?"#1D9E75":dealMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",transition:"border-color 0.15s"}}/>
+                <button onClick={toggleDealMic}
+                  title={dealMicActive?(lang==="en"?"Stop":"Arrêter"):(lang==="en"?"Dictate":"Dicter")}
+                  style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:32,height:32,borderRadius:"50%",border:"none",background:dealMicActive?"#EF4444":"rgba(0,0,0,0.06)",color:dealMicActive?"#fff":"#6B7280",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}}>
+                  {dealMicActive?"⏹":"🎙️"}
+                </button>
+              </div>
+              {/* Prix achat */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:8}}>
+                <span style={{fontSize:16,flexShrink:0}}>🛒</span>
+                <input type="number" inputMode="decimal" value={cBuy} onChange={e=>setCBuy(e.target.value)}
+                  placeholder={lang==="en"?"Purchase price":"Prix d'achat"}
                   style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
                 <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:14}}>
+              {/* Prix vente (optionnel) */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:8}}>
+                <span style={{fontSize:16,flexShrink:0}}>💰</span>
+                <input type="number" inputMode="decimal" value={cSell} onChange={e=>setCSell(e.target.value)}
+                  placeholder={lang==="en"?"Sell price (optional — AI will suggest)":"Prix de vente (optionnel — l'IA suggère)"}
+                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+                <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
+              </div>
+              {/* Frais (optionnel) */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:12}}>
                 <span style={{fontSize:16,flexShrink:0}}>➕</span>
                 <input type="number" inputMode="decimal" value={cShip} onChange={e=>setCShip(e.target.value)}
                   placeholder={lang==="en"?"Fees (optional)":"Frais (optionnel)"}
                   style={{flex:1,border:"none",outline:"none",fontSize:15,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
                 <span style={{fontSize:14,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
               </div>
+              {/* Bouton analyser */}
+              <button onClick={analyzeDealWithIA} disabled={!dealIADesc.trim()||dealIALoading}
+                style={{width:"100%",padding:"12px",background:!dealIADesc.trim()||dealIALoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!dealIADesc.trim()||dealIALoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:!dealIADesc.trim()||dealIALoading?"not-allowed":"pointer",marginBottom:12,fontFamily:"inherit",transition:"all 0.2s"}}>
+                {dealIALoading?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours..."):(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
+              </button>
+              {/* Résultat IA */}
+              {dealIAResult&&(
+                <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:12,padding:"14px 16px",border:"1px solid #9FE1CB",marginBottom:14,fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.7,whiteSpace:"pre-wrap"}}>
+                  <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>🤖 {lang==="en"?"AI Analysis":"Analyse IA"}</div>
+                  {dealIAResult}
+                </div>
+              )}
               <DealScoreCard result={dealScore} analysis={dealAnalysis} analysisLoading={dealAnalysisLoading} lang={lang}/>
               {isValid&&<Btn onClick={addSale} disabled={!isValid} color={cSaved?"#38A169":"#1D9E75"} full style={{marginTop:12}}>
                 {cSaved?(lang==='fr'?"✓ Ajouté à ton suivi !":"✓ Added to your tracker!"):t('ajouterSuivi')}

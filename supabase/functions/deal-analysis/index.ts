@@ -18,7 +18,37 @@ Your tone is direct, intelligent and human — never cringe, never generic.
 Write ONE analysis of 1-2 sentences maximum, only based on the data provided.
 Never invent data not provided. No markdown. No emojis. No lists. Vary your phrasing.`;
 
-function buildPrompt(scoreResult: any, lang: string): string {
+const SYSTEM_FREEFORM_FR = `Tu es expert en achat-revente sur Vinted, eBay et Leboncoin.
+Tu aides les revendeurs à évaluer leurs deals rapidement.
+Réponds sans astérisques, avec des emojis, en français, de façon concise (4-6 lignes max).
+Commence toujours ta réponse par le nom de l'article.`;
+
+const SYSTEM_FREEFORM_EN = `You are an expert in reselling on Vinted, eBay and Leboncoin.
+You help resellers evaluate their deals quickly.
+Reply without asterisks, with emojis, in English, concisely (4-6 lines max).
+Always start your reply with the item name.`;
+
+function buildFreeformPrompt(item: string, prixAchat: number | null, prixVente: number | null, frais: number | null, lang: string): string {
+  const lines = [`Article : ${item}`];
+  if (prixAchat != null) lines.push(lang === "en" ? `Purchase price: €${prixAchat}` : `Prix d'achat : ${prixAchat}€`);
+  if (prixVente != null) lines.push(lang === "en" ? `Planned sell price: €${prixVente}` : `Prix de vente envisagé : ${prixVente}€`);
+  if (frais != null) lines.push(lang === "en" ? `Fees: €${frais}` : `Frais : ${frais}€`);
+
+  if (lang === "en") {
+    if (prixVente == null) {
+      lines.push("No sell price provided. Suggest a recommended sell price range based on the item name and market.");
+    }
+    lines.push("Reply with: 💰 recommended sell price (or range), 📈 estimated margin, ✅/❌ good deal or not, 📦 best platform to sell on.");
+  } else {
+    if (prixVente == null) {
+      lines.push("Pas de prix de vente fourni. Suggère une fourchette de prix de revente recommandée basée sur le nom de l'article et le marché.");
+    }
+    lines.push("Réponds avec : 💰 prix de revente recommandé (ou fourchette), 📈 marge estimée, ✅/❌ bon deal ou pas, 📦 meilleure plateforme pour vendre.");
+  }
+  return lines.join("\n");
+}
+
+function buildScorePrompt(scoreResult: any, lang: string): string {
   const { score, label, dimensions, pills, context } = scoreResult;
   const { margePercent, profitNet, vsMoyenne, topPercent } = context;
 
@@ -55,8 +85,8 @@ serve(async (req) => {
   }
 
   try {
-    const { scoreResult, lang } = await req.json();
-    const _lang = lang === 'en' ? 'en' : 'fr';
+    const body = await req.json();
+    const _lang = body.lang === 'en' ? 'en' : 'fr';
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) {
@@ -64,6 +94,25 @@ serve(async (req) => {
         status: 500,
         headers: { 'Content-Type': 'application/json', ...CORS },
       });
+    }
+
+    let systemPrompt: string;
+    let userMsg: string;
+    let maxTokens: number;
+
+    if (body.item) {
+      // Freeform mode: item description + optional prices
+      const prixAchat = body.prixAchat != null ? parseFloat(body.prixAchat) : null;
+      const prixVente = body.prixVente != null ? parseFloat(body.prixVente) : null;
+      const frais = body.frais != null ? parseFloat(body.frais) : null;
+      systemPrompt = _lang === 'en' ? SYSTEM_FREEFORM_EN : SYSTEM_FREEFORM_FR;
+      userMsg = buildFreeformPrompt(body.item, prixAchat, prixVente, frais, _lang);
+      maxTokens = 250;
+    } else {
+      // Score card mode: scoreResult object
+      systemPrompt = _lang === 'en' ? SYSTEM_EN : SYSTEM_FR;
+      userMsg = buildScorePrompt(body.scoreResult, _lang);
+      maxTokens = 120;
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -75,10 +124,10 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 120,
+        max_tokens: maxTokens,
         temperature: 0.4,
-        system: _lang === 'en' ? SYSTEM_EN : SYSTEM_FR,
-        messages: [{ role: 'user', content: buildPrompt(scoreResult, _lang) }],
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }],
       }),
     });
 
