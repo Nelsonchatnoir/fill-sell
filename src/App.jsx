@@ -1424,6 +1424,20 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
           const{text,error:tErr}=await tRes.json();
           if(tErr)throw new Error(tErr);
           if(!text?.trim())throw new Error(lang==="en"?"No speech detected":"Aucune parole détectée");
+          // Follow-up "ajoute le au stock" after a price_advice
+          const tlFU=text.toLowerCase();
+          const ADD_FU=lang==="en"
+            ?["add it","yes add","add it to my stock","add it anyway","add to stock","go ahead add","add that"]
+            :["ajoute le","ajoute la","ajoute-le","ajoute-la","mets le","mets la","ok ajoute","oui ajoute","ajoute quand même","ajoute le quand même","ajoute la quand même","mets le dans mon stock","mets la dans mon stock","ajoute dans mon stock","ajoute-le quand même","ajoute-la quand même"];
+          const isFollowupAdd=!!lastPriceAdviceData&&ADD_FU.some(p=>tlFU.includes(p));
+          if(isFollowupAdd){
+            const addTask={intent:"inventory_add",confidence:0.99,requiresConfirmation:false,ambiguous:false,data:{nom:lastPriceAdviceData.nom,marque:lastPriceAdviceData.marque,prix_achat:lastPriceAdviceData.prix_achat,categorie:lastPriceAdviceData.categorie,description:lastPriceAdviceData.description,quantite:1}};
+            setLastPriceAdviceData(null);
+            const{results:fuResults}=await executeVoiceTasks([addTask],{items,sales,lang,actions,supabaseUrl:SURL});
+            setVaResults(fuResults);setVaStep("results");
+            if(fuResults.every(r=>r.status==="success")){autoCloseRef.current=setTimeout(()=>resetVA(),3500);}
+            return;
+          }
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,lang})});
           if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
           const{tasks,error:iErr}=await iRes.json();
@@ -1442,6 +1456,10 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
             finalTasks=[existingPA||{intent:"price_advice",confidence:0.97,requiresConfirmation:false,ambiguous:false,data:{nom:src.nom||null,marque:src.marque||null,prix_achat:src.prix_achat||null,categorie:src.categorie||null,description:src.description||null}}];
           }
           const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,actions,supabaseUrl:SURL});
+          // Store price_advice data for potential follow-up "ajoute le au stock"
+          const paRes=results.find(r=>r.intent==="price_advice"&&r.status==="success");
+          if(paRes?.taskData)setLastPriceAdviceData(paRes.taskData);
+          else setLastPriceAdviceData(null);
           setVaResults(results);setVaStep("results");
           const QUICK_INTENTS=new Set(["inventory_add","inventory_sell","inventory_delete","inventory_update","inventory_lot"]);
           const isQuickOnly=results.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));
@@ -2311,6 +2329,7 @@ export default function App({ loginOnly = false }){
   const [vaStep,setVaStep]=useState("");
   const [vaResults,setVaResults]=useState([]);
   const [vaError,setVaError]=useState(null);
+  const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
   const fabTriggerRef=useRef(null);
 
   const {t,tpl}=useTranslation(lang);
