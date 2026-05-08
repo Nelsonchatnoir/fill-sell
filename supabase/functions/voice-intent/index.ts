@@ -184,9 +184,21 @@ price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
 
-Règle description (inventory_add uniquement) :
-Extraire les qualificatifs : couleur, taille (S/M/L/XL ou numérique), état (neuf, bon état, usé, abîmé...), matière si précisée.
-Format court : "Noir, taille 36" ou "Usé, taille 44". null si aucun qualificatif.
+Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
+NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
+DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
+  1. Capacité / taille / poids (256Go, 20g, 1To, taille S, taille 42...)
+  2. État (écran cassé, neuf, abîmé, rayé, usé, bon état...)
+  3. Couleur
+  4. Lieu d'achat / provenance (acheté à Paris...)
+  5. Autres (avec 2 manettes, avec chargeur...)
+Format : "256Go, écran cassé" ou "Taille S, rose" ou "20g". null si aucun qualificatif.
+Exemples OBLIGATOIRES :
+✅ "La Neige Lip Sleeping Mask Berry 20g" → nom:"Laneige Lip Sleeping Mask Berry", description:"20g"
+✅ "iPhone 13 256Go écran cassé" → nom:"iPhone 13", description:"256Go, écran cassé"
+✅ "Nike Air Max 90 taille 42 coloris blanc" → nom:"Nike Air Max 90", description:"Taille 42, coloris blanc"
+✅ "PS4 Pro 1To avec 2 manettes" → nom:"PS4 Pro", description:"1To, avec 2 manettes"
+✅ "Veste Zara taille S rose achetée à Paris" → nom:"Veste Zara", description:"Taille S, rose, achetée à Paris"
 
 Règle quantite/quantite_vendue :
 - inventory_add : quantite = nombre d'exemplaires achetés (défaut 1 si non mentionné).
@@ -386,9 +398,21 @@ price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
 
-Description rule (inventory_add only):
-Extract qualifiers: color, size (S/M/L/XL or numeric), condition (new, good condition, worn, damaged...), material if specified.
-Short format: "Black, size 36" or "Worn, size 44". null if no qualifiers mentioned.
+Rule nom + description (inventory_add CRITICAL — read carefully):
+NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
+DESCRIPTION = everything else, in this order if present:
+  1. Capacity / size / weight (256GB, 20g, 1TB, size S, size 10...)
+  2. Condition (cracked screen, new, damaged, scratched, worn, good condition...)
+  3. Color
+  4. Place of purchase / origin (bought in London...)
+  5. Other (with 2 controllers, with charger...)
+Format: "256GB, cracked screen" or "Size S, pink" or "20g". null if no qualifiers.
+Mandatory examples:
+✅ "iPhone 13 256GB cracked screen" → nom:"iPhone 13", description:"256GB, cracked screen"
+✅ "Nike Air Max 90 size 10 white" → nom:"Nike Air Max 90", description:"Size 10, white"
+✅ "PS4 Pro 1TB with 2 controllers" → nom:"PS4 Pro", description:"1TB, with 2 controllers"
+✅ "Zara jacket size S pink bought in Paris" → nom:"Zara jacket", description:"Size S, pink, bought in Paris"
+✅ "Laneige Lip Sleeping Mask Berry 20g" → nom:"Laneige Lip Sleeping Mask Berry", description:"20g"
 
 Quantity rules:
 - inventory_add: quantite = number of units bought (default 1 if not mentioned).
@@ -410,6 +434,44 @@ Limit rule (CRITICAL — respect the exact number stated):
   "my best sale" / "my worst sale" → limit: 1 (ALWAYS 1 for "my" without a number)
   "my N best" / "the N worst" → limit: N exact (N = stated number)
   "my best sales" / "my worst sales" (no number) → limit: 5 (default)`;
+
+// Normalise inventory_add nom/description: nom = brand+model only, description = qualifiers in order
+function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unknown> {
+  if (!d?.nom) return d;
+  let nom = String(d.nom).trim();
+  const cap: string[] = [], cond: string[] = [], col: string[] = [], loc: string[] = [], oth: string[] = [];
+  const pull = (re: RegExp, arr: string[]) => {
+    nom = nom.replace(re, (m) => { arr.push(m.trim()); return " "; });
+  };
+  // 1. Capacity / weight / storage
+  pull(/\b\d+[\.,]?\d*\s*(?:Go|GB|To|TB|MB|KB|SSD|g|kg|ml|cl)\b/gi, cap);
+  pull(/\btaille\s+(?:[A-Z]{1,4}|\d{2,3})\b/gi, cap);
+  pull(/\bcoloris\s+\w+\b/gi, col);
+  pull(/\bcouleur\s+\w+\b/gi, col);
+  // 2. Condition (compound before single)
+  pull(/\b(?:très\s+)?bon(?:ne)?\s+[eé]tat\b/gi, cond);
+  pull(/\bécran\s+(?:cass[eé]|fissur[eé]|ray[eé])\b/gi, cond);
+  pull(/\b(?:neuf|neuve|abîm[eé]e?|abim[eé]e?|cass[eé]e?|ray[eé]e?|us[eé]e?|d[eé]faillant[e]?|fonctionnel(?:le)?|endommagé[e]?|reconditionn[eé]e?|r[eé]nov[eé]e?|cracked|broken|damaged|scratched|refurbished)\b/gi, cond);
+  // 3. Colors
+  pull(/\b(?:blanc|blanche|noir|noire|rouge|rose|vert(?:e)?|bleu(?:e)?|gris(?:e)?|jaune|violet(?:te)?|beige|marron|orange|cr[eè]me|argent[eé]?|dor[eé]e?|white|black|red|pink|green|blue|gr[ae]y|yellow|purple|brown|cream|silver|gold)\b/gi, col);
+  // 4. Location
+  pull(/\bacheté[e]?\s+(?:[àa]|en|au|aux)\s+\w+\b/gi, loc);
+  pull(/\bbought\s+in\s+\w+\b/gi, loc);
+  // 5. Accessories
+  pull(/\bavec\s+[^,]+/gi, oth);
+  pull(/\bwith\s+[^,]+/gi, oth);
+  // Clean nom
+  const cleanNom = nom.replace(/\s+/g, " ").trim().replace(/[,\-]+$/, "").trim();
+  if (cleanNom.length < 2) return d; // guard: do not destroy model name
+  // Ordered description
+  const allNew = [...cap, ...cond, ...col, ...loc, ...oth].filter(Boolean);
+  const existing = d.description ? String(d.description) : null;
+  const filtered = existing
+    ? allNew.filter(p => !existing.toLowerCase().includes(p.toLowerCase()))
+    : allNew;
+  const parts = existing ? [existing, ...filtered] : filtered;
+  return { ...d, nom: cleanNom, description: parts.length ? parts.join(", ") : null };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -481,6 +543,13 @@ serve(async (req) => {
         status: 500,
         headers: { "Content-Type": "application/json", ...CORS },
       });
+    }
+
+    // Normalise inventory_add: nom = model only, description = qualifiers
+    for (const task of parsed.tasks as any[]) {
+      if (task.intent === "inventory_add" && task.data) {
+        task.data = normalizeInventoryAdd(task.data as Record<string, unknown>);
+      }
     }
 
     // Server-side guard: buy advice patterns → enforce buy_advice
