@@ -4199,32 +4199,36 @@ export default function App({ loginOnly = false }){
               {/* ── VENDUS (en premier) ── */}
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
+                    {window.innerWidth<768&&(()=>{const _b=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedSold(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedSold?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
+                  </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
                 </div>
                 {(()=>{
                   const marquesFiltreesParType=["Toutes",...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
                   if(marquesFiltreesParType.length<=1) return null;
                   const _mob=window.innerWidth<768;
-                  const _canCollapse=_mob&&marquesFiltreesParType.length>6;
-                  const _collapsed=_canCollapse&&!pillsExpandedSold;
+                  const _open=!_mob||pillsExpandedSold;
                   return(
                     <div style={{marginBottom:12}}>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",overflow:"hidden",maxHeight:_collapsed?"34px":"200px",transition:"max-height 0.3s ease"}}>
+                      {!_open&&(
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={()=>setFilterMarqueSold("Toutes")} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarqueSold==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarqueSold==="Toutes"?"#fff":"#6B7280"}}>
+                            {filterMarqueSold==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(filterMarqueSold,lang)}
+                          </button>
+                        </div>
+                      )}
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"300px":"0",overflow:"hidden",opacity:_open?1:0,transition:"max-height 0.25s ease, opacity 0.2s ease"}}>
                         {marquesFiltreesParType.map(m=>(
                           <button key={m} onClick={()=>setFilterMarqueSold(m)}
-                            style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",flexShrink:0,
+                            style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
                               background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
                               color:filterMarqueSold===m?"#fff":"#6B7280"}}>
                             {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
                           </button>
                         ))}
                       </div>
-                      {_canCollapse&&(
-                        <button onClick={()=>setPillsExpandedSold(v=>!v)} style={{marginTop:6,padding:"2px 0",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:"#9CA3AF",display:"block"}}>
-                          {pillsExpandedSold?(lang==='en'?'Collapse ▲':'Réduire ▲'):(lang==='en'?`See all (${marquesFiltreesParType.length-1}) ▼`:`Voir tout (${marquesFiltreesParType.length-1}) ▼`)}
-                        </button>
-                      )}
                     </div>
                   );
                 })()}
@@ -4292,9 +4296,10 @@ export default function App({ loginOnly = false }){
               {/* ── EN STOCK ── */}
               <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
                     {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
+                    {window.innerWidth<768&&(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} {lang==='fr'?'art.':'items'} · {fmt(stockVal)}</div>
                 </div>
@@ -4302,25 +4307,26 @@ export default function App({ loginOnly = false }){
                   const marquesStockFiltreesParType=["Toutes",...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
                   if(marquesStockFiltreesParType.length<=1) return null;
                   const _mob=window.innerWidth<768;
-                  const _canCollapse=_mob&&marquesStockFiltreesParType.length>6;
-                  const _collapsed=_canCollapse&&!pillsExpandedStock;
+                  const _open=!_mob||pillsExpandedStock;
                   return(
                     <div style={{marginBottom:12}}>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",overflow:"hidden",maxHeight:_collapsed?"34px":"200px",transition:"max-height 0.3s ease"}}>
+                      {!_open&&(
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarque==="Toutes"?"#fff":"#6B7280"}}>
+                            {filterMarque==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(filterMarque,lang)}
+                          </button>
+                        </div>
+                      )}
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"300px":"0",overflow:"hidden",opacity:_open?1:0,transition:"max-height 0.25s ease, opacity 0.2s ease"}}>
                         {marquesStockFiltreesParType.map(m=>(
                           <button key={m} onClick={()=>setFilterMarque(m)}
-                            style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",flexShrink:0,
+                            style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
                               background:filterMarque===m?"#1D9E75":"#F3F4F6",
                               color:filterMarque===m?"#fff":"#6B7280"}}>
                             {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
                           </button>
                         ))}
                       </div>
-                      {_canCollapse&&(
-                        <button onClick={()=>setPillsExpandedStock(v=>!v)} style={{marginTop:6,padding:"2px 0",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:"#9CA3AF",display:"block"}}>
-                          {pillsExpandedStock?(lang==='en'?'Collapse ▲':'Réduire ▲'):(lang==='en'?`See all (${marquesStockFiltreesParType.length-1}) ▼`:`Voir tout (${marquesStockFiltreesParType.length-1}) ▼`)}
-                        </button>
-                      )}
                     </div>
                   );
                 })()}
