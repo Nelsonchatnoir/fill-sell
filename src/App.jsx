@@ -459,17 +459,7 @@ const SKELETON_SOLD=[
   {title:'Perceuse Makita 18V',  type:'High-Tech',  marque:'Makita',  buy:45, sell:89, margin:44, marginPct:49},
   {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
-const TEXTAREA_PLACEHOLDERS=[
-  "J'ai acheté une veste Zara oversize pour 12€",
-  "Vendu mon iPhone 12 64Go à 180€",
-  "Lot de 5 sneakers Nike taille 42, payé 60€ en tout",
-  "J'ai acheté un sac Kelly Hermès 125€, très bon état",
-  "Revendu la perceuse Makita 89€, achetée 45€",
-  "Lot Pokémon 20 cartes pour 8€, état near-mint",
-  "Combien j'ai gagné ce mois-ci ?",
-  "Quels sont mes articles qui se vendent le mieux ?",
-  "Acheté un jean Levi's 501 pour 15€, taille 32",
-];
+const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
 function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
@@ -838,14 +828,16 @@ function AvgDaysChart({filtered, items, lang}) {
 }
 
 const VOICE_EXAMPLES = [
-  { text: "J'ai acheté une veste Zara pour 8€",        tag: "Ajouter",  cls: "add"   },
-  { text: "J'ai vendu 3 paquets Pokémon à 15€ chacun", tag: "Vendre",   cls: "sell"  },
-  { text: "Combien j'ai gagné ce mois-ci ?",           tag: "Demander", cls: "query" },
-  { text: "Mes articles les plus rentables ?",         tag: "Demander", cls: "query" },
-  { text: "Combien d'articles Nike en stock ?",        tag: "Demander", cls: "query" },
-  { text: "Analyse mes profits de la semaine",         tag: "Demander", cls: "query" },
-  { text: "Ajoute 10 iPhone 12 à 100€ le lot",         tag: "Ajouter",  cls: "add"   },
-  { text: "Qu'est-ce que j'ai vendu cette semaine ?",  tag: "Demander", cls: "query" },
+  { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
+  { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
+  { text: "J'ai vendu le jean Levis à 38€ avec 3€ de frais Vinted",                                                    tag: "Vendre",      cls: "sell"  },
+  { text: "J'ai acheté une perceuse Makita 18V avec 2 batteries état correct pour 45€ et revendue 89€",                tag: "Achat+Vente", cls: "sell"  },
+  { text: "Combien j'ai gagné ce mois-ci et quels sont mes articles les plus rentables ?",                              tag: "Stats",       cls: "query" },
+  { text: "Qu'est-ce que j'ai comme articles Nike en stock et depuis combien de temps ?",                               tag: "Stock",       cls: "query" },
+  { text: "Analyse mes profits et dis-moi sur quoi je dois me concentrer",                                             tag: "Analyse",     cls: "query" },
+  { text: "J'ai acheté un sac Kelly Hermès vert petit modèle bon état pour 180€",                                      tag: "Ajouter",     cls: "add"   },
+  { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
+  { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
 ];
 
 function VoiceTicker() {
@@ -3491,7 +3483,7 @@ export default function App({ loginOnly = false }){
               <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
                 <EmptyStateDashboard
                   lang={lang}
-                  onTryVoice={()=>{setTab(1); localStorage.setItem('tab',1);}}
+                  onTryVoice={handleFabClick}
                   onAddManual={()=>{setTab(1); localStorage.setItem('tab',1);}}
                 />
               </div>
@@ -3551,14 +3543,6 @@ export default function App({ loginOnly = false }){
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Bar data={barChartData} options={barOpts}/>
-                      {!isPremium&&(
-                        <div onClick={()=>{if(isNative){handleIAPPurchase();}else{track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
-                          <span style={{fontSize:20}}>🔒</span>
-                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
-                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
-                          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,textAlign:"center"}}>{t('trialSubtext')}</div>
-                        </div>
-                      )}
                     </div>
                   </div>
                   <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
@@ -3568,14 +3552,6 @@ export default function App({ loginOnly = false }){
                     </div>
                     <div style={{position:"relative",height:"200px",width:"100%"}}>
                       <Line data={lineChartData} options={lineOpts}/>
-                      {!isPremium&&(
-                        <div onClick={()=>{if(isNative){handleIAPPurchase();}else{track('premium_click',{source:'chart'});triggerCheckout();}}} style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(255,255,255,0.75)",backdropFilter:"blur(2px)",borderRadius:8,cursor:"pointer"}}>
-                          <span style={{fontSize:20}}>🔒</span>
-                          <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",textAlign:"center",lineHeight:1.3}}>{t('debloquerAnalyse')}</div>
-                          <button style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{t('unlockPremium')}</button>
-                          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600,textAlign:"center"}}>{t('trialSubtext')}</div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -3986,8 +3962,10 @@ export default function App({ loginOnly = false }){
                 );})()}
                 {sold.length===0?(
                   <div style={{position:"relative"}}>
-                    <span style={{position:"absolute",top:8,left:8,background:"#6B7280",color:"#fff",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:800,zIndex:2,letterSpacing:"0.04em"}}>Exemple</span>
-                    <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none",marginTop:4}}>
+                    <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
+                      {lang==='en'?'Preview':'Exemple'}
+                    </span>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none"}}>
                       {SKELETON_SOLD.map((sk,i)=>{
                         const ts=getTypeStyle(sk.type);
                         return(
