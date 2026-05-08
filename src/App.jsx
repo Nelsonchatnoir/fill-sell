@@ -2260,6 +2260,8 @@ export default function App({ loginOnly = false }){
   const [iSaved,setISaved]=useState(false);
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
+  const [pillsExpandedStock,setPillsExpandedStock]=useState(false);
+  const [pillsExpandedSold,setPillsExpandedSold]=useState(false);
   const [filterType,setFilterType]=useState("Tous");
   const [soldShowAll,setSoldShowAll]=useState(false);
   const [showAllStock,setShowAllStock]=useState(false);
@@ -4200,18 +4202,32 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:sold.length})}</div>
                 </div>
-                {(()=>{const marquesFiltreesParType=["Toutes",...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marquesFiltreesParType.length>1&&(
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-                    {marquesFiltreesParType.map(m=>(
-                      <button key={m} onClick={()=>setFilterMarqueSold(m)}
-                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
-                          background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
-                          color:filterMarqueSold===m?"#fff":"#6B7280"}}>
-                        {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
-                      </button>
-                    ))}
-                  </div>
-                );})()}
+                {(()=>{
+                  const marquesFiltreesParType=["Toutes",...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+                  if(marquesFiltreesParType.length<=1) return null;
+                  const _mob=window.innerWidth<768;
+                  const _canCollapse=_mob&&marquesFiltreesParType.length>6;
+                  const _collapsed=_canCollapse&&!pillsExpandedSold;
+                  return(
+                    <div style={{marginBottom:12}}>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",overflow:"hidden",maxHeight:_collapsed?"34px":"200px",transition:"max-height 0.3s ease"}}>
+                        {marquesFiltreesParType.map(m=>(
+                          <button key={m} onClick={()=>setFilterMarqueSold(m)}
+                            style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",flexShrink:0,
+                              background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
+                              color:filterMarqueSold===m?"#fff":"#6B7280"}}>
+                            {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
+                          </button>
+                        ))}
+                      </div>
+                      {_canCollapse&&(
+                        <button onClick={()=>setPillsExpandedSold(v=>!v)} style={{marginTop:6,padding:"2px 0",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:"#9CA3AF",display:"block"}}>
+                          {pillsExpandedSold?(lang==='en'?'Collapse ▲':'Réduire ▲'):(lang==='en'?`See all (${marquesFiltreesParType.length-1}) ▼`:`Voir tout (${marquesFiltreesParType.length-1}) ▼`)}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 {sold.length===0?(
                   <div style={{position:"relative"}}>
                     <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
@@ -4282,18 +4298,32 @@ export default function App({ loginOnly = false }){
                   </div>
                   <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stock.length} {lang==='fr'?'art.':'items'} · {fmt(stockVal)}</div>
                 </div>
-                {(()=>{const marquesStockFiltreesParType=["Toutes",...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return marquesStockFiltreesParType.length>1&&(
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-                    {marquesStockFiltreesParType.map(m=>(
-                      <button key={m} onClick={()=>setFilterMarque(m)}
-                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
-                          background:filterMarque===m?"#1D9E75":"#F3F4F6",
-                          color:filterMarque===m?"#fff":"#6B7280"}}>
-                        {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
-                      </button>
-                    ))}
-                  </div>
-                );})()}
+                {(()=>{
+                  const marquesStockFiltreesParType=["Toutes",...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+                  if(marquesStockFiltreesParType.length<=1) return null;
+                  const _mob=window.innerWidth<768;
+                  const _canCollapse=_mob&&marquesStockFiltreesParType.length>6;
+                  const _collapsed=_canCollapse&&!pillsExpandedStock;
+                  return(
+                    <div style={{marginBottom:12}}>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",overflow:"hidden",maxHeight:_collapsed?"34px":"200px",transition:"max-height 0.3s ease"}}>
+                        {marquesStockFiltreesParType.map(m=>(
+                          <button key={m} onClick={()=>setFilterMarque(m)}
+                            style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",flexShrink:0,
+                              background:filterMarque===m?"#1D9E75":"#F3F4F6",
+                              color:filterMarque===m?"#fff":"#6B7280"}}>
+                            {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
+                          </button>
+                        ))}
+                      </div>
+                      {_canCollapse&&(
+                        <button onClick={()=>setPillsExpandedStock(v=>!v)} style={{marginTop:6,padding:"2px 0",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:"#9CA3AF",display:"block"}}>
+                          {pillsExpandedStock?(lang==='en'?'Collapse ▲':'Réduire ▲'):(lang==='en'?`See all (${marquesStockFiltreesParType.length-1}) ▼`:`Voir tout (${marquesStockFiltreesParType.length-1}) ▼`)}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 {stock.length===0?(
                   <div style={{display:"flex",flexDirection:"column",gap:12}}>
                     {/* Skeleton preview items */}
