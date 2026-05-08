@@ -1478,8 +1478,8 @@ body.bg-dots {
    13. SKELETON ITEMS — inventory empty state preview
    ============================================================ */
 @keyframes skeletonPulse {
-  0%, 100% { opacity: 0.4; }
-  50%       { opacity: 0.22; }
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 0.32; }
 }
 .skeleton-item-row {
   animation: skeletonPulse 2.4s ease-in-out infinite;

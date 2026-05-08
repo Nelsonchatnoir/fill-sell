@@ -454,6 +454,22 @@ const SKELETON_ITEMS=[
   {title:'Sac Kelly Hermès',     type:'Luxe',       marque:'Hermès',  buy:125, qty:1,  days:1},
   {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15,  qty:1,  days:null},
 ];
+const SKELETON_SOLD=[
+  {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15, sell:38, margin:23, marginPct:61},
+  {title:'Perceuse Makita 18V',  type:'High-Tech',  marque:'Makita',  buy:45, sell:89, margin:44, marginPct:49},
+  {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
+];
+const TEXTAREA_PLACEHOLDERS=[
+  "J'ai acheté une veste Zara oversize pour 12€",
+  "Vendu mon iPhone 12 64Go à 180€",
+  "Lot de 5 sneakers Nike taille 42, payé 60€ en tout",
+  "J'ai acheté un sac Kelly Hermès 125€, très bon état",
+  "Revendu la perceuse Makita 89€, achetée 45€",
+  "Lot Pokémon 20 cartes pour 8€, état near-mint",
+  "Combien j'ai gagné ce mois-ci ?",
+  "Quels sont mes articles qui se vendent le mieux ?",
+  "Acheté un jean Levi's 501 pour 15€, taille 32",
+];
 function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
@@ -878,7 +894,7 @@ function VoiceZone() {
   return (
     <div className="voice-zone">
       <div className="vz-prompt">
-        Dis simplement <b>« j'ai acheté une veste Zara 8 € »</b> — l'IA détecte la catégorie, le prix marché, et l'ajoute à ton stock.
+        Parle ou tape naturellement — achats, ventes, lots, questions sur tes stats. L'IA détecte la marque, la catégorie, gère les lots et achats groupés. <b>💡 Plus tu détailles (couleur, taille, état), plus elle est précise !</b>
       </div>
       <VoiceTicker />
     </div>
@@ -2220,11 +2236,16 @@ export default function App({ loginOnly = false }){
   const dealAnalysisTimer=useRef(null);
   const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
+  const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
   const [voiceLoading,setVoiceLoading]=useState(false);
   const [voiceStep,setVoiceStep]=useState("");
   const [voiceParsed,setVoiceParsed]=useState(null);
   const [voiceError,setVoiceError]=useState(null);
   const [showManualForm,setShowManualForm]=useState(false);
+  useEffect(()=>{
+    const t=setInterval(()=>setVoicePlaceholderIdx(i=>(i+1)%TEXTAREA_PLACEHOLDERS.length),4000);
+    return()=>clearInterval(t);
+  },[]);
   const mediaRecorderRef=useRef(null);
   const audioChunksRef=useRef([]);
   const [manualMode,setManualMode]=useState("single");
@@ -3684,8 +3705,11 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
                   {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
                   <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
-                    placeholder={lang==='fr'?"Ou tape : j'ai acheté une veste Zara 8€, des Nike 15€...":"Or type: I bought a Zara jacket 8€, Nike sneakers 15€..."}
+                    placeholder={TEXTAREA_PLACEHOLDERS[voicePlaceholderIdx]}
                     rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
+                  <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
+                    💡 Plus tu décris (couleur, taille, état), plus l'IA est précise. Tu peux aussi poser des questions sur tes stats, demander une analyse, ou tout faire en une phrase !
+                  </div>
                   <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
                     style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
                     {lang==='fr'?"✨ Analyser":"✨ Analyze"}
@@ -3960,7 +3984,32 @@ export default function App({ loginOnly = false }){
                     ))}
                   </div>
                 );})()}
-                {sold.length===0?<Empty text={lang==='fr'?"Aucune vente encore":"No sales yet"}/>:(
+                {sold.length===0?(
+                  <div style={{position:"relative"}}>
+                    <span style={{position:"absolute",top:8,left:8,background:"#6B7280",color:"#fff",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:800,zIndex:2,letterSpacing:"0.04em"}}>Exemple</span>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none",marginTop:4}}>
+                      {SKELETON_SOLD.map((sk,i)=>{
+                        const ts=getTypeStyle(sk.type);
+                        return(
+                          <div key={i} className="skeleton-item-row" style={{background:"#fff",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",borderLeft:`3px solid ${getCatBorder(sk.type)}`}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{sk.title}</div>
+                                <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
+                                <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(sk.type,lang)}</span>
+                              </div>
+                              <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>Achat {fmt(sk.buy)} → Vente {fmt(sk.sell)}</div>
+                            </div>
+                            <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
+                              <div style={{fontWeight:900,fontSize:18,color:getMargeColor(sk.marginPct)}}>+{fmt(sk.margin)}</div>
+                              <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{Math.round(sk.marginPct)}%</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {soldVisible.map(item=>{
                       const mc=getMargeColor(item.marginPct);
@@ -4022,7 +4071,7 @@ export default function App({ loginOnly = false }){
                       <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
                         {lang==='en'?'Preview':'Exemple'}
                       </span>
-                      <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.4,pointerEvents:"none",userSelect:"none"}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none"}}>
                         {SKELETON_ITEMS.map((sk,i)=>{
                           const ts=getTypeStyle(sk.type);
                           return(
