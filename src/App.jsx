@@ -893,69 +893,6 @@ function VoiceZone() {
   );
 }
 
-function LensComingSoon({ onNotify, lang = "fr" }) {
-  const [notified, setNotified] = useState(false);
-  const [shake, setShake] = useState(false);
-  const [count, setCount] = useState(1247);
-
-  const t = lang === "en" ? {
-    pill: "Coming soon",
-    title: ["Fill & Sell ", "Lens"],
-    desc: <span>Snap an item — <b>AI identifies it and pre-fills everything</b>: brand, category, market price, optimal margin.</span>,
-    feats: ["Brand auto", "Market price", "Pre-filled in 2s"],
-    cta: "Notify me", notified: "You're on the list",
-    counter: <span><b>{count.toLocaleString()}</b> people waiting</span>,
-    detect: <span><b>Zara</b> · jacket detected</span>,
-  } : {
-    pill: "Bientôt disponible",
-    title: ["Fill & Sell ", "Lens"],
-    desc: <span>Prends un article en photo — <b>l'IA l'identifie et pré-remplit tout</b> : marque, catégorie, prix marché, marge optimale.</span>,
-    feats: ["Marque auto", "Prix marché", "Pré-rempli en 2s"],
-    cta: "M'avertir", notified: "Tu es sur la liste",
-    counter: <span><b>{count.toLocaleString()}</b> personnes en attente</span>,
-    detect: <span><b>Zara</b> · veste détectée</span>,
-  };
-
-  const handleNotify = () => {
-    if (notified) return;
-    setNotified(true); setShake(true); setCount(c => c + 1);
-    setTimeout(() => setShake(false), 700);
-    onNotify?.();
-  };
-
-  return (
-    <div className="lens-card">
-      <div className="lens-card-grid">
-        <div className="lens-body">
-          <span className="lens-pill"><span className="dot" />{t.pill}</span>
-          <h3 className="lens-title">{t.title[0]}<span className="accent">{t.title[1]}</span></h3>
-          <p className="lens-desc">{t.desc}</p>
-          <div className="lens-feats">
-            {t.feats.map((f, i) => <span key={i} className="lens-feat">{f}</span>)}
-          </div>
-          <div className="lens-cta-row">
-            <button
-              className={`lens-cta${notified ? " notified" : ""}${shake ? " shake" : ""}`}
-              onClick={handleNotify} aria-pressed={notified}>
-              <span className="bell">{notified ? "✓" : "🔔"}</span>
-              <span>{notified ? t.notified : t.cta}</span>
-            </button>
-            <span className="lens-counter">{t.counter}</span>
-          </div>
-        </div>
-        <div className="lens-scanner" aria-hidden="true">
-          <div className="lens-article" />
-          <div className="lens-corner tl" /><div className="lens-corner tr" />
-          <div className="lens-corner bl" /><div className="lens-corner br" />
-          <div className="lens-scanline" />
-          <span className="lens-spark s1" /><span className="lens-spark s2" /><span className="lens-spark s3" />
-          <div className="lens-detect">{t.detect}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
   return (
     <div className="empty-hero">
@@ -4317,8 +4254,25 @@ export default function App({ loginOnly = false }){
               </Btn>}
             </div>
 
-            {/* ── Section 2 : Fill & Sell Lens ── */}
-            <LensComingSoon lang={lang} onNotify={()=>{setToast({visible:true,message:lang==="en"?"✅ You'll be notified!":"✅ Tu seras notifié !"});setTimeout(()=>setToast({visible:false,message:""}),2500);}}/>
+            {/* ── Section 2 : Fill & Sell Lens teaser ── */}
+            <div style={{background:"linear-gradient(135deg,#0D0D0D,#1a1a2e)",borderRadius:16,padding:"24px",border:"1px solid rgba(255,255,255,0.08)",boxShadow:"0 4px 20px rgba(0,0,0,0.15)",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:0.06,pointerEvents:"none"}}>📸</div>
+              <div style={{fontSize:36,marginBottom:10}}>📸</div>
+              <div style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Fill &amp; Sell Lens</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#1D9E75",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.08em"}}>{lang==="en"?"Coming soon":"Bientôt disponible"}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.65)",lineHeight:1.6,marginBottom:16}}>
+                {lang==="en"
+                  ?"Take a photo of any item — AI identifies it and pre-fills everything automatically."
+                  :"Prends en photo un article, l'IA l'identifie et pré-remplit tout automatiquement."}
+              </div>
+              <button onClick={()=>{setToast({visible:true,message:lang==="en"?"✅ You'll be notified!":"✅ Tu seras notifié !"});setTimeout(()=>setToast({visible:false,message:""}),2500);}}
+                style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,padding:"12px 20px",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(29,158,117,0.4)",transition:"all 0.15s"}}
+                onMouseDown={e=>e.currentTarget.style.transform="scale(0.96)"}
+                onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+                {lang==="en"?"Notify me 🔔":"M'avertir 🔔"}
+              </button>
+            </div>
 
             {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
             {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
