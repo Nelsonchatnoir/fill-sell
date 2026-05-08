@@ -85,6 +85,17 @@ const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 const getCatBorder = type => getTypeStyle(type).border;
 
+// Location detection: `\b` after accented `à` fails in JS (non-ASCII), so use `\s` instead.
+// "bought at" added alongside "bought in" for broader EN coverage.
+const LOC_RE = /^(acheté[e]?\s+(?:à|en|au|aux)\s|bought\s+(?:in|at)\s)/i;
+function parseLocDesc(desc) {
+  if (!desc) return { loc: null, rest: null };
+  const parts = desc.split(/,\s*/).map(p => p.trim()).filter(Boolean);
+  const loc = parts.filter(p => LOC_RE.test(p)).join(", ") || null;
+  const rest = parts.filter(p => !LOC_RE.test(p)).join(", ") || null;
+  return { loc, rest };
+}
+
 function SwipeRow({onDelete, onEdit, children, style}){
   const isMobile = window.innerWidth < 768;
   const innerRef=useRef(null);
@@ -1989,10 +2000,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 const confCat=taskData?.categorie||null;
                 const confTs=confCat?getTypeStyle(confCat):null;
                 const confDesc=taskData?.description||null;
-                const _locRe=/^(acheté[e]?\s+(?:[àa]|en|au|aux)\b|bought\s+in\b)/i;
-                const _dParts=confDesc?confDesc.split(/,\s*/).map(p=>p.trim()).filter(Boolean):[];
-                const confLoc=_dParts.filter(p=>_locRe.test(p)).join(", ")||null;
-                const confDescRest=_dParts.filter(p=>!_locRe.test(p)).join(", ")||null;
+                const {loc:confLoc,rest:confDescRest}=parseLocDesc(confDesc);
                 return(
                   <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
@@ -4410,10 +4418,7 @@ export default function App({ loginOnly = false }){
                     {stockVisible.map(item=>{
                       const ts=getTypeStyle(item.type);
                       const isExpanded=expandedStockId===item.id;
-                      const _locRe=/^(acheté[e]?\s+(?:[àa]|en|au|aux)\b|bought\s+in\b)/i;
-                      const _dParts=item.description?item.description.split(/,\s*/).map(p=>p.trim()).filter(Boolean):[];
-                      const _itemLoc=_dParts.filter(p=>_locRe.test(p)).join(", ")||null;
-                      const _itemDesc=_dParts.filter(p=>!_locRe.test(p)).join(", ")||null;
+                      const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                       return(
                       <div key={item.id}>
                         <SwipeRow onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`,borderBottomLeftRadius:isExpanded?0:12,borderBottomRightRadius:isExpanded?0:12}}>
