@@ -849,7 +849,8 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
   );
 }
 
-function FabVocal({ onClick }) {
+function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
+  if (isRes) return null;
   return (
     <div className="fab-wrap">
       <div className="fab-orbit" aria-hidden="true">
@@ -867,14 +868,26 @@ function FabVocal({ onClick }) {
           </text>
         </svg>
       </div>
+      {isThink && (
+        <div className="fab-think-toast">
+          {lang === 'en' ? 'Thinking' : 'Je réfléchis'}
+          <span className="fab-think-dots"><span/><span/><span/></span>
+        </div>
+      )}
       <button
-        className="fab-vocal"
+        className={"fab-vocal" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
         onClick={onClick}
+        disabled={isThink}
         aria-label="Parler à l'IA"
       >
-        🎙️
+        {isThink
+          ? <span style={{fontSize:22}}>⏳</span>
+          : isRec
+            ? <span className="fab-icon-blink">🎙️</span>
+            : <span>🎙️</span>
+        }
       </button>
-      <div className="fab-tooltip">Parle à ton IA</div>
+      <div className="fab-tooltip">{lang === 'en' ? 'Talk to your AI' : 'Parle à ton IA'}</div>
     </div>
   );
 }
@@ -965,6 +978,39 @@ function StatsTab({sales,items,lang}){
   const monthKeys=Object.keys(monthlyMap).sort();
   const chartData=monthKeys.map(k=>({name:k.slice(5),profit:Math.round(monthlyMap[k]*100)/100}));
 
+  // Daily profit data for line chart
+  const dailyData=useMemo(()=>{
+    const map={};
+    filtered.forEach(s=>{
+      const key=(s.created_at||s.date||'').slice(0,10);
+      if(key) map[key]=(map[key]||0)+(s.margin||0);
+    });
+    const totalDays=Math.max(1,Math.ceil((new Date()-cutoff)/86400000));
+    const step=totalDays>180?7:totalDays>60?3:1;
+    const result=[];
+    for(let d=new Date(cutoff);d<=new Date();d.setDate(d.getDate()+step)){
+      const keys=Array.from({length:step},(_,i)=>{const dd=new Date(d);dd.setDate(dd.getDate()+i);return dd.toISOString().slice(0,10);});
+      const profit=keys.reduce((a,k)=>a+(map[k]||0),0);
+      const ld=new Date(d);
+      result.push({label:`${ld.getDate()}/${ld.getMonth()+1}`,profit});
+    }
+    return result;
+  },[filtered,cutoff]);
+
+  // New metrics
+  const avgBasket=filtered.length?totalRev/filtered.length:0;
+  const avgDays=useMemo(()=>{
+    const itemDateMap={};
+    items.forEach(i=>{if(i.title&&i.date_ajout)itemDateMap[i.title.toLowerCase().trim()]=i.date_ajout;});
+    const pairs=filtered.filter(s=>s.date&&itemDateMap[s.title?.toLowerCase().trim()]);
+    if(!pairs.length) return null;
+    const total=pairs.reduce((acc,s)=>{
+      const diff=(new Date(s.date)-new Date(itemDateMap[s.title.toLowerCase().trim()]))/86400000;
+      return acc+Math.max(0,diff);
+    },0);
+    return Math.round(total/pairs.length);
+  },[filtered,items]);
+
   const topSellers=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
 
   const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)).slice(0,3);
@@ -1038,6 +1084,20 @@ function StatsTab({sales,items,lang}){
         </div>
       </div>
 
+      {/* Extra metrics row */}
+      <div className="spark-row">
+        <div className="spark-card">
+          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg. days to sell':'Délai moy. vente'}</div>
+          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>
+            {avgDays!==null?`${avgDays} ${lang==='en'?'d':'j'}`:'—'}
+          </div>
+        </div>
+        <div className="spark-card">
+          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg. basket':'Panier moyen'}</div>
+          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length?fmt2(avgBasket):'—'}</div>
+        </div>
+      </div>
+
       {/* AI Analysis card */}
       <div style={{background:'#F0FAF7',borderRadius:14,padding:'16px',borderLeft:'3px solid #1D9E75',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
@@ -1091,24 +1151,71 @@ function StatsTab({sales,items,lang}){
         </div>
       )}
 
-      {/* Evolution chart placeholder */}
-      {chartData.length>1&&(
-        <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:10}}>{lang==='en'?'📊 Profit evolution':'📊 Évolution du profit'}</div>
-          <div style={{display:'flex',gap:4,alignItems:'flex-end',height:60}}>
-            {chartData.map((d,i)=>{
-              const maxP=Math.max(...chartData.map(x=>x.profit),1);
-              const h=Math.max(4,Math.round((d.profit/maxP)*56));
-              return(
-                <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-                  <div style={{width:'100%',height:h,background:'linear-gradient(180deg,#4ECDC4,#1D9E75)',borderRadius:'3px 3px 0 0'}}/>
-                  <span style={{fontSize:9,color:'#A3A9A6',fontWeight:600}}>{d.name}</span>
-                </div>
-              );
-            })}
-          </div>
+      {/* Evolution du profit — Chart.js line */}
+      <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
+        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'📈 Profit evolution':'📈 Évolution du profit'}</div>
+        <div style={{position:'relative',height:130}}>
+          {filtered.length===0&&(
+            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:1,pointerEvents:'none'}}>
+              <span style={{fontSize:12,fontWeight:600,color:'#A3A9A6'}}>{lang==='en'?'Your profits will appear here':'Tes profits apparaîtront ici'}</span>
+            </div>
+          )}
+          <Line
+            data={{
+              labels:dailyData.map(d=>d.label),
+              datasets:[{
+                data:dailyData.map(d=>d.profit),
+                fill:true,
+                borderColor:'#1D9E75',
+                backgroundColor:'rgba(29,158,117,0.12)',
+                tension:0.4,
+                pointRadius:0,
+                pointHoverRadius:5,
+                pointHoverBackgroundColor:'#1D9E75',
+                borderWidth:2,
+              }],
+            }}
+            options={{
+              responsive:true,
+              maintainAspectRatio:false,
+              animation:{duration:600,easing:'easeOutQuart'},
+              plugins:{
+                legend:{display:false},
+                tooltip:{
+                  backgroundColor:'#fff',
+                  titleColor:'#A3A9A6',
+                  bodyColor:'#1D9E75',
+                  borderColor:'rgba(0,0,0,0.08)',
+                  borderWidth:1,
+                  padding:10,
+                  cornerRadius:10,
+                  displayColors:false,
+                  titleFont:{family:"'Nunito', sans-serif",size:11,weight:'700'},
+                  bodyFont:{family:"'Nunito', sans-serif",size:14,weight:'800'},
+                  callbacks:{
+                    title:([i])=>i.label,
+                    label:ctx=>`${(ctx.raw||0)>=0?'+':''}${(ctx.raw||0).toFixed(2)} €`,
+                  },
+                },
+              },
+              scales:{
+                x:{
+                  display:true,
+                  grid:{display:false},
+                  border:{display:false},
+                  ticks:{color:'#A3A9A6',font:{family:"'Nunito', sans-serif",size:10},maxTicksLimit:6,maxRotation:0},
+                },
+                y:{
+                  display:true,
+                  grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},
+                  border:{display:false},
+                  ticks:{color:'#A3A9A6',font:{family:"'Nunito', sans-serif",size:10},padding:6,callback:v=>`${v.toFixed(0)}€`},
+                },
+              },
+            }}
+          />
         </div>
-      )}
+      </div>
 
       {/* Activity curve (84 days) */}
       <ActivityCurve sales={sales} lang={lang} />
@@ -1232,7 +1339,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
       `}</style>
 
       {/* FAB */}
-      <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} />
+      <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />
 
       {/* Listening overlay card */}
       {isRec&&(

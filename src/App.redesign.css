@@ -475,6 +475,85 @@ body.bg-dots {
   .fab-vocal::before, .fab-vocal::after { opacity: 0; }
 }
 
+/* FAB — listening state */
+.fab-vocal.listening {
+  background: linear-gradient(135deg, #DC2626 0%, #EF4444 50%, #F87171 100%);
+  box-shadow:
+    0 1px 3px rgba(220, 38, 38, 0.3),
+    0 8px 22px rgba(239, 68, 68, 0.5);
+  animation: fabListenPulse 1.4s ease-in-out infinite;
+}
+.fab-vocal.listening::before,
+.fab-vocal.listening::after {
+  border-color: rgba(239, 68, 68, 0.5);
+  animation-duration: 1.6s;
+}
+@keyframes fabListenPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45), 0 8px 22px rgba(239,68,68,0.4); }
+  50%       { box-shadow: 0 0 0 10px rgba(239,68,68,0), 0 8px 22px rgba(239,68,68,0.4); }
+}
+.fab-icon-blink { animation: fabIconBlink 1s steps(1) infinite; display: block; }
+@keyframes fabIconBlink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.4; } }
+
+/* FAB — thinking state */
+.fab-vocal.thinking {
+  background: #6B7280;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15), 0 6px 18px rgba(0,0,0,0.2);
+  cursor: not-allowed;
+}
+.fab-vocal.thinking::before,
+.fab-vocal.thinking::after { display: none; }
+
+/* Thinking toast above FAB */
+.fab-think-toast {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  background: #1A1A1A;
+  color: #fff;
+  padding: 7px 13px;
+  border-radius: 12px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  animation: fabToastIn 0.2s ease;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+}
+.fab-think-toast::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 14px;
+  border: 6px solid transparent;
+  border-top-color: #1A1A1A;
+}
+@keyframes fabToastIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fab-think-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 5px;
+}
+.fab-think-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.8);
+  animation: fabDot 1.2s ease-in-out infinite;
+}
+.fab-think-dots span:nth-child(2) { animation-delay: 0.2s; }
+.fab-think-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes fabDot {
+  0%, 60%, 100% { transform: scale(1);   opacity: 0.5; }
+  30%            { transform: scale(1.5); opacity: 1; }
+}
+
 /* ============================================================
    6. PREMIUM CTA — gradient animé teal → vert + essai gratuit
    ============================================================ */
