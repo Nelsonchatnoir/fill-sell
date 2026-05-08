@@ -817,14 +817,28 @@ body.bg-dots {
    8. TOPBAR — refined glass + premium badge + lang switch
    ============================================================ */
 .topbar {
-  background: rgba(250,250,248,0.55) !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 200 !important;
+  background: rgba(250,250,248,0.78) !important;
   backdrop-filter: blur(14px) !important;
   -webkit-backdrop-filter: blur(14px) !important;
-  border-bottom: 1px solid rgba(0,0,0,0.06) !important;
-  box-shadow: 0 1px 16px rgba(0,0,0,0.07) !important;
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 100 !important;
+  border-bottom: 1px solid transparent !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s, background 0.2s !important;
+}
+
+/* Push scrollable content below the fixed topbar */
+.wrap.page-pad {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 72px) !important;
+}
+.desktop-nav {
+  margin-top: calc(env(safe-area-inset-top, 0px) + 62px);
+}
+@media (max-width: 768px) {
+  .desktop-nav { margin-top: 0; }
 }
 .tb-logo .name {
   font-family: 'Plus Jakarta Sans', sans-serif !important;
