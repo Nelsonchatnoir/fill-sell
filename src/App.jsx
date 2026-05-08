@@ -2286,6 +2286,7 @@ export default function App({ loginOnly = false }){
   const [filterType,setFilterType]=useState("Tous");
   const [soldShowAll,setSoldShowAll]=useState(false);
   const [showAllStock,setShowAllStock]=useState(false);
+  const [expandedStockId,setExpandedStockId]=useState(null);
   const [showAllSales,setShowAllSales]=useState(false);
   const [search,setSearch]=useState("");
   const [searchHistory,setSearchHistory]=useState("");
@@ -4408,22 +4409,38 @@ export default function App({ loginOnly = false }){
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {stockVisible.map(item=>{
                       const ts=getTypeStyle(item.type);
+                      const isExpanded=expandedStockId===item.id;
+                      const _locRe=/^(acheté[e]?\s+(?:[àa]|en|au|aux)\b|bought\s+in\b)/i;
+                      const _dParts=item.description?item.description.split(/,\s*/).map(p=>p.trim()).filter(Boolean):[];
+                      const _itemLoc=_dParts.filter(p=>_locRe.test(p)).join(", ")||null;
+                      const _itemDesc=_dParts.filter(p=>!_locRe.test(p)).join(", ")||null;
                       return(
-                      <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                            <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                            {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
-                            {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
-                            {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
+                      <div key={item.id}>
+                        <SwipeRow onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`,borderBottomLeftRadius:isExpanded?0:12,borderBottomRightRadius:isExpanded?0:12}}>
+                          <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setExpandedStockId(isExpanded?null:item.id)}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                              {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
+                              {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
+                              {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
+                            </div>
+                            {!isExpanded&&item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
+                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
                           </div>
-                          {item.description&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{item.description}</div>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
+                          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                            <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>
+                            <span onClick={e=>{e.stopPropagation();setExpandedStockId(isExpanded?null:item.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)"}}>›</span>
+                          </div>
+                        </SwipeRow>
+                        <div style={{maxHeight:isExpanded?"200px":"0",overflow:"hidden",transition:"max-height 0.25s ease"}}>
+                          <div style={{padding:"10px 14px 12px",background:"#F9FAFB",borderLeft:`3px solid ${getCatBorder(item.type)}`,borderRight:"1px solid rgba(0,0,0,0.06)",borderBottom:"1px solid rgba(0,0,0,0.06)",borderRadius:"0 0 12px 12px"}}>
+                            {_itemDesc&&<div style={{fontSize:12,color:"#4B5563",lineHeight:1.5,marginBottom:(_itemLoc||item.date)?4:0}}>{_itemDesc}</div>}
+                            {_itemLoc&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:item.date?4:0}}>📍 {_itemLoc}</div>}
+                            {item.date&&<div style={{fontSize:11,color:"#A3A9A6"}}>{lang==='fr'?'Ajouté le':'Added'} {new Date(item.date).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>}
+                            {!_itemDesc&&!_itemLoc&&!item.date&&<div style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==='fr'?'Aucun détail supplémentaire':'No additional details'}</div>}
+                          </div>
                         </div>
-                        <div style={{paddingRight:36,flexShrink:0}}>
-                          <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>
-                        </div>
-                      </SwipeRow>
+                      </div>
                     );})}
                     {stockFiltre.length>10&&!showAllStock&&(
                       <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
