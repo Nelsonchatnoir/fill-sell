@@ -462,6 +462,27 @@ const DEAL_PLACEHOLDERS_EN = [
   "I bought 20 Pokémon packs for €8, selling them at €3 each — profitable?",
 ];
 
+const LENS_PLACEHOLDERS_FR = [
+  "Taille M, bon état, quelques traces d'usure...",
+  "Neuf avec étiquette, jamais porté...",
+  "Écran fissuré, fonctionne parfaitement...",
+  "Lot de 3, emballage d'origine...",
+  "Vintage années 90, couleur originale...",
+  "Acheté 150€, porté 2 fois...",
+  "Manque le chargeur, batterie 85%...",
+  "Taille unique, coloris rare...",
+];
+const LENS_PLACEHOLDERS_EN = [
+  "Size M, good condition, some signs of wear...",
+  "Brand new with tag, never worn...",
+  "Cracked screen, works perfectly...",
+  "Lot of 3, original packaging...",
+  "Vintage 90s, original color...",
+  "Bought for €150, worn twice...",
+  "Missing charger, battery 85%...",
+  "One size, rare colorway...",
+];
+
 const VOICE_EXAMPLES = [
   { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
   { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
@@ -2340,6 +2361,15 @@ export default function App({ loginOnly = false }){
   const [lensMicActive,setLensMicActive]=useState(false);
   const lensMicRef=useRef(null);
   const lensFileRef=useRef(null);
+  const [lensPlaceholderIdx,setLensPlaceholderIdx]=useState(0);
+  const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
+  useEffect(()=>{
+    const _id=setInterval(()=>{
+      setLensPlaceholderFade(false);
+      setTimeout(()=>{setLensPlaceholderIdx(i=>(i+1)%LENS_PLACEHOLDERS_FR.length);setLensPlaceholderFade(true);},300);
+    },3000);
+    return()=>clearInterval(_id);
+  },[]);
   useEffect(()=>{
     fetch("https://ipapi.co/json/")
       .then(r=>r.ok?r.json():null)
@@ -4464,12 +4494,15 @@ export default function App({ loginOnly = false }){
 
               {/* Champ description optionnel + mic */}
               <div style={{position:"relative",marginBottom:10}}>
+                {!lensDesc&&(
+                  <div style={{position:"absolute",top:10,left:14,right:44,pointerEvents:"none",zIndex:1,fontSize:13,color:"#9CA3AF",lineHeight:1.5,fontFamily:"inherit",opacity:lensPlaceholderFade?1:0,transition:"opacity 0.3s ease"}}>
+                    {lang==="en"?LENS_PLACEHOLDERS_EN[lensPlaceholderIdx]:LENS_PLACEHOLDERS_FR[lensPlaceholderIdx]}
+                  </div>
+                )}
                 <textarea
                   value={lensDesc}
                   onChange={e=>setLensDesc(e.target.value)}
-                  placeholder={lang==="en"
-                    ?"Optional details: condition, size, color... e.g. cracked screen, size L, a few scratches"
-                    :"Détails optionnels : état, taille, couleur... Ex: écran cassé, taille L, quelques rayures"}
+                  placeholder=""
                   rows={2}
                   style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${lensMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",transition:"border-color 0.15s"}}
                 />
@@ -4479,19 +4512,6 @@ export default function App({ loginOnly = false }){
                 >
                   {lensMicActive?"⏹":"🎙️"}
                 </button>
-              </div>
-
-              {/* Prix d'achat optionnel */}
-              <div style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",borderRadius:12,padding:"11px 14px",border:"1.5px solid rgba(0,0,0,0.08)",marginBottom:12}}>
-                <span style={{fontSize:15,flexShrink:0}}>🛒</span>
-                <input
-                  type="number" inputMode="decimal"
-                  value={lensBuy}
-                  onChange={e=>{setLensBuy(e.target.value);setLensResult(null);setLensAdded(false);}}
-                  placeholder={lang==="en"?"Purchase price or planned price (optional)":"Prix payé ou envisagé (optionnel)"}
-                  style={{flex:1,border:"none",outline:"none",fontSize:14,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}
-                />
-                <span style={{fontSize:13,color:"#6B7280",fontWeight:700,flexShrink:0}}>€</span>
               </div>
 
               {/* Bouton Analyser */}
