@@ -1705,7 +1705,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   const swipeRef=useRef({startY:0,active:false});
   const [vaEdits,setVaEdits]=useState({});
   const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
-  const [voiceGateMsg,setVoiceGateMsg]=useState('');
+  const [voiceToast,setVoiceToast]=useState('');
+  const showVoiceToast=(msg)=>{setVoiceToast(msg);setTimeout(()=>setVoiceToast(''),2000);};
   const SURL=import.meta.env.VITE_SUPABASE_URL;
 
   // Pre-initialize microphone permission at mount for instant response at click time
@@ -1728,7 +1729,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     clearTimeout(voiceAutoStopRef.current);
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
-    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});setVoiceGateMsg('');
+    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
   }
 
   useEffect(()=>{
@@ -1745,7 +1746,6 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       return;
     }
     if(vaStep==="results"){resetVA();return;}
-    setVoiceGateMsg('');
     // Reuse pre-initialized stream if still active, otherwise re-request
     let stream=vaStreamRef.current;
     if(!stream||stream.getTracks().some(t=>t.readyState==='ended')){
@@ -1767,9 +1767,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       if(!isPremium&&user?.id){
         const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
         if(count>=VOICE_FREE_LIMIT){
-          setVoiceGateMsg(lang==='fr'
-            ?`🔒 Limite atteinte (${VOICE_FREE_LIMIT}/jour) · Passe en Premium`
-            :`🔒 Daily limit reached (${VOICE_FREE_LIMIT}/day) · Go Premium`);
+          showVoiceToast(lang==='fr'
+            ?"🔒 Limite atteinte · 5 vocaux/jour en gratuit"
+            :"🔒 Daily limit reached · 5 voices/day on free plan");
           setVaStep("");
           return;
         }
@@ -1883,26 +1883,21 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       {/* FAB */}
       <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />
 
-      {/* Voice usage pill (free users) */}
+      {/* Voice remaining pill (free users, 1-2 left only) */}
       {!isPremium&&!isRec&&!isThink&&!isRes&&(()=>{
-        if(voiceGateMsg)return(
-          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:"#FEE2E2",color:"#DC2626",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
-            {voiceGateMsg}
-          </div>
-        );
         const r=VOICE_FREE_LIMIT-voiceUsedToday;
         if(r<=2&&r>0)return(
           <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:r===1?"#FEE2E2":"#FEF3C7",color:r===1?"#DC2626":"#D97706",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
             {r===1?(lang==='fr'?'⚠️ Dernier vocal du jour !':'⚠️ Last voice today!'):(lang==='fr'?`🎙️ ${r} vocaux restants`:`🎙️ ${r} voices left`)}
           </div>
         );
-        if(r<=0)return(
-          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:"#FEE2E2",color:"#DC2626",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
-            {lang==='fr'?'🔒 Limite atteinte · Passe en Premium':'🔒 Limit reached · Go Premium'}
-          </div>
-        );
         return null;
       })()}
+
+      {/* Voice gate toast */}
+      <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.8)",color:"#fff",borderRadius:"20px",padding:"10px 20px",fontSize:"14px",fontWeight:500,zIndex:9999,opacity:voiceToast?1:0,transition:"opacity 0.3s ease",pointerEvents:"none",whiteSpace:"nowrap"}}>
+        {voiceToast}
+      </div>
 
       {/* Error bubble */}
       {vaError&&vaStep===""&&(
