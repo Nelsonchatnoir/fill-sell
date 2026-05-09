@@ -704,7 +704,7 @@ const LENS_PLACEHOLDERS_EN = [
   "One size, rare colorway...",
 ];
 
-const VOICE_EXAMPLES = [
+const VOICE_EXAMPLES_FR_RAW = [
   { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
   { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
   { text: "J'ai vendu le jean Levis à 38€ avec 3€ de frais Vinted",                                                    tag: "Vendre",      cls: "sell"  },
@@ -716,7 +716,7 @@ const VOICE_EXAMPLES = [
   { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
   { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
 ];
-const VOICE_EXAMPLES_EN = [
+const VOICE_EXAMPLES_EN_RAW = [
   { text: "I bought €40 worth of clothes at a flea market — a blue Zara top size L and a Levi's jeans in good condition", tag: "Add",      cls: "add"   },
   { text: "I bought a lot of 20 Pokémon packs for €8 total, brand new condition",                                          tag: "Lot",      cls: "add"   },
   { text: "I sold the Levi's jeans for €38 with €3 Vinted fees",                                                           tag: "Sell",     cls: "sell"  },
@@ -728,6 +728,27 @@ const VOICE_EXAMPLES_EN = [
   { text: "I sold 5 Pokémon packs at €12 each on Vinted with €2 fees",                                                     tag: "Sell",     cls: "sell"  },
   { text: "How many items did I add this week and how many did I sell?",                                                    tag: "Stats",    cls: "query" },
 ];
+const VOICE_EXAMPLES = VOICE_EXAMPLES_FR_RAW;
+const VOICE_EXAMPLES_EN = VOICE_EXAMPLES_EN_RAW;
+
+function getRotatingExamples(currency, lang) {
+  const sym = CURRENCY_SYMBOLS[currency] || '€';
+  const raw = lang === 'en' ? VOICE_EXAMPLES_EN_RAW : VOICE_EXAMPLES_FR_RAW;
+  if (sym === '€') return raw;
+  return raw.map(e => ({ ...e, text: e.text.replace(/€/g, sym) }));
+}
+function getRotatingDealPlaceholders(currency, lang) {
+  const sym = CURRENCY_SYMBOLS[currency] || '€';
+  const raw = lang === 'en' ? DEAL_PLACEHOLDERS_EN : DEAL_PLACEHOLDERS_FR;
+  if (sym === '€') return raw;
+  return raw.map(t => t.replace(/€/g, sym));
+}
+function getRotatingLensPlaceholders(currency, lang) {
+  const sym = CURRENCY_SYMBOLS[currency] || '€';
+  const raw = lang === 'en' ? LENS_PLACEHOLDERS_EN : LENS_PLACEHOLDERS_FR;
+  if (sym === '€') return raw;
+  return raw.map(t => t.replace(/€/g, sym));
+}
 
 const SKELETON_ITEMS=[
   {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},
@@ -1120,7 +1141,7 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-function VoiceTicker({ lang = 'fr' }) {
+function VoiceTicker({ lang = 'fr', currency = 'EUR' }) {
   const [idx, setIdx] = useState(0);
   const [text, setText] = useState("");
   const stateRef = useRef({ char: 0, mode: "type" });
@@ -1130,7 +1151,7 @@ function VoiceTicker({ lang = 'fr' }) {
     setText("");
     let alive = true;
     let timer;
-    const examples = lang === 'en' ? VOICE_EXAMPLES_EN : VOICE_EXAMPLES;
+    const examples = getRotatingExamples(currency, lang);
     const tick = () => {
       if (!alive) return;
       const cur = examples[idx];
@@ -1152,9 +1173,9 @@ function VoiceTicker({ lang = 'fr' }) {
     };
     tick();
     return () => { alive = false; clearTimeout(timer); };
-  }, [idx, lang]);
+  }, [idx, lang, currency]);
 
-  const examples = lang === 'en' ? VOICE_EXAMPLES_EN : VOICE_EXAMPLES;
+  const examples = getRotatingExamples(currency, lang);
   const cur = examples[idx % examples.length];
   return (
     <div className="voice-ticker">
@@ -1166,14 +1187,14 @@ function VoiceTicker({ lang = 'fr' }) {
   );
 }
 
-function VoiceZone({ lang = 'fr' }) {
+function VoiceZone({ lang = 'fr', currency = 'EUR' }) {
   const { t } = useTranslation(lang);
   return (
     <div className="voice-zone">
       <div className="vz-prompt">
         {t('voiceZonePrompt')} <b>{t('voiceZoneHint')}</b>
       </div>
-      <VoiceTicker lang={lang} />
+      <VoiceTicker lang={lang} currency={currency} />
     </div>
   );
 }
@@ -1607,7 +1628,7 @@ function StatsTab({sales,items,lang,currency='EUR'}){
                     <span style={{fontSize:14,fontWeight:900,color:'#1D9E75',flexShrink:0}}>{fmt2(s.margin||0)}</span>
                   </div>
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                    {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{s.marque}</span>}
+                    {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{marqueLabel(s.marque,lang)}</span>}
                     {s.type&&s.type!=='Autre'&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
                     {daysHeld!==null&&<span style={{fontSize:10,fontWeight:700,color:'#A3A9A6'}}>{daysHeld}{lang==='en'?'d in stock':'j en stock'}</span>}
                     {s.buy>0&&s.sell>0&&<span style={{fontSize:10,fontWeight:700,color:'#6B7280',marginLeft:'auto'}}>{fmt2(s.buy)} → {fmt2(s.sell)} · <span style={{color:'#1D9E75'}}>{fmtp2(s.marginPct||0)}</span></span>}
@@ -1634,7 +1655,7 @@ function StatsTab({sales,items,lang,currency='EUR'}){
                     {days!==null&&<span style={{fontSize:11,fontWeight:800,color:'#F9A26C',flexShrink:0}}>{days}{lang==='en'?'d':'j'} {lang==='en'?'in stock':'en stock'}</span>}
                   </div>
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                    {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{s.marque}</span>}
+                    {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{marqueLabel(s.marque,lang)}</span>}
                     {s.type&&s.type!=='Autre'&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
                     {s.buy>0&&<span style={{fontSize:10,fontWeight:700,color:'#6B7280',marginLeft:'auto'}}>{lang==='en'?'Invested':'Investi'} <span style={{color:'#F9A26C'}}>{fmt2(s.buy*(s.quantite||1))}</span></span>}
                   </div>
@@ -2603,9 +2624,7 @@ export default function App({ loginOnly = false }){
   },[]);
   // Lens tab
   const [userCountry,setUserCountry]=useState(null); // {code,name}
-  const [lensPhotoPreview,setLensPhotoPreview]=useState(null);
-  const [lensPhotoBase64,setLensPhotoBase64]=useState(null);
-  const [lensPhotoMime,setLensPhotoMime]=useState("image/jpeg");
+  const [lensPhotos,setLensPhotos]=useState([]); // [{preview,base64,mime}]
   const [lensDesc,setLensDesc]=useState("");
   const [lensBuy,setLensBuy]=useState("");
   const [lensResult,setLensResult]=useState(null); // {analysis, itemData}
@@ -3874,18 +3893,22 @@ export default function App({ loginOnly = false }){
   }
 
   function handleLensPhoto(e){
-    const file=e.target.files?.[0];
-    if(!file)return;
-    if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo). Prends une photo moins détaillée.":"Image too large (max 8MB). Try a lower resolution photo.");return;}
+    const files=Array.from(e.target.files||[]);
+    if(!files.length)return;
     setLensResult(null);setLensAdded(false);
-    setLensPhotoMime(file.type||"image/jpeg");
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const dataUrl=ev.target.result;
-      setLensPhotoPreview(dataUrl);
-      setLensPhotoBase64(dataUrl.split(",")[1]);
-    };
-    reader.readAsDataURL(file);
+    files.forEach(file=>{
+      if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");return;}
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        const dataUrl=ev.target.result;
+        setLensPhotos(prev=>{
+          if(prev.length>=5)return prev;
+          return[...prev,{preview:dataUrl,base64:dataUrl.split(",")[1],mime:file.type||"image/jpeg"}];
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+    if(lensFileRef.current)lensFileRef.current.value="";
   }
 
   function toggleLensMic(){
@@ -3905,11 +3928,10 @@ export default function App({ loginOnly = false }){
   }
 
   async function analyzeLens(){
-    if(!lensPhotoBase64)return;
+    if(!lensPhotos.length)return;
     const SURL=import.meta.env.VITE_SUPABASE_URL;
     if(!SURL)return;
     setLensLoading(true);setLensResult(null);setLensAdded(false);
-    // Build user stats context
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
     const catProfit={};
@@ -3920,8 +3942,7 @@ export default function App({ loginOnly = false }){
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          imageBase64:lensPhotoBase64,
-          mimeType:lensPhotoMime,
+          images:lensPhotos.map(p=>({base64:p.base64,mimeType:p.mime})),
           description:lensDesc.trim()||null,
           prixAchat:parseFloat(lensBuy)||null,
           lang,
@@ -4229,7 +4250,7 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
                   {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
                   <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
-                    placeholder={(lang==='en'?VOICE_EXAMPLES_EN:VOICE_EXAMPLES)[voicePlaceholderIdx]?.text}
+                    placeholder={getRotatingExamples(currency,lang)[voicePlaceholderIdx]?.text}
                     rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
                   <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
                     {t('stockIaHint')}
@@ -4437,7 +4458,7 @@ export default function App({ loginOnly = false }){
 
             <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
 
-              <VoiceZone lang={lang}/>
+              <VoiceZone lang={lang} currency={currency}/>
 
               {/* ── Barre Import / Export ── */}
               {isPremium?(
@@ -4736,21 +4757,33 @@ export default function App({ loginOnly = false }){
                 ref={lensFileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                multiple
                 style={{display:"none"}}
                 onChange={handleLensPhoto}
               />
-              {lensPhotoPreview?(
-                <div style={{position:"relative",borderRadius:12,overflow:"hidden",marginBottom:12}}>
-                  <img src={lensPhotoPreview} alt="" style={{width:"100%",maxHeight:260,objectFit:"cover",borderRadius:12,display:"block"}}/>
-                  <button
-                    onClick={()=>{setLensPhotoPreview(null);setLensPhotoBase64(null);setLensResult(null);setLensAdded(false);if(lensFileRef.current)lensFileRef.current.value="";}}
-                    style={{position:"absolute",top:8,right:8,width:30,height:30,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.55)",color:"#fff",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}
-                  >×</button>
-                  <button
-                    onClick={()=>lensFileRef.current?.click()}
-                    style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                  >{lang==="en"?"Change":"Changer"}</button>
+              {lensPhotos.length>0?(
+                <div style={{marginBottom:12}}>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:lensPhotos.length<5?8:0}}>
+                    {lensPhotos.map((p,i)=>(
+                      <div key={i} style={{position:"relative",width:"calc(33.33% - 6px)",aspectRatio:"1",flexShrink:0}}>
+                        <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10,display:"block"}}/>
+                        <button
+                          onClick={()=>{setLensPhotos(prev=>prev.filter((_,j)=>j!==i));setLensResult(null);setLensAdded(false);}}
+                          style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
+                        >×</button>
+                      </div>
+                    ))}
+                    {lensPhotos.length<5&&(
+                      <button
+                        onClick={()=>lensFileRef.current?.click()}
+                        style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#9CA3AF",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
+                      >
+                        <span style={{fontSize:22}}>➕</span>
+                        {lang==="en"?"Add":"Ajouter"}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/5 {lang==="en"?"photos":"photos"}</div>
                 </div>
               ):(
                 <button
@@ -4761,7 +4794,7 @@ export default function App({ loginOnly = false }){
                 >
                   <span style={{fontSize:40}}>📸</span>
                   <div style={{fontSize:14,fontWeight:700,color:"#6B7280"}}>
-                    {lang==="en"?"Take a photo / Import":"Prendre une photo / Importer"}
+                    {lang==="en"?"Add photos (up to 5)":"Ajouter des photos (jusqu'à 5)"}
                   </div>
                   <div style={{fontSize:12,color:"#A3A9A6"}}>
                     {lang==="en"?"Tap to open camera or gallery":"Appuie pour ouvrir l'appareil photo ou la galerie"}
@@ -4773,7 +4806,7 @@ export default function App({ loginOnly = false }){
               <div style={{position:"relative",marginBottom:10}}>
                 {!lensDesc&&(
                   <div style={{position:"absolute",top:10,left:14,right:44,pointerEvents:"none",zIndex:1,fontSize:13,color:"#9CA3AF",lineHeight:1.5,fontFamily:"inherit",opacity:lensPlaceholderFade?1:0,transition:"opacity 0.3s ease"}}>
-                    {lang==="en"?LENS_PLACEHOLDERS_EN[lensPlaceholderIdx]:LENS_PLACEHOLDERS_FR[lensPlaceholderIdx]}
+                    {getRotatingLensPlaceholders(currency,lang)[lensPlaceholderIdx]}
                   </div>
                 )}
                 <textarea
@@ -4794,8 +4827,8 @@ export default function App({ loginOnly = false }){
               {/* Bouton Analyser */}
               <button
                 onClick={analyzeLens}
-                disabled={!lensPhotoBase64||lensLoading}
-                style={{width:"100%",padding:"13px",background:!lensPhotoBase64||lensLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotoBase64||lensLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:!lensPhotoBase64||lensLoading?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotoBase64||lensLoading?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
+                disabled={!lensPhotos.length||lensLoading}
+                style={{width:"100%",padding:"13px",background:!lensPhotos.length||lensLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotos.length||lensLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:!lensPhotos.length||lensLoading?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotos.length||lensLoading?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
               >
                 {lensLoading
                   ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")

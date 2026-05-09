@@ -39,15 +39,20 @@ function getPlatforms(countryCode: string | null, lang: string): string {
   if (countryCode && AFRICA_CODES.has(countryCode)) return "Jumia, OLX, Facebook Marketplace, WhatsApp groupes locaux";
   if (countryCode && EUROPE_CODES.has(countryCode)) return "Vinted, eBay, OLX local, Facebook Marketplace";
   if (countryCode && LATAM_CODES.has(countryCode)) return "Mercado Libre, OLX, Facebook Marketplace, Instagram Shop";
-  // Fallback by lang
   if (lang === "en") return "eBay, Depop, Facebook Marketplace, Vinted";
   return "Vinted, eBay, Leboncoin, Facebook Marketplace";
 }
 
-function buildSystemPrompt(lang: string, platforms: string, countryName: string | null): string {
+function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
+  const multiNote = photoCount > 1
+    ? (lang === "en"
+        ? `\nYou are analyzing ${photoCount} photos of the same item — cross-reference them for a more precise assessment.`
+        : `\nTu analyses ${photoCount} photos du même article — croise-les pour une évaluation plus précise.`)
+    : "";
+
   if (lang === "en") {
-    return `You are an expert in secondhand resale (${platforms}).
-Analyze the photo of this item and reply with a structured response:
+    return `You are an expert in secondhand resale (${platforms}).${multiNote}
+Analyze the photo(s) of this item and reply with a structured response:
 🔍 Identification: brand, model, estimated condition
 💰 Recommended resale price range (based on current market)
 ${countryName ? `📍 Region: ${countryName} — recommend platforms adapted to this market.` : ""}
@@ -56,8 +61,8 @@ If a purchase price is provided: 📈 estimated margin + verdict (🔥 excellent
 💡 One concrete tip to sell faster
 No asterisks. Use emojis. Short structured response (6-8 lines max).`;
   }
-  return `Tu es expert en achat-revente occasion (${platforms}).
-Analyse la photo de cet article et réponds de façon structurée :
+  return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
+Analyse la/les photo(s) de cet article et réponds de façon structurée :
 🔍 Identification : marque, modèle, état estimé
 💰 Fourchette de prix de revente recommandée (basée sur le marché actuel)
 ${countryName ? `📍 Région : ${countryName} — recommande les plateformes adaptées à ce marché.` : ""}
@@ -75,7 +80,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const {
-      imageBase64,
+      images,         // new: [{base64, mimeType}]
+      imageBase64,    // legacy fallback
       mimeType = "image/jpeg",
       description,
       prixAchat,
@@ -84,7 +90,15 @@ serve(async (req) => {
       userStats,
     } = body;
 
-    if (!imageBase64) {
+    // Normalize to images array
+    const photoList: { base64: string; mimeType: string }[] =
+      Array.isArray(images) && images.length > 0
+        ? images.slice(0, 5)
+        : imageBase64
+        ? [{ base64: imageBase64, mimeType }]
+        : [];
+
+    if (photoList.length === 0) {
       return new Response(JSON.stringify({ error: "Missing image" }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...CORS },
@@ -103,9 +117,9 @@ serve(async (req) => {
     const countryCode = userCountry?.code ?? null;
     const countryName = userCountry?.name ?? null;
     const platforms = getPlatforms(countryCode, _lang);
-    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName);
+    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, photoList.length);
 
-    // Build user message
+    // Build text context
     const textParts: string[] = [];
     if (description) {
       textParts.push(_lang === "en" ? `Details: ${description}` : `Détails : ${description}`);
@@ -127,6 +141,15 @@ serve(async (req) => {
       ? textParts.join("\n")
       : (_lang === "en" ? "Analyze this item." : "Analyse cet article.");
 
+    // Build message content: all images first, then text
+    const messageContent: unknown[] = [
+      ...photoList.map(p => ({
+        type: "image",
+        source: { type: "base64", media_type: p.mimeType, data: p.base64 },
+      })),
+      { type: "text", text: userText },
+    ];
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -139,25 +162,7 @@ serve(async (req) => {
         max_tokens: 500,
         temperature: 0.3,
         system: systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mimeType,
-                  data: imageBase64,
-                },
-              },
-              {
-                type: "text",
-                text: userText,
-              },
-            ],
-          },
-        ],
+        messages: [{ role: "user", content: messageContent }],
       }),
     });
 
@@ -172,9 +177,10 @@ serve(async (req) => {
     const data = await response.json();
     const analysis = data?.content?.[0]?.text?.trim() ?? null;
 
-    // Also ask for structured item data in a second lightweight call
+    // Structured extraction using first photo
     let itemData = null;
     try {
+      const firstPhoto = photoList[0];
       const structured = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -193,7 +199,7 @@ serve(async (req) => {
               content: [
                 {
                   type: "image",
-                  source: { type: "base64", media_type: mimeType, data: imageBase64 },
+                  source: { type: "base64", media_type: firstPhoto.mimeType, data: firstPhoto.base64 },
                 },
                 { type: "text", text: description ? `Item details: ${description}` : "Extract item data." },
               ],
