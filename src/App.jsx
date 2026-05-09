@@ -505,7 +505,9 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
         onClick={onPurchase}
         label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai gratuit →':'✨ Start free trial →')}
         disabled={iapLoading}
-        sub={lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'}
+        sub={iapProduct
+          ?(lang==='fr'?`puis ${iapProduct.priceString}/mois · Sans engagement.`:`then ${iapProduct.priceString}/month · No commitment.`)
+          :(lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.')}
       />
       <button
         onClick={onRestore}
@@ -2432,8 +2434,11 @@ export default function App({ loginOnly = false }){
         setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
       }
-    }catch(e){console.error('[IAP] purchase failed:',e);}
-    finally{setIapLoading(false);}
+    }catch(e){
+      console.error('[IAP] purchase failed:',e);
+      setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de l\'achat':'❌ Purchase failed'});
+      setTimeout(()=>setToast({visible:false,message:''}),3000);
+    }finally{setIapLoading(false);}
   }
 
   async function handleIAPRestore(){
@@ -2445,9 +2450,15 @@ export default function App({ loginOnly = false }){
         setIsPremium(true);
         setToast({visible:true,message:lang==='fr'?'✅ Achat restauré !':'✅ Purchase restored!'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
+      }else{
+        setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
+        setTimeout(()=>setToast({visible:false,message:''}),3000);
       }
-    }catch(e){console.error('[IAP] restore failed:',e);}
-    finally{setIapLoading(false);}
+    }catch(e){
+      console.error('[IAP] restore failed:',e);
+      setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la restauration':'❌ Restore failed'});
+      setTimeout(()=>setToast({visible:false,message:''}),3000);
+    }finally{setIapLoading(false);}
   }
 
   async function fetchAll(uid){
@@ -4194,6 +4205,18 @@ export default function App({ loginOnly = false }){
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Restaurer les achats — iOS non-premium uniquement */}
+            {isNative&&!isPremium&&(
+              <button onClick={handleIAPRestore} disabled={iapLoading}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"transparent",border:"none",color:C.text,fontSize:"inherit",fontFamily:"inherit",cursor:iapLoading?"not-allowed":"pointer",transition:"background 0.15s",marginBottom:2,textAlign:"left",opacity:iapLoading?0.6:1}}
+                onMouseEnter={e=>{if(!iapLoading)e.currentTarget.style.background=C.rowBg;}}
+                onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
+              >
+                <span style={{fontSize:18,flexShrink:0}}>🔄</span>
+                <div style={{fontSize:14,fontWeight:600}}>{iapLoading?(lang==='fr'?'Restauration...':'Restoring...'):(lang==='fr'?'Restaurer mes achats':'Restore purchases')}</div>
+              </button>
             )}
 
             {/* Support */}
