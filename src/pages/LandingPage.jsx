@@ -257,7 +257,7 @@ const T = {
     freeF5: '🎤 IA vocale · 5 requêtes/jour',
     freeBtn: 'Commencer gratuitement',
     premiumBadge: '⭐ Le plus populaire', premiumTier: 'Premium', premiumName: 'Pour aller plus loin',
-    premiumPer: '/ mois', premiumTagline: '7 jours gratuits · puis 9,99 €/mois · Sans engagement.',
+    premiumPer: '/ mois', premiumTagline: 'puis 9,99 €/mois · Sans engagement.',
     premiumTrialBadge: "7 jours d'essai gratuit",
     premiumF1: 'Tout le plan Gratuit inclus', premiumF2: 'Articles illimités',
     premiumF3: 'IA vocale illimitée 🎙️', premiumF4: 'Stats avancées analysées par IA',
@@ -397,7 +397,7 @@ const T = {
     freeF5: '🎤 Voice AI · 5 requests/day',
     freeBtn: 'Start for free',
     premiumBadge: '⭐ Most popular', premiumTier: 'Premium', premiumName: 'To go further',
-    premiumPer: '/ month', premiumTagline: '7 days free · then €9.99/month · No commitment.',
+    premiumPer: '/ month', premiumTagline: 'then €9.99/month · No commitment.',
     premiumTrialBadge: '7-day free trial',
     premiumF1: 'Everything in Free, included', premiumF2: 'Unlimited items',
     premiumF3: 'Unlimited Voice AI 🎙️', premiumF4: 'Advanced stats analyzed by AI',
@@ -797,21 +797,28 @@ export default function LandingPage() {
               <p className="feature-desc">{t.f7Desc}</p>
             </div>
             <div className="feature-mock">
-              <div className="mini-screen">
-                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                  <div style={{ flex: 1, height: 70, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+              <div className="mini-screen" style={{ maxWidth: 520, padding: '28px' }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                  <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                   </div>
-                  <div style={{ flex: 1, height: 70, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+                  <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                   </div>
-                  <div style={{ flex: 1, height: 70, borderRadius: 10, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#aaa', border: '1px dashed #ccc' }}>+</div>
+                  <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>+</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>🔍 Patagonia P-6 Logo Tee · État : Bon</div>
-                <div style={{ background: 'linear-gradient(135deg,rgba(62,172,160,0.08),rgba(232,149,109,0.08))', padding: '10px 12px', borderRadius: 10, fontSize: 12 }}>
-                  <div style={{ fontWeight: 900, marginBottom: 4 }}>🔥 18 – 28 €</div>
-                  <div style={{ color: 'var(--sub)', fontSize: 11 }}>🏪 Vinted · eBay · Depop</div>
-                  <div style={{ color: 'var(--sub)', fontSize: 11, marginTop: 3 }}>💡 Ajoute une photo face avant pour affiner</div>
+                <div style={{ background: '#fff', borderRadius: 16, padding: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>🔍 Patagonia P-6 Logo Tee · État : Bon</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 18 – 28 €</span>
+                    <span style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>Prix recommandé : 22 €</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 4 }}>🏪 Vinted · eBay · Depop</div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 8 }}>📦 Catégorie : Mode · Streetwear</div>
+                  <div style={{ marginBottom: 10 }}>
+                    <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>⚡ Demande forte · Se vend en {'<'} 3 jours</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>💡 Ajoute une photo face avant pour affiner l'estimation</div>
                 </div>
               </div>
             </div>
@@ -983,18 +990,23 @@ export default function LandingPage() {
                   <div className="app-body">
                     <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em', marginBottom: 10 }}>📸 Lens</div>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                      <div style={{ flex: 1, height: 72, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+                      <div style={{ flex: 1, height: 90, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                       </div>
-                      <div style={{ flex: 1, height: 72, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+                      <div style={{ flex: 1, height: 90, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                       </div>
                     </div>
-                    <div style={{ background: '#fff', border: '1px solid rgba(62,172,160,0.2)', borderRadius: 12, padding: '10px 12px', marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 4 }}>🔍 Patagonia · État : Bon</div>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--teal-strong)', marginBottom: 3 }}>🔥 18 – 28 €</div>
-                      <div style={{ fontSize: 10, color: 'var(--sub)' }}>Vinted · eBay · Depop</div>
+                    <div style={{ background: '#fff', border: '1px solid rgba(62,172,160,0.15)', borderRadius: 12, padding: '10px 12px', marginBottom: 6 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 3 }}>🔍 Patagonia P-6 Logo Tee · État : Bon</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 3 }}>
+                        <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 18 – 28 €</span>
+                        <span style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic' }}>Rec. : 22 €</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--sub)', marginBottom: 5 }}>Vinted · eBay · Depop</div>
+                      <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>⚡ Demande forte · {'<'} 3j</span>
                     </div>
+                    <div style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic', marginBottom: 8 }}>💡 Ajoute une photo face avant</div>
                     <div style={{ background: 'var(--teal-strong)', color: '#fff', borderRadius: 10, padding: '9px 0', textAlign: 'center', fontSize: 12, fontWeight: 800 }}>Ajouter au stock</div>
                   </div>
                   <div className="app-bnav">
