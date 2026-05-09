@@ -471,9 +471,8 @@ function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unkno
   pull(/\b(?:neuf|neuve|abîm[eé]e?|abim[eé]e?|cass[eé]e?|ray[eé]e?|us[eé]e?|d[eé]faillant[e]?|fonctionnel(?:le)?|endommagé[e]?|reconditionn[eé]e?|r[eé]nov[eé]e?|cracked|broken|damaged|scratched|refurbished)\b/gi, cond);
   // 3. Colors
   pull(/\b(?:blanc|blanche|noir|noire|rouge|rose|vert(?:e)?|bleu(?:e)?|gris(?:e)?|jaune|violet(?:te)?|beige|marron|orange|cr[eè]me|argent[eé]?|dor[eé]e?|white|black|red|pink|green|blue|gr[ae]y|yellow|purple|brown|cream|silver|gold)\b/gi, col);
-  // 4. Location
-  pull(/\bacheté[e]?\s+(?:[àa]|en|au|aux)\s+\w+\b/gi, loc);
-  pull(/\bbought\s+in\s+\w+\b/gi, loc);
+  // 4. Location — capture full multi-word place names (e.g. "Los Angeles", "New York")
+  pull(/\b(?:acheté[e]?\s+(?:à|en|au|aux)|bought\s+(?:in|at))\s+\w+(?:\s+\w+)*/gi, loc);
   // 5. Accessories
   pull(/\bavec\s+[^,]+/gi, oth);
   pull(/\bwith\s+[^,]+/gi, oth);
@@ -496,8 +495,13 @@ serve(async (req) => {
   }
 
   try {
-    const { text, lang } = await req.json();
+    const { text, lang, currency } = await req.json();
     const _lang = lang === "en" ? "en" : "fr";
+    const currencyCtx = currency
+      ? (_lang === "en"
+        ? `\n\nUser currency: ${currency}. When an amount is mentioned without an explicit currency, assume it is in ${currency}. Example: "500 baht" → prix_achat: 500 (implicit ${currency}). "50" with no currency specified → prix_achat: 50 in ${currency}.`
+        : `\n\nDevise de l'utilisateur : ${currency}. Quand un montant est mentionné sans préciser la devise, considère que c'est en ${currency}. Exemple : "500 baht" → prix_achat: 500 (${currency} implicite). "50" sans précision → prix_achat: 50 en ${currency}.`)
+      : "";
 
     if (!text?.trim()) {
       return new Response(JSON.stringify({ error: "Missing text" }), {
@@ -525,7 +529,7 @@ serve(async (req) => {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 4096,
         temperature: 0.1,
-        system: _lang === "en" ? SYSTEM_EN : SYSTEM_FR,
+        system: (_lang === "en" ? SYSTEM_EN : SYSTEM_FR) + currencyCtx,
         messages: [{ role: "user", content: text }],
       }),
     });

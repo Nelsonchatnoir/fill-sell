@@ -225,6 +225,13 @@ function suggestCurrency(){
   const byPrefix={'ja':'JPY','ko':'KRW','zh':'CNY','th':'THB','vi':'VND','id':'IDR','ms':'MYR','hi':'INR','ur':'PKR','bn':'BDT','si':'LKR','ne':'NPR','my':'MMK','km':'KHR','lo':'LAK','mn':'MNT','kk':'KZT','uz':'UZS','ky':'KGS','tg':'TJS','tk':'TMT','tr':'TRY','ru':'RUB','uk':'UAH','be':'BYN','az':'AZN','ka':'GEL','hy':'AMD','he':'ILS','fa':'IRR','pl':'PLN','cs':'CZK','hu':'HUF','ro':'RON','hr':'HRK','bg':'BGN','sr':'RSD','is':'ISK','sq':'ALL','mk':'MKD','bs':'BAM','sv':'SEK','no':'NOK','nb':'NOK','nn':'NOK','da':'DKK','sw':'KES','am':'ETB','af':'ZAR','so':'SOS'};
   return byPrefix[prefix]||'EUR';
 }
+function getCountryFallback(){
+  const nl=(navigator.language||'').toLowerCase();
+  const m=nl.match(/^[a-z]{2}-([a-z]{2})$/);
+  if(m) return m[1].toUpperCase();
+  const map={fr:'FR',en:'US',ja:'JP',ko:'KR',zh:'CN',th:'TH',vi:'VN',id:'ID',ms:'MY',hi:'IN',tr:'TR',ru:'RU',uk:'UA',ar:'SA',he:'IL',pl:'PL',cs:'CZ',hu:'HU',ro:'RO',hr:'HR',bg:'BG',sv:'SE',no:'NO',da:'DK',pt:'PT',es:'ES',de:'DE',it:'IT',nl:'NL'};
+  return map[nl.split('-')[0]]??null;
+}
 function formatCurrency(amount,currency='EUR',decimals=null){
   const n=Math.round((amount||0)*100)/100;
   const dec=decimals!==null?decimals:(CURRENCY_DECIMALS[currency]??2);
@@ -1689,12 +1696,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',actions,vaStep,setVaSte
           if(isFollowupAdd){
             const addTask={intent:"inventory_add",confidence:0.99,requiresConfirmation:false,ambiguous:false,data:{nom:lastPriceAdviceData.nom,marque:lastPriceAdviceData.marque,prix_achat:lastPriceAdviceData.prix_achat,categorie:lastPriceAdviceData.categorie,description:lastPriceAdviceData.description,quantite:1}};
             setLastPriceAdviceData(null);
-            const{results:fuResults}=await executeVoiceTasks([addTask],{items,sales,lang,actions,supabaseUrl:SURL});
+            const{results:fuResults}=await executeVoiceTasks([addTask],{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL});
             setVaResults(fuResults);setVaStep("results");
             if(fuResults.every(r=>r.status==="success")){autoCloseRef.current=setTimeout(()=>resetVA(),3500);}
             return;
           }
-          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,lang})});
+          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,lang,currency})});
           if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
           const{tasks,error:iErr}=await iRes.json();
           if(iErr)throw new Error(iErr);
@@ -1729,7 +1736,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',actions,vaStep,setVaSte
               finalTasks=[paTask];
             }
           }
-          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,actions,supabaseUrl:SURL});
+          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL});
           // Store price_advice data for potential follow-up "ajoute le au stock"
           const paRes=results.find(r=>r.intent==="price_advice"&&r.status==="success");
           if(paRes?.taskData)setLastPriceAdviceData(paRes.taskData);
@@ -2779,7 +2786,7 @@ export default function App({ loginOnly = false }){
       setDealAnalysisLoading(true);
       clearTimeout(dealAnalysisTimer.current);
       dealAnalysisTimer.current=setTimeout(async()=>{
-        const analysis=await generateDealAnalysis(scoreResult,lang);
+        const analysis=await generateDealAnalysis(scoreResult,lang,currency,userCountry?.code??getCountryFallback());
         setDealAnalysis(analysis);
         setDealAnalysisLoading(false);
       },1500);
@@ -3816,7 +3823,7 @@ export default function App({ loginOnly = false }){
       const r=await fetch(`${SURL}/functions/v1/deal-analysis`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({question:dealIADesc.trim(),lang}),
+        body:JSON.stringify({question:dealIADesc.trim(),lang,currency,country:userCountry?.code??getCountryFallback()}),
       });
       if(!r.ok)throw new Error(`HTTP ${r.status}`);
       const{analysis,error:iErr}=await r.json();

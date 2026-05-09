@@ -684,15 +684,16 @@ export async function executeVoiceTasks(tasks, context) {
           try {
             const itemLabel = [nom, marque].filter(Boolean).join(" ");
             const lines = [];
+            const cur = context.currency || "EUR";
             if (context.lang === "en") {
               lines.push(`Item: ${itemLabel}`);
               if (description) lines.push(`Condition/details: ${description}`);
-              if (prix_achat) lines.push(`Purchase price: €${prix_achat}`);
+              if (prix_achat) lines.push(`Purchase price: ${prix_achat} ${cur}`);
               if (categorie) lines.push(`Category: ${categorie}`);
             } else {
               lines.push(`Article : ${itemLabel}`);
               if (description) lines.push(`État/détails : ${description}`);
-              if (prix_achat) lines.push(`Prix d'achat : ${prix_achat}€`);
+              if (prix_achat) lines.push(`Prix d'achat : ${prix_achat} ${cur}`);
               if (categorie) lines.push(`Catégorie : ${categorie}`);
             }
             // Enrich with past similar sales
@@ -706,14 +707,14 @@ export async function executeVoiceTasks(tasks, context) {
               const avgSell = similar.reduce((a, s) => a + getPrixVente(s), 0) / similar.length;
               const avgMargin = similar.reduce((a, s) => a + getMargin(s), 0) / similar.length;
               lines.push(context.lang === "en"
-                ? `Your past sales of similar items: avg sell price €${Math.round(avgSell)}, avg margin €${Math.round(avgMargin)}`
-                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)}€, marge moyenne ${Math.round(avgMargin)}€`);
+                ? `Your past sales of similar items: avg sell price ${Math.round(avgSell)} ${cur}, avg margin ${Math.round(avgMargin)} ${cur}`
+                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)} ${cur}, marge moyenne ${Math.round(avgMargin)} ${cur}`);
             }
             const priceAdvice = lines.join("\n");
             const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ priceAdvice, lang: context.lang }),
+              body: JSON.stringify({ priceAdvice, lang: context.lang, currency: cur, country: context.country || null }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const d = await res.json();
@@ -734,16 +735,17 @@ export async function executeVoiceTasks(tasks, context) {
           try {
             const itemLabel = [nom, marque].filter(Boolean).join(" ");
             const lines = [];
+            const cur = context.currency || "EUR";
             if (context.lang === "en") {
               lines.push(`Item: ${itemLabel}`);
               if (etat) lines.push(`Condition: ${etat}`);
-              if (prix_propose) lines.push(`Proposed price: €${prix_propose}`);
+              if (prix_propose) lines.push(`Proposed price: ${prix_propose} ${cur}`);
               if (plateforme_source) lines.push(`Source platform: ${plateforme_source}`);
               if (categorie) lines.push(`Category: ${categorie}`);
             } else {
               lines.push(`Article : ${itemLabel}`);
               if (etat) lines.push(`État : ${etat}`);
-              if (prix_propose) lines.push(`Prix proposé : ${prix_propose}€`);
+              if (prix_propose) lines.push(`Prix proposé : ${prix_propose} ${cur}`);
               if (plateforme_source) lines.push(`Plateforme : ${plateforme_source}`);
               if (categorie) lines.push(`Catégorie : ${categorie}`);
             }
@@ -758,14 +760,14 @@ export async function executeVoiceTasks(tasks, context) {
               const avgSell = similar.reduce((a, s) => a + getPrixVente(s), 0) / similar.length;
               const avgMargin = similar.reduce((a, s) => a + getMargin(s), 0) / similar.length;
               lines.push(context.lang === "en"
-                ? `Your past sales of similar items: avg sell price €${Math.round(avgSell)}, avg margin €${Math.round(avgMargin)}`
-                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)}€, marge moyenne ${Math.round(avgMargin)}€`);
+                ? `Your past sales of similar items: avg sell price ${Math.round(avgSell)} ${cur}, avg margin ${Math.round(avgMargin)} ${cur}`
+                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)} ${cur}, marge moyenne ${Math.round(avgMargin)} ${cur}`);
             }
             const buyAdvice = lines.join("\n");
             const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ buyAdvice, lang: context.lang }),
+              body: JSON.stringify({ buyAdvice, lang: context.lang, currency: cur, country: context.country || null }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const d = await res.json();
@@ -786,17 +788,18 @@ export async function executeVoiceTasks(tasks, context) {
           try {
             const itemLabel = [nom, marque].filter(Boolean).join(" ");
             const descPart = description ? ` (${description})` : "";
+            const cur = context.currency || "EUR";
             const pricePart = prix_achat
-              ? (context.lang === "en" ? `, bought for €${prix_achat}` : `, acheté ${prix_achat}€`)
+              ? (context.lang === "en" ? `, bought for ${prix_achat} ${cur}` : `, acheté ${prix_achat} ${cur}`)
               : "";
             const catPart = categorie ? (context.lang === "en" ? `, category: ${categorie}` : `, catégorie : ${categorie}`) : "";
             const question = context.lang === "en"
-              ? `How much can I resell this item: ${itemLabel}${descPart}${pricePart}${catPart}? Give: 💰 recommended sell price range, 📈 estimated margin, 📦 best platform (Vinted / eBay / Leboncoin). Factor in the condition if mentioned.`
-              : `À combien puis-je revendre cet article : ${itemLabel}${descPart}${pricePart}${catPart} ? Donne : 💰 fourchette de prix de revente recommandée, 📈 marge estimée, 📦 meilleure plateforme (Vinted / eBay / Leboncoin). Tiens compte de l'état si mentionné.`;
+              ? `How much can I resell this item: ${itemLabel}${descPart}${pricePart}${catPart}? Provide: 💰 recommended sell price range, 📈 estimated margin, 📦 best platform for this market. Factor in the condition if mentioned.`
+              : `À combien puis-je revendre cet article : ${itemLabel}${descPart}${pricePart}${catPart} ? Donne : 💰 fourchette de prix de revente recommandée, 📈 marge estimée, 📦 meilleure plateforme pour ce marché. Tiens compte de l'état si mentionné.`;
             const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ question, lang: context.lang }),
+              body: JSON.stringify({ question, lang: context.lang, currency: cur, country: context.country || null }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const d = await res.json();

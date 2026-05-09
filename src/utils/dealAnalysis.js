@@ -5,7 +5,7 @@ let lastCallTime = 0;
 
 function pillsKey(pills) { return JSON.stringify(pills ?? []); }
 
-export async function generateDealAnalysis(scoreResult, lang = 'fr') {
+export async function generateDealAnalysis(scoreResult, lang = 'fr', currency = 'EUR', country = null) {
   const { score, pills = [] } = scoreResult;
   const _lang = lang === 'en' ? 'en' : 'fr';
   const now   = Date.now();
@@ -22,7 +22,7 @@ export async function generateDealAnalysis(scoreResult, lang = 'fr') {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scoreResult, lang: _lang }),
+        body: JSON.stringify({ scoreResult, lang: _lang, currency, country }),
       }
     );
     if (!response.ok) return null;
