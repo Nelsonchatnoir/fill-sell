@@ -770,30 +770,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="lp-feature reveal">
-            <div className="feature-copy">
-              <div className="feature-icon-wrap">🧮</div>
-              <h3 className="feature-title">{t.f3Title}</h3>
-              <p className="feature-desc">{t.f3Desc}</p>
-            </div>
-            <div className="feature-mock">
-              <div className="mini-screen calc-mock">
-                {[{ ico: '💶', lbl: t.f3BuyPrice, val: '15,00' }, { ico: '💰', lbl: t.f3SellPrice, val: '42,00' }, { ico: '📦', lbl: t.f3Fees, val: '3,50' }].map(({ ico, lbl, val }) => (
-                  <div key={lbl} className="calc-input filled">
-                    <span className="ico">{ico}</span>
-                    <div className="meta"><div className="lbl">{lbl}</div><div className="val">{val}</div></div>
-                    <span className="suf">€</span>
-                  </div>
-                ))}
-                <div className="calc-result">
-                  <div className="calc-big">+23,50 €</div>
-                  <div className="calc-pct">55,9 %</div>
-                  <div className="calc-verdict">{t.f3Verdict}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div className="lp-feature reverse reveal">
             <div className="feature-copy">
               <div className="feature-icon-wrap">📋</div>
@@ -809,6 +785,34 @@ export default function LandingPage() {
                     <div className={`hist-amt${red ? ' red' : ''}`}>{amt}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="lp-feature reveal">
+            <div className="feature-copy">
+              <span className="feature-tag" style={{ background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff' }}>📸 NOUVEAU</span>
+              <div className="feature-icon-wrap">📸</div>
+              <h3 className="feature-title">{t.f7Title}</h3>
+              <p className="feature-desc">{t.f7Desc}</p>
+            </div>
+            <div className="feature-mock">
+              <div className="mini-screen">
+                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  <div style={{ flex: 1, height: 70, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+                  </div>
+                  <div style={{ flex: 1, height: 70, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+                  </div>
+                  <div style={{ flex: 1, height: 70, borderRadius: 10, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#aaa', border: '1px dashed #ccc' }}>+</div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>🔍 Patagonia P-6 Logo Tee · État : Bon</div>
+                <div style={{ background: 'linear-gradient(135deg,rgba(62,172,160,0.08),rgba(232,149,109,0.08))', padding: '10px 12px', borderRadius: 10, fontSize: 12 }}>
+                  <div style={{ fontWeight: 900, marginBottom: 4 }}>🔥 18 – 28 €</div>
+                  <div style={{ color: 'var(--sub)', fontSize: 11 }}>🏪 Vinted · eBay · Depop</div>
+                  <div style={{ color: 'var(--sub)', fontSize: 11, marginTop: 3 }}>💡 Ajoute une photo face avant pour affiner</div>
+                </div>
               </div>
             </div>
           </div>
@@ -868,29 +872,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="lp-feature reveal">
-            <div className="feature-copy">
-              <span className="feature-tag" style={{ background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff' }}>📸 NOUVEAU</span>
-              <div className="feature-icon-wrap">📸</div>
-              <h3 className="feature-title">{t.f7Title}</h3>
-              <p className="feature-desc">{t.f7Desc}</p>
-            </div>
-            <div className="feature-mock">
-              <div className="mini-screen">
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                  {['👟','👜','📱'].map((ic, i) => (
-                    <div key={i} style={{ width: 64, height: 64, borderRadius: 10, background: 'linear-gradient(135deg,rgba(62,172,160,0.15),rgba(232,149,109,0.15))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, border: '1px solid rgba(62,172,160,0.2)' }}>{ic}</div>
-                  ))}
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>🔍 Nike Air Jordan 1 · État : Bon</div>
-                <div style={{ background: 'linear-gradient(135deg,rgba(62,172,160,0.08),rgba(232,149,109,0.08))', padding: '10px 12px', borderRadius: 10, fontSize: 12 }}>
-                  <div style={{ fontWeight: 900, marginBottom: 4 }}>💰 120 – 160 €</div>
-                  <div style={{ color: 'var(--sub)', fontSize: 11 }}>📦 Vinted · eBay · Depop</div>
-                  <div style={{ color: 'var(--sub)', fontSize: 11, marginTop: 3 }}>💡 Ajoute des photos sous plusieurs angles</div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -1000,22 +981,21 @@ export default function LandingPage() {
                     <span className="app-topbar-pill">⭐</span>
                   </div>
                   <div className="app-body">
-                    <div style={{ textAlign: 'center', padding: '6px 0 14px' }}>
-                      <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em' }}>{t.ph1CalcTitle}</div>
-                      <div style={{ fontSize: 10, color: 'var(--sub)', fontWeight: 600, marginTop: 3 }}>{t.ph1CalcSub}</div>
-                    </div>
-                    {[{ ico: '💶', lbl: t.ph1BuyPrice, val: '12,00' }, { ico: '💰', lbl: t.ph1SellPrice, val: '35,00' }, { ico: '📦', lbl: t.ph1Fees, val: '2,80' }].map(({ ico, lbl, val }, i) => (
-                      <div key={lbl} className="calc-input filled" style={{ marginBottom: i < 2 ? 8 : 12, padding: '10px 12px' }}>
-                        <span className="ico" style={{ fontSize: 16 }}>{ico}</span>
-                        <div className="meta"><div className="lbl" style={{ fontSize: 8 }}>{lbl}</div><div className="val" style={{ fontSize: 13 }}>{val}</div></div>
-                        <span className="suf" style={{ fontSize: 11 }}>€</span>
+                    <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em', marginBottom: 10 }}>📸 Lens</div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                      <div style={{ flex: 1, height: 72, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
                       </div>
-                    ))}
-                    <div style={{ background: 'linear-gradient(135deg,rgba(29,158,117,0.06),rgba(78,205,196,0.06))', border: '1px solid rgba(29,158,117,0.2)', borderRadius: 14, padding: '18px 14px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--teal-strong)', letterSpacing: '-0.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>+20,20 €</div>
-                      <div style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 800, background: 'rgba(29,158,117,0.15)', color: 'var(--teal-strong)', padding: '3px 9px', borderRadius: 99 }}>57,7 %</div>
-                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.ph1Verdict}</div>
+                      <div style={{ flex: 1, height: 72, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
+                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} alt="" />
+                      </div>
                     </div>
+                    <div style={{ background: '#fff', border: '1px solid rgba(62,172,160,0.2)', borderRadius: 12, padding: '10px 12px', marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 4 }}>🔍 Patagonia · État : Bon</div>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--teal-strong)', marginBottom: 3 }}>🔥 18 – 28 €</div>
+                      <div style={{ fontSize: 10, color: 'var(--sub)' }}>Vinted · eBay · Depop</div>
+                    </div>
+                    <div style={{ background: 'var(--teal-strong)', color: '#fff', borderRadius: 10, padding: '9px 0', textAlign: 'center', fontSize: 12, fontWeight: 800 }}>Ajouter au stock</div>
                   </div>
                   <div className="app-bnav">
                     <div className="item"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock' : 'Stock'}</span></div>
