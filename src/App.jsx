@@ -409,6 +409,22 @@ function SwipeRow({onDelete, onEdit, children, style}){
   );
 }
 
+async function checkAndResetDaily(supabase, userId, field_count, field_date) {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select(`${field_count}, ${field_date}`)
+    .eq('id', userId)
+    .single();
+  const currentCount = profile?.[field_date] === today ? (profile?.[field_count] ?? 0) : 0;
+  if (profile?.[field_date] !== today) {
+    await supabase.from('profiles')
+      .update({ [field_count]: 0, [field_date]: today })
+      .eq('id', userId);
+  }
+  return currentCount;
+}
+
 function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner' }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
@@ -1294,7 +1310,7 @@ const CAT_COLORS_MAP={
   'Autre':'#6B7280',
 };
 
-function StatsTab({sales,items,lang,currency='EUR'}){
+function StatsTab({sales,items,lang,currency='EUR',user}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
   const [aiText,setAiText]=useState('');
@@ -1399,31 +1415,37 @@ function StatsTab({sales,items,lang,currency='EUR'}){
     return (now-new Date(i.date_ajout||i.date||0))>30*24*3600*1000;
   }).length;
 
+  const PERIOD_CACHE_KEY={'1M':'1m','3M':'3m','6M':'6m','1A':'1y','1Y':'1y','Tout':'all','All':'all'};
+
   useEffect(()=>{
     if(filtered.length===0){setAiText('');return;}
     const SURL=import.meta.env.VITE_SUPABASE_URL;
-    if(!SURL){setAiText('');return;}
+    if(!SURL||!user?.id){setAiText('');return;}
+    const today=new Date().toISOString().split('T')[0];
+    const cacheKey=PERIOD_CACHE_KEY[range]??range;
     setAiLoading(true);
     setAiText('');
-    fetch(`${SURL}/functions/v1/stats-analysis`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        periode:range,
-        profit:Math.round(totalProfit),
-        ventes:filtered.length,
-        marge:avgMargin,
-        meilleure_cat:bestCategory||'',
-        meilleure_cat_pct:bestCategoryPct,
-        meilleur_article:bestItemName||'',
-        meilleur_article_profit:Math.round(bestItemProfit),
-        articles_lents:slowCount,
-        lang,
-      }),
-    })
-      .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
-      .then(d=>{setAiText(d?.analysis||'');setAiLoading(false);})
-      .catch(err=>{console.error('[StatsTab] stats-analysis error:',err);setAiLoading(false);});
+    supabase.from('profiles').select('stats_analysis_cache').eq('id',user.id).single()
+      .then(({data:profile})=>{
+        const cache=profile?.stats_analysis_cache??{};
+        const periodCache=cache[cacheKey];
+        if(periodCache&&periodCache.date===today&&periodCache.result){
+          setAiText(periodCache.result);setAiLoading(false);return;
+        }
+        fetch(`${SURL}/functions/v1/stats-analysis`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,lang}),
+        })
+          .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+          .then(d=>{
+            const result=d?.analysis||'';
+            setAiText(result);setAiLoading(false);
+            const updatedCache={...cache,[cacheKey]:{date:today,result}};
+            supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id);
+          })
+          .catch(err=>{console.error('[StatsTab] stats-analysis error:',err);setAiLoading(false);});
+      });
   },[range,filtered.length]);
 
   const fmt2=n=>formatCurrency(n,currency);
@@ -2625,6 +2647,10 @@ export default function App({ loginOnly = false }){
   const lensFileRef=useRef(null);
   const [lensPlaceholderIdx,setLensPlaceholderIdx]=useState(0);
   const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
+  const [lensUsedToday,setLensUsedToday]=useState(0);
+  const [voiceUsedToday,setVoiceUsedToday]=useState(0);
+  const LENS_FREE_LIMIT=3;
+  const VOICE_FREE_LIMIT=5;
   useEffect(()=>{
     const _id=setInterval(()=>{
       setLensPlaceholderFade(false);
@@ -2748,6 +2774,10 @@ export default function App({ loginOnly = false }){
     }
     setLoading(false);
     setAppLoading(false);
+    const lensCount=await checkAndResetDaily(supabase,uid,'lens_count_today','lens_count_date');
+    setLensUsedToday(lensCount);
+    const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
+    setVoiceUsedToday(voiceCount);
   }
 
   useEffect(()=>{
@@ -2968,6 +2998,19 @@ export default function App({ loginOnly = false }){
 
   async function handleVoiceToggle(){
     if(isRecording){mediaRecorderRef.current?.stop();setIsRecording(false);return;}
+    if(!isPremium){
+      const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
+      if(count>=VOICE_FREE_LIMIT){
+        alert(lang==='fr'
+          ?"Tu as utilisé tes 5 analyses vocales aujourd'hui. Passe en Premium pour un accès illimité. 🎙️"
+          :"You've used your 5 voice analyses today. Upgrade to Premium for unlimited access. 🎙️");
+        return;
+      }
+      await supabase.from('profiles')
+        .update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]})
+        .eq('id',user.id);
+      setVoiceUsedToday(count+1);
+    }
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
       const mimeType=MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/mp4";
@@ -3919,6 +3962,19 @@ export default function App({ loginOnly = false }){
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
+    if(!isPremium){
+      const count=await checkAndResetDaily(supabase,user.id,'lens_count_today','lens_count_date');
+      if(count>=LENS_FREE_LIMIT){
+        alert(lang==='fr'
+          ?"Tu as utilisé tes 3 analyses Lens aujourd'hui. Passe en Premium pour un accès illimité. 📸"
+          :"You've used your 3 Lens analyses today. Upgrade to Premium for unlimited access. 📸");
+        return;
+      }
+      await supabase.from('profiles')
+        .update({lens_count_today:count+1,lens_count_date:new Date().toISOString().split('T')[0]})
+        .eq('id',user.id);
+      setLensUsedToday(count+1);
+    }
     const SURL=import.meta.env.VITE_SUPABASE_URL;
     if(!SURL)return;
     setLensLoading(true);setLensResult(null);setLensAdded(false);
@@ -4245,6 +4301,7 @@ export default function App({ loginOnly = false }){
                   <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
                     {t('stockIaHint')}
                   </div>
+                  {!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:4}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:4}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
                   <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
                     style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
                     {lang==='fr'?"✨ Analyser":"✨ Analyze"}
@@ -4956,7 +5013,7 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===4&&(
-          <StatsTab sales={sales} items={items} lang={lang} currency={currency}/>
+          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user}/>
         )}
       </div>
 
