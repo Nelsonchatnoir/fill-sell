@@ -1232,8 +1232,19 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
           ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
         </button>
       </div>
-      <div style={{fontSize:11,fontWeight:700,color:"#6B7280",marginTop:14}}>
-        {lang==='en'?'then €9.99/month · No commitment.':'puis 9,99€/mois · Sans engagement.'}
+      <div style={{marginTop:'12px',borderRadius:'14px',border:'1px solid #e8e8e8',background:'#fafafa',padding:'12px 16px',fontSize:'13px',color:'#666',textAlign:'center'}}>
+        <div style={{marginBottom:'6px',fontWeight:600,color:'#333',fontSize:'13px'}}>
+          {lang==='fr'?'📋 Plan gratuit inclus':'📋 Free plan included'}
+        </div>
+        <div style={{marginBottom:'8px',lineHeight:'1.6'}}>
+          📦 {lang==='fr'?'20 articles':'20 items'} &nbsp;·&nbsp;
+          🎙️ {lang==='fr'?'5 vocaux/jour':'5 voice/day'} &nbsp;·&nbsp;
+          📸 {lang==='fr'?'3 Lens/jour':'3 Lens/day'}
+        </div>
+        <div style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'linear-gradient(135deg,#4ECDC4,#44A08D)',color:'#fff',borderRadius:'20px',padding:'5px 14px',fontWeight:600,fontSize:'13px'}}>
+          ✨ Premium · 9,99€/mois &nbsp;—&nbsp;
+          {lang==='fr'?'Tout illimité · 7j gratuits':'All unlimited · 7 days free'}
+        </div>
       </div>
     </div>
   );
