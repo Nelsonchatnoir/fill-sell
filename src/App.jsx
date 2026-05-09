@@ -4118,7 +4118,7 @@ export default function App({ loginOnly = false }){
                                 {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
                               </div>
                               <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",marginTop:2}}>
-                                <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{d.getDate()} {MONTHS_FR[d.getMonth()]}</span>
+                                <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}</span>
                                 {s.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marqueLabel(s.marque,lang)}</span>}
                                 {s.type&&s.type!=="Autre"&&(()=>{const ts2=getTypeStyle(s.type);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji}</span>;})()}
                               </div>
