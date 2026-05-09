@@ -422,7 +422,6 @@ h2.section-title { font-family: 'Nunito', sans-serif; font-size: clamp(32px, 4vw
   .voice-compare .vs { margin: 8px auto; justify-self: center; }
 }
 @media (max-width: 540px) {
-  .lp-lang-seg { display: none; }
   .lp-stats-grid { gap: 32px 16px; }
   h1.lp-hero-title { font-size: 40px; }
   .lp-hero-sub { font-size: 17px; }
