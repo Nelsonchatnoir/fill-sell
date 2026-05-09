@@ -1729,6 +1729,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     clearTimeout(voiceAutoStopRef.current);
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
+    vaStreamRef.current?.getTracks().forEach(t=>t.stop());vaStreamRef.current=null;
     setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
   }
 
@@ -1759,8 +1760,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
     recorder.onstop=async()=>{
       clearTimeout(voiceAutoStopRef.current);
-      stream.getTracks().forEach(t=>t.stop());
-      vaStreamRef.current=null;
+      // Stream kept alive in vaStreamRef for instant restart on next click
       const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
       const blob=new Blob(vaChunksRef.current,{type:mimeType});
       // Gate check before Whisper — use in-memory state, no Supabase read
