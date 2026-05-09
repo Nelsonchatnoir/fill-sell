@@ -1,6 +1,9 @@
 // Shared design tokens, constants, and pure utility functions
 // Used by tab components and App.jsx
 
+export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
 export const C = {
   primary:"#1D9E75",
   dark:"#0F6E56",
@@ -264,6 +267,34 @@ const VOICE_EXAMPLES_EN_RAW = [
   { text: "I sold 5 Pokémon packs at €12 each on Vinted with €2 fees", tag: "Sell", cls: "sell" },
   { text: "How many items did I add this week and how many did I sell?", tag: "Stats", cls: "query" },
 ];
+
+const LENS_PLACEHOLDERS_FR = [
+  "Taille M, bon état, quelques traces d'usure...",
+  "Neuf avec étiquette, jamais porté...",
+  "Écran fissuré, fonctionne parfaitement...",
+  "Lot de 3, emballage d'origine...",
+  "Vintage années 90, couleur originale...",
+  "Acheté 150€, porté 2 fois...",
+  "Manque le chargeur, batterie 85%...",
+  "Taille unique, coloris rare...",
+];
+const LENS_PLACEHOLDERS_EN = [
+  "Size M, good condition, some signs of wear...",
+  "Brand new with tag, never worn...",
+  "Cracked screen, works perfectly...",
+  "Lot of 3, original packaging...",
+  "Vintage 90s, original color...",
+  "Bought for €150, worn twice...",
+  "Missing charger, battery 85%...",
+  "One size, rare colorway...",
+];
+
+export function getRotatingLensPlaceholders(currency, lang) {
+  const sym = CURRENCY_SYMBOLS[currency] || '€';
+  const raw = lang === 'en' ? LENS_PLACEHOLDERS_EN : LENS_PLACEHOLDERS_FR;
+  if (sym === '€') return raw;
+  return raw.map(t => t.replace(/€/g, sym));
+}
 
 export function getRotatingExamples(currency, lang) {
   const sym = CURRENCY_SYMBOLS[currency] || '€';
