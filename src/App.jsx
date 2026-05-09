@@ -77,8 +77,22 @@ function Sparkline({ data, color = '#2DB89A', width = 80, height = 28 }) {
   );
 }
 
-const EUR_TO_USD = 1.08;
-const fmt = n=>(Math.round(n*100)/100).toFixed(2).replace(".",",")+' €';
+const CURRENCY_LOCALES = {EUR:'fr-FR',USD:'en-US',GBP:'en-GB',CHF:'de-CH',CAD:'en-CA',AUD:'en-AU',JPY:'ja-JP',SEK:'sv-SE',PLN:'pl-PL',CZK:'cs-CZ'};
+const CURRENCY_SYMBOLS = {EUR:'€',USD:'$',GBP:'£',CHF:'CHF',CAD:'CA$',AUD:'A$',JPY:'¥',SEK:'kr',PLN:'zł',CZK:'Kč'};
+const CURRENCIES_LIST = [
+  {code:'EUR',label:'€ EUR'},{code:'USD',label:'$ USD'},{code:'GBP',label:'£ GBP'},
+  {code:'CHF',label:'CHF'},{code:'CAD',label:'CA$ CAD'},{code:'AUD',label:'A$ AUD'},
+  {code:'JPY',label:'¥ JPY'},{code:'SEK',label:'kr SEK'},{code:'PLN',label:'zł PLN'},{code:'CZK',label:'Kč CZK'},
+];
+function formatCurrency(amount, currency='EUR', decimals=null) {
+  const n=Math.round((amount||0)*100)/100;
+  const dec=decimals!==null?decimals:(currency==='JPY'?0:2);
+  try {
+    return new Intl.NumberFormat(CURRENCY_LOCALES[currency]||'fr-FR',{style:'currency',currency,minimumFractionDigits:dec,maximumFractionDigits:dec}).format(n);
+  } catch {
+    return n.toFixed(dec)+' '+currency;
+  }
+}
 // Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
 const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
@@ -315,7 +329,7 @@ function CtaPremium({ onClick, label = "✨ Commencer l'essai gratuit →", disa
 const Tip=({active,payload,label})=>active&&payload?.length?(
   <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",fontSize:12,boxShadow:"0 10px 30px rgba(0,0,0,0.1)"}}>
     <div style={{color:C.sub,marginBottom:4,fontWeight:600}}>{label}</div>
-    {payload.map((p,i)=><div key={i} style={{color:p.color,fontWeight:700}}>{p.name}: {p.name==="Marge %"?fmtp(p.value):fmt(p.value)}</div>)}
+    {payload.map((p,i)=><div key={i} style={{color:p.color,fontWeight:700}}>{p.name}: {p.name==="Marge %"?fmtp(p.value):formatCurrency(p.value)}</div>)}
   </div>
 ):null;
 
@@ -750,7 +764,7 @@ function DonutChart({segments, totalLabel, totalValue}){
   );
 }
 
-function ActivityCurve({sales, lang}){
+function ActivityCurve({sales, lang, currency='EUR'}){
   const [hover, setHover] = useState(null);
   const W = 320, H = 130, P = 8;
 
@@ -784,7 +798,7 @@ function ActivityCurve({sales, lang}){
   const area = `${path} L${pts[pts.length-1][0]},${H-P} L${pts[0][0]},${H-P} Z`;
 
   const fmtDate = d => d.toLocaleDateString(lang==='en'?'en-US':'fr-FR', {day:'numeric',month:'short'});
-  const fmtMoney = n => (Math.round(n*100)/100).toFixed(2).replace('.',',') + ' €';
+  const fmtMoney = n => formatCurrency(n, currency);
 
   const handleMove = e => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1062,7 +1076,7 @@ const CAT_COLORS_MAP={
   'Autre':'#6B7280',
 };
 
-function StatsTab({sales,items,lang}){
+function StatsTab({sales,items,lang,currency='EUR'}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
   const [aiText,setAiText]=useState('');
@@ -1194,7 +1208,7 @@ function StatsTab({sales,items,lang}){
       .catch(err=>{console.error('[StatsTab] stats-analysis error:',err);setAiLoading(false);});
   },[range,filtered.length]);
 
-  const fmt2=n=>(Math.round(n*100)/100).toFixed(2).replace('.',',')+' €';
+  const fmt2=n=>formatCurrency(n,currency);
   const fmtp2=n=>(Math.round(n*10)/10).toFixed(1)+'%';
 
   return(
@@ -1342,7 +1356,7 @@ function StatsTab({sales,items,lang}){
                   bodyFont:{family:"'Nunito', sans-serif",size:14,weight:'800'},
                   callbacks:{
                     title:([i])=>i.label,
-                    label:ctx=>`${(ctx.raw||0)>=0?'+':''}${(ctx.raw||0).toFixed(2)} €`,
+                    label:ctx=>`${(ctx.raw||0)>0?'+':''}${formatCurrency(ctx.raw||0,currency)}`,
                   },
                 },
               },
@@ -1357,7 +1371,7 @@ function StatsTab({sales,items,lang}){
                   display:true,
                   grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},
                   border:{display:false},
-                  ticks:{color:'#A3A9A6',font:{family:"'Nunito', sans-serif",size:10},padding:6,callback:v=>`${v.toFixed(0)}€`},
+                  ticks:{color:'#A3A9A6',font:{family:"'Nunito', sans-serif",size:10},padding:6,callback:v=>formatCurrency(v,currency,0)},
                 },
               },
             }}
@@ -1429,7 +1443,7 @@ function StatsTab({sales,items,lang}){
   );
 }
 
-function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef}){
+function VoiceAssistant({items,sales,lang,currency='EUR',actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const autoCloseRef=useRef(null);
@@ -1438,6 +1452,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
   const [vaEdits,setVaEdits]=useState({});
   const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
   const SURL=import.meta.env.VITE_SUPABASE_URL;
+  const fmt=(amount,dec=null)=>formatCurrency(amount,currency,dec);
+  const sym=CURRENCY_SYMBOLS[currency]||currency;
 
   function resetVA(){
     clearTimeout(autoCloseRef.current);
@@ -1626,7 +1642,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                   <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:16}}>✅</span>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${prix}€`:""}{qAdded?` · ×${qAdded}`:""}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${fmt(prix)}`:""}{qAdded?` · ×${qAdded}`:""}</div>
                       {desc&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:500,marginTop:2,opacity:0.85}}>{desc}</div>}
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
                         {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
@@ -1678,8 +1694,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                       const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
                                       return(
                                         <>
-                                          <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{item.buy||item.prix_achat}€</div>
-                                          <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{item.sell||item.prix_vente||"?"}€</div>
+                                          <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{fmt(item.buy||item.prix_achat||0)}</div>
+                                          <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{(item.sell||item.prix_vente)?fmt(item.sell||item.prix_vente):"?"}</div>
                                           {item.date_vente&&<div style={{fontSize:10,color:"#1D9E75",marginTop:1}}>{lang==="en"?"sold on ":"vendu le "}{fmtDate(item.date_vente)}</div>}
                                         </>
                                       );
@@ -1688,7 +1704,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                       const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
                                       return(
                                         <>
-                                          <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                                          <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{fmt(item.buy||item.prix_achat||0)}</div>
                                           {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6",marginTop:1}}>{lang==="en"?`in stock since `:`en stock depuis le `}{fmtDate(item.date_ajout)}{days!==null?` (${days}${lang==="en"?"d":"j"})`:""}</div>}
                                         </>
                                       );
@@ -1747,7 +1763,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                           </button>
                                         ))}
                                       </div>
-                                      {parseFloat(sellPrice)>0&&<div style={{fontSize:10,color:"#6B7280",textAlign:"center"}}>{sellPrixMode==="total"?`= ${(parseFloat(sellPrice)/sellQty).toFixed(2)}€/unité`:`= ${(parseFloat(sellPrice)*sellQty).toFixed(2)}€ total`}</div>}
+                                      {parseFloat(sellPrice)>0&&<div style={{fontSize:10,color:"#6B7280",textAlign:"center"}}>{sellPrixMode==="total"?`= ${fmt(parseFloat(sellPrice)/sellQty)}/${lang==='en'?'unit':'unité'}`:`= ${fmt(parseFloat(sellPrice)*sellQty)} total`}</div>}
                                     </>
                                   )}
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -1815,7 +1831,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                                       style={{...inputSt,flex:2}}/>
                                     <input type="number" value={ef.prix_achat??item.prix_achat??item.buy??""}
                                       onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,prix_achat:e.target.value}}}))}
-                                      placeholder="Prix €"
+                                      placeholder={`${lang==="en"?"Price":"Prix"} ${sym}`}
                                       style={{...inputSt,flex:1}}/>
                                   </div>
                                   <div style={{display:"flex",gap:6}}>
@@ -1878,7 +1894,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                         <div key={i} style={{background:"#F5F6F5",borderRadius:10,padding:"10px 12px"}}>
                           <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{cat}</div>
                           <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title||s.titre}</div>
-                          <div style={{fontSize:13,fontWeight:800,color:"#1D9E75"}}>+{Math.round((s.margin??s.benefice??s.prix_vente-s.prix_achat)*100)/100}€</div>
+                          <div style={{fontSize:13,fontWeight:800,color:"#1D9E75"}}>+{fmt(Math.round((s.margin??s.benefice??s.prix_vente-s.prix_achat)*100)/100)}</div>
                         </div>
                       ))}
                     </div>
@@ -1894,7 +1910,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                     {top.map((s,i)=>(
                       <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<top.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                         <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{i+1}. {s.title||s.titre}</div>
-                        <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{Math.round((s.margin||s.benefice||0)*100)/100}€</div><div style={{fontSize:10,color:"#A3A9A6"}}>{Math.round((s.marginPct||s.margin_pct||0)*10)/10}%</div></div>
+                        <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmt(Math.round((s.margin||s.benefice||0)*100)/100)}</div><div style={{fontSize:10,color:"#A3A9A6"}}>{Math.round((s.marginPct||s.margin_pct||0)*10)/10}%</div></div>
                       </div>
                     ))}
                   </div>
@@ -1921,8 +1937,8 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{display:"flex",gap:12,marginBottom:10,flexWrap:"wrap"}}>
                       <div style={{fontSize:12,color:"#6B7280"}}><span style={{fontWeight:700,color:"#0D0D0D"}}>{summary.count||0}</span> {lang==="en"?"item(s)":"article(s)"}</div>
-                      {summary.totalSpend>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Spent":"Dépensé"}: <span style={{fontWeight:700,color:"#F9A26C"}}>{summary.totalSpend}€</span></div>}
-                      {summary.totalRevenue>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Revenue":"Revenu"}: <span style={{fontWeight:700,color:"#1D9E75"}}>{summary.totalRevenue}€</span></div>}
+                      {summary.totalSpend>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Spent":"Dépensé"}: <span style={{fontWeight:700,color:"#F9A26C"}}>{fmt(summary.totalSpend)}</span></div>}
+                      {summary.totalRevenue>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Revenue":"Revenu"}: <span style={{fontWeight:700,color:"#1D9E75"}}>{fmt(summary.totalRevenue)}</span></div>}
                     </div>
                     {dateItems.slice(0,5).map((item,i)=>(
                       <div key={i} style={{fontSize:13,fontWeight:600,color:"#0D0D0D",padding:"4px 0"}}>{item.title||item.titre} <span style={{fontSize:11,color:item._type==="sold"?"#1D9E75":"#F9A26C"}}>{item._type}</span></div>
@@ -2040,7 +2056,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],prix:parseFloat(e.target.value)||0}}))}
                           placeholder={lang==="en"?"Buy price":"Prix achat"}
                           style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>€</span>
+                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
                       </div>
                     </div>
                     <div style={{display:"flex",gap:8}}>
@@ -2062,7 +2078,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                 const lotItems=data?.items||[];
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>🛍️ Lot — {data?.lotTotal}€</div>
+                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>🛍️ Lot — {fmt(data?.lotTotal||0)}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
                       {lotItems.map((item,i)=>{
                         const editNom=vaEdits[idx]?.[i]?.nom??item.nom;
@@ -2075,7 +2091,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                             <input type="number" value={editPrix}
                               onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
                               style={{width:60,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#fff",textAlign:"right"}}/>
-                            <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>€</span>
+                            <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>{sym}</span>
                           </div>
                         );
                       })}
@@ -2118,7 +2134,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                     </div>
                     <div style={{display:"flex",gap:20,marginBottom:10}}>
                       <div>
-                        <div style={{fontSize:20,fontWeight:900,color:profitNet>=0?"#1D9E75":"#E53E3E"}}>{profitNet>=0?"+":""}{profitNet}€</div>
+                        <div style={{fontSize:20,fontWeight:900,color:profitNet>=0?"#1D9E75":"#E53E3E"}}>{profitNet>0?"+":""}{fmt(profitNet)}</div>
                         <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Net profit":"Bénéfice net"}</div>
                       </div>
                       <div>
@@ -2198,7 +2214,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                         return(
                           <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<sItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                             <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lim>1?`${i+1}. `:""}{s.title||s.titre||s.nom}</div>
-                            <div style={{fontSize:12,fontWeight:700,color:profit>=0?"#1D9E75":"#E53E3E"}}>{profit>=0?"+":""}{profit}€</div>
+                            <div style={{fontSize:12,fontWeight:700,color:profit>=0?"#1D9E75":"#E53E3E"}}>{profit>0?"+":""}{fmt(profit)}</div>
                           </div>
                         );
                       })
@@ -2221,7 +2237,7 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                           <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<sbpItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                             <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title||item.titre}</div>
                             <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                              <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{item.buy||item.prix_achat}€</div>
+                              <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{fmt(item.buy||item.prix_achat||0)}</div>
                               {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6"}}>{lang==="en"?"since ":"depuis le "}{fmtDate(item.date_ajout)}{days!==null?` (${days}${lang==="en"?"d":"j"})`:""}</div>}
                             </div>
                           </div>
@@ -2240,13 +2256,14 @@ function VoiceAssistant({items,sales,lang,actions,vaStep,setVaStep,vaResults,set
                   stock_count:lang==="en"?"Items in stock":"Articles en stock",
                 };
                 const isCurrency=data?.metric!=="marge_moyenne"&&data?.metric!=="stock_count";
-                const suffix=isCurrency?"€":data?.metric==="stock_count"?"":"%";
+                const suffix=isCurrency?"":data?.metric==="stock_count"?"":"%";
                 const val=data?.value??0;
                 const valColor=data?.metric==="stock_immobilise"?"#F9A26C":val>=0?"#1D9E75":"#E53E3E";
+                const displayVal=isCurrency?(val>0?"+":"")+fmt(val):val+suffix;
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",textAlign:"center"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
-                    <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{isCurrency&&val>0?"+":""}{val}{suffix}</div>
+                    <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{displayVal}</div>
                     {data?.metric==="stock_immobilise"&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{data?.count} {lang==="en"?"item(s) in stock":"article(s) en stock"}</div>}
                   </div>
                 );
@@ -2342,6 +2359,7 @@ export default function App({ loginOnly = false }){
     const bl=(navigator.language||navigator.userLanguage||'fr').toLowerCase().split('-')[0];
     return bl==='fr'?'fr':'en';
   });
+  const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [selectedRange,setSelectedRange]=useState('6M');
@@ -2428,10 +2446,9 @@ export default function App({ loginOnly = false }){
   const fabTriggerRef=useRef(null);
 
   const {t,tpl}=useTranslation(lang);
-  const formatCurrency = (amount) => lang === 'en' ? '$' + (amount * EUR_TO_USD).toFixed(2) : (Math.round(amount*100)/100).toFixed(2).replace(".",",") + ' €';
-  // eslint-disable-next-line no-shadow
-  const fmt = formatCurrency;
+  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
+  useEffect(()=>{localStorage.setItem('fs_currency',currency);},[currency]);
   useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
   async function triggerCheckout(){
     console.log('[checkout] start — email:', user?.email);
@@ -2622,7 +2639,7 @@ export default function App({ loginOnly = false }){
   const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
   const _scales=(unit)=>({
     x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},
-    y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:unit==='€'&&lang==='en'?v=>'$'+(v*EUR_TO_USD).toFixed(0):v=>v+unit}},
+    y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:unit==='€'?v=>fmt(v,0):v=>v+unit}},
   });
   const barChartData={
     labels:mData.map(d=>d.name),
@@ -3939,7 +3956,7 @@ export default function App({ loginOnly = false }){
                     <span style={{fontSize:12,color:"#6B7280"}}>{voiceParsed.items.length} {lang==='fr'?`article${voiceParsed.items.length>1?"s":""}`:voiceParsed.items.length>1?"items":"item"} {lang==='fr'?"détecté(s)":"detected"}</span>
                     {voiceParsed.isLot&&(
                       <span style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #93C5FD",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:700}}>
-                        🛍️ {lang==='fr'?`Lot — ${voiceParsed.lotTotal}€ au total`:`Lot — €${voiceParsed.lotTotal} total`}
+                        🛍️ {lang==='fr'?`Lot — ${fmt(voiceParsed.lotTotal||0)} au total`:`Lot — ${fmt(voiceParsed.lotTotal||0)} total`}
                       </span>
                     )}
                   </div>
@@ -3957,13 +3974,13 @@ export default function App({ loginOnly = false }){
                           <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280",flexWrap:"wrap",alignItems:"center"}}>
                             {voiceParsed.isLot?(
                               <span style={{display:"flex",alignItems:"center",gap:4}}>
-                                🛒 <input type="number" value={item.prix_estime_lot??""} onChange={e=>{const v=parseFloat(e.target.value)||0;setVoiceParsed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:60,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:11,fontFamily:"inherit",outline:"none"}}/>€
+                                🛒 <input type="number" value={item.prix_estime_lot??""} onChange={e=>{const v=parseFloat(e.target.value)||0;setVoiceParsed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:60,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:11,fontFamily:"inherit",outline:"none"}}/>{CURRENCY_SYMBOLS[currency]||'€'}
                                 <span style={{fontSize:10,color:"#9CA3AF",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée":"Estimated split"}</span>
                               </span>
                             ):(
                               <>
-                                {item.prix_achat!==null&&<span>🛒 {item.prix_achat}€</span>}
-                                {item.prix_vente!==null&&<span>💰 {item.prix_vente}€</span>}
+                                {item.prix_achat!==null&&<span>🛒 {fmt(item.prix_achat)}</span>}
+                                {item.prix_vente!==null&&<span>💰 {fmt(item.prix_vente)}</span>}
                               </>
                             )}
                             {item.quantite>1&&<span>×{item.quantite}</span>}
@@ -4064,11 +4081,11 @@ export default function App({ loginOnly = false }){
                 </select>
               </div>
               <div>
-                <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
+                <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Prix auquel tu as acheté l'article":"Price you paid for the item"}</div>}
               </div>
               <div>
-                <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Livraison fournisseur, réparation...":"Supplier shipping, repair..."} type="number" icon="🛍️" suffix="€"/>
+                <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Livraison fournisseur, réparation...":"Supplier shipping, repair..."} type="number" icon="🛍️" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
                 {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Frais liés à l'achat : livraison, réparation...":"Purchase-side costs: shipping, repair..."}</div>}
               </div>
               <div>
@@ -4082,10 +4099,10 @@ export default function App({ loginOnly = false }){
               {iAlreadySold&&(
                 <>
                   <div>
-                    <Field label={lang==='fr'?"Prix de vente":"Sell price"} value={iSell} set={setISell} placeholder="0,00" type="number" icon="💰" suffix="€"/>
+                    <Field label={lang==='fr'?"Prix de vente":"Sell price"} value={iSell} set={setISell} placeholder="0,00" type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
                   </div>
                   <div>
-                    <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix="€"/>
+                    <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
                     <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
                       <input type="checkbox" checked={iRememberSellingFees} onChange={e=>setIRememberSellingFees(e.target.checked)} style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
                       <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais de vente':'Remember selling fees'}</span>
@@ -4706,7 +4723,7 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===4&&(
-          <StatsTab sales={sales} items={items} lang={lang}/>
+          <StatsTab sales={sales} items={items} lang={lang} currency={currency}/>
         )}
       </div>
 
@@ -4742,9 +4759,9 @@ export default function App({ loginOnly = false }){
                 <option value="Bricolage">🔧 {typeLabel('Bricolage',lang)}</option>
                 <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
               </select>
-              <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")}set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix="€"/>
-              <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix="€"/>
-              <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix="€"/>
+              <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")}set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+              <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+              <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
                 <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
@@ -4780,7 +4797,7 @@ export default function App({ loginOnly = false }){
             </div>
             <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <Field label={t('prixDeVente')} value={sellModal.sellPrice} set={v=>setSellModal(p=>({...p,sellPrice:v}))} placeholder="0,00" type="number" icon="💰" suffix="€"/>
+              <Field label={t('prixDeVente')} value={sellModal.sellPrice} set={v=>setSellModal(p=>({...p,sellPrice:v}))} placeholder="0,00" type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               {(sellModal.item.quantite||1)>1&&(
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:13,fontWeight:600,color:C.sub,flex:1}}>{lang==='fr'?'Quantité à vendre':'Quantity to sell'}</span>
@@ -4818,7 +4835,7 @@ export default function App({ loginOnly = false }){
                   )}
                 </>
               )}
-              <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix="€"/>
+              <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
                 <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>
                 <span style={{fontSize:12,fontWeight:600,color:C.sub}}>{t('memoriserFrais')}</span>
@@ -5047,6 +5064,17 @@ export default function App({ loginOnly = false }){
               </div>
             </div>
 
+            {/* Devise */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:C.rowBg,borderRadius:12,marginBottom:12}}>
+              <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('devise')}</span>
+              <select value={currency} onChange={e=>setCurrency(e.target.value)}
+                style={{padding:"6px 10px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:700,color:C.text,background:"#fff",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+                {CURRENCIES_LIST.map(c=>(
+                  <option key={c.code} value={c.code}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Déconnexion */}
             <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${C.red}88`,borderRadius:12,color:C.red,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(229,62,62,0.06)"}
@@ -5125,7 +5153,7 @@ export default function App({ loginOnly = false }){
       </div>
 
       <VoiceAssistant
-        items={items} sales={sales} lang={lang}
+        items={items} sales={sales} lang={lang} currency={currency}
         actions={vaActions}
         vaStep={vaStep} setVaStep={setVaStep}
         vaResults={vaResults} setVaResults={setVaResults}
