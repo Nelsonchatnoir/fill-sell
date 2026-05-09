@@ -181,6 +181,12 @@ const T = {
       { name: 'Robe Maje neuve', date: '22 avr. · Vestiaire', prefix: 'Vendu' },
     ],
     f6BestCat: 'Meilleure catégorie', f6BestCatVal: '💎 Luxe · 64% de marge',
+    f6AiFeature: '✦ Analyse IA de tes tendances',
+    f6AiMockup: '🤖 Analyse IA · Luxe performe 2× mieux ce mois',
+    f7Title: 'Lens',
+    f7Desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
+    freeF6: '📸 Lens · 3 analyses/jour',
+    premiumF7: '📸 Lens illimité 📸',
     showcaseEyebrow: 'Aperçu',
     showcaseTitle1: 'Visualise tes profits ', showcaseTitleAccent: "en un coup d'œil",
     showcaseSub: "Une interface pensée pour le mobile. Toutes tes données importantes, là où tu en as besoin.",
@@ -315,6 +321,12 @@ const T = {
       { name: 'Maje dress (new)', date: 'Apr 22 · Vestiaire', prefix: 'Sold' },
     ],
     f6BestCat: 'Best category', f6BestCatVal: '💎 Luxury · 64% margin',
+    f6AiFeature: '✦ AI analysis of your trends',
+    f6AiMockup: '🤖 AI Analysis · Luxury is 2× better performing this month',
+    f7Title: 'Lens',
+    f7Desc: 'Take a photo of your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
+    freeF6: '📸 Lens · 3 analyses/day',
+    premiumF7: '📸 Unlimited Lens 📸',
     showcaseEyebrow: 'Preview',
     showcaseTitle1: 'Visualize your profits ', showcaseTitleAccent: 'at a glance',
     showcaseSub: "A mobile-first interface. All your important data, right where you need it.",
@@ -406,6 +418,7 @@ const T = {
 const FAQ_ITEMS = {
   fr: [
     { q: 'Comment fonctionne le Vocal IA ?', a: "Tu appuies sur le micro et tu décris ton article naturellement (\"veste Levi's vintage achetée 15 € en friperie\"). L'IA transcrit, identifie marque, catégorie, état, taille, couleur et prix d'achat, puis l'ajoute à ton stock. Le tout en moins de 3 secondes — fonctionne en français et en anglais." },
+    { q: 'Comment fonctionne la fonction Lens ?', a: "Tu prends jusqu'à 5 photos de ton article directement depuis l'app. L'IA Claude identifie la marque, le modèle et l'état, puis te donne une fourchette de prix de revente basée sur le marché actuel — avec les meilleures plateformes pour vendre et un conseil concret. En version gratuite : 3 analyses/jour. En Premium : illimité." },
     { q: 'Le Vocal IA est-il fiable sur les marques de luxe ?', a: "Oui — l'IA est entraînée sur les marques de luxe (Hermès, Chanel, Louis Vuitton, etc.) et reconnaît même les modèles spécifiques à partir d'une description partielle. Tu peux toujours corriger avant validation. Précision moyenne : 94 % sur catégorie + marque à partir d'une phrase courte." },
     { q: 'Fill & Sell est-il gratuit ?', a: "Oui, Fill & Sell est gratuit pour démarrer. Tu as accès jusqu'à 20 articles/mois, au calculateur de marge avec analyse IA, à l'historique de tes ventes et à l'IA vocale (5 requêtes/jour) — sans carte bancaire. Pour aller plus loin (articles illimités, IA vocale illimitée, stats avancées analysées par IA, import/export Excel), essaie le Premium gratuitement pendant 7 jours, puis 9,99 €/mois." },
     { q: 'Quelles plateformes sont compatibles ?', a: 'Toutes les grandes plateformes de revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. Tu peux étiqueter tes ventes par plateforme pour suivre tes meilleurs canaux.' },
@@ -415,6 +428,7 @@ const FAQ_ITEMS = {
   ],
   en: [
     { q: 'How does Voice AI work?', a: 'You press the mic and describe your item naturally ("vintage Levi\'s jacket bought for £15 at a flea market"). AI transcribes, identifies brand, category, condition, size, color and buy price, then adds it to your stock. All in under 3 seconds — works in French and English.' },
+    { q: 'How does the Lens feature work?', a: 'You take up to 5 photos of your item directly from the app. Claude AI identifies the brand, model and condition, then gives you a resale price range based on the current market — with the best platforms to sell on and a concrete tip. Free plan: 3 analyses/day. Premium: unlimited.' },
     { q: 'Is Voice AI reliable for luxury brands?', a: "Yes — AI is trained on luxury brands (Hermès, Chanel, Louis Vuitton, etc.) and recognizes even specific models from a partial description. You can always correct before confirming. Average accuracy: 94% on category + brand from a short sentence." },
     { q: 'Is Fill & Sell free?', a: 'Yes, Fill & Sell is free to start. You get up to 20 items/month, the margin calculator with AI analysis, sales history and Voice AI (5 requests/day) — no credit card required. To go further (unlimited items, unlimited Voice AI, advanced stats analyzed by AI, Excel import/export), try Premium free for 7 days, then €9.99/month.' },
     { q: 'Which platforms are compatible?', a: 'All major resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. You can tag your sales by platform to track your best channels.' },
@@ -834,6 +848,7 @@ export default function LandingPage() {
               <div className="feature-icon-wrap">✨</div>
               <h3 className="feature-title">{t.f6Title}</h3>
               <p className="feature-desc">{t.f6Desc}</p>
+              <p className="feature-desc" style={{ marginTop: 8, fontWeight: 700, color: 'var(--accent)' }}>{t.f6AiFeature}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
@@ -847,6 +862,31 @@ export default function LandingPage() {
                     <div style={{ fontSize: 14, fontWeight: 900, marginTop: 3 }}>{t.f6BestCatVal}</div>
                   </div>
                   <div style={{ fontSize: 18 }}>🔥</div>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(62,172,160,0.08)', padding: '8px 12px', borderRadius: 10 }}>{t.f6AiMockup}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="lp-feature reveal">
+            <div className="feature-copy">
+              <span className="feature-tag" style={{ background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff' }}>📸 NOUVEAU</span>
+              <div className="feature-icon-wrap">📸</div>
+              <h3 className="feature-title">{t.f7Title}</h3>
+              <p className="feature-desc">{t.f7Desc}</p>
+            </div>
+            <div className="feature-mock">
+              <div className="mini-screen">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {['👟','👜','📱'].map((ic, i) => (
+                    <div key={i} style={{ width: 64, height: 64, borderRadius: 10, background: 'linear-gradient(135deg,rgba(62,172,160,0.15),rgba(232,149,109,0.15))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, border: '1px solid rgba(62,172,160,0.2)' }}>{ic}</div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>🔍 Nike Air Jordan 1 · État : Bon</div>
+                <div style={{ background: 'linear-gradient(135deg,rgba(62,172,160,0.08),rgba(232,149,109,0.08))', padding: '10px 12px', borderRadius: 10, fontSize: 12 }}>
+                  <div style={{ fontWeight: 900, marginBottom: 4 }}>💰 120 – 160 €</div>
+                  <div style={{ color: 'var(--sub)', fontSize: 11 }}>📦 Vinted · eBay · Depop</div>
+                  <div style={{ color: 'var(--sub)', fontSize: 11, marginTop: 3 }}>💡 Ajoute des photos sous plusieurs angles</div>
                 </div>
               </div>
             </div>
@@ -980,7 +1020,7 @@ export default function LandingPage() {
                   <div className="app-bnav">
                     <div className="item"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock' : 'Stock'}</span></div>
                     <div className="item"><span className="ic">📊</span><span>{lang === 'fr' ? 'Tableau' : 'Dashboard'}</span></div>
-                    <div className="item on"><span className="ic">🎯</span><span>{lang === 'fr' ? 'Score' : 'Score'}</span></div>
+                    <div className="item on"><span className="ic">📸</span><span>{lang === 'fr' ? 'Lens' : 'Lens'}</span></div>
                     <div className="item"><span className="ic">📋</span><span>{lang === 'fr' ? 'Ventes' : 'Sales'}</span></div>
                     <div className="item"><span className="ic">⚙️</span><span>{lang === 'fr' ? 'Réglages' : 'Settings'}</span></div>
                   </div>
@@ -1024,7 +1064,7 @@ export default function LandingPage() {
                   <div className="app-bnav">
                     <div className="item on"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock' : 'Stock'}</span></div>
                     <div className="item"><span className="ic">📊</span><span>{lang === 'fr' ? 'Tableau' : 'Dashboard'}</span></div>
-                    <div className="item"><span className="ic">🎯</span><span>{lang === 'fr' ? 'Score' : 'Score'}</span></div>
+                    <div className="item"><span className="ic">📸</span><span>{lang === 'fr' ? 'Lens' : 'Lens'}</span></div>
                     <div className="item"><span className="ic">📋</span><span>{lang === 'fr' ? 'Ventes' : 'Sales'}</span></div>
                     <div className="item"><span className="ic">⚙️</span><span>{lang === 'fr' ? 'Réglages' : 'Settings'}</span></div>
                   </div>
@@ -1073,6 +1113,7 @@ export default function LandingPage() {
                 <li><span className="ck">✓</span> {t.freeF3}</li>
                 <li><span className="ck">✓</span> {t.freeF4}</li>
                 <li><span className="ck">✓</span> <strong>{t.freeF5}</strong></li>
+                <li><span className="ck">✓</span> {t.freeF6}</li>
               </ul>
               <button className="btn btn-lg"
                 onClick={() => { track('cta_click', { cta: 'pricing_free', page: 'landing' }); nav('/login?mode=signup'); }}>
@@ -1093,6 +1134,7 @@ export default function LandingPage() {
                 <li><span className="ck">✓</span> {t.premiumF4}</li>
                 <li><span className="ck">✓</span> {t.premiumF5}</li>
                 <li><span className="ck">✓</span> {t.premiumF6}</li>
+                <li><span className="ck">✓</span> <strong>{t.premiumF7}</strong></li>
               </ul>
               <button className="btn btn-white btn-lg"
                 onClick={() => { track('cta_click', { cta: 'pricing_premium', page: 'landing' }); nav('/login?mode=signup'); }}>

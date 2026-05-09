@@ -416,7 +416,11 @@ h2.section-title { font-family: 'Nunito', sans-serif; font-size: clamp(32px, 4vw
   .voice-testis { grid-template-columns: 1fr; }
   .voice-detect-grid { grid-template-columns: repeat(3, 1fr); }
 }
-@media (max-width: 768px) { .nav-cta-btn { display: none; } }
+@media (max-width: 768px) {
+  .nav-cta-btn { display: none; }
+  .voice-compare { grid-template-columns: 1fr; }
+  .voice-compare .vs { transform: rotate(90deg); margin: 8px auto; justify-self: center; }
+}
 @media (max-width: 540px) {
   .lp-lang-seg { display: none; }
   .lp-stats-grid { gap: 32px 16px; }
