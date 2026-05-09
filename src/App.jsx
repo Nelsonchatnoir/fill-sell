@@ -78,12 +78,25 @@ function Sparkline({ data, color = '#2DB89A', width = 80, height = 28 }) {
 }
 
 const CURRENCY_LOCALES = {EUR:'fr-FR',USD:'en-US',GBP:'en-GB',CHF:'de-CH',CAD:'en-CA',AUD:'en-AU',JPY:'ja-JP',SEK:'sv-SE',PLN:'pl-PL',CZK:'cs-CZ'};
-const CURRENCY_SYMBOLS = {EUR:'€',USD:'$',GBP:'£',CHF:'CHF',CAD:'CA$',AUD:'A$',JPY:'¥',SEK:'kr',PLN:'zł',CZK:'Kč'};
+const CURRENCY_SYMBOLS = {EUR:'€',USD:'$',GBP:'£',CHF:'Fr',CAD:'CA$',AUD:'A$',JPY:'¥',SEK:'kr',PLN:'zł',CZK:'Kč'};
 const CURRENCIES_LIST = [
-  {code:'EUR',label:'€ EUR'},{code:'USD',label:'$ USD'},{code:'GBP',label:'£ GBP'},
-  {code:'CHF',label:'CHF'},{code:'CAD',label:'CA$ CAD'},{code:'AUD',label:'A$ AUD'},
-  {code:'JPY',label:'¥ JPY'},{code:'SEK',label:'kr SEK'},{code:'PLN',label:'zł PLN'},{code:'CZK',label:'Kč CZK'},
+  {code:'EUR',label:'EUR €'},{code:'GBP',label:'GBP £'},{code:'USD',label:'USD $'},
+  {code:'CAD',label:'CAD $'},{code:'CHF',label:'CHF Fr'},{code:'AUD',label:'AUD $'},
+  {code:'PLN',label:'PLN zł'},{code:'SEK',label:'SEK kr'},{code:'CZK',label:'CZK Kč'},{code:'JPY',label:'JPY ¥'},
 ];
+function suggestCurrency() {
+  const nl=(navigator.language||'fr').toLowerCase();
+  if(nl==='en-gb') return 'GBP';
+  if(nl==='en-us') return 'USD';
+  if(nl==='en-ca') return 'CAD';
+  if(nl==='en-au') return 'AUD';
+  if(nl.startsWith('ja')) return 'JPY';
+  if(nl.startsWith('pl')) return 'PLN';
+  if(nl.startsWith('sv')) return 'SEK';
+  if(nl.startsWith('cs')) return 'CZK';
+  if(nl==='de-ch'||nl==='fr-ch'||nl==='it-ch') return 'CHF';
+  return 'EUR';
+}
 function formatCurrency(amount, currency='EUR', decimals=null) {
   const n=Math.round((amount||0)*100)/100;
   const dec=decimals!==null?decimals:(currency==='JPY'?0:2);
@@ -92,6 +105,34 @@ function formatCurrency(amount, currency='EUR', decimals=null) {
   } catch {
     return n.toFixed(dec)+' '+currency;
   }
+}
+function CurrencyOnboardingModal({lang,onConfirm}){
+  const [selected,setSelected]=useState(suggestCurrency());
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',boxSizing:'border-box'}}>
+      <div style={{background:'#fff',borderRadius:24,padding:'28px 24px',maxWidth:380,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box'}}>
+        <div style={{fontSize:28,textAlign:'center',marginBottom:8}}>💱</div>
+        <div style={{fontSize:20,fontWeight:900,textAlign:'center',marginBottom:6,color:'#0D0D0D',letterSpacing:'-0.02em'}}>
+          {lang==='en'?'Choose your currency':'Choisissez votre devise'}
+        </div>
+        <div style={{fontSize:13,color:'#6B7280',textAlign:'center',marginBottom:20,lineHeight:1.5}}>
+          {lang==='en'?'Used to display all amounts. You can change it later in Settings.':'Utilisée pour afficher les montants. Tu pourras la changer dans les Réglages.'}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:20}}>
+          {CURRENCIES_LIST.map(c=>(
+            <button key={c.code} onClick={()=>setSelected(c.code)}
+              style={{padding:'10px 8px',borderRadius:12,border:selected===c.code?'2px solid #1D9E75':'1.5px solid rgba(0,0,0,0.1)',background:selected===c.code?'#F0FBF7':'#fff',fontWeight:700,fontSize:13,cursor:'pointer',color:selected===c.code?'#1D9E75':'#374151',transition:'all 0.15s',fontFamily:'inherit'}}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={()=>onConfirm(selected)}
+          style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:14,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit',letterSpacing:'-0.01em'}}>
+          {lang==='en'?'Confirm':'Confirmer'}
+        </button>
+      </div>
+    </div>
+  );
 }
 // Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
 const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
@@ -2360,6 +2401,7 @@ export default function App({ loginOnly = false }){
     return bl==='fr'?'fr':'en';
   });
   const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
+  const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [selectedRange,setSelectedRange]=useState('6M');
@@ -2450,6 +2492,11 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
   useEffect(()=>{localStorage.setItem('fs_currency',currency);},[currency]);
   useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
+  async function saveCurrency(code){
+    setCurrency(code);
+    localStorage.setItem('fs_currency',code);
+    if(user?.id) await supabase.from('profiles').update({currency:code}).eq('id',user.id);
+  }
   async function triggerCheckout(){
     console.log('[checkout] start — email:', user?.email);
     try{
@@ -2506,7 +2553,7 @@ export default function App({ loginOnly = false }){
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
-      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end').eq('id',uid).single(),
+      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency').eq('id',uid).single(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -2516,6 +2563,13 @@ export default function App({ loginOnly = false }){
       setIsPremium(premiumValue);
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
+      const confirmed=!!localStorage.getItem('fs_currency_confirmed');
+      if(confirmed&&p.data?.currency){
+        setCurrency(p.data.currency);
+        localStorage.setItem('fs_currency',p.data.currency);
+      } else if(!confirmed){
+        setShowCurrencyOnboarding(true);
+      }
     }
     setLoading(false);
     setAppLoading(false);
@@ -5065,14 +5119,19 @@ export default function App({ loginOnly = false }){
             </div>
 
             {/* Devise */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:C.rowBg,borderRadius:12,marginBottom:12}}>
-              <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('devise')}</span>
-              <select value={currency} onChange={e=>setCurrency(e.target.value)}
-                style={{padding:"6px 10px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:700,color:C.text,background:"#fff",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
-                {CURRENCIES_LIST.map(c=>(
-                  <option key={c.code} value={c.code}>{c.label}</option>
-                ))}
-              </select>
+            <div style={{background:C.rowBg,borderRadius:12,marginBottom:12,padding:"14px 16px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('devise')}</span>
+                <select value={currency} onChange={e=>saveCurrency(e.target.value)}
+                  style={{padding:"6px 10px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:700,color:C.text,background:"#fff",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+                  {CURRENCIES_LIST.map(c=>(
+                    <option key={c.code} value={c.code}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{fontSize:11,color:"#9CA3AF",marginTop:8,lineHeight:1.4}}>
+                {lang==='en'?'⚠️ Changing currency does not convert your existing data.':'⚠️ Changer la devise ne convertit pas vos données existantes.'}
+              </div>
             </div>
 
             {/* Déconnexion */}
@@ -5162,6 +5221,13 @@ export default function App({ loginOnly = false }){
         deleteItem={delItem}
         triggerRef={fabTriggerRef}
       />
+      {showCurrencyOnboarding&&(
+        <CurrencyOnboardingModal lang={lang} onConfirm={async(code)=>{
+          await saveCurrency(code);
+          localStorage.setItem('fs_currency_confirmed','1');
+          setShowCurrencyOnboarding(false);
+        }}/>
+      )}
     </div>
   );
 }
