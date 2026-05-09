@@ -506,6 +506,18 @@ const VOICE_EXAMPLES = [
   { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
   { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
 ];
+const VOICE_EXAMPLES_EN = [
+  { text: "I bought €40 worth of clothes at a flea market — a blue Zara top size L and a Levi's jeans in good condition", tag: "Add",      cls: "add"   },
+  { text: "I bought a lot of 20 Pokémon packs for €8 total, brand new condition",                                          tag: "Lot",      cls: "add"   },
+  { text: "I sold the Levi's jeans for €38 with €3 Vinted fees",                                                           tag: "Sell",     cls: "sell"  },
+  { text: "I bought a Makita 18V drill with 2 batteries in decent condition for €45 and resold it for €89",                tag: "Buy+Sell", cls: "sell"  },
+  { text: "How much did I earn this month and what are my most profitable items?",                                          tag: "Stats",    cls: "query" },
+  { text: "What Nike items do I have in stock and how long have they been there?",                                          tag: "Stock",    cls: "query" },
+  { text: "Analyze my profits and tell me what I should focus on",                                                          tag: "Analyze",  cls: "query" },
+  { text: "I bought a small green Hermès Kelly bag in good condition for €180",                                             tag: "Add",      cls: "add"   },
+  { text: "I sold 5 Pokémon packs at €12 each on Vinted with €2 fees",                                                     tag: "Sell",     cls: "sell"  },
+  { text: "How many items did I add this week and how many did I sell?",                                                    tag: "Stats",    cls: "query" },
+];
 
 const SKELETON_ITEMS=[
   {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},
@@ -887,17 +899,20 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-function VoiceTicker() {
+function VoiceTicker({ lang = 'fr' }) {
   const [idx, setIdx] = useState(0);
   const [text, setText] = useState("");
   const stateRef = useRef({ char: 0, mode: "type" });
 
   useEffect(() => {
+    stateRef.current = { char: 0, mode: "type" };
+    setText("");
     let alive = true;
     let timer;
+    const examples = lang === 'en' ? VOICE_EXAMPLES_EN : VOICE_EXAMPLES;
     const tick = () => {
       if (!alive) return;
-      const cur = VOICE_EXAMPLES[idx];
+      const cur = examples[idx];
       const s = stateRef.current;
       if (s.mode === "type") {
         s.char++;
@@ -910,15 +925,16 @@ function VoiceTicker() {
       } else {
         s.char -= 3;
         setText(cur.text.slice(0, Math.max(0, s.char)));
-        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % VOICE_EXAMPLES.length); }
+        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % examples.length); }
         else { timer = setTimeout(tick, 14); }
       }
     };
     tick();
     return () => { alive = false; clearTimeout(timer); };
-  }, [idx]);
+  }, [idx, lang]);
 
-  const cur = VOICE_EXAMPLES[idx];
+  const examples = lang === 'en' ? VOICE_EXAMPLES_EN : VOICE_EXAMPLES;
+  const cur = examples[idx % examples.length];
   return (
     <div className="voice-ticker">
       <span className="vt-quote">«</span>
@@ -929,13 +945,14 @@ function VoiceTicker() {
   );
 }
 
-function VoiceZone() {
+function VoiceZone({ lang = 'fr' }) {
+  const { t } = useTranslation(lang);
   return (
     <div className="voice-zone">
       <div className="vz-prompt">
-        Parle ou tape naturellement — achats, ventes, lots, questions sur tes stats. L'IA détecte la marque, la catégorie, gère les lots et achats groupés. <b>💡 Plus tu détailles (couleur, taille, état), plus elle est précise !</b>
+        {t('voiceZonePrompt')} <b>{t('voiceZoneHint')}</b>
       </div>
-      <VoiceTicker />
+      <VoiceTicker lang={lang} />
     </div>
   );
 }
@@ -951,7 +968,7 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
           : <><>Pas de formulaire, pas de tutoriel. </><b>Tu parles, l'IA comprend.</b></>
         }
       </p>
-      <VoiceTicker lang={lang} />
+      <VoiceTicker lang={lang}/>
       <div className="voice-categories">
         <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">➕</div><div className="lbl">{lang==='en'?'Add':'Ajouter'}</div></div>
         <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">💰</div><div className="lbl">{lang==='en'?'Sell':'Vendre'}</div></div>
@@ -975,6 +992,7 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
 }
 
 function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
+  const { t } = useTranslation(lang);
   if (isRes) return null;
   return (
     <div className="fab-wrap">
@@ -988,7 +1006,7 @@ function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
           </defs>
           <text>
             <textPath href="#fabOrbitPath" startOffset="0">
-              APPUIE POUR PARLER · PARLE À TON IA ·{" "}
+              {t('fabOrbit')}
             </textPath>
           </text>
         </svg>
@@ -3974,10 +3992,10 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
                   {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
                   <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
-                    placeholder={TEXTAREA_PLACEHOLDERS[voicePlaceholderIdx]}
+                    placeholder={(lang==='en'?VOICE_EXAMPLES_EN:VOICE_EXAMPLES)[voicePlaceholderIdx]?.text}
                     rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
                   <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
-                    💡 Plus tu décris (couleur, taille, état), plus l'IA est précise. Tu peux aussi poser des questions sur tes stats, demander une analyse, ou tout faire en une phrase !
+                    {t('stockIaHint')}
                   </div>
                   <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
                     style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
@@ -4014,8 +4032,8 @@ export default function App({ loginOnly = false }){
                 <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
               )}
               <div>
-                <Field label="Nom" value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon="🏷️"/>
-                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>Le nom de l'article que tu veux suivre</div>}
+                <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon="🏷️"/>
+                {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{t('fieldNomHint')}</div>}
               </div>
               <div>
                 <Field label={lang==='fr'?"Quantité":"Quantity"} value={String(iQuantite)} set={v=>setIQuantite(Math.max(1,parseInt(v)||1))} placeholder="1" type="number" icon="🔢"/>
@@ -4037,7 +4055,7 @@ export default function App({ loginOnly = false }){
                   <option value="Sport">⚽ Sport</option>
                   <option value="Auto-Moto">🚗 {typeLabel('Auto-Moto',lang)}</option>
                   <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
-                  <option value="Musique">🎵 Musique</option>
+                  <option value="Musique">🎵 {typeLabel('Musique',lang)}</option>
                   <option value="Collection">🏆 Collection</option>
                   <option value="Multimédia">📺 {typeLabel('Multimédia',lang)}</option>
                   <option value="Jardin">🌿 {typeLabel('Jardin',lang)}</option>
@@ -4182,7 +4200,7 @@ export default function App({ loginOnly = false }){
 
             <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
 
-              <VoiceZone />
+              <VoiceZone lang={lang}/>
 
               {/* ── Barre Import / Export ── */}
               {isPremium?(
@@ -4287,7 +4305,7 @@ export default function App({ loginOnly = false }){
                                 <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
                                 <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(sk.type,lang)}</span>
                               </div>
-                              <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>Achat {fmt(sk.buy)} → Vente {fmt(sk.sell)}</div>
+                              <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{t('skeletonAchat')} {fmt(sk.buy)} → {t('skeletonVente')} {fmt(sk.sell)}</div>
                             </div>
                             <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
                               <div style={{fontWeight:900,fontSize:18,color:getMargeColor(sk.marginPct)}}>+{fmt(sk.margin)}</div>

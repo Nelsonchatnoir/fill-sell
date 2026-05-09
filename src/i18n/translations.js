@@ -132,6 +132,14 @@ export const translations = {
     confirmer:"Confirmer",
     trialSubtext:"Puis 9,99€/mois · Annulable à tout moment",
     trialNoCost:"7 jours gratuits · Aucun débit immédiat",
+    voiceZonePrompt:"Parle ou tape naturellement — achats, ventes, lots, questions sur tes stats. L'IA détecte la marque, la catégorie, gère les lots et achats groupés.",
+    voiceZoneHint:"💡 Plus tu détailles (couleur, taille, état), plus elle est précise !",
+    stockIaHint:"💡 Plus tu décris (couleur, taille, état), plus l'IA est précise. Tu peux aussi poser des questions sur tes stats, demander une analyse, ou tout faire en une phrase !",
+    fabOrbit:"APPUIE POUR PARLER · PARLE À TON IA · ",
+    fieldNom:"Nom",
+    fieldNomHint:"Le nom de l'article que tu veux suivre",
+    skeletonAchat:"Achat",
+    skeletonVente:"Vente",
   },
   en: {
     appName:"Fill & Sell",
@@ -266,6 +274,14 @@ export const translations = {
     confirmer:"Confirm",
     trialSubtext:"Then €9.99/month · Cancel anytime",
     trialNoCost:"7 days free · No charge today",
+    voiceZonePrompt:"Talk or type naturally — purchases, sales, lots, questions about your stats. AI detects the brand, category, handles lots and bulk purchases.",
+    voiceZoneHint:"💡 The more details you give (color, size, condition), the more accurate it is!",
+    stockIaHint:"💡 The more you describe (color, size, condition), the more accurate the AI is. You can also ask questions about your stats, request an analysis, or do everything in one sentence!",
+    fabOrbit:"TAP TO TALK · TALK TO YOUR AI · ",
+    fieldNom:"Name",
+    fieldNomHint:"Name of the item you want to track",
+    skeletonAchat:"Bought",
+    skeletonVente:"Sold for",
   }
 };
 
