@@ -1763,18 +1763,18 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       vaStreamRef.current=null;
       const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
       const blob=new Blob(vaChunksRef.current,{type:mimeType});
-      // Gate check before Whisper
+      // Gate check before Whisper — use in-memory state, no Supabase read
       if(!isPremium&&user?.id){
-        const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
-        if(count>=VOICE_FREE_LIMIT){
+        if(voiceUsedToday>=VOICE_FREE_LIMIT){
           showVoiceToast(lang==='fr'
             ?"🔒 Limite atteinte · 5 vocaux/jour en gratuit"
             :"🔒 Daily limit reached · 5 voices/day on free plan");
           setVaStep("");
           return;
         }
-        await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
-        if(setVoiceUsedToday)setVoiceUsedToday(count+1);
+        const nextCount=voiceUsedToday+1;
+        if(setVoiceUsedToday)setVoiceUsedToday(nextCount);
+        supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
       }
       setVaStep("thinking");
         try{
