@@ -1729,7 +1729,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     clearTimeout(voiceAutoStopRef.current);
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
-    vaStreamRef.current?.getTracks().forEach(t=>t.stop());vaStreamRef.current=null;
+    // Stream stays in vaStreamRef — released only on unmount (cleanup useEffect)
     setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
   }
 
