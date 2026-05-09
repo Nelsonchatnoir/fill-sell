@@ -422,6 +422,10 @@ h2.section-title { font-family: 'Nunito', sans-serif; font-size: clamp(32px, 4vw
   .voice-compare .vs { margin: 8px auto; justify-self: center; }
 }
 @media (max-width: 540px) {
+  .lp-nav-inner { padding: 0 14px; }
+  .lp-brand-name { font-size: 16px; }
+  .lp-nav-actions .btn { padding: 7px 12px; font-size: 13px; }
+  .lp-lang-seg button { padding: 4px 8px; }
   .lp-stats-grid { gap: 32px 16px; }
   h1.lp-hero-title { font-size: 40px; }
   .lp-hero-sub { font-size: 17px; }
