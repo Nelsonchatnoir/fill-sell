@@ -1342,14 +1342,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   const showVoiceToast=(msg)=>{setVoiceToast(msg);setTimeout(()=>setVoiceToast(''),2000);};
   const SURL=import.meta.env.VITE_SUPABASE_URL;
 
-  // Pre-initialize microphone permission at mount for instant response at click time
   useEffect(()=>{
-    let active=true;
-    navigator.mediaDevices.getUserMedia({audio:true})
-      .then(s=>{if(active)vaStreamRef.current=s;})
-      .catch(()=>{});
     return()=>{
-      active=false;
       vaStreamRef.current?.getTracks().forEach(t=>t.stop());
       vaStreamRef.current=null;
     };
@@ -1362,7 +1356,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     clearTimeout(voiceAutoStopRef.current);
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
-    // Stream stays in vaStreamRef — released only on unmount (cleanup useEffect)
+    vaStreamRef.current?.getTracks().forEach(t=>t.stop());
+    vaStreamRef.current=null;
     setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
   }
 
