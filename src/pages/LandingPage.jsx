@@ -187,6 +187,24 @@ const T = {
     f7Desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
     freeF6: '📸 Lens · 3 analyses/jour',
     premiumF7: '📸 Lens illimité 📸',
+    lens_badge: 'NOUVEAU',
+    lens_title: 'Lens',
+    lens_desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
+    lens_result_title: 'Patagonia P-6 Logo Tee · État : Bon',
+    lens_result_price: '18 – 28 €',
+    lens_result_recommended: 'Prix recommandé : 22 €',
+    lens_result_platforms: 'Vinted · eBay · Depop',
+    lens_result_category: 'Catégorie : Mode · Streetwear',
+    lens_result_demand: 'Demande forte · Se vend en < 3 jours',
+    lens_result_tip: "Ajoute une photo face avant pour affiner l'estimation",
+    lens_result_slot_plus: '+',
+    lens_add_stock: 'Ajouter au stock',
+    pricing_free_lens: '📸 Lens · 3 analyses/jour',
+    pricing_premium_lens: '📸 Lens illimité 📸',
+    pricing_premium_suffix: 'puis 9,99 €/mois · Sans engagement.',
+    stats_ai_line: '🤖 Analyse IA · Luxe performe 2× mieux ce mois',
+    faq_lens_question: 'Comment fonctionne la fonction Lens ?',
+    faq_lens_answer: "Tu prends jusqu'à 5 photos de ton article directement depuis l'app. L'IA analyse les visuels, identifie la marque, l'état et la catégorie, puis te suggère un prix de vente basé sur le marché actuel. Lens fonctionne en français et en anglais, dans 30 pays.",
     showcaseEyebrow: 'Aperçu',
     showcaseTitle1: 'Visualise tes profits ', showcaseTitleAccent: "en un coup d'œil",
     showcaseSub: "Une interface pensée pour le mobile. Toutes tes données importantes, là où tu en as besoin.",
@@ -327,6 +345,24 @@ const T = {
     f7Desc: 'Take a photo of your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
     freeF6: '📸 Lens · 3 analyses/day',
     premiumF7: '📸 Unlimited Lens 📸',
+    lens_badge: 'NEW',
+    lens_title: 'Lens',
+    lens_desc: 'Photo your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
+    lens_result_title: 'Patagonia P-6 Logo Tee · Condition: Good',
+    lens_result_price: '18 – 28 €',
+    lens_result_recommended: 'Recommended price: 22 €',
+    lens_result_platforms: 'Vinted · eBay · Depop',
+    lens_result_category: 'Category: Fashion · Streetwear',
+    lens_result_demand: 'High demand · Sells in < 3 days',
+    lens_result_tip: 'Add a front photo to refine the estimate',
+    lens_result_slot_plus: '+',
+    lens_add_stock: 'Add to stock',
+    pricing_free_lens: '📸 Lens · 3 analyses/day',
+    pricing_premium_lens: '📸 Unlimited Lens 📸',
+    pricing_premium_suffix: 'then €9.99/month · No commitment.',
+    stats_ai_line: '🤖 AI Analysis · Luxury is 2× better performing this month',
+    faq_lens_question: 'How does the Lens feature work?',
+    faq_lens_answer: 'Take up to 5 photos of your item directly from the app. AI analyzes the visuals, identifies the brand, condition and category, then suggests a selling price based on the current market. Lens works in French and English, across 30 countries.',
     showcaseEyebrow: 'Preview',
     showcaseTitle1: 'Visualize your profits ', showcaseTitleAccent: 'at a glance',
     showcaseSub: "A mobile-first interface. All your important data, right where you need it.",
@@ -791,10 +827,10 @@ export default function LandingPage() {
 
           <div className="lp-feature reveal">
             <div className="feature-copy">
-              <span className="feature-tag" style={{ background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff' }}>📸 NOUVEAU</span>
+              <span className="feature-tag" style={{ background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff' }}>📸 {t.lens_badge}</span>
               <div className="feature-icon-wrap">📸</div>
-              <h3 className="feature-title">{t.f7Title}</h3>
-              <p className="feature-desc">{t.f7Desc}</p>
+              <h3 className="feature-title">{t.lens_title}</h3>
+              <p className="feature-desc">{t.lens_desc}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen" style={{ maxWidth: 520, padding: '28px' }}>
@@ -805,20 +841,20 @@ export default function LandingPage() {
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
                     <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                   </div>
-                  <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>+</div>
+                  <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>{t.lens_result_slot_plus}</div>
                 </div>
                 <div style={{ background: '#fff', borderRadius: 16, padding: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>🔍 Patagonia P-6 Logo Tee · État : Bon</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>🔍 {t.lens_result_title}</div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 18 – 28 €</span>
-                    <span style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>Prix recommandé : 22 €</span>
+                    <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 {t.lens_result_price}</span>
+                    <span style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>{t.lens_result_recommended}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 4 }}>🏪 Vinted · eBay · Depop</div>
-                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 8 }}>📦 Catégorie : Mode · Streetwear</div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 4 }}>🏪 {t.lens_result_platforms}</div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 8 }}>📦 {t.lens_result_category}</div>
                   <div style={{ marginBottom: 10 }}>
-                    <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>⚡ Demande forte · Se vend en {'<'} 3 jours</span>
+                    <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>⚡ {t.lens_result_demand}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>💡 Ajoute une photo face avant pour affiner l'estimation</div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>💡 {t.lens_result_tip}</div>
                 </div>
               </div>
             </div>
@@ -998,16 +1034,16 @@ export default function LandingPage() {
                       </div>
                     </div>
                     <div style={{ background: '#fff', border: '1px solid rgba(62,172,160,0.15)', borderRadius: 12, padding: '10px 12px', marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 3 }}>🔍 Patagonia P-6 Logo Tee · État : Bon</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 3 }}>🔍 {t.lens_result_title}</div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 3 }}>
-                        <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 18 – 28 €</span>
-                        <span style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic' }}>Rec. : 22 €</span>
+                        <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 {t.lens_result_price}</span>
+                        <span style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic' }}>{t.lens_result_recommended}</span>
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--sub)', marginBottom: 5 }}>Vinted · eBay · Depop</div>
-                      <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>⚡ Demande forte · {'<'} 3j</span>
+                      <div style={{ fontSize: 10, color: 'var(--sub)', marginBottom: 5 }}>{t.lens_result_platforms}</div>
+                      <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>⚡ {t.lens_result_demand}</span>
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic', marginBottom: 8 }}>💡 Ajoute une photo face avant</div>
-                    <div style={{ background: 'var(--teal-strong)', color: '#fff', borderRadius: 10, padding: '9px 0', textAlign: 'center', fontSize: 12, fontWeight: 800 }}>Ajouter au stock</div>
+                    <div style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic', marginBottom: 8 }}>💡 {t.lens_result_tip}</div>
+                    <div style={{ background: 'var(--teal-strong)', color: '#fff', borderRadius: 10, padding: '9px 0', textAlign: 'center', fontSize: 12, fontWeight: 800 }}>{t.lens_add_stock}</div>
                   </div>
                   <div className="app-bnav">
                     <div className="item"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock' : 'Stock'}</span></div>
