@@ -847,6 +847,14 @@ function getFilteredData_unused(range, salesData){
   }
 }
 
+function renderMd(text){
+  const html=text
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n/g,'<br/>');
+  return{__html:html};
+}
+
 function DealScoreCard({result,analysis,analysisLoading,lang}){
   const [barsAnim,setBarsAnim]=useState(false);
   useEffect(()=>{
@@ -906,7 +914,7 @@ function DealScoreCard({result,analysis,analysisLoading,lang}){
             {[60,90,50].map((w,i)=><span key={i} style={{width:w,height:10,background:'#E5E7EB',borderRadius:4,display:'inline-block'}}/>)}
           </div>
         ):analysis?(
-          <div style={{fontSize:12,fontWeight:600,color:'#374151',lineHeight:1.6}}>{analysis}</div>
+          <div style={{fontSize:12,fontWeight:600,color:'#374151',lineHeight:1.6}} dangerouslySetInnerHTML={renderMd(analysis)}/>
         ):(
           <div style={{fontSize:11,color:'#A3A9A6',fontStyle:'italic'}}>{lang==='en'?'Analysis not available':'Analyse non disponible'}</div>
         )}
@@ -1468,7 +1476,7 @@ function StatsTab({sales,items,lang,currency='EUR'}){
             {[100,80,60].map((w,i)=><div key={i} style={{height:10,background:'#C6E8DF',borderRadius:4,width:`${w}%`}}/>)}
           </div>
         ):aiText?(
-          <div style={{fontSize:13,color:'#1A4A3A',lineHeight:1.65,fontWeight:500}}>{aiText}</div>
+          <div style={{fontSize:13,color:'#1A4A3A',lineHeight:1.65,fontWeight:500}} dangerouslySetInnerHTML={renderMd(aiText)}/>
         ):(
           <div style={{fontSize:12,color:'#5DCAA5',fontStyle:'italic'}}>{filtered.length===0?(lang==='en'?'No sales in this period':'Aucune vente sur cette période'):(lang==='en'?'Analysis unavailable':'Analyse non disponible')}</div>
         )}
