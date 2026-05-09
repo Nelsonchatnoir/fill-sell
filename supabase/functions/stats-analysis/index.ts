@@ -36,7 +36,7 @@ serve(async (req) => {
     }
 
     const systemPrompt = _lang === "en"
-      ? "You are an expert financial assistant for resellers (Vinted, eBay, Depop). Analyze the provided stats and generate a short insight (3-4 sentences max), personalized and actionable. Be direct, concrete, and encouraging. Reply in English."
+      ? "You are an expert financial assistant for resellers (Vinted, eBay, Depop). Analyze the provided stats and generate a short insight (3-4 sentences max), personalized and actionable. Be direct, concrete, and encouraging. Use relevant emojis (📈, 💰, 🔥, ⚠️, 💡, etc.) to highlight key points. Use **bold** for important numbers or terms. Reply in English."
       : "Tu es un assistant financier expert en revente (Vinted, eBay, Depop). Analyse les stats fournies et génère un insight court (3-4 phrases max), personnalisé et actionnable. Sois direct, concret, encourage l'utilisateur. Réponds en français.";
 
     const userMsg = _lang === "en"

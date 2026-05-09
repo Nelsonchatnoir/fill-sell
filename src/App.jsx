@@ -664,7 +664,7 @@ function getTypeStyle(type){
   const key=Object.keys(s).find(k=>k.toLowerCase()===(type||"").toLowerCase());
   return key?s[key]:s['Autre'];
 }
-const TYPE_LABELS_EN={'Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
+const TYPE_LABELS_EN={'High-Tech':'High-Tech','Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 
@@ -959,9 +959,12 @@ function DonutChart({segments, totalLabel, totalValue}){
         </g>
       </svg>
       {totalValue !== undefined && (
-        <div className="center-stack">
+        <div className="center-stack" style={{overflow:'hidden'}}>
           <div className="lbl">{totalLabel || 'Total'}</div>
-          <div className="v">{totalValue}</div>
+          <div className="v" style={{
+            fontSize:String(totalValue).length<=8?'1.1rem':String(totalValue).length<=11?'0.85rem':String(totalValue).length<=14?'0.7rem':'0.58rem',
+            wordBreak:'break-all',overflow:'hidden',lineHeight:1.1,textAlign:'center',maxWidth:'90%'
+          }}>{totalValue}</div>
         </div>
       )}
     </div>
@@ -1503,7 +1506,7 @@ function StatsTab({sales,items,lang,currency='EUR'}){
                 return (
                   <div key={i} className="donut-legend-row">
                     <div className="top">
-                      <span className="name"><span className="emo">{emoji}</span>{s.label}</span>
+                      <span className="name"><span className="emo">{emoji}</span>{typeLabel(s.label,lang)}</span>
                       <span className="pct">{Math.round(s.pct)}%</span>
                     </div>
                     <div className="donut-legend-bar">
@@ -4825,17 +4828,7 @@ export default function App({ loginOnly = false }){
               )}
             </div>
 
-            {/* ── Teaser ── */}
-            <div style={{background:"#F9FAFB",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:18,flexShrink:0}}>🔜</span>
-              <div style={{fontSize:12,color:"#6B7280",fontWeight:600,lineHeight:1.5}}>
-                {lang==="en"
-                  ?"Coming soon: automatic comparison with real-time market prices"
-                  :"Bientôt : comparaison automatique avec les prix du marché en temps réel"}
-              </div>
-            </div>
-
-            {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
+{!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
             {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
           </div>
         )}
