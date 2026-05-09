@@ -1747,9 +1747,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       return;
     }
     if(vaStep==="results"){resetVA();return;}
-    // Reuse pre-initialized stream if still active, otherwise re-request
+    // Use cached stream only if all audio tracks are live; re-request otherwise (iOS suspended/ended)
     let stream=vaStreamRef.current;
-    if(!stream||stream.getTracks().some(t=>t.readyState==='ended')){
+    const tracksLive=stream&&stream.getAudioTracks().length>0&&stream.getAudioTracks().every(t=>t.readyState==='live');
+    if(!tracksLive){
       try{stream=await navigator.mediaDevices.getUserMedia({audio:true});vaStreamRef.current=stream;}
       catch(e){setVaError(e.message||(lang==="en"?"Microphone unavailable":"Micro non disponible"));setVaStep("");return;}
     }
