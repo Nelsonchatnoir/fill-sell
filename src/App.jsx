@@ -457,14 +457,12 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 
   return(
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {tb('trialNoCost')}</div>
-      <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{tb('limiteGratuit')}</div>
-      <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{tb('limiteGratuitDesc')}</div>
+      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}</div>
       <CtaPremium
         onClick={handleCheckout}
         label={loading ? tb('redirection') : `✨ ${tb('unlockPremium')}`}
         disabled={loading}
-        sub={lang==='fr' ? '7 jours gratuits · Puis 9,99€/mois' : '7 days free · Then €9.99/month'}
+        sub={lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'}
       />
     </div>
   );
@@ -474,13 +472,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
   return (
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
-        🎁 {lang==='fr'?'7 jours gratuits · Aucun débit immédiat':'7 days free · No charge today'}
-      </div>
-      <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>
-        {lang==='fr'?'Essai gratuit 7 jours ✨':'7-day free trial ✨'}
-      </div>
-      <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>
-        {lang==='fr'?'Articles illimités · IA vocale · Stats IA':'Unlimited items · Voice AI · AI stats'}
+        🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
       </div>
       {iapProduct&&(
         <div style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>
@@ -491,7 +483,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
         onClick={onPurchase}
         label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai gratuit →':'✨ Start free trial →')}
         disabled={iapLoading}
-        sub={lang==='fr'?'7 jours gratuits · Puis 9,99€/mois':'7 days free · Then €9.99/month'}
+        sub={lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'}
       />
       <button
         onClick={onRestore}
@@ -1225,9 +1217,7 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual }) {
         </button>
       </div>
       <div style={{fontSize:11,fontWeight:700,color:"#6B7280",marginTop:14}}>
-        {lang==='en'
-          ? 'Premium €9.99/month after the 7-day trial · cancel anytime'
-          : "Premium 9,99 €/mois après les 7 jours d'essai · annulable à tout moment"}
+        {lang==='en'?'then €9.99/month · No commitment.':'puis 9,99€/mois · Sans engagement.'}
       </div>
     </div>
   );
