@@ -1639,7 +1639,7 @@ function StatsTab({sales,items,lang,currency='EUR'}){
   );
 }
 
-function VoiceAssistant({items,sales,lang,currency='EUR',actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef}){
+function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const autoCloseRef=useRef(null);
@@ -5372,6 +5372,7 @@ export default function App({ loginOnly = false }){
 
       <VoiceAssistant
         items={items} sales={sales} lang={lang} currency={currency}
+        userCountry={userCountry}
         actions={vaActions}
         vaStep={vaStep} setVaStep={setVaStep}
         vaResults={vaResults} setVaResults={setVaResults}
