@@ -22,6 +22,7 @@ import './App.redesign.css';
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const VOICE_FREE_LIMIT = 5;
 
 const C = {
   // Design tokens Fill & Sell
@@ -1694,23 +1695,40 @@ function StatsTab({sales,items,lang,currency='EUR',user}){
   );
 }
 
-function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef}){
+function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
+  const vaStreamRef=useRef(null);
+  const voiceAutoStopRef=useRef(null);
   const autoCloseRef=useRef(null);
   const drawerRef=useRef(null);
   const swipeRef=useRef({startY:0,active:false});
   const [vaEdits,setVaEdits]=useState({});
   const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
+  const [voiceGateMsg,setVoiceGateMsg]=useState('');
   const SURL=import.meta.env.VITE_SUPABASE_URL;
+
+  // Pre-initialize microphone permission at mount for instant response at click time
+  useEffect(()=>{
+    let active=true;
+    navigator.mediaDevices.getUserMedia({audio:true})
+      .then(s=>{if(active)vaStreamRef.current=s;})
+      .catch(()=>{});
+    return()=>{
+      active=false;
+      vaStreamRef.current?.getTracks().forEach(t=>t.stop());
+      vaStreamRef.current=null;
+    };
+  },[]);
   const fmt=(amount,dec=null)=>formatCurrency(amount,currency,dec);
   const sym=CURRENCY_SYMBOLS[currency]||currency;
 
   function resetVA(){
     clearTimeout(autoCloseRef.current);
+    clearTimeout(voiceAutoStopRef.current);
     try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
     vaMediaRef.current=null;vaChunksRef.current=[];
-    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
+    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});setVoiceGateMsg('');
   }
 
   useEffect(()=>{
@@ -1721,18 +1739,44 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
 
   async function handleFabClick(){
     if(vaStep==="thinking")return;
-    if(vaStep==="recording"){vaMediaRef.current?.stop();return;}
+    if(vaStep==="recording"){
+      clearTimeout(voiceAutoStopRef.current);
+      vaMediaRef.current?.stop();
+      return;
+    }
     if(vaStep==="results"){resetVA();return;}
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const recorder=new MediaRecorder(stream);
-      vaChunksRef.current=[];
-      recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
-      recorder.onstop=async()=>{
-        stream.getTracks().forEach(t=>t.stop());
-        const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
-        const blob=new Blob(vaChunksRef.current,{type:mimeType});
-        setVaStep("thinking");
+    setVoiceGateMsg('');
+    // Reuse pre-initialized stream if still active, otherwise re-request
+    let stream=vaStreamRef.current;
+    if(!stream||stream.getTracks().some(t=>t.readyState==='ended')){
+      try{stream=await navigator.mediaDevices.getUserMedia({audio:true});vaStreamRef.current=stream;}
+      catch(e){setVaError(e.message||(lang==="en"?"Microphone unavailable":"Micro non disponible"));setVaStep("");return;}
+    }
+    const recorder=new MediaRecorder(stream);
+    // Start recording immediately — push-to-stop model
+    vaChunksRef.current=[];
+    vaMediaRef.current=recorder;
+    recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
+    recorder.onstop=async()=>{
+      clearTimeout(voiceAutoStopRef.current);
+      stream.getTracks().forEach(t=>t.stop());
+      vaStreamRef.current=null;
+      const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
+      const blob=new Blob(vaChunksRef.current,{type:mimeType});
+      // Gate check before Whisper
+      if(!isPremium&&user?.id){
+        const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
+        if(count>=VOICE_FREE_LIMIT){
+          setVoiceGateMsg(lang==='fr'
+            ?`🔒 Limite atteinte (${VOICE_FREE_LIMIT}/jour) · Passe en Premium`
+            :`🔒 Daily limit reached (${VOICE_FREE_LIMIT}/day) · Go Premium`);
+          setVaStep("");
+          return;
+        }
+        await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
+        if(setVoiceUsedToday)setVoiceUsedToday(count+1);
+      }
+      setVaStep("thinking");
         try{
           const fd=new FormData();
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
@@ -1804,8 +1848,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           }
         }catch(e){setVaError(e.message||"Error");setVaStep("");}
       };
-      vaMediaRef.current=recorder;recorder.start();setVaStep("recording");
-    }catch(e){setVaError(e.message||(lang==="en"?"Microphone unavailable":"Micro non disponible"));setVaStep("");}
+      recorder.start();
+      setVaStep("recording");
+      // 60s safety auto-stop
+      voiceAutoStopRef.current=setTimeout(()=>{vaMediaRef.current?.stop();},60000);
   }
   if(triggerRef)triggerRef.current=handleFabClick;
 
@@ -1836,6 +1882,27 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
 
       {/* FAB */}
       <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />
+
+      {/* Voice usage pill (free users) */}
+      {!isPremium&&!isRec&&!isThink&&!isRes&&(()=>{
+        if(voiceGateMsg)return(
+          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:"#FEE2E2",color:"#DC2626",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
+            {voiceGateMsg}
+          </div>
+        );
+        const r=VOICE_FREE_LIMIT-voiceUsedToday;
+        if(r<=2&&r>0)return(
+          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:r===1?"#FEE2E2":"#FEF3C7",color:r===1?"#DC2626":"#D97706",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
+            {r===1?(lang==='fr'?'⚠️ Dernier vocal du jour !':'⚠️ Last voice today!'):(lang==='fr'?`🎙️ ${r} vocaux restants`:`🎙️ ${r} voices left`)}
+          </div>
+        );
+        if(r<=0)return(
+          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:"#FEE2E2",color:"#DC2626",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
+            {lang==='fr'?'🔒 Limite atteinte · Passe en Premium':'🔒 Limit reached · Go Premium'}
+          </div>
+        );
+        return null;
+      })()}
 
       {/* Error bubble */}
       {vaError&&vaStep===""&&(
@@ -2661,7 +2728,6 @@ export default function App({ loginOnly = false }){
   const [lensUsedToday,setLensUsedToday]=useState(0);
   const [voiceUsedToday,setVoiceUsedToday]=useState(0);
   const LENS_FREE_LIMIT=3;
-  const VOICE_FREE_LIMIT=5;
   useEffect(()=>{
     const _id=setInterval(()=>{
       setLensPlaceholderFade(false);
@@ -4915,6 +4981,12 @@ export default function App({ loginOnly = false }){
                         :(lang==="en"?"➕ Add to my stock":"➕ Ajouter à mon stock")}
                     </button>
                   )}
+                  <button
+                    onClick={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
+                    style={{width:"100%",padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",marginTop:4}}
+                  >
+                    🔄 {lang==="en"?"New analysis":"Nouvelle analyse"}
+                  </button>
                 </div>
               )}
             </div>
@@ -5472,6 +5544,10 @@ export default function App({ loginOnly = false }){
         markSold={markSold}
         deleteItem={delItem}
         triggerRef={fabTriggerRef}
+        isPremium={isPremium}
+        user={user}
+        voiceUsedToday={voiceUsedToday}
+        setVoiceUsedToday={setVoiceUsedToday}
       />
       {showCurrencyOnboarding&&(
         <CurrencyOnboardingModal lang={lang} onConfirm={async(code)=>{
