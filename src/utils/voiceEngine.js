@@ -1,4 +1,5 @@
 import { calculateDealScore } from './dealScore.js';
+import { supabaseUrl, supabaseAnonKey } from '../lib/supabase.js';
 
 const norm = s =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() ?? "";
@@ -63,18 +64,16 @@ async function handleAdd(task, context) {
 
 async function handleLot(task, context) {
   const { lotTotal, items } = task.data;
-  console.log("[handleLot] start", { lotTotal, items });
   const res = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lot-distribute`,
+    `${supabaseUrl}/functions/v1/lot-distribute`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
       body: JSON.stringify({ lotTotal, items, lang: context.lang }),
     }
   );
-  if (!res.ok) { console.error("[handleLot] fetch failed", res.status); throw new Error("lot-distribute failed"); }
+  if (!res.ok) throw new Error("lot-distribute failed");
   const distributed = await res.json();
-  console.log("[handleLot] distributed", distributed);
   if (distributed.error) throw new Error(distributed.error);
   return {
     intent: task.intent,
@@ -676,11 +675,6 @@ export async function executeVoiceTasks(tasks, context) {
         }
         case "price_advice": {
           const { nom, marque, prix_achat, description, categorie } = task.data;
-          const SURL = import.meta.env.VITE_SUPABASE_URL;
-          if (!SURL) {
-            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Service unavailable" : "Service indisponible" };
-            break;
-          }
           try {
             const itemLabel = [nom, marque].filter(Boolean).join(" ");
             const lines = [];
@@ -711,9 +705,9 @@ export async function executeVoiceTasks(tasks, context) {
                 : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)} ${cur}, marge moyenne ${Math.round(avgMargin)} ${cur}`);
             }
             const priceAdvice = lines.join("\n");
-            const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
+            const res = await fetch(`${supabaseUrl}/functions/v1/deal-analysis`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
               body: JSON.stringify({ priceAdvice, lang: context.lang, currency: cur, country: context.country || null }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -727,11 +721,6 @@ export async function executeVoiceTasks(tasks, context) {
         }
         case "buy_advice": {
           const { nom, marque, prix_propose, etat, plateforme_source, categorie } = task.data;
-          const SURL = import.meta.env.VITE_SUPABASE_URL;
-          if (!SURL) {
-            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Service unavailable" : "Service indisponible" };
-            break;
-          }
           try {
             const itemLabel = [nom, marque].filter(Boolean).join(" ");
             const lines = [];
@@ -764,9 +753,9 @@ export async function executeVoiceTasks(tasks, context) {
                 : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)} ${cur}, marge moyenne ${Math.round(avgMargin)} ${cur}`);
             }
             const buyAdvice = lines.join("\n");
-            const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
+            const res = await fetch(`${supabaseUrl}/functions/v1/deal-analysis`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
               body: JSON.stringify({ buyAdvice, lang: context.lang, currency: cur, country: context.country || null }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -780,11 +769,6 @@ export async function executeVoiceTasks(tasks, context) {
         }
         case "price_question": {
           const { nom, marque, prix_achat, description, categorie } = task.data;
-          const SURL = import.meta.env.VITE_SUPABASE_URL;
-          if (!SURL) {
-            result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Service unavailable" : "Service indisponible" };
-            break;
-          }
           try {
             const itemLabel = [nom, marque].filter(Boolean).join(" ");
             const descPart = description ? ` (${description})` : "";
@@ -796,9 +780,9 @@ export async function executeVoiceTasks(tasks, context) {
             const question = context.lang === "en"
               ? `How much can I resell this item: ${itemLabel}${descPart}${pricePart}${catPart}? Provide: 💰 recommended sell price range, 📈 estimated margin, 📦 best platform for this market. Factor in the condition if mentioned.`
               : `À combien puis-je revendre cet article : ${itemLabel}${descPart}${pricePart}${catPart} ? Donne : 💰 fourchette de prix de revente recommandée, 📈 marge estimée, 📦 meilleure plateforme pour ce marché. Tiens compte de l'état si mentionné.`;
-            const res = await fetch(`${SURL}/functions/v1/deal-analysis`, {
+            const res = await fetch(`${supabaseUrl}/functions/v1/deal-analysis`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
               body: JSON.stringify({ question, lang: context.lang, currency: cur, country: context.country || null }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);

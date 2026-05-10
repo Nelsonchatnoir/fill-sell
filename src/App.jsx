@@ -5,7 +5,7 @@ import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
-import { supabase } from './lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import Toast from './components/Toast';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
@@ -441,12 +441,12 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
     setLoading(true);
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
+        `${supabaseUrl}/functions/v1/create-checkout-session`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            "Authorization": `Bearer ${supabaseAnonKey}`,
           },
           body: JSON.stringify({ email: userEmail }),
         }
@@ -1342,7 +1342,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
   const [voiceToast,setVoiceToast]=useState('');
   const showVoiceToast=(msg)=>{setVoiceToast(msg);setTimeout(()=>setVoiceToast(''),2000);};
-  const SURL=import.meta.env.VITE_SUPABASE_URL;
+  const SURL=supabaseUrl;
 
   useEffect(()=>{
     return()=>{
@@ -1418,11 +1418,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const fd=new FormData();
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
-          const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":import.meta.env.VITE_SUPABASE_ANON_KEY},body:fd});
-          const tRaw=await tRes.text().catch(()=>'');
-          console.error('[voice-transcribe] status:',tRes.status,'body:',tRaw);
+          const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
           if(!tRes.ok)throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");
-          let tJson;try{tJson=JSON.parse(tRaw);}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
+          let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
           if(tErr)throw new Error(tErr);
           if(!text?.trim())throw new Error(lang==="en"?"No speech detected":"Aucune parole détectée");
@@ -1435,16 +1433,14 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           if(isFollowupAdd){
             const addTask={intent:"inventory_add",confidence:0.99,requiresConfirmation:false,ambiguous:false,data:{nom:lastPriceAdviceData.nom,marque:lastPriceAdviceData.marque,prix_achat:lastPriceAdviceData.prix_achat,categorie:lastPriceAdviceData.categorie,description:lastPriceAdviceData.description,quantite:1}};
             setLastPriceAdviceData(null);
-            const{results:fuResults}=await executeVoiceTasks([addTask],{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL});
+            const{results:fuResults}=await executeVoiceTasks([addTask],{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken});
             setVaResults(fuResults);setVaStep("results");
             if(fuResults.every(r=>r.status==="success")){autoCloseRef.current=setTimeout(()=>resetVA(),3500);}
             return;
           }
-          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":import.meta.env.VITE_SUPABASE_ANON_KEY},body:JSON.stringify({text,lang,currency})});
-          const iRaw=await iRes.text().catch(()=>'');
-          console.error('[voice-intent] status:',iRes.status,'body:',iRaw);
+          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency})});
           if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
-          let iJson;try{iJson=JSON.parse(iRaw);}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
+          let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
           if(iErr)throw new Error(iErr);
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
@@ -1478,7 +1474,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               finalTasks=[paTask];
             }
           }
-          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL});
+          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken});
           // Store price_advice data for potential follow-up "ajoute le au stock"
           const paRes=results.find(r=>r.intent==="price_advice"&&r.status==="success");
           if(paRes?.taskData)setLastPriceAdviceData(paRes.taskData);
@@ -2415,17 +2411,11 @@ export default function App({ loginOnly = false }){
     if(user?.id) await supabase.from('profiles').update({currency:code}).eq('id',user.id);
   }
   async function triggerCheckout(){
-    console.log('[checkout] start — email:', user?.email);
     try{
-      const url_called=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`;
-      console.log('[checkout] calling:', url_called);
       const{data:{session}}=await supabase.auth.getSession();
       const token=session?.access_token;
-      console.log('[checkout] token:', token?'present':'MISSING');
-      const res=await fetch(url_called,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({email:user.email})});
-      console.log('[checkout] response status:', res.status);
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email})});
       const body=await res.json();
-      console.log('[checkout] response body:', body);
       const{url,error}=body;
       if(error)throw new Error(error);
       track('begin_checkout', { currency: 'EUR', value: 9.99 });
@@ -2757,11 +2747,9 @@ export default function App({ loginOnly = false }){
           const fd=new FormData();
           fd.append("audio",blob,"audio."+mimeType.split("/")[1]);
           fd.append("lang",lang);
-          const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/voice-transcribe",{method:"POST",headers:{"Authorization":`Bearer ${vtToken}`,"apikey":import.meta.env.VITE_SUPABASE_ANON_KEY},body:fd});
-          const vtRaw=await res.text().catch(()=>'');
-          console.error('[voice-transcribe-vt] status:',res.status,'body:',vtRaw);
+          const res=await fetch(`${supabaseUrl}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vtToken}`,"apikey":supabaseAnonKey},body:fd});
           if(!res.ok)throw new Error("Transcription failed");
-          let vtJson;try{vtJson=JSON.parse(vtRaw);}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
+          let vtJson;try{vtJson=await res.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:err}=vtJson;
           if(err)throw new Error(err);
           setVoiceText(text);
@@ -2985,13 +2973,13 @@ export default function App({ loginOnly = false }){
     try{
       const{data:{session}}=await supabase.auth.getSession();
       const res=await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-subscription`,
+        `${supabaseUrl}/functions/v1/cancel-subscription`,
         {
           method:"POST",
           headers:{
             "Content-Type":"application/json",
             "Authorization":`Bearer ${session?.access_token}`,
-            "apikey":import.meta.env.VITE_SUPABASE_ANON_KEY,
+            "apikey":supabaseAnonKey,
           },
         }
       );
@@ -3421,27 +3409,22 @@ export default function App({ loginOnly = false }){
     if(!user) return;
     setDeleteLoading(true);
     try {
-      console.log("step 1 - delete inventaire");
       await supabase.from("inventaire").delete().eq("user_id",user.id);
-      console.log("step 2 - delete ventes");
       await supabase.from("ventes").delete().eq("user_id",user.id);
-      console.log("step 3 - delete profiles");
       await supabase.from("profiles").delete().eq("id",user.id);
       const { data: { session } } = await supabase.auth.getSession();
       const jwt = session?.access_token;
-      console.log("step 4 - fetch", import.meta.env.VITE_SUPABASE_URL, jwt ? "jwt ok" : "jwt null");
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-account`,
+        `${supabaseUrl}/functions/v1/delete-account`,
         {
           method:"POST",
           headers:{
             "Content-Type":"application/json",
             "Authorization":`Bearer ${jwt}`,
-            "apikey":import.meta.env.VITE_SUPABASE_ANON_KEY,
+            "apikey":supabaseAnonKey,
           },
         }
       );
-      console.log("step 5 - res.ok:", res.ok);
       if(!res.ok){ const e=await res.json(); throw new Error(e.error||"Erreur suppression compte"); }
       await supabase.auth.signOut();
       setUser(null);setSales([]);setItems([]);
@@ -3614,13 +3597,13 @@ export default function App({ loginOnly = false }){
 
   async function analyzeDealWithIA(){
     if(!dealIADesc.trim())return;
-    const SURL=import.meta.env.VITE_SUPABASE_URL;
-    if(!SURL)return;
     setDealIALoading(true);setDealIAResult(null);
     try{
-      const r=await fetch(`${SURL}/functions/v1/deal-analysis`,{
+      const{data:{session:daSess}}=await supabase.auth.getSession();
+      const daToken=daSess?.access_token;
+      const r=await fetch(`${supabaseUrl}/functions/v1/deal-analysis`,{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${daToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({question:dealIADesc.trim(),lang,currency,country:userCountry?.code??getCountryFallback()}),
       });
       if(!r.ok)throw new Error(`HTTP ${r.status}`);
@@ -3710,8 +3693,6 @@ export default function App({ loginOnly = false }){
         .eq('id',user.id);
       setLensUsedToday(count+1);
     }
-    const SURL=import.meta.env.VITE_SUPABASE_URL;
-    if(!SURL)return;
     setLensLoading(true);setLensResult(null);setLensAdded(false);
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
@@ -3719,9 +3700,11 @@ export default function App({ loginOnly = false }){
     for(const s of sales){const c=s.type||s.categorie||"Autre";catProfit[c]=(catProfit[c]||0)+(s.margin??0);}
     const topCats=Object.entries(catProfit).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
     try{
-      const r=await fetch(`${SURL}/functions/v1/lens-analysis`,{
+      const{data:{session:lnSess}}=await supabase.auth.getSession();
+      const lnToken=lnSess?.access_token;
+      const r=await fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({
           images:lensPhotos.map(p=>({base64:p.base64,mimeType:p.mime})),
           description:lensDesc.trim()||null,

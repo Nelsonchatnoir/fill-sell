@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { Line } from 'react-chartjs-2';
 import { formatCurrency, typeLabel, marqueLabel, getTypeStyle } from '../utils/shared';
 
@@ -267,8 +267,8 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
 
   useEffect(()=>{
     if(filtered.length===0){setAiText('');return;}
-    const SURL=import.meta.env.VITE_SUPABASE_URL;
-    if(!SURL||!user?.id){setAiText('');return;}
+    const SURL=supabaseUrl;
+    if(!user?.id){setAiText('');return;}
     const today=new Date().toISOString().split('T')[0];
     const cacheKey=PERIOD_CACHE_KEY[range]??range;
     setAiLoading(true);
@@ -285,17 +285,17 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
         if(!stToken){setAiText(lang==='en'?'Session expired, please reconnect.':'Session expirée, reconnectez-vous.');setAiLoading(false);return;}
         fetch(`${SURL}/functions/v1/stats-analysis`,{
           method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`,'apikey':import.meta.env.VITE_SUPABASE_ANON_KEY},
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`,'apikey':supabaseAnonKey},
           body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,lang}),
         })
-          .then(async r=>{const rb=await r.text().catch(()=>'');console.error('[stats-analysis] status:',r.status,'body:',rb);if(!r.ok)throw new Error(`HTTP ${r.status}`);try{return JSON.parse(rb);}catch{throw new Error('Invalid response');}})
+          .then(async r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
           .then(d=>{
             const result=d?.analysis||'';
             setAiText(result);setAiLoading(false);
             const updatedCache={...cache,[cacheKey]:{date:today,result}};
             supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id);
           })
-          .catch(err=>{console.error('[StatsTab] stats-analysis error:',err);setAiLoading(false);});
+          .catch(()=>{setAiLoading(false);});
       });
   },[range,filtered.length]);
 
