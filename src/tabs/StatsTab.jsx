@@ -274,15 +274,18 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
     setAiLoading(true);
     setAiText('');
     supabase.from('profiles').select('stats_analysis_cache').eq('id',user.id).single()
-      .then(({data:profile})=>{
+      .then(async ({data:profile})=>{
         const cache=profile?.stats_analysis_cache??{};
         const periodCache=cache[cacheKey];
         if(periodCache&&periodCache.date===today&&periodCache.result){
           setAiText(periodCache.result);setAiLoading(false);return;
         }
+        const{data:{session:stSess}}=await supabase.auth.getSession();
+        const stToken=stSess?.access_token;
+        if(!stToken){setAiText(lang==='en'?'Session expired, please reconnect.':'Session expirée, reconnectez-vous.');setAiLoading(false);return;}
         fetch(`${SURL}/functions/v1/stats-analysis`,{
           method:'POST',
-          headers:{'Content-Type':'application/json'},
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`},
           body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,lang}),
         })
           .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})

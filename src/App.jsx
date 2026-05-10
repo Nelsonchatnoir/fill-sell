@@ -1412,12 +1412,15 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       }
       setVaStep("thinking");
         try{
+          const{data:{session:vaSess}}=await supabase.auth.getSession();
+          const vaToken=vaSess?.access_token;
+          if(!vaToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
           const fd=new FormData();
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
-          const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",body:fd});
+          const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`},body:fd});
           if(!tRes.ok)throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");
-          const{text,error:tErr}=await tRes.json();
+          const{text,error:tErr}=await tRes.json().catch(()=>{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");});
           if(tErr)throw new Error(tErr);
           if(!text?.trim())throw new Error(lang==="en"?"No speech detected":"Aucune parole détectée");
           // Follow-up "ajoute le au stock" after a price_advice
@@ -1434,9 +1437,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             if(fuResults.every(r=>r.status==="success")){autoCloseRef.current=setTimeout(()=>resetVA(),3500);}
             return;
           }
-          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,lang,currency})});
+          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`},body:JSON.stringify({text,lang,currency})});
           if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
-          const{tasks,error:iErr}=await iRes.json();
+          const{tasks,error:iErr}=await iRes.json().catch(()=>{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");});
           if(iErr)throw new Error(iErr);
           if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
           // Client-side guard: price question patterns → price_advice first; explicit add → also inventory_add
@@ -2740,12 +2743,15 @@ export default function App({ loginOnly = false }){
         const blob=new Blob(audioChunksRef.current,{type:mimeType});
         setVoiceStep("transcribing");setVoiceLoading(true);
         try{
+          const{data:{session:vtSess}}=await supabase.auth.getSession();
+          const vtToken=vtSess?.access_token;
+          if(!vtToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
           const fd=new FormData();
           fd.append("audio",blob,"audio."+mimeType.split("/")[1]);
           fd.append("lang",lang);
-          const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/voice-transcribe",{method:"POST",body:fd});
+          const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/voice-transcribe",{method:"POST",headers:{"Authorization":`Bearer ${vtToken}`},body:fd});
           if(!res.ok)throw new Error("Transcription failed");
-          const{text,error:err}=await res.json();
+          const{text,error:err}=await res.json().catch(()=>{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");});
           if(err)throw new Error(err);
           setVoiceText(text);
           await callVoiceParse(text);
