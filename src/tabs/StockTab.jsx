@@ -382,8 +382,8 @@ const StockTab = memo(function StockTab({
             );
           })()}
 
-          {/* ── VENDUS ── */}
-          <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          {/* ── VENDUS — masqués dans Stock IA (visible dans Ventes) ── */}
+          {false&&<div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
@@ -477,7 +477,7 @@ const StockTab = memo(function StockTab({
                 <div style={{height:24}}/>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* ── EN STOCK ── */}
           <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
