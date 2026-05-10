@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 const ALLOWED_TYPES: Record<string, string> = {
@@ -17,6 +18,46 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
+  }
+
+  // ── Auth ──────────────────────────────────────────────
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error: authError } = await userClient.auth.getUser();
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
+  // ── Voice quota (non-premium: 5/day) ──────────────────
+  const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const today = new Date().toISOString().split("T")[0];
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("is_premium, voice_count_today, voice_count_date")
+    .eq("id", user.id)
+    .single();
+  const isPremium = profile?.is_premium === true;
+  if (!isPremium) {
+    const count = profile?.voice_count_date === today ? (profile?.voice_count_today ?? 0) : 0;
+    if (count >= 5) {
+      return new Response(JSON.stringify({ error: "Daily voice limit reached" }), {
+        status: 429, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+    await adminClient
+      .from("profiles")
+      .update({ voice_count_today: count + 1, voice_count_date: today })
+      .eq("id", user.id);
   }
 
   try {

@@ -2697,8 +2697,10 @@ export default function App({ loginOnly = false }){
   async function callVoiceParse(text){
     setVoiceStep("parsing");setVoiceLoading(true);
     try{
-      const res=await fetch("https://tojihnuawsoohlolangc.supabase.co/functions/v1/voice-parse",{
-        method:"POST",headers:{"Content-Type":"application/json"},
+      const{data:{session:vpSess}}=await supabase.auth.getSession();
+      const vpToken=vpSess?.access_token;
+      const res=await fetch(`${supabaseUrl}/functions/v1/voice-parse`,{
+        method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vpToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({text,lang}),
       });
       if(!res.ok)throw new Error("Parse failed");
@@ -3668,7 +3670,10 @@ export default function App({ loginOnly = false }){
       setLensMicActive(false);return;
     }
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR)return;
+    if(!SR){
+      setLensResult({analysis:lang==='fr'?'❌ Saisie vocale non disponible sur iOS. Utilisez le clavier.':'❌ Voice input not available on iOS. Use the keyboard.',itemData:null});
+      return;
+    }
     const rec=new SR();
     rec.lang=lang==="en"?"en-US":"fr-FR";
     rec.interimResults=false;rec.continuous=false;
