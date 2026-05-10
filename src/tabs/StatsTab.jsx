@@ -285,10 +285,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
         if(!stToken){setAiText(lang==='en'?'Session expired, please reconnect.':'Session expirée, reconnectez-vous.');setAiLoading(false);return;}
         fetch(`${SURL}/functions/v1/stats-analysis`,{
           method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`},
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`,'apikey':import.meta.env.VITE_SUPABASE_ANON_KEY},
           body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,lang}),
         })
-          .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+          .then(async r=>{const rb=await r.text().catch(()=>'');console.error('[stats-analysis] status:',r.status,'body:',rb);if(!r.ok)throw new Error(`HTTP ${r.status}`);try{return JSON.parse(rb);}catch{throw new Error('Invalid response');}})
           .then(d=>{
             const result=d?.analysis||'';
             setAiText(result);setAiLoading(false);
