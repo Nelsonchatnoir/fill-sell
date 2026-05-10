@@ -1249,7 +1249,7 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium }) {
           🎙️ {lang==='fr'?'5 vocaux/jour':'5 voice/day'} &nbsp;·&nbsp;
           📸 {lang==='fr'?'3 Lens/jour':'3 Lens/day'}
         </div>
-        <button onClick={onPremium} style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'linear-gradient(135deg,#4ECDC4,#44A08D)',color:'#fff',borderRadius:'20px',padding:'5px 14px',fontWeight:600,fontSize:'13px',border:'none',cursor:'pointer',fontFamily:'inherit'}}>
+        <button onClick={onPremium} className="cta-premium">
           ✨ Premium · 9,99€/mois &nbsp;—&nbsp;
           {lang==='fr'?'Tout illimité · 7j gratuits':'All unlimited · 7 days free'}
         </button>
