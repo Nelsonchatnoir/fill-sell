@@ -2049,7 +2049,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                             {(item.marque||item.categorie)&&(
                               <div style={{display:"flex",gap:4,paddingLeft:2}}>
                                 {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                {item.categorie&&item.categorie!=="Autre"&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600}}>{item.categorie}</span>}
+                                {(()=>{const _ts=getTypeStyle(item.categorie);return item.categorie&&item.categorie!=="Autre"&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>;})()}
                               </div>
                             )}
                           </div>
@@ -3708,12 +3708,18 @@ export default function App({ loginOnly = false }){
       setLensResult({analysis:lang==='fr'?'❌ Micro non disponible sur cet appareil.':'❌ Microphone not available on this device.',itemData:null});
       return;
     }
+    if(!window.MediaRecorder){
+      setLensResult({analysis:lang==='fr'?'❌ Enregistrement audio non supporté sur cet appareil.':'❌ Audio recording not supported on this device.',itemData:null});
+      return;
+    }
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const mimeType=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":
-                     MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":
-                     MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":"audio/webm";
-      const mr=new MediaRecorder(stream,{mimeType});
+      const rawMimeType=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":
+                        MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":
+                        MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":"audio/webm";
+      // Strip codecs suffix — voice-transcribe only accepts base MIME types
+      const baseMimeType=rawMimeType.split(";")[0];
+      const mr=new MediaRecorder(stream,{mimeType:rawMimeType});
       const chunks=[];
       mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
       mr.onstop=async()=>{
@@ -3721,15 +3727,17 @@ export default function App({ loginOnly = false }){
         setLensMicActive(false);setLensMicLoading(true);
         lensMicRef.current=null;
         try{
-          const blob=new Blob(chunks,{type:mimeType});
-          const arrayBuf=await blob.arrayBuffer();
-          const b64=btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+          // Send FormData with Blob — voice-transcribe expects multipart/form-data
+          const blob=new Blob(chunks,{type:baseMimeType});
           const{data:{session:lmSess}}=await supabase.auth.getSession();
           const lmToken=lmSess?.access_token;
+          const fd=new FormData();
+          fd.append("audio",blob,`recording.${baseMimeType.split("/")[1]||"webm"}`);
+          fd.append("lang",lang);
           const res=await fetch(`${supabaseUrl}/functions/v1/voice-transcribe`,{
             method:"POST",
-            headers:{"Content-Type":"application/json","Authorization":`Bearer ${lmToken}`,"apikey":supabaseAnonKey},
-            body:JSON.stringify({audio:b64,mimeType,lang}),
+            headers:{"Authorization":`Bearer ${lmToken}`,"apikey":supabaseAnonKey},
+            body:fd,
           });
           const json=await res.json();
           if(json.text){setLensDesc(prev=>(prev?prev+" ":"")+json.text.trim());}

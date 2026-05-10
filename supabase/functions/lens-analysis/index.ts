@@ -211,14 +211,24 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      return new Response(JSON.stringify({ error: `Anthropic error: ${errText}` }), {
-        status: response.status,
+      const errText = await response.text().catch(() => `HTTP ${response.status}`);
+      console.error("[lens-analysis] Anthropic error:", response.status, errText);
+      return new Response(JSON.stringify({ error: `Anthropic error ${response.status}: ${errText}` }), {
+        status: 500,
         headers: { "Content-Type": "application/json", ...CORS },
       });
     }
 
-    const data = await response.json();
+    let data: { content?: Array<{ text?: string }> } | null = null;
+    try {
+      data = await response.json();
+    } catch (parseErr) {
+      console.error("[lens-analysis] JSON parse error:", parseErr);
+      return new Response(JSON.stringify({ error: "Invalid JSON response from AI" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
     const analysis = data?.content?.[0]?.text?.trim() ?? null;
 
     // Structured extraction using first photo
@@ -264,7 +274,8 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    console.error("[lens-analysis] Unhandled error:", err);
+    return new Response(JSON.stringify({ error: err?.message ?? "Internal error" }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...CORS },
     });
