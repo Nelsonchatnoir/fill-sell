@@ -59,9 +59,7 @@ body.bg-dots {
   background-size: 200% 200% !important;
   border-radius: 22px !important;
   padding: 24px 22px !important;
-  box-shadow:
-    0 1px 3px rgba(14,124,95,0.20),
-    0 18px 40px rgba(14,124,95,0.28) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
   animation: heroBreath 8s ease-in-out infinite !important;
   isolation: isolate;
 }
