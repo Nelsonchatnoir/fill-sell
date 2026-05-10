@@ -2386,6 +2386,7 @@ export default function App({ loginOnly = false }){
   const [voiceStep,setVoiceStep]=useState("");
   const [voiceParsed,setVoiceParsed]=useState(null);
   const [voiceError,setVoiceError]=useState(null);
+  useEffect(()=>{if(!voiceError)return;const t=setTimeout(()=>{setVoiceError(null);setVoiceStep("");},4000);return()=>clearTimeout(t);},[voiceError]);
   const [showManualForm,setShowManualForm]=useState(false);
   useEffect(()=>{
     const t=setInterval(()=>setVoicePlaceholderIdx(i=>(i+1)%TEXTAREA_PLACEHOLDERS.length),4000);
@@ -2725,9 +2726,10 @@ export default function App({ loginOnly = false }){
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
       if(count>=VOICE_FREE_LIMIT){
-        alert(lang==='fr'
-          ?"Tu as utilisé tes 5 analyses vocales aujourd'hui. Passe en Premium pour un accès illimité. 🎙️"
-          :"You've used your 5 voice analyses today. Upgrade to Premium for unlimited access. 🎙️");
+        setVoiceError(lang==='fr'
+          ?"🔒 Limite atteinte · 5 vocaux/jour en gratuit"
+          :"🔒 Daily limit reached · 5 voices/day on free plan");
+        setVoiceStep("error");
         return;
       }
       await supabase.from('profiles')
