@@ -1380,6 +1380,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     // Use cached stream only if all audio tracks are live; re-request otherwise (iOS suspended/ended)
     let stream=vaStreamRef.current;
     const tracksLive=stream&&stream.getAudioTracks().length>0&&stream.getAudioTracks().every(t=>t.readyState==='live');
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      setVaError(lang==="en"?"Microphone unavailable. Check permissions in Settings > Fill & Sell.":"Microphone non disponible. Vérifiez les permissions dans Réglages > Fill & Sell.");setVaStep("");return;
+    }
     if(!tracksLive){
       try{stream=await navigator.mediaDevices.getUserMedia({audio:true});vaStreamRef.current=stream;}
       catch(e){setVaError(e.message||(lang==="en"?"Microphone unavailable":"Micro non disponible"));setVaStep("");return;}
@@ -2722,6 +2725,9 @@ export default function App({ loginOnly = false }){
         .update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]})
         .eq('id',user.id);
       setVoiceUsedToday(count+1);
+    }
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      setVoiceError("Microphone non disponible. Vérifiez les permissions dans Réglages > Fill & Sell.");setVoiceStep("error");return;
     }
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
