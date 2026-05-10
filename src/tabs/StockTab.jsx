@@ -460,7 +460,7 @@ const StockTab = memo(function StockTab({
                           {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                         </div>
-                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
+                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
                       </div>
                       <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
                         <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
@@ -574,8 +574,8 @@ const StockTab = memo(function StockTab({
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
                         </div>
-                        {!isExpanded&&(_itemDesc||_itemLoc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_itemDesc}{_itemDesc&&_itemLoc?" · ":""}{_itemLoc&&`📍 ${_itemLoc}`}</div>}
-                        <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:2}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
+                        {!isExpanded&&(_itemDesc||_itemLoc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_itemDesc}{_itemDesc&&_itemLoc?" · ":""}{_itemLoc&&`📍 ${_itemLoc}`}</div>}
+                        <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>

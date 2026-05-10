@@ -2036,14 +2036,22 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         const editNom=vaEdits[idx]?.[i]?.nom??item.nom;
                         const editPrix=vaEdits[idx]?.[i]?.prix??item.prix_estime_lot;
                         return(
-                          <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
-                            <input value={editNom}
-                              onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],nom:e.target.value}}}))}
-                              style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                            <input type="number" value={editPrix}
-                              onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
-                              style={{width:60,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#fff",textAlign:"right"}}/>
-                            <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>{sym}</span>
+                          <div key={i} style={{display:"flex",flexDirection:"column",gap:3}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <input value={editNom}
+                                onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],nom:e.target.value}}}))}
+                                style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                              <input type="number" value={editPrix}
+                                onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
+                                style={{width:60,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#fff",textAlign:"right"}}/>
+                              <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>{sym}</span>
+                            </div>
+                            {(item.marque||item.categorie)&&(
+                              <div style={{display:"flex",gap:4,paddingLeft:2}}>
+                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                {item.categorie&&item.categorie!=="Autre"&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600}}>{item.categorie}</span>}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -2332,6 +2340,7 @@ export default function App({ loginOnly = false }){
   const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
+  const [deleteConfirm,setDeleteConfirm]=useState(null); // {type:'soldItem'|'sale', item?, sale?}
   const [dealScore,setDealScore]=useState(null);
   const [dealAnalysis,setDealAnalysis]=useState(null);
   const [dealAnalysisLoading,setDealAnalysisLoading]=useState(false);
@@ -2355,6 +2364,7 @@ export default function App({ loginOnly = false }){
   const [lensLoading,setLensLoading]=useState(false);
   const [lensAdded,setLensAdded]=useState(false);
   const [lensMicActive,setLensMicActive]=useState(false);
+  const [lensMicLoading,setLensMicLoading]=useState(false);
   const lensMicRef=useRef(null);
   const lensFileRef=useRef(null);
   const [lensPlaceholderIdx,setLensPlaceholderIdx]=useState(0);
@@ -2911,9 +2921,16 @@ export default function App({ loginOnly = false }){
     await fetchAll(user.id);
   }
 
-  async function delItem(id){
-    await supabase.from('inventaire').delete().eq('id',id);
-    setItems(prev=>prev.filter(i=>i.id!==id));
+  function delItem(id){
+    const item=items.find(i=>i.id===id);
+    if(item&&(item.statut==='vendu'||item.sell!=null)){
+      setDeleteConfirm({type:'soldItem',item});
+    }else{
+      (async()=>{
+        await supabase.from('inventaire').delete().eq('id',id);
+        await fetchAll(user.id);
+      })();
+    }
   }
 
   async function addSale(){
@@ -2927,9 +2944,9 @@ export default function App({ loginOnly = false }){
     setCTitle("");setCBuy("");setCSell("");setCShip("");
   }
 
-  async function delSale(id){
-    await supabase.from('ventes').delete().eq('id',id);
-    setSales(prev=>prev.filter(s=>s.id!==id));
+  function delSale(id){
+    const sale=sales.find(s=>s.id===id);
+    setDeleteConfirm({type:'sale',sale:{...sale,id}});
   }
 
   async function handleReset(){
@@ -3649,14 +3666,18 @@ export default function App({ loginOnly = false }){
     const files=Array.from(e.target.files||[]);
     if(!files.length)return;
     setLensResult(null);setLensAdded(false);
+    const ALLOWED_MIMES=["image/jpeg","image/png","image/gif","image/webp"];
     files.forEach(file=>{
       if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");return;}
+      const rawMime=file.type||"image/jpeg";
+      // HEIC/HEIF and other iOS formats not supported by Anthropic → declare as jpeg
+      const safeMime=ALLOWED_MIMES.includes(rawMime)?rawMime:"image/jpeg";
       const reader=new FileReader();
       reader.onload=ev=>{
         const dataUrl=ev.target.result;
         setLensPhotos(prev=>{
           if(prev.length>=5)return prev;
-          return[...prev,{preview:dataUrl,base64:dataUrl.split(",")[1],mime:file.type||"image/jpeg"}];
+          return[...prev,{preview:dataUrl,base64:dataUrl.split(",")[1],mime:safeMime}];
         });
       };
       reader.readAsDataURL(file);
@@ -3664,23 +3685,65 @@ export default function App({ loginOnly = false }){
     if(lensFileRef.current)lensFileRef.current.value="";
   }
 
-  function toggleLensMic(){
+  async function toggleLensMic(){
     if(lensMicActive){
-      lensMicRef.current?.stop();lensMicRef.current?.abort();lensMicRef.current=null;
+      if(lensMicRef.current?.stop){lensMicRef.current.stop();}
+      else if(lensMicRef.current?.abort){lensMicRef.current.abort();}
+      lensMicRef.current=null;
       setLensMicActive(false);return;
     }
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){
-      setLensResult({analysis:lang==='fr'?'❌ Saisie vocale non disponible sur iOS. Utilisez le clavier.':'❌ Voice input not available on iOS. Use the keyboard.',itemData:null});
+    if(SR){
+      const rec=new SR();
+      rec.lang=lang==="en"?"en-US":"fr-FR";
+      rec.interimResults=false;rec.continuous=false;
+      rec.onresult=e=>{const t=Array.from(e.results).map(r=>r[0].transcript).join(" ");setLensDesc(prev=>(prev?prev+" ":"")+t);};
+      rec.onend=()=>{setLensMicActive(false);lensMicRef.current=null;};
+      rec.onerror=()=>{setLensMicActive(false);lensMicRef.current=null;};
+      lensMicRef.current=rec;rec.start();setLensMicActive(true);
       return;
     }
-    const rec=new SR();
-    rec.lang=lang==="en"?"en-US":"fr-FR";
-    rec.interimResults=false;rec.continuous=false;
-    rec.onresult=e=>{const t=Array.from(e.results).map(r=>r[0].transcript).join(" ");setLensDesc(prev=>(prev?prev+" ":"")+t);};
-    rec.onend=()=>{setLensMicActive(false);lensMicRef.current=null;};
-    rec.onerror=()=>{setLensMicActive(false);lensMicRef.current=null;};
-    lensMicRef.current=rec;rec.start();setLensMicActive(true);
+    // iOS WKWebView: SpeechRecognition unavailable — use MediaRecorder + voice-transcribe
+    if(!navigator.mediaDevices?.getUserMedia){
+      setLensResult({analysis:lang==='fr'?'❌ Micro non disponible sur cet appareil.':'❌ Microphone not available on this device.',itemData:null});
+      return;
+    }
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mimeType=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":
+                     MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":
+                     MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":"audio/webm";
+      const mr=new MediaRecorder(stream,{mimeType});
+      const chunks=[];
+      mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+      mr.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        setLensMicActive(false);setLensMicLoading(true);
+        lensMicRef.current=null;
+        try{
+          const blob=new Blob(chunks,{type:mimeType});
+          const arrayBuf=await blob.arrayBuffer();
+          const b64=btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+          const{data:{session:lmSess}}=await supabase.auth.getSession();
+          const lmToken=lmSess?.access_token;
+          const res=await fetch(`${supabaseUrl}/functions/v1/voice-transcribe`,{
+            method:"POST",
+            headers:{"Content-Type":"application/json","Authorization":`Bearer ${lmToken}`,"apikey":supabaseAnonKey},
+            body:JSON.stringify({audio:b64,mimeType,lang}),
+          });
+          const json=await res.json();
+          if(json.text){setLensDesc(prev=>(prev?prev+" ":"")+json.text.trim());}
+          else if(json.error){setLensResult({analysis:`❌ ${json.error}`,itemData:null});}
+        }catch(err){
+          setLensResult({analysis:`❌ ${err.message}`,itemData:null});
+        }finally{setLensMicLoading(false);}
+      };
+      lensMicRef.current=mr;
+      mr.start();
+      setLensMicActive(true);
+    }catch(err){
+      setLensResult({analysis:lang==='fr'?'❌ Accès micro refusé.':'❌ Microphone access denied.',itemData:null});
+    }
   }
 
   async function analyzeLens(){
@@ -3888,7 +3951,7 @@ export default function App({ loginOnly = false }){
             lensAdded={lensAdded} setLensAdded={setLensAdded}
             lensDesc={lensDesc} setLensDesc={setLensDesc}
             lensBuy={lensBuy} setLensBuy={setLensBuy}
-            lensLoading={lensLoading} lensMicActive={lensMicActive}
+            lensLoading={lensLoading} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
             handleLensPhoto={handleLensPhoto} analyzeLens={analyzeLens} addLensItem={addLensItem}
@@ -4346,6 +4409,74 @@ export default function App({ loginOnly = false }){
           <style>{`
             @keyframes fadeInBd{from{opacity:0}to{opacity:1}}
           `}</style>
+        </>
+      )}
+
+      {/* ── DELETE CONFIRM MODAL ── */}
+      {deleteConfirm&&(
+        <>
+          <div onClick={()=>setDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
+            <div style={{fontSize:16,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>
+              {lang==='fr'?'🗑️ Supprimer':'🗑️ Delete'}
+            </div>
+            {deleteConfirm.type==='soldItem'&&(
+              <>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?`Cet article est marqué comme vendu. Que veux-tu supprimer ?`
+                    :`This item is marked as sold. What do you want to delete?`}
+                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <button onClick={async()=>{
+                    await supabase.from('inventaire').delete().eq('id',deleteConfirm.item.id);
+                    await fetchAll(user.id);
+                    setDeleteConfirm(null);
+                  }} style={{width:"100%",padding:"12px",background:"#F3F4F6",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,color:"#0D0D0D",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                    {lang==='fr'?'📦 Supprimer l\'article uniquement':'📦 Delete item only'}
+                    <div style={{fontSize:11,fontWeight:400,color:"#6B7280",marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
+                  </button>
+                  <button onClick={async()=>{
+                    const title=deleteConfirm.item?.title?.toLowerCase().trim();
+                    const matchingSale=sales.find(s=>s.title?.toLowerCase().trim()===title);
+                    await supabase.from('inventaire').delete().eq('id',deleteConfirm.item.id);
+                    if(matchingSale)await supabase.from('ventes').delete().eq('id',matchingSale.id);
+                    await fetchAll(user.id);
+                    setDeleteConfirm(null);
+                  }} style={{width:"100%",padding:"12px",background:"#FFF5F5",border:"1px solid #FCA5A5",borderRadius:12,fontSize:13,fontWeight:700,color:"#E53E3E",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                    {lang==='fr'?'🗑️ Supprimer et annuler le profit':'🗑️ Delete and remove profit'}
+                    <div style={{fontSize:11,fontWeight:400,color:"#E53E3E",opacity:0.8,marginTop:2}}>{lang==='fr'?'Supprime aussi la vente associée':'Also removes the associated sale'}</div>
+                  </button>
+                  <button onClick={()=>setDeleteConfirm(null)} style={{width:"100%",padding:"10px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Annuler':'Cancel'}
+                  </button>
+                </div>
+              </>
+            )}
+            {deleteConfirm.type==='sale'&&(
+              <>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?'Cette vente sera supprimée définitivement et le profit retiré du tableau de bord.'
+                    :'This sale will be permanently deleted and the profit removed from the dashboard.'}
+                  {deleteConfirm.sale?.title&&<div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.sale.title}</div>}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={async()=>{
+                    await supabase.from('ventes').delete().eq('id',deleteConfirm.sale.id);
+                    await fetchAll(user.id);
+                    setDeleteConfirm(null);
+                  }} style={{flex:1,padding:"12px",background:"#E53E3E",border:"none",borderRadius:12,fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Confirmer':'Confirm'}
+                  </button>
+                  <button onClick={()=>setDeleteConfirm(null)} style={{flex:1,padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Annuler':'Cancel'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </>
       )}
 

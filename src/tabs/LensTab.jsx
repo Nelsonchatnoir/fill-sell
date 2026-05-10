@@ -6,7 +6,7 @@ const LensTab = memo(function LensTab({
   iapProduct, iapLoading,
   lensPhotos, setLensPhotos, lensResult, setLensResult,
   lensAdded, setLensAdded, lensDesc, setLensDesc,
-  lensBuy, setLensBuy, lensLoading, lensMicActive,
+  lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, analyzeLens, addLensItem,
   handleIAPPurchase, handleIAPRestore,
@@ -93,9 +93,10 @@ const LensTab = memo(function LensTab({
           />
           <button
             onClick={toggleLensMic}
-            style={{position:"absolute",right:8,bottom:8,width:30,height:30,borderRadius:"50%",border:"none",background:lensMicActive?"#EF4444":"rgba(0,0,0,0.07)",color:lensMicActive?"#fff":"#6B7280",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",boxShadow:lensMicActive?"0 0 0 3px rgba(239,68,68,0.2)":"none"}}
+            disabled={lensMicLoading}
+            style={{position:"absolute",right:8,bottom:8,width:30,height:30,borderRadius:"50%",border:"none",background:lensMicActive?"#EF4444":lensMicLoading?"#E5E7EB":"rgba(0,0,0,0.07)",color:lensMicActive?"#fff":lensMicLoading?"#9CA3AF":"#6B7280",fontSize:15,cursor:lensMicLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",boxShadow:lensMicActive?"0 0 0 3px rgba(239,68,68,0.2)":"none"}}
           >
-            {lensMicActive?"⏹":"🎙️"}
+            {lensMicLoading?"⏳":lensMicActive?"⏹":"🎙️"}
           </button>
         </div>
 

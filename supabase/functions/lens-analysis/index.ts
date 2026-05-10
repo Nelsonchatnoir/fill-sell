@@ -131,12 +131,15 @@ serve(async (req) => {
       userStats,
     } = body;
 
+    const ALLOWED_MIME = new Set(["image/jpeg","image/png","image/gif","image/webp"]);
+    const normMime = (m: string) => ALLOWED_MIME.has(m) ? m : "image/jpeg";
+
     // Normalize to images array
     const photoList: { base64: string; mimeType: string }[] =
       Array.isArray(images) && images.length > 0
-        ? images.slice(0, 5)
+        ? images.slice(0, 5).map((p: { base64: string; mimeType: string }) => ({ base64: p.base64, mimeType: normMime(p.mimeType) }))
         : imageBase64
-        ? [{ base64: imageBase64, mimeType }]
+        ? [{ base64: imageBase64, mimeType: normMime(mimeType) }]
         : [];
 
     if (photoList.length === 0) {
