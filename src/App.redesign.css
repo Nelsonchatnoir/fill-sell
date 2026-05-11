@@ -1509,9 +1509,26 @@ body.bg-dots {
 .skeleton-item-row:nth-child(5) { animation-delay: 1.2s; }
 
 /* ============================================================
+   Résultat vocal — carte bénéfice/stats
+   ============================================================ */
+.vr-profit-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(0,0,0,0.08);
+  text-align: center;
+  animation: vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both;
+}
+@keyframes vrFadeSlide {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
    Reduced motion — disable shimmer/breath, keep state changes
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
+  .vr-profit-card,
   .profit-hero,
   .profit-hero::after,
   .fab-vocal,

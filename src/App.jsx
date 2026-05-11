@@ -1852,7 +1852,39 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="success"&&intent==="analytics_query"){
-                return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",textAlign:"center"}}><div style={{fontSize:28,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.03em"}}>{data.value}</div><div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginTop:4}}>{data.label}</div>{data.periode&&data.periode!=="all"&&<div style={{fontSize:10,color:"#D1D5DB",marginTop:2}}>{data.periode}</div>}</div>);
+                const aqIsProfit=taskData?.type==="profit";
+                const aqV=data?.value??0;
+                const aqComment=aqIsProfit
+                  ?(aqV>50?(lang==="en"?"Great day 🔥":"Bonne journée 🔥")
+                    :aqV>10?(lang==="en"?"Not bad at all 👍":"Pas mal du tout 👍")
+                    :aqV>0?(lang==="en"?"Small win 😊":"Petit gain 😊")
+                    :aqV===0?(lang==="en"?"Nothing today 💪":"Rien aujourd'hui 💪")
+                    :(lang==="en"?"In the red 😬":"Dans le rouge 😬"))
+                  :null;
+                const aqPeriode=(()=>{
+                  const p=data?.periode;
+                  if(!p||p==="all")return null;
+                  if(p==="today")return lang==="en"?"Today":"Aujourd'hui";
+                  if(p==="week")return lang==="en"?"Last 7 days":"7 derniers jours";
+                  if(p==="month")return lang==="en"?"Last 30 days":"30 derniers jours";
+                  if(p==="year")return lang==="en"?"This year":"Cette année";
+                  if(p==="custom"){
+                    const df=taskData?.date_from,dt=taskData?.date_to;
+                    const fD=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit"}):"";
+                    if(df&&dt&&df===dt)return fD(df);
+                    if(df&&dt)return`${fD(df)} – ${fD(dt)}`;
+                    return null;
+                  }
+                  return p;
+                })();
+                return(
+                  <div key={idx} className="vr-profit-card">
+                    <div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginBottom:6}}>{data?.label}</div>
+                    <div style={{fontSize:32,fontWeight:900,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
+                    {aqPeriode&&<div style={{fontSize:11,color:"#D1D5DB",marginTop:4}}>{aqPeriode}</div>}
+                    {aqComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{aqComment}</div>}
+                  </div>
+                );
               }
 
               if(status==="success"&&intent==="analytics_best"&&data?.byCategory){
@@ -2243,11 +2275,19 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const val=data?.value??0;
                 const valColor=data?.metric==="stock_immobilise"?"#F9A26C":val>=0?"#1D9E75":"#E53E3E";
                 const displayVal=isCurrency?(val>0?"+":"")+fmt(val):val+suffix;
+                const qsComment=data?.metric==="profit_mois"
+                  ?(val>50?(lang==="en"?"Great month 🔥":"Super mois 🔥")
+                    :val>10?(lang==="en"?"Not bad at all 👍":"Pas mal du tout 👍")
+                    :val>0?(lang==="en"?"Small win 😊":"Petit gain 😊")
+                    :val===0?(lang==="en"?"Nothing yet 💪":"Rien pour l'instant 💪")
+                    :(lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬"))
+                  :null;
                 return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",textAlign:"center"}}>
+                  <div key={idx} className="vr-profit-card">
                     <div style={{fontSize:12,fontWeight:800,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
                     <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{displayVal}</div>
                     {data?.metric==="stock_immobilise"&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{data?.count} {lang==="en"?"item(s) in stock":"article(s) en stock"}</div>}
+                    {qsComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{qsComment}</div>}
                   </div>
                 );
               }

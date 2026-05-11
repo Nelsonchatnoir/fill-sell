@@ -589,6 +589,17 @@ serve(async (req) => {
   try {
     const { text, lang, currency } = await req.json();
     const _lang = lang === "en" ? "en" : "fr";
+
+    // Dates dynamiques — évite les dates figées dans le prompt système
+    const _now = new Date();
+    const _todayStr = _now.toISOString().slice(0, 10);
+    const _yDay    = new Date(_now.getTime() -     86400000).toISOString().slice(0, 10);
+    const _dBefore = new Date(_now.getTime() - 2 * 86400000).toISOString().slice(0, 10);
+    const _last3   = new Date(_now.getTime() - 3 * 86400000).toISOString().slice(0, 10);
+    const dateCtx = _lang === "en"
+      ? `\n\nCURRENT DATE (overrides any date elsewhere in this prompt): Today = ${_todayStr}. Yesterday = ${_yDay}. Day before yesterday = ${_dBefore}. "Last 3 days" starts on ${_last3}.`
+      : `\n\nDATE ACTUELLE (remplace toute autre date dans ce prompt) : Aujourd'hui = ${_todayStr}. Hier = ${_yDay}. Avant-hier = ${_dBefore}. "Les 3 derniers jours" commence le ${_last3}.`;
+
     const currencyCtx = currency
       ? (_lang === "en"
         ? `\n\nUser currency: ${currency}. When an amount is mentioned without an explicit currency, assume it is in ${currency}. Example: "500 baht" → prix_achat: 500 (implicit ${currency}). "50" with no currency specified → prix_achat: 50 in ${currency}.`
@@ -621,7 +632,7 @@ serve(async (req) => {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 4096,
         temperature: 0.1,
-        system: (_lang === "en" ? SYSTEM_EN : SYSTEM_FR) + currencyCtx,
+        system: (_lang === "en" ? SYSTEM_EN : SYSTEM_FR) + currencyCtx + dateCtx,
         messages: [{ role: "user", content: text }],
       }),
     });
