@@ -1582,7 +1582,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             if(dy>60){resetVA();}
             else if(drawerRef.current){drawerRef.current.style.transition="transform 0.2s ease";drawerRef.current.style.transform="translateY(0)";}
           }}
-          style={{position:"fixed",bottom:0,left:0,right:0,maxHeight:"min(70vh,700px)",overflowY:"auto",background:"#fff",borderRadius:"20px 20px 0 0",borderTop:"0.5px solid rgba(0,0,0,0.08)",padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)",zIndex:999,boxShadow:"0 -8px 40px rgba(0,0,0,0.12)",animation:"va-slidein 0.3s ease"}}>
+          style={{position:"fixed",bottom:0,left:0,right:0,maxHeight:"min(70vh,700px)",overflowY:"auto",background:"#fff",borderRadius:"20px 20px 0 0",borderTop:"0.5px solid rgba(0,0,0,0.08)",padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)",zIndex:1001,boxShadow:"0 -8px 40px rgba(0,0,0,0.12)",animation:"va-slidein 0.3s ease"}}>
           {/* Header */}
           <div style={{display:"flex",alignItems:"center",marginBottom:16}}>
             <div style={{flex:1,display:"flex",justifyContent:"center"}}>
@@ -1999,12 +1999,15 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="pending_confirmation"&&intent==="inventory_add"){
-                const editNom=vaEdits[idx]?.nom??taskData?.nom??"";
-                const editPrix=vaEdits[idx]?.prix??taskData?.prix_achat??"";
                 const confMarque=taskData?.marque||null;
+                const rawNom=taskData?.nom??"";
+                const nomSansMar=confMarque&&rawNom?rawNom.replace(new RegExp('(^|\\s)'+confMarque.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\s|$)','gi'),' ').replace(/\s+/g,' ').trim():rawNom;
+                const editNom=vaEdits[idx]?.nom??nomSansMar;
+                const editPrix=vaEdits[idx]?.prix??taskData?.prix_achat??"";
                 const confCat=taskData?.categorie||null;
                 const confTs=confCat?getTypeStyle(confCat):null;
                 const confDesc=taskData?.description||null;
+                const confEmplacement=taskData?.emplacement||null;
                 const {loc:confLoc,rest:confDescRest}=parseLocDesc(confDesc);
                 return(
                   <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
@@ -2016,7 +2019,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       </div>
                     )}
                     {confDescRest&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:confLoc?4:8,fontStyle:"italic",lineHeight:1.4}}>{confDescRest}</div>}
-                    {confLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:8,lineHeight:1.4}}>📍 {confLoc}</div>}
+                    {confLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:confEmplacement?4:8,lineHeight:1.4}}>📍 {confLoc}</div>}
+                    {confEmplacement&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:8,lineHeight:1.4}}>📦 {confEmplacement}</div>}
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       <input value={editNom}
                         onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
@@ -2250,6 +2254,36 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
 
               if(status==="success"&&intent==="off_topic"){
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}><div style={{fontSize:13,fontWeight:600,color:"#6B7280",lineHeight:1.5}}>{message}</div></div>);
+              }
+
+              if(status==="success"&&intent==="location_items"){
+                const locItems=data?.items||[];
+                const locEmp=data?.emplacement||taskData?.emplacement||"";
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {locItems.length} {lang==="en"?"item(s)":"article(s)"}</div>
+                    {locItems.length===0
+                      ?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>)
+                      :(<div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {locItems.map((item,i)=>{
+                            const ts2=item.type?getTypeStyle(item.type):null;
+                            return(
+                              <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:i<locItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                    {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
+                                  </div>
+                                </div>
+                                <div style={{fontSize:13,fontWeight:700,color:"#F9A26C",flexShrink:0}}>{fmt(item.prix_achat||item.buy||0)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>)
+                    }
+                  </div>
+                );
               }
 
               if(status==="success"&&(intent==="business_advice"||intent==="price_advice"||intent==="price_question"||intent==="buy_advice")){

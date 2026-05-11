@@ -840,6 +840,37 @@ export async function executeVoiceTasks(tasks, context) {
           }
           break;
         }
+        case "location_items": {
+          const locEmp = norm(task.data.emplacement || "");
+          if (!locEmp) {
+            result = {
+              intent: task.intent, taskData: task.data, status: "error", data: {},
+              message: context.lang === "en" ? "No location specified" : "Aucun emplacement spécifié",
+            };
+            break;
+          }
+          const empMatches = context.items.filter(item => {
+            const e = norm(item.emplacement || "");
+            return e && e.includes(locEmp);
+          });
+          if (empMatches.length === 0) {
+            result = {
+              intent: task.intent, taskData: task.data, status: "error", data: {},
+              message: context.lang === "en"
+                ? `No items found at location "${task.data.emplacement}"`
+                : `Aucun article à l'emplacement "${task.data.emplacement}"`,
+            };
+          } else {
+            result = {
+              intent: task.intent, taskData: task.data, status: "success",
+              data: { items: empMatches, emplacement: task.data.emplacement },
+              message: context.lang === "en"
+                ? `${empMatches.length} item(s) at ${task.data.emplacement}`
+                : `${empMatches.length} article(s) à l'emplacement ${task.data.emplacement}`,
+            };
+          }
+          break;
+        }
         case "off_topic":
           result = {
             intent: "off_topic",
