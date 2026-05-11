@@ -4047,7 +4047,11 @@ export default function App({ loginOnly = false }){
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>🔢 {lang==='fr'?"Quantité":"Quantity"}</div>
                 <div style={{display:"flex",alignItems:"center",gap:0,border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:14,overflow:"hidden",background:"#fff",height:58}}>
                   <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:Math.max(1,(parseInt(p.quantite)||1)-1)}))} style={{width:52,height:"100%",border:"none",background:"transparent",fontSize:22,fontWeight:300,color:"#6B7280",cursor:"pointer",touchAction:"manipulation",flexShrink:0}}>−</button>
-                  <div style={{flex:1,textAlign:"center",fontSize:18,fontWeight:700,color:"#0D0D0D",userSelect:"none"}}>{editItem.quantite??1}</div>
+                  <input type="number" min="1" value={editItem.quantite??1}
+                    onChange={e=>setEditItem(p=>({...p,quantite:Math.max(1,parseInt(e.target.value)||1)}))}
+                    onFocus={e=>e.target.select()}
+                    style={{flex:1,border:"none",outline:"none",textAlign:"center",fontSize:18,fontWeight:700,color:"#0D0D0D",background:"transparent",width:0,MozAppearance:"textfield"}}
+                  />
                   <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:(parseInt(p.quantite)||1)+1}))} style={{width:52,height:"100%",border:"none",background:"transparent",fontSize:22,fontWeight:300,color:"#6B7280",cursor:"pointer",touchAction:"manipulation",flexShrink:0}}>+</button>
                 </div>
               </div>
