@@ -803,6 +803,43 @@ export async function executeVoiceTasks(tasks, context) {
           }
           break;
         }
+        case "inventory_location": {
+          const locNom = norm(task.data.nom || "");
+          const locMarque = norm(task.data.marque || "");
+          const locMatches = context.items.filter(item => {
+            const t = norm(item.title || "");
+            const m = norm(item.marque || "");
+            if (locNom && t.includes(locNom)) return true;
+            if (locMarque && m.includes(locMarque)) return true;
+            if (locNom) {
+              const words = locNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+              return words.length > 0 && words.every(w => t.includes(w));
+            }
+            return false;
+          });
+          if (locMatches.length === 0) {
+            result = {
+              intent: task.intent, taskData: task.data, status: "error", data: {},
+              message: context.lang === "en"
+                ? `No item matching "${task.data.nom || task.data.marque}" found in your inventory`
+                : `Aucun article "${task.data.nom || task.data.marque}" trouvé dans ton inventaire`,
+            };
+          } else {
+            const hit = locMatches[0];
+            result = {
+              intent: task.intent, taskData: task.data, status: "success",
+              data: { title: hit.title, emplacement: hit.emplacement || null },
+              message: hit.emplacement
+                ? (context.lang === "en"
+                  ? `📦 ${hit.title} → ${hit.emplacement}`
+                  : `📦 ${hit.title} → ${hit.emplacement}`)
+                : (context.lang === "en"
+                  ? `No storage location recorded for ${hit.title}`
+                  : `Aucun emplacement enregistré pour ${hit.title}`),
+            };
+          }
+          break;
+        }
         case "off_topic":
           result = {
             intent: "off_topic",

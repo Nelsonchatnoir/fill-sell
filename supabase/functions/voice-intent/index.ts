@@ -40,9 +40,19 @@ Intents disponibles :
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
 - buy_advice          → requiresConfirmation: false
+- inventory_location  → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Règle inventory_location (CRITIQUE) :
+inventory_location = l'utilisateur demande OÙ se trouve un article dans son stock physique.
+Déclencheurs : "où est [article]", "c'est où [article]", "emplacement de [article]", "où j'ai rangé [article]", "où se trouve [article]", "où as-tu mis [article]", "il est où [article]", "trouve-moi [article]".
+Data : { nom, marque }
+✅ "où est mon iPhone 13 ?" → [inventory_location {nom:"iPhone 13", marque:"Apple"}]
+✅ "c'est où les pinces Facom ?" → [inventory_location {nom:"Pinces Facom", marque:"Facom"}]
+✅ "emplacement de la veste Zara" → [inventory_location {nom:"Veste Zara", marque:"Zara"}]
+DISTINCTION : c'est une question de localisation physique, pas une recherche dans l'inventaire (inventory_search).
 
 Règle buy_advice (CRITIQUE) :
 buy_advice = l'utilisateur envisage d'ACHETER un article qu'il n'a PAS encore et demande si c'est une bonne affaire / s'il doit acheter.
@@ -112,7 +122,7 @@ Si achat ET vente sont mentionnés pour le même article → génère 3 tâches 
   3. deal_score
 Si plusieurs articles différents → répéter la triple par article.
 
-Catégories canoniques (utiliser la valeur exacte — 13 catégories possibles) :
+Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) :
 "high tech"|"hightech"|"tech"|"smartphone"|"téléphone"|"console"|"pc"|"ordinateur"|"tablette"|"casque"|"écouteurs" → "High-Tech"
 "electromenager"|"electro"|"aspirateur"|"frigo"|"lave-linge"|"micro-onde"|"cafetière" → "Électroménager"
 "auto"|"moto"|"auto moto"|"voiture"|"scooter"|"pièce auto" → "Auto-Moto"
@@ -125,6 +135,8 @@ Catégories canoniques (utiliser la valeur exacte — 13 catégories possibles) 
 "jouet"|"lego"|"playmobil"|"puzzle"|"jeu de société"|"peluche" → "Jouets"
 "vélo"|"tapis de course"|"haltères"|"raquette de tennis"|"skate"|"rollers"|"ski" → "Sport"
 "canapé"|"table"|"chaise"|"lampe"|"vaisselle"|"meuble"|"tapis"|"miroir"|"décoration" → "Maison"
+"perceuse"|"visseuse"|"meuleuse"|"tournevis"|"marteau"|"pince"|"interrupteur"|"prise électrique"|"disjoncteur"|"carrelage"|"parquet"|"facom"|"makita"|"dewalt"|"ryobi"|"stanley outil"|"mastic"|"enduit"|"cheville"|"boulon"|"scie"|"niveau bulle"|"mètre ruban" → "Bricolage"
+"tondeuse"|"débroussailleuse"|"taille-haie"|"sécateur"|"arrosoir"|"tuyau arrosage"|"terreau"|"compost"|"engrais"|"jardinage"|"brouette"|"bêche"|"tronçonneuse"|"husqvarna"|"stihl jardin" → "Jardin"
 Si aucune catégorie ne correspond → "Autre"
 
 Règle inventory_lot vs inventory_add (CRITIQUE — lire attentivement) :
@@ -174,8 +186,9 @@ Structure retournée :
 }
 
 Data par intent :
-inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
-inventory_lot:    { lotTotal, items: [{nom, marque}] }
+inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
+inventory_location: { nom, marque }
+inventory_lot:      { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
@@ -277,9 +290,19 @@ Available intents:
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
 - buy_advice          → requiresConfirmation: false
+- inventory_location  → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Rule inventory_location (CRITICAL):
+inventory_location = the user is asking WHERE a physical item is stored in their inventory.
+Triggers: "where is [item]", "where did I put [item]", "location of [item]", "where have you stored [item]", "find [item] for me", "where is my [item]".
+Data: { nom, marque }
+✅ "where is my iPhone 13?" → [inventory_location {nom:"iPhone 13", marque:"Apple"}]
+✅ "where are the Facom pliers?" → [inventory_location {nom:"Facom pliers", marque:"Facom"}]
+✅ "location of the Zara jacket" → [inventory_location {nom:"Zara jacket", marque:"Zara"}]
+DISTINCTION: this is a physical location query, not an inventory search (inventory_search).
 
 Rule buy_advice (CRITICAL):
 buy_advice = the user is considering BUYING an item they do NOT yet own, and asks if it's a good deal / whether they should buy it.
@@ -348,7 +371,7 @@ If a purchase AND sale are mentioned for the same item → generate 3 tasks in o
   3. deal_score
 If multiple different items → repeat the triple per item.
 
-Canonical categories (always use the exact value from the allowed list — 13 categories):
+Canonical categories (always use the exact value from the allowed list — 15 categories):
 "high tech"|"tech"|"smartphone"|"phone"|"console"|"pc"|"laptop"|"tablet"|"headphones"|"earbuds" → "High-Tech"
 "electromenager"|"appliance"|"vacuum"|"fridge"|"washing machine"|"microwave" → "Électroménager"
 "auto"|"moto"|"car"|"scooter"|"motorcycle" → "Auto-Moto"
@@ -361,6 +384,8 @@ Canonical categories (always use the exact value from the allowed list — 13 ca
 "toy"|"lego"|"playmobil"|"puzzle"|"board game"|"stuffed animal" → "Jouets"
 "bike"|"treadmill"|"weights"|"tennis racket"|"skateboard"|"rollerblades"|"ski" → "Sport"
 "couch"|"table"|"chair"|"lamp"|"dishes"|"furniture"|"rug"|"mirror"|"decoration" → "Maison"
+"drill"|"screwdriver"|"hammer"|"pliers"|"grinder"|"sander"|"jigsaw"|"circuit breaker"|"light switch"|"electrical socket"|"tile"|"flooring"|"wallpaper"|"facom"|"makita"|"dewalt"|"ryobi"|"stanley tool"|"mastic"|"rawlplug"|"bolt"|"saw"|"spirit level"|"tape measure" → "Bricolage"
+"lawnmower"|"strimmer"|"hedge trimmer"|"leaf blower"|"chainsaw"|"secateurs"|"watering can"|"garden hose"|"compost"|"fertiliser"|"potting soil"|"gardening"|"wheelbarrow"|"spade"|"husqvarna"|"stihl" → "Jardin"
 If no category matches → "Autre"
 
 Rule inventory_lot vs inventory_add (CRITICAL — read carefully):
@@ -410,8 +435,9 @@ Returned structure:
 }
 
 Data per intent:
-inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
-inventory_lot:    { lotTotal, items: [{nom, marque}] }
+inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
+inventory_location: { nom, marque }
+inventory_lot:      { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
