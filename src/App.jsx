@@ -2927,7 +2927,7 @@ export default function App({ loginOnly = false }){
     if(remaining>0){
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-      const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy*qVendue,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+      const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
       const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
       if(siErr)console.error("[confirmSell] soldRow insert failed:",siErr.message);
       if(si)setItems(prev=>[mapItem(si),...prev]);
@@ -3621,7 +3621,7 @@ export default function App({ loginOnly = false }){
       if(remaining>0){
         await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy*qVendue,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
         const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
         if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message);
         if(si)setItems(prev=>[mapItem(si),...prev]);
