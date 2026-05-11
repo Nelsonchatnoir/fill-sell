@@ -3693,7 +3693,8 @@ export default function App({ loginOnly = false }){
       setLensMicActive(false);return;
     }
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(SR){
+    // webkitSpeechRecognition exists in WKWebView but doesn't work in Capacitor native context
+    if(SR && !isNative){
       const rec=new SR();
       rec.lang=lang==="en"?"en-US":"fr-FR";
       rec.interimResults=false;rec.continuous=false;
