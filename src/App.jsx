@@ -1295,6 +1295,7 @@ function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
         onClick={onClick}
         disabled={isThink}
         aria-label="Parler à l'IA"
+        style={{touchAction:'manipulation'}}
       >
         {isThink
           ? <span style={{fontSize:22}}>⏳</span>
@@ -1351,7 +1352,15 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   const SURL=supabaseUrl;
 
   useEffect(()=>{
+    const onVisibility=()=>{
+      if(!document.hidden)return;
+      try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
+      vaStreamRef.current?.getTracks().forEach(t=>t.stop());
+      vaStreamRef.current=null;
+    };
+    document.addEventListener('visibilitychange',onVisibility);
     return()=>{
+      document.removeEventListener('visibilitychange',onVisibility);
       vaStreamRef.current?.getTracks().forEach(t=>t.stop());
       vaStreamRef.current=null;
     };
@@ -1400,7 +1409,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
     recorder.onstop=async()=>{
       clearTimeout(voiceAutoStopRef.current);
-      // Stream kept alive in vaStreamRef for instant restart on next click
+      // Release stream immediately so iOS clears the mic indicator
+      vaStreamRef.current?.getTracks().forEach(t=>t.stop());
+      vaStreamRef.current=null;
       const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
       const blob=new Blob(vaChunksRef.current,{type:mimeType});
       // Gate check before Whisper — use in-memory state, no Supabase read
