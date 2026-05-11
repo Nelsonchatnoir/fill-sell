@@ -2986,14 +2986,15 @@ export default function App({ loginOnly = false }){
 
   async function handleEditSave(){
     if(!editItem) return;
-    const b=parseFloat(editItem.buy)||0;
+    const qty=Math.max(1,parseInt(editItem.quantite)||1);
+    const rawB=parseFloat(editItem.buy)||0;
+    const b=(editItem.priceMode==="total"&&qty>1)?rawB/qty:rawB;
     const s=parseFloat(editItem.sell)||0;
     const f=parseFloat(editItem.frais)||0;
     const hasS=s>0;
     const mg=hasS?s-b-f:null;
     const mgp=hasS?(mg/s)*100:null;
     const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
-    const qty=Math.max(1,parseInt(editItem.quantite)||1);
     const{error}=await supabase.from('inventaire').update({
       titre:editItem.title,
       marque:editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null,
@@ -4041,6 +4042,21 @@ export default function App({ loginOnly = false }){
                 <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
               </select>
               <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")}set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+              {(parseInt(editItem.quantite)||1)>1&&(
+                <div style={{display:"flex",gap:4,background:"#F1F5F9",borderRadius:10,padding:4}}>
+                  {["unit","total"].map(mode=>(
+                    <button key={mode} type="button"
+                      onClick={()=>setEditItem(p=>({...p,priceMode:mode}))}
+                      style={{flex:1,padding:"8px 0",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",touchAction:"manipulation",
+                        background:(editItem.priceMode??"unit")===mode?"#fff":"transparent",
+                        color:(editItem.priceMode??"unit")===mode?C.teal:"#6B7280",
+                        boxShadow:(editItem.priceMode??"unit")===mode?"0 1px 4px rgba(0,0,0,0.1)":"none",
+                        transition:"all 0.15s"}}>
+                      {mode==="unit"?(lang==='fr'?"Par article":"Per item"):(lang==='fr'?"Prix total lot":"Total lot price")}
+                    </button>
+                  ))}
+                </div>
+              )}
               <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <div>
