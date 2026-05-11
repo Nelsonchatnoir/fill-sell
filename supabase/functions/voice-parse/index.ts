@@ -15,7 +15,7 @@ Règles absolues :
 - Détecter l'action principale : achat ou vente
 - Extraire TOUS les articles mentionnés, même implicitement
 - Si quantité > 1 : garder quantite dans l'objet, NE PAS dupliquer les items
-- Classer dans la bonne catégorie selon les mots-clés fournis
+- Classer dans la bonne catégorie parmi les 15 valeurs autorisées (utilise ta connaissance pour déterminer la catégorie)
 - Si article collector/limité/vintage/scellé → privilégier Collection
 - confidence : 0.9-1.0 si tout clair, 0.6-0.8 si partiel, < 0.6 si ambigu
 - description : extraire les qualificatifs mentionnés — couleur, taille (S/M/L/XL ou numérique), état (neuf, bon état, usé, abîmé, vintage...), matière si précisée. Format court et lisible : "Noir, taille 36" ou "Usé, taille 44" ou "Cuir, neuf". null si aucun qualificatif mentionné.
@@ -101,25 +101,6 @@ Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat
 Catégories autorisées (valeurs exactes) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
 
-Mots-clés par catégorie :
-MODE : veste, manteau, doudoune, pull, hoodie, sweat, t-shirt, tee shirt, polo, chemise, pantalon, jean, jogging, survêtement, short, jupe, robe, blazer, costume, tailleur, cardigan, débardeur, crop top, lingerie, soutien gorge, chaussettes, collants, bonnet, casquette, écharpe, foulard, ceinture, sac, sacoche, tote bag, portefeuille, porte monnaie, nike tech, tech fleece, zara, h&m, uniqlo, bershka, stradivarius, shein, asos, levi's, carhartt, dickies, stone island, ralph lauren, tommy hilfiger, lacoste, adidas, nike, puma, converse, vans, jordan, supreme, stussy — ET toutes chaussures/sneakers/baskets non collector
-HIGH-TECH : iphone, samsung, galaxy, ipad, macbook, imac, apple watch, airpods, casque, écouteurs, enceinte, alexa, clavier, souris, pc gamer, ordinateur, laptop, tablette, console, playstation, ps4, ps5, xbox, switch, nintendo, steam deck, écran, moniteur, imprimante, appareil photo, caméra, gopro, drone, chargeur, câble, usb, disque dur, ssd, gpu, carte graphique, processeur, rtx, smartphone, téléphone, portable, manette, webcam, micro, homepod
-MAISON : table, chaise, canapé, meuble, commode, armoire, étagère, bureau, lampe, tapis, rideaux, coussin, couette, drap, matelas, décoration, déco, vase, miroir, cadre, horloge, casserole, poêle, assiette, verre, tasse, cafetière, machine café, nespresso, dyson, aspirateur, balai, rangement, bougie, plaid, serviette, linge maison, barbecue, jardin, plante, pot, ikea, maison du monde
-ÉLECTROMÉNAGER : frigo, réfrigérateur, congélateur, lave linge, machine à laver, sèche linge, lave vaisselle, four, micro onde, plaque induction, aspirateur robot, thermomix, cookeo, air fryer, climatiseur, ventilateur, radiateur, senseo, dolce gusto, blender, mixeur, grille pain, bouilloire, centrale vapeur, fer à repasser, robot cuisine, extracteur jus, nettoyeur vapeur
-LUXE : louis vuitton, lv, gucci, prada, chanel, dior, hermes, ysl, saint laurent, balenciaga, fendi, burberry, rolex, cartier, longines, omega, tiffany, moncler, canada goose, loro piana, celine, givenchy, valentino, versace, goyard, jacquemus, kenzo, ami paris, sac luxe, montre luxe, parfum luxe
-JOUETS : lego, playmobil, figurine, pokemon, funko pop, poupée, barbie, nerf, hot wheels, peluche, jouet, puzzle, jeux éducatifs, beyblade, yu gi oh, cartes pokemon, figurines manga, dragon ball, one piece, disney, mario kart, rc, télécommandé
-LIVRES : livre, manga, bd, bande dessinée, roman, encyclopédie, dictionnaire, comics, harry potter, naruto, berserk, manuel scolaire, kindle, ebook, magazine
-SPORT : vélo, trottinette, haltères, musculation, fitness, tapis course, football, basket ball, ballon, raquette, tennis, padel, ski, snowboard, surf, rollers, patins, équipement sport, maillot foot, crampons, vélo électrique, vtt, crossfit, yoga, pilates, nike running, adidas running
-AUTO-MOTO : voiture, moto, scooter, casque moto, pneu, jante, autoradio, gps, pièce auto, moteur, batterie voiture, huile moteur, rétroviseur, phare, siège auto, dashcam, bmw, audi, mercedes, volkswagen, peugeot, renault, citroen, yamaha, kawasaki, ktm, honda
-BEAUTÉ : parfum, maquillage, rouge à lèvres, fond de teint, skincare, soin visage, crème, serum, shampoing, lisseur, sèche cheveux, dyson airwrap, sephora, nocibé, estée lauder, yves rocher, beauty blender, vernis, mascara, gloss
-MUSIQUE : guitare, basse électrique, piano, violon, batterie (drums), synthétiseur, synthé, ukulélé, trompette, saxophone, accordéon, contrebasse, clavier midi, pédale d'effet, pédale guitare, table de mixage, ampli guitare, ampli basse, vinyle, vinyl, platine vinyle, cd, cassette audio, partition, solfège, instrument de musique, enregistreur, contrôleur dj, pioneer dj, micro studio, enceinte studio, moniteur studio — marques fortes : Gibson, Fender, Marshall, Roland (claviers/batteries), Ibanez, Epiphone, Boss (pédales), Shure, Yamaha (instruments), Behringer, Steinberg
-RÈGLE MUSIQUE vs HIGH-TECH (ABSOLUE) : une guitare, une basse, un piano, un ampli guitare, un synthétiseur → MUSIQUE et JAMAIS High-Tech. Les instruments de musique ne sont PAS du High-Tech même s'ils sont électriques ou numériques. Une Gibson Les Paul → Musique. Un Roland Juno → Musique.
-COLLECTION : pokemon scellé, cartes rares, collection, collector, édition limitée, vintage, figurine collector, console rétro, gameboy, game cube, n64, retro gaming, pièces monnaie, timbres, cartes yu gi oh, sneakers limitées, funko rare, montre collection
-BRICOLAGE : perceuse, visseuse, meuleuse, ponceuse, scie (circulaire / sauteuse), tournevis, marteau, pince, pinces, clé plate, clé allen, foret, niveau bulle, niveau laser, mètre ruban, interrupteur, prise électrique, disjoncteur, tableau électrique, fusible, câble électrique, carrelage, parquet, lame parquet, papier peint, rouleau peinture, pinceau peinture, mastic, enduit, joint silicone, cheville, boulon, vis, établi, étau, serre-joint — marques fortes : Facom, Stanley (outils), Makita, DeWalt, Ryobi, Bosch (outillage), Karcher (nettoyeur haute pression)
-JARDIN : tondeuse, débroussailleuse, taille-haie, souffleur feuilles, tronçonneuse, sécateur, élagueuse, scarificateur, arrosoir, tuyau arrosage, asperseur, pompe jardin, bêche, râteau, pelle, fourche, binette, brouette, compost, terreau, engrais, graines jardin, jardinage — marques fortes : Husqvarna, Stihl, Gardena
-RÈGLE BRICOLAGE vs MAISON : un outil électroportatif (perceuse, visseuse, meuleuse...) → BRICOLAGE. Un appareil électroménager (aspirateur, cafetière...) → ÉLECTROMÉNAGER. Un arrosoir ou une tondeuse → JARDIN, pas Maison.
-AUTRE : tout ce qui ne correspond à aucune catégorie ci-dessus
-
 RÈGLE EMPLACEMENT :
 emplacement = lieu de STOCKAGE PHYSIQUE de l'article (tiroir, portant, étagère, stockeur, bac, box...).
 Déclencheurs : "dans le tiroir X", "sur le portant X", "dans le stockeur X", "rangé en X", "box X", "étagère X", "bac X".
@@ -165,7 +146,7 @@ Absolute rules :
 - Detect the main action : purchase or sale
 - Extract ALL mentioned items, even implicitly
 - If quantity > 1 : keep quantite in the object, DO NOT duplicate items
-- Classify in the right category using the keywords below
+- Classify in the right category among the 15 allowed values (use your knowledge to determine the category)
 - If item is collector/limited/vintage/sealed → prefer Collection
 - confidence : 0.9-1.0 if clear, 0.6-0.8 if partial, < 0.6 if ambiguous
 - description: extract any qualifiers mentioned — color, size (S/M/L/XL or numeric), condition (new, good condition, worn, damaged, vintage...), material if specified. Short readable format: "Black, size 36" or "Worn, size 44" or "Leather, new". null if no qualifiers mentioned.
@@ -250,25 +231,6 @@ If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unch
 
 Allowed categories (exact values) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
-
-Category keywords :
-MODE : jacket, coat, hoodie, sweatshirt, t-shirt, polo, shirt, pants, jeans, jogger, tracksuit, shorts, skirt, dress, blazer, suit, cardigan, tank top, lingerie, socks, tights, beanie, cap, scarf, belt, bag, backpack, wallet, nike tech, tech fleece, zara, h&m, uniqlo, shein, asos, levi's, carhartt, stone island, ralph lauren, tommy hilfiger, lacoste, adidas, nike, puma, converse, vans, jordan, supreme, stussy, sneakers, shoes, trainers, boots
-HIGH-TECH : iphone, samsung, galaxy, ipad, macbook, imac, apple watch, airpods, headphones, earbuds, speaker, alexa, keyboard, mouse, gaming pc, laptop, computer, tablet, console, playstation, ps4, ps5, xbox, switch, nintendo, steam deck, monitor, screen, printer, camera, gopro, drone, charger, cable, hard drive, ssd, gpu, graphics card, processor, rtx, smartphone, phone, controller, webcam, microphone, homepod
-MAISON : table, chair, sofa, couch, furniture, dresser, wardrobe, shelf, desk, lamp, rug, curtains, cushion, duvet, sheets, mattress, decoration, vase, mirror, frame, clock, cookware, pan, plate, glass, cup, coffee maker, nespresso, dyson, vacuum, storage, candle, blanket, towel, barbecue, garden, plant, ikea
-ÉLECTROMÉNAGER : fridge, freezer, washing machine, dryer, dishwasher, oven, microwave, induction hob, robot vacuum, thermomix, air fryer, air conditioner, fan, heater, coffee machine, blender, mixer, toaster, kettle, steam iron, food processor, juicer
-LUXE : louis vuitton, lv, gucci, prada, chanel, dior, hermes, ysl, saint laurent, balenciaga, fendi, burberry, rolex, cartier, longines, omega, tiffany, moncler, canada goose, loro piana, celine, givenchy, valentino, versace, goyard, jacquemus, kenzo, luxury bag, luxury watch, luxury perfume
-JOUETS : lego, playmobil, figurine, pokemon, funko pop, doll, barbie, nerf, hot wheels, plush, toy, puzzle, beyblade, yu gi oh, pokemon cards, manga figures, dragon ball, one piece, disney, mario kart, remote control
-LIVRES : book, manga, comic, novel, encyclopedia, dictionary, harry potter, naruto, berserk, textbook, kindle, ebook, magazine
-SPORT : bike, scooter, dumbbells, gym, fitness, treadmill, football, basketball, ball, racket, tennis, padel, ski, snowboard, surf, rollers, skates, sport equipment, football jersey, cleats, electric bike, crossfit, yoga, pilates, running shoes
-AUTO-MOTO : car, motorcycle, scooter, helmet, tyre, rim, car radio, gps, car part, engine, car battery, mirror, headlight, car seat, dashcam, bmw, audi, mercedes, volkswagen, peugeot, renault, citroen, yamaha, kawasaki, honda
-BEAUTÉ : perfume, makeup, lipstick, foundation, skincare, face cream, serum, shampoo, hair straightener, hair dryer, dyson airwrap, nail polish, mascara, gloss
-MUSIQUE : guitar, bass guitar, piano, violin, drums, synthesizer, synth, ukulele, trumpet, saxophone, accordion, double bass, midi keyboard, effect pedal, guitar pedal, mixing desk, guitar amp, bass amp, vinyl, vinyl record, turntable, cd, audio cassette, sheet music, music instrument, recording interface, studio microphone, studio monitor, dj controller, pioneer dj, loopstation — strong brands: Gibson, Fender, Marshall, Roland (keyboards/drums), Ibanez, Epiphone, Boss (pedals), Shure, Yamaha (instruments), Behringer, Steinberg
-MUSIQUE vs HIGH-TECH (ABSOLUTE RULE): a guitar, bass, piano, guitar amp, synthesizer → MUSIQUE and NEVER High-Tech. Musical instruments are NOT High-Tech even if electric or digital. A Gibson Les Paul → Musique. A Roland Juno → Musique.
-COLLECTION : sealed pokemon, rare cards, collection, collector, limited edition, vintage, collector figurine, retro console, gameboy, gamecube, n64, retro gaming, coins, stamps, yu gi oh cards, limited sneakers, rare funko, collector watch
-BRICOLAGE (DIY) : drill, power drill, screwdriver, hammer, pliers, angle grinder, sander, jigsaw, circular saw, spanner, allen key, drill bit, spirit level, laser level, tape measure, light switch, electrical socket, circuit breaker, fuse box, electric cable, tiles, flooring, laminate, wallpaper, paint roller, paintbrush, mastic, filler, silicone sealant, rawlplug, bolt, screw, workbench, vice, clamp — strong brands: Facom, Stanley (tools), Makita, DeWalt, Ryobi, Bosch (power tools), Karcher (pressure washer)
-JARDIN (Garden) : lawnmower, strimmer, hedge trimmer, leaf blower, chainsaw, secateurs, pruner, scarifier, watering can, garden hose, sprinkler, garden pump, spade, rake, garden fork, hoe, wheelbarrow, compost, potting soil, fertiliser, garden seeds, gardening — strong brands: Husqvarna, Stihl, Gardena
-RULE BRICOLAGE vs MAISON: a power tool (drill, grinder, sander...) → BRICOLAGE. A home appliance (vacuum, coffee maker...) → ÉLECTROMÉNAGER. A watering can or lawnmower → JARDIN, not Maison.
-AUTRE : anything that does not clearly match the above categories
 
 EMPLACEMENT RULE:
 emplacement = PHYSICAL STORAGE location (drawer, rack, shelf, bin, box...).
