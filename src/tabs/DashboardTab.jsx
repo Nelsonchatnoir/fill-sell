@@ -54,7 +54,7 @@ function buildChartData(salesArr, range, now, lang){
 
 const DashboardTab = memo(function DashboardTab({
   lang, currency, isPremium, isNative, loading,
-  items, sales, stock, stockVal,
+  items, sales, stock, stockVal, stockQty,
   tm, salesForKpis, totalM,
   selectedRange, setSelectedRange,
   delSale, resetStep, setResetStep, handleReset,
@@ -180,7 +180,7 @@ const DashboardTab = memo(function DashboardTab({
             <Kpi label={t('ceMois')} value={fmt(tm?.profit||0)} sub={tpl('venteLabel',{n:tm?.count||0})} color="#1D9E75" icon="📊"/>
             <Kpi label={t('margeMoy')} value={fmtp(avgM)} sub={t('toutesVentes')} color="#5DCAA5" icon="📈"/>
             <Kpi label={t('revenuBrutLabel')} value={fmt(totalR)} sub={t('totalEncaisse')} color="#1D9E75" icon="💎"/>
-            <Kpi label={t('enStock')} value={`${stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} color="#A3A9A6" icon="📦"/>
+            <Kpi label={t('enStock')} value={`${stockQty??stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} color="#A3A9A6" icon="📦"/>
           </div>
 
           {/* Sélecteur de période */}
