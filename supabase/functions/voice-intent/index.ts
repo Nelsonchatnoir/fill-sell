@@ -483,7 +483,7 @@ DESCRIPTION = everything else, in this order if present:
   1. Capacity / size / weight (256GB, 20g, 1TB, size S, size 10...)
   2. Condition (cracked screen, new, damaged, scratched, worn, good condition...)
   3. Color
-  4. Place of purchase / origin (bought in London...)
+  4. Place of purchase / origin (bought in London, found at a flea market, picked up in Manchester, got at a car boot sale...)
   5. Other (with 2 controllers, with charger...)
 Format: "256GB, cracked screen" or "Size S, pink" or "20g". null if no qualifiers.
 Mandatory examples:
@@ -492,6 +492,8 @@ Mandatory examples:
 ✅ "PS4 Pro 1TB with 2 controllers" → nom:"PS4 Pro", description:"1TB, with 2 controllers"
 ✅ "Zara jacket size S pink bought in Paris" → nom:"Zara jacket", description:"Size S, pink, bought in Paris"
 ✅ "Laneige Lip Sleeping Mask Berry 20g" → nom:"Laneige Lip Sleeping Mask Berry", description:"20g"
+✅ "found a Nike Air Max at a car boot sale in London" → nom:"Nike Air Max", description:"found at a car boot sale in London", emplacement:null
+✅ "picked up a Zara jacket in Manchester" → nom:"Zara jacket", description:"picked up in Manchester", emplacement:null
 
 Emplacement rule (inventory_add):
 emplacement = PHYSICAL location where the item is stored (drawer, rack, shelf, bin, box, container...).
@@ -504,7 +506,14 @@ Extract the name/code freely, capitalise the type and preserve the code as-is.
   ✅ "box C" → emplacement: "Box C"
   ✅ "shelf 3" → emplacement: "Shelf 3"
 No storage mention → emplacement: null.
-CRITICAL DISTINCTION: STORAGE/SHELVING location → emplacement. PURCHASE location (Paris, flea market...) → description.
+CRITICAL DISTINCTION: STORAGE/SHELVING location → emplacement. PURCHASE location → description (NEVER emplacement).
+Purchase-location phrases — always → description, emplacement: null:
+  "found at/in [place]", "picked up in/at/from [place]", "got at/in [place]", city names used as origin
+  Venues: flea market, car boot sale, charity shop, thrift store, brocante, boot fair, jumble sale
+  ❌ "found at a car boot sale in London" → emplacement:"car boot sale" (WRONG)
+  ✅ "found at a car boot sale in London" → description:"found at a car boot sale in London", emplacement:null
+  ✅ "picked up in Manchester" → description:"picked up in Manchester", emplacement:null
+  ✅ "I bought this at a flea market in London" → description:"bought at a flea market in London", emplacement:null
 
 Quantity rules:
 - inventory_add: quantite = number of units bought (default 1 if not mentioned).
@@ -546,8 +555,8 @@ function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unkno
   pull(/\b(?:neuf|neuve|abîm[eé]e?|abim[eé]e?|cass[eé]e?|ray[eé]e?|us[eé]e?|d[eé]faillant[e]?|fonctionnel(?:le)?|endommagé[e]?|reconditionn[eé]e?|r[eé]nov[eé]e?|cracked|broken|damaged|scratched|refurbished)\b/gi, cond);
   // 3. Colors
   pull(/\b(?:blanc|blanche|noir|noire|rouge|rose|vert(?:e)?|bleu(?:e)?|gris(?:e)?|jaune|violet(?:te)?|beige|marron|orange|cr[eè]me|argent[eé]?|dor[eé]e?|white|black|red|pink|green|blue|gr[ae]y|yellow|purple|brown|cream|silver|gold)\b/gi, col);
-  // 4. Location — capture full multi-word place names (e.g. "Los Angeles", "New York")
-  pull(/\b(?:acheté[e]?\s+(?:à|en|au|aux)|bought\s+(?:in|at))\s+\w+(?:\s+\w+)*/gi, loc);
+  // 4. Location — purchase origin, multi-word (e.g. "car boot sale in London", "Manchester")
+  pull(/\b(?:acheté[e]?\s+(?:à|en|au|aux)|bought\s+(?:in|at)|found\s+(?:at|in)|picked\s+up\s+(?:in|at|from)|got\s+(?:at|in|from))\s+\w+(?:\s+\w+)*/gi, loc);
   // 5. Accessories
   pull(/\bavec\s+[^,]+/gi, oth);
   pull(/\bwith\s+[^,]+/gi, oth);
