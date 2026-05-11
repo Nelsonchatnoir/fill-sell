@@ -41,9 +41,19 @@ Intents disponibles :
 - price_advice        → requiresConfirmation: false
 - buy_advice          → requiresConfirmation: false
 - inventory_location  → requiresConfirmation: false
+- location_items      → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Règle location_items (CRITIQUE) :
+location_items = l'utilisateur demande QUELS articles se trouvent à un emplacement donné.
+Déclencheurs : "qu'est-ce que j'ai sur [emplacement]", "qu'est-ce qu'il y a sur [emplacement]", "qu'est-ce qu'il y a dans [emplacement]", "montre-moi ce qu'il y a sur [emplacement]", "qu'est-ce que j'ai dans [emplacement]", "liste les articles sur [emplacement]", "c'est quoi sur [emplacement]", "qu'est-ce qu'il y a en [emplacement]".
+Data : { emplacement }
+✅ "qu'est-ce que j'ai sur le portant 42 ?" → [location_items {emplacement:"Portant 42"}]
+✅ "qu'est-ce qu'il y a dans le tiroir 3B ?" → [location_items {emplacement:"Tiroir 3B"}]
+✅ "montre-moi le stockeur 2" → [location_items {emplacement:"Stockeur 2"}]
+DISTINCTION : inventory_location = chercher OÙ est un article précis. location_items = chercher QUELS articles sont à un emplacement donné.
 
 Règle inventory_location (CRITIQUE) :
 inventory_location = l'utilisateur demande OÙ se trouve un article dans son stock physique.
@@ -188,6 +198,7 @@ Structure retournée :
 Data par intent :
 inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_location: { nom, marque }
+location_items:     { emplacement }
 inventory_lot:      { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -291,9 +302,19 @@ Available intents:
 - price_advice        → requiresConfirmation: false
 - buy_advice          → requiresConfirmation: false
 - inventory_location  → requiresConfirmation: false
+- location_items      → requiresConfirmation: false
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
+
+Rule location_items (CRITICAL):
+location_items = the user asks WHAT items are at a given storage location.
+Triggers: "what do I have on [location]", "what's on [location]", "what's in [location]", "show me what's on [location]", "what items are on [location]", "list items on [location]", "what do I have in [location]".
+Data: { emplacement }
+✅ "what do I have on rack 42?" → [location_items {emplacement:"Rack 42"}]
+✅ "what's in drawer 3B?" → [location_items {emplacement:"Drawer 3B"}]
+✅ "show me bin 2" → [location_items {emplacement:"Bin 2"}]
+DISTINCTION: inventory_location = find WHERE a specific item is. location_items = find WHAT items are at a given location.
 
 Rule inventory_location (CRITICAL):
 inventory_location = the user is asking WHERE a physical item is stored in their inventory.
@@ -437,6 +458,7 @@ Returned structure:
 Data per intent:
 inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_location: { nom, marque }
+location_items:     { emplacement }
 inventory_lot:      { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
