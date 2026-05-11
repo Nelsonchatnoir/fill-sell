@@ -639,7 +639,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1};}
+function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -2822,7 +2822,7 @@ export default function App({ loginOnly = false }){
       const marqueNorm=normalizeMarque(item.marque);
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
       if(!isPremium&&items.length>=20)continue;
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty};
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem(data),...prev]);
@@ -3358,8 +3358,8 @@ export default function App({ loginOnly = false }){
       monthGroups[key].rows.push(item);
     });
 
-    const MONTH_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat','Frais','Prix vente','Bénéfice','Marge %','Date vente'];
-    const MONTH_COLS=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:12},{wch:10},{wch:12},{wch:12},{wch:10},{wch:12}];
+    const MONTH_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat','Frais','Prix vente','Bénéfice','Marge %','Emplacement','Date vente'];
+    const MONTH_COLS=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:12},{wch:10},{wch:12},{wch:12},{wch:10},{wch:14},{wch:12}];
     const summaryData=[];
 
     Object.keys(monthGroups).sort().forEach(key=>{
@@ -3386,6 +3386,7 @@ export default function App({ loginOnly = false }){
           {v:parseFloat(sell.toFixed(2)),t:'n',s:rs},
           {v:parseFloat(margin.toFixed(2)),t:'n',s:{...rs,font:{color:{rgb:margin>=0?"1D9E75":"DC2626"}}}},
           {v:parseFloat((item.marginPct||0).toFixed(1)),t:'n',s:rs},
+          {v:item.emplacement||'',t:'s',s:rs},
           {v:item.date?new Date(item.date).toLocaleDateString('fr-FR'):'',t:'s',s:rs},
         ]);
       });
@@ -3399,6 +3400,7 @@ export default function App({ loginOnly = false }){
         {v:parseFloat(totSell.toFixed(2)),t:'n',s:TS},
         {v:parseFloat(totMargin.toFixed(2)),t:'n',s:{...TS,font:{bold:true,color:{rgb:totMargin>=0?"1D9E75":"DC2626"}}}},
         {v:parseFloat(avgPct.toFixed(1)),t:'n',s:TS},
+        {v:'',t:'s',s:TS},
         {v:'',t:'s',s:TS},
       ]);
 
@@ -3435,7 +3437,7 @@ export default function App({ loginOnly = false }){
     XLSX.utils.book_append_sheet(wb,recapWs,'Récapitulatif');
 
     // Inventaire (stock actuel)
-    const INV_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat unit.','Total investi','Date ajout'];
+    const INV_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat unit.','Total investi','Emplacement','Date ajout'];
     const invAoa=[INV_HEADERS.map(h=>({v:h,t:'s',s:HS}))];
     stock.forEach((item,idx)=>{
       const rs=RS[idx%2];
@@ -3448,11 +3450,12 @@ export default function App({ loginOnly = false }){
         {v:qty,t:'n',s:rs},
         {v:parseFloat((item.buy||0).toFixed(2)),t:'n',s:rs},
         {v:parseFloat(((item.buy||0)*qty).toFixed(2)),t:'n',s:rs},
+        {v:item.emplacement||'',t:'s',s:rs},
         {v:item.date_ajout?new Date(item.date_ajout).toLocaleDateString('fr-FR'):'',t:'s',s:rs},
       ]);
     });
     const invWs=XLSX.utils.aoa_to_sheet(invAoa);
-    invWs['!cols']=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:14},{wch:13},{wch:12}];
+    invWs['!cols']=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:14},{wch:13},{wch:14},{wch:12}];
     XLSX.utils.book_append_sheet(wb,invWs,'Inventaire');
 
     const filename=`fillsell-export-${today}.xlsx`;
@@ -3690,7 +3693,7 @@ export default function App({ loginOnly = false }){
       const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
       const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(error)throw new Error(error.message);

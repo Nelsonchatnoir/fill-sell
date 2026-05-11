@@ -174,7 +174,7 @@ Structure retournée :
 }
 
 Data par intent :
-inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description }
+inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_lot:    { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -208,6 +208,19 @@ Exemples OBLIGATOIRES :
 ✅ "Nike Air Max 90 taille 42 coloris blanc" → nom:"Nike Air Max 90", description:"Taille 42, coloris blanc"
 ✅ "PS4 Pro 1To avec 2 manettes" → nom:"PS4 Pro", description:"1To, avec 2 manettes"
 ✅ "Veste Zara taille S rose achetée à Paris" → nom:"Veste Zara", description:"Taille S, rose, achetée à Paris"
+
+Règle emplacement (inventory_add) :
+emplacement = lieu PHYSIQUE où l'article est rangé/stocké (tiroir, portant, étagère, stockeur, bac, box, carton...).
+Déclencheurs : "dans le tiroir X", "sur le portant X", "dans le stockeur X", "rangé en X", "étagère X", "box X", "bac X".
+Extraire le nom/code librement, capitaliser le type et conserver le code tel quel.
+  ✅ "stocké dans le tiroir 45A" → emplacement: "Tiroir 45A"
+  ✅ "sur le portant 42" → emplacement: "Portant 42"
+  ✅ "dans le stockeur 2B" → emplacement: "Stockeur 2B"
+  ✅ "rangé en B3" → emplacement: "B3"
+  ✅ "dans la box C" → emplacement: "Box C"
+  ✅ "étagère 3" → emplacement: "Étagère 3"
+Aucune mention de rangement → emplacement: null.
+DISTINCTION CRITIQUE : lieu de STOCKAGE/RANGEMENT → emplacement. Lieu d'ACHAT (Paris, brocante...) → description.
 
 Règle quantite/quantite_vendue :
 - inventory_add : quantite = nombre d'exemplaires achetés (défaut 1 si non mentionné).
@@ -397,7 +410,7 @@ Returned structure:
 }
 
 Data per intent:
-inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description }
+inventory_add:    { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_lot:    { lotTotal, items: [{nom, marque}] }
 inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -431,6 +444,19 @@ Mandatory examples:
 ✅ "PS4 Pro 1TB with 2 controllers" → nom:"PS4 Pro", description:"1TB, with 2 controllers"
 ✅ "Zara jacket size S pink bought in Paris" → nom:"Zara jacket", description:"Size S, pink, bought in Paris"
 ✅ "Laneige Lip Sleeping Mask Berry 20g" → nom:"Laneige Lip Sleeping Mask Berry", description:"20g"
+
+Emplacement rule (inventory_add):
+emplacement = PHYSICAL location where the item is stored (drawer, rack, shelf, bin, box, container...).
+Triggers: "stored in drawer X", "on rack X", "in bin X", "stored in X", "shelf X", "box X", "in slot X".
+Extract the name/code freely, capitalise the type and preserve the code as-is.
+  ✅ "stored in drawer 45A" → emplacement: "Drawer 45A"
+  ✅ "on rack 42" → emplacement: "Rack 42"
+  ✅ "in bin 2B" → emplacement: "Bin 2B"
+  ✅ "stored in B3" → emplacement: "B3"
+  ✅ "box C" → emplacement: "Box C"
+  ✅ "shelf 3" → emplacement: "Shelf 3"
+No storage mention → emplacement: null.
+CRITICAL DISTINCTION: STORAGE/SHELVING location → emplacement. PURCHASE location (Paris, flea market...) → description.
 
 Quantity rules:
 - inventory_add: quantite = number of units bought (default 1 if not mentioned).
