@@ -99,7 +99,7 @@ Si les frais sont précisés par article (mots-clés "chacun/chaque/pièce" port
 Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat inchangé).
 
 Catégories autorisées (valeurs exactes) :
-["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Autre"]
+["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
 
 Mots-clés par catégorie :
 MODE : veste, manteau, doudoune, pull, hoodie, sweat, t-shirt, tee shirt, polo, chemise, pantalon, jean, jogging, survêtement, short, jupe, robe, blazer, costume, tailleur, cardigan, débardeur, crop top, lingerie, soutien gorge, chaussettes, collants, bonnet, casquette, écharpe, foulard, ceinture, sac, sacoche, tote bag, portefeuille, porte monnaie, nike tech, tech fleece, zara, h&m, uniqlo, bershka, stradivarius, shein, asos, levi's, carhartt, dickies, stone island, ralph lauren, tommy hilfiger, lacoste, adidas, nike, puma, converse, vans, jordan, supreme, stussy — ET toutes chaussures/sneakers/baskets non collector
@@ -115,6 +115,9 @@ BEAUTÉ : parfum, maquillage, rouge à lèvres, fond de teint, skincare, soin vi
 MUSIQUE : guitare, basse électrique, piano, violon, batterie (drums), synthétiseur, synthé, ukulélé, trompette, saxophone, accordéon, contrebasse, clavier midi, pédale d'effet, pédale guitare, table de mixage, ampli guitare, ampli basse, vinyle, vinyl, platine vinyle, cd, cassette audio, partition, solfège, instrument de musique, enregistreur, contrôleur dj, pioneer dj, micro studio, enceinte studio, moniteur studio — marques fortes : Gibson, Fender, Marshall, Roland (claviers/batteries), Ibanez, Epiphone, Boss (pédales), Shure, Yamaha (instruments), Behringer, Steinberg
 RÈGLE MUSIQUE vs HIGH-TECH (ABSOLUE) : une guitare, une basse, un piano, un ampli guitare, un synthétiseur → MUSIQUE et JAMAIS High-Tech. Les instruments de musique ne sont PAS du High-Tech même s'ils sont électriques ou numériques. Une Gibson Les Paul → Musique. Un Roland Juno → Musique.
 COLLECTION : pokemon scellé, cartes rares, collection, collector, édition limitée, vintage, figurine collector, console rétro, gameboy, game cube, n64, retro gaming, pièces monnaie, timbres, cartes yu gi oh, sneakers limitées, funko rare, montre collection
+BRICOLAGE : perceuse, visseuse, meuleuse, ponceuse, scie (circulaire / sauteuse), tournevis, marteau, pince, pinces, clé plate, clé allen, foret, niveau bulle, niveau laser, mètre ruban, interrupteur, prise électrique, disjoncteur, tableau électrique, fusible, câble électrique, carrelage, parquet, lame parquet, papier peint, rouleau peinture, pinceau peinture, mastic, enduit, joint silicone, cheville, boulon, vis, établi, étau, serre-joint — marques fortes : Facom, Stanley (outils), Makita, DeWalt, Ryobi, Bosch (outillage), Karcher (nettoyeur haute pression)
+JARDIN : tondeuse, débroussailleuse, taille-haie, souffleur feuilles, tronçonneuse, sécateur, élagueuse, scarificateur, arrosoir, tuyau arrosage, asperseur, pompe jardin, bêche, râteau, pelle, fourche, binette, brouette, compost, terreau, engrais, graines jardin, jardinage — marques fortes : Husqvarna, Stihl, Gardena
+RÈGLE BRICOLAGE vs MAISON : un outil électroportatif (perceuse, visseuse, meuleuse...) → BRICOLAGE. Un appareil électroménager (aspirateur, cafetière...) → ÉLECTROMÉNAGER. Un arrosoir ou une tondeuse → JARDIN, pas Maison.
 AUTRE : tout ce qui ne correspond à aucune catégorie ci-dessus
 
 RÈGLE EMPLACEMENT :
@@ -246,7 +249,7 @@ If fees are specified per item (keywords "each/apiece/per piece" apply to fees):
 If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unchanged).
 
 Allowed categories (exact values) :
-["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Autre"]
+["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
 
 Category keywords :
 MODE : jacket, coat, hoodie, sweatshirt, t-shirt, polo, shirt, pants, jeans, jogger, tracksuit, shorts, skirt, dress, blazer, suit, cardigan, tank top, lingerie, socks, tights, beanie, cap, scarf, belt, bag, backpack, wallet, nike tech, tech fleece, zara, h&m, uniqlo, shein, asos, levi's, carhartt, stone island, ralph lauren, tommy hilfiger, lacoste, adidas, nike, puma, converse, vans, jordan, supreme, stussy, sneakers, shoes, trainers, boots
@@ -262,6 +265,9 @@ BEAUTÉ : perfume, makeup, lipstick, foundation, skincare, face cream, serum, sh
 MUSIQUE : guitar, bass guitar, piano, violin, drums, synthesizer, synth, ukulele, trumpet, saxophone, accordion, double bass, midi keyboard, effect pedal, guitar pedal, mixing desk, guitar amp, bass amp, vinyl, vinyl record, turntable, cd, audio cassette, sheet music, music instrument, recording interface, studio microphone, studio monitor, dj controller, pioneer dj, loopstation — strong brands: Gibson, Fender, Marshall, Roland (keyboards/drums), Ibanez, Epiphone, Boss (pedals), Shure, Yamaha (instruments), Behringer, Steinberg
 MUSIQUE vs HIGH-TECH (ABSOLUTE RULE): a guitar, bass, piano, guitar amp, synthesizer → MUSIQUE and NEVER High-Tech. Musical instruments are NOT High-Tech even if electric or digital. A Gibson Les Paul → Musique. A Roland Juno → Musique.
 COLLECTION : sealed pokemon, rare cards, collection, collector, limited edition, vintage, collector figurine, retro console, gameboy, gamecube, n64, retro gaming, coins, stamps, yu gi oh cards, limited sneakers, rare funko, collector watch
+BRICOLAGE (DIY) : drill, power drill, screwdriver, hammer, pliers, angle grinder, sander, jigsaw, circular saw, spanner, allen key, drill bit, spirit level, laser level, tape measure, light switch, electrical socket, circuit breaker, fuse box, electric cable, tiles, flooring, laminate, wallpaper, paint roller, paintbrush, mastic, filler, silicone sealant, rawlplug, bolt, screw, workbench, vice, clamp — strong brands: Facom, Stanley (tools), Makita, DeWalt, Ryobi, Bosch (power tools), Karcher (pressure washer)
+JARDIN (Garden) : lawnmower, strimmer, hedge trimmer, leaf blower, chainsaw, secateurs, pruner, scarifier, watering can, garden hose, sprinkler, garden pump, spade, rake, garden fork, hoe, wheelbarrow, compost, potting soil, fertiliser, garden seeds, gardening — strong brands: Husqvarna, Stihl, Gardena
+RULE BRICOLAGE vs MAISON: a power tool (drill, grinder, sander...) → BRICOLAGE. A home appliance (vacuum, coffee maker...) → ÉLECTROMÉNAGER. A watering can or lawnmower → JARDIN, not Maison.
 AUTRE : anything that does not clearly match the above categories
 
 EMPLACEMENT RULE:

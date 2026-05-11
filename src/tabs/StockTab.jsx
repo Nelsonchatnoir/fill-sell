@@ -25,7 +25,7 @@ const StockTab = memo(function StockTab({
   iType, setIType, iBuy, setIBuy, iPurchaseCosts, setIPurchaseCosts,
   iAlreadySold, setIAlreadySold, iSell, setISell,
   iSellingFees, setISellingFees, iRememberSellingFees, setIRememberSellingFees,
-  iDesc, setIDesc, iSaved, firstItemAdded,
+  iDesc, setIDesc, iEmplacement, setIEmplacement, iSaved, firstItemAdded,
   // Lot state
   lotManualTotal, setLotManualTotal, lotManualItems, setLotManualItems,
   lotDistributed, setLotDistributed, lotDistributing,
@@ -236,6 +236,9 @@ const StockTab = memo(function StockTab({
             />
             <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{iDesc.length}/200</div>
           </div>
+          <div>
+            <Field label={lang==='fr'?"Emplacement (optionnel)":"Storage location (optional)"} value={iEmplacement} set={setIEmplacement} placeholder={lang==='fr'?"Ex: Tiroir 45A, Portant 3, Étagère B...":"Ex: Drawer 45A, Rack 3, Shelf B..."} icon="📦"/>
+          </div>
           {items.length>0&&(
             <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
               💡 {t('prixHint')}
@@ -392,7 +395,8 @@ const StockTab = memo(function StockTab({
               <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:soldQty??sold.length})}</div>
             </div>
             {(()=>{
-              const marquesFiltreesParType=["Toutes",...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+              const _slAll=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+              const marquesFiltreesParType=["Toutes",..._slAll.filter(b=>b.toLowerCase()!=="sans marque"),..._slAll.filter(b=>b.toLowerCase()==="sans marque")];
               if(marquesFiltreesParType.length<=1) return null;
               const _mob=window.innerWidth<768;
               const _open=!_mob||pillsExpandedSold;
@@ -490,7 +494,8 @@ const StockTab = memo(function StockTab({
               <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stockQty??stock.length} {lang==='fr'?'art.':'items'} · {fmt(stockVal)}</div>
             </div>
             {(()=>{
-              const marquesStockFiltreesParType=["Toutes",...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+              const _sbAll=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+              const marquesStockFiltreesParType=["Toutes",..._sbAll.filter(b=>b.toLowerCase()!=="sans marque"),..._sbAll.filter(b=>b.toLowerCase()==="sans marque")];
               if(marquesStockFiltreesParType.length<=1) return null;
               const _mob=window.innerWidth<768;
               const _open=!_mob||pillsExpandedStock;
