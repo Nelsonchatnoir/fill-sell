@@ -3959,7 +3959,7 @@ export default function App({ loginOnly = false }){
         const dataUrl=ev.target.result;
         setLensPhotos(prev=>{
           if(prev.length>=5)return prev;
-          return[...prev,{preview:dataUrl,base64:dataUrl.split(",")[1],mime:safeMime}];
+          return[...prev,{preview:dataUrl,mime:safeMime}];
         });
       };
       reader.readAsDataURL(file);
@@ -3988,7 +3988,7 @@ export default function App({ loginOnly = false }){
     }
     // iOS WKWebView: SpeechRecognition unavailable — use MediaRecorder + voice-transcribe
     if(!navigator.mediaDevices?.getUserMedia){
-      setLensResult({analysis:lang==='fr'?'❌ Micro non disponible sur cet appareil.':'❌ Microphone not available on this device.',itemData:null});
+      setLensResult({error:lang==='fr'?'❌ Micro non disponible sur cet appareil.':'❌ Microphone not available on this device.'});
       return;
     }
     try{
@@ -4019,16 +4019,16 @@ export default function App({ loginOnly = false }){
           });
           const json=await res.json();
           if(json.text){setLensDesc(prev=>(prev?prev+" ":"")+json.text.trim());}
-          else if(json.error){setLensResult({analysis:`❌ ${json.error}`,itemData:null});}
+          else if(json.error){setLensResult({error:`❌ ${json.error}`});}
         }catch(err){
-          setLensResult({analysis:`❌ ${err.message}`,itemData:null});
+          setLensResult({error:`❌ ${err.message}`});
         }finally{setLensMicLoading(false);}
       };
       lensMicRef.current=mr;
       mr.start();
       setLensMicActive(true);
     }catch(err){
-      setLensResult({analysis:lang==='fr'?'❌ Accès micro refusé.':'❌ Microphone access denied.',itemData:null});
+      setLensResult({error:lang==='fr'?'❌ Accès micro refusé.':'❌ Microphone access denied.'});
     }
   }
 
@@ -4053,14 +4053,27 @@ export default function App({ loginOnly = false }){
     const catProfit={};
     for(const s of sales){const c=s.type||s.categorie||"Autre";catProfit[c]=(catProfit[c]||0)+(s.margin??0);}
     const topCats=Object.entries(catProfit).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
+    const uploadedPaths=[];
     try{
+      // Upload photos to lens-temp (converts data: URLs to blobs — works on iOS WKWebView)
+      const urls=[];
+      for(const photo of lensPhotos){
+        const blob=await fetch(photo.preview).then(r=>r.blob());
+        const ext=(photo.mime||"image/jpeg").split("/")[1]||"jpg";
+        const path=`lens/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const{error:upErr}=await supabase.storage.from('lens-temp').upload(path,blob,{contentType:photo.mime||"image/jpeg"});
+        if(upErr)throw new Error(upErr.message);
+        uploadedPaths.push(path);
+        const{data:{publicUrl}}=supabase.storage.from('lens-temp').getPublicUrl(path);
+        urls.push(publicUrl);
+      }
       const{data:{session:lnSess}}=await supabase.auth.getSession();
       const lnToken=lnSess?.access_token;
       const r=await fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({
-          images:lensPhotos.map(p=>({base64:p.base64,mimeType:p.mime})),
+          urls,
           description:lensDesc.trim()||null,
           prixAchat:parseFloat(lensBuy)||null,
           lang,
@@ -4068,27 +4081,33 @@ export default function App({ loginOnly = false }){
           userStats:{avgMargin,topCategories:topCats},
         }),
       });
-      if(!r.ok)throw new Error(`HTTP ${r.status}`);
-      const{analysis,itemData,error:iErr}=await r.json();
-      if(iErr)throw new Error(iErr);
-      setLensResult({analysis:analysis||"",itemData:itemData||null});
+      if(!r.ok){
+        const errBody=await r.json().catch(()=>({}));
+        throw new Error(errBody.error||`HTTP ${r.status}`);
+      }
+      const result=await r.json();
+      if(result.error)throw new Error(result.error);
+      setLensResult(result);
     }catch(e){
-      setLensResult({analysis:`❌ ${e.message}`,itemData:null});
+      setLensResult({error:`❌ ${e.message}`});
     }finally{
       setLensLoading(false);
+      if(uploadedPaths.length){
+        supabase.storage.from('lens-temp').remove(uploadedPaths).catch(()=>{});
+      }
     }
   }
 
   async function addLensItem(){
-    if(!lensResult?.itemData||lensAdded)return;
+    if(!lensResult?.titre||lensAdded)return;
     try{
       await vaActions.addItem({
-        nom:lensResult.itemData.nom||"Article",
-        marque:lensResult.itemData.marque||null,
-        categorie:lensResult.itemData.categorie||"Autre",
-        description:lensResult.itemData.description||(lensDesc.trim()||null),
-        prix_achat:parseFloat(lensBuy)||0,
-        prix_vente:lensResult.itemData.prixVenteEstime||null,
+        nom:lensResult.titre||"Article",
+        marque:lensResult.marque||null,
+        categorie:lensResult.categorie||"Autre",
+        description:lensResult.description||(lensDesc.trim()||null),
+        prix_achat:parseFloat(lensBuy)||lensResult.prix_achat_suggere||0,
+        prix_vente:lensResult.prix_vente_suggere||null,
         quantite:1,
       });
       setLensAdded(true);

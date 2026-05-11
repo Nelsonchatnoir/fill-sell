@@ -47,30 +47,43 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
   const multiNote = photoCount > 1
     ? (lang === "en"
-        ? `\nYou are analyzing ${photoCount} photos of the same item — cross-reference them for a more precise assessment.`
-        : `\nTu analyses ${photoCount} photos du même article — croise-les pour une évaluation plus précise.`)
+        ? ` You have ${photoCount} photos of the same item — cross-reference them.`
+        : ` Tu as ${photoCount} photos du même article — croise-les.`)
     : "";
+
+  const schema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","notes":string}`;
 
   if (lang === "en") {
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
-Analyze the photo(s) of this item and reply with a structured response:
-🔍 Identification: brand, model, estimated condition
-💰 Recommended resale price range (based on current market)
-${countryName ? `📍 Region: ${countryName} — recommend platforms adapted to this market.` : ""}
-📦 Best platform(s) for this item among: ${platforms}
-If a purchase price is provided: 📈 estimated margin + verdict (🔥 excellent / ✅ good deal / ⚠️ average / ❌ avoid)
-💡 One concrete tip to sell faster
-No asterisks. Use emojis. Short structured response (6-8 lines max).`;
+Analyze the item and return ONLY valid JSON (no markdown, no explanation):
+${schema}
+${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
+Rules: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand/model clearly identified, "moyenne" if partial, "basse" if uncertain. If purchase price provided: use it to compute verdict. notes: one actionable selling tip.`;
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
-Analyse la/les photo(s) de cet article et réponds de façon structurée :
-🔍 Identification : marque, modèle, état estimé
-💰 Fourchette de prix de revente recommandée (basée sur le marché actuel)
-${countryName ? `📍 Région : ${countryName} — recommande les plateformes adaptées à ce marché.` : ""}
-📦 Meilleure(s) plateforme(s) pour cet article parmi : ${platforms}
-Si un prix d'achat est fourni : 📈 marge estimée + verdict (🔥 excellent / ✅ bon deal / ⚠️ moyen / ❌ éviter)
-💡 Un conseil concret pour vendre plus vite
-Sans astérisques. Avec emojis. Réponse structurée courte (6-8 lignes max).`;
+Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
+${schema}
+${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
+Règles : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. confiance="haute" si marque/modèle clairement identifié, "moyenne" si partiel, "basse" si incertain. Si prix d'achat fourni : l'utiliser pour calculer le verdict. notes : un conseil concret pour vendre plus vite.`;
+}
+
+async function callClaude(apiKey: string, payload: object, beta?: string): Promise<any> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+  };
+  if (beta) headers["anthropic-beta"] = beta;
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => `HTTP ${r.status}`);
+    throw new Error(`Anthropic ${r.status}: ${t}`);
+  }
+  return r.json();
 }
 
 serve(async (req) => {
@@ -96,7 +109,7 @@ serve(async (req) => {
     });
   }
 
-  // ── Lens quota (non-premium: 3/day) ───────────────────
+  // ── Quota (non-premium: 3/day) ─────────────────────────
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const today = new Date().toISOString().split("T")[0];
   const { data: profile } = await adminClient
@@ -120,40 +133,18 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const {
-      images,         // new: [{base64, mimeType}]
-      imageBase64,    // legacy fallback
-      mimeType = "image/jpeg",
-      description,
-      prixAchat,
-      lang = "fr",
-      userCountry,
-      userStats,
-    } = body;
+    const { urls, description, prixAchat, lang = "fr", userCountry, userStats } = body;
 
-    const ALLOWED_MIME = new Set(["image/jpeg","image/png","image/gif","image/webp"]);
-    const normMime = (m: string) => ALLOWED_MIME.has(m) ? m : "image/jpeg";
-
-    // Normalize to images array
-    const photoList: { base64: string; mimeType: string }[] =
-      Array.isArray(images) && images.length > 0
-        ? images.slice(0, 5).map((p: { base64: string; mimeType: string }) => ({ base64: p.base64, mimeType: normMime(p.mimeType) }))
-        : imageBase64
-        ? [{ base64: imageBase64, mimeType: normMime(mimeType) }]
-        : [];
-
-    if (photoList.length === 0) {
-      return new Response(JSON.stringify({ error: "Missing image" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json", ...CORS },
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return new Response(JSON.stringify({ error: "Missing urls" }), {
+        status: 400, headers: { "Content-Type": "application/json", ...CORS },
       });
     }
 
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "Missing API key" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...CORS },
+        status: 500, headers: { "Content-Type": "application/json", ...CORS },
       });
     }
 
@@ -161,123 +152,91 @@ serve(async (req) => {
     const countryCode = userCountry?.code ?? null;
     const countryName = userCountry?.name ?? null;
     const platforms = getPlatforms(countryCode, _lang);
-    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, photoList.length);
+    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length);
 
-    // Build text context
     const textParts: string[] = [];
-    if (description) {
-      textParts.push(_lang === "en" ? `Details: ${description}` : `Détails : ${description}`);
-    }
-    if (prixAchat != null) {
-      textParts.push(_lang === "en" ? `Purchase price: €${prixAchat}` : `Prix d'achat : ${prixAchat}€`);
-    }
-    if (userStats?.avgMargin != null) {
-      textParts.push(_lang === "en"
-        ? `My average margin on similar sales: ${userStats.avgMargin}%`
-        : `Ma marge moyenne sur mes ventes : ${userStats.avgMargin}%`);
-    }
-    if (userStats?.topCategories?.length) {
-      textParts.push(_lang === "en"
-        ? `My best categories: ${userStats.topCategories.join(", ")}`
-        : `Mes meilleures catégories : ${userStats.topCategories.join(", ")}`);
-    }
-    const userText = textParts.length
-      ? textParts.join("\n")
-      : (_lang === "en" ? "Analyze this item." : "Analyse cet article.");
+    if (description) textParts.push(_lang === "en" ? `Details: ${description}` : `Détails : ${description}`);
+    if (prixAchat != null) textParts.push(_lang === "en" ? `Purchase price: €${prixAchat}` : `Prix d'achat : ${prixAchat}€`);
+    if (userStats?.avgMargin != null) textParts.push(_lang === "en" ? `My average margin: ${userStats.avgMargin}%` : `Ma marge moyenne : ${userStats.avgMargin}%`);
+    if (userStats?.topCategories?.length) textParts.push(_lang === "en" ? `My top categories: ${userStats.topCategories.join(", ")}` : `Mes meilleures catégories : ${userStats.topCategories.join(", ")}`);
+    const userText = textParts.length ? textParts.join("\n") : (_lang === "en" ? "Analyze this item." : "Analyse cet article.");
 
-    // Build message content: all images first, then text
-    const messageContent: unknown[] = [
-      ...photoList.map(p => ({
-        type: "image",
-        source: { type: "base64", media_type: p.mimeType, data: p.base64 },
-      })),
-      { type: "text", text: userText },
+    const imageContent = (urls as string[]).slice(0, 5).map(url => ({
+      type: "image",
+      source: { type: "url", url },
+    }));
+
+    const initialMessages = [
+      { role: "user", content: [...imageContent, { type: "text", text: userText }] },
     ];
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 500,
-        temperature: 0.3,
-        system: systemPrompt,
-        messages: [{ role: "user", content: messageContent }],
-      }),
-    });
+    const basePayload = {
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 800,
+      temperature: 0,
+      system: systemPrompt,
+    };
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => `HTTP ${response.status}`);
-      console.error("[lens-analysis] Anthropic error:", response.status, errText);
-      return new Response(JSON.stringify({ error: `Anthropic error ${response.status}: ${errText}` }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...CORS },
-      });
-    }
-
-    let data: { content?: Array<{ text?: string }> } | null = null;
+    let data: any;
     try {
-      data = await response.json();
-    } catch (parseErr) {
-      console.error("[lens-analysis] JSON parse error:", parseErr);
-      return new Response(JSON.stringify({ error: "Invalid JSON response from AI" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...CORS },
-      });
-    }
-    const analysis = data?.content?.[0]?.text?.trim() ?? null;
+      // Attempt with web_search for real-time price data
+      const wsMessages: any[] = [...initialMessages];
+      data = await callClaude(apiKey, {
+        ...basePayload,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: wsMessages,
+      }, "web-search-2025-03-05");
 
-    // Structured extraction using first photo
-    let itemData = null;
-    try {
-      const firstPhoto = photoList[0];
-      const structured = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 150,
-          temperature: 0,
-          system: "Extract item info from this image. Return ONLY valid JSON: {\"nom\":string,\"marque\":string|null,\"categorie\":string,\"description\":string|null,\"prixVenteEstime\":number|null}. categorie must be one of: Mode,Luxe,High-Tech,Maison,Sport,Musique,Beauté,Collection,Livres,Auto-Moto,Électroménager,Jouets,Autre. No markdown.",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: { type: "base64", media_type: firstPhoto.mimeType, data: firstPhoto.base64 },
-                },
-                { type: "text", text: description ? `Item details: ${description}` : "Extract item data." },
-              ],
-            },
-          ],
-        }),
-      });
-      if (structured.ok) {
-        const sd = await structured.json();
-        const raw = (sd?.content?.[0]?.text ?? "").replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-        itemData = JSON.parse(raw);
+      // Multi-turn: handle up to 2 web search rounds
+      for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
+        wsMessages.push({ role: "assistant", content: data.content });
+        const toolResults = (data.content as any[])
+          .filter((b: any) => b.type === "tool_use")
+          .map((b: any) => ({
+            type: "tool_result",
+            tool_use_id: b.id,
+            content: b.content ?? [],
+          }));
+        if (!toolResults.length) break;
+        wsMessages.push({ role: "user", content: toolResults });
+        data = await callClaude(apiKey, {
+          ...basePayload,
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          messages: wsMessages,
+        }, "web-search-2025-03-05");
       }
     } catch {
-      // structured extraction is best-effort
+      // Fallback: plain vision call without web search
+      data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
     }
 
-    return new Response(JSON.stringify({ analysis, itemData }), {
+    const rawText = (data.content as any[] ?? [])
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text as string)
+      .join("")
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+
+    let itemData: Record<string, unknown>;
+    try {
+      itemData = JSON.parse(rawText);
+    } catch {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) {
+        itemData = JSON.parse(match[0]);
+      } else {
+        throw new Error(_lang === "en" ? "AI response could not be parsed" : "Réponse IA non parsable");
+      }
+    }
+
+    return new Response(JSON.stringify(itemData), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
-  } catch (err) {
-    console.error("[lens-analysis] Unhandled error:", err);
+  } catch (err: any) {
+    console.error("[lens-analysis] Error:", err);
     return new Response(JSON.stringify({ error: err?.message ?? "Internal error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json", ...CORS },
+      status: 500, headers: { "Content-Type": "application/json", ...CORS },
     });
   }
 });

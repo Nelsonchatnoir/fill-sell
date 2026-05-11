@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { getRotatingLensPlaceholders } from '../utils/shared';
+import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
 
 const LensTab = memo(function LensTab({
   lang, currency, userCountry, isPremium, isNative, user,
@@ -113,26 +113,92 @@ const LensTab = memo(function LensTab({
 
         {/* Résultat */}
         {lensResult&&(
-          <div style={{marginTop:14}}>
-            <div style={{background:"linear-gradient(135deg,#F0FDF4,#E8F5F0)",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB",marginBottom:10}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#1D9E75",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
-                🤖 {lang==="en"?"AI Analysis":"Analyse IA"}
+          <div style={{marginTop:14,animation:"vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both"}}>
+            {lensResult.error?(
+              <div style={{background:"#FFF5F5",borderRadius:14,padding:"16px",border:"1px solid #FED7D7",marginBottom:10}}>
+                <div style={{fontSize:14,color:"#C53030",fontWeight:600}}>{lensResult.error}</div>
               </div>
-              <div style={{fontSize:14,fontWeight:600,color:"#0D0D0D",lineHeight:1.8,whiteSpace:"pre-wrap"}}>
-                {lensResult.analysis}
+            ):(
+              <div style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                {/* Titre + verdict badge */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
+                  <div style={{fontWeight:800,fontSize:16,color:"#0D0D0D",flex:1,lineHeight:1.3}}>{lensResult.titre||"Article"}</div>
+                  {lensResult.verdict&&(
+                    <div style={{flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,
+                      background:lensResult.verdict==="excellent"?"#F0FDF4":lensResult.verdict==="bon"?"#EFF6FF":lensResult.verdict==="moyen"?"#FFFBEB":"#FFF5F5",
+                      color:lensResult.verdict==="excellent"?"#1D9E75":lensResult.verdict==="bon"?"#2563EB":lensResult.verdict==="moyen"?"#D97706":"#DC2626",
+                    }}>
+                      {lensResult.verdict==="excellent"?"🔥 Excellent":lensResult.verdict==="bon"?"✅ Bon deal":lensResult.verdict==="moyen"?"⚠️ Moyen":"❌ Éviter"}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pills: marque, catégorie, confiance */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                  {lensResult.marque&&(
+                    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"#F0FDF4",color:"#1D9E75",border:"1px solid #9FE1CB"}}>{lensResult.marque}</span>
+                  )}
+                  {lensResult.categorie&&(()=>{const s=getTypeStyle(lensResult.categorie);return(
+                    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:s.bg,color:s.color,border:`1px solid ${s.border}`}}>{s.emoji} {typeLabel(lensResult.categorie,lang)}</span>
+                  );})()}
+                  {lensResult.confiance&&(
+                    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,
+                      background:lensResult.confiance==="haute"?"#F0FDF4":lensResult.confiance==="moyenne"?"#FFFBEB":"#FFF5F5",
+                      color:lensResult.confiance==="haute"?"#1D9E75":lensResult.confiance==="moyenne"?"#D97706":"#DC2626",
+                    }}>
+                      {lensResult.confiance==="haute"?(lang==="en"?"High confidence":"Confiance haute"):lensResult.confiance==="moyenne"?(lang==="en"?"Medium confidence":"Confiance moyenne"):(lang==="en"?"Low confidence":"Confiance basse")}
+                    </span>
+                  )}
+                </div>
+
+                {/* Prix suggéré + fourchette */}
+                <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+                  <div style={{fontSize:30,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.02em"}}>{formatCurrency(lensResult.prix_vente_suggere??0,currency)}</div>
+                  {(lensResult.fourchette_min!=null||lensResult.fourchette_max!=null)&&(
+                    <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>
+                      ({formatCurrency(lensResult.fourchette_min??0,currency)} – {formatCurrency(lensResult.fourchette_max??0,currency)})
+                    </div>
+                  )}
+                </div>
+
+                {/* Prix d'achat conseillé */}
+                {lensResult.prix_achat_suggere!=null&&(
+                  <div style={{fontSize:12,color:"#6B7280",marginBottom:8}}>
+                    {lang==="en"?"Suggested buy price:":"Prix d'achat conseillé :"}{" "}
+                    <strong style={{color:"#F59E0B"}}>{formatCurrency(lensResult.prix_achat_suggere,currency)}</strong>
+                  </div>
+                )}
+
+                {/* Description */}
+                {lensResult.description&&(
+                  <div style={{fontSize:13,color:"#374151",lineHeight:1.6,marginBottom:8}}>{lensResult.description}</div>
+                )}
+
+                {/* Plateformes */}
+                {lensResult.plateformes?.length>0&&(
+                  <div style={{fontSize:12,color:"#6B7280",marginBottom:8}}>📦 {lensResult.plateformes.join(" · ")}</div>
+                )}
+
+                {/* Notes */}
+                {lensResult.notes&&(
+                  <div style={{background:"#F9FAFB",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4B5563",borderLeft:"3px solid #1D9E75",marginTop:4}}>
+                    💡 {lensResult.notes}
+                  </div>
+                )}
               </div>
-            </div>
-            {lensResult.itemData&&(
+            )}
+
+            {/* Utiliser cette analyse */}
+            {lensResult.titre&&(
               <button
                 onClick={addLensItem}
                 disabled={lensAdded}
-                style={{width:"100%",padding:"12px",background:lensAdded?"#E8F5F0":"linear-gradient(135deg,#1D9E75,#0F6E56)",color:lensAdded?"#1D9E75":"#fff",border:lensAdded?"1px solid #9FE1CB":"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?"default":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
+                style={{width:"100%",padding:"12px",background:lensAdded?"#E8F5F0":"linear-gradient(135deg,#1D9E75,#0F6E56)",color:lensAdded?"#1D9E75":"#fff",border:lensAdded?"1px solid #9FE1CB":"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?"default":"pointer",fontFamily:"inherit",transition:"all 0.2s",marginBottom:6}}
               >
-                {lensAdded
-                  ?(lang==="en"?"✅ Added to stock!":"✅ Ajouté au stock !")
-                  :(lang==="en"?"➕ Add to my stock":"➕ Ajouter à mon stock")}
+                {lensAdded?(lang==="en"?"✅ Added to stock!":"✅ Ajouté au stock !"):(lang==="en"?"➕ Use this analysis":"➕ Utiliser cette analyse")}
               </button>
             )}
+
             <button
               onClick={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
               style={{width:"100%",padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",marginTop:4}}
