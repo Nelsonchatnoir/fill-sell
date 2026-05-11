@@ -2993,6 +2993,7 @@ export default function App({ loginOnly = false }){
     const mg=hasS?s-b-f:null;
     const mgp=hasS?(mg/s)*100:null;
     const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
+    const qty=Math.max(1,parseInt(editItem.quantite)||1);
     const{error}=await supabase.from('inventaire').update({
       titre:editItem.title,
       marque:editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null,
@@ -3002,9 +3003,10 @@ export default function App({ loginOnly = false }){
       margin:mg,
       margin_pct:mgp,
       description:editItem.description||null,
+      quantite:qty,
     }).eq('id',editItem.id);
     if(!error){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty}:i));
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -4041,10 +4043,11 @@ export default function App({ loginOnly = false }){
               <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")}set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+              <Field label={lang==='fr'?"Quantité":"Quantity"} value={String(editItem.quantite??1)} set={v=>setEditItem(p=>({...p,quantite:Math.max(1,parseInt(v)||1)}))} placeholder="1" type="number" icon="🔢"/>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
                 <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
-                  placeholder={lang==='fr'?"Ex: Lot de 3 pièces, taille M...":"Ex: Bundle of 3, size M..."}
+                  placeholder={lang==='fr'?"Ex: Taille M, noir, neuf...":"Ex: Size M, black, new..."}
                   maxLength={200} rows={2}
                   style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${editItem.description?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
                   onFocus={e=>e.currentTarget.style.borderColor=C.teal}
