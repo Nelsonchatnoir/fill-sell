@@ -3342,45 +3342,135 @@ export default function App({ loginOnly = false }){
   async function handleExport(){
     const today=new Date().toISOString().split("T")[0];
     const wb=XLSX.utils.book_new();
+    const FULL_MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
-    // Onglet Ventes
-    const ventesData=sales.map(s=>({
-      "Date":s.date,
-      "Article":s.title,
-      "Prix achat":s.buy,
-      "Prix vente":s.sell,
-      "Bénéfice":parseFloat(s.margin.toFixed(2)),
-      "Marge %":parseFloat(s.marginPct.toFixed(1)),
-    }));
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ventesData),"Ventes");
+    const HS={fill:{patternType:"solid",fgColor:{rgb:"1D9E75"}},font:{bold:true,color:{rgb:"FFFFFF"},sz:11},alignment:{horizontal:"center",vertical:"center"}};
+    const RS=[{fill:{patternType:"solid",fgColor:{rgb:"FFFFFF"}}},{fill:{patternType:"solid",fgColor:{rgb:"F5F6F5"}}}];
+    const TS={fill:{patternType:"solid",fgColor:{rgb:"FFF8EE"}},font:{bold:true}};
 
-    // Onglet Inventaire
-    const invData=items.map(i=>({
-      "Article":i.title,
-      "Prix achat":i.buy,
-      "Prix vente":i.sell||"",
-      "Statut":i.statut==="stock"?"En stock":"Vendu",
-      "Date":i.date?new Date(i.date).toLocaleDateString("fr-FR"):"",
-    }));
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(invData),"Inventaire");
+    // Group sold inventaire rows by month
+    const monthGroups={};
+    sold.forEach(item=>{
+      const d=new Date(item.date||Date.now());
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const label=`${FULL_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      if(!monthGroups[key])monthGroups[key]={label,rows:[]};
+      monthGroups[key].rows.push(item);
+    });
+
+    const MONTH_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat','Frais','Prix vente','Bénéfice','Marge %','Date vente'];
+    const MONTH_COLS=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:12},{wch:10},{wch:12},{wch:12},{wch:10},{wch:12}];
+    const summaryData=[];
+
+    Object.keys(monthGroups).sort().forEach(key=>{
+      const{label,rows}=monthGroups[key];
+      const aoa=[MONTH_HEADERS.map(h=>({v:h,t:'s',s:HS}))];
+      let totBuy=0,totSell=0,totMargin=0,totQty=0;
+
+      rows.forEach((item,idx)=>{
+        const rs=RS[idx%2];
+        const qty=item.quantite||1;
+        const buy=(item.buy||0)*qty;
+        const fees=(item.sellingFees||0)*qty;
+        const sell=(item.sell||0)*qty;
+        const margin=(item.margin||0)*qty;
+        totBuy+=buy;totSell+=sell;totMargin+=margin;totQty+=qty;
+        aoa.push([
+          {v:item.title||'',t:'s',s:rs},
+          {v:item.marque||'',t:'s',s:rs},
+          {v:item.type||'',t:'s',s:rs},
+          {v:item.description||'',t:'s',s:rs},
+          {v:qty,t:'n',s:rs},
+          {v:parseFloat(buy.toFixed(2)),t:'n',s:rs},
+          {v:parseFloat(fees.toFixed(2)),t:'n',s:rs},
+          {v:parseFloat(sell.toFixed(2)),t:'n',s:rs},
+          {v:parseFloat(margin.toFixed(2)),t:'n',s:{...rs,font:{color:{rgb:margin>=0?"1D9E75":"DC2626"}}}},
+          {v:parseFloat((item.marginPct||0).toFixed(1)),t:'n',s:rs},
+          {v:item.date?new Date(item.date).toLocaleDateString('fr-FR'):'',t:'s',s:rs},
+        ]);
+      });
+
+      const avgPct=totSell>0?(totMargin/totSell)*100:0;
+      aoa.push([
+        {v:'TOTAL',t:'s',s:TS},{v:'',t:'s',s:TS},{v:'',t:'s',s:TS},{v:'',t:'s',s:TS},
+        {v:totQty,t:'n',s:TS},
+        {v:parseFloat(totBuy.toFixed(2)),t:'n',s:TS},
+        {v:'',t:'s',s:TS},
+        {v:parseFloat(totSell.toFixed(2)),t:'n',s:TS},
+        {v:parseFloat(totMargin.toFixed(2)),t:'n',s:{...TS,font:{bold:true,color:{rgb:totMargin>=0?"1D9E75":"DC2626"}}}},
+        {v:parseFloat(avgPct.toFixed(1)),t:'n',s:TS},
+        {v:'',t:'s',s:TS},
+      ]);
+
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols']=MONTH_COLS;
+      XLSX.utils.book_append_sheet(wb,ws,label.substring(0,31));
+      summaryData.push({label,count:rows.length,totSell,totMargin,avgPct});
+    });
+
+    // Récapitulatif
+    const RECAP_HEADERS=['Mois','Nb ventes','CA total (€)','Bénéfice total (€)','Marge moyenne (%)'];
+    const recapAoa=[RECAP_HEADERS.map(h=>({v:h,t:'s',s:HS}))];
+    let gSell=0,gMargin=0,gCount=0;
+    summaryData.forEach(({label,count,totSell,totMargin,avgPct},idx)=>{
+      const rs=RS[idx%2];
+      gSell+=totSell;gMargin+=totMargin;gCount+=count;
+      recapAoa.push([
+        {v:label,t:'s',s:rs},
+        {v:count,t:'n',s:rs},
+        {v:parseFloat(totSell.toFixed(2)),t:'n',s:rs},
+        {v:parseFloat(totMargin.toFixed(2)),t:'n',s:{...rs,font:{color:{rgb:totMargin>=0?"1D9E75":"DC2626"}}}},
+        {v:parseFloat(avgPct.toFixed(1)),t:'n',s:rs},
+      ]);
+    });
+    const gAvgPct=gSell>0?(gMargin/gSell)*100:0;
+    recapAoa.push([
+      {v:'TOTAL',t:'s',s:TS},{v:gCount,t:'n',s:TS},
+      {v:parseFloat(gSell.toFixed(2)),t:'n',s:TS},
+      {v:parseFloat(gMargin.toFixed(2)),t:'n',s:{...TS,font:{bold:true,color:{rgb:gMargin>=0?"1D9E75":"DC2626"}}}},
+      {v:parseFloat(gAvgPct.toFixed(1)),t:'n',s:TS},
+    ]);
+    const recapWs=XLSX.utils.aoa_to_sheet(recapAoa);
+    recapWs['!cols']=[{wch:18},{wch:10},{wch:14},{wch:18},{wch:16}];
+    XLSX.utils.book_append_sheet(wb,recapWs,'Récapitulatif');
+
+    // Inventaire (stock actuel)
+    const INV_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat unit.','Total investi','Date ajout'];
+    const invAoa=[INV_HEADERS.map(h=>({v:h,t:'s',s:HS}))];
+    stock.forEach((item,idx)=>{
+      const rs=RS[idx%2];
+      const qty=item.quantite||1;
+      invAoa.push([
+        {v:item.title||'',t:'s',s:rs},
+        {v:item.marque||'',t:'s',s:rs},
+        {v:item.type||'',t:'s',s:rs},
+        {v:item.description||'',t:'s',s:rs},
+        {v:qty,t:'n',s:rs},
+        {v:parseFloat((item.buy||0).toFixed(2)),t:'n',s:rs},
+        {v:parseFloat(((item.buy||0)*qty).toFixed(2)),t:'n',s:rs},
+        {v:item.date_ajout?new Date(item.date_ajout).toLocaleDateString('fr-FR'):'',t:'s',s:rs},
+      ]);
+    });
+    const invWs=XLSX.utils.aoa_to_sheet(invAoa);
+    invWs['!cols']=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:14},{wch:13},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,invWs,'Inventaire');
 
     const filename=`fillsell-export-${today}.xlsx`;
-
     if(isNative){
       try{
-        const wbout=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-        const blob=new Blob([wbout],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+        const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});
+        const blob=new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
         const file=new File([blob],filename,{type:blob.type});
         if(navigator.canShare&&navigator.canShare({files:[file]})){
-          await navigator.share({files:[file],title:"Export Fill & Sell"});
-        } else {
-          alert("Export disponible sur la version web : fillsell.app");
+          await navigator.share({files:[file],title:'Export Fill & Sell'});
+        }else{
+          alert('Export disponible sur la version web : fillsell.app');
         }
-      } catch(e){
-        if(e?.name!=="AbortError") alert("Export disponible sur la version web : fillsell.app");
+      }catch(e){
+        if(e?.name!=='AbortError')alert('Export disponible sur la version web : fillsell.app');
       }
-    } else {
-      XLSX.writeFile(wb,filename);
+    }else{
+      XLSX.writeFile(wb,filename,{cellStyles:true});
     }
   }
 
