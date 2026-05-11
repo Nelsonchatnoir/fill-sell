@@ -117,6 +117,17 @@ RÈGLE MUSIQUE vs HIGH-TECH (ABSOLUE) : une guitare, une basse, un piano, un amp
 COLLECTION : pokemon scellé, cartes rares, collection, collector, édition limitée, vintage, figurine collector, console rétro, gameboy, game cube, n64, retro gaming, pièces monnaie, timbres, cartes yu gi oh, sneakers limitées, funko rare, montre collection
 AUTRE : tout ce qui ne correspond à aucune catégorie ci-dessus
 
+RÈGLE EMPLACEMENT :
+emplacement = lieu de STOCKAGE PHYSIQUE de l'article (tiroir, portant, étagère, stockeur, bac, box...).
+Déclencheurs : "dans le tiroir X", "sur le portant X", "dans le stockeur X", "rangé en X", "box X", "étagère X", "bac X".
+Capitaliser le type, conserver le code/numéro tel quel.
+  ✅ "tiroir 45A" → emplacement: "Tiroir 45A"
+  ✅ "portant 42" → emplacement: "Portant 42"
+  ✅ "stockeur 2B" → emplacement: "Stockeur 2B"
+  ✅ "rangé en B3" → emplacement: "B3"
+Aucune mention → emplacement: null.
+DISTINCTION : lieu de rangement → emplacement. Lieu d'ACHAT (brocante, Paris...) → description.
+
 Format de réponse (JSON strict) :
 {
   "action": "achat" | "vente",
@@ -135,6 +146,7 @@ Format de réponse (JSON strict) :
       "quantite": number,
       "categorie": string,
       "description": string | null,
+      "emplacement": string | null,
       "date": string | null,
       "confidence": number
     }
@@ -252,6 +264,16 @@ MUSIQUE vs HIGH-TECH (ABSOLUTE RULE): a guitar, bass, piano, guitar amp, synthes
 COLLECTION : sealed pokemon, rare cards, collection, collector, limited edition, vintage, collector figurine, retro console, gameboy, gamecube, n64, retro gaming, coins, stamps, yu gi oh cards, limited sneakers, rare funko, collector watch
 AUTRE : anything that does not clearly match the above categories
 
+EMPLACEMENT RULE:
+emplacement = PHYSICAL STORAGE location (drawer, rack, shelf, bin, box...).
+Triggers: "in drawer X", "on rack X", "in bin X", "stored in X", "shelf X", "box X".
+Capitalise the type, keep the code/number as-is.
+  ✅ "drawer 45A" → emplacement: "Drawer 45A"
+  ✅ "rack 42" → emplacement: "Rack 42"
+  ✅ "stored in B3" → emplacement: "B3"
+No storage mention → emplacement: null.
+DISTINCTION: storage location → emplacement. PURCHASE location (flea market, Paris...) → description.
+
 Response format (strict JSON) :
 {
   "action": "achat" | "vente",
@@ -270,6 +292,7 @@ Response format (strict JSON) :
       "quantite": number,
       "categorie": string,
       "description": string | null,
+      "emplacement": string | null,
       "date": string | null,
       "confidence": number
     }
