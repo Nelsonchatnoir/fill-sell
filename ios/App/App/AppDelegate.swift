@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,8 +8,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        configureAudioSession()
         return true
+    }
+
+    // Preconfigure AVAudioSession so that microphone capture (MediaRecorder via WKWebView)
+    // does not interrupt background music or switch Bluetooth from A2DP to HFP.
+    // .mixWithOthers  → Spotify/radio keeps playing during recording
+    // .allowBluetoothA2DP → stays on high-quality stereo profile, never triggers HFP
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.mixWithOthers, .allowBluetoothA2DP]
+            )
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            // Non-fatal — app functions normally without this optimisation
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
