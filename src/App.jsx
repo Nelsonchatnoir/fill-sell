@@ -2721,6 +2721,8 @@ export default function App({ loginOnly = false }){
   const visibleSales=useMemo(()=>(showAllSales?groupedSales:groupedSales.slice(0,10)).filter(s=>searchMatch(s,searchHistory)),[groupedSales,showAllSales,searchHistory]);
   const invested=items.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
   const stockVal=useMemo(()=>stock.reduce((a,i)=>a+i.buy*(i.quantite||1),0),[stock]);
+  const stockQty=useMemo(()=>stock.reduce((a,i)=>a+(i.quantite||1),0),[stock]);
+  const soldQty=useMemo(()=>sold.reduce((a,i)=>a+(i.quantite||1),0),[sold]);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
 
   function resetVoiceFlow(){
@@ -3494,7 +3496,7 @@ export default function App({ loginOnly = false }){
   const headerStats=[
     {label:t('benefices'),value:fmt(totalM)},
     {label:t('totalInvesti'),value:fmt(invested)},
-    {label:t('enStockLabel'),value:`${stock.length} ${lang==='fr'?'art.':'items'} · ${fmt(stockVal)}`},
+    {label:t('enStockLabel'),value:`${stockQty} ${lang==='fr'?'art.':'items'} · ${fmt(stockVal)}`},
   ];
 
   if(authLoading||appLoading)return(
@@ -3895,7 +3897,7 @@ export default function App({ loginOnly = false }){
           <DashboardTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative}
             loading={loading} items={items} sales={sales}
-            stock={stock} stockVal={stockVal}
+            stock={stock} stockVal={stockVal} stockQty={stockQty}
             tm={tm} salesForKpis={salesForKpis} totalM={totalM}
             selectedRange={selectedRange} setSelectedRange={setSelectedRange}
             delSale={delSale}
@@ -3915,7 +3917,7 @@ export default function App({ loginOnly = false }){
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
             stockVisible={stockVisible} soldVisible={soldVisible}
-            stockVal={stockVal}
+            stockVal={stockVal} stockQty={stockQty} soldQty={soldQty}
             voiceStep={voiceStep} setVoiceStep={setVoiceStep}
             voiceParsed={voiceParsed} setVoiceParsed={setVoiceParsed}
             voiceText={voiceText} setVoiceText={setVoiceText}
