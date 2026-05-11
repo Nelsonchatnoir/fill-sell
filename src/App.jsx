@@ -3708,18 +3708,11 @@ export default function App({ loginOnly = false }){
       setLensResult({analysis:lang==='fr'?'❌ Micro non disponible sur cet appareil.':'❌ Microphone not available on this device.',itemData:null});
       return;
     }
-    if(!window.MediaRecorder){
-      setLensResult({analysis:lang==='fr'?'❌ Enregistrement audio non supporté sur cet appareil.':'❌ Audio recording not supported on this device.',itemData:null});
-      return;
-    }
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const rawMimeType=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":
-                        MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":
-                        MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":"audio/webm";
-      // Strip codecs suffix — voice-transcribe only accepts base MIME types
-      const baseMimeType=rawMimeType.split(";")[0];
-      const mr=new MediaRecorder(stream,{mimeType:rawMimeType});
+      // Do NOT specify mimeType — iOS WKWebView throws when mimeType is explicit
+      // even when isTypeSupported() returns true. Let the platform choose its native format.
+      const mr=new MediaRecorder(stream);
       const chunks=[];
       mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
       mr.onstop=async()=>{
@@ -3727,12 +3720,14 @@ export default function App({ loginOnly = false }){
         setLensMicActive(false);setLensMicLoading(true);
         lensMicRef.current=null;
         try{
-          // Send FormData with Blob — voice-transcribe expects multipart/form-data
-          const blob=new Blob(chunks,{type:baseMimeType});
+          // Read the actual MIME type from the recorder (set after start() on all platforms)
+          // Fallback to audio/mp4 which iOS uses natively
+          const actualMime=(mr.mimeType||"audio/mp4").split(";")[0];
+          const blob=new Blob(chunks,{type:actualMime});
           const{data:{session:lmSess}}=await supabase.auth.getSession();
           const lmToken=lmSess?.access_token;
           const fd=new FormData();
-          fd.append("audio",blob,`recording.${baseMimeType.split("/")[1]||"webm"}`);
+          fd.append("audio",blob,`recording.${actualMime.split("/")[1]||"webm"}`);
           fd.append("lang",lang);
           const res=await fetch(`${supabaseUrl}/functions/v1/voice-transcribe`,{
             method:"POST",
