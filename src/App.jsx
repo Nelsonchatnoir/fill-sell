@@ -1854,13 +1854,37 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               if(status==="success"&&intent==="analytics_query"){
                 const aqIsProfit=taskData?.type==="profit";
                 const aqV=data?.value??0;
-                const aqComment=aqIsProfit
-                  ?(aqV>50?(lang==="en"?"Great day 🔥":"Bonne journée 🔥")
-                    :aqV>10?(lang==="en"?"Not bad at all 👍":"Pas mal du tout 👍")
-                    :aqV>0?(lang==="en"?"Small win 😊":"Petit gain 😊")
-                    :aqV===0?(lang==="en"?"Nothing today 💪":"Rien aujourd'hui 💪")
-                    :(lang==="en"?"In the red 😬":"Dans le rouge 😬"))
-                  :null;
+                // Granularité temporelle pour adapter le commentaire
+                const aqGran=(()=>{
+                  const p=data?.periode;
+                  if(p==="week")return"week";
+                  if(p==="month")return"month";
+                  if(p==="custom"){const df=taskData?.date_from,dt=taskData?.date_to;if(df&&dt&&df!==dt)return"week";}
+                  return"day";
+                })();
+                const aqComment=aqIsProfit?(()=>{
+                  if(aqGran==="week"){
+                    if(aqV>50)return lang==="en"?"Great week 🔥":"Super semaine 🔥";
+                    if(aqV>10)return lang==="en"?"Good week 👍":"Bonne semaine 👍";
+                    if(aqV>0)return lang==="en"?"Slow week 😊":"Petite semaine 😊";
+                    if(aqV===0)return lang==="en"?"Empty week 💪":"Semaine blanche 💪";
+                    return lang==="en"?"Week in the red 😬":"Semaine dans le rouge 😬";
+                  }
+                  if(aqGran==="month"){
+                    if(aqV>50)return lang==="en"?"Great month 🔥":"Super mois 🔥";
+                    if(aqV>10)return lang==="en"?"Good month 👍":"Bon mois 👍";
+                    if(aqV>0)return lang==="en"?"Slow month 😊":"Petit mois 😊";
+                    if(aqV===0)return lang==="en"?"Empty month 💪":"Mois blanc 💪";
+                    return lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬";
+                  }
+                  // day (défaut)
+                  if(aqV>50)return lang==="en"?"Great day 🔥":"Bonne journée 🔥";
+                  if(aqV>10)return lang==="en"?"Not bad 👍":"Pas mal du tout 👍";
+                  if(aqV>0)return lang==="en"?"Small win 😊":"Petit gain 😊";
+                  if(aqV===0)return lang==="en"?"Nothing today 💪":"Rien aujourd'hui 💪";
+                  return lang==="en"?"In the red 😬":"Dans le rouge 😬";
+                })():null;
+                // Label de période lisible
                 const aqPeriode=(()=>{
                   const p=data?.periode;
                   if(!p||p==="all")return null;
@@ -1935,17 +1959,76 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="success"&&intent==="analytics_date"){
-                const dateItems=data?.items||[];const summary=data?.summary||{};
+                const dateItems=data?.items||[];
+                const adType=taskData?.type||"all";
+                const adDate=taskData?.date||"";
+                const fmtDs=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit"}):"";
+                const dateLabel=fmtDs(adDate);
+                // Header selon type achats/ventes
+                const adHeader=(()=>{
+                  const n=dateItems.length;
+                  if(adType==="bought")return lang==="en"?`Bought on ${dateLabel} (${n})`:`Acheté le ${dateLabel} (${n})`;
+                  if(adType==="sold")return lang==="en"?`Sold on ${dateLabel} (${n})`:`Vendu le ${dateLabel} (${n})`;
+                  return lang==="en"?`On ${dateLabel} (${n})`:`Le ${dateLabel} (${n})`;
+                })();
+                // Message état vide
+                const adEmpty=(()=>{
+                  if(adType==="bought")return lang==="en"?"Nothing bought that day 🙂":"Rien acheté ce jour-là 🙂";
+                  if(adType==="sold")return lang==="en"?"Nothing sold that day 🙂":"Rien vendu ce jour-là 🙂";
+                  return lang==="en"?"Nothing recorded that day 🙂":"Rien enregistré ce jour-là 🙂";
+                })();
                 return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{display:"flex",gap:12,marginBottom:10,flexWrap:"wrap"}}>
-                      <div style={{fontSize:12,color:"#6B7280"}}><span style={{fontWeight:700,color:"#0D0D0D"}}>{summary.count||0}</span> {lang==="en"?"item(s)":"article(s)"}</div>
-                      {summary.totalSpend>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Spent":"Dépensé"}: <span style={{fontWeight:700,color:"#F9A26C"}}>{fmt(summary.totalSpend)}</span></div>}
-                      {summary.totalRevenue>0&&<div style={{fontSize:12,color:"#6B7280"}}>{lang==="en"?"Revenue":"Revenu"}: <span style={{fontWeight:700,color:"#1D9E75"}}>{fmt(summary.totalRevenue)}</span></div>}
+                  <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
+                      {adType==="bought"?"🛒":adType==="sold"?"💸":"📅"} {adHeader}
                     </div>
-                    {dateItems.slice(0,5).map((item,i)=>(
-                      <div key={i} style={{fontSize:13,fontWeight:600,color:"#0D0D0D",padding:"4px 0"}}>{item.title||item.titre} <span style={{fontSize:11,color:item._type==="sold"?"#1D9E75":"#F9A26C"}}>{item._type}</span></div>
-                    ))}
+                    {dateItems.length===0
+                      ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{adEmpty}</div>
+                      :<div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {dateItems.map((item,i)=>{
+                          const isSold=item._type==="sold";
+                          const nomItem=item.title||item.titre||"—";
+                          const catItem=item.type||item.categorie||"Autre";
+                          const tsItem=catItem?getTypeStyle(catItem):null;
+                          const marqueItem=item.marque||"";
+                          const empItem=item.emplacement||"";
+                          const prixA=item.buy||item.prix_achat||0;
+                          const prixV=item.sell||item.prix_vente||0;
+                          const ben=item.margin??item.benefice??0;
+                          return(
+                            <div key={i} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",
+                              padding:"7px 0",borderBottom:i<dateItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                              <div style={{flex:1,minWidth:0,marginRight:10}}>
+                                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",
+                                  textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{nomItem}</div>
+                                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                  {marqueItem&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,
+                                    padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>
+                                    {marqueItem}</span>}
+                                  {tsItem&&catItem&&catItem!=="Autre"&&<span style={{background:tsItem.bg,color:tsItem.color,
+                                    borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,
+                                    border:`1px solid ${tsItem.border}`}}>{tsItem.emoji} {typeLabel(catItem,lang)}</span>}
+                                  {empItem&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,
+                                    padding:"1px 7px",fontSize:10,fontWeight:600}}>📍 {empItem}</span>}
+                                </div>
+                              </div>
+                              <div style={{textAlign:"right",flexShrink:0}}>
+                                {isSold?(
+                                  <>
+                                    <div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmt(prixV)}</div>
+                                    <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{fmt(prixA)}</div>
+                                    <div style={{fontSize:11,fontWeight:700,color:ben>=0?"#1D9E75":"#E53E3E"}}>
+                                      {ben>=0?"+":""}{fmt(Math.round(ben*100)/100)}</div>
+                                  </>
+                                ):(
+                                  <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{fmt(prixA)}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    }
                   </div>
                 );
               }
@@ -2277,9 +2360,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const displayVal=isCurrency?(val>0?"+":"")+fmt(val):val+suffix;
                 const qsComment=data?.metric==="profit_mois"
                   ?(val>50?(lang==="en"?"Great month 🔥":"Super mois 🔥")
-                    :val>10?(lang==="en"?"Not bad at all 👍":"Pas mal du tout 👍")
-                    :val>0?(lang==="en"?"Small win 😊":"Petit gain 😊")
-                    :val===0?(lang==="en"?"Nothing yet 💪":"Rien pour l'instant 💪")
+                    :val>10?(lang==="en"?"Good month 👍":"Bon mois 👍")
+                    :val>0?(lang==="en"?"Slow month 😊":"Petit mois 😊")
+                    :val===0?(lang==="en"?"Empty month 💪":"Mois blanc 💪")
                     :(lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬"))
                   :null;
                 return(
