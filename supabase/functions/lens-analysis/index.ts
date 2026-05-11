@@ -58,13 +58,21 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
 ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
-Rules: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand/model clearly identified, "moyenne" if partial, "basse" if uncertain. If purchase price provided: use it to compute verdict. notes: one actionable selling tip.`;
+
+MANDATORY PROCESS — follow in order:
+1. BRAND VALIDATION: If you detect a brand visually, you MUST do a web search to confirm the exact spelling and that the brand exists (e.g. visual "pict pure clothing" → search → "Picture Organic Clothing"). Never return a brand without web search confirmation. If no brand found or confirmed, set marque to null.
+2. PRICE ESTIMATION: Always base the price range on a real web search. Query: "[brand] [item type] Vinted price" or "[brand] [item type] site:vinted.com". If no Vinted results, try eBay. Set fourchette_min/fourchette_max from actual listings found. Mention the source in notes (e.g. "Price based on 5 Vinted listings"). If no market data found: set confiance="basse" and state it in notes.
+3. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand/model confirmed by search + prices found, "moyenne" if partial, "basse" if uncertain or no data. If purchase price provided: use it to compute verdict. notes: source of price estimate + one actionable selling tip.`;
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
 ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
-Règles : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. confiance="haute" si marque/modèle clairement identifié, "moyenne" si partiel, "basse" si incertain. Si prix d'achat fourni : l'utiliser pour calculer le verdict. notes : un conseil concret pour vendre plus vite.`;
+
+PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
+1. VALIDATION MARQUE : Si tu détectes une marque visuellement, tu DOIS faire une web search pour confirmer l'orthographe exacte et l'existence de la marque (ex : visuel "pict pure clothing" → recherche → "Picture Organic Clothing"). Ne jamais retourner une marque sans confirmation par web search. Si aucune marque trouvée ou confirmée, mettre marque à null.
+2. ESTIMATION PRIX : Toujours baser la fourchette de prix sur une web search réelle. Requête : "[marque] [type article] Vinted prix" ou "[marque] [type article] site:vinted.fr". Si pas de résultat Vinted, essayer eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max à partir des annonces trouvées. Mentionner la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Si aucune donnée marché trouvée : confiance="basse" et le préciser dans notes.
+3. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. confiance="haute" si marque confirmée par recherche ET prix trouvés, "moyenne" si partiel, "basse" si incertain ou aucune donnée. Si prix d'achat fourni : l'utiliser pour calculer le verdict. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
 }
 
 async function callClaude(apiKey: string, payload: object, beta?: string): Promise<any> {
