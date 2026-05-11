@@ -2367,6 +2367,13 @@ export default function App({ loginOnly = false }){
   const [lensMicLoading,setLensMicLoading]=useState(false);
   const lensMicRef=useRef(null);
   const lensFileRef=useRef(null);
+  useEffect(()=>{
+    if(tab==='lens')return;
+    if(lensMicRef.current?.stop)lensMicRef.current.stop();
+    else if(lensMicRef.current?.abort)lensMicRef.current.abort();
+    lensMicRef.current=null;
+    setLensMicActive(false);
+  },[tab]);
   const [lensPlaceholderIdx,setLensPlaceholderIdx]=useState(0);
   const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
   const [lensUsedToday,setLensUsedToday]=useState(0);
@@ -3697,7 +3704,7 @@ export default function App({ loginOnly = false }){
     if(SR && !isNative){
       const rec=new SR();
       rec.lang=lang==="en"?"en-US":"fr-FR";
-      rec.interimResults=false;rec.continuous=false;
+      rec.interimResults=false;rec.continuous=true;
       rec.onresult=e=>{const t=Array.from(e.results).map(r=>r[0].transcript).join(" ");setLensDesc(prev=>(prev?prev+" ":"")+t);};
       rec.onend=()=>{setLensMicActive(false);lensMicRef.current=null;};
       rec.onerror=()=>{setLensMicActive(false);lensMicRef.current=null;};
