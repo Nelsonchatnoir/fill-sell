@@ -828,7 +828,14 @@ export async function executeVoiceTasks(tasks, context) {
             const hit = locMatches[0];
             result = {
               intent: task.intent, taskData: task.data, status: "success",
-              data: { title: hit.title, emplacement: hit.emplacement || null },
+              data: {
+                title: hit.title,
+                emplacement: hit.emplacement || null,
+                marque: hit.marque || null,
+                type: hit.type || hit.categorie || null,
+                description: hit.description || null,
+                ville: hit.ville || null,
+              },
               message: hit.emplacement
                 ? (context.lang === "en"
                   ? `📦 ${hit.title} → ${hit.emplacement}`

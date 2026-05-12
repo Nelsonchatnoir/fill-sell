@@ -1615,7 +1615,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${fmt(prix)}`:""}{qAdded?` · ×${qAdded}`:""}</div>
                       {desc&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:500,marginTop:2,opacity:0.85}}>{desc}</div>}
-                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+                      <div className="vr-pills" style={{marginTop:4}}>
                         {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                         {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
                       </div>
@@ -1652,7 +1652,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
                                 <div style={{minWidth:0,flex:1}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
-                                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                                  <div className="vr-pills" style={{marginTop:2}}>
                                     {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                                     {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
                                     {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
@@ -1854,12 +1854,21 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               if(status==="success"&&intent==="analytics_query"){
                 const aqIsProfit=taskData?.type==="profit";
                 const aqV=data?.value??0;
-                // Granularité temporelle pour adapter le commentaire
+                // Granularité réelle de la période pour adapter le commentaire
                 const aqGran=(()=>{
                   const p=data?.periode;
                   if(p==="week")return"week";
                   if(p==="month")return"month";
-                  if(p==="custom"){const df=taskData?.date_from,dt=taskData?.date_to;if(df&&dt&&df!==dt)return"week";}
+                  if(p==="custom"){
+                    const df=taskData?.date_from,dt=taskData?.date_to;
+                    if(df&&dt){
+                      if(df===dt)return"day";
+                      const diffDays=Math.round((new Date(dt)-new Date(df))/86400000);
+                      if(diffDays<=7)return"week";
+                      if(diffDays<=31)return"month";
+                      return"period"; // période longue > 31 jours
+                    }
+                  }
                   return"day";
                 })();
                 const aqComment=aqIsProfit?(()=>{
@@ -1876,6 +1885,14 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     if(aqV>0)return lang==="en"?"Slow month 😊":"Petit mois 😊";
                     if(aqV===0)return lang==="en"?"Empty month 💪":"Mois blanc 💪";
                     return lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬";
+                  }
+                  // période longue (> 31 jours) — commentaire neutre
+                  if(aqGran==="period"){
+                    if(aqV>50)return lang==="en"?"Great period 🔥":"Belle période 🔥";
+                    if(aqV>10)return lang==="en"?"Good period 👍":"Bonne période 👍";
+                    if(aqV>0)return lang==="en"?"Slow period 😊":"Petite période 😊";
+                    if(aqV===0)return lang==="en"?"Empty period 💪":"Période blanche 💪";
+                    return lang==="en"?"Period in the red 😬":"Période dans le rouge 😬";
                   }
                   // day (défaut)
                   if(aqV>50)return lang==="en"?"Great day 🔥":"Bonne journée 🔥";
@@ -2001,7 +2018,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               <div style={{flex:1,minWidth:0,marginRight:10}}>
                                 <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",
                                   textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{nomItem}</div>
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                <div className="vr-pills" style={{marginTop:3}}>
                                   {marqueItem&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,
                                     padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>
                                     {marqueItem}</span>}
@@ -2394,7 +2411,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:i<locItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                                  <div className="vr-pills" style={{marginTop:2}}>
                                     {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                                     {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
                                   </div>
@@ -2405,6 +2422,35 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           })}
                         </div>)
                     }
+                  </div>
+                );
+              }
+
+              /* Rendu "où j'ai rangé X" — affichage riche avec pills */
+              if(status==="success"&&intent==="inventory_location"){
+                const locTitle=data?.title||taskData?.nom||"";
+                const locEmp=data?.emplacement||null;
+                const locMarque=data?.marque||null;
+                const locType=data?.type||null;
+                const locDesc=data?.description||null;
+                const locVille=data?.ville||null;
+                const tsLoc=locType?getTypeStyle(locType):null;
+                return(
+                  <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
+                      📦 {lang==="en"?"Stored here":"Rangé ici"}
+                    </div>
+                    <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
+                    {(locEmp||locMarque||tsLoc)&&(
+                      <div className="vr-pills">
+                        {locEmp&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {locEmp}</span>}
+                        {locMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{locMarque}</span>}
+                        {tsLoc&&locType&&locType!=="Autre"&&<span style={{background:tsLoc.bg,color:tsLoc.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${tsLoc.border}`}}>{tsLoc.emoji} {typeLabel(locType,lang)}</span>}
+                      </div>
+                    )}
+                    {locDesc&&<div style={{fontSize:12,color:"#6B7280",marginTop:6,lineHeight:1.5}}>{locDesc}</div>}
+                    {locVille&&<div style={{fontSize:12,color:"#A3A9A6",marginTop:4}}>📍 {locVille}</div>}
+                    {!locEmp&&<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic",marginTop:6}}>{lang==="en"?"No location saved 🙂":"Aucun emplacement enregistré 🙂"}</div>}
                   </div>
                 );
               }
