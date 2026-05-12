@@ -3922,21 +3922,35 @@ export default function App({ loginOnly = false }){
       const qVendue=Math.min(quantite_vendue||1,qTotal);
       const remaining=qTotal-qVendue;
       if(remaining>0){
-        await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
+        // Vente partielle : réduire la quantité du stock d'abord
+        const{error:updQtyErr}=await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
+        if(updQtyErr)throw new Error(updQtyErr.message);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
+        // Insérer une ligne "vendu" séparée pour la quantité vendue
         const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
         const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
         if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message);
         if(si)setItems(prev=>[mapItem(si),...prev]);
       }else{
-        await supabase.from('inventaire').update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf}).eq('id',item.id);
+        // Vente complète : marquer l'article comme vendu dans inventaire
+        // .select('id') permet de vérifier que la ligne a bien été mise à jour
+        const{data:updRows,error:updErr}=await supabase.from('inventaire')
+          .update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf})
+          .eq('id',item.id)
+          .select('id');
+        // Lever une erreur si la mise à jour a échoué — on n'insère pas dans ventes si inventaire non modifié
+        if(updErr)throw new Error(updErr.message);
+        if(!updRows?.length)throw new Error(lang==="fr"?"Article introuvable en inventaire":"Item not found in inventory");
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
       }
+      // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
       for(let q=0;q<qVendue;q++){
         const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,date:new Date().toISOString().split('T')[0]};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }
+      // Resynchroniser depuis la base pour garantir la cohérence (comme confirmSell le fait)
+      await fetchAll(user.id);
     },
     deleteItem:(id)=>delItem(id),
     fetchAll:()=>fetchAll(user.id),
