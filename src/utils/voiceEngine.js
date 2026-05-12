@@ -460,45 +460,109 @@ function handleQueryStats(task, context) {
 }
 
 async function handleBusinessAdvice(task, context) {
-  const { items = [], sales = [], lang, supabaseUrl } = context;
+  const { items = [], sales = [], lang, supabaseUrl, token } = context;
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  // Ventes du mois courant et du mois précédent
   const salesMonth = sales.filter(s => new Date(s.date || s.date_vente || 0) >= monthStart);
-  const profit = salesMonth.reduce((a, s) => a + (s.margin ?? s.benefice ?? 0), 0);
-  const ventes = salesMonth.length;
-  const avgMargin = ventes > 0 ? salesMonth.reduce((a, s) => {
-    const pv = getPrixVente(s); return a + (pv > 0 ? ((s.margin ?? s.benefice ?? 0) / pv) * 100 : 0);
-  }, 0) / ventes : 0;
-  const catProfit = {};
+  const salesPrev  = sales.filter(s => {
+    const d = new Date(s.date || s.date_vente || 0);
+    return d >= prevMonthStart && d < monthStart;
+  });
+
+  // Chiffres globaux mois courant
+  const profit    = salesMonth.reduce((a, s) => a + (s.margin ?? s.benefice ?? 0), 0);
+  const ventes    = salesMonth.length;
+  const ca        = salesMonth.reduce((a, s) => a + getPrixVente(s), 0);
+  const avgMargin = ventes > 0
+    ? salesMonth.reduce((a, s) => {
+        const pv = getPrixVente(s);
+        return a + (pv > 0 ? ((s.margin ?? s.benefice ?? 0) / pv) * 100 : 0);
+      }, 0) / ventes
+    : 0;
+
+  // Chiffres mois précédent
+  const profitPrev = salesPrev.reduce((a, s) => a + (s.margin ?? s.benefice ?? 0), 0);
+  const ventesPrev = salesPrev.length;
+
+  // Top 3 catégories par bénéfice (sur toutes les ventes)
+  const catData = {};
   for (const s of sales) {
     const c = s.type || s.categorie || "Autre";
-    catProfit[c] = (catProfit[c] || 0) + (s.margin ?? s.benefice ?? 0);
+    if (!catData[c]) catData[c] = { profit: 0, ca: 0, count: 0 };
+    catData[c].profit += s.margin ?? s.benefice ?? 0;
+    catData[c].ca     += getPrixVente(s);
+    catData[c].count  += 1;
   }
-  const totalSalesProfit = Object.values(catProfit).reduce((a, v) => a + v, 0);
-  const bestCat = Object.entries(catProfit).sort((a, b) => b[1] - a[1])[0];
+  const categories_top3 = Object.entries(catData)
+    .sort((a, b) => b[1].profit - a[1].profit)
+    .slice(0, 3)
+    .map(([cat, d]) => ({
+      cat,
+      profit: Math.round(d.profit),
+      marge_pct: d.ca > 0 ? Math.round((d.profit / d.ca) * 100) : 0,
+    }));
+
+  // Top 3 marques par bénéfice
+  const marqueData = {};
+  for (const s of sales) {
+    const m = s.marque || "Sans marque";
+    if (m === "Sans marque") continue;
+    marqueData[m] = (marqueData[m] || 0) + (s.margin ?? s.benefice ?? 0);
+  }
+  const marques_top3 = Object.entries(marqueData)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([marque, p]) => ({ marque, profit: Math.round(p) }));
+
+  // Meilleur article
   const bestSale = [...sales].sort((a, b) => (b.margin ?? b.benefice ?? 0) - (a.margin ?? a.benefice ?? 0))[0];
+
+  // Articles lents (>30j en stock, non vendus)
   const slowItems = items.filter(i => {
-    if (i.statut === "vendu") return false;
+    if (i.statut === "vendu" || i.statut === "sold") return false;
     const d = new Date(i.date_ajout || i.date || i.created_at || 0);
     return (now - d) > 30 * 24 * 60 * 60 * 1000;
   });
+  // Top 3 articles les plus anciens pour les détails
+  const articles_lents_details = [...slowItems]
+    .sort((a, b) => new Date(a.date_ajout || a.date || a.created_at || 0) - new Date(b.date_ajout || b.date || b.created_at || 0))
+    .slice(0, 3)
+    .map(i => ({
+      nom: i.title || i.titre || i.nom || "Article",
+      jours: Math.floor((now - new Date(i.date_ajout || i.date || i.created_at || 0)) / (24 * 60 * 60 * 1000)),
+    }));
+
+  const stock_total = items.filter(i => i.statut !== "vendu" && i.statut !== "sold").length;
+
   if (!supabaseUrl) {
     return { intent: "business_advice", taskData: task.data, status: "error", data: {}, message: lang === "en" ? "Service unavailable" : "Service indisponible" };
   }
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/stats-analysis`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // Transmettre le JWT de l'utilisateur — requis par stats-analysis
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         periode: lang === "en" ? "this month" : "ce mois",
         profit: Math.round(profit),
+        profit_prev: Math.round(profitPrev),
         ventes,
+        ventes_prev: ventesPrev,
         marge: Math.round(avgMargin * 10) / 10,
-        meilleure_cat: bestCat?.[0] || "",
-        meilleure_cat_pct: bestCat && totalSalesProfit > 0 ? Math.round((bestCat[1] / totalSalesProfit) * 100) : 0,
+        ca: Math.round(ca),
+        categories_top3,
+        marques_top3,
         meilleur_article: bestSale ? (bestSale.title || bestSale.titre || "") : "",
         meilleur_article_profit: bestSale ? Math.round(bestSale.margin ?? bestSale.benefice ?? 0) : 0,
         articles_lents: slowItems.length,
+        articles_lents_details,
+        stock_total,
         lang,
         question: task.data?.originalText || "",
       }),

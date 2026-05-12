@@ -2748,12 +2748,67 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 );
               }
 
-              if(status==="success"&&(intent==="business_advice"||intent==="price_advice"||intent==="price_question"||intent==="buy_advice")){
+              if(status==="success"&&intent==="business_advice"){
+                const raw=data?.analysis||message||"";
+                // Découpe le texte en lignes et rend le markdown inline (**bold**)
+                const renderInline=(line)=>{
+                  const parts=line.split(/(\*\*[^*]+\*\*)/g);
+                  return parts.map((p,i)=>
+                    p.startsWith("**")&&p.endsWith("**")
+                      ?<strong key={i} style={{color:"#0D0D0D",fontWeight:800}}>{p.slice(2,-2)}</strong>
+                      :<span key={i}>{p}</span>
+                  );
+                };
+                const lines=raw.split("\n");
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:14,border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",overflow:"hidden",animation:"va-fadein 0.3s ease"}}>
+                    {/* Header */}
+                    <div style={{background:"linear-gradient(135deg,#1D9E75 0%,#0F6E56 100%)",padding:"14px 16px",display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:18}}>📊</span>
+                      <span style={{fontSize:13,fontWeight:800,color:"#fff",letterSpacing:"0.04em"}}>
+                        {lang==="en"?"Business Analysis":"Analyse de ton business"}
+                      </span>
+                    </div>
+                    {/* Corps — rendu ligne par ligne */}
+                    <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:2}}>
+                      {lines.map((line,li)=>{
+                        const trimmed=line.trim();
+                        if(!trimmed) return <div key={li} style={{height:6}}/>;
+                        // Titre de section (## emoji Titre)
+                        if(trimmed.startsWith("##")){
+                          const title=trimmed.replace(/^##\s*/,"");
+                          return(
+                            <div key={li} style={{fontSize:12,fontWeight:800,color:"#1D9E75",letterSpacing:"0.05em",marginTop:li===0?0:10,marginBottom:3,textTransform:"uppercase"}}>
+                              {title}
+                            </div>
+                          );
+                        }
+                        // Bullet point (• ou *)
+                        if(trimmed.startsWith("•")||trimmed.startsWith("-")){
+                          const content=trimmed.replace(/^[•\-]\s*/,"");
+                          return(
+                            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",paddingLeft:4}}>
+                              <span style={{color:"#1D9E75",fontWeight:800,marginTop:1,flexShrink:0}}>•</span>
+                              <span style={{fontSize:13,color:"#374151",lineHeight:1.6,fontWeight:500}}>{renderInline(content)}</span>
+                            </div>
+                          );
+                        }
+                        // Ligne normale
+                        return(
+                          <div key={li} style={{fontSize:13,color:"#4B5563",lineHeight:1.65,fontWeight:500}}>
+                            {renderInline(trimmed)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              if(status==="success"&&(intent==="price_advice"||intent==="price_question"||intent==="buy_advice")){
                 const label=intent==="buy_advice"
                   ?(lang==="en"?"🛒 Buy Analysis":"🛒 Analyse achat")
-                  :intent==="price_advice"||intent==="price_question"
-                  ?(lang==="en"?"💰 Price Advice":"💰 Conseil prix")
-                  :(lang==="en"?"🤖 Business Advice":"🤖 Analyse personnalisée");
+                  :(lang==="en"?"💰 Price Advice":"💰 Conseil prix");
                 const raw=data?.analysis||message||"";
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>

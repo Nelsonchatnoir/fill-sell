@@ -192,7 +192,8 @@ Data price_question : { nom, marque, prix_achat, description, categorie }
 
 Règles off_topic et business_advice (CRITIQUE) :
 off_topic = quand la demande n'a AUCUN rapport avec le business de revente : météo, recettes, vie perso, actualités, blagues, définitions, etc.
-business_advice = quand l'utilisateur pose une question ouverte sur son business SANS mentionner d'article précis : "comment je m'en sors ?", "qu'est-ce que tu me conseilles ?", "est-ce que je suis rentable ?", "quels articles dois-je vendre ?", "ma stratégie", "mes points forts/faibles", "donne-moi des conseils", "analyse mon activité", etc.
+business_advice = quand l'utilisateur pose une question ouverte sur son business SANS mentionner d'article précis.
+Déclencheurs business_advice : "comment je m'en sors ?", "qu'est-ce que tu me conseilles ?", "est-ce que je suis rentable ?", "quels articles dois-je vendre ?", "ma stratégie", "mes points forts/faibles", "donne-moi des conseils", "analyse mon activité", "analyse mon business", "analyse mes ventes", "dis-moi plus sur mon business", "comment je peux vendre plus", "comment gagner plus d'argent", "comment améliorer mes ventes", "qu'est-ce que je vends le mieux", "qu'est-ce qui marche pas", "quels sont mes meilleurs articles", "qu'est-ce que je devrais vendre", "donne-moi une analyse complète", "comment performer mieux", "comment booster mes ventes", "bilan de mon activité", "récap de mon business", "résumé de mes ventes".
 INTERDIT : générer business_advice si un article précis (nom, marque, modèle) est mentionné avec une question de prix.
 Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
@@ -572,7 +573,8 @@ Data price_question: { nom, marque, prix_achat, description, categorie }
 
 Rules for off_topic and business_advice (CRITICAL):
 off_topic = when the request has NO relation to the resale business: weather, recipes, personal life, news, jokes, definitions, etc.
-business_advice = when the user asks an open question about their business WITHOUT mentioning a specific item: "how am I doing?", "what do you advise?", "am I profitable?", "what items should I sell?", "my strategy", "my strengths/weaknesses", "give me advice", "analyze my activity", etc.
+business_advice = when the user asks an open question about their business WITHOUT mentioning a specific item.
+Triggers business_advice: "how am I doing?", "what do you advise?", "am I profitable?", "what items should I sell?", "my strategy", "my strengths/weaknesses", "give me advice", "analyze my activity", "analyze my business", "analyze my sales", "how can I sell more", "how to make more money", "give me advice", "what sells best", "what's not working", "how to improve my sales", "best performing items", "what should I sell", "full analysis", "business overview", "sales recap", "how to boost my sales", "what's performing well", "what should I focus on".
 FORBIDDEN: generating business_advice if a specific item (name, brand, model) is mentioned with a price question.
 Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
