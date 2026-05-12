@@ -2053,6 +2053,22 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="pending_confirmation"&&intent==="inventory_sell"){
+                // ── BUG 1 : file FIFO — on n'affiche qu'une seule card pending à la fois ──
+                // Si un inventory_sell en attente existe avant cet index, on masque celui-ci
+                // jusqu'à ce que le précédent soit résolu (succès ou annulation).
+                const hasEarlierPending=vaResults.slice(0,idx).some(
+                  r=>r?.intent==="inventory_sell"&&r?.status==="pending_confirmation"
+                );
+                if(hasEarlierPending){
+                  return(
+                    <div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"10px 14px",border:"1px solid #E5E7EB",opacity:0.45}}>
+                      <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>
+                        ⏳ {lang==="en"?"Waiting for previous sale confirmation…":"En attente de la confirmation précédente…"}
+                      </div>
+                    </div>
+                  );
+                }
+
                 // ── Cas no_match : article absent du stock → card "Vente directe" ──
                 if(taskData?.no_match){
                   const pvDirect=parseFloat(taskData?.prix_vente)||0;
@@ -2174,6 +2190,21 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           </button>
                         );
                       })}
+                      {/* Bouton "Aucun de ces articles" — vente directe si aucun candidat ne correspond */}
+                      <button onClick={()=>{
+                        const anyMatchCat=taskData?.categorie||taskData?.type||null;
+                        actions.addDirectSale({
+                          nom:taskData?.nom,
+                          marque:taskData?.marque,
+                          type:anyMatchCat,
+                          description:taskData?.description,
+                          prix_vente:taskData?.prix_vente,
+                        })
+                          .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                          .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                      }} style={{padding:"10px 12px",background:"#F0FDF4",border:"1.5px solid #9FE1CB",borderRadius:10,color:"#1D9E75",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        ➕ {lang==="en"?"None of these — create sale anyway":"Aucun de ces articles — créer la vente quand même"}
+                      </button>
                       <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✕ {lang==="en"?"Cancel":"Annuler"}
                       </button>
