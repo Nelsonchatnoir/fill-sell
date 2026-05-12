@@ -1,9 +1,9 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
-  getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
+  getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN, parseLocDesc,
 } from '../utils/shared';
 
 const VentesTab = memo(function VentesTab({
@@ -18,6 +18,7 @@ const VentesTab = memo(function VentesTab({
 }) {
   const { t } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
+  const [expandedSaleId, setExpandedSaleId] = useState(null);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -61,29 +62,50 @@ const VentesTab = memo(function VentesTab({
       ):(
         <>
           {visibleSales.map(s=>{
-            const d=new Date(s.date);const mc=getMargeColor(s.marginPct);const ts=getTypeStyle(s.type);
+            const d=new Date(s.date);
+            const mc=getMargeColor(s.marginPct);
+            const ts=getTypeStyle(s.type);
+            const isExpanded=expandedSaleId===s.id;
+            const {loc:_loc,rest:_desc}=parseLocDesc(s.description);
+            const hasDetail=_desc||_loc||s.emplacement;
             return(
-              <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`3px solid ${getCatBorder(s.type)}`}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
-                    {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+              <div key={s.id}>
+                <SwipeRow onDelete={()=>delSale(s.id)} style={{borderLeft:`3px solid ${getCatBorder(s.type)}`,borderBottomLeftRadius:isExpanded?0:12,borderBottomRightRadius:isExpanded?0:12}}>
+                  <div style={{flex:1,minWidth:0,cursor:hasDetail?"pointer":undefined}} onClick={hasDetail?()=>setExpandedSaleId(isExpanded?null:s.id):undefined}>
+                    <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
+                      {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
+                      <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
+                      {s.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marqueLabel(s.marque,lang)}</span>}
+                      {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
+                    </div>
+                    {!isExpanded&&(_desc||_loc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{_desc}{_desc&&_loc?" · ":""}{_loc&&`📍 ${_loc}`}</div>}
+                    {!isExpanded&&s.emplacement&&<span style={{display:"inline-block",marginTop:3,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {s.emplacement}</span>}
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
-                    <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
-                    {s.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marqueLabel(s.marque,lang)}</span>}
-                    {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
+                      <div style={{fontSize:12,color:"#A3A9A6"}}>{fmt(s.buy)} → {fmt(s.sell)}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
+                      <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                      <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
+                    </div>
+                    {hasDetail&&<span onClick={e=>{e.stopPropagation();setExpandedSaleId(isExpanded?null:s.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)",flexShrink:0}}>›</span>}
                   </div>
-                </div>
-                <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
-                  <div style={{fontSize:12,color:"#A3A9A6"}}>{fmt(s.buy)} → {fmt(s.sell)}</div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
-                  <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
-                  <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
-                </div>
-              </SwipeRow>
+                </SwipeRow>
+                {hasDetail&&(
+                  <div style={{maxHeight:isExpanded?"200px":"0",overflow:"hidden",transition:"max-height 0.25s ease"}}>
+                    <div style={{padding:"10px 14px 12px",background:"#F9FAFB",borderLeft:`3px solid ${getCatBorder(s.type)}`,borderRight:"1px solid rgba(0,0,0,0.06)",borderBottom:"1px solid rgba(0,0,0,0.06)",borderRadius:"0 0 12px 12px"}}>
+                      {_desc&&<div style={{fontSize:12,color:"#4B5563",lineHeight:1.5,marginBottom:(_loc||s.emplacement)?4:0}}>{_desc}</div>}
+                      {_loc&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:s.emplacement?4:0}}>📍 {_loc}</div>}
+                      {s.emplacement&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4}}>📦 {s.emplacement}</div>}
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
           {!showAllSales&&groupedSales.length>10&&(
