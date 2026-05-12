@@ -689,6 +689,19 @@ input, textarea { font-family: inherit; }
 /* ─── Tag row (Deal Score pills) ─── */
 .tag-row { display:flex; flex-wrap:wrap; gap:6px; }
 
+/* ─── Conteneur de pills dans le drawer vocal ─── */
+/* Garantit flex-wrap sur mobile (390px) : aucune pill ne dépasse */
+.vr-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+
+/* Padding bottom min sur toutes les cards drawer pour éviter la coupure */
+.vr-profit-card { padding-bottom: 14px; }
+
 /* ─── Heatmap ─── */
 .heatmap-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:3px; margin-top:4px; }
 .heatmap-cell { aspect-ratio:1; border-radius:3px; background:#F3F4F6; }
