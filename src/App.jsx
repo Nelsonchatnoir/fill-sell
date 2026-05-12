@@ -2053,21 +2053,33 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="pending_confirmation"&&intent==="inventory_sell"){
-                // ── Cas no_match : l'IA n'a trouvé aucun article correspondant ──
+                // ── Cas no_match : article absent du stock → card "Vente directe" ──
                 if(taskData?.no_match){
+                  const pvDirect=parseFloat(taskData?.prix_vente)||0;
                   return(
-                    <div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"16px",border:"1px solid #FCA5A5",display:"flex",flexDirection:"column",gap:12}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
-                        {lang==="en"?"Item not found in your stock":"Je n'ai pas trouvé cet article dans ton stock"}
+                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:4}}>{taskData?.nom||"Article"}</div>
+                        <span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>
+                          {lang==="en"?"Direct sale — not in stock":"Vente directe — absent du stock"}
+                        </span>
                       </div>
-                      <div style={{fontSize:12,color:"#6B7280"}}>
-                        {lang==="en"
-                          ?`"${taskData?.nom||""}" does not match any item currently in stock.`
-                          :`"${taskData?.nom||""}" ne correspond à aucun article actuellement en stock.`}
+                      <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Cost":"Achat"} —</span>
+                        <span style={{color:"#D1D5DB"}}>→</span>
+                        <span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sale":"Vente"} {pvDirect>0?`${pvDirect.toFixed(2).replace(".",",")} €`:"—"}</span>
                       </div>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Not found":"Non trouvé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Dismiss":"Fermer"}
-                      </button>
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>{
+                          // Vente directe confirmée : insertion sans article inventaire
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:taskData?.type,description:taskData?.description,prix_vente:taskData?.prix_vente})
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
+                          ✓ {lang==="en"?"Add sale":"Ajouter la vente"}
+                        </button>
+                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      </div>
                     </div>
                   );
                 }
@@ -4019,6 +4031,15 @@ export default function App({ loginOnly = false }){
     updateItem:async(id,fields)=>{
       const{error}=await supabase.from('inventaire').update(fields).eq('id',id);
       if(error)throw new Error(error.message);
+    },
+    // Vente directe sans article en stock (intent inventory_sell + no_match).
+    // Insère uniquement dans ventes — pas de suppression inventaire.
+    addDirectSale:async({nom,marque,type,description,prix_vente})=>{
+      const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
+      const row={user_id:user.id,titre:nom||"Article",marque:marque||null,type:type||null,description:description||null,prix_achat:0,prix_vente:pv,benefice:pv,date:new Date().toISOString().split('T')[0]};
+      const{data,error}=await supabase.from('ventes').insert([row]).select().single();
+      if(error)throw new Error(error.message);
+      if(data)setSales(prev=>[mapSale(data),...prev]);
     },
   };
 
