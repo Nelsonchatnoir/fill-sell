@@ -13,6 +13,43 @@ Sans texte ni markdown. Si incompréhensible → intent: "unknown".
 Si ambiguïté sur quel article → ambiguous: true + requiresConfirmation: true.
 Ne jamais inventer de données non mentionnées.
 
+RÈGLE FONDAMENTALE — ROBUSTESSE STT (appliquer AVANT tout parsing) :
+Tu reçois une transcription automatique qui peut contenir des erreurs phonétiques.
+Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéralement.
+
+1. QUANTITÉS — corriger les homophones phonétiques AVANT d'extraire le nom de l'article.
+   Quand un mot ambigu précède un nom d'article, l'interpréter comme un nombre :
+   "cette", "set", "sept", "cet" → 7  |  "un", "une", "hein" → 1
+   "deux", "de", "deu" → 2  |  "trois", "troi", "troit" → 3
+   "quatre", "catre" → 4  |  "cinq", "sink", "sank" → 5  |  "six", "si", "sis" → 6
+   "huit", "ui", "wit" → 8  |  "neuf", "neuve", "noeuf" → 9  |  "dix", "dis", "dit" → 10
+   JAMAIS retourner quantite:1 si un nombre > 1 est détectable dans la phrase.
+   ✅ "j'ai vendu cette veste carat" → quantite_vendue:7, marque:"Carhartt"
+   ✅ "j'ai acheté six swit Adidas" → quantite:6, nom:"Sweat Adidas"
+
+2. TYPES D'ARTICLES — corriger les déformations phonétiques courantes :
+   "vest", "weste" → "veste"  |  "swit", "sweet" → "sweat"
+   "houdi", "udi" → "hoodie"  |  "basquet", "baskète" → "basket"
+   "mantau", "mantos" → "manteau"  |  "bluson", "blouzons" → "blouson"
+   "panta court", "panta-court" → "pantacourt"
+
+3. MONTANTS — corriger les déformations de prix :
+   "cent euros", "san euros" → 100  |  "cinquante", "sinkante" → 50
+   "vingt", "vint", "vin" (suivi de "euros") → 20
+   Tout nombre suivi de "euros", "euro", "e", "€" → prix en JSON number.
+
+4. MARQUES — appliquer la correction phonétique sur TOUS les mots de la phrase,
+   pas seulement le champ marque extrait (voir règle correction marques ci-dessous).
+
+5. SENS GLOBAL — si la phrase est partiellement déformée, déduire l'intention par le contexte :
+   - Nombre + nom article + prix → inventory_lot ou inventory_add avec quantite
+   - Prix seul + nom article → intent vente (inventory_sell) ou achat (inventory_add)
+   - Utiliser la connaissance du contexte revendeur (Vinted, brocante, vide-grenier).
+
+6. AMBIGUÏTÉ RÉSIDUELLE — si plusieurs interprétations restent possibles après correction,
+   choisir la plus probable dans le contexte revendeur et ajouter optionnellement
+   "interpretation_note": "..." dans task.data pour debug.
+
 RÈGLE DE PRIORITÉ ABSOLUE (lire avant tout) :
 Si l'utterance contient l'un de ces déclencheurs de question de prix de revente :
 "combien je peux le revendre", "tu penses que je peux le vendre combien", "tu penses que je peux la vendre combien",
@@ -319,6 +356,42 @@ in natural order. Return ONLY { "tasks": [...] } as valid JSON.
 No text or markdown. If incomprehensible → intent: "unknown".
 If ambiguity about which item → ambiguous: true + requiresConfirmation: true.
 Never invent data not mentioned.
+
+FUNDAMENTAL RULE — STT ROBUSTNESS (apply BEFORE any parsing):
+You receive an automatic transcription that may contain phonetic errors.
+Your role is to understand the REAL INTENTION, not to parse the text literally.
+
+1. QUANTITIES — correct phonetic homophones BEFORE extracting the item name.
+   When an ambiguous word precedes an item name, interpret it as a number:
+   "this", "set", "sept" → 7  |  "one", "wan", "won" → 1
+   "two", "tu", "tew" → 2  |  "three", "tree", "tri" → 3
+   "four", "fore", "for" → 4  |  "five", "fife" → 5  |  "six", "siks" → 6
+   "eight", "ate", "ait" → 8  |  "nine", "nein" → 9  |  "ten", "tin" → 10
+   NEVER return quantite:1 if a number > 1 is detectable in the phrase.
+   ✅ "I sold this carat jacket" → quantite_vendue:7, marque:"Carhartt"
+   ✅ "I bought six swit Adidas" → quantite:6, nom:"Sweat Adidas"
+
+2. ITEM TYPES — correct common phonetic distortions:
+   "jaket", "jaket" → "jacket"  |  "swit", "sweet" → "sweatshirt"
+   "hoodi", "udi" → "hoodie"  |  "sneekers", "sneeker" → "sneakers"
+   "trowzers", "trausers" → "trousers"
+
+3. AMOUNTS — correct price distortions:
+   "hundred euros", "hunderd" → 100  |  "fifty", "fiftie" → 50
+   "twenty", "twenny" → 20
+   Any number followed by "euros", "euro", "pounds", "€", "£" → JSON number price.
+
+4. BRANDS — apply phonetic correction to ALL words in the phrase,
+   not just the extracted brand field (see brand correction rule below).
+
+5. GLOBAL MEANING — if the phrase is partially garbled, infer intent from context:
+   - Number + item name + price → inventory_lot or inventory_add with quantite
+   - Price + item name → selling (inventory_sell) or buying (inventory_add)
+   - Use knowledge of the resale context (eBay, Vinted, thrift stores, car boot sales).
+
+6. RESIDUAL AMBIGUITY — if multiple interpretations remain after correction,
+   choose the most probable in the resale context and optionally add
+   "interpretation_note": "..." to task.data for debugging.
 
 ABSOLUTE PRIORITY RULE (read before anything else):
 If the utterance contains any of these resale price question triggers:
