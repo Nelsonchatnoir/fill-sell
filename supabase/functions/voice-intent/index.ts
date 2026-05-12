@@ -141,7 +141,8 @@ Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) 
 "guitare"|"piano"|"basse"|"ampli"|"synthé"|"instrument de musique"|"Fender"|"Gibson"|"Stratocaster"|"Marshall"|"Roland"|"saxophone"|"ukulele"|"violon"|"trompette" → "Musique"
 "cartes pokemon"|"cartes yugioh"|"trading cards"|"cartes magic"|"cartes collector"|"booster pokemon"|"paquet de cartes"|"vinyle"|"disque rare" → "Collection"
 "livre"|"roman"|"BD"|"manga"|"bouquin"|"bande dessinée" → "Livres"
-"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"sac de luxe"|"montre de luxe" → "Luxe"
+"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"balenciaga"|"prada"|"céline"|"givenchy"|"valentino"|"saint laurent"|"ysl"|"fendi"|"moncler"|"off-white"|"bottega veneta"|"burberry"|"bvlgari"|"cartier"|"van cleef"|"sac de luxe"|"montre de luxe" → "Luxe"
+ATTENTION Luxe = grandes maisons uniquement (prix neuf > 500€). Les marques premium/accessibles comme Lacoste, Ralph Lauren, Tommy Hilfiger, Hugo Boss, Calvin Klein, Adidas, Nike → "Mode".
 "jouet"|"lego"|"playmobil"|"puzzle"|"jeu de société"|"peluche" → "Jouets"
 "vélo"|"tapis de course"|"haltères"|"raquette de tennis"|"skate"|"rollers"|"ski" → "Sport"
 "canapé"|"table"|"chaise"|"lampe"|"vaisselle"|"meuble"|"tapis"|"miroir"|"décoration" → "Maison"
@@ -401,7 +402,8 @@ Canonical categories (always use the exact value from the allowed list — 15 ca
 "guitar"|"piano"|"bass guitar"|"amp"|"synth"|"musical instrument"|"Fender"|"Gibson"|"Stratocaster"|"Marshall"|"Roland"|"saxophone"|"ukulele"|"violin"|"trumpet" → "Musique"
 "pokemon cards"|"yugioh cards"|"trading cards"|"magic cards"|"collector cards"|"pokemon booster"|"card pack"|"vinyl record" → "Collection"
 "book"|"novel"|"comic"|"manga"|"graphic novel" → "Livres"
-"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"luxury bag"|"luxury watch" → "Luxe"
+"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"balenciaga"|"prada"|"céline"|"givenchy"|"valentino"|"saint laurent"|"ysl"|"fendi"|"moncler"|"off-white"|"bottega veneta"|"burberry"|"bvlgari"|"cartier"|"van cleef"|"luxury bag"|"luxury watch" → "Luxe"
+NOTE Luxe = true luxury houses only (retail price > €500). Premium/accessible brands like Lacoste, Ralph Lauren, Tommy Hilfiger, Hugo Boss, Calvin Klein, Adidas, Nike → "Mode".
 "toy"|"lego"|"playmobil"|"puzzle"|"board game"|"stuffed animal" → "Jouets"
 "bike"|"treadmill"|"weights"|"tennis racket"|"skateboard"|"rollerblades"|"ski" → "Sport"
 "couch"|"table"|"chair"|"lamp"|"dishes"|"furniture"|"rug"|"mirror"|"decoration" → "Maison"
@@ -700,8 +702,8 @@ serve(async (req) => {
       for (const sellTask of sellTasks) {
         // Prompt concis : stock + phrase → retourner l'ID du meilleur match
         const matchPrompt = _lang === "fr"
-          ? `Stock disponible (articles non vendus) : ${stockJson}\n\nPhrase de l'utilisateur : "${text}"\n\nIdentifie quel article du stock l'utilisateur veut marquer comme vendu.\nRetourne UNIQUEMENT du JSON valide, sans texte ni markdown :\n• 1 match haute confiance (confidence ≥ 0.80) : { "matched_id": "<id>", "confidence": <score 0-1> }\n• Ambiguïté entre 2-3 articles proches : { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque ou null>", "confidence": <score 0-1> }, ...] }\n• Aucun article correspondant : { "no_match": true }`
-          : `Available stock (unsold items): ${stockJson}\n\nUser phrase: "${text}"\n\nIdentify which stock item the user wants to mark as sold.\nReturn ONLY valid JSON, no text or markdown:\n• 1 high-confidence match (confidence ≥ 0.80): { "matched_id": "<id>", "confidence": <score 0-1> }\n• Ambiguous between 2-3 close items: { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque or null>", "confidence": <score 0-1> }, ...] }\n• No matching item: { "no_match": true }`;
+          ? `Stock disponible (articles non vendus) : ${stockJson}\n\nPhrase de l'utilisateur : "${text}"\n\nIdentifie quel article du stock l'utilisateur veut marquer comme vendu.\n\nRÈGLE ABSOLUE — MARQUE : Si la phrase mentionne une marque spécifique (ex : "off-White", "Lacoste", "Nike", "Zara"), tu dois retourner UNIQUEMENT un article de cette marque exacte. Ne jamais retourner un article d'une marque différente même si la catégorie ou le type correspond. Si aucun article de cette marque n'est en stock → { "no_match": true }.\n\nRetourne UNIQUEMENT du JSON valide, sans texte ni markdown :\n• 1 match haute confiance (confidence ≥ 0.80) : { "matched_id": "<id>", "confidence": <score 0-1> }\n• Ambiguïté entre 2-3 articles de LA MÊME marque : { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque ou null>", "confidence": <score 0-1> }, ...] }\n• Aucun article correspondant (ou mauvaise marque) : { "no_match": true }`
+          : `Available stock (unsold items): ${stockJson}\n\nUser phrase: "${text}"\n\nIdentify which stock item the user wants to mark as sold.\n\nABSOLUTE RULE — BRAND: If the phrase mentions a specific brand (e.g. "off-White", "Nike", "Zara"), return ONLY an item of that exact brand. Never return an item of a different brand even if the category or type matches. If no item of that brand is in stock → { "no_match": true }.\n\nReturn ONLY valid JSON, no text or markdown:\n• 1 high-confidence match (confidence ≥ 0.80): { "matched_id": "<id>", "confidence": <score 0-1> }\n• Ambiguous between 2-3 close items OF THE SAME brand: { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque or null>", "confidence": <score 0-1> }, ...] }\n• No matching item (or wrong brand): { "no_match": true }`;
 
         try {
           const matchRes = await fetch("https://api.anthropic.com/v1/messages", {
