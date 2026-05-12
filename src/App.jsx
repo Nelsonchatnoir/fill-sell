@@ -2080,7 +2080,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         {lang==="en"?"Which item do you mean?":"Quel article veux-tu dire ?"}
                       </div>
                       {taskData.candidates.map((c,ci)=>{
-                        const cItem=items.find(i=>i.id===c.id);
+                        // Même normalisation String() que pour matched_id
+                        const cItem=items.find(i=>String(i.id)===String(c.id));
                         if(!cItem)return null;
                         const ts2=getTypeStyle(cItem.type);
                         return(
@@ -2107,9 +2108,11 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 // ── Cas normal : article identifié (matched_id) ou à confirmer ──
                 const sellPv=vaEdits[idx]?.prix_vente??taskData?.prix_vente??null;
                 const qv=taskData?.quantite_vendue||1;
-                // Priorité à matched_id fourni par l'IA ; fallback keyword si absent
+                // Priorité à matched_id fourni par l'IA ; fallback keyword si absent.
+                // String() normalise les deux côtés : Supabase retourne bigint en number,
+                // mais l'IA peut retourner l'id en string → comparaison stricte échouerait.
                 const found=taskData?.matched_id
-                  ?items.find(i=>i.id===taskData.matched_id&&i.statut!=="vendu")
+                  ?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu")
                   :items.find(i=>{if(i.statut==="vendu")return false;const q=(taskData?.nom||"").toLowerCase().trim();const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
                 const pv=parseFloat(sellPv)||0;
                 const sf=parseFloat(taskData?.frais)||0;
