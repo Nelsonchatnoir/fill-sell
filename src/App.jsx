@@ -2350,58 +2350,59 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               if(status==="pending_confirmation"&&intent==="inventory_lot"){
                 const lotItems=data?.items||[];
                 const lotTotal=data?.lotTotal||0;
-                // Prix moyen par article si non précisé individuellement
                 const prixMoyen=lotItems.length>0?lotTotal/lotItems.length:0;
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    {/* En-tête : nombre articles + total + prix moyen */}
-                    <div style={{marginBottom:12}}>
-                      <div style={{fontSize:13,fontWeight:800,color:"#1D4ED8"}}>
-                        🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
-                      </div>
-                      {lotItems.length>1&&(
-                        <div style={{fontSize:11,color:"#6B7280",marginTop:2}}>
-                          {lang==="en"?"Avg.":"Moy."} {fmt(prixMoyen)} {lang==="en"?"/ item":"/ article"}
-                        </div>
-                      )}
+                    {/* En-tête lot */}
+                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
+                      🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
                     </div>
-                    {/* Liste des articles */}
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                    {lotItems.length>1&&(
+                      <div style={{fontSize:11,color:"#6B7280",marginBottom:12}}>
+                        {lang==="en"?"Avg.":"Moy."} {fmt(prixMoyen)} {lang==="en"?"/ item":"/ article"}
+                      </div>
+                    )}
+                    {/* Un article = même présentation que la card inventory_add */}
+                    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
                       {lotItems.map((item,i)=>{
                         const editNom=vaEdits[idx]?.[i]?.nom??item.nom;
                         const editPrix=vaEdits[idx]?.[i]?.prix??item.prix_estime_lot;
                         const _ts=item.categorie&&item.categorie!=="Autre"?getTypeStyle(item.categorie):null;
+                        const {loc:itemLoc,rest:itemDescRest}=parseLocDesc(item.description||null);
                         return(
-                          <div key={i} style={{background:"#fff",borderRadius:9,padding:"9px 10px",border:"1px solid rgba(93,156,245,0.2)"}}>
-                            {/* Nom éditable + prix estimé */}
-                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:item.description||item.marque||_ts||item.emplacement?5:0}}>
+                          <div key={i} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
+                            {/* Pills marque + catégorie */}
+                            {(item.marque||_ts)&&(
+                              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>}
+                              </div>
+                            )}
+                            {/* Description (taille, couleur, état) */}
+                            {itemDescRest&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:itemLoc?4:item.emplacement?4:8,fontStyle:"italic",lineHeight:1.4}}>{itemDescRest}</div>}
+                            {/* Lieu d'achat */}
+                            {itemLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:item.emplacement?4:8,lineHeight:1.4}}>📍 {itemLoc}</div>}
+                            {/* Emplacement de rangement */}
+                            {item.emplacement&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:8,lineHeight:1.4}}>📦 {item.emplacement}</div>}
+                            {/* Inputs nom + prix */}
+                            <div style={{display:"flex",flexDirection:"column",gap:8}}>
                               <input value={editNom}
                                 onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],nom:e.target.value}}}))}
-                                style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#F9FAFB"}}/>
-                              <input type="number" value={editPrix}
-                                onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
-                                style={{width:62,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#F9FAFB",textAlign:"right"}}/>
-                              <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>{sym}</span>
+                                placeholder={lang==="en"?"Name":"Nom"}
+                                style={{fontSize:13,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%",boxSizing:"border-box"}}/>
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <input type="number" value={editPrix}
+                                  onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
+                                  placeholder={lang==="en"?"Buy price":"Prix achat"}
+                                  style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
+                              </div>
                             </div>
-                            {/* Description : taille, couleur, état */}
-                            {item.description&&(
-                              <div style={{fontSize:11,color:"#6B7280",lineHeight:1.4,marginBottom:5}}>
-                                {item.description}
-                              </div>
-                            )}
-                            {/* Pills : marque, catégorie, emplacement */}
-                            {(item.marque||_ts||item.emplacement)&&(
-                              <div className="vr-pills">
-                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>}
-                                {item.emplacement&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {item.emplacement}</span>}
-                              </div>
-                            )}
                           </div>
                         );
                       })}
                     </div>
-                    {/* Boutons */}
+                    {/* Boutons lot */}
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={async()=>{
                         try{
@@ -2413,8 +2414,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           for(const item of toAdd) await actions.addItem(item);
                           replaceResult(idx,{...result,status:"success",message:lang==="en"?`${toAdd.length} items added`:`${toAdd.length} articles ajoutés`});
                         }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm add":"Confirmer ajout"}
+                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✓ {lang==="en"?`Confirm (${lotItems.length})`:`Confirmer (${lotItems.length})`}
                       </button>
                       <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
                     </div>
