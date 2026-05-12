@@ -41,7 +41,8 @@
       "Bash(npx vitest *)",
       "mcp__e5f4e73e-e45e-4684-b622-81924e287d63__list_projects",
       "mcp__e5f4e73e-e45e-4684-b622-81924e287d63__list_tables",
-      "mcp__e5f4e73e-e45e-4684-b622-81924e287d63__execute_sql"
+      "mcp__e5f4e73e-e45e-4684-b622-81924e287d63__execute_sql",
+      "mcp__e5f4e73e-e45e-4684-b622-81924e287d63__apply_migration"
     ]
   }
 }
