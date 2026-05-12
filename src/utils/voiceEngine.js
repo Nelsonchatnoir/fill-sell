@@ -835,6 +835,7 @@ export async function executeVoiceTasks(tasks, context) {
                 type: hit.type || hit.categorie || null,
                 description: hit.description || null,
                 ville: hit.ville || null,
+                quantite: hit.quantite || hit.qty || null,
               },
               message: hit.emplacement
                 ? (context.lang === "en"
@@ -856,10 +857,43 @@ export async function executeVoiceTasks(tasks, context) {
             };
             break;
           }
-          const empMatches = context.items.filter(item => {
-            const e = norm(item.emplacement || "");
-            return e && e.includes(locEmp);
-          });
+
+          // Normalise en supprimant aussi la ponctuation pour comparer des emplacements
+          const normLoc = s => norm(s).replace(/[,;:.!?()/\\]/g, " ").replace(/\s+/g, " ").trim();
+          // Mots significatifs d'une phrase d'emplacement (longueur > 2, hors mots vides)
+          const locWords = s => normLoc(s).split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+
+          // Calcule un score de correspondance entre la phrase vocale et un emplacement stocké :
+          // 3 = sous-chaîne exacte normalisée
+          // 2 = tous les mots-clés significatifs de la phrase sont présents dans l'emplacement
+          // 1 = au moins 60 % des mots-clés significatifs correspondent
+          // 0 = aucune correspondance
+          const empScore = (vocale, stockEmp) => {
+            const nv = normLoc(vocale);
+            const ne = normLoc(stockEmp);
+            if (!ne) return 0;
+            if (ne.includes(nv) || nv.includes(ne)) return 3;
+            const words = locWords(nv);
+            if (words.length === 0) return 0;
+            const matched = words.filter(w => ne.includes(w)).length;
+            if (matched === words.length) return 2;
+            if (matched / words.length >= 0.6) return 1;
+            return 0;
+          };
+
+          // Scorer tous les articles ayant un emplacement, garder le meilleur niveau
+          const scored = context.items
+            .filter(item => item.emplacement)
+            .map(item => ({ item, score: empScore(locEmp, item.emplacement) }))
+            .filter(s => s.score > 0);
+          const bestScore = scored.length ? Math.max(...scored.map(s => s.score)) : 0;
+          const empMatches = scored.filter(s => s.score === bestScore).map(s => s.item);
+
+          // Emplacement affiché : préférer la valeur stockée du premier match si niveau > 1
+          const displayEmp = bestScore >= 2 && empMatches[0]?.emplacement
+            ? empMatches[0].emplacement
+            : task.data.emplacement;
+
           if (empMatches.length === 0) {
             result = {
               intent: task.intent, taskData: task.data, status: "error", data: {},
@@ -870,10 +904,10 @@ export async function executeVoiceTasks(tasks, context) {
           } else {
             result = {
               intent: task.intent, taskData: task.data, status: "success",
-              data: { items: empMatches, emplacement: task.data.emplacement },
+              data: { items: empMatches, emplacement: displayEmp },
               message: context.lang === "en"
-                ? `${empMatches.length} item(s) at ${task.data.emplacement}`
-                : `${empMatches.length} article(s) à l'emplacement ${task.data.emplacement}`,
+                ? `${empMatches.length} item(s) at ${displayEmp}`
+                : `${empMatches.length} article(s) à l'emplacement ${displayEmp}`,
             };
           }
           break;

@@ -2434,6 +2434,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const locType=data?.type||null;
                 const locDesc=data?.description||null;
                 const locVille=data?.ville||null;
+                const locQte=data?.quantite||null;
                 const tsLoc=locType?getTypeStyle(locType):null;
                 return(
                   <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
@@ -2441,14 +2442,17 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       📦 {lang==="en"?"Stored here":"Rangé ici"}
                     </div>
                     <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
-                    {(locEmp||locMarque||tsLoc)&&(
+                    {(locEmp||locMarque||tsLoc||locQte>1)&&(
                       <div className="vr-pills">
                         {locEmp&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {locEmp}</span>}
                         {locMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{locMarque}</span>}
                         {tsLoc&&locType&&locType!=="Autre"&&<span style={{background:tsLoc.bg,color:tsLoc.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${tsLoc.border}`}}>{tsLoc.emoji} {typeLabel(locType,lang)}</span>}
+                        {/* Pill quantité — fond orange clair, même style que le stock */}
+                        {locQte>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{locQte}</span>}
                       </div>
                     )}
-                    {locDesc&&<div style={{fontSize:12,color:"#6B7280",marginTop:6,lineHeight:1.5}}>{locDesc}</div>}
+                    {/* Description tronquée sur 1 ligne */}
+                    {locDesc&&<div style={{fontSize:12,color:"#6B7280",marginTop:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{locDesc}</div>}
                     {locVille&&<div style={{fontSize:12,color:"#A3A9A6",marginTop:4}}>📍 {locVille}</div>}
                     {!locEmp&&<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic",marginTop:6}}>{lang==="en"?"No location saved 🙂":"Aucun emplacement enregistré 🙂"}</div>}
                   </div>
