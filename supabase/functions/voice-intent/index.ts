@@ -233,6 +233,36 @@ Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l
    items: [{nom:"Veste H&M",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
            {nom:"Jean Zara",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
 
+Règle correction phonétique des marques (CRITIQUE — s'applique à TOUS les intents qui extraient une marque) :
+Avant de retourner une marque, applique une correction phonétique et orthographique.
+Si le mot ressemble à une marque connue (similarité phonétique ou orthographique faible), utilise la marque correcte.
+Si aucune correspondance certaine → conserver le mot tel quel. Ne jamais inventer une marque.
+Ces exemples sont des guides, pas une whitelist : utilise ton intelligence pour corriger TOUTES les marques connues.
+
+Corrections à appliquer (phonétique STT → orthographe correcte) :
+"karat", "karatt", "carat", "cahart" → "Carhartt"
+"patagoni", "patagonya", "patagonie" → "Patagonia"
+"niike", "naik", "naike" → "Nike"
+"adiddas", "adida", "addidas" → "Adidas"
+"levi", "levis", "lévis" → "Levi's"
+"new balence", "new balanc", "newbalance" → "New Balance"
+"tomy hilfiger", "tommy hillfiger" → "Tommy Hilfiger"
+"ralph loren", "ralph lorren", "polo ralph" → "Ralph Lauren"
+"northface", "north fas", "nort face" → "The North Face"
+"arc teryx", "arcteryx", "arc térix" → "Arc'teryx"
+"monclair", "monclaire" → "Moncler"
+"balensyaga" → "Balenciaga"
+"luboutin", "louboutain" → "Louboutin"
+"off white", "offwhite", "of white" → "Off-White"
+"stone islande", "ston island" → "Stone Island"
+"lacost", "lacôte" → "Lacoste"
+"burbury", "bourbery" → "Burberry"
+"facon", "fakon", "fakome" → "Facom"
+"petit bato", "petitbateau" → "Petit Bateau"
+"kiaby", "kyabi" → "Kiabi"
+"sara", "zahara" (contexte vêtement) → "Zara"
+"vanse" → "Vans"
+
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
 DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
@@ -508,6 +538,36 @@ If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it
 ✅ "an H&M jacket size S red and a Zara size 32 jeans for €30, stored in bin 3" →
    items: [{nom:"H&M Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
            {nom:"Zara Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
+
+Rule phonetic brand correction (CRITICAL — applies to ALL intents that extract a brand):
+Before returning a brand, apply phonetic and orthographic correction.
+If the word resembles a known brand (low phonetic or spelling distance), use the correct brand name.
+If no certain match → keep the word as-is. Never invent a brand.
+These examples are guides, not a whitelist: use your intelligence to correct ALL known brands.
+
+Corrections to apply (STT phonetic → correct spelling):
+"karat", "karatt", "carat", "cahart" → "Carhartt"
+"patagoni", "patagonya" → "Patagonia"
+"niike", "naik", "naike" → "Nike"
+"adiddas", "adida", "addidas" → "Adidas"
+"levi", "levis" → "Levi's"
+"new balence", "new balanc", "newbalance" → "New Balance"
+"tomy hilfiger", "tommy hillfiger" → "Tommy Hilfiger"
+"ralph loren", "ralph lorren", "polo ralph" → "Ralph Lauren"
+"northface", "north fas", "nort face" → "The North Face"
+"arc teryx", "arcteryx", "arc terix" → "Arc'teryx"
+"monclair", "monclaire" → "Moncler"
+"balensyaga" → "Balenciaga"
+"luboutin", "louboutain" → "Louboutin"
+"off white", "offwhite", "of white" → "Off-White"
+"stone islande", "ston island" → "Stone Island"
+"lacost" → "Lacoste"
+"burbury", "bourbery" → "Burberry"
+"facon", "fakon", "fakome" → "Facom"
+"petit bato", "petitbateau" → "Petit Bateau"
+"kiaby", "kyabi" → "Kiabi"
+"sara", "zahara" (clothing context) → "Zara"
+"vanse" → "Vans"
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
