@@ -596,8 +596,12 @@ serve(async (req) => {
   }
 
   try {
-    const { text, lang, currency } = await req.json();
+    const { text, lang, currency, items: stockItems } = await req.json();
     const _lang = lang === "en" ? "en" : "fr";
+
+    // Articles en stock transmis par le client pour le matching IA
+    type StockItem = { id: string; nom: string; marque: string|null; type: string|null; description: string|null; emplacement: string|null };
+    const _stock: StockItem[] = Array.isArray(stockItems) ? stockItems : [];
 
     // Dates dynamiques — évite les dates figées dans le prompt système
     const _now = new Date();
@@ -682,6 +686,62 @@ serve(async (req) => {
     for (const task of parsed.tasks as any[]) {
       if (task.intent === "inventory_add" && task.data) {
         task.data = normalizeInventoryAdd(task.data as Record<string, unknown>);
+      }
+    }
+
+    // ── Matching IA pour inventory_sell ──────────────────────────────────────
+    // Pour chaque intent inventory_sell détecté, on fait un second appel Claude
+    // avec la liste complète du stock pour identifier l'article exact par ID.
+    // Évite le keyword matching naïf côté client qui peut se tromper d'article.
+    const sellTasks = (parsed.tasks as any[]).filter(t => t.intent === "inventory_sell");
+    if (sellTasks.length > 0 && _stock.length > 0) {
+      const stockJson = JSON.stringify(_stock);
+
+      for (const sellTask of sellTasks) {
+        // Prompt concis : stock + phrase → retourner l'ID du meilleur match
+        const matchPrompt = _lang === "fr"
+          ? `Stock disponible (articles non vendus) : ${stockJson}\n\nPhrase de l'utilisateur : "${text}"\n\nIdentifie quel article du stock l'utilisateur veut marquer comme vendu.\nRetourne UNIQUEMENT du JSON valide, sans texte ni markdown :\n• 1 match haute confiance (confidence ≥ 0.80) : { "matched_id": "<id>", "confidence": <score 0-1> }\n• Ambiguïté entre 2-3 articles proches : { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque ou null>", "confidence": <score 0-1> }, ...] }\n• Aucun article correspondant : { "no_match": true }`
+          : `Available stock (unsold items): ${stockJson}\n\nUser phrase: "${text}"\n\nIdentify which stock item the user wants to mark as sold.\nReturn ONLY valid JSON, no text or markdown:\n• 1 high-confidence match (confidence ≥ 0.80): { "matched_id": "<id>", "confidence": <score 0-1> }\n• Ambiguous between 2-3 close items: { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque or null>", "confidence": <score 0-1> }, ...] }\n• No matching item: { "no_match": true }`;
+
+        try {
+          const matchRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": apiKey!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 512,
+              temperature: 0,
+              messages: [{ role: "user", content: matchPrompt }],
+            }),
+          });
+
+          if (matchRes.ok) {
+            const matchData = await matchRes.json();
+            const matchRaw = (matchData?.content?.[0]?.text ?? "")
+              .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+
+            const matchResult = JSON.parse(matchRaw);
+
+            if (matchResult.matched_id) {
+              // Match haute confiance : l'article est identifié avec certitude
+              sellTask.data.matched_id = matchResult.matched_id;
+              sellTask.data.match_confidence = matchResult.confidence ?? 1;
+            } else if (Array.isArray(matchResult.candidates) && matchResult.candidates.length > 0) {
+              // Ambiguïté : plusieurs candidats, l'utilisateur devra choisir
+              sellTask.data.candidates = matchResult.candidates;
+            } else if (matchResult.no_match) {
+              // Aucun article correspondant dans le stock
+              sellTask.data.no_match = true;
+            }
+            // Si le JSON est inattendu, on ne touche pas task.data → fallback keyword côté client
+          }
+        } catch {
+          // En cas d'échec (réseau, parsing JSON), le fallback keyword du client prend le relai
+        }
       }
     }
 

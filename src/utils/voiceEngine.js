@@ -536,18 +536,41 @@ export async function executeVoiceTasks(tasks, context) {
           result = await handleLot(task, context);
           break;
         case "inventory_sell": {
+          // Cas no_match : l'IA a explicitement indiqué qu'aucun article ne correspond
+          if (task.data.no_match) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation", // rendu géré côté App.jsx via taskData.no_match
+              data: task.data,
+              message: context.lang === "en" ? "Item not found in stock" : "Article non trouvé dans le stock",
+            };
+            break;
+          }
+
           if (!task.requiresConfirmation) {
-            const q = norm(task.data.nom || "");
-            const fromMap = q ? executedResultsMap[q] : null;
-            const matched = fromMap || (q
-              ? context.items.find(i =>
-                  i.statut !== "vendu" && (
-                    norm(i.title || i.titre || i.nom || "").includes(q) ||
-                    q.includes(norm(i.title || i.titre || i.nom || ""))
+            // Priorité au matched_id fourni par l'IA (matching sémantique)
+            let matched = task.data.matched_id
+              ? context.items.find(i => i.id === task.data.matched_id && i.statut !== "vendu")
+              : null;
+
+            // Fallback : keyword matching si l'IA n'a pas fourni de matched_id
+            // (rétrocompatibilité pour le flux buy+sell simultané via executedResultsMap)
+            if (!matched) {
+              const q = norm(task.data.nom || "");
+              const fromMap = q ? executedResultsMap[q] : null;
+              matched = fromMap || (q
+                ? context.items.find(i =>
+                    i.statut !== "vendu" && (
+                      norm(i.title || i.titre || i.nom || "").includes(q) ||
+                      q.includes(norm(i.title || i.titre || i.nom || ""))
+                    )
                   )
-                )
-              : null);
+                : null);
+            }
+
             if (matched) {
+              // Article trouvé avec certitude → exécution directe
               if (context.actions.confirmSellDirect) {
                 await context.actions.confirmSellDirect(
                   matched, parseNum(task.data.prix_vente), parseNum(task.data.frais), task.data.quantite_vendue || 1
@@ -567,7 +590,17 @@ export async function executeVoiceTasks(tasks, context) {
                 data: task.data,
                 message: context.lang === "en" ? "Sale registered" : "Vente enregistrée",
               };
+            } else if (task.data.candidates?.length > 0) {
+              // Ambiguïté : l'utilisateur doit choisir parmi les candidats dans le drawer
+              result = {
+                intent: task.intent,
+                taskData: task.data,
+                status: "pending_confirmation",
+                data: task.data,
+                message: context.lang === "en" ? "Which item do you mean?" : "Quel article veux-tu dire ?",
+              };
             } else {
+              // Ni match ni candidats : confirmation manuelle
               result = {
                 intent: task.intent,
                 taskData: task.data,
@@ -577,6 +610,7 @@ export async function executeVoiceTasks(tasks, context) {
               };
             }
           } else {
+            // requiresConfirmation: true → toujours afficher le drawer de confirmation
             result = {
               intent: task.intent,
               taskData: task.data,
