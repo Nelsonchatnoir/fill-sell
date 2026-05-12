@@ -2423,6 +2423,103 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 );
               }
 
+              /* ── Ranger un article dans un emplacement (inventory_move) ── */
+              if(status==="pending_confirmation"&&intent==="inventory_move"){
+                const moveItems=data?.items||[];
+                const moveEmp=data?.emplacement||taskData?.emplacement||"";
+                const moveArticle=taskData?.article||"";
+
+                // Article introuvable dans le stock
+                if(data?.notFound){
+                  return(
+                    <div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"14px",border:"1px solid #FCA5A5"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#E53E3E",marginBottom:6}}>
+                        🔍 {lang==="en"?"Item not found":"Article introuvable"}
+                      </div>
+                      <div style={{fontSize:12,color:"#6B7280",marginBottom:10}}>
+                        {lang==="en"
+                          ?`I couldn't find "${moveArticle}" in your stock.`
+                          :`Je n'ai pas trouvé "${moveArticle}" dans ton stock.`}
+                      </div>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
+                        style={{padding:"8px 14px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✕ {lang==="en"?"Close":"Fermer"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Article déjà rangé à cet emplacement
+                if(data?.alreadyHere){
+                  return(
+                    <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#1D9E75",marginBottom:6}}>
+                        📦 {lang==="en"?"Already stored here!":"Déjà rangé ici !"}
+                      </div>
+                      <div style={{fontSize:12,color:"#6B7280",marginBottom:10}}>
+                        {moveItems[0]?(moveItems[0].title||moveItems[0].titre||moveItems[0].nom||"")+" ":""}{lang==="en"?`is already at ${moveEmp}.`:`est déjà sur ${moveEmp}.`}
+                      </div>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
+                        style={{padding:"8px 14px",background:"transparent",border:"1.5px solid #9FE1CB",borderRadius:10,color:"#1D9E75",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✕ {lang==="en"?"Close":"Fermer"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Card de confirmation : liste des articles + ancien → nouvel emplacement
+                return(
+                  <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>
+                      📦 {lang==="en"?"Store here?":"Ranger ici ?"}
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                      {moveItems.map((item,i)=>{
+                        const _cat=item.type||item.categorie||null;
+                        const _ts=_cat&&_cat!=="Autre"?getTypeStyle(_cat):null;
+                        const prevEmp=item.emplacement||null;
+                        const itemName=item.title||item.titre||item.nom||"";
+                        return(
+                          <div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid #BFDBFE"}}>
+                            {(item.marque||_ts)&&(
+                              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(_cat,lang)}</span>}
+                              </div>
+                            )}
+                            <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{itemName}</div>
+                            <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                              <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
+                              <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>
+                              <span style={{color:"#1D4ED8",fontWeight:700}}>{moveEmp}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={async()=>{
+                        try{
+                          const ids=moveItems.map(i=>i.id);
+                          await actions.moveToLocation(ids,moveEmp);
+                          replaceResult(idx,{...result,status:"success",message:
+                            lang==="en"
+                              ?`✅ Stored! ${moveItems.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
+                              :`✅ Rangé ! ${moveItems.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
+                          });
+                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
+                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✓ {lang==="en"?"Confirm":"Confirmer"}
+                      </button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
+                        style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                        {lang==="en"?"Cancel":"Annuler"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               if(status==="pending_confirmation"&&intent==="inventory_update"){
                 return(<div key={idx} style={{background:"#FFFBEB",borderRadius:12,padding:"14px",border:"1px solid #FDE68A"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{lang==="en"?"Update:":"Mise à jour :"} {taskData?.nom} · {taskData?.field} → {taskData?.value}</div><div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"Manual update required":"Mise à jour manuelle requise"}</div></div>);
               }
@@ -4152,6 +4249,15 @@ export default function App({ loginOnly = false }){
     updateItem:async(id,fields)=>{
       const{error}=await supabase.from('inventaire').update(fields).eq('id',id);
       if(error)throw new Error(error.message);
+    },
+    // Met à jour l'emplacement physique d'un ou plusieurs articles (intent inventory_move)
+    moveToLocation:async(ids,emplacement)=>{
+      for(const id of ids){
+        const{error}=await supabase.from('inventaire').update({emplacement}).eq('id',id);
+        if(error)throw new Error(error.message);
+      }
+      setItems(prev=>prev.map(i=>ids.map(String).includes(String(i.id))?{...i,emplacement}:i));
+      await fetchAll(user.id);
     },
     // Vente directe sans article en stock (intent inventory_sell + no_match).
     // Insère uniquement dans ventes — pas de suppression inventaire.

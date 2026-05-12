@@ -79,6 +79,7 @@ Intents disponibles :
 - buy_advice          → requiresConfirmation: false
 - inventory_location  → requiresConfirmation: false
 - location_items      → requiresConfirmation: false
+- inventory_move      → requiresConfirmation: true OBLIGATOIRE
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
@@ -100,6 +101,22 @@ Data : { nom, marque }
 ✅ "c'est où les pinces Facom ?" → [inventory_location {nom:"Pinces Facom", marque:"Facom"}]
 ✅ "emplacement de la veste Zara" → [inventory_location {nom:"Veste Zara", marque:"Zara"}]
 DISTINCTION : c'est une question de localisation physique, pas une recherche dans l'inventaire (inventory_search).
+
+Règle inventory_move (CRITIQUE) :
+inventory_move = l'utilisateur veut DÉPLACER ou RANGER un article dans un emplacement physique.
+DISTINCT de inventory_location : inventory_location = chercher OÙ est un article. inventory_move = CHANGER l'emplacement d'un article.
+Déclencheurs : "range", "mets", "déplace", "pose", "stocke", "met", "range-le", "range-la", "range-les", "mets-le", "mets-la", "place".
+Data : { article, emplacement, quantite }
+  - article = description vocale de l'article (nom + marque + qualificatifs si mentionnés)
+  - emplacement = nouvel emplacement physique (extraire avec la même règle que inventory_add)
+  - quantite = nombre d'exemplaires concernés si mentionné, null sinon
+✅ "range ma veste Carhartt sur le portant 44" → [inventory_move {article:"veste Carhartt", emplacement:"Portant 44", quantite:null}]
+✅ "mets le hoodie Nike dans le bac vert" → [inventory_move {article:"hoodie Nike", emplacement:"Bac vert", quantite:null}]
+✅ "déplace la robe Zara dans la valise rouge" → [inventory_move {article:"robe Zara", emplacement:"Valise rouge", quantite:null}]
+✅ "range les 3 robes Zara dans le bac rose" → [inventory_move {article:"robe Zara", emplacement:"Bac rose", quantite:3}]
+✅ "range tout le lot Petit Bateau dans le bac rose" → [inventory_move {article:"lot Petit Bateau", emplacement:"Bac rose", quantite:null}]
+DISTINCTION CRITIQUE : "range ma veste" = inventory_move (action). "où est ma veste" = inventory_location (question). "range dans le bac" avec lieu d'ACHAT → inventory_move SEULEMENT.
+INTERDIT : confondre inventory_move et inventory_location.
 
 Règle buy_advice (CRITIQUE) :
 buy_advice = l'utilisateur envisage d'ACHETER un article qu'il n'a PAS encore et demande si c'est une bonne affaire / s'il doit acheter.
@@ -237,6 +254,7 @@ Data par intent :
 inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_location: { nom, marque }
 location_items:     { emplacement }
+inventory_move:     { article, emplacement, quantite }
 inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement}] }
 inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -422,6 +440,7 @@ Available intents:
 - buy_advice          → requiresConfirmation: false
 - inventory_location  → requiresConfirmation: false
 - location_items      → requiresConfirmation: false
+- inventory_move      → requiresConfirmation: true MANDATORY
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
@@ -443,6 +462,22 @@ Data: { nom, marque }
 ✅ "where are the Facom pliers?" → [inventory_location {nom:"Facom pliers", marque:"Facom"}]
 ✅ "location of the Zara jacket" → [inventory_location {nom:"Zara jacket", marque:"Zara"}]
 DISTINCTION: this is a physical location query, not an inventory search (inventory_search).
+
+Rule inventory_move (CRITICAL):
+inventory_move = the user wants to MOVE or STORE an item to a physical location.
+DISTINCT from inventory_location: inventory_location = find WHERE an item is. inventory_move = CHANGE the location of an item.
+Triggers: "store", "put", "move", "place", "keep", "put away", "store away".
+Data: { article, emplacement, quantite }
+  - article = vocal description of the item (name + brand + qualifiers if mentioned)
+  - emplacement = new physical storage location (use the same extraction rule as inventory_add)
+  - quantite = number of units concerned if mentioned, null otherwise
+✅ "store my Carhartt jacket on rack 44" → [inventory_move {article:"Carhartt jacket", emplacement:"Rack 44", quantite:null}]
+✅ "put the Nike hoodie in the green bin" → [inventory_move {article:"Nike hoodie", emplacement:"Green bin", quantite:null}]
+✅ "move the Zara dress to the red suitcase" → [inventory_move {article:"Zara dress", emplacement:"Red suitcase", quantite:null}]
+✅ "put the 3 Zara dresses in the pink bin" → [inventory_move {article:"Zara dress", emplacement:"Pink bin", quantite:3}]
+✅ "store all the Petit Bateau items in the pink bin" → [inventory_move {article:"Petit Bateau lot", emplacement:"Pink bin", quantite:null}]
+CRITICAL DISTINCTION: "store my jacket" = inventory_move (action). "where is my jacket" = inventory_location (question).
+FORBIDDEN: confusing inventory_move with inventory_location.
 
 Rule buy_advice (CRITICAL):
 buy_advice = the user is considering BUYING an item they do NOT yet own, and asks if it's a good deal / whether they should buy it.
@@ -579,6 +614,7 @@ Data per intent:
 inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_location: { nom, marque }
 location_items:     { emplacement }
+inventory_move:     { article, emplacement, quantite }
 inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement}] }
 inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
@@ -949,6 +985,62 @@ serve(async (req) => {
           }
         } catch {
           // En cas d'échec (réseau, parsing JSON), le fallback keyword du client prend le relai
+        }
+      }
+    }
+
+    // ── Matching IA pour inventory_move ──────────────────────────────────────
+    // Second appel Claude avec le stock complet pour identifier les articles à déplacer.
+    // La description est incluse pour distinguer des articles similaires (ex: Nike noire M vs Nike blanche L).
+    const moveTasks = (parsed.tasks as any[]).filter(t => t.intent === "inventory_move");
+    if (moveTasks.length > 0 && _stock.length > 0) {
+      const stockForMove = JSON.stringify(_stock.map((i: StockItem) => ({
+        id: i.id,
+        nom: i.nom,
+        marque: i.marque,
+        type: i.type,
+        description: i.description,
+        emplacement: i.emplacement,
+      })));
+
+      for (const moveTask of moveTasks) {
+        const article = (moveTask.data as any)?.article ?? "";
+        const quantite = (moveTask.data as any)?.quantite ?? null;
+
+        const moveMatchPrompt = _lang === "fr"
+          ? `Stock disponible (articles non vendus) : ${stockForMove}\n\nL'utilisateur veut ranger : "${article}"${quantite ? ` (${quantite} exemplaire(s))` : ""}.\n\nIdentifie les articles du stock qui correspondent à cette description.\nTiens compte du nom, de la marque ET de la description (couleur, taille, état) pour distinguer des articles similaires.\nEx : "veste Nike noire taille M" ≠ "veste Nike blanche taille L".\n${quantite ? `Retourner au maximum ${quantite} article(s) correspondant(s).\n` : ""}Retourne UNIQUEMENT du JSON valide, sans texte ni markdown :\n• 1 ou plusieurs articles trouvés → { "matched_ids": ["<id>", ...] }\n• Aucun article correspondant → { "no_match": true }`
+          : `Available stock (unsold items): ${stockForMove}\n\nThe user wants to store: "${article}"${quantite ? ` (${quantite} unit(s))` : ""}.\n\nIdentify which stock items match this description.\nUse name, brand AND description (colour, size, condition) to distinguish similar items.\nE.g.: "black Nike jacket size M" ≠ "white Nike jacket size L".\n${quantite ? `Return at most ${quantite} matching item(s).\n` : ""}Return ONLY valid JSON, no text or markdown:\n• 1 or more items found → { "matched_ids": ["<id>", ...] }\n• No matching item → { "no_match": true }`;
+
+        try {
+          const moveMatchRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": apiKey!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 256,
+              temperature: 0,
+              messages: [{ role: "user", content: moveMatchPrompt }],
+            }),
+          });
+
+          if (moveMatchRes.ok) {
+            const moveMatchData = await moveMatchRes.json();
+            const moveMatchRaw = (moveMatchData?.content?.[0]?.text ?? "")
+              .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+            const moveMatchResult = JSON.parse(moveMatchRaw);
+
+            if (Array.isArray(moveMatchResult.matched_ids) && moveMatchResult.matched_ids.length > 0) {
+              moveTask.data.matched_ids = moveMatchResult.matched_ids;
+            } else if (moveMatchResult.no_match) {
+              moveTask.data.no_match = true;
+            }
+          }
+        } catch {
+          // Fallback : voiceEngine côté client identifie l'article par keyword
         }
       }
     }

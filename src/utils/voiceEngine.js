@@ -848,6 +848,88 @@ export async function executeVoiceTasks(tasks, context) {
           }
           break;
         }
+        case "inventory_move": {
+          const { matched_ids, article, emplacement, no_match } = task.data;
+
+          // Article non trouvé par l'IA ou emplacement manquant
+          if (no_match || !emplacement) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: { notFound: true },
+              message: context.lang === "en"
+                ? `"${article}" not found in your stock`
+                : `"${article}" introuvable dans ton stock`,
+            };
+            break;
+          }
+
+          // Pas de matched_ids retournés par l'IA → essai fallback keyword
+          if (!Array.isArray(matched_ids) || matched_ids.length === 0) {
+            const normQ = norm(article || "");
+            const words = normQ.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+            const fallbackItems = context.items.filter(i => {
+              if (i.statut === "vendu" || i.statut === "sold") return false;
+              const hay = [norm(i.title || ""), norm(i.marque || ""), norm(i.type || ""), norm(i.description || "")].join(" ");
+              return words.length > 0 && words.every(w => hay.includes(w));
+            });
+            if (fallbackItems.length === 0) {
+              result = {
+                intent: task.intent,
+                taskData: task.data,
+                status: "pending_confirmation",
+                data: { notFound: true },
+                message: context.lang === "en"
+                  ? `"${article}" not found in your stock`
+                  : `"${article}" introuvable dans ton stock`,
+              };
+              break;
+            }
+            // Vérifier si déjà au bon emplacement
+            const allAlready = fallbackItems.every(i => (i.emplacement || "").toLowerCase() === emplacement.toLowerCase());
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: { items: fallbackItems, emplacement, alreadyHere: allAlready },
+              message: context.lang === "en" ? "Store here?" : "Ranger ici ?",
+            };
+            break;
+          }
+
+          // Résoudre les IDs en articles du contexte local
+          const matchedItems = matched_ids
+            .map(id => context.items.find(i => String(i.id) === String(id) && i.statut !== "vendu" && i.statut !== "sold"))
+            .filter(Boolean);
+
+          if (matchedItems.length === 0) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: { notFound: true },
+              message: context.lang === "en"
+                ? `"${article}" not found in your stock`
+                : `"${article}" introuvable dans ton stock`,
+            };
+            break;
+          }
+
+          // Vérifier si tous les articles sont déjà au bon emplacement
+          const allAlreadyHere = matchedItems.every(
+            i => (i.emplacement || "").toLowerCase() === emplacement.toLowerCase()
+          );
+
+          result = {
+            intent: task.intent,
+            taskData: task.data,
+            status: "pending_confirmation",
+            data: { items: matchedItems, emplacement, alreadyHere: allAlreadyHere },
+            message: context.lang === "en" ? "Store here?" : "Ranger ici ?",
+          };
+          break;
+        }
         case "inventory_location": {
           const locNom = norm(task.data.nom || "");
           const locMarque = norm(task.data.marque || "");
