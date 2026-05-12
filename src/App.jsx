@@ -2349,34 +2349,59 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
 
               if(status==="pending_confirmation"&&intent==="inventory_lot"){
                 const lotItems=data?.items||[];
+                const lotTotal=data?.lotTotal||0;
+                // Prix moyen par article si non précisé individuellement
+                const prixMoyen=lotItems.length>0?lotTotal/lotItems.length:0;
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>🛍️ Lot — {fmt(data?.lotTotal||0)}</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                    {/* En-tête : nombre articles + total + prix moyen */}
+                    <div style={{marginBottom:12}}>
+                      <div style={{fontSize:13,fontWeight:800,color:"#1D4ED8"}}>
+                        🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
+                      </div>
+                      {lotItems.length>1&&(
+                        <div style={{fontSize:11,color:"#6B7280",marginTop:2}}>
+                          {lang==="en"?"Avg.":"Moy."} {fmt(prixMoyen)} {lang==="en"?"/ item":"/ article"}
+                        </div>
+                      )}
+                    </div>
+                    {/* Liste des articles */}
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       {lotItems.map((item,i)=>{
                         const editNom=vaEdits[idx]?.[i]?.nom??item.nom;
                         const editPrix=vaEdits[idx]?.[i]?.prix??item.prix_estime_lot;
+                        const _ts=item.categorie&&item.categorie!=="Autre"?getTypeStyle(item.categorie):null;
                         return(
-                          <div key={i} style={{display:"flex",flexDirection:"column",gap:3}}>
-                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div key={i} style={{background:"#fff",borderRadius:9,padding:"9px 10px",border:"1px solid rgba(93,156,245,0.2)"}}>
+                            {/* Nom éditable + prix estimé */}
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:item.description||item.marque||_ts||item.emplacement?5:0}}>
                               <input value={editNom}
                                 onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],nom:e.target.value}}}))}
-                                style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                                style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#F9FAFB"}}/>
                               <input type="number" value={editPrix}
                                 onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
-                                style={{width:60,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#fff",textAlign:"right"}}/>
+                                style={{width:62,fontSize:12,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 6px",fontFamily:"inherit",color:"#1D4ED8",background:"#F9FAFB",textAlign:"right"}}/>
                               <span style={{fontSize:12,color:"#1D4ED8",fontWeight:700,flexShrink:0}}>{sym}</span>
                             </div>
-                            {(item.marque||item.categorie)&&(
-                              <div style={{display:"flex",gap:4,paddingLeft:2}}>
+                            {/* Description : taille, couleur, état */}
+                            {item.description&&(
+                              <div style={{fontSize:11,color:"#6B7280",lineHeight:1.4,marginBottom:5}}>
+                                {item.description}
+                              </div>
+                            )}
+                            {/* Pills : marque, catégorie, emplacement */}
+                            {(item.marque||_ts||item.emplacement)&&(
+                              <div className="vr-pills">
                                 {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                {(()=>{const _ts=getTypeStyle(item.categorie);return item.categorie&&item.categorie!=="Autre"&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>;})()}
+                                {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>}
+                                {item.emplacement&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {item.emplacement}</span>}
                               </div>
                             )}
                           </div>
                         );
                       })}
                     </div>
+                    {/* Boutons */}
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={async()=>{
                         try{

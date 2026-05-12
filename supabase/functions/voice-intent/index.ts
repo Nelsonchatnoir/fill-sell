@@ -200,7 +200,7 @@ Data par intent :
 inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_location: { nom, marque }
 location_items:     { emplacement }
-inventory_lot:      { lotTotal, items: [{nom, marque}] }
+inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement}] }
 inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
@@ -217,6 +217,21 @@ price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
+
+Règle inventory_lot items — description + emplacement (CRITIQUE) :
+Pour CHAQUE article du lot, extraire les mêmes champs que inventory_add :
+- nom = marque + modèle de base UNIQUEMENT. Pas de qualificatifs.
+- description = qualificatifs (taille, couleur, état, etc.) dans l'ordre : taille, état, couleur, autres. null si aucun.
+- categorie = catégorie canonique de l'article.
+- emplacement = lieu de rangement physique si mentionné (même règle que inventory_add). null sinon.
+Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l'appliquer à CHAQUE article.
+✅ "pour 40€ j'ai acheté une robe rose taille 36 Zara, une paire de chaussures New Balance 9060 taille 38, un livre Gallimard Le Printemps Bleu" →
+   items: [{nom:"Robe Zara",marque:"Zara",categorie:"Mode",description:"Taille 36, rose",emplacement:null},
+           {nom:"New Balance 9060",marque:"New Balance",categorie:"Mode",description:"Taille 38",emplacement:null},
+           {nom:"Le Printemps Bleu",marque:"Gallimard",categorie:"Livres",description:null,emplacement:null}]
+✅ "une veste H&M taille S rouge et un jean Zara 32 pour 30€, rangés dans le bac 3" →
+   items: [{nom:"Veste H&M",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
+           {nom:"Jean Zara",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
 
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
@@ -461,7 +476,7 @@ Data per intent:
 inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
 inventory_location: { nom, marque }
 location_items:     { emplacement }
-inventory_lot:      { lotTotal, items: [{nom, marque}] }
+inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement}] }
 inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
@@ -478,6 +493,21 @@ price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
+
+Rule inventory_lot items — description + emplacement (CRITICAL):
+For EACH item in the lot, extract the same fields as inventory_add:
+- nom = brand + base model ONLY. No qualifiers.
+- description = qualifiers (size, colour, condition, etc.) in order: size, condition, colour, other. null if none.
+- categorie = canonical category for the item.
+- emplacement = physical storage location if mentioned (same rule as inventory_add). null otherwise.
+If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it to EACH item.
+✅ "for €40 I bought a pink size 36 Zara dress, a pair of New Balance 9060 shoes size 38, a Gallimard Le Printemps Bleu book" →
+   items: [{nom:"Zara Dress",marque:"Zara",categorie:"Mode",description:"Size 36, pink",emplacement:null},
+           {nom:"New Balance 9060",marque:"New Balance",categorie:"Mode",description:"Size 38",emplacement:null},
+           {nom:"Le Printemps Bleu",marque:"Gallimard",categorie:"Livres",description:null,emplacement:null}]
+✅ "an H&M jacket size S red and a Zara size 32 jeans for €30, stored in bin 3" →
+   items: [{nom:"H&M Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
+           {nom:"Zara Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
@@ -688,6 +718,12 @@ serve(async (req) => {
     for (const task of parsed.tasks as any[]) {
       if (task.intent === "inventory_add" && task.data) {
         task.data = normalizeInventoryAdd(task.data as Record<string, unknown>);
+      }
+      // Normalise chaque article d'un lot (même traitement que inventory_add)
+      if (task.intent === "inventory_lot" && Array.isArray((task.data as any)?.items)) {
+        (task.data as any).items = (task.data as any).items.map(
+          (item: Record<string, unknown>) => normalizeInventoryAdd(item)
+        );
       }
     }
 
