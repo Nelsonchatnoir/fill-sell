@@ -1457,7 +1457,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             if(fuResults.every(r=>r.status==="success")){autoCloseRef.current=setTimeout(()=>resetVA(),3500);}
             return;
           }
-          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency})});
+          // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
+          const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null}));
+          const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
           if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
@@ -2051,10 +2053,64 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="pending_confirmation"&&intent==="inventory_sell"){
+                // ── Cas no_match : l'IA n'a trouvé aucun article correspondant ──
+                if(taskData?.no_match){
+                  return(
+                    <div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"16px",border:"1px solid #FCA5A5",display:"flex",flexDirection:"column",gap:12}}>
+                      <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
+                        {lang==="en"?"Item not found in your stock":"Je n'ai pas trouvé cet article dans ton stock"}
+                      </div>
+                      <div style={{fontSize:12,color:"#6B7280"}}>
+                        {lang==="en"
+                          ?`"${taskData?.nom||""}" does not match any item currently in stock.`
+                          :`"${taskData?.nom||""}" ne correspond à aucun article actuellement en stock.`}
+                      </div>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Not found":"Non trouvé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✕ {lang==="en"?"Dismiss":"Fermer"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // ── Cas ambiguïté : plusieurs candidats, l'utilisateur choisit ──
+                if(taskData?.candidates?.length>0){
+                  return(
+                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:10}}>
+                      <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
+                        {lang==="en"?"Which item do you mean?":"Quel article veux-tu dire ?"}
+                      </div>
+                      {taskData.candidates.map((c,ci)=>{
+                        const cItem=items.find(i=>i.id===c.id);
+                        if(!cItem)return null;
+                        const ts2=getTypeStyle(cItem.type);
+                        return(
+                          <button key={ci} onClick={()=>{
+                            // Résoudre l'ambiguïté : on réinjecte le result avec l'ID sélectionné
+                            replaceResult(idx,{...result,taskData:{...taskData,candidates:null,matched_id:c.id}});
+                          }} style={{textAlign:"left",padding:"10px 12px",borderRadius:10,border:"1.5px solid #E5E7EB",background:"#F9FAFB",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",gap:4}}>
+                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cItem.title}</div>
+                            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                              {cItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{cItem.marque}</span>}
+                              {cItem.type&&cItem.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {cItem.type}</span>}
+                              {cItem.emplacement&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {cItem.emplacement}</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✕ {lang==="en"?"Cancel":"Annuler"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // ── Cas normal : article identifié (matched_id) ou à confirmer ──
                 const sellPv=vaEdits[idx]?.prix_vente??taskData?.prix_vente??null;
                 const qv=taskData?.quantite_vendue||1;
-                const q=(taskData?.nom||"").toLowerCase().trim();
-                const found=items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
+                // Priorité à matched_id fourni par l'IA ; fallback keyword si absent
+                const found=taskData?.matched_id
+                  ?items.find(i=>i.id===taskData.matched_id&&i.statut!=="vendu")
+                  :items.find(i=>{if(i.statut==="vendu")return false;const q=(taskData?.nom||"").toLowerCase().trim();const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
                 const pv=parseFloat(sellPv)||0;
                 const sf=parseFloat(taskData?.frais)||0;
                 const buyU=found?(found.buy+(found.purchaseCosts||0)):0;
