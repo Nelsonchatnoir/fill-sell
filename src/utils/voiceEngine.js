@@ -549,9 +549,11 @@ export async function executeVoiceTasks(tasks, context) {
           }
 
           if (!task.requiresConfirmation) {
-            // Priorité au matched_id fourni par l'IA (matching sémantique)
+            // Priorité au matched_id fourni par l'IA (matching sémantique).
+            // Comparaison en string car l'IA retourne parfois l'id bigint en string
+            // alors que Supabase le retourne en number — String() normalise les deux.
             let matched = task.data.matched_id
-              ? context.items.find(i => i.id === task.data.matched_id && i.statut !== "vendu")
+              ? context.items.find(i => String(i.id) === String(task.data.matched_id) && i.statut !== "vendu")
               : null;
 
             // Fallback : keyword matching si l'IA n'a pas fourni de matched_id
