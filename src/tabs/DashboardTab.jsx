@@ -158,7 +158,7 @@ const DashboardTab = memo(function DashboardTab({
           </div>
 
           {/* Hero card profit net */}
-          <div onClick={()=>{if(!isPremium&&isNative){handleIAPPurchase();}else if(!isPremium&&!isNative){triggerCheckout();}else if(isPremium){setTab(4);localStorage.setItem('tab',4);}}}
+          <div onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
             className="profit-hero card-enter"
             onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.08)";}}
             onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
@@ -171,8 +171,7 @@ const DashboardTab = memo(function DashboardTab({
             <div className="meta">
               <span>{tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(salesForKpis.length?totalM/salesForKpis.length:0)}</span>
             </div>
-            {!isPremium&&<div className="sub-text">{t('unlocAnalyse')}</div>}
-            {isPremium&&<div className="sub-text">{t('analyseComplete')}</div>}
+            <div className="sub-text">{t('analyseComplete')}</div>
           </div>
 
           {/* KPIs 2 colonnes */}
