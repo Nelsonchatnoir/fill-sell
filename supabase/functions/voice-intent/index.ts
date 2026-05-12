@@ -209,7 +209,7 @@ analytics_query:  { type ("profit"|"revenue"|"count"|"avg_margin"|"avg_roi"|"spe
 analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, groupBy ("categorie"|null) }
 Si l'utilisateur demande les meilleurs deals PAR catégorie → groupBy: "categorie"
 analytics_dormant:{ days }
-analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
+analytics_date:   { date (ISO), date_to (ISO|null), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", calcul achat/vente EXPLICITE avec les deux prix mentionnés
@@ -485,7 +485,7 @@ analytics_query:  { type ("profit"|"revenue"|"count"|"avg_margin"|"avg_roi"|"spe
 analytics_best:   { metric ("profit"|"margin"), categorie, brand, periode, groupBy ("categorie"|null) }
 If the user asks for best deals BY category → groupBy: "categorie"
 analytics_dormant:{ days }
-analytics_date:   { date (ISO), type ("bought"|"sold"|"all") }
+analytics_date:   { date (ISO), date_to (ISO|null), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", EXPLICIT buy/sell calculation with both prices mentioned
@@ -635,15 +635,46 @@ serve(async (req) => {
     type StockItem = { id: string; nom: string; marque: string|null; type: string|null; description: string|null; emplacement: string|null };
     const _stock: StockItem[] = Array.isArray(stockItems) ? stockItems : [];
 
-    // Dates dynamiques — évite les dates figées dans le prompt système
+    // Dates dynamiques — calcul complet de toutes les périodes naturelles
     const _now = new Date();
     const _todayStr = _now.toISOString().slice(0, 10);
     const _yDay    = new Date(_now.getTime() -     86400000).toISOString().slice(0, 10);
     const _dBefore = new Date(_now.getTime() - 2 * 86400000).toISOString().slice(0, 10);
-    const _last3   = new Date(_now.getTime() - 3 * 86400000).toISOString().slice(0, 10);
+
+    // Cette semaine : lundi de la semaine courante → aujourd'hui
+    const _dow = _now.getDay(); // 0=dim, 1=lun … 6=sam
+    const _daysFromMon = _dow === 0 ? 6 : _dow - 1;
+    const _weekStartStr = new Date(_now.getTime() - _daysFromMon * 86400000).toISOString().slice(0, 10);
+
+    // Semaine dernière : lundi précédent → dimanche précédent
+    const _lastWeekStartStr = new Date(new Date(_weekStartStr + "T00:00:00Z").getTime() - 7 * 86400000).toISOString().slice(0, 10);
+    const _lastWeekEndStr   = new Date(new Date(_weekStartStr + "T00:00:00Z").getTime() -     86400000).toISOString().slice(0, 10);
+
+    // Ce mois : 1er du mois → aujourd'hui
+    const _monthStartStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-01`;
+
+    // Mois dernier : 1er → dernier jour
+    const _lastMonthD = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+    const _lastMonthEndD = new Date(_now.getFullYear(), _now.getMonth(), 0);
+    const _lastMonthStartStr = _lastMonthD.toISOString().slice(0, 10);
+    const _lastMonthEndStr   = _lastMonthEndD.toISOString().slice(0, 10);
+
+    // Nom du mois précédent pour les exemples dynamiques
+    const _MFR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+    const _MEN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const _prevMonthFR = _MFR[_lastMonthD.getMonth()];
+    const _prevMonthEN = _MEN[_lastMonthD.getMonth()];
+
+    // Exemples "les N derniers jours" (4 et 7)
+    const _last4Str = new Date(_now.getTime() - 4 * 86400000).toISOString().slice(0, 10);
+    const _last7Str = new Date(_now.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+
+    // Cette année
+    const _yearStartStr = `${_now.getFullYear()}-01-01`;
+
     const dateCtx = _lang === "en"
-      ? `\n\nCURRENT DATE (overrides any date elsewhere in this prompt): Today = ${_todayStr}. Yesterday = ${_yDay}. Day before yesterday = ${_dBefore}. "Last 3 days" starts on ${_last3}.\n\nABSOLUTE PRIORITY — explicit time periods: If the sentence contains "yesterday", "the day before", "today", "this week", "last N days" → ALWAYS analytics_query with the matching periode. query_stats (profit_mois) is STRICTLY FORBIDDEN when these words are present.\n✅ "how much profit did I make yesterday" → analytics_query {type:"profit", periode:"custom", date_from:"${_yDay}", date_to:"${_yDay}"}\n✅ "profit this week" → analytics_query {type:"profit", periode:"week"}\n✅ "earnings today" → analytics_query {type:"profit", periode:"today"}\n❌ "how much profit yesterday" → query_stats profit_mois (FORBIDDEN — explicit time period present)`
-      : `\n\nDATE ACTUELLE (remplace toute autre date dans ce prompt) : Aujourd'hui = ${_todayStr}. Hier = ${_yDay}. Avant-hier = ${_dBefore}. "Les 3 derniers jours" commence le ${_last3}.\n\nPRIORITÉ ABSOLUE — périodes temporelles explicites : Si la phrase contient "hier", "avant-hier", "aujourd'hui", "cette semaine", "les N derniers jours" → TOUJOURS analytics_query avec la période correspondante. query_stats (profit_mois) est STRICTEMENT INTERDIT si ces mots sont présents.\n✅ "j'ai fait combien de bénéfice hier" → analytics_query {type:"profit", periode:"custom", date_from:"${_yDay}", date_to:"${_yDay}"}\n✅ "bénéfice cette semaine" → analytics_query {type:"profit", periode:"week"}\n✅ "j'ai gagné aujourd'hui" → analytics_query {type:"profit", periode:"today"}\n❌ "j'ai fait combien de bénéfice hier" → query_stats profit_mois (INTERDIT — qualificatif temporel explicite présent)`;
+      ? `\n\nCURRENT DATE (overrides any date elsewhere in this prompt): Today = ${_todayStr}.\n\nPre-computed date ranges (use EXACTLY as shown):\n  yesterday              = ${_yDay}\n  day before yesterday   = ${_dBefore}\n  this week              = ${_weekStartStr} → ${_todayStr}  [Monday → today]\n  last week              = ${_lastWeekStartStr} → ${_lastWeekEndStr}\n  this month             = ${_monthStartStr} → ${_todayStr}\n  last month / in ${_prevMonthEN} = ${_lastMonthStartStr} → ${_lastMonthEndStr}\n  this year              = ${_yearStartStr} → ${_todayStr}\n  last 4 days            = ${_last4Str} → ${_todayStr}\n  last 7 days            = ${_last7Str} → ${_todayStr}\n  last N days            = (today − N days) → ${_todayStr}\n\nUNIVERSAL RULE — time periods (applies to ALL intents that use dates):\nALWAYS convert period expressions to explicit date_from/date_to using the pre-computed values above.\nFOR analytics_date: { date: "<from>", date_to: "<to>", type } — date_to is REQUIRED for any range.\nFOR analytics_query: { type, periode: "custom", date_from: "<from>", date_to: "<to>" }.\nFORBIDDEN: query_stats (profit_mois) when an explicit time period is present.\n\nMandatory analytics_date examples:\n✅ "what did I add this week" → analytics_date {date:"${_weekStartStr}", date_to:"${_todayStr}", type:"bought"}\n✅ "items bought last week" → analytics_date {date:"${_lastWeekStartStr}", date_to:"${_lastWeekEndStr}", type:"bought"}\n✅ "what did I sell this month" → analytics_date {date:"${_monthStartStr}", date_to:"${_todayStr}", type:"sold"}\n✅ "items added in ${_prevMonthEN}" → analytics_date {date:"${_lastMonthStartStr}", date_to:"${_lastMonthEndStr}", type:"bought"}\n✅ "purchases in the last 4 days" → analytics_date {date:"${_last4Str}", date_to:"${_todayStr}", type:"bought"}\n✅ "yesterday's items" → analytics_date {date:"${_yDay}", date_to:"${_yDay}", type:"all"}\n✅ "what did I add today" → analytics_date {date:"${_todayStr}", date_to:"${_todayStr}", type:"bought"}\n\nMandatory analytics_query examples:\n✅ "profit this week" → analytics_query {type:"profit", periode:"custom", date_from:"${_weekStartStr}", date_to:"${_todayStr}"}\n✅ "how much did I make yesterday" → analytics_query {type:"profit", periode:"custom", date_from:"${_yDay}", date_to:"${_yDay}"}\n✅ "earnings this month" → analytics_query {type:"profit", periode:"custom", date_from:"${_monthStartStr}", date_to:"${_todayStr}"}\n✅ "profit in ${_prevMonthEN}" → analytics_query {type:"profit", periode:"custom", date_from:"${_lastMonthStartStr}", date_to:"${_lastMonthEndStr}"}`
+      : `\n\nDATE ACTUELLE (remplace toute autre date dans ce prompt) : Aujourd'hui = ${_todayStr}.\n\nDates de référence pré-calculées (à utiliser TELLES QUELLES) :\n  hier               = ${_yDay}\n  avant-hier         = ${_dBefore}\n  cette semaine      = ${_weekStartStr} → ${_todayStr}  [lundi courant → aujourd'hui]\n  la semaine dernière = ${_lastWeekStartStr} → ${_lastWeekEndStr}\n  ce mois            = ${_monthStartStr} → ${_todayStr}\n  le mois dernier / en ${_prevMonthFR} = ${_lastMonthStartStr} → ${_lastMonthEndStr}\n  cette année        = ${_yearStartStr} → ${_todayStr}\n  les 4 derniers jours = ${_last4Str} → ${_todayStr}\n  les 7 derniers jours = ${_last7Str} → ${_todayStr}\n  les N derniers jours = (aujourd'hui − N jours) → ${_todayStr}\n\nRÈGLE UNIVERSELLE — périodes temporelles (s'applique à TOUS les intents avec des dates) :\nToujours convertir les expressions de période en date_from/date_to explicites en utilisant les valeurs pré-calculées.\nPOUR analytics_date : { date: "<from>", date_to: "<to>", type } — date_to OBLIGATOIRE pour toute plage.\nPOUR analytics_query : { type, periode: "custom", date_from: "<from>", date_to: "<to>" }.\nINTERDIT : query_stats (profit_mois) si une période temporelle explicite est présente.\n\nExemples analytics_date (OBLIGATOIRES) :\n✅ "qu'est-ce que j'ai ajouté cette semaine" → analytics_date {date:"${_weekStartStr}", date_to:"${_todayStr}", type:"bought"}\n✅ "articles achetés la semaine dernière" → analytics_date {date:"${_lastWeekStartStr}", date_to:"${_lastWeekEndStr}", type:"bought"}\n✅ "ce que j'ai vendu ce mois" → analytics_date {date:"${_monthStartStr}", date_to:"${_todayStr}", type:"sold"}\n✅ "articles ajoutés en ${_prevMonthFR}" → analytics_date {date:"${_lastMonthStartStr}", date_to:"${_lastMonthEndStr}", type:"bought"}\n✅ "mes achats des 4 derniers jours" → analytics_date {date:"${_last4Str}", date_to:"${_todayStr}", type:"bought"}\n✅ "articles d'hier" → analytics_date {date:"${_yDay}", date_to:"${_yDay}", type:"all"}\n✅ "ce que j'ai ajouté aujourd'hui" → analytics_date {date:"${_todayStr}", date_to:"${_todayStr}", type:"bought"}\n\nExemples analytics_query (OBLIGATOIRES) :\n✅ "bénéfice cette semaine" → analytics_query {type:"profit", periode:"custom", date_from:"${_weekStartStr}", date_to:"${_todayStr}"}\n✅ "j'ai fait combien hier" → analytics_query {type:"profit", periode:"custom", date_from:"${_yDay}", date_to:"${_yDay}"}\n✅ "gains ce mois" → analytics_query {type:"profit", periode:"custom", date_from:"${_monthStartStr}", date_to:"${_todayStr}"}\n✅ "profit en ${_prevMonthFR}" → analytics_query {type:"profit", periode:"custom", date_from:"${_lastMonthStartStr}", date_to:"${_lastMonthEndStr}"}`;
 
     const currencyCtx = currency
       ? (_lang === "en"

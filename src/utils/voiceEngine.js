@@ -321,7 +321,7 @@ function handleAnalyticsDormant(task, context) {
 }
 
 function handleAnalyticsDate(task, context) {
-  const { date, type = "all" } = task.data;
+  const { date, date_to, type = "all" } = task.data;
   if (!date) {
     return {
       intent: task.intent,
@@ -331,41 +331,50 @@ function handleAnalyticsDate(task, context) {
       message: context.lang === "en" ? "Date required" : "Date requise",
     };
   }
-  const target = date.slice(0, 10);
-  let items = [];
+  const from = date.slice(0, 10);
+  // date_to optionnel : si absent → filtre sur le jour exact (rétrocompatibilité)
+  const to = date_to ? date_to.slice(0, 10) : from;
+  const isRange = to !== from;
 
+  let items = [];
   if (type === "bought" || type === "all") {
     const bought = context.items
-      .filter(
-        i => (i.date_achat || i.date || i.created_at || "").slice(0, 10) === target
-      )
+      .filter(i => {
+        const d = (i.date_achat || i.date || i.created_at || "").slice(0, 10);
+        return d >= from && d <= to;
+      })
       .map(i => ({ ...i, _type: "bought" }));
     items = [...items, ...bought];
   }
   if (type === "sold" || type === "all") {
     const sold = context.sales
-      .filter(s => (s.date || s.created_at || "").slice(0, 10) === target)
+      .filter(s => {
+        const d = (s.date || s.created_at || "").slice(0, 10);
+        return d >= from && d <= to;
+      })
       .map(s => ({ ...s, _type: "sold" }));
     items = [...items, ...sold];
   }
 
   const boughtItems = items.filter(i => i._type === "bought");
-  const soldItems = items.filter(i => i._type === "sold");
+  const soldItems   = items.filter(i => i._type === "sold");
   const summary = {
     count: items.length,
-    totalSpend: boughtItems.reduce((a, i) => a + getPrixAchat(i), 0),
+    totalSpend:   boughtItems.reduce((a, i) => a + getPrixAchat(i), 0),
     totalRevenue: soldItems.reduce((a, s) => a + getPrixVente(s), 0),
   };
+
+  // Message : "du X au Y" pour une plage, "le X" pour un jour exact
+  const message = context.lang === "en"
+    ? `${items.length} item(s) ${isRange ? `from ${from} to ${to}` : `on ${from}`}`
+    : `${items.length} article(s) ${isRange ? `du ${from} au ${to}` : `le ${from}`}`;
 
   return {
     intent: task.intent,
     taskData: task.data,
     status: "success",
     data: { items, summary },
-    message:
-      context.lang === "en"
-        ? `${items.length} item(s) on ${target}`
-        : `${items.length} article(s) le ${target}`,
+    message,
   };
 }
 
