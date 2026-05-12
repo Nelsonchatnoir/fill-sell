@@ -1087,6 +1087,8 @@ serve(async (req) => {
       }
     }
 
+    const textLow = text.toLowerCase();
+
     // ── Guard serveur : verbe de rangement + marqueur de lieu = forcer inventory_move ──────────
     // Corrige les cas où Claude retourne inventory_add, inventory_location ou unknown
     // à la place de inventory_move (ex: "j'ai rangé X dans Y").
@@ -1133,7 +1135,6 @@ serve(async (req) => {
     }
 
     // Server-side guard: buy advice patterns → enforce buy_advice
-    const textLow = text.toLowerCase();
     const BUY_TRIGGERS = _lang === "en"
       ? ["should i buy","is it a good deal","worth buying","should i get it","good deal","is it worth it","would you recommend buying","worth it?"]
       : ["devrais l'acheter","je devrais acheter","ça vaut le coup","c'est une bonne affaire","bonne affaire","vaut le coup","devrais-je acheter","est-ce que j'achète","je l'achète ?","tu me conseilles de l'acheter"];
