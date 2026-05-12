@@ -201,7 +201,7 @@ inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quan
 inventory_location: { nom, marque }
 location_items:     { emplacement }
 inventory_lot:      { lotTotal, items: [{nom, marque}] }
-inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
+inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -462,7 +462,7 @@ inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quan
 inventory_location: { nom, marque }
 location_items:     { emplacement }
 inventory_lot:      { lotTotal, items: [{nom, marque}] }
-inventory_sell:   { nom, marque, prix_vente, date, quantite_vendue }
+inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }

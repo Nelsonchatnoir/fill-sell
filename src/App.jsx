@@ -2056,13 +2056,23 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 // ── Cas no_match : article absent du stock → card "Vente directe" ──
                 if(taskData?.no_match){
                   const pvDirect=parseFloat(taskData?.prix_vente)||0;
+                  const dmCat=taskData?.categorie||taskData?.type||null;
+                  const dmTs=dmCat?getTypeStyle(dmCat):null;
+                  const dmDesc=taskData?.description||null;
+                  const{loc:dmLoc,rest:dmDescRest}=parseLocDesc(dmDesc);
                   return(
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
                       <div>
-                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:4}}>{taskData?.nom||"Article"}</div>
-                        <span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>
-                          {lang==="en"?"Direct sale — not in stock":"Vente directe — absent du stock"}
-                        </span>
+                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{taskData?.nom||"Article"}</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:dmDescRest||dmLoc?6:0}}>
+                          <span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>
+                            {lang==="en"?"Direct sale":"Vente directe"}
+                          </span>
+                          {taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{taskData.marque}</span>}
+                          {dmTs&&dmCat!=="Autre"&&<span style={{background:dmTs.bg,color:dmTs.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${dmTs.border}`}}>{dmTs.emoji} {typeLabel(dmCat,lang)}</span>}
+                        </div>
+                        {dmDescRest&&<div style={{fontSize:12,color:"#4B5563",fontWeight:500,fontStyle:"italic",lineHeight:1.4,marginBottom:dmLoc?3:0}}>{dmDescRest}</div>}
+                        {dmLoc&&<div style={{fontSize:12,color:"#6B7280",fontWeight:500,lineHeight:1.4}}>📍 {dmLoc}</div>}
                       </div>
                       <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
                         <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Cost":"Achat"} —</span>
@@ -2072,7 +2082,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>{
                           // Vente directe confirmée : insertion sans article inventaire
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:taskData?.type,description:taskData?.description,prix_vente:taskData?.prix_vente})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
