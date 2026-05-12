@@ -77,9 +77,9 @@ Intents disponibles :
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
 - buy_advice          → requiresConfirmation: false
+- inventory_move      → requiresConfirmation: true OBLIGATOIRE
 - inventory_location  → requiresConfirmation: false
 - location_items      → requiresConfirmation: false
-- inventory_move      → requiresConfirmation: true OBLIGATOIRE
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
@@ -102,21 +102,38 @@ Data : { nom, marque }
 ✅ "emplacement de la veste Zara" → [inventory_location {nom:"Veste Zara", marque:"Zara"}]
 DISTINCTION : c'est une question de localisation physique, pas une recherche dans l'inventaire (inventory_search).
 
-Règle inventory_move (CRITIQUE) :
-inventory_move = l'utilisateur veut DÉPLACER ou RANGER un article dans un emplacement physique.
-DISTINCT de inventory_location : inventory_location = chercher OÙ est un article. inventory_move = CHANGER l'emplacement d'un article.
-Déclencheurs : "range", "mets", "déplace", "pose", "stocke", "met", "range-le", "range-la", "range-les", "mets-le", "mets-la", "place".
+Règle inventory_move (CRITIQUE — PRIORITÉ SUR inventory_location) :
+inventory_move = l'utilisateur RANGE ou a RANGÉ un article dans un emplacement physique (action).
+DISTINCT de inventory_location : inventory_location = QUESTION (où est X ?). inventory_move = ACTION (ranger/déplacer X vers Y).
+
+Déclencheurs impératif/présent : "range", "mets", "déplace", "pose", "stocke", "met", "range-le", "range-la", "range-les", "mets-le", "mets-la", "place".
+Déclencheurs passé (CRITIQUES — souvent ratés) : "j'ai rangé", "j'ai mis", "j'ai placé", "j'ai déposé", "j'ai stocké".
+RÈGLE ABSOLUE : VERBE DE RANGEMENT (présent OU passé) + article + (dans/sur/en) + emplacement → TOUJOURS inventory_move.
+
+PIÈGE EMPLACEMENT : "sac", "valise", "carton", "boîte", "caisse", "panier", "cagette" peuvent être des CONTAINERS de rangement.
+  ✅ "range la robe dans le sac beige" → emplacement:"Sac beige" (le sac est ici un container de stockage)
+  ✅ "j'ai mis le pull dans la valise rouge" → emplacement:"Valise rouge"
+
 Data : { article, emplacement, quantite }
-  - article = description vocale de l'article (nom + marque + qualificatifs si mentionnés)
-  - emplacement = nouvel emplacement physique (extraire avec la même règle que inventory_add)
-  - quantite = nombre d'exemplaires concernés si mentionné, null sinon
+  - article = description vocale de l'article (nom + marque + qualificatifs)
+  - emplacement = container ou lieu de rangement physique
+  - quantite = nombre d'exemplaires si mentionné, null sinon
+
+Exemples OBLIGATOIRES (respecter scrupuleusement) :
+✅ "range la robe Lacoste dans le sac beige" → [inventory_move {article:"robe Lacoste", emplacement:"Sac beige", quantite:null}]
+✅ "j'ai rangé la robe Lacoste dans le sac beige" → [inventory_move {article:"robe Lacoste", emplacement:"Sac beige", quantite:null}]
 ✅ "range ma veste Carhartt sur le portant 44" → [inventory_move {article:"veste Carhartt", emplacement:"Portant 44", quantite:null}]
+✅ "j'ai rangé la veste Nike sur le portant 3" → [inventory_move {article:"veste Nike", emplacement:"Portant 3", quantite:null}]
 ✅ "mets le hoodie Nike dans le bac vert" → [inventory_move {article:"hoodie Nike", emplacement:"Bac vert", quantite:null}]
+✅ "j'ai mis le hoodie dans le bac vert" → [inventory_move {article:"hoodie", emplacement:"Bac vert", quantite:null}]
 ✅ "déplace la robe Zara dans la valise rouge" → [inventory_move {article:"robe Zara", emplacement:"Valise rouge", quantite:null}]
 ✅ "range les 3 robes Zara dans le bac rose" → [inventory_move {article:"robe Zara", emplacement:"Bac rose", quantite:3}]
-✅ "range tout le lot Petit Bateau dans le bac rose" → [inventory_move {article:"lot Petit Bateau", emplacement:"Bac rose", quantite:null}]
-DISTINCTION CRITIQUE : "range ma veste" = inventory_move (action). "où est ma veste" = inventory_location (question). "range dans le bac" avec lieu d'ACHAT → inventory_move SEULEMENT.
-INTERDIT : confondre inventory_move et inventory_location.
+
+Réponses INCORRECTES (ne JAMAIS faire) :
+❌ "j'ai rangé la robe Lacoste dans le sac beige" → inventory_add (FAUX — "j'ai rangé" ≠ "j'ai acheté")
+❌ "range la robe Lacoste dans le sac beige" → unknown (FAUX — déclencheur clair)
+❌ "j'ai rangé la robe Lacoste dans le sac beige" → inventory_location (FAUX — action, pas question)
+INTERDIT : retourner tout autre intent qu'inventory_move pour "j'ai rangé/mis/placé X dans/sur Y".
 
 Règle buy_advice (CRITIQUE) :
 buy_advice = l'utilisateur envisage d'ACHETER un article qu'il n'a PAS encore et demande si c'est une bonne affaire / s'il doit acheter.
@@ -335,8 +352,8 @@ Exemples OBLIGATOIRES :
 ✅ "Veste Zara taille S rose achetée à Paris" → nom:"Veste Zara", description:"Taille S, rose, achetée à Paris"
 
 Règle emplacement (inventory_add) :
-emplacement = lieu PHYSIQUE où l'article est rangé/stocké (tiroir, portant, étagère, stockeur, bac, box, carton...).
-Déclencheurs : "dans le tiroir X", "sur le portant X", "dans le stockeur X", "rangé en X", "étagère X", "box X", "bac X".
+emplacement = lieu PHYSIQUE où l'article est rangé/stocké (tiroir, portant, étagère, stockeur, bac, box, carton, sac, valise, boîte...).
+Déclencheurs : "dans le tiroir X", "sur le portant X", "dans le stockeur X", "rangé en X", "étagère X", "box X", "bac X", "dans le sac X", "dans la valise X", "dans le carton X", "dans la boîte X".
 Extraire le nom/code librement, capitaliser le type et conserver le code tel quel.
   ✅ "stocké dans le tiroir 45A" → emplacement: "Tiroir 45A"
   ✅ "sur le portant 42" → emplacement: "Portant 42"
@@ -344,6 +361,9 @@ Extraire le nom/code librement, capitaliser le type et conserver le code tel que
   ✅ "rangé en B3" → emplacement: "B3"
   ✅ "dans la box C" → emplacement: "Box C"
   ✅ "étagère 3" → emplacement: "Étagère 3"
+  ✅ "dans le sac beige" → emplacement: "Sac beige"
+  ✅ "dans la valise rouge" → emplacement: "Valise rouge"
+  ✅ "dans le carton 3" → emplacement: "Carton 3"
 Aucune mention de rangement → emplacement: null.
 DISTINCTION CRITIQUE : lieu de STOCKAGE/RANGEMENT → emplacement. Lieu d'ACHAT (Paris, brocante...) → description.
 
@@ -438,9 +458,9 @@ Available intents:
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
 - buy_advice          → requiresConfirmation: false
+- inventory_move      → requiresConfirmation: true MANDATORY
 - inventory_location  → requiresConfirmation: false
 - location_items      → requiresConfirmation: false
-- inventory_move      → requiresConfirmation: true MANDATORY
 - off_topic           → requiresConfirmation: false
 - business_advice     → requiresConfirmation: false
 - unknown             → requiresConfirmation: false
@@ -463,21 +483,38 @@ Data: { nom, marque }
 ✅ "location of the Zara jacket" → [inventory_location {nom:"Zara jacket", marque:"Zara"}]
 DISTINCTION: this is a physical location query, not an inventory search (inventory_search).
 
-Rule inventory_move (CRITICAL):
-inventory_move = the user wants to MOVE or STORE an item to a physical location.
-DISTINCT from inventory_location: inventory_location = find WHERE an item is. inventory_move = CHANGE the location of an item.
-Triggers: "store", "put", "move", "place", "keep", "put away", "store away".
+Rule inventory_move (CRITICAL — PRIORITY OVER inventory_location):
+inventory_move = the user IS STORING or HAS STORED an item in a physical location (action).
+DISTINCT from inventory_location: inventory_location = QUESTION (where is X?). inventory_move = ACTION (store/move X to Y).
+
+Present/imperative triggers: "store", "put", "move", "place", "keep", "put away", "store away".
+Past tense triggers (CRITICAL — often missed): "i stored", "i put", "i placed", "i moved", "i kept".
+ABSOLUTE RULE: STORAGE VERB (present OR past) + item + (in/on/into) + location → ALWAYS inventory_move.
+
+LOCATION TRAP: "bag", "suitcase", "box", "carton", "basket", "bin", "crate" can be STORAGE CONTAINERS, not inventory items.
+  ✅ "put the dress in the beige bag" → emplacement:"Beige bag" (the bag IS the storage location)
+  ✅ "I put the hoodie in the red suitcase" → emplacement:"Red suitcase"
+
 Data: { article, emplacement, quantite }
-  - article = vocal description of the item (name + brand + qualifiers if mentioned)
-  - emplacement = new physical storage location (use the same extraction rule as inventory_add)
-  - quantite = number of units concerned if mentioned, null otherwise
+  - article = vocal description of the item (name + brand + qualifiers)
+  - emplacement = container or physical storage location
+  - quantite = number of units if mentioned, null otherwise
+
+Mandatory examples (follow scrupulously):
+✅ "store the Lacoste dress in the beige bag" → [inventory_move {article:"Lacoste dress", emplacement:"Beige bag", quantite:null}]
+✅ "I stored the Lacoste dress in the beige bag" → [inventory_move {article:"Lacoste dress", emplacement:"Beige bag", quantite:null}]
 ✅ "store my Carhartt jacket on rack 44" → [inventory_move {article:"Carhartt jacket", emplacement:"Rack 44", quantite:null}]
+✅ "I stored the Nike jacket on rack 3" → [inventory_move {article:"Nike jacket", emplacement:"Rack 3", quantite:null}]
 ✅ "put the Nike hoodie in the green bin" → [inventory_move {article:"Nike hoodie", emplacement:"Green bin", quantite:null}]
+✅ "I put the hoodie in the green bin" → [inventory_move {article:"hoodie", emplacement:"Green bin", quantite:null}]
 ✅ "move the Zara dress to the red suitcase" → [inventory_move {article:"Zara dress", emplacement:"Red suitcase", quantite:null}]
 ✅ "put the 3 Zara dresses in the pink bin" → [inventory_move {article:"Zara dress", emplacement:"Pink bin", quantite:3}]
-✅ "store all the Petit Bateau items in the pink bin" → [inventory_move {article:"Petit Bateau lot", emplacement:"Pink bin", quantite:null}]
-CRITICAL DISTINCTION: "store my jacket" = inventory_move (action). "where is my jacket" = inventory_location (question).
-FORBIDDEN: confusing inventory_move with inventory_location.
+
+WRONG responses (NEVER do this):
+❌ "I stored the Lacoste dress in the beige bag" → inventory_add (WRONG — "stored" ≠ "bought")
+❌ "store the Lacoste dress in the beige bag" → unknown (WRONG — clear trigger)
+❌ "I stored the Lacoste dress in the beige bag" → inventory_location (WRONG — action, not question)
+FORBIDDEN: "I stored/put X in/on Y" → any intent other than inventory_move.
 
 Rule buy_advice (CRITICAL):
 buy_advice = the user is considering BUYING an item they do NOT yet own, and asks if it's a good deal / whether they should buy it.
@@ -697,8 +734,8 @@ Mandatory examples:
 ✅ "picked up a Zara jacket in Manchester" → nom:"Zara jacket", description:"picked up in Manchester", emplacement:null
 
 Emplacement rule (inventory_add):
-emplacement = PHYSICAL location where the item is stored (drawer, rack, shelf, bin, box, container...).
-Triggers: "stored in drawer X", "on rack X", "in bin X", "stored in X", "shelf X", "box X", "in slot X".
+emplacement = PHYSICAL location where the item is stored (drawer, rack, shelf, bin, box, bag, suitcase, carton, container...).
+Triggers: "stored in drawer X", "on rack X", "in bin X", "stored in X", "shelf X", "box X", "in slot X", "in the bag X", "in the suitcase X", "in the carton X", "in the box X".
 Extract the name/code freely, capitalise the type and preserve the code as-is.
   ✅ "stored in drawer 45A" → emplacement: "Drawer 45A"
   ✅ "on rack 42" → emplacement: "Rack 42"
@@ -706,6 +743,9 @@ Extract the name/code freely, capitalise the type and preserve the code as-is.
   ✅ "stored in B3" → emplacement: "B3"
   ✅ "box C" → emplacement: "Box C"
   ✅ "shelf 3" → emplacement: "Shelf 3"
+  ✅ "in the beige bag" → emplacement: "Beige bag"
+  ✅ "in the red suitcase" → emplacement: "Red suitcase"
+  ✅ "in carton 3" → emplacement: "Carton 3"
 No storage mention → emplacement: null.
 CRITICAL DISTINCTION: STORAGE/SHELVING location → emplacement. PURCHASE location → description (NEVER emplacement).
 Purchase-location phrases — always → description, emplacement: null:
@@ -906,6 +946,8 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", ...CORS },
       });
     }
+    // Log de debug : intent(s) choisi(s) par Claude pour le diagnostic
+    console.log("[voice-intent] intents:", JSON.stringify((parsed.tasks as any[]).map(t => ({ intent: t.intent, data: t.data }))));
 
     if (!Array.isArray(parsed?.tasks)) {
       return new Response(JSON.stringify({ error: "Invalid response shape" }), {
@@ -1041,6 +1083,51 @@ serve(async (req) => {
           }
         } catch {
           // Fallback : voiceEngine côté client identifie l'article par keyword
+        }
+      }
+    }
+
+    // ── Guard serveur : verbe de rangement + marqueur de lieu = forcer inventory_move ──────────
+    // Corrige les cas où Claude retourne inventory_add, inventory_location ou unknown
+    // à la place de inventory_move (ex: "j'ai rangé X dans Y").
+    const MOVE_VERBS_FR = ["j'ai rangé ", "j'ai mis ", "j'ai placé ", "j'ai déposé ", "j'ai stocké ", "range ", "ranges ", "mets le ", "mets la ", "mets les ", "déplace ", "pose le ", "pose la ", "stocke "];
+    const MOVE_VERBS_EN = ["i stored ", "i put ", "i placed ", "i moved ", "store the ", "put the ", "move the ", "place the "];
+    const MOVE_LOC_FR   = [" dans le ", " dans la ", " dans les ", " dans mon ", " dans ma ", " dans un ", " dans une ", " sur le ", " sur la ", " sur les ", " sur mon ", " sur ma "];
+    const MOVE_LOC_EN   = [" in the ", " in a ", " on the ", " on a ", " into the ", " onto the "];
+    const moveVerbList = _lang === "fr" ? MOVE_VERBS_FR : MOVE_VERBS_EN;
+    const moveLocList  = _lang === "fr" ? MOVE_LOC_FR : MOVE_LOC_EN;
+    const hasMoveVerb  = moveVerbList.some(v => textLow.includes(v));
+    const hasMoveLocMk = moveLocList.some(p => textLow.includes(p));
+
+    if (hasMoveVerb && hasMoveLocMk) {
+      const tasks = parsed.tasks as any[];
+      const alreadyMove = tasks.some(t => t.intent === "inventory_move");
+      if (!alreadyMove) {
+        console.log("[voice-intent] guard inventory_move déclenché — correction de l'intent");
+        // Priorité : si Claude a retourné inventory_add, réutiliser son extraction nom/marque/emplacement
+        const addTask = tasks.find(t => t.intent === "inventory_add");
+        if (addTask) {
+          const src = addTask.data ?? {};
+          addTask.intent = "inventory_move";
+          addTask.requiresConfirmation = true;
+          addTask.data = {
+            article: [src.nom, src.marque].filter(Boolean).join(" ").trim() || src.nom || "",
+            emplacement: src.emplacement ?? "",
+            quantite: src.quantite ?? null,
+          };
+        } else {
+          // Fallback : corriger inventory_location ou unknown
+          const fallback = tasks.find(t => ["unknown", "inventory_location"].includes(t.intent));
+          if (fallback) {
+            const src = fallback.data ?? {};
+            fallback.intent = "inventory_move";
+            fallback.requiresConfirmation = true;
+            fallback.data = {
+              article: src.nom ?? src.marque ?? "",
+              emplacement: src.emplacement ?? "",
+              quantite: null,
+            };
+          }
         }
       }
     }
