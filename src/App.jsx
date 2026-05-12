@@ -2094,6 +2094,60 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   );
                 }
 
+                // ── Cas conflit : marque correcte mais type d'article différent ──
+                // ex : "pince plate Facom" trouvée comme "pinces coupantes Facom"
+                if(taskData?.conflict&&taskData?.candidates?.length>0){
+                  // On prend le premier candidat (score le plus élevé retourné par l'IA)
+                  const cfItem=items.find(i=>String(i.id)===String(taskData.candidates[0]?.id)&&i.statut!=="vendu");
+                  const cfPv=parseFloat(taskData?.prix_vente)||0;
+                  const cfTs=cfItem?getTypeStyle(cfItem.type):null;
+                  return(
+                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                          <span style={{fontSize:14}}>⚠️</span>
+                          <span style={{fontWeight:800,fontSize:13,color:"#92400E"}}>
+                            {lang==="en"?"Similar item found — not identical":"Article similaire trouvé — pas identique"}
+                          </span>
+                        </div>
+                        {cfItem&&(
+                          <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
+                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cfItem.title}</div>
+                            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                              {cfItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{cfItem.marque}</span>}
+                              {cfTs&&cfItem.type&&cfItem.type!=="Autre"&&<span style={{background:cfTs.bg,color:cfTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${cfTs.border}`}}>{cfTs.emoji} {cfItem.type}</span>}
+                            </div>
+                            <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(cfItem.buy+(cfItem.purchaseCosts||0))}</div>
+                          </div>
+                        )}
+                        <div style={{fontSize:12,color:"#92400E",fontWeight:700,marginTop:8}}>
+                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>{
+                          if(!cfItem){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
+                          // Oui : markSold sur l'article trouvé
+                          actions.confirmSellDirect(cfItem,cfPv,taskData?.frais||0,taskData?.quantite_vendue||1)
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✓ {lang==="en"?"Yes, that's it":"Oui, c'est ça"}
+                        </button>
+                        <button onClick={()=>{
+                          // Non : vente directe sans associer l'article du stock
+                          const dmCatCf=taskData?.categorie||taskData?.type||null;
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente})
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✗ {lang==="en"?"No, direct sale":"Non, vente directe"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 // ── Cas ambiguïté : plusieurs candidats, l'utilisateur choisit ──
                 if(taskData?.candidates?.length>0){
                   return(
