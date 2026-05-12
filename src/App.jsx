@@ -787,7 +787,7 @@ const SKELETON_SOLD=[
   {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
 const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -3037,7 +3037,7 @@ export default function App({ loginOnly = false }){
       if(!error){
         setItems(prev=>[mapItem(data),...prev]);
         if(hasS){
-          const srow={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,date:item.date||new Date().toISOString().split('T')[0]};
+          const srow={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0]};
           const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
           if(sd)setSales(prev=>[mapSale(sd),...prev]);
         }
@@ -3099,7 +3099,7 @@ export default function App({ loginOnly = false }){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
       setItems(prev=>[mapItem(data),...prev]);
       if(hasS){
-        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,date:new Date().toISOString().split('T')[0]};
+        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0]};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd) setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -3146,7 +3146,7 @@ export default function App({ loginOnly = false }){
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
     }
     for(let q=0;q<qVendue;q++){
-      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,date:new Date().toISOString().split('T')[0]};
+      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0]};
       const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
       if(sd){
         if(q===0)track('mark_sold',{profit:mgUnit*qVendue,margin_pct:Math.round(mgpUnit*10)/10});
@@ -3532,6 +3532,9 @@ export default function App({ loginOnly = false }){
         benefice:parseFloat(row.margin)||0,
         date:(row.date?String(row.date):now.toString()).slice(0,10),
         marque:row.marque||null,
+        type:row.type||null,
+        description:row.description||null,
+        emplacement:row.emplacement||null,
       }));
     console.log('[Import] ventesRows à insérer:',ventesRows);
     if(ventesRows.length){
@@ -3945,7 +3948,7 @@ export default function App({ loginOnly = false }){
       }
       // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
       for(let q=0;q<qVendue;q++){
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,date:new Date().toISOString().split('T')[0]};
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0]};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }
