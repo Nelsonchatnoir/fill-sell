@@ -965,7 +965,10 @@ serve(async (req) => {
     if (_uniqueMarques.length > 0) {
       try {
         for (const _rawMarque of _uniqueMarques) {
+          console.log("[VALIDATE] rawBrand input:", _rawMarque);
           const _corrected = await _validateBrand(_rawMarque);
+          console.log("[VALIDATE] corrected output:", _corrected);
+          console.log("[VALIDATE] match?", _corrected !== _rawMarque);
           if (_corrected && _corrected !== _rawMarque) {
             for (const _t of parsed.tasks as any[]) {
               if (_t.data?.marque === _rawMarque) _t.data.marque = _corrected;
