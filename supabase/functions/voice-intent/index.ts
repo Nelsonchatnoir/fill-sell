@@ -320,8 +320,8 @@ Corrections à appliquer (phonétique STT → orthographe correcte) :
 "northface", "north fas", "nort face" → "The North Face"
 "arc teryx", "arcteryx", "arc térix" → "Arc'teryx"
 "monclair", "monclaire" → "Moncler"
-"balensyaga" → "Balenciaga"
-"luboutin", "louboutain" → "Louboutin"
+"balensyaga", "balenciagua" → "Balenciaga"
+"luboutin", "louboutain", "loubouten" → "Louboutin"
 "off white", "offwhite", "of white" → "Off-White"
 "stone islande", "ston island" → "Stone Island"
 "lacost", "lacôte" → "Lacoste"
@@ -331,6 +331,7 @@ Corrections à appliquer (phonétique STT → orthographe correcte) :
 "kiaby", "kyabi" → "Kiabi"
 "sara", "zahara" (contexte vêtement) → "Zara"
 "vanse" → "Vans"
+"erborien", "herborien", "herborian", "erborian", "herborion", "herboriéen", "erborion" → "Erborian"
 
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
@@ -697,8 +698,8 @@ Corrections to apply (STT phonetic → correct spelling):
 "northface", "north fas", "nort face" → "The North Face"
 "arc teryx", "arcteryx", "arc terix" → "Arc'teryx"
 "monclair", "monclaire" → "Moncler"
-"balensyaga" → "Balenciaga"
-"luboutin", "louboutain" → "Louboutin"
+"balensyaga", "balenciagua" → "Balenciaga"
+"luboutin", "louboutain", "loubouten" → "Louboutin"
 "off white", "offwhite", "of white" → "Off-White"
 "stone islande", "ston island" → "Stone Island"
 "lacost" → "Lacoste"
@@ -708,6 +709,7 @@ Corrections to apply (STT phonetic → correct spelling):
 "kiaby", "kyabi" → "Kiabi"
 "sara", "zahara" (clothing context) → "Zara"
 "vanse" → "Vans"
+"erborien", "herborien", "herborian", "erborian", "herborion", "herboriéen", "erborion" → "Erborian"
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
