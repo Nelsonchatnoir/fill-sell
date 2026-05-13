@@ -878,8 +878,8 @@ serve(async (req) => {
 
     // Validate a single brand via web_search — returns corrected spelling or original
     const _validateBrand = async (rawBrand: string): Promise<string> => {
-      const _sys = "You are validating brand names from voice transcriptions in a resale app context (Vinted, eBay, fashion, cosmetics, tech, tools, etc.). The transcription may contain phonetic errors. Use web_search to find the exact official brand name. Return ONLY the exact official brand name, nothing else. If no brand found after search, return the original transcription as-is.";
-      const _userMsg = `Transcribed brand (may contain phonetic errors): '${rawBrand}'\n\nSearch the web for: '${rawBrand} brand official name'\nOR: '${rawBrand} marque officielle'\n\nReturn ONLY the exact official brand name, nothing else.\n\nExamples of phonetic corrections you must handle:\n- 'herborion' → search → 'Erborian'\n- 'medic huit' or 'medic 8' → search → 'Medik8'\n- 'sithl' or 'stil' → search → 'Stihl'\n- 'adibas' → search → 'Adidas'`;
+      const _sys = "You are a brand name corrector for a resale app. Use web_search when needed.";
+      const _userMsg = `Return ONLY the exact official brand name. One word or compound name only. No explanation, no sentence, no punctuation.\n\nInput: '${rawBrand}'\n\nExamples:\nInput: 'herborion' → Output: Erborian\nInput: 'medic huit' → Output: Medik8\nInput: 'sithl' → Output: Stihl\nInput: 'adibas' → Output: Adidas\nInput: 'loubouten' → Output: Louboutin\n\nOutput:`;
       let _msgs: unknown[] = [{ role: "user", content: _userMsg }];
       let _resp = await _fetchClaude(_msgs, _sys, true, 256);
       while (_resp.stop_reason === "tool_use") {
@@ -892,7 +892,9 @@ serve(async (req) => {
         ];
         _resp = await _fetchClaude(_msgs, _sys, true, 256);
       }
-      return (_resp.content as any[]).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim() || rawBrand;
+      const _result = (_resp.content as any[]).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+      const _words = _result.split(/\s+/);
+      return _words[_words.length - 1] || rawBrand;
     };
 
     let data: any;
