@@ -453,8 +453,8 @@ const T = {
     premiumBadge: '⭐ Most popular', premiumTier: 'Premium', premiumName: 'To go further',
     premiumPer: '/ month', premiumTagline: 'then €9.99/month · No commitment.',
     premiumTrialBadge: '7 days free · No charge today',
-    premiumF1: 'Everything in Free, included', premiumF2: 'Unlimited items',
-    premiumF3: 'Unlimited Voice AI 🎙️', premiumF4: 'Advanced stats analyzed by AI',
+    premiumF1: 'Everything in the Free plan', premiumF2: 'Unlimited items',
+    premiumF3: 'Unlimited AI voice 🎙️', premiumF4: 'Advanced AI-powered stats',
     premiumF5: 'Import / Export Excel', premiumF6: 'Priority support',
     premiumBtn: 'Start your free trial ✨',
     ctaTitle: 'Ready to maximize your profits?',
@@ -472,9 +472,10 @@ const T = {
 const FAQ_ITEMS = {
   fr: [
     { q: 'Comment fonctionne le Vocal IA ?', a: "Tu appuies sur le micro et tu décris ton article naturellement (\"veste Levi's vintage achetée 15 € en friperie\"). L'IA transcrit, identifie marque, catégorie, état, taille, couleur et prix d'achat, puis l'ajoute à ton stock. Le tout en moins de 3 secondes — fonctionne en français et en anglais." },
-    { q: 'Comment fonctionne la fonction Lens ?', a: "Tu prends jusqu'à 5 photos de ton article directement depuis l'app. L'IA Claude identifie la marque, le modèle et l'état, puis te donne une fourchette de prix de revente basée sur le marché actuel — avec les meilleures plateformes pour vendre et un conseil concret. En version gratuite : 3 analyses/jour. En Premium : illimité." },
+    { q: 'Puis-je organiser mon stock par emplacement ?', a: "Oui. Tu peux dicter ou saisir l'emplacement de chaque article — portant, carton cave, bac brocante, étagère garage. L'emplacement s'affiche sur chaque article dans ton stock et tu peux le mettre à jour vocalement : 'range la veste dans le portant 2'." },
+    { q: 'Comment fonctionne la fonction Lens ?', a: "Tu prends jusqu'à 5 photos de ton article directement depuis l'app. L'IA identifie la marque, le modèle, la taille et l'état, puis te donne une fourchette de prix de revente basée sur le marché actuel — avec les meilleures plateformes et un conseil concret. En version gratuite : 3 analyses/jour · 15/mois (estimation visuelle uniquement). En Premium : 5/jour · 60/mois avec prix marché en direct." },
     { q: 'Le Vocal IA est-il fiable sur les marques de luxe ?', a: "Oui — l'IA est entraînée sur les marques de luxe (Hermès, Chanel, Louis Vuitton, etc.) et reconnaît même les modèles spécifiques à partir d'une description partielle. Tu peux toujours corriger avant validation. Précision moyenne : 94 % sur catégorie + marque à partir d'une phrase courte." },
-    { q: 'Fill & Sell est-il gratuit ?', a: "Oui, Fill & Sell est gratuit pour démarrer. Tu as accès jusqu'à 20 articles/mois, au calculateur de marge avec analyse IA, à l'historique de tes ventes et à l'IA vocale (5 requêtes/jour) — sans carte bancaire. Pour aller plus loin (articles illimités, IA vocale illimitée, stats avancées analysées par IA, import/export Excel), essaie le Premium gratuitement pendant 7 jours, puis 9,99 €/mois." },
+    { q: 'Fill & Sell est-il gratuit ?', a: "Oui, le plan gratuit est permanent. Il inclut jusqu'à 20 articles, 5 commandes vocales/jour, 3 analyses Lens/jour · 15/mois, le Deal Score illimité et toutes les stats. Le plan Premium à 9,99 €/mois débloque les articles illimités, le vocal illimité, Lens Pro avec prix marché en direct, l'export Excel et les stats avancées." },
     { q: 'Quelles plateformes sont compatibles ?', a: 'Toutes les grandes plateformes de revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. Tu peux étiqueter tes ventes par plateforme pour suivre tes meilleurs canaux.' },
     { q: 'Comment calculer ma marge sur Vinted ?', a: "Avec le calculateur intégré, tu entres simplement le prix d'achat, le prix de vente et les frais (commission Vinted, livraison, emballage). Fill & Sell calcule ton bénéfice net et ton pourcentage de marge en temps réel — avant même que tu valides ton achat." },
     { q: 'Puis-je importer et exporter mes données en Excel ?', a: 'Oui, avec un compte Premium tu peux importer ton stock existant depuis un fichier Excel ou CSV, et exporter toutes tes données quand tu veux. Tu gardes le contrôle total sur tes informations — elles sont à toi.' },
@@ -482,9 +483,10 @@ const FAQ_ITEMS = {
   ],
   en: [
     { q: 'How does Voice AI work?', a: 'You press the mic and describe your item naturally ("vintage Levi\'s jacket bought for £15 at a flea market"). AI transcribes, identifies brand, category, condition, size, color and buy price, then adds it to your stock. All in under 3 seconds — works in French and English.' },
-    { q: 'How does the Lens feature work?', a: 'You take up to 5 photos of your item directly from the app. Claude AI identifies the brand, model and condition, then gives you a resale price range based on the current market — with the best platforms to sell on and a concrete tip. Free plan: 3 analyses/day. Premium: unlimited.' },
+    { q: 'Can I organise my stock by storage location?', a: "Yes. You can dictate or type the location of each item — clothing rail, storage box, market bin, garage shelf. The location shows on each item in your stock and you can update it by voice anytime: 'move the jacket to rail 2'." },
+    { q: 'How does the Lens feature work?', a: 'Take up to 5 photos of your item directly from the app. The AI identifies the brand, model, size and condition, then gives you a resale price range based on the current market — with the best platforms and a concrete tip. Free plan: 3 analyses/day · 15/month (visual estimate only). Premium: 5/day · 60/month with live market prices.' },
     { q: 'Is Voice AI reliable for luxury brands?', a: "Yes — AI is trained on luxury brands (Hermès, Chanel, Louis Vuitton, etc.) and recognizes even specific models from a partial description. You can always correct before confirming. Average accuracy: 94% on category + brand from a short sentence." },
-    { q: 'Is Fill & Sell free?', a: 'Yes, Fill & Sell is free to start. You get up to 20 items/month, the margin calculator with AI analysis, sales history and Voice AI (5 requests/day) — no credit card required. To go further (unlimited items, unlimited Voice AI, advanced stats analyzed by AI, Excel import/export), try Premium free for 7 days, then €9.99/month.' },
+    { q: 'Is Fill & Sell free?', a: 'Yes, the free plan is permanent. It includes up to 20 items, 5 voice commands/day, 3 Lens analyses/day · 15/month, unlimited Deal Score and all stats. The Premium plan at €9.99/month unlocks unlimited items, unlimited voice, Lens Pro with live market prices, Excel export and advanced stats.' },
     { q: 'Which platforms are compatible?', a: 'All major resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. You can tag your sales by platform to track your best channels.' },
     { q: 'How do I calculate my margin on Vinted?', a: 'With the built-in calculator, you simply enter the buy price, sell price and fees (Vinted commission, shipping, packaging). Fill & Sell calculates your net profit and margin percentage in real time — before you even confirm your purchase.' },
     { q: 'Can I import and export my data to Excel?', a: "Yes, with a Premium account you can import your existing stock from an Excel or CSV file, and export all your data whenever you want. You keep full control over your information — it's yours." },
@@ -1186,20 +1188,20 @@ export default function LandingPage() {
               </button>
             </div>
             <div className="price-card premium reveal delay-1">
-              <div className="price-popular">{t.premiumBadge}</div>
+              <div className="price-popular" style={{ background: 'linear-gradient(90deg,#0D9488,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>{t.premiumBadge}</div>
               <div className="price-tier">{t.premiumTier}</div>
               <h3 className="price-name">{t.premiumName}</h3>
               <div className="price-amount"><span className="num">9,99 €</span><span className="per">{t.premiumPer}</span></div>
               <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
               <div className="price-tagline">{t.premiumTagline}</div>
               <ul className="price-features">
-                <li><span className="ck">✓</span> {t.premiumF1}</li>
                 <li><span className="ck">✓</span> <strong>{t.premiumF2}</strong></li>
                 <li><span className="ck">✓</span> <strong>{t.premiumF3}</strong></li>
+                <li><span className="ck">✓</span> <strong>{t.premiumF7}</strong></li>
                 <li><span className="ck">✓</span> {t.premiumF4}</li>
                 <li><span className="ck">✓</span> {t.premiumF5}</li>
                 <li><span className="ck">✓</span> {t.premiumF6}</li>
-                <li><span className="ck">✓</span> <strong>{t.premiumF7}</strong></li>
+                <li><span className="ck">✓</span> {t.premiumF1}</li>
               </ul>
               <button className="btn btn-white btn-lg"
                 onClick={() => { track('cta_click', { cta: 'pricing_premium', page: 'landing' }); nav('/login?mode=signup'); }}>
