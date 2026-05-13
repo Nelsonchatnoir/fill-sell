@@ -194,18 +194,18 @@ const T = {
     lens_badge: 'NOUVEAU',
     lens_title: 'Lens',
     lens_desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
-    lens_result_title: 'Patagonia · T-shirt · État : Bon',
-    lens_result_price: '45 – 65 €',
-    lens_result_recommended: 'Prix recommandé : 52 €',
-    lens_result_platforms: 'Vinted · eBay · Depop',
-    lens_result_category: 'Sport · Outdoor',
+    lens_result_title: 'Patagonia · T-shirt · Taille L · État : Bon',
+    lens_result_price: '18 – 22 €',
+    lens_result_recommended: 'Prix recommandé : 20 €',
+    lens_result_platforms: 'Vinted · eBay · Leboncoin',
+    lens_result_category: 'Outdoor · Casual',
     lens_result_state: 'État : Bon',
-    lens_result_demand: 'Demande forte · Se vend en < 3 jours',
-    lens_result_tip: 'Publie tôt le matin pour maximiser la visibilité',
+    lens_result_demand: 'Demande régulière · Se vend en < 5 jours',
+    lens_result_tip: "Photo sur fond blanc recommandée pour ce type d'article",
     lens_result_slot_plus: '+',
     lens_add_stock: 'Ajouter au stock',
     lens_premium_badge: '⭐ PREMIUM · Prix marché en direct',
-    lens_margin: '+34 €',
+    lens_margin: '+8 € marge estimée',
     pricing_free_lens: '📸 Lens · 3/jour · 15/mois · estimation visuelle uniquement',
     pricing_premium_lens: '📸 Lens Pro · 5/jour · 60/mois · prix marché en direct',
     pricing_premium_suffix: 'puis 9,99 €/mois · Sans engagement.',
@@ -230,6 +230,7 @@ const T = {
     step2Desc: "Marque, catégorie, état, prix d'achat — extraits automatiquement. Marge calculée dès que tu rentres la vente.",
     step3Title: 'Tracké · prêt à vendre',
     step3Desc: "Article ajouté au stock, marge estimée, ROI calculé. Tu peux passer au suivant ou publier directement.",
+    tabDashboard: 'Tableau', tabStockIA: 'Stock IA', tabLens: 'Lens', tabVentes: 'Ventes', tabStats: 'Stats',
     detectTitle: 'Ce que l\'IA détecte ', detectTitleAccent: 'automatiquement',
     detectSub: "Une seule phrase suffit. L'IA extrait toutes les infos utiles — sans que tu aies à y penser.",
     chips: [
@@ -238,7 +239,6 @@ const T = {
       { ico: '💰', lbl: "Prix d'achat", ex: '15 €, à 20 balles' },
       { ico: '⭐', lbl: 'État', ex: 'Neuf, très bon, usé' },
       { ico: '📈', lbl: 'Marge', ex: 'Calculée à la vente' },
-      { ico: '🎯', lbl: 'Plateforme', ex: 'Vinted, eBay, Vestiaire' },
       { ico: '📍', lbl: "Lieu d'achat", ex: 'Vide-grenier, friperie' },
       { ico: '📅', lbl: 'Date', ex: "Aujourd'hui, hier" },
       { ico: '🎨', lbl: 'Couleur', ex: 'Bleu indigo, beige' },
@@ -266,7 +266,7 @@ const T = {
       'Tu vends pendant que les autres saisissent',
     ],
     testimonials: [
-      { quote: "J'ai vidé mon entrepôt de 200 articles en un samedi. Avant, j'aurais mis trois soirées rien que pour la saisie. Le vocal IA, c'est game over pour les concurrents.", avatar: 'AM', name: 'Antoine M.', role: 'Power-seller · Vinted Pro · 4 800 ventes' },
+      { quote: "J'ai vidé mon entrepôt de 200 articles en un samedi. Je dicte l'article, la marque, le prix et l'emplacement d'un coup. Avant, j'aurais mis trois soirées rien que pour la saisie. Le vocal IA, c'est game over pour les concurrents.", avatar: 'AM', name: 'Antoine M.', role: 'Power-seller · Vinted Pro · 4 800 ventes' },
       { quote: "Je revends en sortant des friperies. Je dicte direct dans la voiture et tout est prêt avant d'arriver chez moi. Plus jamais sans.", avatar: 'SL', name: 'Sarah L.', role: 'Friperie en ligne · 1 200 articles/an' },
       { quote: "Je dicte le prix d'achat, l'IA classe l'article et calcule ma marge dès que je rentre la vente. Plus de tableurs, plus de calculs à la main.", avatar: 'JD', name: 'Julien D.', role: 'Reseller luxe · Vestiaire Collective' },
     ],
@@ -360,18 +360,18 @@ const T = {
     lens_badge: 'NEW',
     lens_title: 'Lens',
     lens_desc: 'Photo your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
-    lens_result_title: 'Patagonia · T-shirt · Condition: Good',
-    lens_result_price: '45 – 65 €',
-    lens_result_recommended: 'Recommended price: 52 €',
-    lens_result_platforms: 'Vinted · eBay · Depop',
-    lens_result_category: 'Sport · Outdoor',
+    lens_result_title: 'Patagonia · T-shirt · Size L · Condition: Good',
+    lens_result_price: '18 – 22 €',
+    lens_result_recommended: 'Recommended price: 20 €',
+    lens_result_platforms: 'Vinted · eBay · Leboncoin',
+    lens_result_category: 'Outdoor · Casual',
     lens_result_state: 'Condition: Good',
-    lens_result_demand: 'High demand · Sells in < 3 days',
-    lens_result_tip: 'Post early morning for best visibility',
+    lens_result_demand: 'Steady demand · Sells in < 5 days',
+    lens_result_tip: 'White background photo recommended for this item',
     lens_result_slot_plus: '+',
     lens_add_stock: 'Add to stock',
     lens_premium_badge: '⭐ PREMIUM · Live market price',
-    lens_margin: '+34 €',
+    lens_margin: '+8 € estimated margin',
     pricing_free_lens: '📸 Lens · 3/day · 15/mo · visual estimate only',
     pricing_premium_lens: '📸 Lens Pro · 5/day · 60/mo · live market price',
     pricing_premium_suffix: 'then €9.99/month · No commitment.',
@@ -396,6 +396,7 @@ const T = {
     step2Desc: "Brand, category, condition, buy price — extracted automatically. Margin calculated when you record the sale.",
     step3Title: 'Tracked · ready to sell',
     step3Desc: "Item added to stock, margin estimated, ROI calculated. Move on to the next one or publish directly.",
+    tabDashboard: 'Dashboard', tabStockIA: 'AI Stock', tabLens: 'Lens', tabVentes: 'Sales', tabStats: 'Stats',
     detectTitle: 'What AI detects ', detectTitleAccent: 'automatically',
     detectSub: "One sentence is enough. AI extracts all useful info — without you having to think about it.",
     chips: [
@@ -404,7 +405,6 @@ const T = {
       { ico: '💰', lbl: 'Buy price', ex: '£15, bought for 20' },
       { ico: '⭐', lbl: 'Condition', ex: 'New, very good, worn' },
       { ico: '📈', lbl: 'Margin', ex: 'Calculated at sale' },
-      { ico: '🎯', lbl: 'Platform', ex: 'Vinted, eBay, Vestiaire' },
       { ico: '📍', lbl: 'Buy location', ex: 'Flea market, thrift store' },
       { ico: '📅', lbl: 'Date', ex: 'Today, yesterday' },
       { ico: '🎨', lbl: 'Color', ex: 'Indigo blue, beige' },
@@ -432,7 +432,7 @@ const T = {
       'You sell while others are still typing',
     ],
     testimonials: [
-      { quote: "I cleared my 200-item warehouse in one Saturday. Before, it would've taken three evenings just for data entry. Voice AI is game over for competitors.", avatar: 'AM', name: 'Antoine M.', role: 'Power-seller · Vinted Pro · 4,800 sales' },
+      { quote: "I cleared 200 items in one Saturday. I dictate the item, brand, price and storage location in one shot. Before, that would've taken three evenings just for data entry. AI voice is game over for the competition.", avatar: 'AM', name: 'Antoine M.', role: 'Power-seller · Vinted Pro · 4,800 sales' },
       { quote: "I resell straight from thrift stores. I dictate in the car and everything's ready before I get home. Never going back.", avatar: 'SL', name: 'Sarah L.', role: 'Online thrift store · 1,200 items/year' },
       { quote: "I dictate the buy price, AI classifies the item and calculates my margin when I record the sale. No more spreadsheets, no more manual calculations.", avatar: 'JD', name: 'Julien D.', role: 'Luxury reseller · Vestiaire Collective' },
     ],
@@ -754,6 +754,11 @@ export default function LandingPage() {
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
+                <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)', marginBottom: 12, gap: 0 }}>
+                  {[t.tabDashboard, t.tabStockIA, t.tabLens, t.tabVentes, t.tabStats].map((lbl) => (
+                    <div key={lbl} style={{ fontSize: 10, fontWeight: lbl === t.tabStockIA ? 800 : 600, color: lbl === t.tabStockIA ? 'var(--teal-strong)' : 'var(--sub)', padding: '5px 8px', borderBottom: lbl === t.tabStockIA ? '2px solid var(--teal-strong)' : '2px solid transparent', whiteSpace: 'nowrap' }}>{lbl}</div>
+                  ))}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '-0.01em' }}>{t.f1Header}</div>
                   <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.f1Add}</div>
@@ -855,6 +860,11 @@ export default function LandingPage() {
             </div>
             <div className="feature-mock">
               <div className="mini-screen" style={{ maxWidth: 520, padding: '28px' }}>
+                <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)', marginBottom: 14, gap: 0 }}>
+                  {[t.tabDashboard, t.tabStockIA, t.tabLens, t.tabVentes, t.tabStats].map((lbl) => (
+                    <div key={lbl} style={{ fontSize: 10, fontWeight: lbl === t.tabLens ? 800 : 600, color: lbl === t.tabLens ? 'var(--teal-strong)' : 'var(--sub)', padding: '5px 8px', borderBottom: lbl === t.tabLens ? '2px solid var(--teal-strong)' : '2px solid transparent', whiteSpace: 'nowrap' }}>{lbl}</div>
+                  ))}
+                </div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
                     <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
