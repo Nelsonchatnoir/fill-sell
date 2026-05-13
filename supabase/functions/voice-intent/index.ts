@@ -13,7 +13,7 @@ Sans texte ni markdown. Si incompréhensible → intent: "unknown".
 Si ambiguïté sur quel article → ambiguous: true + requiresConfirmation: true.
 Ne jamais inventer de données non mentionnées.
 
-IMPORTANT — PHONETIC BRAND CORRECTION (HIGHEST PRIORITY): When a transcribed word phonetically resembles a known brand, ALWAYS correct it silently to the exact official spelling before processing anything else. Example: 'herborion' → Erborian, 'loubouten' → Louboutin.
+IMPORTANT — BRAND VALIDATION (HIGHEST PRIORITY): When you extract a brand name from the transcription, if you are not 100% certain of the exact official spelling, use web_search to verify it before returning the result. Always return the exact official brand name. Examples of uncertain cases: niche cosmetics, emerging fashion brands, regional brands.
 
 RÈGLE FONDAMENTALE — ROBUSTESSE STT (appliquer AVANT tout parsing) :
 Tu reçois une transcription automatique qui peut contenir des erreurs phonétiques.
@@ -368,7 +368,7 @@ No text or markdown. If incomprehensible → intent: "unknown".
 If ambiguity about which item → ambiguous: true + requiresConfirmation: true.
 Never invent data not mentioned.
 
-IMPORTANT — PHONETIC BRAND CORRECTION (HIGHEST PRIORITY): When a transcribed word phonetically resembles a known brand, ALWAYS correct it silently to the exact official spelling before processing anything else. Example: 'herborion' → Erborian, 'loubouten' → Louboutin.
+IMPORTANT — BRAND VALIDATION (HIGHEST PRIORITY): When you extract a brand name from the transcription, if you are not 100% certain of the exact official spelling, use web_search to verify it before returning the result. Always return the exact official brand name. Examples of uncertain cases: niche cosmetics, emerging fashion brands, regional brands.
 
 FUNDAMENTAL RULE — STT ROBUSTNESS (apply BEFORE any parsing):
 You receive an automatic transcription that may contain phonetic errors.
@@ -852,32 +852,64 @@ serve(async (req) => {
       });
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 4096,
-        temperature: 0.1,
-        system: (_lang === "en" ? SYSTEM_EN : SYSTEM_FR) + currencyCtx + dateCtx,
-        messages: [{ role: "user", content: text }],
-      }),
-    });
+    const _systemPrompt = (_lang === "en" ? SYSTEM_EN : SYSTEM_FR) + currencyCtx + dateCtx;
+    const _tools = [{ type: "web_search_20250305", name: "web_search" }];
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+    const _callClaude = async (msgs: unknown[]) => {
+      const _res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 4096,
+          temperature: 0.1,
+          system: _systemPrompt,
+          messages: msgs,
+          tools: _tools,
+        }),
+      });
+      if (!_res.ok) {
+        const _errData = await _res.json().catch(() => ({}));
+        throw new Error(_errData?.error?.message ?? "Anthropic API error");
+      }
+      return _res.json();
+    };
+
+    let _messages: unknown[] = [{ role: "user", content: text }];
+    let data: any;
+
+    try {
+      data = await _callClaude(_messages);
+
+      while (data.stop_reason === "tool_use") {
+        const _toolBlock = (data.content as any[]).find((b: any) => b.type === "tool_use");
+        if (!_toolBlock) break;
+        _messages = [
+          ..._messages,
+          { role: "assistant", content: data.content },
+          {
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: _toolBlock.id,
+              content: _toolBlock.output ?? "",
+            }],
+          },
+        ];
+        data = await _callClaude(_messages);
+      }
+    } catch (_err: any) {
       return new Response(
-        JSON.stringify({ error: errData?.error?.message ?? "Anthropic API error" }),
+        JSON.stringify({ error: _err.message ?? "Anthropic API error" }),
         { status: 500, headers: { "Content-Type": "application/json", ...CORS } }
       );
     }
 
-    const data = await response.json();
-    const raw = (data?.content?.[0]?.text ?? "")
+    const raw = ((data?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("") ?? "")
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
       .replace(/```\s*$/i, "")
