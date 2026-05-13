@@ -878,21 +878,22 @@ serve(async (req) => {
 
     // Validate a single brand via web_search — returns corrected spelling or original
     const _validateBrand = async (rawBrand: string): Promise<string> => {
-      const _sys = "You are a brand name corrector for a resale app. Use web_search when needed.";
-      const _userMsg = `Return ONLY the exact official brand name. One word or compound name only. No explanation, no sentence, no punctuation.\n\nInput: '${rawBrand}'\n\nExamples:\nInput: 'herborion' → Output: Erborian\nInput: 'medic huit' → Output: Medik8\nInput: 'sithl' → Output: Stihl\nInput: 'adibas' → Output: Adidas\nInput: 'loubouten' → Output: Louboutin\n\nOutput:`;
-      let _msgs: unknown[] = [{ role: "user", content: _userMsg }];
-      let _resp = await _fetchClaude(_msgs, _sys, true, 256);
-      while (_resp.stop_reason === "tool_use") {
-        const _tb = (_resp.content as any[]).find((b: any) => b.type === "tool_use");
-        if (!_tb) break;
-        _msgs = [
-          ..._msgs,
-          { role: "assistant", content: _resp.content },
-          { role: "user", content: [{ type: "tool_result", tool_use_id: _tb.id, content: _tb.output ?? "" }] },
-        ];
-        _resp = await _fetchClaude(_msgs, _sys, true, 256);
-      }
-      const _result = (_resp.content as any[]).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+      const _res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 64,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: `You know all consumer brands worldwide. A voice transcription app may have distorted this brand name: '${rawBrand}'\nReturn ONLY the exact official brand name, one word/name only.\nIf you recognize it: return the correct spelling.\nIf you don't recognize it: return it as-is.\nNo explanation. No sentence. Just the brand name.`,
+          }],
+        }),
+      });
+      if (!_res.ok) return rawBrand;
+      const _data = await _res.json();
+      const _result = (_data?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
       const _words = _result.split(/\s+/);
       return _words[_words.length - 1] || rawBrand;
     };
