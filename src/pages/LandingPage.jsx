@@ -206,6 +206,7 @@ const T = {
     lens_add_stock: 'Ajouter au stock',
     lens_premium_badge: '⭐ PREMIUM · Prix marché en direct',
     lens_margin: '+8 € marge estimée',
+    lens_ai_analysis: '🤖 Patagonia outdoor bien coté · tendance stable · vend mieux en automne',
     pricing_free_lens: '📸 Lens · 3/jour · 15/mois · estimation visuelle uniquement',
     pricing_premium_lens: '📸 Lens Pro · 5/jour · 60/mois · prix marché en direct',
     pricing_premium_suffix: 'puis 9,99 €/mois · Sans engagement.',
@@ -372,6 +373,7 @@ const T = {
     lens_add_stock: 'Add to stock',
     lens_premium_badge: '⭐ PREMIUM · Live market price',
     lens_margin: '+8 € estimated margin',
+    lens_ai_analysis: '🤖 Well-rated Patagonia outdoor · stable trend · sells better in autumn',
     pricing_free_lens: '📸 Lens · 3/day · 15/mo · visual estimate only',
     pricing_premium_lens: '📸 Lens Pro · 5/day · 60/mo · live market price',
     pricing_premium_suffix: 'then €9.99/month · No commitment.',
@@ -754,11 +756,6 @@ export default function LandingPage() {
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
-                <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)', marginBottom: 12, gap: 0 }}>
-                  {[t.tabDashboard, t.tabStockIA, t.tabLens, t.tabVentes, t.tabStats].map((lbl) => (
-                    <div key={lbl} style={{ fontSize: 10, fontWeight: lbl === t.tabStockIA ? 800 : 600, color: lbl === t.tabStockIA ? 'var(--teal-strong)' : 'var(--sub)', padding: '5px 8px', borderBottom: lbl === t.tabStockIA ? '2px solid var(--teal-strong)' : '2px solid transparent', whiteSpace: 'nowrap' }}>{lbl}</div>
-                  ))}
-                </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '-0.01em' }}>{t.f1Header}</div>
                   <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.f1Add}</div>
@@ -860,11 +857,6 @@ export default function LandingPage() {
             </div>
             <div className="feature-mock">
               <div className="mini-screen" style={{ maxWidth: 520, padding: '28px' }}>
-                <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)', marginBottom: 14, gap: 0 }}>
-                  {[t.tabDashboard, t.tabStockIA, t.tabLens, t.tabVentes, t.tabStats].map((lbl) => (
-                    <div key={lbl} style={{ fontSize: 10, fontWeight: lbl === t.tabLens ? 800 : 600, color: lbl === t.tabLens ? 'var(--teal-strong)' : 'var(--sub)', padding: '5px 8px', borderBottom: lbl === t.tabLens ? '2px solid var(--teal-strong)' : '2px solid transparent', whiteSpace: 'nowrap' }}>{lbl}</div>
-                  ))}
-                </div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
                     <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
@@ -895,7 +887,8 @@ export default function LandingPage() {
                   <div style={{ marginBottom: 8 }}>
                     <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>⚡ {t.lens_result_demand}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>💡 {t.lens_result_tip}</div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic', marginBottom: 8 }}>💡 {t.lens_result_tip}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--teal-strong)', background: 'rgba(62,172,160,0.08)', borderRadius: 10, padding: '7px 10px' }}>{t.lens_ai_analysis}</div>
                 </div>
               </div>
             </div>
@@ -1085,15 +1078,16 @@ export default function LandingPage() {
                       <div style={{ fontSize: 10, color: 'var(--sub)', marginBottom: 5 }}>{t.lens_result_platforms}</div>
                       <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>⚡ {t.lens_result_demand}</span>
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic', marginBottom: 8 }}>💡 {t.lens_result_tip}</div>
+                    <div style={{ fontSize: 10, color: 'var(--sub)', fontStyle: 'italic', marginBottom: 6 }}>💡 {t.lens_result_tip}</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--teal-strong)', background: 'rgba(62,172,160,0.08)', borderRadius: 8, padding: '5px 8px', marginBottom: 8 }}>{t.lens_ai_analysis}</div>
                     <div style={{ background: 'var(--teal-strong)', color: '#fff', borderRadius: 10, padding: '9px 0', textAlign: 'center', fontSize: 12, fontWeight: 800 }}>{t.lens_add_stock}</div>
                   </div>
                   <div className="app-bnav">
-                    <div className="item"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock' : 'Stock'}</span></div>
                     <div className="item"><span className="ic">📊</span><span>{lang === 'fr' ? 'Tableau' : 'Dashboard'}</span></div>
-                    <div className="item on"><span className="ic">📸</span><span>{lang === 'fr' ? 'Lens' : 'Lens'}</span></div>
+                    <div className="item"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock IA' : 'AI Stock'}</span></div>
+                    <div className="item on"><span className="ic">📸</span><span>Lens</span></div>
                     <div className="item"><span className="ic">📋</span><span>{lang === 'fr' ? 'Ventes' : 'Sales'}</span></div>
-                    <div className="item"><span className="ic">⚙️</span><span>{lang === 'fr' ? 'Réglages' : 'Settings'}</span></div>
+                    <div className="item"><span className="ic">📈</span><span>Stats</span></div>
                   </div>
                 </div>
               </div>
@@ -1133,11 +1127,11 @@ export default function LandingPage() {
                     ))}
                   </div>
                   <div className="app-bnav">
-                    <div className="item on"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock' : 'Stock'}</span></div>
                     <div className="item"><span className="ic">📊</span><span>{lang === 'fr' ? 'Tableau' : 'Dashboard'}</span></div>
-                    <div className="item"><span className="ic">📸</span><span>{lang === 'fr' ? 'Lens' : 'Lens'}</span></div>
+                    <div className="item on"><span className="ic">📦</span><span>{lang === 'fr' ? 'Stock IA' : 'AI Stock'}</span></div>
+                    <div className="item"><span className="ic">📸</span><span>Lens</span></div>
                     <div className="item"><span className="ic">📋</span><span>{lang === 'fr' ? 'Ventes' : 'Sales'}</span></div>
-                    <div className="item"><span className="ic">⚙️</span><span>{lang === 'fr' ? 'Réglages' : 'Settings'}</span></div>
+                    <div className="item"><span className="ic">📈</span><span>Stats</span></div>
                   </div>
                 </div>
               </div>
