@@ -878,24 +878,53 @@ serve(async (req) => {
 
     // Validate a single brand via web_search — returns corrected spelling or original
     const _validateBrand = async (rawBrand: string): Promise<string> => {
-      const _res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 64,
-          temperature: 0,
-          messages: [{
-            role: "user",
-            content: `You know all consumer brands worldwide. A voice transcription app may have distorted this brand name: '${rawBrand}'\n\nSome brand names contain numbers pronounced as words in French:\n- 'huit' or '8' → could be part of brand name (ex: 'Medic 8' or 'médik huit' → Medik8)\n- 'deux' or '2', 'quatre' or '4', 'six' or '6' → same pattern\nAlways check if the input could be an alphanumeric brand name.\n\nKnown French pronunciation exceptions — always correct these:\n- 'herborean', 'herborian', 'herboréan', 'herboréant', 'herboréen', 'herboriean', 'herbreant', 'herborant', 'herboreen' → Erborian\n- 'medic 8', 'médik huit', 'medic huit', 'médic 8', 'medicaid', 'medikate', 'medicate' → Medik8\n\nIf you recognize the brand: return the correct spelling.\nIf you don't recognize it: return it as-is.\n\nReturn ONLY the exact official brand name. One word or compound name. No explanation.`,
-          }],
-        }),
-      });
-      if (!_res.ok) return rawBrand;
-      const _data = await _res.json();
-      const _result = (_data?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
-      const _words = _result.split(/\s+/);
-      return _words[_words.length - 1] || rawBrand;
+      // Normalisation
+      const _normalize = (s: string) => s.toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .trim();
+
+      // Exceptions hardcodées — appliquées AVANT Sonnet
+      const _exceptions: Record<string, string> = {
+        "herborant": "Erborian", "herboreen": "Erborian",
+        "herborean": "Erborian", "herborian": "Erborian",
+        "herborion": "Erborian", "herbreant": "Erborian",
+        "herborent": "Erborian",
+        "erborean": "Erborian", "erborien": "Erborian",
+        "medic 8": "Medik8", "medik 8": "Medik8",
+        "medic huit": "Medik8", "medik huit": "Medik8",
+        "medicale": "Medik8", "medicaid": "Medik8",
+        "medikate": "Medik8", "medicate": "Medik8",
+        "medic8": "Medik8",
+      };
+
+      const _norm = _normalize(rawBrand);
+
+      // Check exact
+      if (_exceptions[_norm]) return _exceptions[_norm];
+
+      // Check partial — la valeur normalisée CONTIENT une clé
+      for (const [key, value] of Object.entries(_exceptions)) {
+        if (_norm.includes(key)) return value;
+      }
+
+      // Sonnet pour tout le reste
+      try {
+        const _res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 20,
+            temperature: 0,
+            messages: [{ role: "user", content: `Voice transcription distorted this brand name: '${rawBrand}'. Return ONLY the exact official brand name, nothing else. No explanation, no parentheses.` }],
+          }),
+        });
+        if (!_res.ok) return rawBrand;
+        const _data = await _res.json();
+        // Prend le premier mot uniquement — pas le dernier
+        const _text = (_data?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+        return _text.split(/[\s(]/)[0] || rawBrand;
+      } catch { return rawBrand; }
     };
 
     let data: any;
