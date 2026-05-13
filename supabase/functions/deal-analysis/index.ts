@@ -179,6 +179,28 @@ serve(async (req) => {
     const country = body.country || null;
     const platforms = getPlatforms(country);
 
+    // ── Quota deal (QA, priceAdvice, buyAdvice — 20/jour gratuit, illimité premium) ──
+    if (body.question || body.priceAdvice || body.buyAdvice) {
+      const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: prf } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
+      const isPremiumDeal = prf?.is_premium === true;
+      const { data: quotaDeal } = await adminClient.rpc("check_and_log_usage", {
+        p_user_id: user.id,
+        p_feature: "deal",
+        p_is_premium: isPremiumDeal,
+        p_daily_limit_free: 20,
+        p_monthly_limit_free: null,
+        p_daily_limit_premium: null,
+        p_monthly_limit_premium: null,
+      });
+      if (quotaDeal?.allowed === false) {
+        return new Response(
+          JSON.stringify({ error: "quota_exceeded", reason: quotaDeal.reason, limit: quotaDeal.limit }),
+          { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+        );
+      }
+    }
+
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "Missing API key" }), {
