@@ -878,8 +878,9 @@ serve(async (req) => {
 
     // Validate a single brand via web_search — returns corrected spelling or original
     const _validateBrand = async (rawBrand: string): Promise<string> => {
-      const _sys = "You are a brand name validator. Use web_search to find the exact official spelling of a brand. Return ONLY the exact official brand name, nothing else.";
-      let _msgs: unknown[] = [{ role: "user", content: `Exact official spelling of this brand: "${rawBrand}"` }];
+      const _sys = "You are validating brand names from voice transcriptions in a resale app context (Vinted, eBay, fashion, cosmetics, tech, tools, etc.). The transcription may contain phonetic errors. Use web_search to find the exact official brand name. Return ONLY the exact official brand name, nothing else. If no brand found after search, return the original transcription as-is.";
+      const _userMsg = `Transcribed brand (may contain phonetic errors): '${rawBrand}'\n\nSearch the web for: '${rawBrand} brand official name'\nOR: '${rawBrand} marque officielle'\n\nReturn ONLY the exact official brand name, nothing else.\n\nExamples of phonetic corrections you must handle:\n- 'herborion' → search → 'Erborian'\n- 'medic huit' or 'medic 8' → search → 'Medik8'\n- 'sithl' or 'stil' → search → 'Stihl'\n- 'adibas' → search → 'Adidas'`;
+      let _msgs: unknown[] = [{ role: "user", content: _userMsg }];
       let _resp = await _fetchClaude(_msgs, _sys, true, 256);
       while (_resp.stop_reason === "tool_use") {
         const _tb = (_resp.content as any[]).find((b: any) => b.type === "tool_use");
