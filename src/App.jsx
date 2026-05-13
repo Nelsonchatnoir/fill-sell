@@ -1428,6 +1428,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
         const nextCount=voiceUsedToday+1;
         if(setVoiceUsedToday)setVoiceUsedToday(nextCount);
         supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
+        supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
       }
       setVaStep("thinking");
         try{
@@ -3317,6 +3318,7 @@ export default function App({ loginOnly = false }){
       await supabase.from('profiles')
         .update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]})
         .eq('id',user.id);
+      supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
       setVoiceUsedToday(count+1);
     }
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
@@ -4336,7 +4338,19 @@ export default function App({ loginOnly = false }){
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${daToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({question:dealIADesc.trim(),lang,currency,country:userCountry?.code??getCountryFallback()}),
       });
-      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      if(!r.ok){
+        const errBody=await r.json().catch(()=>({}));
+        if(errBody.error==='quota_exceeded'){
+          const msg=errBody.reason==='monthly_limit'
+            ?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.')
+            :(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');
+          setToast({visible:true,message:`🔒 ${msg}`});
+          setTimeout(()=>setToast({visible:false,message:''}),4000);
+          setDealIALoading(false);
+          return;
+        }
+        throw new Error(`HTTP ${r.status}`);
+      }
       const{analysis,error:iErr}=await r.json();
       if(iErr)throw new Error(iErr);
       setDealIAResult(analysis||(lang==="fr"?"Analyse terminée.":"Analysis complete."));
@@ -4466,9 +4480,10 @@ export default function App({ loginOnly = false }){
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'lens_count_today','lens_count_date');
       if(count>=LENS_FREE_LIMIT){
-        alert(lang==='fr'
-          ?"Tu as utilisé tes 3 analyses Lens aujourd'hui. Passe en Premium pour un accès illimité. 📸"
-          :"You've used your 3 Lens analyses today. Upgrade to Premium for unlimited access. 📸");
+        setToast({visible:true,message:lang==='fr'
+          ?'🔒 Limite journalière atteinte. Revenez demain ou passez Premium.'
+          :'🔒 Daily limit reached. Come back tomorrow or upgrade to Premium.'});
+        setTimeout(()=>setToast({visible:false,message:''}),4000);
         return;
       }
       await supabase.from('profiles')
@@ -4512,6 +4527,14 @@ export default function App({ loginOnly = false }){
       });
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
+        if(errBody.error==='quota_exceeded'){
+          const msg=errBody.reason==='monthly_limit'
+            ?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.')
+            :(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');
+          setToast({visible:true,message:`🔒 ${msg}`});
+          setTimeout(()=>setToast({visible:false,message:''}),4000);
+          return;
+        }
         throw new Error(errBody.error||`HTTP ${r.status}`);
       }
       const result=await r.json();

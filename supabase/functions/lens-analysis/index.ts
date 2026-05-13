@@ -117,26 +117,28 @@ serve(async (req) => {
     });
   }
 
-  // ── Quota (non-premium: 3/day) ─────────────────────────
+  // ── Quota via usage_logs (lens: 3j+15m gratuit, 5j+60m premium) ──────────
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const today = new Date().toISOString().split("T")[0];
   const { data: profile } = await adminClient
     .from("profiles")
-    .select("is_premium, lens_count_today, lens_count_date")
+    .select("is_premium")
     .eq("id", user.id)
     .single();
   const isPremium = profile?.is_premium === true;
-  if (!isPremium) {
-    const count = profile?.lens_count_date === today ? (profile?.lens_count_today ?? 0) : 0;
-    if (count >= 3) {
-      return new Response(JSON.stringify({ error: "Daily lens limit reached" }), {
-        status: 429, headers: { "Content-Type": "application/json", ...CORS },
-      });
-    }
-    await adminClient
-      .from("profiles")
-      .update({ lens_count_today: count + 1, lens_count_date: today })
-      .eq("id", user.id);
+  const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
+    p_user_id: user.id,
+    p_feature: "lens",
+    p_is_premium: isPremium,
+    p_daily_limit_free: 3,
+    p_monthly_limit_free: 15,
+    p_daily_limit_premium: 5,
+    p_monthly_limit_premium: 60,
+  });
+  if (quotaData?.allowed === false) {
+    return new Response(
+      JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+      { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+    );
   }
 
   try {
@@ -186,35 +188,38 @@ serve(async (req) => {
     };
 
     let data: any;
-    try {
-      // Attempt with web_search for real-time price data
-      const wsMessages: any[] = [...initialMessages];
-      data = await callClaude(apiKey, {
-        ...basePayload,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        messages: wsMessages,
-      }, "web-search-2025-03-05");
-
-      // Multi-turn: handle up to 2 web search rounds
-      for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
-        wsMessages.push({ role: "assistant", content: data.content });
-        const toolResults = (data.content as any[])
-          .filter((b: any) => b.type === "tool_use")
-          .map((b: any) => ({
-            type: "tool_result",
-            tool_use_id: b.id,
-            content: b.content ?? [],
-          }));
-        if (!toolResults.length) break;
-        wsMessages.push({ role: "user", content: toolResults });
+    if (isPremium) {
+      // Premium : web_search activé pour des prix en temps réel
+      try {
+        const wsMessages: any[] = [...initialMessages];
         data = await callClaude(apiKey, {
           ...basePayload,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
           messages: wsMessages,
         }, "web-search-2025-03-05");
+
+        for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
+          wsMessages.push({ role: "assistant", content: data.content });
+          const toolResults = (data.content as any[])
+            .filter((b: any) => b.type === "tool_use")
+            .map((b: any) => ({
+              type: "tool_result",
+              tool_use_id: b.id,
+              content: b.content ?? [],
+            }));
+          if (!toolResults.length) break;
+          wsMessages.push({ role: "user", content: toolResults });
+          data = await callClaude(apiKey, {
+            ...basePayload,
+            tools: [{ type: "web_search_20250305", name: "web_search" }],
+            messages: wsMessages,
+          }, "web-search-2025-03-05");
+        }
+      } catch {
+        data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
       }
-    } catch {
-      // Fallback: plain vision call without web search
+    } else {
+      // Gratuit : analyse vision directe sans web_search
       data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
     }
 
