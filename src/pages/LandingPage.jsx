@@ -152,7 +152,8 @@ const T = {
     f1Desc: 'Ajoute tes articles en quelques secondes. Fill & Sell calcule tes marges automatiquement.',
     f1Header: '📦 Mon stock · 14 articles', f1Add: '+ Ajouter', f1BuyLabel: 'Achat → Vente',
     f1CatFashion: '👗 Mode', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxe',
-    f1LocLevis: 'Portant 1', f1LocIphone: 'Étagère garage', f1LocHermes: 'Sac Vinted prêt',
+    f1LocLevis: 'Portant 1', f1LocIphone: 'Étagère garage', f1LocHermes: 'Sac Vinted prêt', f1LocPolo: 'Carton cave',
+    f1DescLevis: '📏 Taille M', f1DescIphone: '💾 128 Go · Noir', f1DescHermes: '🎨 Cuir caramel · 28cm', f1DescPolo: '📏 Taille L · Blanc',
     f2Title: 'Dashboard clair',
     f2Desc: "Visualise tes profits, ventes et stocks en un coup d'œil. Plus besoin d'Excel ni de calculatrice.",
     f2Evolution: 'Évolution', f2VsMois: 'vs mois -1', f2SalesCount: '23 ventes', f2Period: '6 mois',
@@ -193,18 +194,18 @@ const T = {
     lens_badge: 'NOUVEAU',
     lens_title: 'Lens',
     lens_desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
-    lens_result_title: 'Nike Air Max 90 · État : Bon',
-    lens_result_price: '65 – 85 €',
-    lens_result_recommended: 'Prix recommandé : 72 €',
+    lens_result_title: 'Patagonia · T-shirt · État : Bon',
+    lens_result_price: '45 – 65 €',
+    lens_result_recommended: 'Prix recommandé : 52 €',
     lens_result_platforms: 'Vinted · eBay · Depop',
-    lens_result_category: 'Catégorie : Sport · Sneakers',
-    lens_result_demand: 'Demande forte · Se vend en < 2 jours',
+    lens_result_category: 'Sport · Outdoor',
+    lens_result_state: 'État : Bon',
+    lens_result_demand: 'Demande forte · Se vend en < 3 jours',
     lens_result_tip: 'Publie tôt le matin pour maximiser la visibilité',
     lens_result_slot_plus: '+',
     lens_add_stock: 'Ajouter au stock',
     lens_premium_badge: '⭐ PREMIUM · Prix marché en direct',
-    lens_margin: '+47 €',
-    lens_location: 'Étagère garage',
+    lens_margin: '+34 €',
     pricing_free_lens: '📸 Lens · 3/jour · 15/mois · estimation visuelle uniquement',
     pricing_premium_lens: '📸 Lens Pro · 5/jour · 60/mois · prix marché en direct',
     pricing_premium_suffix: 'puis 9,99 €/mois · Sans engagement.',
@@ -317,7 +318,8 @@ const T = {
     f1Desc: 'Add your items in seconds. Fill & Sell calculates your margins automatically.',
     f1Header: '📦 My stock · 14 items', f1Add: '+ Add', f1BuyLabel: 'Buy → Sell',
     f1CatFashion: '👗 Fashion', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxury',
-    f1LocLevis: 'Rail 1', f1LocIphone: 'Garage shelf', f1LocHermes: 'Ready Vinted bag',
+    f1LocLevis: 'Rail 1', f1LocIphone: 'Garage shelf', f1LocHermes: 'Ready Vinted bag', f1LocPolo: 'Storage box',
+    f1DescLevis: '📏 Size M', f1DescIphone: '💾 128GB · Black', f1DescHermes: '🎨 Caramel leather · 28cm', f1DescPolo: '📏 Size L · White',
     f2Title: 'Clear dashboard',
     f2Desc: 'Visualize your profits, sales and stock at a glance. No more Excel or calculator needed.',
     f2Evolution: 'Trend', f2VsMois: 'vs last month', f2SalesCount: '23 sales', f2Period: '6 months',
@@ -358,18 +360,18 @@ const T = {
     lens_badge: 'NEW',
     lens_title: 'Lens',
     lens_desc: 'Photo your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
-    lens_result_title: 'Nike Air Max 90 · Condition: Good',
-    lens_result_price: '65 – 85 €',
-    lens_result_recommended: 'Recommended price: 72 €',
+    lens_result_title: 'Patagonia · T-shirt · Condition: Good',
+    lens_result_price: '45 – 65 €',
+    lens_result_recommended: 'Recommended price: 52 €',
     lens_result_platforms: 'Vinted · eBay · Depop',
-    lens_result_category: 'Category: Sport · Sneakers',
-    lens_result_demand: 'High demand · Sells in < 2 days',
-    lens_result_tip: 'Post early morning to maximize visibility',
+    lens_result_category: 'Sport · Outdoor',
+    lens_result_state: 'Condition: Good',
+    lens_result_demand: 'High demand · Sells in < 3 days',
+    lens_result_tip: 'Post early morning for best visibility',
     lens_result_slot_plus: '+',
     lens_add_stock: 'Add to stock',
     lens_premium_badge: '⭐ PREMIUM · Live market price',
-    lens_margin: '+47 €',
-    lens_location: 'Garage shelf',
+    lens_margin: '+34 €',
     pricing_free_lens: '📸 Lens · 3/day · 15/mo · visual estimate only',
     pricing_premium_lens: '📸 Lens Pro · 5/day · 60/mo · live market price',
     pricing_premium_suffix: 'then €9.99/month · No commitment.',
@@ -757,17 +759,21 @@ export default function LandingPage() {
                   <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.f1Add}</div>
                 </div>
                 {[
-                  { name: "Veste Levi's vintage", catClass: 'cat-fashion', catLabel: t.f1CatFashion, brand: "Levi's", buy: '15€', sell: '42€', loc: t.f1LocLevis },
-                  { name: 'iPhone 12 Pro 128Go', catClass: 'cat-tech', catLabel: t.f1CatTech, brand: 'Apple', buy: '280€', sell: '420€', loc: t.f1LocIphone },
-                  { name: 'Sac Hermès Kelly', catClass: 'cat-luxe', catLabel: t.f1CatLuxe, brand: 'Hermès', buy: '820€', sell: '1240€', loc: t.f1LocHermes },
-                ].map(({ name, catClass, catLabel, brand, buy, sell, loc }) => (
+                  { name: "Veste Levi's vintage", catClass: 'cat-fashion', catLabel: t.f1CatFashion, brand: "Levi's", buy: '15€', sell: '42€', loc: t.f1LocLevis, desc: t.f1DescLevis },
+                  { name: 'iPhone 12 Pro 128Go', catClass: 'cat-tech', catLabel: t.f1CatTech, brand: 'Apple', buy: '280€', sell: '420€', loc: t.f1LocIphone, desc: t.f1DescIphone },
+                  { name: 'Sac Hermès Kelly', catClass: 'cat-luxe', catLabel: t.f1CatLuxe, brand: 'Hermès', buy: '820€', sell: '1240€', loc: t.f1LocHermes, desc: t.f1DescHermes },
+                  { name: 'Polo Ralph Lauren', catClass: 'cat-fashion', catLabel: t.f1CatFashion, brand: 'Ralph Lauren', buy: '8€', sell: '28€', loc: t.f1LocPolo, desc: t.f1DescPolo },
+                ].map(({ name, catClass, catLabel, brand, buy, sell, loc, desc }) => (
                   <div key={name} className="mini-row">
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 800 }}>{name}</div>
-                      <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800 }}>{name}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 5 }}>
                         <span className={`mini-cat ${catClass}`}>{catLabel}</span>
                         <span className="mini-cat" style={{ background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }}>{brand}</span>
-                        <span className="mini-cat" style={{ background: '#f5f0ff', color: '#7c3aed', borderColor: '#ddd6fe' }}>📍 {loc}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+                        <span className="mini-cat" style={{ background: '#F3F4F6', color: '#6B7280', borderColor: '#E5E7EB' }}>📍 {loc}</span>
+                        <span className="mini-cat" style={{ background: '#F3F4F6', color: '#6B7280', borderColor: '#E5E7EB' }}>{desc}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -859,24 +865,23 @@ export default function LandingPage() {
                   <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>{t.lens_result_slot_plus}</div>
                 </div>
                 <div style={{ background: '#fff', borderRadius: 16, padding: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700 }}>🔍 {t.lens_result_title}</div>
-                    <span style={{ fontSize: 10, fontWeight: 800, background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff', borderRadius: 20, padding: '3px 9px', whiteSpace: 'nowrap' }}>{t.lens_premium_badge}</span>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>🔍 {t.lens_result_title}</div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff', borderRadius: 20, padding: '3px 9px' }}>{t.lens_premium_badge}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
-                    <span style={{ display: 'inline-block', background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Nike</span>
-                    <span style={{ display: 'inline-block', background: '#f5f0ff', color: '#7c3aed', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Sport · Sneakers</span>
-                    <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>État : Bon</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+                    <span style={{ display: 'inline-block', background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Patagonia</span>
+                    <span style={{ display: 'inline-block', background: '#f5f0ff', color: '#7c3aed', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>{t.lens_result_category}</span>
+                    <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>{t.lens_result_state}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
                     <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 {t.lens_result_price}</span>
                     <span style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>{t.lens_result_recommended}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <div style={{ marginBottom: 8 }}>
                     <span style={{ display: 'inline-block', background: '#fff4e8', color: '#c2410c', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>📈 {t.lens_margin}</span>
-                    <span style={{ display: 'inline-block', background: '#f5f0ff', color: '#7c3aed', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>📍 {t.lens_location}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 4 }}>🏪 {t.lens_result_platforms}</div>
+                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 6 }}>🏪 {t.lens_result_platforms}</div>
                   <div style={{ marginBottom: 8 }}>
                     <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>⚡ {t.lens_result_demand}</span>
                   </div>
