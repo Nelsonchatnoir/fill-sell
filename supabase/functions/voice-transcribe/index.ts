@@ -109,6 +109,7 @@ serve(async (req) => {
     outForm.append("file", audioFile, `audio.${ext}`);
     outForm.append("model", "whisper-1");
     outForm.append("language", lang === "en" ? "en" : "fr");
+    outForm.append("prompt", "Fill & Sell, Vinted, eBay, Erborian, Medik8, Stihl, Levi's, Zara, Nike, Adidas, Hermès, Chanel, Louboutin, Patagonia, North Face, Balenciaga, Vestiaire Collective");
 
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
