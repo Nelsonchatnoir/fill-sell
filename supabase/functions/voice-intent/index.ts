@@ -878,23 +878,29 @@ serve(async (req) => {
 
     // Validate a single brand via web_search — returns corrected spelling or original
     const _validateBrand = async (rawBrand: string): Promise<string> => {
-      // Normalisation
+      // Normalisation: lowercase + strip diacritics (explicit unicode escape, no raw chars) + collapse spaces
       const _normalize = (s: string) => s.toLowerCase()
         .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/\s+/g, "")
         .trim();
 
-      // Exceptions hardcodées — appliquées AVANT Sonnet
+      // Exceptions hardcodées — clés normalisées (sans espaces, sans accents)
       const _exceptions: Record<string, string> = {
+        // Erborian — toutes variantes STT françaises connues
+        "erborian": "Erborian",
         "herborant": "Erborian", "herboreen": "Erborian",
         "herborean": "Erborian", "herborian": "Erborian",
         "herborion": "Erborian", "herbreant": "Erborian",
-        "herborent": "Erborian",
+        "herborent": "Erborian", "herboriean": "Erborian",
+        "herborien": "Erborian", "herboreant": "Erborian",
         "erborean": "Erborian", "erborien": "Erborian",
-        "medic 8": "Medik8", "medik 8": "Medik8",
-        "medic huit": "Medik8", "medik huit": "Medik8",
+        "erborion": "Erborian", "erborant": "Erborian",
+        "erboreen": "Erborian", "erborent": "Erborian",
+        // Medik8 — clés sans espaces (normalize retire les espaces)
+        "medic8": "Medik8", "medik8": "Medik8",
+        "medichuit": "Medik8", "medikhuit": "Medik8",
         "medicale": "Medik8", "medicaid": "Medik8",
         "medikate": "Medik8", "medicate": "Medik8",
-        "medic8": "Medik8",
       };
 
       const _norm = _normalize(rawBrand);
