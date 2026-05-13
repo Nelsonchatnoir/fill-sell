@@ -853,55 +853,51 @@ serve(async (req) => {
     }
 
     const _systemPrompt = (_lang === "en" ? SYSTEM_EN : SYSTEM_FR) + currencyCtx + dateCtx;
-    const _tools = [{ type: "web_search_20250305", name: "web_search" }];
 
-    const _callClaude = async (msgs: unknown[]) => {
+    // Base fetch — tools and maxTokens optional
+    const _fetchClaude = async (msgs: unknown[], system: string, useWebSearch = false, maxTokens = 4096) => {
+      const _body: Record<string, unknown> = {
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: maxTokens,
+        temperature: 0.1,
+        system,
+        messages: msgs,
+      };
+      if (useWebSearch) _body.tools = [{ type: "web_search_20250305", name: "web_search" }];
       const _res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey!,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 4096,
-          temperature: 0.1,
-          system: _systemPrompt,
-          messages: msgs,
-          tools: _tools,
-        }),
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify(_body),
       });
       if (!_res.ok) {
-        const _errData = await _res.json().catch(() => ({}));
-        throw new Error(_errData?.error?.message ?? "Anthropic API error");
+        const _e = await _res.json().catch(() => ({}));
+        throw new Error(_e?.error?.message ?? "Anthropic API error");
       }
       return _res.json();
     };
 
-    let _messages: unknown[] = [{ role: "user", content: text }];
-    let data: any;
-
-    try {
-      data = await _callClaude(_messages);
-
-      while (data.stop_reason === "tool_use") {
-        const _toolBlock = (data.content as any[]).find((b: any) => b.type === "tool_use");
-        if (!_toolBlock) break;
-        _messages = [
-          ..._messages,
-          { role: "assistant", content: data.content },
-          {
-            role: "user",
-            content: [{
-              type: "tool_result",
-              tool_use_id: _toolBlock.id,
-              content: _toolBlock.output ?? "",
-            }],
-          },
+    // Validate a single brand via web_search — returns corrected spelling or original
+    const _validateBrand = async (rawBrand: string): Promise<string> => {
+      const _sys = "You are a brand name validator. Use web_search to find the exact official spelling of a brand. Return ONLY the exact official brand name, nothing else.";
+      let _msgs: unknown[] = [{ role: "user", content: `Exact official spelling of this brand: "${rawBrand}"` }];
+      let _resp = await _fetchClaude(_msgs, _sys, true, 256);
+      while (_resp.stop_reason === "tool_use") {
+        const _tb = (_resp.content as any[]).find((b: any) => b.type === "tool_use");
+        if (!_tb) break;
+        _msgs = [
+          ..._msgs,
+          { role: "assistant", content: _resp.content },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: _tb.id, content: _tb.output ?? "" }] },
         ];
-        data = await _callClaude(_messages);
+        _resp = await _fetchClaude(_msgs, _sys, true, 256);
       }
+      return (_resp.content as any[]).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim() || rawBrand;
+    };
+
+    let data: any;
+    try {
+      // Step 1: intent extraction WITHOUT web_search
+      data = await _fetchClaude([{ role: "user", content: text }], _systemPrompt);
     } catch (_err: any) {
       return new Response(
         JSON.stringify({ error: _err.message ?? "Anthropic API error" }),
@@ -924,6 +920,33 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", ...CORS },
       });
     }
+    // Step 2: validate brand spelling with web_search if a brand was extracted
+    const _allMarques: string[] = [];
+    for (const _t of parsed.tasks as any[]) {
+      if (_t.data?.marque) _allMarques.push(_t.data.marque);
+      if (Array.isArray(_t.data?.items)) {
+        for (const _item of _t.data.items) { if (_item.marque) _allMarques.push(_item.marque); }
+      }
+    }
+    const _uniqueMarques = [...new Set(_allMarques.filter(Boolean))];
+    if (_uniqueMarques.length > 0) {
+      try {
+        for (const _rawMarque of _uniqueMarques) {
+          const _corrected = await _validateBrand(_rawMarque);
+          if (_corrected && _corrected !== _rawMarque) {
+            for (const _t of parsed.tasks as any[]) {
+              if (_t.data?.marque === _rawMarque) _t.data.marque = _corrected;
+              if (Array.isArray(_t.data?.items)) {
+                for (const _item of _t.data.items) { if (_item.marque === _rawMarque) _item.marque = _corrected; }
+              }
+            }
+          }
+        }
+      } catch {
+        // brand validation non-fatal — keep raw brand
+      }
+    }
+
     // Log de debug : intent(s) choisi(s) par Claude pour le diagnostic
     console.log("[voice-intent] intents:", JSON.stringify((parsed.tasks as any[]).map(t => ({ intent: t.intent, data: t.data }))));
 
