@@ -295,21 +295,21 @@ unknown:          { originalText }
 
 Règle inventory_lot items — description + emplacement (CRITIQUE) :
 Pour CHAQUE article du lot, extraire les mêmes champs que inventory_add :
-- nom = marque + modèle de base UNIQUEMENT. Pas de qualificatifs.
+- nom = type ou modèle UNIQUEMENT, sans la marque. Pas de qualificatifs.
 - description = qualificatifs (taille, couleur, état, etc.) dans l'ordre : taille, état, couleur, autres. null si aucun.
 - categorie = catégorie canonique de l'article.
 - emplacement = lieu de rangement physique si mentionné (même règle que inventory_add). null sinon.
 Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l'appliquer à CHAQUE article.
 ✅ "pour 40€ j'ai acheté une robe rose taille 36 Zara, une paire de chaussures New Balance 9060 taille 38, un livre Gallimard Le Printemps Bleu" →
-   items: [{nom:"Robe Zara",marque:"Zara",categorie:"Mode",description:"Taille 36, rose",emplacement:null},
-           {nom:"New Balance 9060",marque:"New Balance",categorie:"Mode",description:"Taille 38",emplacement:null},
+   items: [{nom:"Robe",marque:"Zara",categorie:"Mode",description:"Taille 36, rose",emplacement:null},
+           {nom:"9060",marque:"New Balance",categorie:"Mode",description:"Taille 38",emplacement:null},
            {nom:"Le Printemps Bleu",marque:"Gallimard",categorie:"Livres",description:null,emplacement:null}]
 ✅ "une veste H&M taille S rouge et un jean Zara 32 pour 30€, rangés dans le bac 3" →
-   items: [{nom:"Veste H&M",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
-           {nom:"Jean Zara",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
+   items: [{nom:"Veste",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
+           {nom:"Jean",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
 
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
-NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
+NOM = type ou modèle UNIQUEMENT, sans la marque. Court et propre. AUCUN qualificatif dans le nom.
 DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
   1. Capacité / taille / poids (256Go, 20g, 1To, taille S, taille 42...)
   2. État (écran cassé, neuf, abîmé, rayé, usé, bon état...)
@@ -318,11 +318,13 @@ DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
   5. Autres (avec 2 manettes, avec chargeur...)
 Format : "256Go, écran cassé" ou "Taille S, rose" ou "20g". null si aucun qualificatif.
 Exemples OBLIGATOIRES :
-✅ "La Neige Lip Sleeping Mask Berry 20g" → nom:"Laneige Lip Sleeping Mask Berry", description:"20g"
+✅ "crème Erborian" → nom:"Crème", marque:"Erborian"
+✅ "sérum Medik8" → nom:"Sérum", marque:"Medik8"
+✅ "La Neige Lip Sleeping Mask Berry 20g" → nom:"Lip Sleeping Mask Berry", marque:"Laneige", description:"20g"
 ✅ "iPhone 13 256Go écran cassé" → nom:"iPhone 13", description:"256Go, écran cassé"
-✅ "Nike Air Max 90 taille 42 coloris blanc" → nom:"Nike Air Max 90", description:"Taille 42, coloris blanc"
+✅ "Nike Air Max 90 taille 42 coloris blanc" → nom:"Air Max 90", marque:"Nike", description:"Taille 42, coloris blanc"
 ✅ "PS4 Pro 1To avec 2 manettes" → nom:"PS4 Pro", description:"1To, avec 2 manettes"
-✅ "Veste Zara taille S rose achetée à Paris" → nom:"Veste Zara", description:"Taille S, rose, achetée à Paris"
+✅ "Veste Zara taille S rose achetée à Paris" → nom:"Veste", marque:"Zara", description:"Taille S, rose, achetée à Paris"
 
 Règle emplacement (inventory_add) :
 emplacement = lieu PHYSIQUE où l'article est rangé/stocké (tiroir, portant, étagère, stockeur, bac, box, carton, sac, valise, boîte...).
@@ -648,21 +650,21 @@ unknown:          { originalText }
 
 Rule inventory_lot items — description + emplacement (CRITICAL):
 For EACH item in the lot, extract the same fields as inventory_add:
-- nom = brand + base model ONLY. No qualifiers.
+- nom = type or model ONLY, without the brand. No qualifiers.
 - description = qualifiers (size, colour, condition, etc.) in order: size, condition, colour, other. null if none.
 - categorie = canonical category for the item.
 - emplacement = physical storage location if mentioned (same rule as inventory_add). null otherwise.
 If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it to EACH item.
 ✅ "for €40 I bought a pink size 36 Zara dress, a pair of New Balance 9060 shoes size 38, a Gallimard Le Printemps Bleu book" →
-   items: [{nom:"Zara Dress",marque:"Zara",categorie:"Mode",description:"Size 36, pink",emplacement:null},
-           {nom:"New Balance 9060",marque:"New Balance",categorie:"Mode",description:"Size 38",emplacement:null},
+   items: [{nom:"Dress",marque:"Zara",categorie:"Mode",description:"Size 36, pink",emplacement:null},
+           {nom:"9060",marque:"New Balance",categorie:"Mode",description:"Size 38",emplacement:null},
            {nom:"Le Printemps Bleu",marque:"Gallimard",categorie:"Livres",description:null,emplacement:null}]
 ✅ "an H&M jacket size S red and a Zara size 32 jeans for €30, stored in bin 3" →
-   items: [{nom:"H&M Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
-           {nom:"Zara Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
+   items: [{nom:"Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
+           {nom:"Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
-NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
+NOM = type or model ONLY, without the brand. Short and clean. NO qualifiers in nom.
 DESCRIPTION = everything else, in this order if present:
   1. Capacity / size / weight (256GB, 20g, 1TB, size S, size 10...)
   2. Condition (cracked screen, new, damaged, scratched, worn, good condition...)
@@ -671,13 +673,15 @@ DESCRIPTION = everything else, in this order if present:
   5. Other (with 2 controllers, with charger...)
 Format: "256GB, cracked screen" or "Size S, pink" or "20g". null if no qualifiers.
 Mandatory examples:
+✅ "Erborian cream" → nom:"Cream", marque:"Erborian"
+✅ "Medik8 serum" → nom:"Serum", marque:"Medik8"
 ✅ "iPhone 13 256GB cracked screen" → nom:"iPhone 13", description:"256GB, cracked screen"
-✅ "Nike Air Max 90 size 10 white" → nom:"Nike Air Max 90", description:"Size 10, white"
+✅ "Nike Air Max 90 size 10 white" → nom:"Air Max 90", marque:"Nike", description:"Size 10, white"
 ✅ "PS4 Pro 1TB with 2 controllers" → nom:"PS4 Pro", description:"1TB, with 2 controllers"
-✅ "Zara jacket size S pink bought in Paris" → nom:"Zara jacket", description:"Size S, pink, bought in Paris"
-✅ "Laneige Lip Sleeping Mask Berry 20g" → nom:"Laneige Lip Sleeping Mask Berry", description:"20g"
-✅ "found a Nike Air Max at a car boot sale in London" → nom:"Nike Air Max", description:"found at a car boot sale in London", emplacement:null
-✅ "picked up a Zara jacket in Manchester" → nom:"Zara jacket", description:"picked up in Manchester", emplacement:null
+✅ "Zara jacket size S pink bought in Paris" → nom:"Jacket", marque:"Zara", description:"Size S, pink, bought in Paris"
+✅ "Laneige Lip Sleeping Mask Berry 20g" → nom:"Lip Sleeping Mask Berry", marque:"Laneige", description:"20g"
+✅ "found a Nike Air Max at a car boot sale in London" → nom:"Air Max", marque:"Nike", description:"found at a car boot sale in London", emplacement:null
+✅ "picked up a Zara jacket in Manchester" → nom:"Jacket", marque:"Zara", description:"picked up in Manchester", emplacement:null
 
 Emplacement rule (inventory_add):
 emplacement = PHYSICAL location where the item is stored (drawer, rack, shelf, bin, box, bag, suitcase, carton, container...).
@@ -723,7 +727,7 @@ Limit rule (CRITICAL — respect the exact number stated):
   "my N best" / "the N worst" → limit: N exact (N = stated number)
   "my best sales" / "my worst sales" (no number) → limit: 5 (default)`;
 
-// Normalise inventory_add nom/description: nom = brand+model only, description = qualifiers in order
+// Normalise inventory_add nom/description: nom = type/model only (no brand), description = qualifiers in order
 function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unknown> {
   if (!d?.nom) return d;
   let nom = String(d.nom).trim();
