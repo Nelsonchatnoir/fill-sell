@@ -1327,7 +1327,8 @@ body.bg-dots {
   background: rgba(15, 23, 42, 0.03);
   border-radius: 12px;
   font-family: 'Nunito', sans-serif;
-  min-height: 84px;
+  height: 84px;
+  overflow: hidden;
 }
 
 .voice-ticker .vt-quote {
@@ -1347,7 +1348,8 @@ body.bg-dots {
   text-align: left;
   white-space: normal;
   overflow-wrap: break-word;
-  min-height: 60px;
+  height: 60px;
+  overflow: hidden;
 }
 
 .voice-ticker .vt-cursor {
