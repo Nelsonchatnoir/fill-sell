@@ -306,11 +306,7 @@ Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l
    items: [{nom:"Veste H&M",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
            {nom:"Jean Zara",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
 
-Règle correction phonétique des marques (CRITIQUE — s'applique à TOUS les intents qui extraient une marque) :
-Avant de retourner une marque, applique une correction phonétique et orthographique.
-Si le mot ressemble à une marque connue (similarité phonétique ou orthographique faible), utilise la marque correcte.
-Si aucune correspondance certaine → conserver le mot tel quel. Ne jamais inventer une marque.
-Ces exemples sont des guides, pas une whitelist : utilise ton intelligence pour corriger TOUTES les marques connues.
+Correction phonétique des marques : Whisper peut transcrire phonétiquement des marques connues avec des erreurs orthographiques. Pour TOUTES les marques sans exception (mode, luxe, tech, cosmétique, sport, alimentation, etc.), si la transcription ressemble phonétiquement à une marque réelle connue, utilise systématiquement l'orthographe exacte et officielle. Exemples : 'herborian' ou 'herborien' → Erborian, 'adidas' → Adidas, 'loubouten' → Louboutin, 'balenciagua' → Balenciaga. Ne demande jamais confirmation, corrige silencieusement.
 
 Corrections à appliquer (phonétique STT → orthographe correcte) :
 "karat", "karatt", "carat", "cahart" → "Carhartt"
@@ -687,11 +683,7 @@ If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it
    items: [{nom:"H&M Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
            {nom:"Zara Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
 
-Rule phonetic brand correction (CRITICAL — applies to ALL intents that extract a brand):
-Before returning a brand, apply phonetic and orthographic correction.
-If the word resembles a known brand (low phonetic or spelling distance), use the correct brand name.
-If no certain match → keep the word as-is. Never invent a brand.
-These examples are guides, not a whitelist: use your intelligence to correct ALL known brands.
+Phonetic brand correction: Whisper may transcribe known brand names with spelling errors. For ALL brands without exception (fashion, luxury, tech, cosmetics, sport, food, etc.), if the transcription phonetically resembles a real known brand, always use the exact official spelling. Examples: 'herborian' or 'herborien' → Erborian, 'adidas' → Adidas, 'loubouten' → Louboutin, 'balenciagua' → Balenciaga. Never ask for confirmation, correct silently.
 
 Corrections to apply (STT phonetic → correct spelling):
 "karat", "karatt", "carat", "cahart" → "Carhartt"
