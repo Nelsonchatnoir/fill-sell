@@ -152,6 +152,7 @@ const T = {
     f1Desc: 'Ajoute tes articles en quelques secondes. Fill & Sell calcule tes marges automatiquement.',
     f1Header: '📦 Mon stock · 14 articles', f1Add: '+ Ajouter', f1BuyLabel: 'Achat → Vente',
     f1CatFashion: '👗 Mode', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxe',
+    f1LocLevis: 'Portant 1', f1LocIphone: 'Étagère garage', f1LocHermes: 'Sac Vinted prêt',
     f2Title: 'Dashboard clair',
     f2Desc: "Visualise tes profits, ventes et stocks en un coup d'œil. Plus besoin d'Excel ni de calculatrice.",
     f2Evolution: 'Évolution', f2VsMois: 'vs mois -1', f2SalesCount: '23 ventes', f2Period: '6 mois',
@@ -182,25 +183,30 @@ const T = {
     ],
     f6BestCat: 'Meilleure catégorie', f6BestCatVal: '💎 Luxe · 64% de marge',
     f6AiFeature: '✦ Analyse IA de tes tendances',
+    f6AiBullet2: '✦ Conseil IA vocal sur ton business',
+    f6AiBullet3: '✦ Catégories et marques les plus rentables',
     f6AiMockup: '🤖 Analyse IA · Luxe performe 2× mieux ce mois',
     f7Title: 'Lens',
     f7Desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
-    freeF6: '📸 Lens · 3 analyses/jour',
-    premiumF7: '📸 Lens illimité 📸',
+    freeF6: '📸 Lens · 3/jour · 15/mois · estimation visuelle uniquement',
+    premiumF7: '📸 Lens Pro · 5/jour · 60/mois · prix marché en direct',
     lens_badge: 'NOUVEAU',
     lens_title: 'Lens',
     lens_desc: "Prends en photo ton article. L'IA identifie la marque, l'état, et te donne une estimation de prix en temps réel.",
-    lens_result_title: 'Patagonia P-6 Logo Tee · État : Bon',
-    lens_result_price: '18 – 28 €',
-    lens_result_recommended: 'Prix recommandé : 22 €',
+    lens_result_title: 'Nike Air Max 90 · État : Bon',
+    lens_result_price: '65 – 85 €',
+    lens_result_recommended: 'Prix recommandé : 72 €',
     lens_result_platforms: 'Vinted · eBay · Depop',
-    lens_result_category: 'Catégorie : Mode · Streetwear',
-    lens_result_demand: 'Demande forte · Se vend en < 3 jours',
-    lens_result_tip: "Ajoute une photo face avant pour affiner l'estimation",
+    lens_result_category: 'Catégorie : Sport · Sneakers',
+    lens_result_demand: 'Demande forte · Se vend en < 2 jours',
+    lens_result_tip: 'Publie tôt le matin pour maximiser la visibilité',
     lens_result_slot_plus: '+',
     lens_add_stock: 'Ajouter au stock',
-    pricing_free_lens: '📸 Lens · 3 analyses/jour',
-    pricing_premium_lens: '📸 Lens illimité 📸',
+    lens_premium_badge: '⭐ PREMIUM · Prix marché en direct',
+    lens_margin: '+47 €',
+    lens_location: 'Étagère garage',
+    pricing_free_lens: '📸 Lens · 3/jour · 15/mois · estimation visuelle uniquement',
+    pricing_premium_lens: '📸 Lens Pro · 5/jour · 60/mois · prix marché en direct',
     pricing_premium_suffix: 'puis 9,99 €/mois · Sans engagement.',
     stats_ai_line: '🤖 Analyse IA · Luxe performe 2× mieux ce mois',
     faq_lens_question: 'Comment fonctionne la fonction Lens ?',
@@ -238,6 +244,7 @@ const T = {
       { ico: '📏', lbl: 'Taille', ex: 'M, 42, EU 38' },
       { ico: '🌍', lbl: 'Plateforme cible', ex: 'Vinted, eBay, Vestiaire' },
       { ico: '⚡', lbl: 'Marge estimée', ex: '+23 € · 55 %' },
+      { ico: '🗂️', lbl: 'Emplacement', ex: 'Portant, carton cave, bac brocante' },
     ],
     badLabel: 'Sans Vocal IA', badTitle: '~ 2 min par article',
     badTime: 'Saisie manuelle, recherche prix, copier-coller',
@@ -310,6 +317,7 @@ const T = {
     f1Desc: 'Add your items in seconds. Fill & Sell calculates your margins automatically.',
     f1Header: '📦 My stock · 14 items', f1Add: '+ Add', f1BuyLabel: 'Buy → Sell',
     f1CatFashion: '👗 Fashion', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxury',
+    f1LocLevis: 'Rail 1', f1LocIphone: 'Garage shelf', f1LocHermes: 'Ready Vinted bag',
     f2Title: 'Clear dashboard',
     f2Desc: 'Visualize your profits, sales and stock at a glance. No more Excel or calculator needed.',
     f2Evolution: 'Trend', f2VsMois: 'vs last month', f2SalesCount: '23 sales', f2Period: '6 months',
@@ -340,25 +348,30 @@ const T = {
     ],
     f6BestCat: 'Best category', f6BestCatVal: '💎 Luxury · 64% margin',
     f6AiFeature: '✦ AI analysis of your trends',
+    f6AiBullet2: '✦ AI voice coaching on your business',
+    f6AiBullet3: '✦ Most profitable categories & brands',
     f6AiMockup: '🤖 AI Analysis · Luxury is 2× better performing this month',
     f7Title: 'Lens',
     f7Desc: 'Take a photo of your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
-    freeF6: '📸 Lens · 3 analyses/day',
-    premiumF7: '📸 Unlimited Lens 📸',
+    freeF6: '📸 Lens · 3/day · 15/mo · visual estimate only',
+    premiumF7: '📸 Lens Pro · 5/day · 60/mo · live market price',
     lens_badge: 'NEW',
     lens_title: 'Lens',
     lens_desc: 'Photo your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
-    lens_result_title: 'Patagonia P-6 Logo Tee · Condition: Good',
-    lens_result_price: '18 – 28 €',
-    lens_result_recommended: 'Recommended price: 22 €',
+    lens_result_title: 'Nike Air Max 90 · Condition: Good',
+    lens_result_price: '65 – 85 €',
+    lens_result_recommended: 'Recommended price: 72 €',
     lens_result_platforms: 'Vinted · eBay · Depop',
-    lens_result_category: 'Category: Fashion · Streetwear',
-    lens_result_demand: 'High demand · Sells in < 3 days',
-    lens_result_tip: 'Add a front photo to refine the estimate',
+    lens_result_category: 'Category: Sport · Sneakers',
+    lens_result_demand: 'High demand · Sells in < 2 days',
+    lens_result_tip: 'Post early morning to maximize visibility',
     lens_result_slot_plus: '+',
     lens_add_stock: 'Add to stock',
-    pricing_free_lens: '📸 Lens · 3 analyses/day',
-    pricing_premium_lens: '📸 Unlimited Lens 📸',
+    lens_premium_badge: '⭐ PREMIUM · Live market price',
+    lens_margin: '+47 €',
+    lens_location: 'Garage shelf',
+    pricing_free_lens: '📸 Lens · 3/day · 15/mo · visual estimate only',
+    pricing_premium_lens: '📸 Lens Pro · 5/day · 60/mo · live market price',
     pricing_premium_suffix: 'then €9.99/month · No commitment.',
     stats_ai_line: '🤖 AI Analysis · Luxury is 2× better performing this month',
     faq_lens_question: 'How does the Lens feature work?',
@@ -396,6 +409,7 @@ const T = {
       { ico: '📏', lbl: 'Size', ex: 'M, 42, EU 38' },
       { ico: '🌍', lbl: 'Target platform', ex: 'Vinted, eBay, Vestiaire' },
       { ico: '⚡', lbl: 'Est. margin', ex: '+£23 · 55 %' },
+      { ico: '🗂️', lbl: 'Location', ex: 'Rail, storage box, market bin' },
     ],
     badLabel: 'Without Voice AI', badTitle: '~ 2 min per item',
     badTime: 'Manual entry, price search, copy-paste',
@@ -743,16 +757,17 @@ export default function LandingPage() {
                   <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-strong)' }}>{t.f1Add}</div>
                 </div>
                 {[
-                  { name: "Veste Levi's vintage", catClass: 'cat-fashion', catLabel: t.f1CatFashion, brand: "Levi's", buy: '15€', sell: '42€' },
-                  { name: 'iPhone 12 Pro 128Go', catClass: 'cat-tech', catLabel: t.f1CatTech, brand: 'Apple', buy: '280€', sell: '420€' },
-                  { name: 'Sac Hermès Kelly', catClass: 'cat-luxe', catLabel: t.f1CatLuxe, brand: 'Hermès', buy: '820€', sell: '1240€' },
-                ].map(({ name, catClass, catLabel, brand, buy, sell }) => (
+                  { name: "Veste Levi's vintage", catClass: 'cat-fashion', catLabel: t.f1CatFashion, brand: "Levi's", buy: '15€', sell: '42€', loc: t.f1LocLevis },
+                  { name: 'iPhone 12 Pro 128Go', catClass: 'cat-tech', catLabel: t.f1CatTech, brand: 'Apple', buy: '280€', sell: '420€', loc: t.f1LocIphone },
+                  { name: 'Sac Hermès Kelly', catClass: 'cat-luxe', catLabel: t.f1CatLuxe, brand: 'Hermès', buy: '820€', sell: '1240€', loc: t.f1LocHermes },
+                ].map(({ name, catClass, catLabel, brand, buy, sell, loc }) => (
                   <div key={name} className="mini-row">
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 800 }}>{name}</div>
                       <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
                         <span className={`mini-cat ${catClass}`}>{catLabel}</span>
                         <span className="mini-cat" style={{ background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderColor: '#9FE1CB' }}>{brand}</span>
+                        <span className="mini-cat" style={{ background: '#f5f0ff', color: '#7c3aed', borderColor: '#ddd6fe' }}>📍 {loc}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -844,14 +859,25 @@ export default function LandingPage() {
                   <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>{t.lens_result_slot_plus}</div>
                 </div>
                 <div style={{ background: '#fff', borderRadius: 16, padding: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>🔍 {t.lens_result_title}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>🔍 {t.lens_result_title}</div>
+                    <span style={{ fontSize: 10, fontWeight: 800, background: 'linear-gradient(135deg,#3EACA8,#E8956D)', color: '#fff', borderRadius: 20, padding: '3px 9px', whiteSpace: 'nowrap' }}>{t.lens_premium_badge}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+                    <span style={{ display: 'inline-block', background: 'var(--teal-tint)', color: 'var(--teal-strong)', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Nike</span>
+                    <span style={{ display: 'inline-block', background: '#f5f0ff', color: '#7c3aed', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Sport · Sneakers</span>
+                    <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>État : Bon</span>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
                     <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--teal-strong)' }}>🔥 {t.lens_result_price}</span>
                     <span style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>{t.lens_result_recommended}</span>
                   </div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <span style={{ display: 'inline-block', background: '#fff4e8', color: '#c2410c', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>📈 {t.lens_margin}</span>
+                    <span style={{ display: 'inline-block', background: '#f5f0ff', color: '#7c3aed', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>📍 {t.lens_location}</span>
+                  </div>
                   <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 4 }}>🏪 {t.lens_result_platforms}</div>
-                  <div style={{ fontSize: 13, color: 'var(--sub)', marginBottom: 8 }}>📦 {t.lens_result_category}</div>
-                  <div style={{ marginBottom: 10 }}>
+                  <div style={{ marginBottom: 8 }}>
                     <span style={{ display: 'inline-block', background: '#e8f8f0', color: '#2d9e6b', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>⚡ {t.lens_result_demand}</span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--sub)', fontStyle: 'italic' }}>💡 {t.lens_result_tip}</div>
@@ -896,6 +922,8 @@ export default function LandingPage() {
               <h3 className="feature-title">{t.f6Title}</h3>
               <p className="feature-desc">{t.f6Desc}</p>
               <p className="feature-desc" style={{ marginTop: 8, fontWeight: 700, color: 'var(--accent)' }}>{t.f6AiFeature}</p>
+              <p className="feature-desc" style={{ marginTop: 4, fontWeight: 600, color: 'var(--sub)' }}>{t.f6AiBullet2}</p>
+              <p className="feature-desc" style={{ marginTop: 4, fontWeight: 600, color: 'var(--sub)' }}>{t.f6AiBullet3}</p>
             </div>
             <div className="feature-mock">
               <div className="mini-screen">
