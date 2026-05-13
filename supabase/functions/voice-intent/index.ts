@@ -13,6 +13,8 @@ Sans texte ni markdown. Si incompréhensible → intent: "unknown".
 Si ambiguïté sur quel article → ambiguous: true + requiresConfirmation: true.
 Ne jamais inventer de données non mentionnées.
 
+IMPORTANT — PHONETIC BRAND CORRECTION (HIGHEST PRIORITY): When a transcribed word phonetically resembles a known brand, ALWAYS correct it silently to the exact official spelling before processing anything else. Example: 'herborion' → Erborian, 'loubouten' → Louboutin.
+
 RÈGLE FONDAMENTALE — ROBUSTESSE STT (appliquer AVANT tout parsing) :
 Tu reçois une transcription automatique qui peut contenir des erreurs phonétiques.
 Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéralement.
@@ -306,8 +308,6 @@ Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l
    items: [{nom:"Veste H&M",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
            {nom:"Jean Zara",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
 
-Phonetic brand correction — RULE: When a transcribed brand name phonetically resembles a real well-known brand (any category: fashion, luxury, tech, cosmetics, sport, food, etc.), silently correct it to the exact official spelling using your knowledge. Do NOT use lookup tables or hardcoded lists. Apply linguistic reasoning: similar sounds, common Whisper transcription errors (h/silent h, doubled letters, accent misplacement). Never ask for confirmation.
-
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
 DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
@@ -367,6 +367,8 @@ in natural order. Return ONLY { "tasks": [...] } as valid JSON.
 No text or markdown. If incomprehensible → intent: "unknown".
 If ambiguity about which item → ambiguous: true + requiresConfirmation: true.
 Never invent data not mentioned.
+
+IMPORTANT — PHONETIC BRAND CORRECTION (HIGHEST PRIORITY): When a transcribed word phonetically resembles a known brand, ALWAYS correct it silently to the exact official spelling before processing anything else. Example: 'herborion' → Erborian, 'loubouten' → Louboutin.
 
 FUNDAMENTAL RULE — STT ROBUSTNESS (apply BEFORE any parsing):
 You receive an automatic transcription that may contain phonetic errors.
@@ -658,8 +660,6 @@ If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it
 ✅ "an H&M jacket size S red and a Zara size 32 jeans for €30, stored in bin 3" →
    items: [{nom:"H&M Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
            {nom:"Zara Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
-
-Phonetic brand correction — RULE: When a transcribed brand name phonetically resembles a real well-known brand (any category: fashion, luxury, tech, cosmetics, sport, food, etc.), silently correct it to the exact official spelling using your knowledge. Do NOT use lookup tables or hardcoded lists. Apply linguistic reasoning: similar sounds, common Whisper transcription errors (h/silent h, doubled letters, accent misplacement). Never ask for confirmation.
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
