@@ -306,32 +306,7 @@ Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l
    items: [{nom:"Veste H&M",marque:"H&M",categorie:"Mode",description:"Taille S, rouge",emplacement:"Bac 3"},
            {nom:"Jean Zara",marque:"Zara",categorie:"Mode",description:"Taille 32",emplacement:"Bac 3"}]
 
-Correction phonétique des marques : Whisper peut transcrire phonétiquement des marques connues avec des erreurs orthographiques. Pour TOUTES les marques sans exception (mode, luxe, tech, cosmétique, sport, alimentation, etc.), si la transcription ressemble phonétiquement à une marque réelle connue, utilise systématiquement l'orthographe exacte et officielle. Exemples : 'herborian' ou 'herborien' → Erborian, 'adidas' → Adidas, 'loubouten' → Louboutin, 'balenciagua' → Balenciaga. Ne demande jamais confirmation, corrige silencieusement.
-
-Corrections à appliquer (phonétique STT → orthographe correcte) :
-"karat", "karatt", "carat", "cahart" → "Carhartt"
-"patagoni", "patagonya", "patagonie" → "Patagonia"
-"niike", "naik", "naike" → "Nike"
-"adiddas", "adida", "addidas" → "Adidas"
-"levi", "levis", "lévis" → "Levi's"
-"new balence", "new balanc", "newbalance" → "New Balance"
-"tomy hilfiger", "tommy hillfiger" → "Tommy Hilfiger"
-"ralph loren", "ralph lorren", "polo ralph" → "Ralph Lauren"
-"northface", "north fas", "nort face" → "The North Face"
-"arc teryx", "arcteryx", "arc térix" → "Arc'teryx"
-"monclair", "monclaire" → "Moncler"
-"balensyaga", "balenciagua" → "Balenciaga"
-"luboutin", "louboutain", "loubouten" → "Louboutin"
-"off white", "offwhite", "of white" → "Off-White"
-"stone islande", "ston island" → "Stone Island"
-"lacost", "lacôte" → "Lacoste"
-"burbury", "bourbery" → "Burberry"
-"facon", "fakon", "fakome" → "Facom"
-"petit bato", "petitbateau" → "Petit Bateau"
-"kiaby", "kyabi" → "Kiabi"
-"sara", "zahara" (contexte vêtement) → "Zara"
-"vanse" → "Vans"
-"erborien", "herborien", "herborian", "erborian", "herborion", "herboriéen", "erborion" → "Erborian"
+Phonetic brand correction — RULE: When a transcribed brand name phonetically resembles a real well-known brand (any category: fashion, luxury, tech, cosmetics, sport, food, etc.), silently correct it to the exact official spelling using your knowledge. Do NOT use lookup tables or hardcoded lists. Apply linguistic reasoning: similar sounds, common Whisper transcription errors (h/silent h, doubled letters, accent misplacement). Never ask for confirmation.
 
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = marque + modèle de base UNIQUEMENT. Court et propre. AUCUN qualificatif dans le nom.
@@ -684,32 +659,7 @@ If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it
    items: [{nom:"H&M Jacket",marque:"H&M",categorie:"Mode",description:"Size S, red",emplacement:"Bin 3"},
            {nom:"Zara Jeans",marque:"Zara",categorie:"Mode",description:"Size 32",emplacement:"Bin 3"}]
 
-Phonetic brand correction: Whisper may transcribe known brand names with spelling errors. For ALL brands without exception (fashion, luxury, tech, cosmetics, sport, food, etc.), if the transcription phonetically resembles a real known brand, always use the exact official spelling. Examples: 'herborian' or 'herborien' → Erborian, 'adidas' → Adidas, 'loubouten' → Louboutin, 'balenciagua' → Balenciaga. Never ask for confirmation, correct silently.
-
-Corrections to apply (STT phonetic → correct spelling):
-"karat", "karatt", "carat", "cahart" → "Carhartt"
-"patagoni", "patagonya" → "Patagonia"
-"niike", "naik", "naike" → "Nike"
-"adiddas", "adida", "addidas" → "Adidas"
-"levi", "levis" → "Levi's"
-"new balence", "new balanc", "newbalance" → "New Balance"
-"tomy hilfiger", "tommy hillfiger" → "Tommy Hilfiger"
-"ralph loren", "ralph lorren", "polo ralph" → "Ralph Lauren"
-"northface", "north fas", "nort face" → "The North Face"
-"arc teryx", "arcteryx", "arc terix" → "Arc'teryx"
-"monclair", "monclaire" → "Moncler"
-"balensyaga", "balenciagua" → "Balenciaga"
-"luboutin", "louboutain", "loubouten" → "Louboutin"
-"off white", "offwhite", "of white" → "Off-White"
-"stone islande", "ston island" → "Stone Island"
-"lacost" → "Lacoste"
-"burbury", "bourbery" → "Burberry"
-"facon", "fakon", "fakome" → "Facom"
-"petit bato", "petitbateau" → "Petit Bateau"
-"kiaby", "kyabi" → "Kiabi"
-"sara", "zahara" (clothing context) → "Zara"
-"vanse" → "Vans"
-"erborien", "herborien", "herborian", "erborian", "herborion", "herboriéen", "erborion" → "Erborian"
+Phonetic brand correction — RULE: When a transcribed brand name phonetically resembles a real well-known brand (any category: fashion, luxury, tech, cosmetics, sport, food, etc.), silently correct it to the exact official spelling using your knowledge. Do NOT use lookup tables or hardcoded lists. Apply linguistic reasoning: similar sounds, common Whisper transcription errors (h/silent h, doubled letters, accent misplacement). Never ask for confirmation.
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = brand + base model ONLY. Short and clean. NO qualifiers in nom.
