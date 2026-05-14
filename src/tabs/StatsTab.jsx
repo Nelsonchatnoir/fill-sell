@@ -4,11 +4,21 @@ import { Line } from 'react-chartjs-2';
 import { formatCurrency, typeLabel, marqueLabel, getTypeStyle } from '../utils/shared';
 
 function renderMd(text){
-  const html=text
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g,'<em>$1</em>')
-    .replace(/\n/g,'<br/>');
-  return{__html:html};
+  if(!text) return {__html:''};
+  const html=text.split('\n').map(line=>{
+    if(/^#{1,3} /.test(line)){
+      const c=line.replace(/^#{1,3} /,'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');
+      return `<div style="font-size:13px;font-weight:800;color:#0D0D0D;margin-top:8px;margin-bottom:2px">${c}</div>`;
+    }
+    if(/^[-•]\s+/.test(line)||/^\* /.test(line)){
+      const c=line.replace(/^[-•*]\s+/,'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');
+      return `<div style="display:flex;gap:5px;align-items:flex-start;margin:2px 0"><span style="color:#1D9E75;font-weight:800;flex-shrink:0;margin-top:1px">•</span><span>${c}</span></div>`;
+    }
+    if(!line.trim()) return '<div style="height:4px"/>';
+    const c=line.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');
+    return `<span>${c}</span><br/>`;
+  }).join('');
+  return {__html:html};
 }
 
 function normalizeCat(raw){
@@ -265,11 +275,12 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
 
   const PERIOD_CACHE_KEY={'1M':'1m','3M':'3m','6M':'6m','1A':'1y','1Y':'1y','Tout':'all','All':'all'};
 
+  const dataHash=useMemo(()=>`${filtered.length}_${items.filter(i=>i.statut!=='vendu').length}_${Math.round(totalProfit)}`,[filtered.length,items,totalProfit]);
+
   useEffect(()=>{
     if(filtered.length===0){setAiText('');return;}
     const SURL=supabaseUrl;
     if(!user?.id){setAiText('');return;}
-    const today=new Date().toISOString().split('T')[0];
     const cacheKey=PERIOD_CACHE_KEY[range]??range;
     setAiLoading(true);
     setAiText('');
@@ -277,7 +288,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
       .then(async ({data:profile})=>{
         const cache=profile?.stats_analysis_cache??{};
         const periodCache=cache[cacheKey];
-        if(periodCache&&periodCache.date===today&&periodCache.result){
+        if(periodCache&&periodCache.hash===dataHash&&periodCache.result){
           setAiText(periodCache.result);setAiLoading(false);return;
         }
         const{data:{session:stSess}}=await supabase.auth.getSession();
@@ -292,12 +303,12 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
           .then(d=>{
             const result=d?.analysis||'';
             setAiText(result);setAiLoading(false);
-            const updatedCache={...cache,[cacheKey]:{date:today,result}};
+            const updatedCache={...cache,[cacheKey]:{hash:dataHash,result}};
             supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id);
           })
           .catch(()=>{setAiLoading(false);});
       });
-  },[range,filtered.length]);
+  },[range,dataHash]);
 
   const fmt2=n=>formatCurrency(n,currency);
   const fmtp2=n=>(Math.round(n*10)/10).toFixed(1)+'%';
