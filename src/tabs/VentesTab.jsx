@@ -56,6 +56,43 @@ const VentesTab = memo(function VentesTab({
             <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>{t('premiereVente')}</div>
             <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",maxWidth:200,lineHeight:1.5}}>{t('profitsApparaitront')}</div>
           </div>
+          {!isPremium&&(
+            <div style={{marginBottom:12}}>
+              <div style={{textAlign:"center",marginBottom:10}}>
+                <span style={{background:"rgba(13,148,136,0.10)",color:"#0F6E56",borderRadius:99,padding:"5px 14px",fontSize:12,fontWeight:800,border:"1px solid rgba(13,148,136,0.20)"}}>
+                  👀 {lang==='fr'?"Aperçu · Tes ventes apparaîtront ici":"Preview · Your sales will appear here"}
+                </span>
+              </div>
+              <div style={{opacity:0.4,filter:"blur(1.5px)",pointerEvents:"none",userSelect:"none",display:"flex",flexDirection:"column",gap:8}}>
+                {[
+                  {title:"Veste Levi's vintage",marque:"Levi's",type:"Mode",buy:15,sell:42,margin:27,daysAgo:2},
+                  {title:"iPhone 12 Pro 128Go",marque:"Apple",type:"High-Tech",buy:280,sell:380,margin:100,daysAgo:5},
+                  {title:"Sac Hermès Kelly",marque:"Hermès",type:"Luxe",buy:820,sell:1240,margin:420,daysAgo:7},
+                ].map((fs,fi)=>{
+                  const _fd=new Date(Date.now()-fs.daysAgo*86400000);
+                  const _fts=getTypeStyle(fs.type);
+                  const _fmc=getMargeColor((fs.margin/fs.sell)*100);
+                  const _fmonths=lang==='en'?MONTHS_EN:MONTHS_FR;
+                  return(
+                    <div key={fi} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${getCatBorder(fs.type)}`,display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fs.title}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
+                          <span style={{fontSize:11,color:"#A3A9A6"}}>{_fd.getDate()} {_fmonths[_fd.getMonth()]} {_fd.getFullYear()}</span>
+                          <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{fs.marque}</span>
+                          <span style={{background:_fts.bg,color:_fts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${_fts.border}`}}>{_fts.emoji} {typeLabel(fs.type,lang)}</span>
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(fs.sell)}</div>
+                        <div style={{fontWeight:800,fontSize:13,color:_fmc,marginTop:1}}>+{fmt(fs.margin)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
         </div>

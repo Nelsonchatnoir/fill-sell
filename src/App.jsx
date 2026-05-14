@@ -1268,6 +1268,11 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
           🎙️ {lang==='fr'?'5 vocaux/jour':'5 voice/day'} &nbsp;·&nbsp;
           📸 {lang==='fr'?'3 Lens/jour':'3 Lens/day'}
         </div>
+        {slotsRemaining!==null&&slotsRemaining>0&&(
+          <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)",marginBottom:8,display:"inline-block"}}>
+            🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie — Ensuite 12,99€`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever — Then €12.99`}
+          </div>
+        )}
         <button onClick={onPremium} className="cta-premium">
           {slotsRemaining!==null&&slotsRemaining>0
             ?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois':'✨ Become a Founder · €9.99/mo')
