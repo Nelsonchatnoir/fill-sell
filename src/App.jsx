@@ -739,6 +739,9 @@ const VOICE_EXAMPLES_FR_RAW = [
   { text: "J'ai acheté un sac Kelly Hermès vert petit modèle bon état pour 180€",                                      tag: "Ajouter",     cls: "add"   },
   { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
   { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
+  { text: "Range tes articles par emplacement — portant, carton, étagère",                                             tag: "Emplacement", cls: "add"   },
+  { text: "Dis 'range la veste dans le portant 2' et c'est fait",                                                      tag: "Ranger",      cls: "add"   },
+  { text: "Retrouve n'importe quel article par son emplacement en un clin d'œil",                                      tag: "Trouver",     cls: "query" },
 ];
 const VOICE_EXAMPLES_EN_RAW = [
   { text: "I bought €40 worth of clothes at a flea market — a blue Zara top size L and a Levi's jeans in good condition", tag: "Add",      cls: "add"   },
@@ -751,6 +754,9 @@ const VOICE_EXAMPLES_EN_RAW = [
   { text: "I bought a small green Hermès Kelly bag in good condition for €180",                                             tag: "Add",      cls: "add"   },
   { text: "I sold 5 Pokémon packs at €12 each on Vinted with €2 fees",                                                     tag: "Sell",     cls: "sell"  },
   { text: "How many items did I add this week and how many did I sell?",                                                    tag: "Stats",    cls: "query" },
+  { text: "Organise your items by location — rail, box, shelf",                                                            tag: "Location", cls: "add"   },
+  { text: "Say 'move the jacket to rail 2' and it's done",                                                                 tag: "Move",     cls: "add"   },
+  { text: "Find any item by its storage location instantly",                                                                tag: "Find",     cls: "query" },
 ];
 const VOICE_EXAMPLES = VOICE_EXAMPLES_FR_RAW;
 const VOICE_EXAMPLES_EN = VOICE_EXAMPLES_EN_RAW;
