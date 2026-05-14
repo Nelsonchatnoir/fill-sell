@@ -1176,7 +1176,7 @@ export default function LandingPage() {
             <p className="section-sub">{t.pricingSub}</p>
           </div>
           <div className="pricing-grid">
-            <div className="price-card free reveal">
+            <div className="price-card free reveal" style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="price-tier">{t.freeTier}</div>
               <h3 className="price-name">{t.freeName}</h3>
               <div className="price-amount"><span className="num">0 €</span><span className="per">{t.freePer}</span></div>
@@ -1190,7 +1190,7 @@ export default function LandingPage() {
                 <li><span className="ck">✓</span> {t.freeF6}</li>
                 <li><span className="ck">✓</span> {t.freeF7}</li>
               </ul>
-              <button className="btn btn-lg"
+              <button className="btn btn-lg" style={{ marginTop: 'auto' }}
                 onClick={() => { track('cta_click', { cta: 'pricing_free', page: 'landing' }); nav('/login?mode=signup'); }}>
                 {t.freeBtn}
               </button>
