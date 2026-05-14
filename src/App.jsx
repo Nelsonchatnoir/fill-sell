@@ -1663,62 +1663,59 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const isSold=item.statut==="vendu"||item.statut==="sold";
                           const nom=item.titre||item.title||item.nom||"";
                           const inputSt={fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
+                          const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
+                          const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
                           return(
-                            <div key={i} style={{paddingBottom:12,borderBottom:i<found.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                              {/* Item row */}
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                                <div style={{minWidth:0,flex:1}}>
-                                  <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
-                                  <div className="vr-pills" style={{marginTop:2}}>
-                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                    {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
-                                    {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
-                                  </div>
-                                  {(item.description||item.desc)&&<div style={{fontSize:11,color:"#6B7280",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description||item.desc}</div>}
-                                </div>
-                                <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8}}>
-                                  <div style={{textAlign:"right"}}>
-                                    {isSold?(()=>{
-                                      const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
-                                      return(
-                                        <>
-                                          <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{fmt(item.buy||item.prix_achat||0)}</div>
-                                          <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{(item.sell||item.prix_vente)?fmt(item.sell||item.prix_vente):"?"}</div>
-                                          {item.date_vente&&<div style={{fontSize:10,color:"#1D9E75",marginTop:1}}>{lang==="en"?"sold on ":"vendu le "}{fmtDate(item.date_vente)}</div>}
-                                        </>
-                                      );
-                                    })():(()=>{
-                                      const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
-                                      const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
-                                      return(
-                                        <>
-                                          <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{fmt(item.buy||item.prix_achat||0)}</div>
-                                          {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6",marginTop:1}}>{lang==="en"?`in stock since `:`en stock depuis le `}{fmtDate(item.date_ajout)}{days!==null?` (${days}${lang==="en"?"d":"j"})`:""}</div>}
-                                        </>
-                                      );
-                                    })()}
-                                  </div>
-                                  {!anyFormOpen&&!isSold&&(
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
-                                      style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                                      {lang==="en"?"Mark as sold":"Marquer vendu"}
-                                    </button>
-                                  )}
-                                  {isSold&&!anyFormOpen&&<span style={{fontSize:10,fontWeight:700,color:"#1D9E75"}}>{lang==="en"?"✓ sold":"✓ vendu"}</span>}
-                                  {!anyFormOpen&&(
+                            <div key={i} style={{paddingBottom:12,borderBottom:i<found.length-1?"1px solid rgba(0,0,0,0.04)":"none",paddingTop:6}}>
+                              {/* LIGNE 1 : nom + prix */}
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
+                                <div style={{flexShrink:0,textAlign:"right"}}>
+                                  {isSold?(
                                     <>
-                                      <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:i,editFields:{nom,prix_achat:item.prix_achat||item.buy||"",marque:item.marque||item.brand||"",type:item.type||item.categorie||""}}}))}
-                                        style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
-                                        ✏️
-                                      </button>
-                                      <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{deleteOpen:i}}))}
-                                        style={{fontSize:10,fontWeight:700,color:"#E53E3E",border:"1px solid #E53E3E",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
-                                        ✕
-                                      </button>
+                                      <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{fmt(item.buy||item.prix_achat||0)}</div>
+                                      <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{(item.sell||item.prix_vente)?fmt(item.sell||item.prix_vente):"?"}</div>
                                     </>
+                                  ):(
+                                    <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{fmt(item.buy||item.prix_achat||0)}</div>
                                   )}
                                 </div>
                               </div>
+                              {/* LIGNE 2 : pills */}
+                              <div className="vr-pills" style={{marginTop:4}}>
+                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
+                                {item.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {item.emplacement}</span>}
+                                {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
+                              </div>
+                              {(item.description||item.desc)&&<div style={{fontSize:11,color:"#6B7280",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description||item.desc}</div>}
+                              {/* LIGNE 3 : date + boutons */}
+                              {!anyFormOpen&&(
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,gap:8}}>
+                                  <div style={{fontSize:10,color:"#A3A9A6",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {isSold
+                                      ?(item.date_vente?`${lang==="en"?"sold on ":"vendu le "}${fmtDate(item.date_vente)}`:"")
+                                      :(item.date_ajout?`${lang==="en"?"in stock since ":"en stock depuis le "}${fmtDate(item.date_ajout)}${days!==null?` (${days}${lang==="en"?"d":"j"})`:""}`:"")}
+                                  </div>
+                                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                                    {!isSold&&(
+                                      <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
+                                        style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                                        {lang==="en"?"Mark as sold":"Marquer vendu"}
+                                      </button>
+                                    )}
+                                    {isSold&&<span style={{fontSize:10,fontWeight:700,color:"#1D9E75"}}>{lang==="en"?"✓ sold":"✓ vendu"}</span>}
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:i,editFields:{nom,prix_achat:item.prix_achat||item.buy||"",marque:item.marque||item.brand||"",type:item.type||item.categorie||""}}}))}
+                                      style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
+                                      ✏️
+                                    </button>
+                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{deleteOpen:i}}))}
+                                      style={{fontSize:10,fontWeight:700,color:"#E53E3E",border:"1px solid #E53E3E",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
 
                               {/* Sell form */}
                               {isSellOpen&&(
