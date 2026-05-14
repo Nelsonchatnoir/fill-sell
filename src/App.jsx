@@ -1234,7 +1234,7 @@ function VoiceZone({ lang = 'fr', currency = 'EUR' }) {
   );
 }
 
-function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium }) {
+function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRemaining=null }) {
   return (
     <div className="empty-hero">
       <div className="empty-hero-art">🎙️</div>
@@ -1269,7 +1269,10 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium }) {
           📸 {lang==='fr'?'3 Lens/jour':'3 Lens/day'}
         </div>
         <button onClick={onPremium} className="cta-premium">
-          ✨ Premium · 9,99€/mois &nbsp;—&nbsp;
+          {slotsRemaining!==null&&slotsRemaining>0
+            ?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois':'✨ Become a Founder · €9.99/mo')
+            :(lang==='fr'?'✨ Passer Premium · 12,99€/mois':'✨ Upgrade to Premium · €12.99/mo')
+          } &nbsp;—&nbsp;
           {lang==='fr'?'Tout illimité · 7j gratuits':'All unlimited · 7 days free'}
         </button>
       </div>
@@ -3016,8 +3019,17 @@ export default function App({ loginOnly = false }){
   }
   async function triggerCheckout(){
     try{
-      const{data:{session}}=await supabase.auth.getSession();
-      const token=session?.access_token;
+      let{data:{session}}=await supabase.auth.getSession();
+      if(!session){
+        const{data:refreshed}=await supabase.auth.refreshSession();
+        session=refreshed?.session??null;
+      }
+      if(!session){
+        setToast({visible:true,message:lang==='en'?"Please sign in to continue.":"Reconnectez-vous pour continuer."});
+        setTimeout(()=>setToast({visible:false,message:""}),4000);
+        return;
+      }
+      const token=session.access_token;
       const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email})});
       const body=await res.json();
       const{url,error}=body;
@@ -3266,6 +3278,7 @@ export default function App({ loginOnly = false }){
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
   const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
+  const BoundEmptyState=useMemo(()=>{const C=(props)=><EmptyStateDashboard {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
   function searchMatch(item,query){
     if(!query.trim())return true;
     const q=query.toLowerCase().trim();
@@ -4647,7 +4660,7 @@ export default function App({ loginOnly = false }){
             fabTriggerRef={fabTriggerRef}
             triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
             setTab={setTab}
-            EmptyStateDashboard={EmptyStateDashboard}
+            EmptyStateDashboard={BoundEmptyState}
           />
         )}
 
