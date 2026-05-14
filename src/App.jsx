@@ -5251,6 +5251,12 @@ export default function App({ loginOnly = false }){
                     ?`Cet article est marqué comme vendu. Que veux-tu supprimer ?`
                     :`This item is marked as sold. What do you want to delete?`}
                   <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                  {(()=>{const it=deleteConfirm.item;if(!it)return null;const ts=getTypeStyle(it.type||it.categorie);const desc=(it.description||it.desc||"").trim();return(<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:8}}>
+                    {(it.type||it.categorie)&&(it.type||it.categorie)!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(it.type||it.categorie,lang)}</span>}
+                    {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
+                    {desc&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>{desc.slice(0,30)}{desc.length>30?"…":""}</span>}
+                    {it.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {it.emplacement}</span>}
+                  </div>);})()}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <button onClick={async()=>{

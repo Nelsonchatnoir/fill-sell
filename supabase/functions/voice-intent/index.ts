@@ -960,39 +960,63 @@ serve(async (req) => {
       } catch { return rawBrand; }
     };
 
-    // Normalise un emplacement mal transcrit par le STT — pas de Sonnet, table seule
-    const _validateEmplacement = (rawEmplacement: string): string => {
+    // Normalise un emplacement mal transcrit par le STT — table d'exceptions + fallback Sonnet
+    const _validateEmplacement = async (rawEmplacement: string): Promise<string> => {
       const _normalizeEmp = (s: string) => s.toLowerCase()
         .normalize("NFD").replace(/[̀-ͯ]/g, "")
         .replace(/\s+/g, "")
         .trim();
 
       const _emplacementExceptions: Record<string, string> = {
-        // Sac orange
         "sacauxrangs": "Sac orange",
+        "sacauxrangees": "Sac orange",
         "sacorange": "Sac orange",
         "sacoran": "Sac orange",
-        // Portant
-        "portant": "Portant",
         "portant1": "Portant 1",
         "portant2": "Portant 2",
         "portant3": "Portant 3",
-        // Carton
+        "portanun": "Portant 1",
+        "portandeux": "Portant 2",
         "cartoncave": "Carton cave",
         "cartonbureau": "Carton bureau",
         "cartonsalon": "Carton salon",
-        // Autres courants
-        "baccave": "Bac cave",
-        "bacbrocante": "Bac brocante",
         "etageregarage": "Étagère garage",
         "etagerebureau": "Étagère bureau",
+        "bacbrocante": "Bac brocante",
+        "baccave": "Bac cave",
+        "sacvinted": "Sac Vinted prêt",
+        "sacvintedpret": "Sac Vinted prêt",
       };
 
       const _norm = _normalizeEmp(rawEmplacement);
+
       if (_emplacementExceptions[_norm]) return _emplacementExceptions[_norm];
       for (const [key, value] of Object.entries(_emplacementExceptions)) {
         if (_norm.includes(key)) return value;
       }
+
+      // Sonnet fallback si le mot ne ressemble à aucun mot-clé connu
+      const _knownRoots = ["portant", "sac", "carton", "bac", "etagere", "cave", "bureau", "garage", "salon", "vinted"];
+      const _looksDistorted = !_knownRoots.some(w => _norm.includes(w));
+      if (_looksDistorted) {
+        try {
+          const _res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 20,
+              temperature: 0,
+              messages: [{ role: "user", content: `This is a storage location name from a voice transcription app for resellers. It may contain phonetic errors.\nRaw: '${rawEmplacement}'\nReturn ONLY the corrected storage location name.\nExamples: 'sac aux rangs' → 'Sac orange', 'portant un' → 'Portant 1'\nOne name only, no explanation.` }],
+            }),
+          });
+          if (!_res.ok) return rawEmplacement;
+          const _d = await _res.json();
+          const _text = (_d?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+          return _text || rawEmplacement;
+        } catch { return rawEmplacement; }
+      }
+
       return rawEmplacement;
     };
 
@@ -1061,11 +1085,11 @@ serve(async (req) => {
     // Step 3: validate emplacement spelling
     for (const _t of parsed.tasks as any[]) {
       if (_t.data?.emplacement) {
-        _t.data.emplacement = _validateEmplacement(_t.data.emplacement);
+        _t.data.emplacement = await _validateEmplacement(_t.data.emplacement);
       }
       if (Array.isArray(_t.data?.items)) {
         for (const _item of _t.data.items) {
-          if (_item.emplacement) _item.emplacement = _validateEmplacement(_item.emplacement);
+          if (_item.emplacement) _item.emplacement = await _validateEmplacement(_item.emplacement);
         }
       }
     }
