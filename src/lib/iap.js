@@ -1,11 +1,14 @@
 import { NativePurchases } from '@capgo/native-purchases';
 
-const PRODUCT_ID = 'app.fillsell.premium.sub';
+export const PRODUCT_IDS = {
+  sub: 'app.fillsell.premium.sub',
+  standard: 'app.fillsell.premium.standard',
+};
 
 export const initIAP = async () => {
   try {
     const { products } = await NativePurchases.getProducts({
-      productIdentifiers: [PRODUCT_ID],
+      productIdentifiers: [PRODUCT_IDS.sub],
       productType: 'subs',
     });
     return products?.[0] || null;
@@ -14,18 +17,18 @@ export const initIAP = async () => {
   }
 };
 
-export const purchasePremium = async () => {
+export const purchasePremium = async (productId = PRODUCT_IDS.sub) => {
   try {
     const { products } = await NativePurchases.getProducts({
-      productIdentifiers: [PRODUCT_ID],
+      productIdentifiers: [productId],
       productType: 'subs',
     });
     if (!products || products.length === 0) throw new Error('Produit introuvable');
     const result = await NativePurchases.purchaseProduct({
-      productIdentifier: PRODUCT_ID,
+      productIdentifier: productId,
       productType: 'subs',
     });
-    return result?.productIdentifier === PRODUCT_ID;
+    return result?.productIdentifier === productId;
   } catch (e) {
     if (e?.code === 'USER_CANCELLED') return false;
     throw e;
@@ -36,7 +39,8 @@ export const restorePurchases = async (source) => {
   try {
     await NativePurchases.restorePurchases();
     const { purchases } = await NativePurchases.getPurchases();
-    const tx = purchases?.find(p => p.productIdentifier === PRODUCT_ID);
+    const allIds = Object.values(PRODUCT_IDS);
+    const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
     if (!tx) return false;
     if (tx.isActive === true) return true;
     if (tx.expirationDate && new Date(tx.expirationDate) > new Date()) return true;

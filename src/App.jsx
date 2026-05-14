@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 const AppleSignIn = registerPlugin('AppleSignIn');
-import { initIAP, purchasePremium, restorePurchases } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -3046,9 +3046,14 @@ export default function App({ loginOnly = false }){
   async function handleIAPPurchase(){
     setIapLoading(true);
     try{
-      const hasPremium=await purchasePremium();
+      const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
+      const hasPremium=await purchasePremium(productId);
       if(hasPremium){
-        await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
+        const profileUpdate={is_premium:true};
+        const isFounderProduct=productId===PRODUCT_IDS.sub;
+        if(isFounderProduct) profileUpdate.is_founder=true;
+        await supabase.from('profiles').update(profileUpdate).eq('id',user.id);
+        if(isFounderProduct) await supabase.rpc('increment_founder_slots');
         setIsPremium(true);
         setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
