@@ -682,16 +682,16 @@ export default function LandingPage() {
                 ? "L'application pour revendeurs avec IA vocale. Suivez votre stock et vos profits automatiquement."
                 : "The reseller app with AI voice. Track your stock and profits automatically."}
             </p>
-            <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', marginBottom: 14 }}>
-              <svg width="140" height="42" viewBox="0 0 140 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label={lang === 'fr' ? 'Disponible sur l\'App Store' : 'Available on the App Store'}>
-                <rect width="140" height="42" rx="8" fill="black"/>
-                <path d="M19.5 10.2C18.7 10.2 17.6 10.9 16.7 10.9C15.7 10.9 14.7 10.2 13.5 10.2C11.6 10.2 9.8 11.6 9.8 14.5C9.8 16.3 10.5 18.3 11.6 19.7C12.5 20.8 13.3 21.8 14.5 21.8C15.7 21.8 16.2 21.0 17.3 21.0C18.5 21.0 18.9 21.8 20.1 21.8C21.2 21.8 22.0 20.8 22.9 19.6C23.6 18.5 23.9 17.4 23.9 17.3C23.9 17.2 21.6 16.2 21.6 13.7C21.6 11.5 23.5 10.5 23.6 10.4C22.5 8.9 21.1 10.2 19.5 10.2Z" fill="white"/>
-                <path d="M19.2 7.6C19.7 7.0 20.2 6.3 20.9 6.3C20.9 7.0 20.6 7.7 20.1 8.2C19.6 8.7 18.9 9.0 18.3 9.0C18.3 8.3 18.7 7.9 19.2 7.6Z" fill="white"/>
-                <text x="36" y="18" fill="white" fontFamily="-apple-system, BlinkMacSystemFont, sans-serif" fontSize="9">
-                  {lang === 'fr' ? "Disponible sur l'" : "Download on the"}
-                </text>
-                <text x="35" y="33" fill="white" fontFamily="-apple-system, BlinkMacSystemFont, sans-serif" fontSize="15" fontWeight="600">App Store</text>
-              </svg>
+            <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener">
+              <img
+                src={lang === 'fr'
+                  ? 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/fr-fr'
+                  : 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us'}
+                alt={lang === 'fr' ? 'Télécharger sur l\'App Store' : 'Download on the App Store'}
+                height="54"
+                loading="eager"
+                style={{ borderRadius: 13, display: 'block', marginBottom: 14 }}
+              />
             </a>
             <p className="lp-hero-sub reveal delay-2">{t.heroSub}</p>
             <div className="lp-hero-ctas reveal delay-3">
