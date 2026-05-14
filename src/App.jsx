@@ -2288,21 +2288,37 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="pending_confirmation"&&intent==="inventory_delete"){
+                const _dq=(taskData?.nom||"").toLowerCase();
+                const _dItem=items.find(i=>(i.title||"").toLowerCase().includes(_dq)&&_dq);
+                const _dTs=_dItem?getTypeStyle(_dItem.type||_dItem.categorie):null;
+                const _dDesc=(_dItem?.description||_dItem?.desc||"").trim();
                 return(
-                  <div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"14px",border:"1px solid #FCA5A5"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:12}}>
-                      {lang==="en"?`Delete ${taskData?.nom||"item"}?`:`Supprimer ${taskData?.nom||"l'article"} ?`}
+                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"18px",border:"1px solid #FCA5A5",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>
+                      🗑️ {lang==="en"?"Delete":"Supprimer"}
                     </div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:_dItem?8:14}}>
+                      {_dItem?_dItem.title:(taskData?.nom||"?")}
+                    </div>
+                    {_dItem&&(
+                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
+                        {(_dItem.type||_dItem.categorie)&&(_dItem.type||_dItem.categorie)!=="Autre"&&_dTs&&<span style={{background:_dTs.bg,color:_dTs.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${_dTs.border}`}}>{_dTs.emoji} {typeLabel(_dItem.type||_dItem.categorie,lang)}</span>}
+                        {_dItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{_dItem.marque}</span>}
+                        {_dDesc&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>{_dDesc.slice(0,30)}{_dDesc.length>30?"…":""}</span>}
+                        {_dItem.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {_dItem.emplacement}</span>}
+                      </div>
+                    )}
                     <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>{
-                        const q=(taskData?.nom||"").toLowerCase();
-                        const found=items.find(i=>(i.title||"").toLowerCase().includes(q)&&q);
-                        if(found){deleteItem(found.id);replaceResult(idx,{...result,status:"success",message:lang==="en"?"Deleted":"Supprimé"});}
+                      <button onClick={async()=>{
+                        const _f=items.find(i=>(i.title||"").toLowerCase().includes((taskData?.nom||"").toLowerCase())&&taskData?.nom);
+                        if(_f){await actions.deleteItemForce(_f.id);replaceResult(idx,{...result,status:"success",message:lang==="en"?"Deleted":"Supprimé"});}
                         else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
                       }} style={{flex:1,padding:"10px",background:"#E53E3E",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         {lang==="en"?"Delete":"Supprimer"}
                       </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                        {lang==="en"?"Cancel":"Annuler"}
+                      </button>
                     </div>
                   </div>
                 );
@@ -4340,6 +4356,11 @@ export default function App({ loginOnly = false }){
       await fetchAll(user.id);
     },
     deleteItem:(id)=>delItem(id),
+    deleteItemForce:async(id)=>{
+      await supabase.from('inventaire').delete().eq('id',id);
+      setItems(prev=>prev.filter(i=>i.id!==id));
+      await fetchAll(user.id);
+    },
     fetchAll:()=>fetchAll(user.id),
     updateItem:async(id,fields)=>{
       const{error}=await supabase.from('inventaire').update(fields).eq('id',id);
