@@ -280,16 +280,16 @@ const T = {
     pricingSub: "Commence gratuitement. Sans carte bancaire, sans engagement.",
     freeTier: 'Gratuit', freeName: 'Pour démarrer', freePer: '/ toujours',
     freeTagline: 'Tout le nécessaire pour suivre tes premières ventes.',
-    freeF1: "Jusqu'à 20 articles/mois", freeF2: 'Dashboard & stats de base',
+    freeF1: '20 articles en stock maximum', freeF2: 'Dashboard & stats',
     freeF3: 'Calculateur de marge avec analyse IA', freeF4: 'Historique des ventes',
-    freeF5: '🎤 IA vocale · 5 requêtes/jour',
+    freeF5: '🎙️ IA vocale · 5 commandes/jour', freeF7: 'Deal Score · 10/jour',
     freeBtn: 'Commencer gratuitement',
     premiumBadge: '⭐ Le plus populaire', premiumTier: 'Premium', premiumName: 'Pour aller plus loin',
     premiumPer: '/ mois', premiumTagline: 'puis 9,99 €/mois · Sans engagement.',
     premiumTrialBadge: "7 jours gratuits · Sans CB",
-    premiumF1: 'Tout le plan Gratuit inclus', premiumF2: 'Articles illimités',
-    premiumF3: 'IA vocale illimitée 🎙️', premiumF4: 'Stats avancées analysées par IA',
-    premiumF5: 'Import / Export Excel', premiumF6: 'Support prioritaire',
+    premiumF2: 'Stock illimité', premiumF3: '🎙️ IA vocale illimitée',
+    premiumF4: 'Stats avancées analysées par IA', premiumF5: 'Import / Export Excel',
+    premiumF6: 'Support prioritaire', premiumF8: 'Deal Score illimité',
     premiumBtn: "Commencer l'essai gratuit ✨",
     ctaTitle: 'Prêt à maximiser tes profits ?',
     ctaSub: 'Rejoins des centaines de revendeurs qui suivent leurs profits avec Fill & Sell.',
@@ -357,8 +357,8 @@ const T = {
     f6AiMockup: '🤖 AI Analysis · Luxury is 2× better performing this month',
     f7Title: 'Lens',
     f7Desc: 'Take a photo of your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
-    freeF6: '📸 Lens · 3/day · 15/mo · visual estimate only',
-    premiumF7: '📸 Lens Pro · 5/day · 60/mo · live market price',
+    freeF6: '📸 Lens · 3/day · 15/month · visual estimate only',
+    premiumF7: '📸 Lens Pro · 5/day · 60/month · live market price',
     lens_badge: 'NEW',
     lens_title: 'Lens',
     lens_desc: 'Photo your item. AI identifies the brand, condition, and gives you a real-time price estimate.',
@@ -447,16 +447,16 @@ const T = {
     pricingSub: "Start for free. No credit card, no commitment.",
     freeTier: 'Free', freeName: 'To get started', freePer: '/ forever',
     freeTagline: 'Everything you need to track your first sales.',
-    freeF1: 'Up to 20 items/month', freeF2: 'Dashboard & basic stats',
+    freeF1: '20 items in stock maximum', freeF2: 'Dashboard & stats',
     freeF3: 'Margin calculator with AI analysis', freeF4: 'Sales history',
-    freeF5: '🎤 Voice AI · 5 requests/day',
+    freeF5: '🎙️ AI voice · 5 commands/day', freeF7: 'Deal Score · 10/day',
     freeBtn: 'Start for free',
     premiumBadge: '⭐ Most popular', premiumTier: 'Premium', premiumName: 'To go further',
     premiumPer: '/ month', premiumTagline: 'then €9.99/month · No commitment.',
     premiumTrialBadge: '7 days free · No charge today',
-    premiumF1: 'Everything in the Free plan', premiumF2: 'Unlimited items',
-    premiumF3: 'Unlimited AI voice 🎙️', premiumF4: 'Advanced AI-powered stats',
-    premiumF5: 'Import / Export Excel', premiumF6: 'Priority support',
+    premiumF2: 'Unlimited stock', premiumF3: '🎙️ Unlimited AI voice',
+    premiumF4: 'Advanced AI-powered stats', premiumF5: 'Import / Export Excel',
+    premiumF6: 'Priority support', premiumF8: 'Unlimited Deal Score',
     premiumBtn: 'Start your free trial ✨',
     ctaTitle: 'Ready to maximize your profits?',
     ctaSub: 'Join hundreds of resellers who track their profits with Fill & Sell.',
@@ -1188,6 +1188,7 @@ export default function LandingPage() {
                 <li><span className="ck">✓</span> {t.freeF4}</li>
                 <li><span className="ck">✓</span> <strong>{t.freeF5}</strong></li>
                 <li><span className="ck">✓</span> {t.freeF6}</li>
+                <li><span className="ck">✓</span> {t.freeF7}</li>
               </ul>
               <button className="btn btn-lg"
                 onClick={() => { track('cta_click', { cta: 'pricing_free', page: 'landing' }); nav('/login?mode=signup'); }}>
@@ -1205,18 +1206,18 @@ export default function LandingPage() {
               <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
               <div className="price-tagline">{slotsRemaining !== null && slotsRemaining > 0 ? (lang === 'fr' ? 'Prix Founder · Sans engagement.' : 'Founder price · No commitment.') : t.premiumTagline}</div>
               {slotsRemaining !== null && slotsRemaining > 0 && (
-                <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 500, textAlign: 'center', marginTop: -4 }}>
-                  {lang === 'fr' ? 'Ensuite 12,99€/mois pour les nouveaux abonnés' : 'Then €12.99/month for new subscribers'}
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 8, padding: '6px 14px', textAlign: 'center' }}>
+                  {lang === 'fr' ? 'Ensuite 12,99 €/mois pour les nouveaux abonnés' : 'Then €12.99/month for new subscribers'}
                 </div>
               )}
               <ul className="price-features">
                 <li><span className="ck">✓</span> <strong>{t.premiumF2}</strong></li>
                 <li><span className="ck">✓</span> <strong>{t.premiumF3}</strong></li>
                 <li><span className="ck">✓</span> <strong>{t.premiumF7}</strong></li>
+                <li><span className="ck">✓</span> <strong>{t.premiumF8}</strong></li>
                 <li><span className="ck">✓</span> {t.premiumF4}</li>
                 <li><span className="ck">✓</span> {t.premiumF5}</li>
                 <li><span className="ck">✓</span> {t.premiumF6}</li>
-                <li><span className="ck">✓</span> {t.premiumF1}</li>
               </ul>
               <button className="btn btn-white btn-lg"
                 onClick={() => { track('cta_click', { cta: 'pricing_premium', page: 'landing' }); nav('/login?mode=signup'); }}>
