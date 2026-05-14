@@ -69,10 +69,11 @@ serve(async (req) => {
       });
     }
 
-    // Inclure la description dans la ligne pour que l'IA ait le contexte complet (taille, couleur...)
-    const itemLines = items.map((i: { nom: string; description?: string | null }) =>
-      i.description ? `- ${i.nom} (${i.description})` : `- ${i.nom}`
-    ).join("\n");
+    // Inclure marque + description dans la ligne pour que l'IA ait le contexte complet
+    const itemLines = items.map((i: { nom: string; marque?: string | null; description?: string | null }) => {
+      const label = i.marque ? `${i.nom} ${i.marque}` : i.nom;
+      return i.description ? `- ${label} (${i.description})` : `- ${label}`;
+    }).join("\n");
 
     const userPrompt = _lang === "en"
       ? `Lot total: €${lotTotal}\nItems:\n${itemLines}\nReturn this JSON:\n{ "items": [{ "nom": string, "prix_estime_lot": number, "categorie": string, "marque": string | null }] }`
@@ -130,10 +131,13 @@ serve(async (req) => {
         Math.round((lotTotal - sumOthers) * 100) / 100;
     }
 
-    // Réinjecter description et emplacement depuis les items d'origine (l'IA ne les génère pas)
-    const inputItems = items as Array<{ nom: string; description?: string | null; emplacement?: string | null }>;
+    // Réinjecter nom, marque, description, emplacement depuis les items d'origine
+    // (l'IA ne doit générer que prix_estime_lot et categorie)
+    const inputItems = items as Array<{ nom: string; marque?: string | null; description?: string | null; emplacement?: string | null }>;
     const mergedItems = resultItems.map((out, idx) => ({
       ...out,
+      nom: inputItems[idx]?.nom ?? out.nom,
+      marque: inputItems[idx]?.marque ?? out.marque ?? null,
       description: inputItems[idx]?.description ?? null,
       emplacement: inputItems[idx]?.emplacement ?? null,
     }));

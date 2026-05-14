@@ -2417,6 +2417,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                             ...item,
                             nom:vaEdits[idx]?.[i]?.nom??item.nom,
                             prix_achat:vaEdits[idx]?.[i]?.prix??item.prix_estime_lot,
+                            marque:item.marque||null,
+                            description:item.description||null,
+                            emplacement:item.emplacement||null,
                           }));
                           for(const item of toAdd) await actions.addItem(item);
                           replaceResult(idx,{...result,status:"success",message:lang==="en"?`${toAdd.length} items added`:`${toAdd.length} articles ajoutés`});
