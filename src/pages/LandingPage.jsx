@@ -677,6 +677,22 @@ export default function LandingPage() {
             <h1 className="lp-hero-title reveal delay-1">
               {t.heroTitle1}<span className="grad">{t.heroTitleAccent}</span>{t.heroTitle2}
             </h1>
+            <p style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 500, margin: '6px 0 10px', lineHeight: 1.5 }}>
+              {lang === 'fr'
+                ? "L'application pour revendeurs avec IA vocale. Suivez votre stock et vos profits automatiquement."
+                : "The reseller app with AI voice. Track your stock and profits automatically."}
+            </p>
+            <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', marginBottom: 14 }}>
+              <svg width="140" height="42" viewBox="0 0 140 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label={lang === 'fr' ? 'Disponible sur l\'App Store' : 'Available on the App Store'}>
+                <rect width="140" height="42" rx="8" fill="black"/>
+                <path d="M19.5 10.2C18.7 10.2 17.6 10.9 16.7 10.9C15.7 10.9 14.7 10.2 13.5 10.2C11.6 10.2 9.8 11.6 9.8 14.5C9.8 16.3 10.5 18.3 11.6 19.7C12.5 20.8 13.3 21.8 14.5 21.8C15.7 21.8 16.2 21.0 17.3 21.0C18.5 21.0 18.9 21.8 20.1 21.8C21.2 21.8 22.0 20.8 22.9 19.6C23.6 18.5 23.9 17.4 23.9 17.3C23.9 17.2 21.6 16.2 21.6 13.7C21.6 11.5 23.5 10.5 23.6 10.4C22.5 8.9 21.1 10.2 19.5 10.2Z" fill="white"/>
+                <path d="M19.2 7.6C19.7 7.0 20.2 6.3 20.9 6.3C20.9 7.0 20.6 7.7 20.1 8.2C19.6 8.7 18.9 9.0 18.3 9.0C18.3 8.3 18.7 7.9 19.2 7.6Z" fill="white"/>
+                <text x="36" y="18" fill="white" fontFamily="-apple-system, BlinkMacSystemFont, sans-serif" fontSize="9">
+                  {lang === 'fr' ? "Disponible sur l'" : "Download on the"}
+                </text>
+                <text x="35" y="33" fill="white" fontFamily="-apple-system, BlinkMacSystemFont, sans-serif" fontSize="15" fontWeight="600">App Store</text>
+              </svg>
+            </a>
             <p className="lp-hero-sub reveal delay-2">{t.heroSub}</p>
             <div className="lp-hero-ctas reveal delay-3">
               <button className="btn btn-grad btn-lg"
@@ -709,7 +725,7 @@ export default function LandingPage() {
                   </span>
                 </div>
                 <div className="vp-header">
-                  <img src="/icon_180x180.png" alt="" />
+                  <img src="/icon_180x180.png" alt="" loading="lazy" />
                   <span className="name">Fill &amp; Sell</span>
                 </div>
                 <div className="vp-content">
@@ -868,10 +884,10 @@ export default function LandingPage() {
               <div className="mini-screen" style={{ maxWidth: 520, padding: '28px' }}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Analyse Lens IA Fill &amp; Sell - T-shirt Patagonia" loading="lazy" />
                   </div>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Résultat analyse prix marché Fill &amp; Sell" loading="lazy" />
                   </div>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>{t.lens_result_slot_plus}</div>
                 </div>
@@ -1064,7 +1080,7 @@ export default function LandingPage() {
               <div className="lp-iphone-screen">
                 <div className="appscr">
                   <div className="app-topbar">
-                    <img src="/icon_180x180.png" alt="" />
+                    <img src="/icon_180x180.png" alt="" loading="lazy" />
                     <span className="app-topbar-name">Fill &amp; Sell</span>
                     <span className="app-topbar-pill">⭐</span>
                   </div>
@@ -1072,10 +1088,10 @@ export default function LandingPage() {
                     <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em', marginBottom: 10 }}>📸 Lens</div>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                       <div style={{ flex: 1, height: 90, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Analyse Lens IA Fill &amp; Sell - T-shirt Patagonia" loading="lazy" />
                       </div>
                       <div style={{ flex: 1, height: 90, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Résultat analyse prix marché Fill &amp; Sell" loading="lazy" />
                       </div>
                     </div>
                     <div style={{ background: '#fff', border: '1px solid rgba(62,172,160,0.15)', borderRadius: 12, padding: '10px 12px', marginBottom: 6 }}>
@@ -1107,7 +1123,7 @@ export default function LandingPage() {
               <div className="lp-iphone-screen">
                 <div className="appscr">
                   <div className="app-topbar">
-                    <img src="/icon_180x180.png" alt="" />
+                    <img src="/icon_180x180.png" alt="" loading="lazy" />
                     <span className="app-topbar-name">Fill &amp; Sell</span>
                     <span className="app-topbar-pill">⭐</span>
                   </div>
@@ -1270,7 +1286,7 @@ export default function LandingPage() {
         <div className="lp-container footer-inner">
           <div className="footer-brand-block">
             <div className="footer-brand">
-              <img src="/icon_180x180.png" alt="" />
+              <img src="/icon_180x180.png" alt="" loading="lazy" />
               <span className="footer-brand-name">Fill &amp; Sell</span>
             </div>
             <p className="footer-tagline">{t.footerTagline}</p>
