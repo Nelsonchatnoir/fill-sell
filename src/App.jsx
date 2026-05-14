@@ -431,7 +431,7 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
-function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner' }){
+function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', slotsRemaining=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
   const { t: tb } = useTranslation(lang);
@@ -472,19 +472,24 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">{tb('unlockPremium')}</span></>}
+        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">{slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'Devenir Founder':'Become Founder'):tb('unlockPremium')}</span></>}
       </button>
     );
   }
 
   return(
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}</div>
+      {slotsRemaining!==null&&slotsRemaining>0
+        ? <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)"}}>🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie — Ensuite 12,99€`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever — Then €12.99`}</div>
+        : slotsRemaining===0
+          ? <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>{lang==='fr'?'Premium · 12,99€/mois':'Premium · €12.99/month'}</div>
+          : <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}</div>
+      }
       <CtaPremium
         onClick={handleCheckout}
-        label={loading ? tb('redirection') : `✨ ${tb('unlockPremium')}`}
+        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'Devenir Founder · 9,99€/mois':'Become a Founder · €9.99/month'):(lang==='fr'?'Passer Premium · 12,99€/mois':'Upgrade to Premium · €12.99/month'))}
         disabled={loading}
-        sub={lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'}
+        sub={slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'):(lang==='fr'?'puis 12,99€/mois · Sans engagement.':'then €12.99/month · No commitment.')}
       />
     </div>
   );
@@ -3260,6 +3265,7 @@ export default function App({ loginOnly = false }){
   const avgM=totalR>0?(totalM/totalR)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
+  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
   function searchMatch(item,query){
     if(!query.trim())return true;
     const q=query.toLowerCase().trim();
@@ -3389,7 +3395,7 @@ export default function App({ loginOnly = false }){
       const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
-      if(!isPremium&&items.length>=20)continue;
+      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
@@ -3446,7 +3452,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&items.length>=20){alert(lang==='en'?"⚠️ Free plan limit reached (20 items max).\nUpgrade to add unlimited items.":"⚠️ Limite du plan gratuit atteinte (20 articles max).\nPasse au plan supérieur pour ajouter des articles illimités.");return;}
+    if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
@@ -4260,7 +4266,7 @@ export default function App({ loginOnly = false }){
 
   const vaActions={
     addItem:async(data)=>{
-      if(!isPremium&&items.length>=20)throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");
+      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
       const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
       const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
@@ -4599,7 +4605,7 @@ export default function App({ loginOnly = false }){
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar"/>
+            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining}/>
           ):isPremium?(
             <div className="tb-premium">⭐ Premium</div>
           ):null}
@@ -4705,7 +4711,7 @@ export default function App({ loginOnly = false }){
             importRef={importRef}
             listRef={listRef}
             scrollRef={scrollRef}
-            PremiumBanner={PremiumBanner}
+            PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
             VoiceZone={VoiceZone}
           />
@@ -4726,7 +4732,7 @@ export default function App({ loginOnly = false }){
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
             handleLensPhoto={handleLensPhoto} analyzeLens={analyzeLens} addLensItem={addLensItem}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
-            PremiumBanner={PremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
+            PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
           />
         )}
 
@@ -4740,7 +4746,7 @@ export default function App({ loginOnly = false }){
             iapProduct={iapProduct} iapLoading={iapLoading}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             delSale={delSale} setTab={setTab}
-            PremiumBanner={PremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
+            PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
           />
         )}
         {tab===4&&(
