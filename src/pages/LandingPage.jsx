@@ -1206,7 +1206,7 @@ export default function LandingPage() {
               <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
               <div className="price-tagline">{slotsRemaining !== null && slotsRemaining > 0 ? (lang === 'fr' ? 'Prix Founder · Sans engagement.' : 'Founder price · No commitment.') : t.premiumTagline}</div>
               {slotsRemaining !== null && slotsRemaining > 0 && (
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 8, padding: '6px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 8, padding: '6px 14px', textAlign: 'center', marginTop: -8 }}>
                   {lang === 'fr' ? 'Ensuite 12,99 €/mois pour les nouveaux abonnés' : 'Then €12.99/month for new subscribers'}
                 </div>
               )}
