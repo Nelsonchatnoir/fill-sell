@@ -1453,7 +1453,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
-          if(!tRes.ok)throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");
+          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
           let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
           if(tErr)throw new Error(tErr);
@@ -1475,7 +1475,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
           const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null}));
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
-          if(!iRes.ok)throw new Error(lang==="en"?"Intent failed":"Erreur intention");
+          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
           if(iErr)throw new Error(iErr);
@@ -3085,11 +3085,15 @@ export default function App({ loginOnly = false }){
 
   async function fetchAll(uid){
     setLoading(true);
+    const FC_KEY='fs_founder_config';const FC_TTL=5*60*1000;
+    let fcPromise;
+    try{const c=JSON.parse(localStorage.getItem(FC_KEY)||'null');if(c&&Date.now()-c.ts<FC_TTL)fcPromise=Promise.resolve({data:c.data,error:null});}catch{}
+    if(!fcPromise)fcPromise=supabase.from('founder_config').select('slots_total,slots_used').eq('id',1).single().then(r=>{if(!r.error&&r.data)try{localStorage.setItem(FC_KEY,JSON.stringify({ts:Date.now(),data:r.data}));}catch{}return r;});
     const [v,i,p,fc]=await Promise.all([
-      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
-      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
+      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency').eq('id',uid).single(),
-      supabase.from('founder_config').select('slots_total,slots_used').eq('id',1).single(),
+      fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));

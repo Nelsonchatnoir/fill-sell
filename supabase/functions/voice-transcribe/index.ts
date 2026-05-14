@@ -15,6 +15,29 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(timer);
+      if (res.status !== 429) return res;
+      const after = parseInt(res.headers.get("retry-after") || "30", 10);
+      if (attempt < maxAttempts - 1) await new Promise(r => setTimeout(r, after * 1000));
+      lastErr = new Error("HTTP 429");
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      if (attempt < maxAttempts - 1) await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+    }
+  }
+  const err = new Error("ai_unavailable");
+  (err as any).isAiUnavailable = true;
+  throw err;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
@@ -38,26 +61,17 @@ serve(async (req) => {
     });
   }
 
-  // ── Voice quota (non-premium: 5/day) ──────────────────
+  // ── Voice quota — atomic RPC (no race condition) ──────
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const today = new Date().toISOString().split("T")[0];
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("is_premium, voice_count_today, voice_count_date")
-    .eq("id", user.id)
-    .single();
-  const isPremium = profile?.is_premium === true;
-  if (!isPremium) {
-    const count = profile?.voice_count_date === today ? (profile?.voice_count_today ?? 0) : 0;
-    if (count >= 5) {
-      return new Response(JSON.stringify({ error: "Daily voice limit reached" }), {
-        status: 429, headers: { "Content-Type": "application/json", ...CORS },
-      });
-    }
-    await adminClient
-      .from("profiles")
-      .update({ voice_count_today: count + 1, voice_count_date: today })
-      .eq("id", user.id);
+  const { data: newCount, error: rpcError } = await adminClient.rpc("increment_voice_count", {
+    p_user_id: user.id,
+    p_today: today,
+  });
+  if (rpcError || newCount === -1) {
+    return new Response(JSON.stringify({ error: "Daily voice limit reached" }), {
+      status: 429, headers: { "Content-Type": "application/json", ...CORS },
+    });
   }
 
   try {
@@ -111,7 +125,7 @@ serve(async (req) => {
     outForm.append("language", lang === "en" ? "en" : "fr");
     outForm.append("prompt", "Fill & Sell, Vinted, eBay, Erborian, Medik8, Stihl, Levi's, Zara, Nike, Adidas, Hermès, Chanel, Louboutin, Patagonia, North Face, Balenciaga, Vestiaire Collective");
 
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    const response = await fetchWithRetry("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}` },
       body: outForm,
@@ -129,7 +143,12 @@ serve(async (req) => {
     return new Response(JSON.stringify({ text: data.text ?? "" }), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.isAiUnavailable) {
+      return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
+        status: 503, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...CORS },

@@ -764,6 +764,29 @@ function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unkno
   return { ...d, nom: cleanNom, description: parts.length ? parts.join(", ") : null };
 }
 
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(timer);
+      if (res.status !== 429) return res;
+      const after = parseInt(res.headers.get("retry-after") || "30", 10);
+      if (attempt < maxAttempts - 1) await new Promise(r => setTimeout(r, after * 1000));
+      lastErr = new Error("HTTP 429");
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      if (attempt < maxAttempts - 1) await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+    }
+  }
+  const err = new Error("ai_unavailable");
+  (err as any).isAiUnavailable = true;
+  throw err;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
@@ -868,7 +891,7 @@ serve(async (req) => {
         messages: msgs,
       };
       if (useWebSearch) _body.tools = [{ type: "web_search_20250305", name: "web_search" }];
-      const _res = await fetch("https://api.anthropic.com/v1/messages", {
+      const _res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
         body: JSON.stringify(_body),
@@ -919,7 +942,7 @@ serve(async (req) => {
 
       // Sonnet pour tout le reste
       try {
-        const _res = await fetch("https://api.anthropic.com/v1/messages", {
+        const _res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
@@ -978,6 +1001,12 @@ serve(async (req) => {
       // Step 1: intent extraction WITHOUT web_search
       data = await _fetchClaude([{ role: "user", content: text }], _systemPrompt);
     } catch (_err: any) {
+      if (_err?.isAiUnavailable) {
+        return new Response(
+          JSON.stringify({ error: "ai_unavailable", retry_after: 30 }),
+          { status: 503, headers: { "Content-Type": "application/json", ...CORS } }
+        );
+      }
       return new Response(
         JSON.stringify({ error: _err.message ?? "Anthropic API error" }),
         { status: 500, headers: { "Content-Type": "application/json", ...CORS } }

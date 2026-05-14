@@ -517,8 +517,22 @@ export default function LandingPage() {
   useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
 
   useEffect(() => {
+    const FC_KEY = 'fs_founder_config';
+    const FC_TTL = 5 * 60 * 1000;
+    try {
+      const c = JSON.parse(localStorage.getItem(FC_KEY) || 'null');
+      if (c && Date.now() - c.ts < FC_TTL) {
+        if (c.data) setSlotsRemaining(c.data.slots_total - c.data.slots_used);
+        return;
+      }
+    } catch {}
     supabase.from('founder_config').select('slots_total,slots_used').eq('id', 1).single()
-      .then(({ data }) => { if (data) setSlotsRemaining(data.slots_total - data.slots_used); });
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setSlotsRemaining(data.slots_total - data.slots_used);
+          try { localStorage.setItem(FC_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+        }
+      });
   }, []);
 
   useEffect(() => {
