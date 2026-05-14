@@ -4,21 +4,11 @@ import { Line } from 'react-chartjs-2';
 import { formatCurrency, typeLabel, marqueLabel, getTypeStyle } from '../utils/shared';
 
 function renderMd(text){
-  if(!text) return {__html:''};
-  const html=text.split('\n').map(line=>{
-    if(/^#{1,3} /.test(line)){
-      const c=line.replace(/^#{1,3} /,'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');
-      return `<div style="font-size:13px;font-weight:800;color:#0D0D0D;margin-top:8px;margin-bottom:2px">${c}</div>`;
-    }
-    if(/^[-•]\s+/.test(line)||/^\* /.test(line)){
-      const c=line.replace(/^[-•*]\s+/,'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');
-      return `<div style="display:flex;gap:5px;align-items:flex-start;margin:2px 0"><span style="color:#1D9E75;font-weight:800;flex-shrink:0;margin-top:1px">•</span><span>${c}</span></div>`;
-    }
-    if(!line.trim()) return '<div style="height:4px"/>';
-    const c=line.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');
-    return `<span>${c}</span><br/>`;
-  }).join('');
-  return {__html:html};
+  const html=text
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n/g,'<br/>');
+  return{__html:html};
 }
 
 function normalizeCat(raw){
