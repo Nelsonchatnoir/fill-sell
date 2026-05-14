@@ -1633,8 +1633,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${fmt(prix)}`:""}{qAdded?` · ×${qAdded}`:""}</div>
                       {desc&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:500,marginTop:2,opacity:0.85}}>{desc}</div>}
                       <div className="vr-pills" style={{marginTop:4}}>
-                        {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
-                        {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
+                        {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
+                        {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
                       </div>
                     </div>
                   </div>
@@ -1647,7 +1647,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const CATS=["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"];
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12,paddingBottom:10,borderBottom:"1px solid rgba(0,0,0,0.06)"}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
                     {found.length===0?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         {found.map((item,i)=>{
@@ -1664,15 +1664,15 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const nom=item.titre||item.title||item.nom||"";
                           const inputSt={fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
                           return(
-                            <div key={i} style={{paddingBottom:6,borderBottom:i<found.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                            <div key={i} style={{paddingBottom:12,borderBottom:i<found.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                               {/* Item row */}
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                                 <div style={{minWidth:0,flex:1}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
                                   <div className="vr-pills" style={{marginTop:2}}>
-                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                    {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
-                                    {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
+                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                    {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
+                                    {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
                                   </div>
                                   {(item.description||item.desc)&&<div style={{fontSize:11,color:"#6B7280",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description||item.desc}</div>}
                                 </div>
@@ -2037,13 +2037,13 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                                   textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{nomItem}</div>
                                 <div className="vr-pills" style={{marginTop:3}}>
                                   {marqueItem&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,
-                                    padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>
+                                    padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>
                                     {marqueItem}</span>}
                                   {tsItem&&catItem&&catItem!=="Autre"&&<span style={{background:tsItem.bg,color:tsItem.color,
-                                    borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,
+                                    borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,
                                     border:`1px solid ${tsItem.border}`}}>{tsItem.emoji} {typeLabel(catItem,lang)}</span>}
                                   {empItem&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,
-                                    padding:"1px 7px",fontSize:10,fontWeight:600}}>📍 {empItem}</span>}
+                                    padding:"3px 9px",fontSize:11,fontWeight:600}}>📍 {empItem}</span>}
                                 </div>
                               </div>
                               <div style={{textAlign:"right",flexShrink:0}}>
@@ -2715,12 +2715,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           {locItems.map((item,i)=>{
                             const ts2=item.type?getTypeStyle(item.type):null;
                             return(
-                              <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:i<locItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                              <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 0",borderBottom:i<locItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
                                   <div className="vr-pills" style={{marginTop:2}}>
-                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                    {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
+                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
+                                    {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
                                   </div>
                                 </div>
                                 <div style={{fontSize:13,fontWeight:700,color:"#F9A26C",flexShrink:0}}>{fmt(item.prix_achat||item.buy||0)}</div>
