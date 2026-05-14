@@ -38,6 +38,7 @@ serve(async (req) => {
     const session = event.data.object as Stripe.Checkout.Session;
     const email = session.customer_details?.email;
     const customerId = session.customer as string;
+    const planType = session.metadata?.plan_type ?? "standard";
 
     if (!email) {
       return new Response("No email found", { status: 400 });
@@ -50,13 +51,24 @@ serve(async (req) => {
       .limit(1);
 
     if (users && users.length > 0) {
+      const profileUpdate: Record<string, unknown> = {
+        is_premium: true,
+        stripe_customer_id: customerId,
+      };
+      // is_founder is set once and NEVER cleared — only set on founder plan
+      if (planType === "founder") {
+        profileUpdate.is_founder = true;
+      }
+
       await supabase
         .from("profiles")
-        .update({
-          is_premium: true,
-          stripe_customer_id: customerId,
-        })
+        .update(profileUpdate)
         .eq("email", email);
+
+      // Atomically increment founder slot counter
+      if (planType === "founder") {
+        await supabase.rpc("increment_founder_slots");
+      }
     }
   }
 

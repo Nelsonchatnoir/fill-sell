@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { track } from '../analytics/analytics';
+import { supabase } from '../lib/supabase';
 import './landing.css';
 
 function getBrowserLang() {
@@ -502,6 +503,7 @@ export default function LandingPage() {
   const [lang, setLang] = useState(getBrowserLang);
   const [scrolled, setScrolled] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
+  const [slotsRemaining, setSlotsRemaining] = useState(null);
 
   const vpTextRef = useRef(null);
   const vpStackRef = useRef(null);
@@ -513,6 +515,11 @@ export default function LandingPage() {
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
   useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
+
+  useEffect(() => {
+    supabase.from('founder_config').select('slots_total,slots_used').eq('id', 1).single()
+      .then(({ data }) => { if (data) setSlotsRemaining(data.slots_total - data.slots_used); });
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -1188,12 +1195,15 @@ export default function LandingPage() {
               </button>
             </div>
             <div className="price-card premium reveal delay-1">
-              <div className="price-popular" style={{ background: 'linear-gradient(90deg,#0D9488,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>{t.premiumBadge}</div>
+              {slotsRemaining !== null && slotsRemaining > 0
+                ? <div className="price-popular" style={{ background: 'linear-gradient(90deg,#E53E3E,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>🔥 {lang === 'fr' ? `Il reste ${slotsRemaining} place${slotsRemaining > 1 ? 's' : ''} Founder` : `Only ${slotsRemaining} Founder spot${slotsRemaining > 1 ? 's' : ''} left`}</div>
+                : <div className="price-popular" style={{ background: 'linear-gradient(90deg,#0D9488,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>{t.premiumBadge}</div>
+              }
               <div className="price-tier">{t.premiumTier}</div>
               <h3 className="price-name">{t.premiumName}</h3>
-              <div className="price-amount"><span className="num">9,99 €</span><span className="per">{t.premiumPer}</span></div>
+              <div className="price-amount"><span className="num">{slotsRemaining !== null && slotsRemaining > 0 ? '9,99 €' : '12,99 €'}</span><span className="per">{t.premiumPer}</span></div>
               <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
-              <div className="price-tagline">{t.premiumTagline}</div>
+              <div className="price-tagline">{slotsRemaining !== null && slotsRemaining > 0 ? (lang === 'fr' ? 'Prix Founder · Sans engagement.' : 'Founder price · No commitment.') : t.premiumTagline}</div>
               <ul className="price-features">
                 <li><span className="ck">✓</span> <strong>{t.premiumF2}</strong></li>
                 <li><span className="ck">✓</span> <strong>{t.premiumF3}</strong></li>

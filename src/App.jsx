@@ -2892,6 +2892,7 @@ export default function App({ loginOnly = false }){
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
+  const [slotsRemaining,setSlotsRemaining]=useState(null);
   const [iapProduct,setIapProduct]=useState(null);
   const [iapLoading,setIapLoading]=useState(false);
   const [lang,setLang]=useState(()=>{
@@ -3064,10 +3065,11 @@ export default function App({ loginOnly = false }){
 
   async function fetchAll(uid){
     setLoading(true);
-    const [v,i,p]=await Promise.all([
+    const [v,i,p,fc]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
       supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency').eq('id',uid).single(),
+      supabase.from('founder_config').select('slots_total,slots_used').eq('id',1).single(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -3085,6 +3087,7 @@ export default function App({ loginOnly = false }){
         setShowCurrencyOnboarding(true);
       }
     }
+    if(!fc.error&&fc.data) setSlotsRemaining(fc.data.slots_total-fc.data.slots_used);
     setLoading(false);
     setAppLoading(false);
     const lensCount=await checkAndResetDaily(supabase,uid,'lens_count_today','lens_count_date');
