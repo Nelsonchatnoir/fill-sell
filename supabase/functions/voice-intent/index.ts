@@ -937,6 +937,42 @@ serve(async (req) => {
       } catch { return rawBrand; }
     };
 
+    // Normalise un emplacement mal transcrit par le STT — pas de Sonnet, table seule
+    const _validateEmplacement = (rawEmplacement: string): string => {
+      const _normalizeEmp = (s: string) => s.toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/\s+/g, "")
+        .trim();
+
+      const _emplacementExceptions: Record<string, string> = {
+        // Sac orange
+        "sacauxrangs": "Sac orange",
+        "sacorange": "Sac orange",
+        "sacoran": "Sac orange",
+        // Portant
+        "portant": "Portant",
+        "portant1": "Portant 1",
+        "portant2": "Portant 2",
+        "portant3": "Portant 3",
+        // Carton
+        "cartoncave": "Carton cave",
+        "cartonbureau": "Carton bureau",
+        "cartonsalon": "Carton salon",
+        // Autres courants
+        "baccave": "Bac cave",
+        "bacbrocante": "Bac brocante",
+        "etageregarage": "Étagère garage",
+        "etagerebureau": "Étagère bureau",
+      };
+
+      const _norm = _normalizeEmp(rawEmplacement);
+      if (_emplacementExceptions[_norm]) return _emplacementExceptions[_norm];
+      for (const [key, value] of Object.entries(_emplacementExceptions)) {
+        if (_norm.includes(key)) return value;
+      }
+      return rawEmplacement;
+    };
+
     let data: any;
     try {
       // Step 1: intent extraction WITHOUT web_search
@@ -990,6 +1026,18 @@ serve(async (req) => {
         }
       } catch {
         // brand validation non-fatal — keep raw brand
+      }
+    }
+
+    // Step 3: validate emplacement spelling
+    for (const _t of parsed.tasks as any[]) {
+      if (_t.data?.emplacement) {
+        _t.data.emplacement = _validateEmplacement(_t.data.emplacement);
+      }
+      if (Array.isArray(_t.data?.items)) {
+        for (const _item of _t.data.items) {
+          if (_item.emplacement) _item.emplacement = _validateEmplacement(_item.emplacement);
+        }
       }
     }
 
