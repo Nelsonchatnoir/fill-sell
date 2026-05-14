@@ -161,7 +161,7 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
+const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{}}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
   const [aiText,setAiText]=useState('');
@@ -265,21 +265,33 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
 
   const PERIOD_CACHE_KEY={'1M':'1m','3M':'3m','6M':'6m','1A':'1y','1Y':'1y','Tout':'all','All':'all'};
 
-  const dataHash=useMemo(()=>`${filtered.length}_${items.filter(i=>i.statut!=='vendu').length}_${Math.round(totalProfit)}`,[filtered.length,items,totalProfit]);
+  const activeItemCount=useMemo(()=>items.filter(i=>i.statut!=='vendu').length,[items]);
+  const dataHash=useMemo(()=>`${filtered.length}_${activeItemCount}_${Math.round(totalProfit)}`,[filtered.length,activeItemCount,totalProfit]);
 
   useEffect(()=>{
     if(filtered.length===0){setAiText('');return;}
     const SURL=supabaseUrl;
     if(!user?.id){setAiText('');return;}
     const cacheKey=PERIOD_CACHE_KEY[range]??range;
+
+    // Tier 1 : cache mémoire — instantané, zéro réseau
+    const memEntry=aiCache[cacheKey];
+    if(memEntry&&memEntry.hash===dataHash&&memEntry.result){
+      setAiText(memEntry.result);
+      return;
+    }
+
     setAiLoading(true);
     setAiText('');
     supabase.from('profiles').select('stats_analysis_cache').eq('id',user.id).single()
       .then(async ({data:profile})=>{
         const cache=profile?.stats_analysis_cache??{};
         const periodCache=cache[cacheKey];
+        // Tier 2 : cache Supabase
         if(periodCache&&periodCache.hash===dataHash&&periodCache.result){
-          setAiText(periodCache.result);setAiLoading(false);return;
+          setAiText(periodCache.result);setAiLoading(false);
+          setAiCache(prev=>({...prev,[cacheKey]:{hash:dataHash,result:periodCache.result}}));
+          return;
         }
         const{data:{session:stSess}}=await supabase.auth.getSession();
         const stToken=stSess?.access_token;
@@ -293,6 +305,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user}){
           .then(d=>{
             const result=d?.analysis||'';
             setAiText(result);setAiLoading(false);
+            setAiCache(prev=>({...prev,[cacheKey]:{hash:dataHash,result}}));
             const updatedCache={...cache,[cacheKey]:{hash:dataHash,result}};
             supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id);
           })

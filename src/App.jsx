@@ -2898,6 +2898,7 @@ export default function App({ loginOnly = false }){
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
   const [slotsRemaining,setSlotsRemaining]=useState(null);
+  const [aiCache,setAiCache]=useState({});
   const [iapProduct,setIapProduct]=useState(null);
   const [iapLoading,setIapLoading]=useState(false);
   const [lang,setLang]=useState(()=>{
@@ -4764,9 +4765,10 @@ export default function App({ loginOnly = false }){
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
           />
         )}
-        {tab===4&&(
-          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user}/>
-        )}
+        {/* StatsTab toujours monté — état local préservé entre les onglets */}
+        <div style={{display:tab===4?'block':'none'}}>
+          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user} aiCache={aiCache} setAiCache={setAiCache}/>
+        </div>
       </div>
 
       {/* ── EDIT MODAL ── */}
