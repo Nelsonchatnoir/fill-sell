@@ -1,5 +1,185 @@
-import { memo } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
+
+const LENS_EXAMPLES = [
+  {
+    title:'Air Jordan 1 Retro High', marque:'Nike', type:'Sport', typeDisplay:'Sneakers',
+    score:8.2, priceMin:145, priceMax:180,
+    analyse:"✅ Excellente opportunité. Les Jordan 1 Retro High s'écoulent très bien sur Vinted et StockX. Délai moyen : 4 à 6 jours. Vends entre 155€ et 165€ pour maximiser ta marge. Inclure la boîte originale augmente la valeur perçue de ~15%.",
+    analyseEn:"✅ Great opportunity. Air Jordan 1 Retro Highs sell fast on StockX & Vinted. Avg. time: 4–6 days. Sell at €155–165 to maximise margin. Including the original box boosts perceived value by ~15%.",
+  },
+  {
+    title:'Sac Louis Vuitton Speedy', marque:'Louis Vuitton', type:'Luxe', typeDisplay:null,
+    score:5.1, priceMin:420, priceMax:550,
+    analyse:"⚠️ Score mitigé. Des signaux visuels alertent : coutures asymétriques et logo légèrement décalé. Risque contrefaçon modéré — fais authentifier avant d'acheter. Si authentique, potentiel de revente solide à 480–520€.",
+    analyseEn:"⚠️ Mixed score. Visual warnings: asymmetric stitching and slightly off-centre logo. Moderate counterfeit risk — get it authenticated first. If genuine, solid resale potential at €480–520.",
+  },
+  {
+    title:'iPhone 14 Pro écran fissuré', marque:'Apple', type:'High-Tech', typeDisplay:null,
+    score:3.4, priceMin:280, priceMax:320,
+    analyse:"❌ Mauvaise affaire au prix actuel. L'écran fissuré réduit la valeur de revente de 35–40%. Réparation : 80–120€ en SAV agréé. Marge nette quasi nulle. Négocie fortement sous 150€ ou passe ton tour.",
+    analyseEn:"❌ Bad deal at current price. Cracked screen cuts resale value by 35–40%. Repair: €80–120 at an authorised centre. Net margin nearly zero. Negotiate hard below €150 or walk away.",
+  },
+];
+
+const scoreColor = s => s>=6.5?'#16A34A':s>=4?'#D97706':'#DC2626';
+const scoreBg    = s => s>=6.5?'#F0FDF4':s>=4?'#FFFBEB':'#FFF5F5';
+const scoreBd    = s => s>=6.5?'rgba(22,163,74,0.2)':s>=4?'rgba(217,119,6,0.2)':'rgba(220,38,38,0.2)';
+const scoreLabel = (s,lang) => s>=6.5?(lang==='en'?'Good deal':'Bon deal'):s>=4?(lang==='en'?'Average':'Mitigé'):(lang==='en'?'Avoid':'Éviter');
+
+function LensTicker({ lang, onScan }) {
+  const [idx, setIdx]           = useState(0);
+  const [visible, setVisible]   = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [displayed, setDisplayed] = useState('');
+  const [gaugeW, setGaugeW]     = useState(0);
+  const [dotOn, setDotOn]       = useState(true);
+
+  const DURATION = 5500;
+  const ex = LENS_EXAMPLES[idx];
+  const sc = scoreColor(ex.score);
+  const ts = getTypeStyle(ex.type);
+  const analyseText = lang==='en' ? ex.analyseEn : ex.analyse;
+
+  useEffect(() => {
+    let raf, timeout=null, startTs=null, cancelled=false;
+    function tick(ts) {
+      if (cancelled) return;
+      if (!startTs) startTs=ts;
+      const p=Math.min((ts-startTs)/DURATION,1);
+      setProgress(p);
+      if (p<1) { raf=requestAnimationFrame(tick); }
+      else {
+        setVisible(false);
+        timeout=setTimeout(()=>{
+          if (cancelled) return;
+          setIdx(i=>(i+1)%LENS_EXAMPLES.length);
+          setProgress(0);
+          setVisible(true);
+        },450);
+      }
+    }
+    raf=requestAnimationFrame(tick);
+    return ()=>{ cancelled=true; cancelAnimationFrame(raf); if(timeout) clearTimeout(timeout); };
+  },[idx]);
+
+  useEffect(()=>{
+    const text=lang==='en'?LENS_EXAMPLES[idx].analyseEn:LENS_EXAMPLES[idx].analyse;
+    setDisplayed('');
+    let charIdx=0, timer;
+    const startDelay=setTimeout(()=>{
+      timer=setInterval(()=>{
+        charIdx++;
+        setDisplayed(text.slice(0,charIdx));
+        if(charIdx>=text.length) clearInterval(timer);
+      },22);
+    },500);
+    return ()=>{ clearTimeout(startDelay); if(timer) clearInterval(timer); };
+  },[idx,lang]);
+
+  useEffect(()=>{
+    setGaugeW(0);
+    const t=setTimeout(()=>setGaugeW(LENS_EXAMPLES[idx].score*10),80);
+    return ()=>clearTimeout(t);
+  },[idx]);
+
+  useEffect(()=>{
+    const interval=setInterval(()=>setDotOn(p=>!p),800);
+    return ()=>clearInterval(interval);
+  },[]);
+
+  const featurePills = lang==='en'
+    ?['📸 Photo analysis','💰 Market price','⚠️ Risk detection']
+    :['📸 Analyse photo','💰 Prix marché','⚠️ Détection risques'];
+
+  return (
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:11,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
+        {lang==='fr'?"EXEMPLE D'ANALYSE LENS":"LENS ANALYSIS EXAMPLE"}
+      </div>
+
+      <div style={{background:'#fff',borderRadius:12,border:'1px solid rgba(0,0,0,0.06)',borderLeft:`3px solid ${sc}`,boxShadow:'0 1px 3px rgba(0,0,0,0.04)',overflow:'hidden',marginBottom:10}}>
+        <div style={{padding:'12px 14px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease,transform 0.45s ease'}}>
+
+          <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:6}}>
+            {ex.title}
+          </div>
+
+          <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:10}}>
+            <span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>
+              {ex.marque}
+            </span>
+            <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>
+              {ts.emoji} {ex.typeDisplay||typeLabel(ex.type,lang)}
+            </span>
+          </div>
+
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
+            <div style={{flexShrink:0}}>
+              <div style={{fontSize:9,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>DEAL SCORE</div>
+              <div style={{fontSize:26,fontWeight:900,color:sc,letterSpacing:'-0.03em',lineHeight:1}}>
+                {ex.score.toFixed(1)}<span style={{fontSize:12,fontWeight:600,color:'#A3A9A6'}}>/10</span>
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{height:8,background:'#F3F4F6',borderRadius:4,overflow:'hidden'}}>
+                <div style={{height:'100%',background:sc,width:`${gaugeW}%`,transition:'width 1.1s cubic-bezier(0.22,1,0.36,1)',borderRadius:4}}/>
+              </div>
+              <div style={{fontSize:10,fontWeight:700,color:sc,marginTop:3}}>{scoreLabel(ex.score,lang)}</div>
+            </div>
+          </div>
+
+          <div style={{fontSize:12,color:'#6B7280',fontWeight:600,marginBottom:8}}>
+            {lang==='fr'?'Prix marché estimé : ':'Est. market price: '}
+            <span style={{color:'#0D0D0D',fontWeight:800}}>{ex.priceMin}–{ex.priceMax}€</span>
+          </div>
+
+          <div style={{background:scoreBg(ex.score),border:`1px solid ${scoreBd(ex.score)}`,borderRadius:10,padding:'10px 12px',minHeight:110}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+              <div style={{width:6,height:6,borderRadius:'50%',background:sc,opacity:dotOn?1:0.2,transition:'opacity 0.3s ease',flexShrink:0}}/>
+              <span style={{fontSize:9,fontWeight:800,color:sc,textTransform:'uppercase',letterSpacing:'0.06em'}}>
+                {lang==='fr'?'Analyse IA':'AI Analysis'}
+              </span>
+            </div>
+            <div style={{fontSize:12,color:'#374151',lineHeight:1.55,fontWeight:500}}>
+              {displayed}{displayed.length<analyseText.length&&<span style={{opacity:0.4}}>|</span>}
+            </div>
+          </div>
+
+          <div style={{marginTop:10,height:2,background:'#F3F4F6',borderRadius:2,overflow:'hidden'}}>
+            <div style={{height:'100%',background:sc,width:`${progress*100}%`}}/>
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:16}}>
+        {LENS_EXAMPLES.map((_,i)=>(
+          <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?scoreColor(LENS_EXAMPLES[i].score):'#E5E7EB',transition:'background 0.3s ease'}}/>
+        ))}
+      </div>
+
+      <div style={{display:'flex',justifyContent:'center',gap:8,flexWrap:'wrap',marginBottom:16}}>
+        {featurePills.map((f,i)=>(
+          <span key={i} style={{background:'#F9FAFB',border:'1px solid rgba(0,0,0,0.1)',borderRadius:99,padding:'5px 12px',fontSize:11,fontWeight:700,color:'#4B5563'}}>{f}</span>
+        ))}
+      </div>
+
+      <button
+        onClick={onScan}
+        style={{width:'100%',padding:'14px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 4px 14px rgba(15,110,86,0.3)'}}
+        onMouseDown={e=>e.currentTarget.style.transform='scale(0.97)'}
+        onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
+        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
+      >
+        📷 {lang==='fr'?'Scanner mon premier article':'Scan my first item'}
+      </button>
+
+      <div style={{textAlign:'center',marginTop:8,fontSize:11,color:'#A3A9A6',fontWeight:500}}>
+        {lang==='fr'?'3 analyses offertes · Sans engagement':'3 free analyses · No commitment'}
+      </div>
+    </div>
+  );
+}
 
 const LensTab = memo(function LensTab({
   lang, currency, userCountry, isPremium, isNative, user,
@@ -209,6 +389,9 @@ const LensTab = memo(function LensTab({
         )}
       </div>
 
+      {!lensPhotos.length&&!lensResult&&(
+        <LensTicker lang={lang} onScan={()=>lensFileRef.current?.click()}/>
+      )}
       {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
       {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
     </div>
