@@ -341,7 +341,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       <div className="spark-row">
         <div className="spark-card">
           <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Sales':'Ventes'}</div>
-          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length}</div>
+          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length===0?'--':filtered.length}</div>
           {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color="#1D9E75"/>}
         </div>
         <div className="spark-card">
@@ -385,9 +385,9 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
               <div style={{fontSize:12,color:'#6B7280',fontWeight:500,lineHeight:1.5,marginBottom:12}}>
                 {lang==='en'?'Add your first sale to see trends, predictions and personalised advice':'Ajoute ta première vente pour voir tendances, prédictions et conseils personnalisés'}
               </div>
-              <button onClick={()=>{setTab(3);localStorage.setItem('tab',3);}}
+              <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
                 style={{background:'transparent',border:'1px solid #1D9E75',color:'#1D9E75',borderRadius:99,padding:'7px 18px',fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
-                + {lang==='en'?'Add a sale':'Ajouter une vente'}
+                + {lang==='en'?'Add an item':'Ajouter un article'}
               </button>
             </div>
           ):(
