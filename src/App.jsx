@@ -5348,6 +5348,14 @@ export default function App({ loginOnly = false }){
                 </div>
               )}
             </div>
+
+            {/* Signaler un bug */}
+            <a
+              href={`mailto:support@fillsell.app?subject=${encodeURIComponent('[Bug] Fill & Sell - '+(isNative?'iOS':'Web'))}&body=${encodeURIComponent((lang==='fr'?'Décris ton bug ici...':'Describe your bug here...')+'\n\n'+(lang==='fr'?'Plateforme : ':'Platform: ')+(isNative?'iOS':'Web'))}`}
+              style={{display:"block",textAlign:"center",fontSize:12,color:"#9CA3AF",marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3}}
+            >
+              🐛 {lang==='fr'?'Signaler un bug':'Report a bug'}
+            </a>
           </div>
           </div>
           <style>{`
