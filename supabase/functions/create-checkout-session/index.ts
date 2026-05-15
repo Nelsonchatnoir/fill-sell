@@ -38,16 +38,29 @@ serve(async (req) => {
       : Deno.env.get("STRIPE_PRICE_STANDARD")!;
     const planType = isFounderSlot ? "founder" : "standard";
 
+    // Réutilise le customer Stripe existant pour bloquer un 2ème trial
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("email", email)
+      .single();
+    const existingCustomerId = profile?.stripe_customer_id ?? null;
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: "https://fillsell.app/success",
       cancel_url: "https://fillsell.app/cancel",
-      customer_email: email || undefined,
-      subscription_data: {
-        trial_period_days: 7,
-        metadata: { plan_type: planType },
-      },
+      ...(existingCustomerId
+        ? {
+            customer: existingCustomerId,
+            subscription_data: { metadata: { plan_type: planType } },
+          }
+        : {
+            customer_email: email || undefined,
+            subscription_data: { trial_period_days: 7, metadata: { plan_type: planType } },
+          }
+      ),
       metadata: { plan_type: planType },
     };
 
