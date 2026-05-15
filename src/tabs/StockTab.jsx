@@ -523,45 +523,98 @@ const StockTab = memo(function StockTab({
             })()}
             {stock.length===0?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+                {/* 1. Bannière */}
+                <div style={{background:"#F0FDFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(13,148,136,0.15)"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
+                        {lang==='fr'?'APERÇU DE TON FUTUR STOCK':'PREVIEW OF YOUR FUTURE STOCK'}
+                      </div>
+                      <div style={{fontSize:14,fontWeight:500,color:"#0D0D0D",lineHeight:1.3}}>
+                        {lang==='fr'?"L'IA classe tout automatiquement":"AI classifies everything automatically"}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:8,flexShrink:0}}>
+                      <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
+                        <div style={{fontSize:17,fontWeight:900,color:"#0D0D0D",lineHeight:1}}>{SKELETON_ITEMS.length}</div>
+                        <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'articles':'items'}</div>
+                      </div>
+                      <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
+                        <div style={{fontSize:17,fontWeight:900,color:"#F9A26C",lineHeight:1}}>{fmt(SKELETON_ITEMS.reduce((a,s)=>a+s.buy,0))}</div>
+                        <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'investi':'invested'}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Séparateur */}
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",whiteSpace:"nowrap",flexShrink:0}}>
+                    {lang==='fr'?"EXEMPLES D'ARTICLES EN STOCK":"EXAMPLE STOCK ITEMS"}
+                  </span>
+                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                </div>
+
+                {/* 3. Liste enrichie — badge EXEMPLE conservé */}
                 <div style={{position:"relative"}}>
                   <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
                     {lang==='en'?'Preview':'Exemple'}
                   </span>
-                  <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none"}}>
-                    {SKELETON_ITEMS.map((sk,i)=>{
+                  <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.72,pointerEvents:"none",userSelect:"none"}}>
+                    {[
+                      {sk:SKELETON_ITEMS[0],emplacement:lang==='fr'?'Étagère salon':'Living room shelf',lieu:lang==='fr'?'Vide-grenier':'Car boot',days:2},
+                      {sk:SKELETON_ITEMS[1],emplacement:lang==='fr'?'Boîte à cartes':'Card box',lieu:lang==='fr'?'Brocante':'Flea market',days:null},
+                      {sk:SKELETON_ITEMS[2],emplacement:lang==='fr'?'Portant 1':'Rack 1',lieu:'Leboncoin',days:5},
+                      {sk:SKELETON_ITEMS[3],emplacement:lang==='fr'?'Vitrine luxe':'Luxury shelf',lieu:lang==='fr'?'Dépôt-vente':'Resale shop',days:1},
+                      {sk:SKELETON_ITEMS[4],emplacement:lang==='fr'?'Étagère bureau':'Office shelf',lieu:'Facebook Marketplace',days:null},
+                    ].map(({sk,emplacement,lieu,days},i)=>{
                       const ts=getTypeStyle(sk.type);
                       return(
-                        <div key={i} className="skeleton-item-row" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${ts.border}`}}>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
-                              <span style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{sk.title}</span>
-                              <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
-                              <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {sk.type}</span>
-                              {sk.qty>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{sk.qty}</span>}
+                        <div key={i} style={{background:"#fff",borderRadius:12,padding:"10px 14px",border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${ts.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4}}>{sk.title}</div>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:5}}>
+                                <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
+                                <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(sk.type,lang)}</span>
+                                {sk.qty>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{sk.qty}</span>}
+                              </div>
+                              <div style={{fontSize:11,color:"#6B7280",lineHeight:1.5}}>
+                                📍 {emplacement} · {lieu}{days!==null?(` · ${lang==='fr'?`en stock ${days}j`:`in stock ${days}d`}`):``}
+                              </div>
                             </div>
-                            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>
-                              {lang==='en'?'Invested':'Investi'} <span style={{color:"#F9A26C"}}>{sk.buy}€</span>
-                              {sk.days!==null&&<span style={{marginLeft:8}}>{lang==='en'?`in stock ${sk.days}d`:`en stock ${sk.days}j`}</span>}
+                            <div style={{flexShrink:0,textAlign:"right",paddingLeft:8}}>
+                              <div style={{fontWeight:800,fontSize:14,color:"#F9A26C"}}>{fmt(sk.buy)}</div>
+                              <div style={{fontSize:10,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{lang==='fr'?'investi':'invested'}</div>
                             </div>
-                          </div>
-                          <div style={{flexShrink:0,paddingLeft:12}}>
-                            <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700}}>{lang==='en'?'Sold':'Vendu'}</span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"16px 0 8px"}}>
-                  <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",textAlign:"center"}}>{t('premierArticle')}</div>
-                  <div style={{fontSize:13,color:"#A3A9A6",textAlign:"center",maxWidth:220,lineHeight:1.5}}>{t('commenceSuivi')}</div>
-                  <button onClick={()=>{scrollRef.current?.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>document.querySelector('.inp input')?.focus(),300);}}
-                    style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:14,padding:"12px 24px",marginTop:4,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(29,158,117,0.3)"}}
-                    onMouseDown={e=>e.currentTarget.style.transform="scale(0.95)"}
+
+                {/* 4. CTA */}
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
+                  <button
+                    onClick={()=>scrollRef.current?.scrollTo({top:0,behavior:"smooth"})}
+                    style={{width:"100%",padding:"13px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
+                    onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                     onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
                     onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-                  >{t('ajouterArticle')} 🚀</button>
+                  >
+                    🎙️ {lang==='fr'?'Ajouter avec la voix':'Add with voice'}
+                  </button>
+                  <button
+                    onClick={()=>{setShowManualForm(true);scrollRef.current?.scrollTo({top:0,behavior:"smooth"});}}
+                    style={{background:"none",border:"none",cursor:"pointer",fontSize:13,fontWeight:700,color:"#6B7280",padding:"4px",fontFamily:"inherit",textDecoration:"underline",textDecorationColor:"rgba(107,114,128,0.35)"}}
+                  >
+                    + {lang==='fr'?'Ajouter manuellement':'Add manually'}
+                  </button>
                 </div>
+
               </div>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
