@@ -479,17 +479,13 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 
   return(
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      {slotsRemaining!==null&&slotsRemaining>0
-        ? <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)"}}>🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie — Ensuite 12,99€`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever — Then €12.99`}</div>
-        : slotsRemaining===0
-          ? <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>{lang==='fr'?'Premium · 12,99€/mois':'Premium · €12.99/month'}</div>
-          : <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}</div>
-      }
+      {slotsRemaining!==null&&slotsRemaining>0&&(
+        <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)"}}>🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie — Ensuite 12,99€`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever — Then €12.99`}</div>
+      )}
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'Devenir Founder · 9,99€/mois':'Become a Founder · €9.99/month'):(lang==='fr'?'Passer Premium · 12,99€/mois':'Upgrade to Premium · €12.99/month'))}
+        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois — 7j gratuits':'✨ Become a Founder · €9.99/mo — 7 days free'):(lang==='fr'?'✨ Passer Premium · 12,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €12.99/mo — 7 days free'))}
         disabled={loading}
-        sub={slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'):(lang==='fr'?'puis 12,99€/mois · Sans engagement.':'then €12.99/month · No commitment.')}
       />
     </div>
   );
