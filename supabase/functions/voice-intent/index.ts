@@ -310,8 +310,8 @@ Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l
 
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = type ou modèle UNIQUEMENT, sans la marque. Court et propre. AUCUN qualificatif dans le nom.
-EXCEPTION NOM : si la marque est le seul identifiant naturel de l'objet (aucun type distinct mentionné, ex : "une paire de Nike", "des Adidas"), la conserver dans le nom pour préserver le nom naturel. Ex : nom:"Paire de Nike", marque:"Nike".
-INFÉRENCE TYPE DEPUIS MARQUE : si aucun type d'objet n'est explicité mais que la marque permet de l'inférer avec certitude depuis la connaissance générale, déduire intelligemment le type et la catégorie. Ne jamais laisser la catégorie vide quand la marque la rend évidente.
+La marque ne doit JAMAIS apparaître dans le nom, même si l'utilisateur ne précise pas le type.
+INFÉRENCE TYPE DEPUIS MARQUE : si aucun type d'objet n'est explicité, l'inférer depuis la marque en utilisant ta connaissance générale. Exemples : Nike/Adidas/New Balance sans précision → "Sneakers". Ne jamais laisser nom vide ni mettre la marque dans nom.
 DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
   1. Capacité / taille / poids (256Go, 20g, 1To, taille S, taille 42...)
   2. État (écran cassé, neuf, abîmé, rayé, usé, bon état...)
@@ -327,8 +327,9 @@ Exemples OBLIGATOIRES :
 ✅ "Nike Air Max 90 taille 42 coloris blanc" → nom:"Air Max 90", marque:"Nike", description:"Taille 42, coloris blanc"
 ✅ "PS4 Pro 1To avec 2 manettes" → nom:"PS4 Pro", description:"1To, avec 2 manettes"
 ✅ "Veste Zara taille S rose achetée à Paris" → nom:"Veste", marque:"Zara", description:"Taille S, rose, achetée à Paris"
-✅ "j'ai acheté une paire de Nike noir taille 44" → nom:"Paire de Nike", marque:"Nike", description:"Taille 44, noir", categorie:"Mode"
-✅ "des Adidas taille 42" → nom:"Paire d'Adidas", marque:"Adidas", description:"Taille 42", categorie:"Mode"
+✅ "j'ai acheté des Nike taille 44" → nom:"Sneakers", marque:"Nike", description:"Taille 44", categorie:"Mode"
+✅ "une paire de Nike noir taille 44" → nom:"Sneakers", marque:"Nike", description:"Taille 44, noir", categorie:"Mode"
+✅ "des Adidas taille 42" → nom:"Sneakers", marque:"Adidas", description:"Taille 42", categorie:"Mode"
 
 Règle emplacement (inventory_add) :
 emplacement = lieu PHYSIQUE où l'article est rangé/stocké (tiroir, portant, étagère, stockeur, bac, box, carton, sac, valise, boîte...).
@@ -669,8 +670,8 @@ If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it
 
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = type or model ONLY, without the brand. Short and clean. NO qualifiers in nom.
-EXCEPTION: if the brand is the only natural identifier (no separate type mentioned, e.g. "a pair of Nikes", "some Adidas"), keep it in nom to preserve the natural name. Ex: nom:"Pair of Nikes", marque:"Nike".
-TYPE INFERENCE FROM BRAND: if no product type is stated but the brand makes it obvious from general knowledge, infer the type and category intelligently. Never leave categorie null when the brand makes it evident.
+The brand must NEVER appear in nom, even when the user doesn't specify the type.
+TYPE INFERENCE FROM BRAND: if no product type is stated, infer it from the brand using general knowledge. Examples: Nike/Adidas/New Balance with no further detail → "Sneakers". Never leave nom empty or put the brand in nom.
 DESCRIPTION = everything else, in this order if present:
   1. Capacity / size / weight (256GB, 20g, 1TB, size S, size 10...)
   2. Condition (cracked screen, new, damaged, scratched, worn, good condition...)
@@ -688,8 +689,8 @@ Mandatory examples:
 ✅ "Laneige Lip Sleeping Mask Berry 20g" → nom:"Lip Sleeping Mask Berry", marque:"Laneige", description:"20g"
 ✅ "found a Nike Air Max at a car boot sale in London" → nom:"Air Max", marque:"Nike", description:"found at a car boot sale in London", emplacement:null
 ✅ "picked up a Zara jacket in Manchester" → nom:"Jacket", marque:"Zara", description:"picked up in Manchester", emplacement:null
-✅ "I bought a pair of Nikes size 10 black" → nom:"Pair of Nikes", marque:"Nike", description:"Size 10, black", categorie:"Mode"
-✅ "some Adidas size 9" → nom:"Pair of Adidas", marque:"Adidas", description:"Size 9", categorie:"Mode"
+✅ "I bought some Nikes size 10 black" → nom:"Sneakers", marque:"Nike", description:"Size 10, black", categorie:"Mode"
+✅ "a pair of Adidas size 9" → nom:"Sneakers", marque:"Adidas", description:"Size 9", categorie:"Mode"
 
 Emplacement rule (inventory_add):
 emplacement = PHYSICAL location where the item is stored (drawer, rack, shelf, bin, box, bag, suitcase, carton, container...).
