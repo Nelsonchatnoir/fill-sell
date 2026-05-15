@@ -296,7 +296,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
   );
 }
 // Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
-const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
+const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : "Sans marque";
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 const getCatBorder = type => getTypeStyle(type).border;
@@ -4006,7 +4006,7 @@ export default function App({ loginOnly = false }){
         margin_pct:marginPct,
         statut,
         date:rowDate,
-        marque,
+        marque:marque||"Sans marque",
         type:typeAuto,
         created_at:now,
       };
@@ -4026,7 +4026,7 @@ export default function App({ loginOnly = false }){
         prix_vente:parseFloat(row.prix_vente)||0,
         benefice:parseFloat(row.margin)||0,
         date:(row.date?String(row.date):now.toString()).slice(0,10),
-        marque:row.marque||null,
+        marque:row.marque||"Sans marque",
         type:row.type||null,
         description:row.description||null,
         emplacement:row.emplacement||null,
@@ -4474,7 +4474,7 @@ export default function App({ loginOnly = false }){
     // Insère uniquement dans ventes — pas de suppression inventaire.
     addDirectSale:async({nom,marque,type,description,prix_vente})=>{
       const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
-      const row={user_id:user.id,titre:nom||"Article",marque:marque||null,type:type||null,description:description||null,prix_achat:0,prix_vente:pv,benefice:pv,date:new Date().toISOString().split('T')[0]};
+      const row={user_id:user.id,titre:nom||"Article",marque:marque||"Sans marque",type:type||null,description:description||null,prix_achat:0,prix_vente:pv,benefice:pv,date:new Date().toISOString().split('T')[0]};
       const{data,error}=await supabase.from('ventes').insert([row]).select().single();
       if(error)throw new Error(error.message);
       if(data)setSales(prev=>[mapSale(data),...prev]);
