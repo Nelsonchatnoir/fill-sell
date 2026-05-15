@@ -490,7 +490,7 @@ const StockTab = memo(function StockTab({
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
                 {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
-                {window.innerWidth<768&&(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
+                {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
               </div>
               <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{stockQty??stock.length} {lang==='fr'?'art.':'items'} · {fmt(stockVal)}</div>
             </div>
@@ -499,17 +499,18 @@ const StockTab = memo(function StockTab({
               const marquesStockFiltreesParType=["Toutes",..._sbAll.filter(b=>b.toLowerCase()!=="sans marque"),..._sbAll.filter(b=>b.toLowerCase()==="sans marque")];
               if(marquesStockFiltreesParType.length<=1) return null;
               const _mob=window.innerWidth<768;
-              const _open=!_mob||pillsExpandedStock;
+              const _open=pillsExpandedStock;
+              const _collapsedH=_mob?"0":"62px";
               return(
                 <div style={{marginBottom:12}}>
-                  {!_open&&(
+                  {!_open&&_mob&&(
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarque==="Toutes"?"#fff":"#6B7280"}}>
                         {filterMarque==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(filterMarque,lang)}
                       </button>
                     </div>
                   )}
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"300px":"0",overflow:"hidden",opacity:_open?1:0,transition:"max-height 0.25s ease, opacity 0.2s ease"}}>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"2000px":_collapsedH,overflow:"hidden",opacity:(_open||!_mob)?1:0,transition:"max-height 0.3s ease, opacity 0.2s ease"}}>
                     {marquesStockFiltreesParType.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
