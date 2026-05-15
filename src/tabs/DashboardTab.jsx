@@ -53,7 +53,7 @@ function buildChartData(salesArr, range, now, lang){
 }
 
 const DashboardTab = memo(function DashboardTab({
-  lang, currency, isPremium, isNative, loading,
+  lang, currency, isPremium, isNative, username, loading,
   items, sales, stock, stockVal, stockQty,
   tm, salesForKpis, totalM,
   selectedRange, setSelectedRange,
@@ -153,7 +153,7 @@ const DashboardTab = memo(function DashboardTab({
               {(lang==='en'?MONTHS_EN:MONTHS_FR)[now.getMonth()]} {now.getFullYear()}
             </div>
             <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
-              {(()=>{const title=t('dashTitle');const hi=t('dashTitleHighlight');const idx=title.lastIndexOf(hi);return idx<0?<span style={{color:"#1D9E75"}}>{title}</span>:<>{title.slice(0,idx)}<span style={{color:"#1D9E75"}}>{hi}</span></>;})()}
+              {username?<>Bonjour <span style={{color:"#1D9E75"}}>{username}</span> 👋</>:'Bonjour 👋'}
             </div>
           </div>
 

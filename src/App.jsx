@@ -260,6 +260,7 @@ function formatCurrency(amount,currency='EUR',decimals=null){
 function CurrencyOnboardingModal({lang,onConfirm}){
   const [selected,setSelected]=useState(suggestCurrency());
   const [search,setSearch]=useState('');
+  const [usernameInput,setUsernameInput]=useState('');
   const REGION_LABELS={Europe:'Europe',America:lang==='en'?'Americas':'Amériques',Africa:lang==='en'?'Africa':'Afrique','Asia/Pacific':lang==='en'?'Asia & Pacific':'Asie & Pacifique'};
   const q=search.trim().toLowerCase();
   const filtered=q?CURRENCIES_LIST.filter(c=>c.code.toLowerCase().includes(q)||c.name.toLowerCase().includes(q)||c.sym.toLowerCase().includes(q)):CURRENCIES_LIST;
@@ -296,8 +297,18 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             );
           })}
         </div>
-        <button onClick={()=>onConfirm(selected)}
-          style={{marginTop:12,width:'100%',padding:'13px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
+        <div style={{marginTop:12,flexShrink:0}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#6B7280',marginBottom:6}}>{lang==='en'?'What's your name? (optional)':'Comment tu t\'appelles ? (optionnel)'}</div>
+          <input
+            value={usernameInput}
+            onChange={e=>setUsernameInput(e.target.value.slice(0,30))}
+            placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
+            maxLength={30}
+            style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:13,fontFamily:'inherit',outline:'none',marginBottom:10}}
+          />
+        </div>
+        <button onClick={()=>onConfirm(selected,usernameInput.trim())}
+          style={{marginTop:0,width:'100%',padding:'13px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
           {selected} {CURRENCY_SYMBOLS[selected]} — {lang==='en'?'Confirm':'Confirmer'}
         </button>
       </div>
@@ -3023,6 +3034,7 @@ export default function App({ loginOnly = false }){
   });
   const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
   const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
+  const [username,setUsername]=useState('');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
@@ -3213,7 +3225,7 @@ export default function App({ loginOnly = false }){
     const [v,i,p,fc]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency').eq('id',uid).single(),
+      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).single(),
       fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
@@ -3222,6 +3234,7 @@ export default function App({ loginOnly = false }){
     console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
+      setUsername(p.data?.username||'');
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
       const confirmed=!!localStorage.getItem('fs_currency_confirmed');
@@ -4788,7 +4801,7 @@ export default function App({ loginOnly = false }){
 
         {tab===0&&(
           <DashboardTab
-            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative}
+            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} username={username}
             loading={loading} items={items} sales={sales}
             stock={stock} stockVal={stockVal} stockQty={stockQty}
             tm={tm} salesForKpis={salesForKpis} totalM={totalM}
@@ -5536,8 +5549,10 @@ export default function App({ loginOnly = false }){
         />
       )}
       {showCurrencyOnboarding&&(
-        <CurrencyOnboardingModal lang={lang} onConfirm={async(code)=>{
+        <CurrencyOnboardingModal lang={lang} onConfirm={async(code,uname)=>{
           await saveCurrency(code);
+          if(uname) await supabase.rpc('set_profile_username',{p_username:uname});
+          if(uname) setUsername(uname);
           localStorage.setItem('fs_currency_confirmed','1');
           setShowCurrencyOnboarding(false);
         }}/>
