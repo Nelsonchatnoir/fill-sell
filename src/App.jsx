@@ -1682,17 +1682,6 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
         return null;
       })()}
 
-      {/* Lens remaining pill (free users, 1-2 left only) */}
-      {!isPremium&&(()=>{
-        const r=LENS_FREE_LIMIT-lensUsedToday;
-        if(r<=2&&r>0)return(
-          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 160px)",left:"50%",transform:"translateX(-50%)",background:r===1?"#FEE2E2":"#FEF3C7",color:r===1?"#DC2626":"#D97706",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
-            {r===1?(lang==='fr'?'📸 Dernier Lens du jour !':'📸 Last Lens today!'):(lang==='fr'?'📸 2 Lens restants':'📸 2 Lens left')}
-          </div>
-        );
-        return null;
-      })()}
-
       {/* Voice gate toast */}
       <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.8)",color:"#fff",borderRadius:"20px",padding:"10px 20px",fontSize:"14px",fontWeight:500,zIndex:9999,opacity:voiceToast?1:0,transition:"opacity 0.3s ease",pointerEvents:"none",whiteSpace:"nowrap"}}>
         {voiceToast}
@@ -5489,6 +5478,18 @@ export default function App({ loginOnly = false }){
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
       />
+
+      {/* Lens remaining pill (free users, 1-2 left only) */}
+      {!isPremium&&(()=>{
+        const r=LENS_FREE_LIMIT-lensUsedToday;
+        if(r<=2&&r>0)return(
+          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 160px)",left:"50%",transform:"translateX(-50%)",background:r===1?"#FEE2E2":"#FEF3C7",color:r===1?"#DC2626":"#D97706",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
+            {r===1?(lang==='fr'?'📸 Dernier Lens du jour !':'📸 Last Lens today!'):(lang==='fr'?'📸 2 Lens restants':'📸 2 Lens left')}
+          </div>
+        );
+        return null;
+      })()}
+
       {showUpgradeModal&&(
         <UpgradeModal
           lang={lang}
