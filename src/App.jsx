@@ -4875,6 +4875,7 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={()=>setShowUpgradeModal(true)}
+            lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
           />
         )}
 
@@ -5460,16 +5461,6 @@ export default function App({ loginOnly = false }){
         setVoiceUsedToday={setVoiceUsedToday}
       />
 
-      {/* Lens remaining pill (free users, 1-2 left only) */}
-      {!isPremium&&(()=>{
-        const r=LENS_FREE_LIMIT-lensUsedToday;
-        if(r<=2&&r>0)return(
-          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 160px)",left:"50%",transform:"translateX(-50%)",background:r===1?"#FEE2E2":"#FEF3C7",color:r===1?"#DC2626":"#D97706",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
-            {r===1?(lang==='fr'?'📸 Dernier Lens du jour !':'📸 Last Lens today!'):(lang==='fr'?'📸 2 Lens restants':'📸 2 Lens left')}
-          </div>
-        );
-        return null;
-      })()}
 
       {showUpgradeModal&&(
         <UpgradeModal
