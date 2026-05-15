@@ -191,6 +191,7 @@ const LensTab = memo(function LensTab({
   lensFileRef, toggleLensMic, handleLensPhoto, analyzeLens, addLensItem,
   handleIAPPurchase, handleIAPRestore,
   PremiumBanner, IAPUpgradeBlock,
+  openUpgradeModal,
 }) {
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
@@ -291,6 +292,16 @@ const LensTab = memo(function LensTab({
             ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </button>
+
+        {/* Bandeau free : analyse estimée vs prix marché */}
+        {!isPremium&&(
+          <div style={{textAlign:"center",fontSize:11,color:"#9CA3AF",marginTop:6,lineHeight:1.5}}>
+            {lang==="en"
+              ?<>📊 Visual analysis · Estimated prices (not real-time) —{" "}<button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1D9E75",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for live market prices →</button></>
+              :<>📊 Analyse visuelle · Prix estimés (non temps réel) —{" "}<button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1D9E75",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passe Premium pour les prix marché en direct →</button></>
+            }
+          </div>
+        )}
 
         {/* Résultat */}
         {lensResult&&(

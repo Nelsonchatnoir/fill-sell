@@ -4874,6 +4874,7 @@ export default function App({ loginOnly = false }){
             handleLensPhoto={handleLensPhoto} analyzeLens={analyzeLens} addLensItem={addLensItem}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
+            openUpgradeModal={()=>setShowUpgradeModal(true)}
           />
         )}
 
