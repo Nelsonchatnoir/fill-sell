@@ -564,32 +564,25 @@ const StockTab = memo(function StockTab({
                   </span>
                   <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.72,pointerEvents:"none",userSelect:"none"}}>
                     {[
-                      {sk:SKELETON_ITEMS[0],emplacement:lang==='fr'?'Étagère salon':'Living room shelf',lieu:lang==='fr'?'Vide-grenier':'Car boot',days:2},
-                      {sk:SKELETON_ITEMS[1],emplacement:lang==='fr'?'Boîte à cartes':'Card box',lieu:lang==='fr'?'Brocante':'Flea market',days:null},
-                      {sk:SKELETON_ITEMS[2],emplacement:lang==='fr'?'Portant 1':'Rack 1',lieu:'Leboncoin',days:5},
-                      {sk:SKELETON_ITEMS[3],emplacement:lang==='fr'?'Vitrine luxe':'Luxury shelf',lieu:lang==='fr'?'Dépôt-vente':'Resale shop',days:1},
-                      {sk:SKELETON_ITEMS[4],emplacement:lang==='fr'?'Étagère bureau':'Office shelf',lieu:'Facebook Marketplace',days:null},
-                    ].map(({sk,emplacement,lieu,days},i)=>{
-                      const ts=getTypeStyle(sk.type);
+                      {nom:"Veste Zara oversize",  marque:"Zara",    categorie:"Mode",       buy:12,  quantite:1,  description:"Taille M, noir, très bon état, acheté à Vide-grenier",                       emplacement:"Étagère salon"},
+                      {nom:"Lot Pokémon",          marque:"Pokémon", categorie:"Collection", buy:8,   quantite:20, description:"Cartes communes + 2 rares, sous pochette, acheté à Brocante",                emplacement:"Boîte à cartes"},
+                      {nom:"iPhone 12 64Go",       marque:"Apple",   categorie:"High-Tech",  buy:180, quantite:1,  description:"Écran fissuré, fonctionne parfaitement, acheté à Leboncoin",                  emplacement:"Portant 1"},
+                      {nom:"Sac Kelly Hermès",     marque:"Hermès",  categorie:"Luxe",       buy:125, quantite:1,  description:"Authentique, sangles légèrement usées, acheté à Dépôt-vente",                emplacement:"Vitrine luxe"},
+                      {nom:"Jean Levis 501",       marque:"Levis",   categorie:"Mode",       buy:15,  quantite:1,  description:"Taille 32, bleu délavé, vintage 90s, acheté à Facebook Marketplace",          emplacement:"Étagère bureau"},
+                    ].map((it,i)=>{
+                      const ts=getTypeStyle(it.categorie);
+                      const {loc:_loc,rest:_desc}=parseLocDesc(it.description);
                       return(
                         <div key={i} style={{background:"#fff",borderRadius:12,padding:"10px 14px",border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${ts.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4}}>{sk.title}</div>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:5}}>
-                                <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
-                                <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(sk.type,lang)}</span>
-                                {sk.qty>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{sk.qty}</span>}
-                              </div>
-                              <div style={{fontSize:11,color:"#6B7280",lineHeight:1.5}}>
-                                📍 {emplacement} · {lieu}{days!==null?(` · ${lang==='fr'?`en stock ${days}j`:`in stock ${days}d`}`):``}
-                              </div>
-                            </div>
-                            <div style={{flexShrink:0,textAlign:"right",paddingLeft:8}}>
-                              <div style={{fontWeight:800,fontSize:14,color:"#F9A26C"}}>{fmt(sk.buy)}</div>
-                              <div style={{fontSize:10,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{lang==='fr'?'investi':'invested'}</div>
-                            </div>
+                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                            <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.nom}</div>
+                            {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
+                            {it.categorie&&it.categorie!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(it.categorie,lang)}</span>}
+                            {it.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{it.quantite}</span>}
                           </div>
+                          {(_desc||_loc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_desc}{_desc&&_loc?" · ":""}{_loc&&`📍 ${_loc}`}</div>}
+                          {it.emplacement&&<span style={{display:"inline-block",marginTop:4,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {it.emplacement}</span>}
+                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(it.buy*(it.quantite||1))}</span></div>
                         </div>
                       );
                     })}
