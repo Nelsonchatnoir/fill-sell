@@ -3121,7 +3121,7 @@ export default function App({ loginOnly = false }){
   async function saveCurrency(code){
     setCurrency(code);
     localStorage.setItem('fs_currency',code);
-    if(user?.id) await supabase.from('profiles').update({currency:code}).eq('id',user.id);
+    if(user?.id) await supabase.rpc('set_profile_currency',{p_currency:code});
   }
   async function triggerCheckout(){
     try{

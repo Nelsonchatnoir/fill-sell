@@ -27,17 +27,14 @@ serve(async (req) => {
       });
     }
 
-    let userId: string;
-    try {
-      const payload = JSON.parse(atob(jwt.split(".")[1]));
-      userId = payload.sub;
-      if (!userId) throw new Error("sub manquant");
-    } catch {
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
+    if (authError || !authUser) {
       return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
         status: 401,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
+    const userId = authUser.id;
 
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
