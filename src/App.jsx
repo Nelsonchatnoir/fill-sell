@@ -3542,7 +3542,9 @@ export default function App({ loginOnly = false }){
   async function addItemsFromVoice(){
     if(!voiceParsed?.items?.length)return;
     let idBase=Date.now();
+    let insertedCount=items.filter(i=>i.statut!=='vendu').length;
     for(const item of voiceParsed.items){
+      if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const qty=Math.max(1,item.quantite||1);
       const fraisG=parseFloat(item.frais_global)||0;
       const fraisU=fraisG>0?fraisG/qty:(parseFloat(item.frais_unitaire)||0);
@@ -3556,10 +3558,10 @@ export default function App({ loginOnly = false }){
       const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
-      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
+        if(!hasS) insertedCount++;
         setItems(prev=>[mapItem(data),...prev]);
         if(hasS){
           const srow={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0]};
@@ -3596,14 +3598,15 @@ export default function App({ loginOnly = false }){
   async function addLotToInventory(){
     if(!lotDistributed?.items?.length)return;
     let idBase=Date.now();
+    let insertedCount=items.filter(i=>i.statut!=='vendu').length;
     for(const item of lotDistributed.items){
-      if(!isPremium&&items.length>=20)break;
+      if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
       const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:1};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
-      if(!error)setItems(prev=>[mapItem(data),...prev]);
+      if(!error){insertedCount++;setItems(prev=>[mapItem(data),...prev]);}
     }
     const n=lotDistributed.items.length;
     setToast({visible:true,message:lang==='fr'?`✅ ${n} article${n>1?"s":""} ajouté${n>1?"s":""} !`:`✅ ${n} item${n>1?"s":""} added!`});
