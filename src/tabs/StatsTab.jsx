@@ -134,7 +134,7 @@ function AvgDaysChart({filtered, items, lang}) {
       </div>
       {catDays.length===0?(
         <div style={{fontSize:12,color:'#A3A9A6',fontWeight:600,fontStyle:'italic',textAlign:'center',padding:'12px 0'}}>
-          {lang==='en'?'Will appear after your first sales':'Apparaîtra après tes premières ventes'}
+          {lang==='en'?'⏱️ Will appear after your first sales':'⏱️ Apparaîtra après tes premières ventes'}
         </div>
       ):(
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -161,7 +161,7 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{}}){
+const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{},setTab=()=>{}}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
   const [aiText,setAiText]=useState('');
@@ -329,11 +329,11 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       <div className="kpi-hero-row">
         <div className="kpi-hero" style={{background:'linear-gradient(135deg,#0F6E56,#1D9E75)',color:'#fff'}}>
           <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',opacity:0.7,marginBottom:4}}>{lang==='en'?'Total profit':'Profit total'}</div>
-          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',lineHeight:1}}>{fmt2(totalProfit)}</div>
+          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',lineHeight:1}}>{filtered.length===0?'--':fmt2(totalProfit)}</div>
         </div>
         <div className="kpi-hero" style={{background:'#fff',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
           <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',color:'#6B7280',marginBottom:4}}>{lang==='en'?'Revenue':'Revenu'}</div>
-          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',color:'#0D0D0D',lineHeight:1}}>{fmt2(totalRev)}</div>
+          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',color:'#0D0D0D',lineHeight:1}}>{filtered.length===0?'--':fmt2(totalRev)}</div>
         </div>
       </div>
 
@@ -342,12 +342,12 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         <div className="spark-card">
           <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Sales':'Ventes'}</div>
           <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length}</div>
-          <Sparkline data={chartData.length?chartData.map(d=>d.profit):[0]} color="#1D9E75"/>
+          {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color="#1D9E75"/>}
         </div>
         <div className="spark-card">
           <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg margin':'Marge moy.'}</div>
-          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{fmtp2(avgMargin)}</div>
-          <Sparkline data={chartData.length?chartData.map(d=>d.profit):[0]} color="#4ECDC4"/>
+          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length===0?'--':fmtp2(avgMargin)}</div>
+          {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color="#4ECDC4"/>}
         </div>
       </div>
 
@@ -379,7 +379,20 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         ):aiText?(
           <div style={{fontSize:13,color:'#1A4A3A',lineHeight:1.65,fontWeight:500}} dangerouslySetInnerHTML={renderMd(aiText.replace(/#{1,6}\s*/g,'').replace(/\*\*(.*?)\*\*/g,'$1'))}/>
         ):(
-          <div style={{fontSize:12,color:'#5DCAA5',fontStyle:'italic'}}>{filtered.length===0?(lang==='en'?'No sales in this period':'Aucune vente sur cette période'):(lang==='en'?'Analysis unavailable':'Analyse non disponible')}</div>
+          filtered.length===0?(
+            <div style={{textAlign:'center',padding:'8px 0'}}>
+              <div style={{fontSize:13,fontWeight:800,color:'#0D0D0D',marginBottom:6}}>{lang==='en'?'Unlock your AI analysis 🤖':'Débloque ton analyse IA 🤖'}</div>
+              <div style={{fontSize:12,color:'#6B7280',fontWeight:500,lineHeight:1.5,marginBottom:12}}>
+                {lang==='en'?'Add your first sale to see trends, predictions and personalised advice':'Ajoute ta première vente pour voir tendances, prédictions et conseils personnalisés'}
+              </div>
+              <button onClick={()=>{setTab(3);localStorage.setItem('tab',3);}}
+                style={{background:'transparent',border:'1px solid #1D9E75',color:'#1D9E75',borderRadius:99,padding:'7px 18px',fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+                + {lang==='en'?'Add a sale':'Ajouter une vente'}
+              </button>
+            </div>
+          ):(
+            <div style={{fontSize:12,color:'#5DCAA5',fontStyle:'italic'}}>{lang==='en'?'Analysis unavailable':'Analyse non disponible'}</div>
+          )
         )}
       </div>
 
