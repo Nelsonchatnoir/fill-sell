@@ -2,10 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "https://fillsell.app",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
-};
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -19,6 +16,13 @@ const supabaseAdmin = createClient(
 );
 
 serve(async (req) => {
+  const origin = req.headers.get("origin") || "";
+  const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
+  const CORS = {
+    "Access-Control-Allow-Origin": corsOrigin,
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+  };
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }

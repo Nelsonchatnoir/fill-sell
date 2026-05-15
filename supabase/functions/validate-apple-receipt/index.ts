@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "https://fillsell.app",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
-};
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -28,6 +25,13 @@ async function verifyWithApple(receipt: string, url: string): Promise<any> {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("origin") || "";
+  const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
+  const CORS = {
+    "Access-Control-Allow-Origin": corsOrigin,
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+  };
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }
