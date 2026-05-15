@@ -39,9 +39,18 @@ const CAT_COLORS_MAP={
 };
 
 function Sparkline({ data, color = '#2DB89A', width = 80, height = 28 }) {
+  if (!data || data.length === 0) return null;
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);
   const range = max - min || 1;
+  if (data.length === 1) {
+    const y = height - ((data[0] - min) / range) * height;
+    return (
+      <svg width={width} height={height} style={{display:'block'}}>
+        <circle cx={width / 2} cy={y} r="2.5" fill={color} />
+      </svg>
+    );
+  }
   const points = data.map((v, i) => {
     const x = (width * i) / (data.length - 1);
     const y = height - ((v - min) / range) * height;

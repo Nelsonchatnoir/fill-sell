@@ -526,7 +526,7 @@ export default function LandingPage() {
         return;
       }
     } catch {}
-    supabase.from('founder_config').select('slots_total,slots_used').eq('id', 1).single()
+    supabase.from('founder_config').select('slots_total,slots_used').eq('id', 1).maybeSingle()
       .then(({ data, error }) => {
         if (!error && data) {
           setSlotsRemaining(data.slots_total - data.slots_used);
