@@ -3153,13 +3153,14 @@ export default function App({ loginOnly = false }){
     setIapLoading(true);
     try{
       const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
-      const hasPremium=await purchasePremium(productId);
-      if(hasPremium){
-        const profileUpdate={is_premium:true};
+      const {isPremium,receipt}=await purchasePremium(productId);
+      if(isPremium){
+        if(receipt){
+          const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
+          if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+        }
         const isFounderProduct=productId===PRODUCT_IDS.sub;
-        if(isFounderProduct) profileUpdate.is_founder=true;
-        await supabase.from('profiles').update(profileUpdate).eq('id',user.id);
-        // increment géré côté serveur uniquement
+        if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
         setIsPremium(true);
         setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -3174,9 +3175,12 @@ export default function App({ loginOnly = false }){
   async function handleIAPRestore(){
     setIapLoading(true);
     try{
-      const hasPremium=await restorePurchases('button');
-      if(hasPremium){
-        await supabase.from('profiles').update({is_premium:true}).eq('id',user.id);
+      const {isPremium,receipt}=await restorePurchases('button');
+      if(isPremium){
+        if(receipt){
+          const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
+          if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+        }
         setIsPremium(true);
         setToast({visible:true,message:lang==='fr'?'✅ Achat restauré !':'✅ Purchase restored!'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);

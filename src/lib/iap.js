@@ -28,9 +28,10 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub) => {
       productIdentifier: productId,
       productType: 'subs',
     });
-    return result?.productIdentifier === productId;
+    const isPremium = result?.productIdentifier === productId;
+    return { isPremium, receipt: result?.receipt ?? null };
   } catch (e) {
-    if (e?.code === 'USER_CANCELLED') return false;
+    if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null };
     throw e;
   }
 };
@@ -41,10 +42,9 @@ export const restorePurchases = async (source) => {
     const { purchases } = await NativePurchases.getPurchases();
     const allIds = Object.values(PRODUCT_IDS);
     const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
-    if (!tx) return false;
-    if (tx.isActive === true) return true;
-    if (tx.expirationDate && new Date(tx.expirationDate) > new Date()) return true;
-    return false;
+    if (!tx) return { isPremium: false, receipt: null };
+    const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date());
+    return { isPremium: !!isActive, receipt: tx.receipt ?? null };
   } catch (e) {
     throw e;
   }
