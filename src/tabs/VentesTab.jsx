@@ -114,6 +114,32 @@ function SalesTicker({ lang, fmt, setTab }) {
       >
         + {lang==='fr'?'Ajouter un article':'Add an item'}
       </button>
+
+      <div style={{marginTop:16}}>
+        <div style={{fontSize:11,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
+          {lang==='fr'?'AVEC FILL & SELL':'WITH FILL & SELL'}
+        </div>
+        <div style={{fontSize:13,fontWeight:700,color:'#0D0D0D',textAlign:'center',marginBottom:10}}>
+          {lang==='fr'?'Ce que tu vas pouvoir suivre':'What you\'ll be able to track'}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
+          {[
+            {icon:'📈',label:lang==='fr'?'Marge moy.':'Avg margin',value:'~45%'},
+            {icon:'⚡',label:lang==='fr'?'Délai vente':'Sale time',value:lang==='fr'?'~4 jours':'~4 days'},
+            {icon:'🏆',label:lang==='fr'?'Meilleure vente':'Best sale',value:'ex: +420€'},
+          ].map((c,i)=>(
+            <div key={i} style={{background:'#F0FDFB',border:'1px solid rgba(13,148,136,0.18)',borderRadius:12,padding:'10px 8px',textAlign:'center'}}>
+              <div style={{fontSize:18,marginBottom:4}}>{c.icon}</div>
+              <div style={{fontSize:10,fontWeight:700,color:'#6B7280',marginBottom:4,lineHeight:1.2}}>{c.label}</div>
+              <div style={{fontSize:15,fontWeight:900,color:'#0F6E56',letterSpacing:'-0.02em',marginBottom:2}}>{c.value}</div>
+              <div style={{fontSize:9,color:'#A3A9A6',fontWeight:500}}>{lang==='fr'?'sur tes ventes':'on your sales'}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:11,color:'#A3A9A6',fontStyle:'italic',textAlign:'center'}}>
+          {lang==='fr'?'Données basées sur les revendeurs actifs 📊':'Data based on active resellers 📊'}
+        </div>
+      </div>
     </div>
   );
 }
