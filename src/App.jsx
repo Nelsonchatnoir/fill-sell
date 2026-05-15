@@ -3016,6 +3016,9 @@ export default function App({ loginOnly = false }){
   const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [showBugReport,setShowBugReport]=useState(false);
+  const [bugMessage,setBugMessage]=useState("");
+  const [bugSending,setBugSending]=useState(false);
   const [selectedRange,setSelectedRange]=useState('6M');
   const [cancelStep,setCancelStep]=useState(0);
   const [cancelLoading,setCancelLoading]=useState(false);
@@ -5350,12 +5353,11 @@ export default function App({ loginOnly = false }){
             </div>
 
             {/* Signaler un bug */}
-            <a
-              href={`mailto:support@fillsell.app?subject=${encodeURIComponent('[Bug] Fill & Sell - '+(isNative?'iOS':'Web'))}&body=${encodeURIComponent((lang==='fr'?'Décris ton bug ici...':'Describe your bug here...')+'\n\n'+(lang==='fr'?'Plateforme : ':'Platform: ')+(isNative?'iOS':'Web'))}`}
-              style={{display:"block",textAlign:"center",fontSize:12,color:"#9CA3AF",marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3}}
+            <button onClick={()=>{setShowBugReport(true);setBugMessage("");}}
+              style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:"#9CA3AF",marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
             >
               🐛 {lang==='fr'?'Signaler un bug':'Report a bug'}
-            </a>
+            </button>
           </div>
           </div>
           <style>{`
@@ -5466,6 +5468,51 @@ export default function App({ loginOnly = false }){
         setVoiceUsedToday={setVoiceUsedToday}
       />
 
+
+      {/* ── BUG REPORT MODAL ── */}
+      {showBugReport&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:10000,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowBugReport(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"24px 20px 32px",animation:"slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div style={{fontSize:16,fontWeight:800,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
+              <button onClick={()=>setShowBugReport(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:"#6B7280",flexShrink:0}}>✕</button>
+            </div>
+            <textarea
+              value={bugMessage}
+              onChange={e=>setBugMessage(e.target.value)}
+              placeholder={lang==='fr'?'Décris le problème rencontré...':'Describe the issue...'}
+              style={{width:"100%",minHeight:100,borderRadius:10,border:"1px solid #E5E7EB",padding:10,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",color:"#111827"}}
+            />
+            <button
+              onClick={async()=>{
+                if(!bugMessage.trim())return;
+                setBugSending(true);
+                try{
+                  const res=await fetch(`${supabaseUrl}/functions/v1/send-bug-report`,{
+                    method:"POST",
+                    headers:{"Content-Type":"application/json","apikey":supabaseAnonKey},
+                    body:JSON.stringify({message:bugMessage.trim(),userEmail:user?.email,platform:isNative?'iOS':'Web',userId:user?.id}),
+                  });
+                  if(!res.ok)throw new Error("send error");
+                  setShowBugReport(false);setBugMessage("");
+                  setToast({visible:true,message:lang==='fr'?'Merci ! On regarde ça rapidement 🙏':'Thanks! We\'ll look into it 🙏'});
+                  setTimeout(()=>setToast({visible:false,message:""}),4000);
+                }catch{
+                  setToast({visible:true,message:lang==='fr'?'Erreur d\'envoi, réessaie':'Send error, try again'});
+                  setTimeout(()=>setToast({visible:false,message:""}),3000);
+                }finally{setBugSending(false);}
+              }}
+              disabled={bugSending||!bugMessage.trim()}
+              style={{width:"100%",marginTop:12,padding:"13px",background:bugSending||!bugMessage.trim()?"#E5E7EB":"#1D9E75",color:bugSending||!bugMessage.trim()?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:bugSending||!bugMessage.trim()?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
+            >
+              {bugSending?"...":(lang==='fr'?'Envoyer →':'Send →')}
+            </button>
+            <button onClick={()=>setShowBugReport(false)} style={{display:"block",width:"100%",marginTop:12,background:"none",border:"none",color:"#9CA3AF",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:4}}>
+              {lang==='fr'?'Annuler':'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showUpgradeModal&&(
         <UpgradeModal

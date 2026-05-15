@@ -1,0 +1,70 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: CORS });
+  }
+
+  try {
+    const { message, userEmail, platform, userId } = await req.json();
+
+    if (!message?.trim()) {
+      return new Response(JSON.stringify({ error: "Missing message" }), {
+        status: 400, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
+    const apiKey = Deno.env.get("RESEND_API_KEY");
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "Missing Resend API key" }), {
+        status: 500, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
+    const html = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+  <h2 style="color:#1D9E75;margin-bottom:4px">🐛 Bug Report — Fill &amp; Sell</h2>
+  <p style="color:#6B7280;font-size:13px;margin-top:0">${platform} · ${new Date().toISOString()}</p>
+  <hr style="border:none;border-top:1px solid #E5E7EB;margin:16px 0"/>
+  <div style="background:#F9FAFB;border-radius:10px;padding:16px;font-size:14px;color:#111827;white-space:pre-wrap">${message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+  <hr style="border:none;border-top:1px solid #E5E7EB;margin:16px 0"/>
+  <p style="font-size:12px;color:#9CA3AF;margin:0">User: ${userEmail ?? "unknown"}</p>
+  <p style="font-size:12px;color:#9CA3AF;margin:4px 0">ID: ${userId ?? "unknown"}</p>
+  <p style="font-size:12px;color:#9CA3AF;margin:4px 0">Platform: ${platform}</p>
+</div>`;
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: "Fill & Sell <noreply@fillsell.app>",
+        to: ["support@fillsell.app"],
+        subject: `[Bug Report] ${platform} — ${userEmail ?? "unknown"}`,
+        html,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return new Response(JSON.stringify({ error: err?.message ?? "Resend error" }), {
+        status: 500, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json", ...CORS },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+});
