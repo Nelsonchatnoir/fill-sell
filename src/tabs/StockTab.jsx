@@ -531,7 +531,7 @@ const StockTab = memo(function StockTab({
                       <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
                         {lang==='fr'?'APERÇU DE TON FUTUR STOCK':'PREVIEW OF YOUR FUTURE STOCK'}
                       </div>
-                      <div style={{fontSize:14,fontWeight:500,color:"#0D0D0D",lineHeight:1.3}}>
+                      <div style={{fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.3,fontFamily:"inherit"}}>
                         {lang==='fr'?"L'IA classe tout automatiquement":"AI classifies everything automatically"}
                       </div>
                     </div>
