@@ -472,7 +472,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">✨</span><span className="premium-full">{slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'Devenir Founder':'Become Founder'):tb('unlockPremium')}</span></>}
+        {loading ? "..." : <><span className="premium-short">🔥 7j</span><span className="premium-full">{slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'🔥 7j gratuits →':'🔥 7 days free →'):(lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →')}</span></>}
       </button>
     );
   }
@@ -1264,28 +1264,6 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
         </button>
         <button className="empty-hero-secondary" onClick={onAddManual}>
           ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
-        </button>
-      </div>
-      <div style={{marginTop:'12px',borderRadius:'14px',border:'1px solid #e8e8e8',background:'#fafafa',padding:'12px 16px',fontSize:'13px',color:'#666',textAlign:'center'}}>
-        <div style={{marginBottom:'6px',fontWeight:600,color:'#333',fontSize:'13px'}}>
-          {lang==='fr'?'📋 Plan gratuit inclus':'📋 Free plan included'}
-        </div>
-        <div style={{marginBottom:'8px',lineHeight:'1.6'}}>
-          📦 {lang==='fr'?'20 articles':'20 items'} &nbsp;·&nbsp;
-          🎙️ {lang==='fr'?'5 vocaux/jour':'5 voice/day'} &nbsp;·&nbsp;
-          📸 {lang==='fr'?'3 Lens/jour':'3 Lens/day'}
-        </div>
-        {slotsRemaining!==null&&slotsRemaining>0&&(
-          <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)",marginBottom:8,display:"inline-block"}}>
-            🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie — Ensuite 12,99€`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever — Then €12.99`}
-          </div>
-        )}
-        <button onClick={onPremium} className="cta-premium">
-          {slotsRemaining!==null&&slotsRemaining>0
-            ?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois':'✨ Become a Founder · €9.99/mo')
-            :(lang==='fr'?'✨ Passer Premium · 12,99€/mois':'✨ Upgrade to Premium · €12.99/mo')
-          } &nbsp;—&nbsp;
-          {lang==='fr'?'Tout illimité · 7j gratuits':'All unlimited · 7 days free'}
         </button>
       </div>
     </div>
@@ -4764,6 +4742,8 @@ export default function App({ loginOnly = false }){
         <div className="tb-right">
           {!isPremium&&!isNative?(
             <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>setShowUpgradeModal(true)}/>
+          ):!isPremium&&isNative?(
+            <button onClick={handleIAPPurchase} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
             <div className="tb-premium">⭐ Premium</div>
           ):null}
