@@ -734,34 +734,32 @@ const LENS_PLACEHOLDERS_EN = [
 ];
 
 const VOICE_EXAMPLES_FR_RAW = [
-  { text: "J'ai acheté pour 40€ de vêtements à la brocante — un top bleu Zara taille L et un jean Levis en bon état", tag: "Ajouter",     cls: "add"   },
-  { text: "J'ai acheté un lot de 20 paquets Pokémon pour 8€ au total, état neuf",                                      tag: "Lot",         cls: "add"   },
-  { text: "J'ai vendu le jean Levis à 38€ avec 3€ de frais Vinted",                                                    tag: "Vendre",      cls: "sell"  },
-  { text: "J'ai acheté une perceuse Makita 18V avec 2 batteries état correct pour 45€ et revendue 89€",                tag: "Achat+Vente", cls: "sell"  },
-  { text: "Combien j'ai gagné ce mois-ci et quels sont mes articles les plus rentables ?",                              tag: "Stats",       cls: "query" },
-  { text: "Qu'est-ce que j'ai comme articles Nike en stock et depuis combien de temps ?",                               tag: "Stock",       cls: "query" },
-  { text: "Analyse mes profits et dis-moi sur quoi je dois me concentrer",                                             tag: "Analyse",     cls: "query" },
-  { text: "J'ai acheté un sac Kelly Hermès vert petit modèle bon état pour 180€",                                      tag: "Ajouter",     cls: "add"   },
-  { text: "J'ai vendu 5 paquets Pokémon à 12€ chacun sur Vinted avec 2€ de frais",                                     tag: "Vendre",      cls: "sell"  },
-  { text: "Combien d'articles j'ai ajouté cette semaine et combien j'en ai vendu ?",                                    tag: "Stats",       cls: "query" },
-  { text: "Range tes articles par emplacement — portant, carton, étagère",                                             tag: "Emplacement", cls: "add"   },
-  { text: "Dis 'range la veste dans le portant 2' et c'est fait",                                                      tag: "Ranger",      cls: "add"   },
-  { text: "Retrouve n'importe quel article par son emplacement en un clin d'œil",                                      tag: "Trouver",     cls: "query" },
+  { text: "J'ai acheté une veste Zara oversize taille M, noire, très bon état, 12€ au vide-grenier de Corbeil, elle est dans le sac bleu sous l'escalier", tag: "Ajouter", cls: "add"   },
+  { text: "Où j'ai rangé mon iPhone 12 ?",                                                                                                                   tag: "Stock",   cls: "query" },
+  { text: "J'ai pris un lot de 3 paires de Nike Air Max 90, pointures 42 43 et 44, 60€ le lot sur Facebook Marketplace, dans la caisse rouge du garage",    tag: "Ajouter", cls: "add"   },
+  { text: "Qu'est-ce que j'ai dans le bac H48 ?",                                                                                                            tag: "Stock",   cls: "query" },
+  { text: "J'ai chopé un sac Hermès Kelly authentique, cuir marron, légèrement usé sur les anses, 125€ en dépôt-vente, je l'ai rangé dans la vitrine du salon", tag: "Ajouter", cls: "add" },
+  { text: "J'ai vendu l'iPhone 380€ sur Vinted, expédié aujourd'hui",                                                                                        tag: "Vendre",  cls: "sell"  },
+  { text: "J'ai acheté un lot de 20 cartes Pokémon dont 2 rares holographiques, 8€ à la brocante, boîte à cartes sur le bureau",                            tag: "Ajouter", cls: "add"   },
+  { text: "Combien j'ai gagné ce mois-ci ?",                                                                                                                  tag: "Stats",   cls: "query" },
+  { text: "Le sac Hermès est parti à 420€, payé en liquide",                                                                                                  tag: "Vendre",  cls: "sell"  },
+  { text: "C'est quoi mes articles en stock depuis plus de 2 semaines ?",                                                                                     tag: "Stats",   cls: "query" },
+  { text: "J'ai vendu le lot Nike 55€ sur Leboncoin",                                                                                                         tag: "Vendre",  cls: "sell"  },
+  { text: "Quelle est ma marge moyenne sur la Mode ?",                                                                                                        tag: "Stats",   cls: "query" },
 ];
 const VOICE_EXAMPLES_EN_RAW = [
-  { text: "I bought €40 worth of clothes at a flea market — a blue Zara top size L and a Levi's jeans in good condition", tag: "Add",      cls: "add"   },
-  { text: "I bought a lot of 20 Pokémon packs for €8 total, brand new condition",                                          tag: "Lot",      cls: "add"   },
-  { text: "I sold the Levi's jeans for €38 with €3 Vinted fees",                                                           tag: "Sell",     cls: "sell"  },
-  { text: "I bought a Makita 18V drill with 2 batteries in decent condition for €45 and resold it for €89",                tag: "Buy+Sell", cls: "sell"  },
-  { text: "How much did I earn this month and what are my most profitable items?",                                          tag: "Stats",    cls: "query" },
-  { text: "What Nike items do I have in stock and how long have they been there?",                                          tag: "Stock",    cls: "query" },
-  { text: "Analyze my profits and tell me what I should focus on",                                                          tag: "Analyze",  cls: "query" },
-  { text: "I bought a small green Hermès Kelly bag in good condition for €180",                                             tag: "Add",      cls: "add"   },
-  { text: "I sold 5 Pokémon packs at €12 each on Vinted with €2 fees",                                                     tag: "Sell",     cls: "sell"  },
-  { text: "How many items did I add this week and how many did I sell?",                                                    tag: "Stats",    cls: "query" },
-  { text: "Organise your items by location — rail, box, shelf",                                                            tag: "Location", cls: "add"   },
-  { text: "Say 'move the jacket to rail 2' and it's done",                                                                 tag: "Move",     cls: "add"   },
-  { text: "Find any item by its storage location instantly",                                                                tag: "Find",     cls: "query" },
+  { text: "I bought an oversized Zara jacket size M, black, great condition, €12 at the Corbeil car boot sale, it's in the blue bag under the stairs",       tag: "Add",   cls: "add"   },
+  { text: "Where did I put my iPhone 12?",                                                                                                                     tag: "Stock", cls: "query" },
+  { text: "I grabbed a lot of 3 pairs of Nike Air Max 90, sizes 42 43 and 44, €60 the lot on Facebook Marketplace, in the red crate in the garage",          tag: "Add",   cls: "add"   },
+  { text: "What do I have in bin H48?",                                                                                                                        tag: "Stock", cls: "query" },
+  { text: "I picked up an authentic Hermès Kelly bag, brown leather, slightly worn handles, €125 at a consignment store, stored in the living room display cabinet", tag: "Add", cls: "add" },
+  { text: "I sold the iPhone for €380 on Vinted, shipped today",                                                                                              tag: "Sell",  cls: "sell"  },
+  { text: "I bought a lot of 20 Pokémon cards including 2 holographic rares, €8 at the flea market, card box on the desk",                                   tag: "Add",   cls: "add"   },
+  { text: "How much did I make this month?",                                                                                                                   tag: "Stats", cls: "query" },
+  { text: "The Hermès bag sold for €420, paid cash",                                                                                                          tag: "Sell",  cls: "sell"  },
+  { text: "Which items have been in stock for more than 2 weeks?",                                                                                             tag: "Stats", cls: "query" },
+  { text: "Sold the Nike lot for €55 on Leboncoin",                                                                                                           tag: "Sell",  cls: "sell"  },
+  { text: "What's my average margin on Fashion?",                                                                                                              tag: "Stats", cls: "query" },
 ];
 const VOICE_EXAMPLES = VOICE_EXAMPLES_FR_RAW;
 const VOICE_EXAMPLES_EN = VOICE_EXAMPLES_EN_RAW;
@@ -1246,10 +1244,19 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
         }
       </p>
       <VoiceTicker lang={lang}/>
-      <div className="voice-categories">
-        <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">➕</div><div className="lbl">{lang==='en'?'Add':'Ajouter'}</div></div>
-        <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">💰</div><div className="lbl">{lang==='en'?'Sell':'Vendre'}</div></div>
-        <div className="voice-cat" style={{cursor:"pointer"}} onClick={onAddManual}><div className="ico">🔍</div><div className="lbl">{lang==='en'?'Ask':'Demander'}</div></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,width:"100%",marginTop:4}}>
+        {[
+          {ico:"🎙️",titleFr:"Ajoute et classe ton stock",titleEn:"Add and organize your stock",descFr:"Marque, catégorie, emplacement, lieu d'achat — tout extrait de ta voix",descEn:"Brand, category, location, purchase place — all extracted from your voice"},
+          {ico:"📦",titleFr:"Retrouve n'importe quel article",titleEn:"Find any item instantly",descFr:"Où j'ai mis mon iPhone ? → réponse instantanée",descEn:"Where did I put my iPhone? → instant answer"},
+          {ico:"💰",titleFr:"Enregistre tes ventes",titleEn:"Log your sales",descFr:"Dis juste le prix et la plateforme — les profits se calculent seuls",descEn:"Just say the price and platform — profits are calculated automatically"},
+          {ico:"📊",titleFr:"Analyse tes performances",titleEn:"Analyze your performance",descFr:"Marge, délai de vente, meilleurs articles — demande, tu reçois",descEn:"Margin, sell time, best items — just ask, you'll get the answer"},
+        ].map((c,i)=>(
+          <div key={i} style={{background:"var(--background-secondary,#F6F7F7)",borderRadius:12,padding:"0.65rem 0.9rem",display:"flex",flexDirection:"column",gap:4}}>
+            <div style={{fontSize:20,lineHeight:1}}>{c.ico}</div>
+            <div style={{fontWeight:700,fontSize:12,color:"var(--text-primary,#1A1A1A)",lineHeight:1.3}}>{lang==='en'?c.titleEn:c.titleFr}</div>
+            <div style={{fontSize:11,color:"var(--text-secondary,#6B7280)",lineHeight:1.4}}>{lang==='en'?c.descEn:c.descFr}</div>
+          </div>
+        ))}
       </div>
       <div className="empty-hero-cta-stack">
         <button className="cta-premium" onClick={onTryVoice}>
