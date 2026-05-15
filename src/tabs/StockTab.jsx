@@ -45,6 +45,7 @@ const StockTab = memo(function StockTab({
   importRef, listRef, scrollRef,
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock, VoiceZone,
+  slotsRemaining, openUpgradeModal,
 }) {
   const { t, tpl } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -250,7 +251,7 @@ const StockTab = memo(function StockTab({
             </div>
           )}
           {!isPremium&&items.length>=20&&!isNative
-            ? <PremiumBanner userEmail={user?.email}/>
+            ? <PremiumBanner userEmail={user?.email} slotsRemaining={slotsRemaining} onOpenModal={openUpgradeModal}/>
             : !isPremium&&items.length>=20&&isNative
             ? null
             : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
