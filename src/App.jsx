@@ -2434,7 +2434,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     )}
                     {confDescRest&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:confLoc?4:8,fontStyle:"italic",lineHeight:1.4}}>{confDescRest}</div>}
                     {confLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:confEmplacement?4:8,lineHeight:1.4}}>📍 {confLoc}</div>}
-                    {confEmplacement&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:8,lineHeight:1.4}}>📦 {confEmplacement}</div>}
+                    {confEmplacement&&<div style={{marginBottom:8}}><span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {confEmplacement}</span></div>}
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       <input value={editNom}
                         onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
