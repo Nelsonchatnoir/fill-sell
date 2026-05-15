@@ -486,6 +486,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         onClick={onOpenModal??handleCheckout}
         label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois — 7j gratuits':'✨ Become a Founder · €9.99/mo — 7 days free'):(lang==='fr'?'✨ Passer Premium · 12,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €12.99/mo — 7 days free'))}
         disabled={loading}
+        sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
     </div>
   );
