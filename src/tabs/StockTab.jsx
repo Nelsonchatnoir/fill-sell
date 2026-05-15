@@ -498,19 +498,17 @@ const StockTab = memo(function StockTab({
               const _sbAll=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
               const marquesStockFiltreesParType=["Toutes",..._sbAll.filter(b=>b.toLowerCase()!=="sans marque"),..._sbAll.filter(b=>b.toLowerCase()==="sans marque")];
               if(marquesStockFiltreesParType.length<=1) return null;
-              const _mob=window.innerWidth<768;
               const _open=pillsExpandedStock;
-              const _collapsedH=_mob?"0":"62px";
               return(
                 <div style={{marginBottom:12}}>
-                  {!_open&&_mob&&(
+                  {!_open&&(
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarque==="Toutes"?"#fff":"#6B7280"}}>
                         {filterMarque==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(filterMarque,lang)}
                       </button>
                     </div>
                   )}
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"2000px":_collapsedH,overflow:"hidden",opacity:(_open||!_mob)?1:0,transition:"max-height 0.3s ease, opacity 0.2s ease"}}>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"2000px":"0",overflow:"hidden",opacity:_open?1:0,transition:"max-height 0.3s ease, opacity 0.2s ease"}}>
                     {marquesStockFiltreesParType.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
