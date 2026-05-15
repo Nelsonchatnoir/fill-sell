@@ -61,17 +61,22 @@ serve(async (req) => {
     });
   }
 
-  // ── Voice quota — atomic RPC (no race condition) ──────
+  // ── Voice quota — reads is_premium from DB (server-side, not from client) ──
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const today = new Date().toISOString().split("T")[0];
-  const { data: newCount, error: rpcError } = await adminClient.rpc("increment_voice_count", {
+  const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
+  const isPremiumUser = profileData?.is_premium === true;
+  const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
     p_user_id: user.id,
-    p_today: today,
+    p_feature: "voice",
+    p_is_premium: isPremiumUser,
+    p_daily_limit_free: 10,
+    p_monthly_limit_free: 50,
   });
-  if (rpcError || newCount === -1) {
-    return new Response(JSON.stringify({ error: "Daily voice limit reached" }), {
-      status: 429, headers: { "Content-Type": "application/json", ...CORS },
-    });
+  if (quotaData?.allowed === false) {
+    return new Response(
+      JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+      { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+    );
   }
 
   try {

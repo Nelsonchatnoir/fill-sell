@@ -818,6 +818,24 @@ serve(async (req) => {
     });
   }
 
+  // ── Intent quota — reads is_premium from DB (server-side, not from client) ──
+  const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
+  const isPremiumUser = profileData?.is_premium === true;
+  const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
+    p_user_id: user.id,
+    p_feature: "voice_intent",
+    p_is_premium: isPremiumUser,
+    p_daily_limit_free: 20,
+    p_monthly_limit_free: 100,
+  });
+  if (quotaData?.allowed === false) {
+    return new Response(
+      JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+      { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+    );
+  }
+
   try {
     const { text, lang, currency, items: stockItems } = await req.json();
     const _lang = lang === "en" ? "en" : "fr";

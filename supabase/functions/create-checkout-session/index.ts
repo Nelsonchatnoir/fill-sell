@@ -12,13 +12,39 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const supabaseAdmin = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+);
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }
 
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const jwt = authHeader.replace("Bearer ", "").trim();
+  if (!jwt) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+  const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
+  if (authError || !authUser) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
   try {
     const { email } = await req.json();
+
+    if (email && authUser.email && email !== authUser.email) {
+      return new Response(JSON.stringify({ error: "Email mismatch" }), {
+        status: 403, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+    const verifiedEmail = authUser.email ?? email;
 
     // Determine plan type based on founder slots availability
     const supabase = createClient(
@@ -42,7 +68,7 @@ serve(async (req) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("stripe_customer_id")
-      .eq("email", email)
+      .eq("email", verifiedEmail)
       .single();
     const existingCustomerId = profile?.stripe_customer_id ?? null;
 
@@ -57,7 +83,7 @@ serve(async (req) => {
             subscription_data: { metadata: { plan_type: planType } },
           }
         : {
-            customer_email: email || undefined,
+            customer_email: verifiedEmail || undefined,
             subscription_data: { trial_period_days: 7, metadata: { plan_type: planType } },
           }
       ),
