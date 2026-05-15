@@ -3,7 +3,7 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://fillsell.app",
   "Access-Control-Allow-Headers": "authorization, content-type, apikey",
 };
 
@@ -24,27 +24,9 @@ serve(async (req) => {
   }
 
   try {
-    // Extrait le JWT user depuis le header Authorization
     const authHeader = req.headers.get("Authorization") ?? "";
     const jwt = authHeader.replace("Bearer ", "").trim();
-
-    if (!jwt) {
-      return new Response(JSON.stringify({ error: "JWT manquant" }), {
-        status: 401,
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
-    }
-
-    // Vérifie le JWT et récupère l'user via le client admin (fiable, bypass RLS)
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
-
-    if (authError || !user) {
-      console.error("[cancel-subscription] JWT invalide:", authError?.message);
-      return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
-        status: 401,
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
-    }
+    const { data: { user } } = await supabaseAdmin.auth.getUser(jwt);
 
     console.log("[cancel-subscription] User OK:", user.id);
 
