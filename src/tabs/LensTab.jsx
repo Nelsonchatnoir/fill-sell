@@ -197,11 +197,12 @@ const LensTab = memo(function LensTab({
 
       {/* ── Header ── */}
       <div style={{paddingTop:4}}>
-        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",marginBottom:4}}>Fill &amp; Sell Lens 📸</div>
-        <div style={{fontSize:13,color:"#6B7280",fontWeight:600,lineHeight:1.5}}>
-          {lang==="en"
-            ?"Take a photo of an item — AI analyzes the price and tells you if it's a good deal"
-            :"Prends en photo un article, l'IA analyse le prix et te dit si c'est un bon deal"}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+          <div style={{fontSize:28,fontWeight:700,color:"#0D0D0D"}}>Lens</div>
+          <span style={{background:"#0D9488",color:"#fff",borderRadius:99,padding:"4px 10px",fontSize:11,fontWeight:800,letterSpacing:"0.03em"}}>IA</span>
+        </div>
+        <div style={{fontSize:14,color:"#6B7280",fontWeight:500,lineHeight:1.5}}>
+          {lang==="en"?"The AI that analyses if it's a good deal":"L'IA qui analyse si c'est un bon deal"}
         </div>
         {userCountry&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>📍 {userCountry.name}</div>}
       </div>
@@ -389,7 +390,7 @@ const LensTab = memo(function LensTab({
         )}
       </div>
 
-      {!lensPhotos.length&&!lensResult&&(
+      {!lensResult&&(
         <LensTicker lang={lang} onScan={()=>lensFileRef.current?.click()}/>
       )}
       {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}

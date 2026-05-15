@@ -136,9 +136,6 @@ function SalesTicker({ lang, fmt, setTab }) {
             </div>
           ))}
         </div>
-        <div style={{fontSize:11,color:'#A3A9A6',fontStyle:'italic',textAlign:'center'}}>
-          {lang==='fr'?'Données basées sur les revendeurs actifs 📊':'Data based on active resellers 📊'}
-        </div>
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ function getPlatforms(countryCode: string | null, lang: string): string {
   return "Vinted, eBay, Leboncoin, Facebook Marketplace";
 }
 
-function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
+function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number, isPremium: boolean): string {
   const multiNote = photoCount > 1
     ? (lang === "en"
         ? ` You have ${photoCount} photos of the same item — cross-reference them.`
@@ -54,6 +54,17 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
   const schema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","notes":string}`;
 
   if (lang === "en") {
+    if (!isPremium) {
+      return `You are an expert in secondhand resale (${platforms}).${multiNote}
+Analyze the item visually and return ONLY valid JSON (no markdown, no explanation):
+${schema}
+${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
+
+PROCESS:
+1. BRAND: Identify the brand from visible logos, labels or style cues. If uncertain, set marque to null.
+2. PRICE: Estimate the resale price range based on your training knowledge of this item type and brand. Set confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
+3. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. If purchase price provided: use it to compute verdict. notes: one actionable selling tip.`;
+    }
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
 ${schema}
@@ -63,6 +74,17 @@ MANDATORY PROCESS — follow in order:
 1. BRAND VALIDATION: If you detect a brand visually, you MUST do a web search to confirm the exact spelling and that the brand exists (e.g. visual "pict pure clothing" → search → "Picture Organic Clothing"). Never return a brand without web search confirmation. If no brand found or confirmed, set marque to null.
 2. PRICE ESTIMATION: Always base the price range on a real web search. Query: "[brand] [item type] Vinted price" or "[brand] [item type] site:vinted.com". If no Vinted results, try eBay. Set fourchette_min/fourchette_max from actual listings found. Mention the source in notes (e.g. "Price based on 5 Vinted listings"). If no market data found: set confiance="basse" and state it in notes.
 3. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand/model confirmed by search + prices found, "moyenne" if partial, "basse" if uncertain or no data. If purchase price provided: use it to compute verdict. notes: source of price estimate + one actionable selling tip.`;
+  }
+  if (!isPremium) {
+    return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
+Analyse l'article visuellement et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
+${schema}
+${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
+
+PROCESSUS :
+1. MARQUE : Identifie la marque à partir des logos, étiquettes ou indices visuels visibles. Si incertain, mettre marque à null.
+2. PRIX : Estime la fourchette de prix de revente à partir de ta connaissance de ce type d'article et de cette marque. Mettre confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
+3. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. Si prix d'achat fourni : l'utiliser pour calculer le verdict. notes : un conseil concret pour vendre plus vite.`;
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
@@ -185,7 +207,7 @@ serve(async (req) => {
     const countryCode = userCountry?.code ?? null;
     const countryName = userCountry?.name ?? null;
     const platforms = getPlatforms(countryCode, _lang);
-    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length);
+    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length, isPremium);
 
     const textParts: string[] = [];
     if (description) textParts.push(_lang === "en" ? `Details: ${description}` : `Détails : ${description}`);
