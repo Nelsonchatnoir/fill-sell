@@ -1,10 +1,122 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN, parseLocDesc,
 } from '../utils/shared';
+
+const TICKER_SALES = [
+  { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       sell:42,   margin:27,  marginPct:64 },
+  { title:'iPhone 12 Pro 128Go', marque:'Apple',   type:'High-Tech',  sell:380,  margin:100, marginPct:26 },
+  { title:'Sac Kelly Hermès',    marque:'Hermès',  type:'Luxe',       sell:1240, margin:420, marginPct:34 },
+  { title:'Lot Pokémon x20',     marque:'Pokémon', type:'Collection', sell:95,   margin:90,  marginPct:95 },
+  { title:'Guitare Yamaha F310', marque:'Yamaha',  type:'Musique',    sell:120,  margin:55,  marginPct:46 },
+];
+
+function SalesTicker({ lang, fmt, setTab }) {
+  const [idx, setIdx]           = useState(0);
+  const [visible, setVisible]   = useState(true);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    let raf;
+    let timeout = null;
+    let startTs = null;
+    let cancelled = false;
+    const DURATION = 3200;
+
+    function tick(ts) {
+      if (cancelled) return;
+      if (!startTs) startTs = ts;
+      const p = Math.min((ts - startTs) / DURATION, 1);
+      setProgress(p);
+      if (p < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        setVisible(false);
+        timeout = setTimeout(() => {
+          if (cancelled) return;
+          setIdx(i => (i + 1) % TICKER_SALES.length);
+          setProgress(0);
+          setVisible(true);
+        }, 450);
+      }
+    }
+
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [idx]);
+
+  const s  = TICKER_SALES[idx];
+  const ts = getTypeStyle(s.type);
+  const mc = getMargeColor(s.marginPct);
+
+  return (
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:11,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
+        {lang==='fr'?'APERÇU — À QUOI ÇA RESSEMBLE':'PREVIEW — WHAT IT LOOKS LIKE'}
+      </div>
+
+      <div style={{background:'#fff',borderRadius:12,border:'1px solid rgba(0,0,0,0.06)',borderLeft:`3px solid ${ts.border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.04)',overflow:'hidden',marginBottom:10}}>
+        <div style={{padding:'12px 14px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease,transform 0.45s ease'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:4}}>
+                {s.title}
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                <span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>
+                  {marqueLabel(s.marque,lang)}
+                </span>
+                <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>
+                  {ts.emoji} {typeLabel(s.type,lang)}
+                </span>
+              </div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D'}}>{fmt(s.sell)}</div>
+              <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>+{fmt(s.margin)}</div>
+            </div>
+          </div>
+          <div style={{marginTop:10,height:2,background:'#F3F4F6',borderRadius:2,overflow:'hidden'}}>
+            <div style={{height:'100%',background:ts.border,width:`${progress*100}%`}}/>
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:18}}>
+        {TICKER_SALES.map((sale,i)=>{
+          const dts=getTypeStyle(sale.type);
+          return <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?dts.border:'#E5E7EB',transition:'background 0.3s ease'}}/>;
+        })}
+      </div>
+
+      <div style={{textAlign:'center',marginBottom:16}}>
+        <div style={{fontSize:18,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
+          {lang==='fr'?"Tes profits t'attendent":"Your profits are waiting"}
+        </div>
+        <div style={{fontSize:13,color:'#A3A9A6',fontWeight:500,lineHeight:1.5,maxWidth:240,margin:'0 auto'}}>
+          {lang==='fr'?'Enregistre tes achats et ventes pour voir tes gains en temps réel.':'Log your buys and sells to track your profits in real time.'}
+        </div>
+      </div>
+
+      <button
+        onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
+        style={{width:'100%',padding:'14px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 4px 14px rgba(15,110,86,0.3)'}}
+        onMouseDown={e=>e.currentTarget.style.transform='scale(0.97)'}
+        onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
+        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
+      >
+        + {lang==='fr'?'Ajouter un article':'Add an item'}
+      </button>
+    </div>
+  );
+}
 
 const VentesTab = memo(function VentesTab({
   lang, currency, isPremium, isNative, user,
@@ -51,48 +163,7 @@ const VentesTab = memo(function VentesTab({
 
       {sales.length===0?(
         <div>
-          <div className="card" style={{padding:"48px 28px",textAlign:"center",marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
-            <span style={{fontSize:40}}>💸</span>
-            <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em"}}>{t('premiereVente')}</div>
-            <div style={{fontSize:13,fontWeight:700,color:"#A3A9A6",maxWidth:200,lineHeight:1.5}}>{t('profitsApparaitront')}</div>
-          </div>
-          {!isPremium&&(
-            <div style={{marginBottom:12}}>
-              <div style={{textAlign:"center",marginBottom:10}}>
-                <span style={{background:"rgba(13,148,136,0.10)",color:"#0F6E56",borderRadius:99,padding:"5px 14px",fontSize:12,fontWeight:800,border:"1px solid rgba(13,148,136,0.20)"}}>
-                  👀 {lang==='fr'?"Aperçu · Tes ventes apparaîtront ici":"Preview · Your sales will appear here"}
-                </span>
-              </div>
-              <div style={{opacity:0.4,filter:"blur(1.5px)",pointerEvents:"none",userSelect:"none",display:"flex",flexDirection:"column",gap:8}}>
-                {[
-                  {title:"Veste Levi's vintage",marque:"Levi's",type:"Mode",buy:15,sell:42,margin:27,daysAgo:2},
-                  {title:"iPhone 12 Pro 128Go",marque:"Apple",type:"High-Tech",buy:280,sell:380,margin:100,daysAgo:5},
-                  {title:"Sac Hermès Kelly",marque:"Hermès",type:"Luxe",buy:820,sell:1240,margin:420,daysAgo:7},
-                ].map((fs,fi)=>{
-                  const _fd=new Date(Date.now()-fs.daysAgo*86400000);
-                  const _fts=getTypeStyle(fs.type);
-                  const _fmc=getMargeColor((fs.margin/fs.sell)*100);
-                  const _fmonths=lang==='en'?MONTHS_EN:MONTHS_FR;
-                  return(
-                    <div key={fi} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${getCatBorder(fs.type)}`,display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fs.title}</div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
-                          <span style={{fontSize:11,color:"#A3A9A6"}}>{_fd.getDate()} {_fmonths[_fd.getMonth()]} {_fd.getFullYear()}</span>
-                          <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{fs.marque}</span>
-                          <span style={{background:_fts.bg,color:_fts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${_fts.border}`}}>{_fts.emoji} {typeLabel(fs.type,lang)}</span>
-                        </div>
-                      </div>
-                      <div style={{textAlign:"right",flexShrink:0}}>
-                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(fs.sell)}</div>
-                        <div style={{fontWeight:800,fontSize:13,color:_fmc,marginTop:1}}>+{fmt(fs.margin)}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <SalesTicker lang={lang} fmt={fmt} setTab={setTab}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
         </div>
