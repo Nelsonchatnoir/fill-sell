@@ -58,7 +58,7 @@ const DashboardTab = memo(function DashboardTab({
   tm, salesForKpis, totalM,
   selectedRange, setSelectedRange,
   delSale, resetStep, setResetStep, handleReset,
-  fabTriggerRef, triggerCheckout, handleIAPPurchase, setTab,
+  fabTriggerRef, triggerCheckout, handleIAPPurchase, openUpgradeModal, setTab,
   EmptyStateDashboard,
 }) {
   const { t, tpl } = useTranslation(lang);
@@ -128,9 +128,9 @@ const DashboardTab = memo(function DashboardTab({
         </div>
       )}
       {!isNative&&!isPremium&&!loading&&items.length>=18&&(
-        <div onClick={()=>{triggerCheckout();}} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
+        <div onClick={()=>openUpgradeModal()} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
           <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lang==='en'?`⚠️ Only ${20-items.length} item${20-items.length>1?"s":""} left on your free plan`:`⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} disponible${20-items.length>1?"s":""}`}</div>
-          <button onClick={e=>{e.stopPropagation();triggerCheckout();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
+          <button onClick={e=>{e.stopPropagation();openUpgradeModal();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
         </div>
       )}
       {loading?(
@@ -141,7 +141,7 @@ const DashboardTab = memo(function DashboardTab({
             lang={lang}
             onTryVoice={()=>fabTriggerRef.current?.()}
             onAddManual={()=>{setTab(1); localStorage.setItem('tab',1);}}
-            onPremium={()=>isNative?handleIAPPurchase():triggerCheckout()}
+            onPremium={()=>isNative?handleIAPPurchase():openUpgradeModal()}
           />
         </div>
       ):(

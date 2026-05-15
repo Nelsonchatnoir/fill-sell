@@ -431,7 +431,7 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
-function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', slotsRemaining=null }){
+function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', slotsRemaining=null, onOpenModal=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
   const { t: tb } = useTranslation(lang);
@@ -467,7 +467,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
     const col=onDark?"#fff":"#fff";
     const brd=onDark?"1px solid rgba(255,255,255,0.4)":"none";
     return(
-      <button onClick={handleCheckout} disabled={loading}
+      <button onClick={onOpenModal??handleCheckout} disabled={loading}
         style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
@@ -486,7 +486,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
           : <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}</div>
       }
       <CtaPremium
-        onClick={handleCheckout}
+        onClick={onOpenModal??handleCheckout}
         label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'Devenir Founder · 9,99€/mois':'Become a Founder · €9.99/month'):(lang==='fr'?'Passer Premium · 12,99€/mois':'Upgrade to Premium · €12.99/month'))}
         disabled={loading}
         sub={slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.'):(lang==='fr'?'puis 12,99€/mois · Sans engagement.':'then €12.99/month · No commitment.')}
@@ -1287,6 +1287,107 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
           } &nbsp;—&nbsp;
           {lang==='fr'?'Tout illimité · 7j gratuits':'All unlimited · 7 days free'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
+  const isFounder = slotsRemaining !== null && slotsRemaining > 0;
+  const FREE_F  = lang==='en'
+    ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only','Deal Score · 10/day']
+    : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement','Deal Score · 10/jour'];
+  const PREM_F = lang==='en'
+    ? ['Unlimited stock','🎙️ Unlimited AI voice','📸 Lens Pro · 5/day · live market price','Unlimited Deal Score','Advanced AI-powered stats','Import / Export Excel','Priority support']
+    : ['Stock illimité','🎙️ IA vocale illimitée','📸 Lens Pro · 5/jour · prix marché en direct','Deal Score illimité','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:10000,display:'flex',alignItems:'flex-end'}} onClick={onClose}>
+      <style>{`@keyframes slideUpModal{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxHeight:'90vh',overflowY:'auto',animation:'slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)',WebkitOverflowScrolling:'touch'}}>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 20px 14px',borderBottom:'1px solid rgba(0,0,0,0.07)',position:'sticky',top:0,background:'#fff',zIndex:1}}>
+          <div style={{fontSize:18,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',fontFamily:'inherit'}}>
+            {lang==='en'?'Level up':'Passe au niveau supérieur'}
+          </div>
+          <button onClick={onClose} style={{background:'#F3F4F6',border:'none',borderRadius:99,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,cursor:'pointer',color:'#6B7280',flexShrink:0}}>✕</button>
+        </div>
+        {/* Cards */}
+        <div style={{padding:'16px 16px 0'}}>
+          {isFounder&&(
+            <div style={{background:'rgba(229,62,62,0.06)',border:'1px solid rgba(229,62,62,0.2)',borderRadius:10,padding:'8px 12px',textAlign:'center',marginBottom:12,fontSize:12,fontWeight:800,color:'#C53030'}}>
+              🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie`:`Only ${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever`}
+            </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            {/* Free */}
+            <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.1)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0}}>
+              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'#1D9E75',marginBottom:6}}>
+                {lang==='en'?'Free':'Gratuit'}
+              </div>
+              <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#0D0D0D',marginBottom:6,fontFamily:'inherit'}}>
+                {lang==='en'?'To get started':'Pour démarrer'}
+              </div>
+              <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
+                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#0D0D0D',fontFamily:'inherit'}}>0 €</span>
+                <span style={{fontSize:11,fontWeight:700,color:'#9CA3AF'}}>{lang==='en'?'/ forever':'/ toujours'}</span>
+              </div>
+              <div style={{fontSize:11,fontWeight:600,color:'#6B7280',marginBottom:12,lineHeight:1.4}}>
+                {lang==='en'?'Everything to track your first sales.':'Tout pour suivre tes premières ventes.'}
+              </div>
+              <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
+                {FREE_F.map((f,i)=>(
+                  <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'#374151'}}>
+                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(29,158,117,0.12)',color:'#1D9E75',fontSize:9,fontWeight:900,marginTop:1}}>✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Premium/Founder */}
+            <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0,position:'relative',overflow:'hidden',color:'#fff'}}>
+              <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.18),transparent 55%)',borderRadius:16,pointerEvents:'none'}}/>
+              <div style={{position:'absolute',top:-1,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:800,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
+                {isFounder?`🔥 ${lang==='fr'?'Prix Founder':'Founder Price'}`:(lang==='en'?'⭐ Most popular':'⭐ Le plus populaire')}
+              </div>
+              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:14}}>Premium</div>
+              <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
+                {lang==='en'?'To go further':'Pour aller plus loin'}
+              </div>
+              <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
+                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'12,99 €'}</span>
+                <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
+              </div>
+              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:800,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
+                🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits · Sans CB'}
+              </div>
+              {isFounder&&(
+                <div style={{fontSize:10,fontWeight:700,background:'rgba(255,255,255,0.15)',borderRadius:6,padding:'4px 8px',textAlign:'center',marginBottom:10,color:'rgba(255,255,255,0.9)'}}>
+                  {lang==='fr'?'Ensuite 12,99 €/mois pour les nouveaux':'Then €12.99/month for new subscribers'}
+                </div>
+              )}
+              <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
+                {PREM_F.map((f,i)=>(
+                  <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'rgba(255,255,255,0.95)'}}>
+                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(255,255,255,0.25)',color:'#fff',fontSize:9,fontWeight:900,marginTop:1}}>✓</span>
+                    {i<4?<strong>{f}</strong>:f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+        {/* Footer */}
+        <div style={{padding:'16px 16px',display:'flex',flexDirection:'column',gap:10}}>
+          <button onClick={onCheckout} style={{width:'100%',padding:'15px',background:isFounder?'linear-gradient(135deg,#E53E3E,#F97316)':'#1D9E75',color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit',boxShadow:isFounder?'0 4px 16px rgba(229,62,62,0.35)':'0 4px 14px rgba(29,158,117,0.3)',letterSpacing:'-0.01em'}}>
+            {isFounder
+              ?(lang==='en'?'✨ Become a Founder · €9.99/mo — 7 days free':'✨ Devenir Founder · 9,99€/mois — 7j gratuits')
+              :(lang==='en'?'✨ Upgrade to Premium · €12.99/mo — 7 days free':'✨ Passer Premium · 12,99€/mois — 7j gratuits')
+            }
+          </button>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'#9CA3AF',fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
+            {lang==='en'?'Continue for free':'Continuer en gratuit'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2926,6 +3027,7 @@ export default function App({ loginOnly = false }){
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
   const [slotsRemaining,setSlotsRemaining]=useState(null);
+  const [showUpgradeModal,setShowUpgradeModal]=useState(false);
   const [aiCache,setAiCache]=useState({});
   const [iapProduct,setIapProduct]=useState(null);
   const [iapLoading,setIapLoading]=useState(false);
@@ -3312,7 +3414,7 @@ export default function App({ loginOnly = false }){
   const avgM=totalR>0?(totalM/totalR)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
-  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
+  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining} onOpenModal={()=>setShowUpgradeModal(true)}/>;return C;},[slotsRemaining]);
   const BoundEmptyState=useMemo(()=>{const C=(props)=><EmptyStateDashboard {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
   function searchMatch(item,query){
     if(!query.trim())return true;
@@ -4658,7 +4760,7 @@ export default function App({ loginOnly = false }){
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining}/>
+            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>setShowUpgradeModal(true)}/>
           ):isPremium?(
             <div className="tb-premium">⭐ Premium</div>
           ):null}
@@ -4699,6 +4801,7 @@ export default function App({ loginOnly = false }){
             resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
             triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
+            openUpgradeModal={()=>setShowUpgradeModal(true)}
             setTab={setTab}
             EmptyStateDashboard={BoundEmptyState}
           />
@@ -5370,6 +5473,14 @@ export default function App({ loginOnly = false }){
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
       />
+      {showUpgradeModal&&(
+        <UpgradeModal
+          lang={lang}
+          slotsRemaining={slotsRemaining}
+          onClose={()=>setShowUpgradeModal(false)}
+          onCheckout={()=>{setShowUpgradeModal(false);isNative?handleIAPPurchase():triggerCheckout();}}
+        />
+      )}
       {showCurrencyOnboarding&&(
         <CurrencyOnboardingModal lang={lang} onConfirm={async(code)=>{
           await saveCurrency(code);
