@@ -2230,6 +2230,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           <span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>
                             {lang==="en"?"Direct sale":"Vente directe"}
                           </span>
+                          {taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{taskData.marque}</span>}
                           {dmTs&&dmCat!=="Autre"&&<span style={{background:dmTs.bg,color:dmTs.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${dmTs.border}`}}>{dmTs.emoji} {typeLabel(dmCat,lang)}</span>}
                         </div>
                         {dmDescRest&&<div style={{fontSize:12,color:"#4B5563",fontWeight:500,fontStyle:"italic",lineHeight:1.4,marginBottom:dmLoc?3:0}}>{dmDescRest}</div>}
