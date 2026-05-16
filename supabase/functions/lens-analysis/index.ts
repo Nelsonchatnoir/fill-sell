@@ -64,7 +64,14 @@ PROCESS:
 2. PRICE: Estimate resale price range based on your training knowledge. confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
 3. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 4. PURCHASE PRICE EXTRACTION: Read the user's text carefully. If they mention a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price mentioned, set prix_achat_reel to null.
-5. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. If prix_achat_reel is not null: use it to compute verdict/margin. prix_achat_suggere: your market estimate of what to pay — set to null if prix_achat_reel is not null. notes: one actionable selling tip.`;
+5. RULES:
+   MARGIN CALCULATION (strict priority):
+   - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score.
+   - If prix_achat_reel is null: margin = prix_vente_suggere − prix_achat_suggere.
+   VERDICT (margin-only, no exceptions): verdict="excellent" if margin>40% of prix_vente_suggere, "bon" if>20%, "moyen" if>0%, "eviter" if margin≤0.
+   CRITICAL: if prix_achat_reel is known and margin is negative or zero → verdict MUST be "eviter". Strong brand and high demand are secondary factors — they NEVER override a negative real margin.
+   SCORE (0–10, reflects real profitability): negative margin → 0–3; margin 0–20% → 4–5; margin 20–40% → 6–7; margin >40% → 8–10. Adjust ±1 for demand/ease, but NEVER above 4 if real margin is negative.
+   prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: one actionable selling tip.`;
     }
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
@@ -78,7 +85,15 @@ MANDATORY PROCESS — follow in order:
 4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
 5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 6. PURCHASE PRICE EXTRACTION: Read the user's text carefully. If they mention a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price mentioned, set prix_achat_reel to null.
-7. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand confirmed + prices found, "moyenne" if partial, "basse" if uncertain. If prix_achat_reel is not null: use ONLY for verdict/margin — NEVER anchor prix_vente_suggere on it (market data only). prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: price source + one actionable tip.`;
+7. RULES:
+   MARGIN CALCULATION (strict priority):
+   - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score. NEVER anchor prix_vente_suggere on it (market data only).
+   - If prix_achat_reel is null: margin = prix_vente_suggere − prix_achat_suggere.
+   VERDICT (margin-only, no exceptions): verdict="excellent" if margin>40% of prix_vente_suggere, "bon" if>20%, "moyen" if>0%, "eviter" if margin≤0.
+   CRITICAL: if prix_achat_reel is known and margin is negative or zero → verdict MUST be "eviter". Strong brand and high demand are secondary factors — they NEVER override a negative real margin.
+   SCORE (0–10, reflects real profitability): negative margin → 0–3; margin 0–20% → 4–5; margin 20–40% → 6–7; margin >40% → 8–10. Adjust ±1 for demand/ease, but NEVER above 4 if real margin is negative.
+   confiance="haute" if brand confirmed + prices found, "moyenne" if partial, "basse" if uncertain.
+   prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: price source + one actionable tip.`;
   }
   if (!isPremium) {
     return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
@@ -91,7 +106,14 @@ PROCESSUS :
 2. PRIX : Estime la fourchette de prix de revente d'après ta connaissance du type d'article et de la marque. confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
 3. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 4. EXTRACTION PRIX D'ACHAT : Lis attentivement le texte de l'utilisateur. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
-5. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. Si prix_achat_reel n'est pas null : utiliser pour calculer le verdict/marge. prix_achat_suggere : ton estimation marché de ce que vaut l'article à l'achat — mettre à null si prix_achat_reel n'est pas null. notes : un conseil concret pour vendre plus vite.`;
+5. RÈGLES :
+   CALCUL DE MARGE (priorité stricte) :
+   - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score.
+   - Si prix_achat_reel est null : marge = prix_vente_suggere − prix_achat_suggere.
+   VERDICT (basé uniquement sur la marge, sans exception) : verdict="excellent" si marge>40% du prix_vente_suggere, "bon" si>20%, "moyen" si>0%, "eviter" si marge≤0.
+   CRITIQUE : si prix_achat_reel est connu et que la marge est négative ou nulle → verdict DOIT être "eviter". La marque forte et la demande sont des facteurs secondaires — ils ne peuvent JAMAIS contredire une marge réelle négative.
+   SCORE (0 à 10, reflète la rentabilité réelle) : marge négative → 0-3 ; marge 0-20% → 4-5 ; marge 20-40% → 6-7 ; marge >40% → 8-10. Ajuster ±1 selon demande/facilité, jamais au-dessus de 4 si marge réelle négative.
+   prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : un conseil concret pour vendre plus vite.`;
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
@@ -105,7 +127,15 @@ PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
 4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
 5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 6. EXTRACTION PRIX D'ACHAT : Lis attentivement le texte de l'utilisateur. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
-7. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. confiance="haute" si marque confirmée ET prix trouvés, "moyenne" si partiel, "basse" si incertain. Si prix_achat_reel n'est pas null : utiliser UNIQUEMENT pour calculer la marge et le verdict — NE JAMAIS l'utiliser pour fixer prix_vente_suggere (toujours basé sur les données marché). prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
+7. RÈGLES :
+   CALCUL DE MARGE (priorité stricte) :
+   - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score — NE JAMAIS l'utiliser pour fixer prix_vente_suggere (toujours basé sur les données marché).
+   - Si prix_achat_reel est null : marge = prix_vente_suggere − prix_achat_suggere.
+   VERDICT (basé uniquement sur la marge, sans exception) : verdict="excellent" si marge>40% du prix_vente_suggere, "bon" si>20%, "moyen" si>0%, "eviter" si marge≤0.
+   CRITIQUE : si prix_achat_reel est connu et que la marge est négative ou nulle → verdict DOIT être "eviter". La marque forte et la demande sont des facteurs secondaires — ils ne peuvent JAMAIS contredire une marge réelle négative.
+   SCORE (0 à 10, reflète la rentabilité réelle) : marge négative → 0-3 ; marge 0-20% → 4-5 ; marge 20-40% → 6-7 ; marge >40% → 8-10. Ajuster ±1 selon demande/facilité, jamais au-dessus de 4 si marge réelle négative.
+   confiance="haute" si marque confirmée ET prix trouvés, "moyenne" si partiel, "basse" si incertain.
+   prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
 }
 
 async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
