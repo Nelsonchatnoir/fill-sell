@@ -490,7 +490,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
       if(error) throw new Error(error);
       window.location.href = url;
     } catch(e) {
-      alert("Erreur : " + e.message);
+      alert(lang==='en'?`Error: ${e.message}`:`Erreur : ${e.message}`);
       setLoading(false);
     }
   }
@@ -4306,19 +4306,20 @@ export default function App({ loginOnly = false }){
     if(!email){setForgotMsg(_lt==='en'?"Enter your email above.":"Saisis ton email ci-dessus.");return;}
     setForgotMsg("");
     const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://fillsell.app/reset-password"});
-    if(error){setForgotMsg("Erreur : "+error.message);return;}
-    setForgotMsg("📧 Email envoyé ! Vérifie ta boîte mail.");
+    if(error){setForgotMsg(_lt==='en'?`Error: ${error.message}`:`Erreur : ${error.message}`);return;}
+    setForgotMsg(_lt==='en'?"📧 Email sent! Check your inbox.":"📧 Email envoyé ! Vérifie ta boîte mail.");
   }
 
   async function handleSignup(){
     const emailVal=emailRef.current?.value;
     const passwordVal=passwordRef.current?.value;
-    if(!emailVal||!passwordVal){alert("Remplis email et mot de passe");return;}
+    const _slt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
+    if(!emailVal||!passwordVal){alert(_slt==='en'?"Fill in your email and password":"Remplis email et mot de passe");return;}
     const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
     if(error){alert(error.message);return;}
     track('sign_up', { method: 'email' });
     if(data?.session) navigate("/app");
-    else alert("Vérifie ton email pour confirmer ton compte !");
+    else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
   }
 
   async function handleLogout(){
@@ -4347,7 +4348,7 @@ export default function App({ loginOnly = false }){
           },
         }
       );
-      if(!res.ok){ const e=await res.json(); throw new Error(e.error||"Erreur suppression compte"); }
+      if(!res.ok){ const e=await res.json(); throw new Error(e.error||(lang==='en'?"Account deletion error":"Erreur suppression compte")); }
       await supabase.auth.signOut();
       setUser(null);setSales([]);setItems([]);
       navigate("/");

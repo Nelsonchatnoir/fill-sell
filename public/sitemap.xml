@@ -3,11 +3,11 @@
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://fillsell.app</loc>
+    <lastmod>2026-05-16</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="fr" href="https://fillsell.app"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://fillsell.app"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://fillsell.app"/>
-    <lastmod>2026-05-14</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
   </url>
 </urlset>

@@ -48,12 +48,12 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Fill &amp; Sell utilise le microphone pour la saisie vocale de votre stock et vos ventes.</string>
+	<string>Fill &amp; Sell uses the microphone for voice input of your stock and sales. / Fill &amp; Sell utilise le microphone pour la saisie vocale de votre stock et vos ventes.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Fill &amp; Sell utilise la caméra pour analyser vos articles avec la fonction Lens.</string>
+	<string>Fill &amp; Sell uses the camera to analyse your items with the Lens feature. / Fill &amp; Sell utilise la caméra pour analyser vos articles avec la fonction Lens.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Fill &amp; Sell accède à votre galerie pour analyser vos photos d'articles avec la fonction Lens.</string>
+	<string>Fill &amp; Sell accesses your gallery to analyse item photos with the Lens feature. / Fill &amp; Sell accède à votre galerie pour analyser vos photos d'articles avec la fonction Lens.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Fill &amp; Sell peut enregistrer des photos de vos articles dans votre galerie.</string>
+	<string>Fill &amp; Sell may save item photos to your gallery. / Fill &amp; Sell peut enregistrer des photos de vos articles dans votre galerie.</string>
 </dict>
 </plist>
