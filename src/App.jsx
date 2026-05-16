@@ -2373,6 +2373,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const mgU=pv-buyU-sf;
                 const mgpU=pv>0?(mgU/pv)*100:0;
                 const ts=found?getTypeStyle(found.type):null;
+                const dCat=!found?(taskData?.categorie||taskData?.type||null):null;
+                const dTs=dCat&&dCat!=="Autre"?getTypeStyle(dCat):null;
                 const daysInStock=found&&(found.date_ajout||found.date)?Math.floor((Date.now()-new Date(found.date_ajout||found.date).getTime())/(1000*60*60*24)):null;
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
@@ -2383,7 +2385,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
                         {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
                         {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
-                        {!found&&(()=>{const dCat=taskData?.categorie||taskData?.type||null;const dTs=dCat&&dCat!=="Autre"?getTypeStyle(dCat):null;return dTs?<span style={{background:dTs.bg,color:dTs.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${dTs.border}`}}>{dTs.emoji} {typeLabel(dCat,lang)}</span>:null;})()}
+                        {dTs&&dCat!=="Autre"&&<span style={{background:dTs.bg,color:dTs.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${dTs.border}`}}>{dTs.emoji} {typeLabel(dCat,lang)}</span>}
                         {daysInStock!==null&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:600}}>{daysInStock}j en stock</span>}
                       </div>
                     </div>
