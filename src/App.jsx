@@ -2408,7 +2408,13 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     {/* Boutons */}
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
-                        if(!found){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
+                        if(!found){
+                          const dmCatN=taskData?.categorie||taskData?.type||null;
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente})
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                          return;
+                        }
                         actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv)
                           .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                           .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
