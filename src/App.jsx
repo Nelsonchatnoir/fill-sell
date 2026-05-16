@@ -4966,7 +4966,7 @@ export default function App({ loginOnly = false }){
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
         <div style={{display:tab===4?'block':'none'}}>
-          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user} aiCache={aiCache} setAiCache={setAiCache} setTab={setTab}/>
+          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user} aiCache={aiCache} setAiCache={setAiCache} setTab={setTab} isActive={tab===4}/>
         </div>
       </div>
 

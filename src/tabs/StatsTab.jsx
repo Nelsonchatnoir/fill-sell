@@ -170,11 +170,13 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{},setTab=()=>{}}){
+const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{},setTab=()=>{},isActive=true}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
   const [aiText,setAiText]=useState('');
   const [aiLoading,setAiLoading]=useState(false);
+  const [outdated,setOutdated]=useState(false);
+  const [refreshKey,setRefreshKey]=useState(0);
 
   const now=new Date();
   const cutoff=useMemo(()=>{
@@ -287,11 +289,19 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     const memEntry=aiCache[cacheKey];
     if(memEntry&&memEntry.hash===dataHash&&memEntry.result){
       setAiText(memEntry.result);
+      setOutdated(false);
+      return;
+    }
+
+    // Cache miss et onglet inactif — marquer comme périmé sans appeler l'API
+    if(!isActive){
+      setOutdated(true);
       return;
     }
 
     setAiLoading(true);
     setAiText('');
+    setOutdated(false);
     supabase.from('profiles').select('stats_analysis_cache').eq('id',user.id).single()
       .then(async ({data:profile})=>{
         const cache=profile?.stats_analysis_cache??{};
@@ -313,14 +323,14 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
           .then(async r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
           .then(d=>{
             const result=d?.analysis||'';
-            setAiText(result);setAiLoading(false);
+            setAiText(result);setAiLoading(false);setOutdated(false);
             setAiCache(prev=>({...prev,[cacheKey]:{hash:dataHash,result}}));
             const updatedCache={...cache,[cacheKey]:{hash:dataHash,result}};
             supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id);
           })
           .catch(()=>{setAiLoading(false);});
       });
-  },[range,dataHash]);
+  },[range,dataHash,refreshKey]);
 
   const fmt2=n=>formatCurrency(n,currency);
   const fmtp2=n=>(Math.round(n*10)/10).toFixed(1)+'%';
@@ -379,7 +389,14 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
           <span style={{fontSize:16}}>🤖</span>
           <span style={{fontSize:12,fontWeight:800,color:'#0D0D0D'}}>{lang==='en'?'AI Analysis':'Analyse IA'}</span>
-          <span style={{marginLeft:'auto',background:'#1D9E75',color:'#fff',borderRadius:99,padding:'2px 9px',fontSize:10,fontWeight:800,letterSpacing:'0.04em'}}>{lang==='en'?'Predictive':'Prédictif'}</span>
+          {outdated&&!aiLoading?(
+            <button onClick={()=>{setOutdated(false);setRefreshKey(k=>k+1);}}
+              style={{marginLeft:'auto',background:'#FFF4EE',color:'#F9A26C',border:'1px solid rgba(249,162,108,0.4)',borderRadius:99,padding:'2px 10px',fontSize:10,fontWeight:800,cursor:'pointer',fontFamily:'inherit',letterSpacing:'0.04em'}}>
+              {lang==='en'?'↺ Refresh':'↺ Actualiser'}
+            </button>
+          ):(
+            <span style={{marginLeft:'auto',background:'#1D9E75',color:'#fff',borderRadius:99,padding:'2px 9px',fontSize:10,fontWeight:800,letterSpacing:'0.04em'}}>{lang==='en'?'Predictive':'Prédictif'}</span>
+          )}
         </div>
         {aiLoading?(
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
