@@ -4829,7 +4829,7 @@ export default function App({ loginOnly = false }){
         marque:lensResult.marque||null,
         categorie:lensResult.categorie||"Autre",
         description:lensResult.description||(lensDesc.trim()||null),
-        prix_achat:parseFloat(lensBuy)||lensResult.prix_achat_suggere||0,
+        prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
         prix_vente:lensResult.prix_vente_suggere||null,
         quantite:1,
       });
