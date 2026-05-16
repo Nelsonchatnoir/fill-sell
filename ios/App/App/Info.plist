@@ -51,5 +51,9 @@
 	<string>Fill &amp; Sell utilise le microphone pour la saisie vocale de votre stock et vos ventes.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Fill &amp; Sell utilise la caméra pour analyser vos articles avec la fonction Lens.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Fill &amp; Sell accède à votre galerie pour analyser vos photos d'articles avec la fonction Lens.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Fill &amp; Sell peut enregistrer des photos de vos articles dans votre galerie.</string>
 </dict>
 </plist>
