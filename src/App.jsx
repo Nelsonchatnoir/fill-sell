@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
@@ -4636,6 +4637,27 @@ export default function App({ loginOnly = false }){
     if(lensFileRef.current)lensFileRef.current.value="";
   }
 
+  async function handleLensPhotoNative(){
+    try{
+      const photo=await Camera.getPhoto({
+        quality:90,
+        allowEditing:false,
+        resultType:CameraResultType.DataUrl,
+        source:CameraSource.Prompt,
+      });
+      if(!photo.dataUrl)return;
+      setLensResult(null);setLensAdded(false);
+      setLensPhotos(prev=>{
+        if(prev.length>=5)return prev;
+        return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
+      });
+    }catch(e){
+      if(e?.message&&!e.message.includes('cancelled')&&!e.message.includes('canceled')){
+        alert(lang==='fr'?'Impossible d\'accéder à la caméra.':'Unable to access camera.');
+      }
+    }
+  }
+
   async function toggleLensMic(){
     if(lensMicActive){
       if(lensMicRef.current?.stop){lensMicRef.current.stop();}
@@ -4943,7 +4965,7 @@ export default function App({ loginOnly = false }){
             lensLoading={lensLoading} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
-            handleLensPhoto={handleLensPhoto} analyzeLens={analyzeLens} addLensItem={addLensItem}
+            handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={()=>setShowUpgradeModal(true)}

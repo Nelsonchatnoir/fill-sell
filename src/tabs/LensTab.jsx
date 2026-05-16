@@ -188,7 +188,7 @@ const LensTab = memo(function LensTab({
   lensAdded, setLensAdded, lensDesc, setLensDesc,
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
-  lensFileRef, toggleLensMic, handleLensPhoto, analyzeLens, addLensItem,
+  lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem,
   handleIAPPurchase, handleIAPRestore,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, lensUsedToday, LENS_FREE_LIMIT,
@@ -232,7 +232,7 @@ const LensTab = memo(function LensTab({
               ))}
               {lensPhotos.length<5&&(
                 <button
-                  onClick={()=>lensFileRef.current?.click()}
+                  onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
                   style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#9CA3AF",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
                 >
                   <span style={{fontSize:22}}>➕</span>
@@ -244,7 +244,7 @@ const LensTab = memo(function LensTab({
           </div>
         ):(
           <button
-            onClick={()=>lensFileRef.current?.click()}
+            onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
             style={{width:"100%",padding:"32px 20px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:10,transition:"all 0.15s",marginBottom:12}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor="#1D9E75";e.currentTarget.style.background="#F0FDF4";}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,0.12)";e.currentTarget.style.background="#F9FAFB";}}
