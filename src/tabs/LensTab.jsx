@@ -512,19 +512,6 @@ const LensTab = memo(function LensTab({
           </button>
         </div>
 
-        {/* Champ prix d'achat optionnel */}
-        <div style={{marginBottom:10}}>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={lensBuy}
-            onChange={e=>setLensBuy(e.target.value)}
-            placeholder={lang==="en"?"Purchase price paid (optional, e.g. 15)":"Prix d'achat payé (optionnel, ex. 15)"}
-            style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid rgba(0,0,0,0.1)",fontSize:16,fontFamily:"inherit",outline:"none",background:"#F9FAFB",color:"#0D0D0D",boxSizing:"border-box"}}
-          />
-        </div>
-
         {/* Bouton Analyser */}
         <button
           onClick={analyzeLens}
