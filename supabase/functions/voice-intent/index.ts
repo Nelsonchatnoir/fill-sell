@@ -356,11 +356,13 @@ Règle quantite/quantite_vendue :
   Ex: "je vends 2 de mes iphones" → quantite_vendue: 2
 
 PRIX VENTE et QUANTITÉ VENDUE (inventory_sell, CRITIQUE) :
-quantite_vendue = N UNIQUEMENT si le prix est explicitement par unité ("chacun", "chacune", "la pièce", "l'unité", "par article").
-Sans mot explicite de prix unitaire → quantite_vendue = 1, prix_vente = prix total déclaré.
-  ✅ "j'ai vendu 18 robes pour 20€" → prix_vente: 20, quantite_vendue: 1  (20€ total, pas par robe)
+quantite_vendue = toujours le nombre d'articles mentionné.
+prix_vente = TOUJOURS le prix PAR UNITÉ :
+- Prix unitaire explicite ("à X€ chacun/chacune", "X€ la pièce", "X€ l'un") → prix_vente = X
+- Prix total sans "chacun" ("pour X€", "X€ en tout") avec quantité N → prix_vente = X÷N (arrondi 2 décimales)
+  ✅ "j'ai vendu 18 robes pour 20€" → prix_vente: 1.11, quantite_vendue: 18  (20÷18)
   ✅ "j'ai vendu 18 robes à 20€ chacune" → prix_vente: 20, quantite_vendue: 18
-  ✅ "j'ai vendu 5 t-shirts pour 50€" → prix_vente: 50, quantite_vendue: 1
+  ✅ "j'ai vendu 5 t-shirts pour 50€" → prix_vente: 10, quantite_vendue: 5  (50÷5)
   ✅ "j'ai vendu 5 t-shirts à 10€ la pièce" → prix_vente: 10, quantite_vendue: 5
 
 Règles query_stats (PRIORITÉ sur analytics_best et analytics_query pour les cas couverts) :
@@ -737,11 +739,13 @@ Quantity rules:
   Ex: "I'm selling 2 of my iphones" → quantite_vendue: 2
 
 SELL PRICE and QUANTITY (inventory_sell, CRITICAL):
-quantite_vendue = N ONLY if the price is explicitly per unit ("each", "apiece", "per item", "per piece").
-Without explicit per-unit wording → quantite_vendue = 1, prix_vente = total stated price.
-  ✅ "I sold 18 dresses for €20" → prix_vente: 20, quantite_vendue: 1  (€20 total, not per dress)
+quantite_vendue = always the number of items mentioned.
+prix_vente = ALWAYS the price PER UNIT:
+- Explicit unit price ("at €X each", "€X apiece", "€X per item") → prix_vente = X
+- Total price without "each" ("for €X", "€X total") with quantity N → prix_vente = X÷N (rounded 2 decimals)
+  ✅ "I sold 18 dresses for €20" → prix_vente: 1.11, quantite_vendue: 18  (20÷18)
   ✅ "I sold 18 dresses at €20 each" → prix_vente: 20, quantite_vendue: 18
-  ✅ "I sold 5 t-shirts for €50" → prix_vente: 50, quantite_vendue: 1
+  ✅ "I sold 5 t-shirts for €50" → prix_vente: 10, quantite_vendue: 5  (50÷5)
   ✅ "I sold 5 t-shirts at €10 each" → prix_vente: 10, quantite_vendue: 5
 
 query_stats rules (PRIORITY over analytics_best and analytics_query for covered cases):
