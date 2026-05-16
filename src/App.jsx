@@ -4428,12 +4428,12 @@ export default function App({ loginOnly = false }){
             </div>
           )}
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
-            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
           {!forgotMode&&(
             <>
               <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
                 onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-                style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:15,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+                style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
               <button onClick={authMode==='login'?handleLogin:handleSignup}
                 style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
                 {authMode==='login'?loginTexts.login:loginTexts.signup}
