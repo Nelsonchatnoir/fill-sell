@@ -1639,7 +1639,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match){
               try{
                 const dmCat=r.taskData?.categorie||r.taskData?.type||null;
-                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat});
+                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat,quantite_vendue:r.taskData?.quantite_vendue});
                 return{...r,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"};
               }catch(e){return{...r,status:"error",message:e.message};}
             }
@@ -2244,7 +2244,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>{
                           // Vente directe confirmée : insertion sans article inventaire
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
@@ -2299,7 +2299,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         <button onClick={()=>{
                           // Non : vente directe sans associer l'article du stock
                           const dmCatCf=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
@@ -2349,6 +2349,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           type:anyMatchCat,
                           description:taskData?.description,
                           prix_vente:taskData?.prix_vente,
+                          quantite_vendue:taskData?.quantite_vendue,
                         })
                           .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                           .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
@@ -2418,7 +2419,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <button onClick={()=>{
                         if(!found){
                           const dmCatN=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           return;
@@ -4576,14 +4577,17 @@ export default function App({ loginOnly = false }){
     },
     // Vente directe sans article en stock (intent inventory_sell + no_match).
     // Insère uniquement dans ventes — pas de suppression inventaire.
-    addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat})=>{
+    addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat,quantite_vendue})=>{
       const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       const pa=parseFloat(String(prix_achat??0).replace(",","."))||0;
+      const qv=Math.max(1,parseInt(quantite_vendue)||1);
       const marqueNorm=normalizeMarque(marque);
       const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0]};
-      const{data,error}=await supabase.from('ventes').insert([row]).select().single();
-      if(error)throw new Error(error.message);
-      if(data)setSales(prev=>[mapSale(data),...prev]);
+      for(let q=0;q<qv;q++){
+        const{data,error}=await supabase.from('ventes').insert([row]).select().single();
+        if(error)throw new Error(error.message);
+        if(data)setSales(prev=>[mapSale(data),...prev]);
+      }
     },
   };
 
