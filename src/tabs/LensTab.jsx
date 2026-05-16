@@ -39,7 +39,7 @@ const VITESSE_INFO = {
   lent:  { icon:'🐢', fr:'Vente lente',   en:'Slow sale',    color:'#DC2626' },
 };
 
-function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAdded, addLensItem, onReset }) {
+function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAdded, addLensItem, onReset, openUpgradeModal }) {
   if (result.error) {
     return (
       <>
@@ -146,8 +146,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           </div>
         )}
 
-        {/* 🛍️ Plateformes */}
-        {result.plateformes?.length>0&&(isPremium?(
+        {/* 🛍️ Plateformes (Premium uniquement) */}
+        {isPremium&&result.plateformes?.length>0&&(
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               🛍️ {lang==='en'?'Best platforms':'Meilleures plateformes'}
@@ -162,12 +162,10 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
               ))}
             </div>
           </div>
-        ):(
-          <div style={{fontSize:12,color:'#6B7280',marginBottom:10}}>📦 {result.plateformes.join(' · ')}</div>
-        ))}
+        )}
 
-        {/* 💡 Conseils (Premium) / Notes (Free) */}
-        {isPremium&&result.conseils?.length>0?(
+        {/* 💡 Conseils (Premium uniquement) */}
+        {isPremium&&result.conseils?.length>0&&(
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               💡 {lang==='en'?'Tips to sell faster':'Conseils pour vendre mieux'}
@@ -180,10 +178,6 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
                 </div>
               ))}
             </div>
-          </div>
-        ):!isPremium&&result.notes&&(
-          <div style={{background:'#F9FAFB',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#4B5563',borderLeft:'3px solid #1D9E75',marginBottom:10}}>
-            💡 {result.notes}
           </div>
         )}
 
@@ -205,16 +199,42 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           </div>
         )}
 
-        {/* Notes source (Premium) */}
+        {/* Notes source (Premium uniquement) */}
         {isPremium&&result.notes&&(
           <div style={{fontSize:11,color:'#9CA3AF',marginTop:8,fontStyle:'italic'}}>{result.notes}</div>
         )}
 
-        {/* Description */}
-        {result.description&&(
+        {/* Description (Premium uniquement) */}
+        {isPremium&&result.description&&(
           <div style={{fontSize:13,color:'#374151',lineHeight:1.6,marginTop:8}}>{result.description}</div>
         )}
       </div>
+
+      {/* 🔒 Bloc conversion Premium (Free uniquement) */}
+      {!isPremium&&(
+        <div style={{background:'#F0FDF8',borderRadius:12,padding:'14px 16px',border:'1px solid rgba(29,158,117,0.2)',marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:800,color:'#0F6E56',marginBottom:10}}>
+            🔒 {lang==='en'?'Full analysis available in Premium':'Analyse complète disponible en Premium'}
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:7,marginBottom:12}}>
+            {[
+              {icon:'📊', fr:'Fourchette marché précise (bas / moyen / haut)', en:'Precise market range (low / mid / high)'},
+              {icon:'⚡', fr:'Vitesse de vente estimée', en:'Estimated time to sell'},
+              {icon:'🛍️', fr:'Meilleures plateformes recommandées', en:'Best platforms recommended'},
+              {icon:'💡', fr:'Conseils personnalisés pour vendre plus vite', en:'Personalised tips to sell faster'},
+            ].map(({icon,fr,en},i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:14}}>{icon}</span>
+                <span style={{fontSize:12,color:'#374151',fontWeight:500}}>{lang==='en'?en:fr}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={openUpgradeModal}
+            style={{width:'100%',padding:'10px',background:'linear-gradient(135deg,#1D9E75,#0F6E56)',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+            {lang==='en'?'Upgrade to Premium →':'Passer Premium →'}
+          </button>
+        </div>
+      )}
 
       {result.titre&&(
         <button onClick={addLensItem} disabled={lensAdded}
@@ -524,6 +544,7 @@ const LensTab = memo(function LensTab({
               lensAdded={lensAdded}
               addLensItem={addLensItem}
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
+              openUpgradeModal={openUpgradeModal}
             />
           </div>
         )}
