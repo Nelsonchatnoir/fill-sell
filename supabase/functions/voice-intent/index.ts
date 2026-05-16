@@ -205,8 +205,9 @@ Si plusieurs articles différents → répéter par article.
 ✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
 
 Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) :
-"high tech"|"hightech"|"tech"|"smartphone"|"téléphone"|"console"|"pc"|"ordinateur"|"tablette"|"casque"|"écouteurs" → "High-Tech"
-"electromenager"|"electro"|"aspirateur"|"frigo"|"lave-linge"|"micro-onde"|"cafetière" → "Électroménager"
+"smartphone"|"téléphone"|"pc"|"ordinateur"|"tablette"|"ipad"|"laptop"|"macbook"|"console"|"playstation"|"xbox"|"nintendo"|"casque"|"écouteurs"|"airpods"|"enceinte"|"montre connectée"|"apple watch"|"smartwatch"|"tv"|"télévision"|"projecteur"|"imprimante"|"imprimante 3d"|"scanner"|"webcam"|"micro"|"clavier"|"souris"|"écran"|"moniteur"|"disque dur"|"ssd"|"clé usb"|"carte sd"|"routeur"|"box internet"|"drone"|"gopro"|"appareil photo"|"camera"|"chargeur"|"batterie externe"|"powerbank"|"hub usb"|"câble"|"adaptateur"|"ring light" → "High-Tech"
+RÈGLE : tout périphérique informatique (imprimante, scanner, webcam...) et tout appareil électronique nomade/connecté → "High-Tech". Les marques HP, Canon, Epson, Brother, Apple, Samsung, Logitech, Asus, Lenovo, Dell, Acer → High-Tech sauf si l'article est clairement un gros électroménager (lave-linge, four...).
+"aspirateur"|"robot aspirateur"|"lave-linge"|"lave-vaisselle"|"réfrigérateur"|"congélateur"|"four"|"micro-onde"|"hotte"|"induction"|"gazinière"|"sèche-linge"|"climatiseur"|"radiateur"|"chauffe-eau"|"nespresso"|"cafetière"|"machine à café"|"blender"|"robot cuisine"|"friteuse"|"bouilloire"|"épilateur"|"rasoir électrique" → "Électroménager"
 "auto"|"moto"|"auto moto"|"voiture"|"scooter"|"pièce auto" → "Auto-Moto"
 "beaute"|"cosmétique"|"parfum"|"crème"|"maquillage"|"sérum" → "Beauté"
 "fringues"|"vetements"|"veste"|"jean"|"robe"|"pull"|"chaussures"|"baskets"|"sneakers"|"manteau" → "Mode"
@@ -570,8 +571,9 @@ If multiple different items → repeat per item.
 ✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
 
 Canonical categories (always use the exact value from the allowed list — 15 categories):
-"high tech"|"tech"|"smartphone"|"phone"|"console"|"pc"|"laptop"|"tablet"|"headphones"|"earbuds" → "High-Tech"
-"electromenager"|"appliance"|"vacuum"|"fridge"|"washing machine"|"microwave" → "Électroménager"
+"smartphone"|"phone"|"pc"|"laptop"|"computer"|"tablet"|"ipad"|"macbook"|"console"|"playstation"|"xbox"|"nintendo"|"headphones"|"earbuds"|"airpods"|"speaker"|"smartwatch"|"apple watch"|"tv"|"television"|"projector"|"printer"|"3d printer"|"scanner"|"webcam"|"microphone"|"keyboard"|"mouse"|"screen"|"monitor"|"hard drive"|"ssd"|"usb drive"|"sd card"|"router"|"drone"|"camera"|"gopro"|"charger"|"power bank"|"hub"|"cable"|"adapter"|"ring light" → "High-Tech"
+RULE: any computer peripheral (printer, scanner, webcam...) and any connected/nomadic electronic device → "High-Tech". Brands HP, Canon, Epson, Brother, Apple, Samsung, Logitech, Asus, Lenovo, Dell, Acer → High-Tech unless the item is clearly a large home appliance (washing machine, oven...).
+"vacuum"|"robot vacuum"|"washing machine"|"dishwasher"|"fridge"|"freezer"|"oven"|"microwave"|"hood"|"dryer"|"air conditioner"|"heater"|"water heater"|"coffee machine"|"blender"|"food processor"|"air fryer"|"kettle"|"epilator"|"electric shaver" → "Électroménager"
 "auto"|"moto"|"car"|"scooter"|"motorcycle" → "Auto-Moto"
 "beauty"|"cosmetics"|"perfume"|"cream"|"makeup"|"serum"|"skincare" → "Beauté"
 "clothes"|"fashion"|"jacket"|"jeans"|"dress"|"sneakers"|"shoes"|"coat"|"hoodie" → "Mode"
