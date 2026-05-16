@@ -2744,9 +2744,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const marque=soldItem?.marque||data?.marque||taskData?.marque||null;
                 const type=soldItem?.type||data?.categorie||taskData?.categorie||detectType(nom,data?.marque||taskData?.marque||"")||null;
                 const ts=type?getTypeStyle(type):null;
-                const cogs=soldItem?(soldItem.buy+(soldItem.purchaseCosts||0)):0;
+                const cogs=soldItem?(soldItem.buy+(soldItem.purchaseCosts||0)):parseFloat(String(data?.prix_achat??taskData?.prix_achat??0).replace(",","."))||0;
                 const mgUnit=svUnit>0?svUnit-cogs-sfUnit:null;
-                const mgpUnit=svUnit>0&&mgUnit!=null?(mgUnit/svUnit)*100:null;
+                const mgpUnit=svUnit>0&&cogs>0&&mgUnit!=null?(mgUnit/cogs)*100:null;
                 const totalSell=svUnit*qv;
                 const totalProfit=mgUnit!=null?mgUnit*qv:null;
                 return(
@@ -2768,7 +2768,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       </div>
                       {totalProfit!=null&&<div style={{textAlign:"right"}}>
                         <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Profit":"Profit"}</div>
-                        <div style={{fontSize:18,fontWeight:900,color:totalProfit>=0?"#1D9E75":"#EF4444"}}>{totalProfit>=0?"+":""}{fmt(totalProfit)} <span style={{fontSize:12,fontWeight:600,opacity:0.8}}>({fmtp(mgpUnit)})</span></div>
+                        <div style={{fontSize:18,fontWeight:900,color:totalProfit>=0?"#1D9E75":"#EF4444"}}>{totalProfit>=0?"+":""}{fmt(totalProfit)} {mgpUnit!=null&&<span style={{fontSize:12,fontWeight:600,opacity:0.8}}>({fmtp(mgpUnit)})</span>}</div>
                       </div>}
                     </div>
                   </div>
