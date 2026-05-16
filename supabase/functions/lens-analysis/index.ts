@@ -63,7 +63,7 @@ PROCESS:
 1. BRAND & DESCRIPTION: Identify the brand from visible logos, labels or style cues. If uncertain, marque=null. Write a description of 1–2 sentences max identifying the item (brand, type, visible condition, notable features).
 2. PRICE: Estimate resale price range based on your training knowledge. confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
 3. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
-4. PURCHASE PRICE EXTRACTION: Read the user's text carefully. If they mention a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price mentioned, set prix_achat_reel to null.
+4. PURCHASE PRICE EXTRACTION: Read the field labelled "User note:" in the message. If the user mentions a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price is mentioned, set prix_achat_reel to null.
 5. RULES:
    MARGIN CALCULATION (strict priority):
    - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score.
@@ -84,7 +84,7 @@ MANDATORY PROCESS — follow in order:
 3. PRICE ESTIMATION: Always base prices on a real web search. Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). If no data: confiance="basse".
 4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
 5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
-6. PURCHASE PRICE EXTRACTION: Read the user's text carefully. If they mention a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price mentioned, set prix_achat_reel to null.
+6. PURCHASE PRICE EXTRACTION: Read the field labelled "User note:" in the message. If the user mentions a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price is mentioned, set prix_achat_reel to null.
 7. RULES:
    MARGIN CALCULATION (strict priority):
    - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score. NEVER anchor prix_vente_suggere on it (market data only).
@@ -105,7 +105,7 @@ PROCESSUS :
 1. MARQUE ET DESCRIPTION : Identifie la marque à partir des logos, étiquettes ou indices visuels. Si incertain, marque=null. Rédige une description de 1 à 2 phrases max identifiant l'article (marque, type, état visible, caractéristiques notables).
 2. PRIX : Estime la fourchette de prix de revente d'après ta connaissance du type d'article et de la marque. confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
 3. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
-4. EXTRACTION PRIX D'ACHAT : Lis attentivement le texte de l'utilisateur. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
+4. EXTRACTION PRIX D'ACHAT : Lis le champ "Note de l'utilisateur :" dans le message. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
 5. RÈGLES :
    CALCUL DE MARGE (priorité stricte) :
    - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score.
@@ -126,7 +126,7 @@ PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
 3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Si aucune donnée : confiance="basse".
 4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
 5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
-6. EXTRACTION PRIX D'ACHAT : Lis attentivement le texte de l'utilisateur. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
+6. EXTRACTION PRIX D'ACHAT : Lis le champ "Note de l'utilisateur :" dans le message. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
 7. RÈGLES :
    CALCUL DE MARGE (priorité stricte) :
    - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score — NE JAMAIS l'utiliser pour fixer prix_vente_suggere (toujours basé sur les données marché).
@@ -258,7 +258,7 @@ serve(async (req) => {
     const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length, isPremium);
 
     const textParts: string[] = [];
-    if (description) textParts.push(_lang === "en" ? `Details: ${description}` : `Détails : ${description}`);
+    if (description) textParts.push(_lang === "en" ? `User note: ${description}` : `Note de l'utilisateur : ${description}`);
     if (prixAchat != null) textParts.push(_lang === "en" ? `My actual purchase price (cost paid): €${prixAchat}` : `Mon prix d'achat réel (coût payé) : ${prixAchat}€`);
     if (userStats?.avgMargin != null) textParts.push(_lang === "en" ? `My average margin: ${userStats.avgMargin}%` : `Ma marge moyenne : ${userStats.avgMargin}%`);
     if (userStats?.topCategories?.length) textParts.push(_lang === "en" ? `My top categories: ${userStats.topCategories.join(", ")}` : `Mes meilleures catégories : ${userStats.topCategories.join(", ")}`);
