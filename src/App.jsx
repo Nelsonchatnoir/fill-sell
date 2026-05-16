@@ -1756,7 +1756,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const cat=data?.type||taskData?.categorie||taskData?.type;
                 const ts=cat?getTypeStyle(cat):null;
                 const qAdded=(data?.quantite||taskData?.quantite)>1?(data?.quantite||taskData?.quantite):null;
-                const marque=data?.marque||taskData?.marque;
+                const marque=normalizeMarque(data?.marque||taskData?.marque||null)||null;
                 const nom=data?.title||data?.nom||taskData?.nom;
                 const prix=data?.buy??data?.prix_achat??taskData?.prix_achat;
                 const desc=data?.description||taskData?.description||null;
@@ -2388,7 +2388,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
                         {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
                         {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
-                        {!found&&taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{taskData.marque}</span>}
+                        {!found&&taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{normalizeMarque(taskData.marque)}</span>}
                         {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
                         {dTs&&dCat&&dCat!=="Autre"&&<span style={{background:dTs.bg,color:dTs.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${dTs.border}`}}>{dTs.emoji} {typeLabel(dCat,lang)}</span>}
                         {daysInStock!==null&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:600}}>{daysInStock}j en stock</span>}
@@ -2745,7 +2745,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const qv=Math.max(1,(data?.quantite_vendue||taskData?.quantite_vendue||1));
                 const nom=data?.nom||taskData?.nom||"";
                 const soldItem=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)):null;
-                const marque=soldItem?.marque||data?.marque||taskData?.marque||null;
+                const marque=normalizeMarque(soldItem?.marque||data?.marque||taskData?.marque||null)||null;
                 const type=soldItem?.type||data?.categorie||taskData?.categorie||detectType(nom,data?.marque||taskData?.marque||"")||null;
                 const ts=type?getTypeStyle(type):null;
                 const cogs=soldItem?(soldItem.buy+(soldItem.purchaseCosts||0)):parseFloat(String(data?.prix_achat??taskData?.prix_achat??0).replace(",","."))||0;
