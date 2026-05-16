@@ -3105,9 +3105,14 @@ export default function App({ loginOnly = false }){
   },[]);
   useEffect(()=>{
     fetch("https://ipapi.co/json/")
-      .then(r=>r.ok?r.json():null)
+      .then(r=>r.ok?r.json():Promise.reject(r.status))
       .then(d=>{if(d?.country_code)setUserCountry({code:d.country_code,name:d.country_name});})
-      .catch(()=>{});
+      .catch(()=>{
+        fetch("https://ip-api.com/json/?fields=countryCode,country")
+          .then(r=>r.ok?r.json():null)
+          .then(d=>{if(d?.countryCode)setUserCountry({code:d.countryCode,name:d.country});})
+          .catch(()=>{});
+      });
   },[]);
   const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
@@ -3225,7 +3230,7 @@ export default function App({ loginOnly = false }){
     const [v,i,p,fc]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).single(),
+      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
       fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
