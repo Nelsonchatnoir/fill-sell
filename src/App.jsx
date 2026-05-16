@@ -2753,6 +2753,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const mgpUnit=svUnit>0&&cogs>0&&mgUnit!=null?(mgUnit/cogs)*100:null;
                 const totalSell=svUnit*qv;
                 const totalProfit=mgUnit!=null?mgUnit*qv:null;
+                const benefUnit=svUnit-cogs;
+                const totalBenef=benefUnit*qv;
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB",boxShadow:"0 1px 4px rgba(29,158,117,0.1)",display:"flex",flexDirection:"column",gap:10}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -2770,9 +2772,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
                         <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
                       </div>
-                      {totalProfit!=null&&<div style={{textAlign:"right"}}>
-                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Profit":"Profit"}</div>
-                        <div style={{fontSize:18,fontWeight:900,color:totalProfit>=0?"#1D9E75":"#EF4444"}}>{totalProfit>=0?"+":""}{fmt(totalProfit)} {mgpUnit!=null&&<span style={{fontSize:12,fontWeight:600,opacity:0.8}}>({fmtp(mgpUnit)})</span>}</div>
+                      {svUnit>0&&<div style={{textAlign:"right"}}>
+                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Net profit":"Bénéfice net"}</div>
+                        <div style={{fontSize:18,fontWeight:900,color:totalBenef>=0?"#1D9E75":"#EF4444"}}>{totalBenef>=0?"+":""}{fmt(totalBenef)}</div>
                       </div>}
                     </div>
                   </div>
