@@ -4266,8 +4266,10 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleSignup(){
-    if(!email||!password){alert("Remplis email et mot de passe");return;}
-    const{data,error}=await supabase.auth.signUp({email,password});
+    const emailVal=emailRef.current?.value;
+    const passwordVal=passwordRef.current?.value;
+    if(!emailVal||!passwordVal){alert("Remplis email et mot de passe");return;}
+    const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
     if(error){alert(error.message);return;}
     track('sign_up', { method: 'email' });
     if(data?.session) navigate("/app");
