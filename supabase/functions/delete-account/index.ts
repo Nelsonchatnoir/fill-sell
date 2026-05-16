@@ -5,7 +5,7 @@ const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SERVICE_ROLE_KEY")!
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
 serve(async (req) => {
@@ -21,8 +21,10 @@ serve(async (req) => {
   }
 
   try {
+    // 1. JWT extraction
     const authHeader = req.headers.get("Authorization") ?? "";
     const jwt = authHeader.replace("Bearer ", "").trim();
+    console.log("[delete-account] JWT présent:", !!jwt, "longueur:", jwt.length);
 
     if (!jwt) {
       return new Response(JSON.stringify({ error: "JWT manquant" }), {
@@ -31,7 +33,10 @@ serve(async (req) => {
       });
     }
 
+    // 2. Validation JWT → récupération user
     const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
+    console.log("[delete-account] getUser →", authUser ? `userId=${authUser.id}` : "null", authError ? `erreur=${authError.message}` : "");
+
     if (authError || !authUser) {
       return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
         status: 401,
@@ -40,17 +45,19 @@ serve(async (req) => {
     }
     const userId = authUser.id;
 
+    // 3. Suppression admin
+    console.log("[delete-account] Tentative suppression userId:", userId);
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteError) {
-      console.error("[delete-account] Erreur suppression auth:", deleteError.message);
+      console.error("[delete-account] deleteUser ERREUR:", deleteError.message, "status:", deleteError.status);
       return new Response(JSON.stringify({ error: deleteError.message }), {
         status: 500,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
-    console.log("[delete-account] Compte supprimé:", userId);
+    console.log("[delete-account] Compte supprimé avec succès:", userId);
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
