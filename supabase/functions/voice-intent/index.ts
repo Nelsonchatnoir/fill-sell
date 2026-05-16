@@ -1157,6 +1157,16 @@ serve(async (req) => {
       const stockJson = JSON.stringify(_stock);
 
       for (const sellTask of sellTasks) {
+        // "sans marque" / "no brand" explicite → vente directe, pas de matching stock
+        const noMarqueRe = _lang === "fr"
+          ? /sans\s*marque|pas\s*de\s*marque|aucune\s*marque/i
+          : /no\s*brand|without\s*(a\s*)?brand|brand(less|-free)/i;
+        if (noMarqueRe.test(text)) {
+          sellTask.data.no_match = true;
+          sellTask.data.marque = null;
+          continue;
+        }
+
         // Prompt de matching avec scoring sur 3 critères pour éviter les faux positifs
         // Règle clé : qualificatif précis différent (plate/coupante, longue/courte) → type_exact=0
         const matchPrompt = _lang === "fr"
