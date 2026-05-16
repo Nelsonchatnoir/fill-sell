@@ -9,7 +9,9 @@ const supabaseAdmin = createClient(
 );
 
 const BUNDLE_ID = "app.fillsell.app";
-const PREMIUM_PRODUCT_ID = "app.fillsell.premium.monthly";
+const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
+const STANDARD_PRODUCT_ID = "app.fillsell.premium.standard";
+const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID];
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {
   const res = await fetch(url, {
@@ -99,16 +101,26 @@ serve(async (req) => {
     const now = Date.now();
 
     const activeSub = inApp.find((tx: any) => {
-      if (tx.product_id !== PREMIUM_PRODUCT_ID) return false;
+      if (!PREMIUM_PRODUCT_IDS.includes(tx.product_id)) return false;
       const expires = tx.expires_date_ms ? parseInt(tx.expires_date_ms) : 0;
       return expires > now;
     });
 
     const isPremium = !!activeSub;
+    const isFounderPurchase = isPremium && activeSub!.product_id === FOUNDER_PRODUCT_ID;
 
     await supabaseAdmin.from("profiles").update({ is_premium: isPremium }).eq("id", userId);
 
-    console.log(`[validate-apple-receipt] userId=${userId} is_premium=${isPremium}`);
+    if (isFounderPurchase) {
+      const { data: profile } = await supabaseAdmin.from("profiles").select("is_founder").eq("id", userId).single();
+      if (!profile?.is_founder) {
+        await supabaseAdmin.from("profiles").update({ is_founder: true }).eq("id", userId);
+        const { data: fc } = await supabaseAdmin.from("founder_config").select("slots_used").eq("id", 1).single();
+        await supabaseAdmin.from("founder_config").update({ slots_used: (fc?.slots_used ?? 0) + 1 }).eq("id", 1);
+      }
+    }
+
+    console.log(`[validate-apple-receipt] userId=${userId} is_premium=${isPremium} is_founder=${isFounderPurchase}`);
 
     return new Response(JSON.stringify({ success: true, is_premium: isPremium }), {
       headers: { ...CORS, "Content-Type": "application/json" },
