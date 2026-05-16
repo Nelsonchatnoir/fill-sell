@@ -197,11 +197,10 @@ INTERDIT : générer business_advice si un article précis (nom, marque, modèle
 Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
 Règle multi-articles :
-Si achat ET vente sont mentionnés pour le même article → génère 3 tâches dans l'ordre :
+Si achat ET vente sont mentionnés pour le même article → génère 2 tâches dans l'ordre :
   1. inventory_add  (requiresConfirmation: false)
   2. inventory_sell (requiresConfirmation: false, confidence ≥ 0.85)
-  3. deal_score
-Si plusieurs articles différents → répéter la triple par article.
+Si plusieurs articles différents → répéter la paire par article.
 
 Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) :
 "high tech"|"hightech"|"tech"|"smartphone"|"téléphone"|"console"|"pc"|"ordinateur"|"tablette"|"casque"|"écouteurs" → "High-Tech"
@@ -561,11 +560,10 @@ FORBIDDEN: generating business_advice if a specific item (name, brand, model) is
 Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
 Multi-article rule:
-If a purchase AND sale are mentioned for the same item → generate 3 tasks in order:
+If a purchase AND sale are mentioned for the same item → generate 2 tasks in order:
   1. inventory_add  (requiresConfirmation: false)
   2. inventory_sell (requiresConfirmation: false, confidence ≥ 0.85)
-  3. deal_score
-If multiple different items → repeat the triple per item.
+If multiple different items → repeat the pair per item.
 
 Canonical categories (always use the exact value from the allowed list — 15 categories):
 "high tech"|"tech"|"smartphone"|"phone"|"console"|"pc"|"laptop"|"tablet"|"headphones"|"earbuds" → "High-Tech"
