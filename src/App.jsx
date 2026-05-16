@@ -2736,8 +2736,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const sfUnit=parseFloat(String(taskData?.frais??0).replace(",","."))||0;
                 const qv=Math.max(1,(data?.quantite_vendue||taskData?.quantite_vendue||1));
                 const nom=data?.nom||taskData?.nom||"";
-                const q=nom.toLowerCase().trim();
-                const soldItem=items.find(i=>{const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
+                const soldItem=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)):null;
                 const marque=soldItem?.marque||data?.marque||taskData?.marque||null;
                 const type=soldItem?.type||null;
                 const ts=type?getTypeStyle(type):null;
