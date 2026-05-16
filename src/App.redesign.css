@@ -826,6 +826,7 @@ body.bg-dots {
   border-bottom: 1px solid transparent !important;
   box-shadow: none !important;
   transition: border-color 0.2s, background 0.2s !important;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
 }
 
 /* Push scrollable content below the fixed topbar */
