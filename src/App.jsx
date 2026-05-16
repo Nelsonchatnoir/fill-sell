@@ -4652,9 +4652,15 @@ export default function App({ loginOnly = false }){
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
       });
     }catch(e){
-      if(e?.message&&!e.message.includes('cancelled')&&!e.message.includes('canceled')){
-        alert(lang==='fr'?'Impossible d\'accéder à la caméra.':'Unable to access camera.');
+      const msg=e?.message||'';
+      // Annulation volontaire → rien
+      if(msg.includes('cancelled')||msg.includes('canceled')||msg.includes('User cancelled'))return;
+      // Plugin absent (build sans cap sync) → fallback file input silencieux
+      if(msg.includes('not implemented')||msg.includes('not available')||msg.includes('Plugin')){
+        lensFileRef.current?.click();return;
       }
+      // Permission refusée explicitement
+      alert(lang==='fr'?'Accès à la caméra refusé. Active-le dans Réglages > Fill & Sell.':'Camera access denied. Enable it in Settings > Fill & Sell.');
     }
   }
 
