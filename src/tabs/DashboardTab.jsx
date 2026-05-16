@@ -153,7 +153,7 @@ const DashboardTab = memo(function DashboardTab({
               {(lang==='en'?MONTHS_EN:MONTHS_FR)[now.getMonth()]} {now.getFullYear()}
             </div>
             <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
-              {username?<>Bonjour <span style={{color:"#1D9E75"}}>{username}</span> 👋</>:'Bonjour 👋'}
+              {username?<>{lang==='en'?'Hello':'Bonjour'} <span style={{color:"#1D9E75"}}>{username}</span> 👋</>:lang==='en'?'Hello 👋':'Bonjour 👋'}
             </div>
           </div>
 
