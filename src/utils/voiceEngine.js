@@ -658,11 +658,12 @@ export async function executeVoiceTasks(tasks, context) {
                 });
               }
               hadMutation = true;
+              const _pa = task.data.prix_achat ?? matched.buy ?? matched.prix_achat ?? 0;
               result = {
                 intent: task.intent,
-                taskData: task.data,
+                taskData: { ...task.data, prix_achat: _pa },
                 status: "success",
-                data: task.data,
+                data: { ...task.data, prix_achat: _pa },
                 message: context.lang === "en" ? "Sale registered" : "Vente enregistrée",
               };
             } else if (task.data.candidates?.length > 0) {
