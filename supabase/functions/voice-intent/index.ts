@@ -308,6 +308,7 @@ Si l'emplacement est global pour tout le lot (ex: "rangés dans le bac 3") → l
 Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = type ou modèle UNIQUEMENT, sans la marque. Court et propre. AUCUN qualificatif dans le nom.
 La marque ne doit JAMAIS apparaître dans le nom, même si l'utilisateur ne précise pas le type.
+CASSE MARQUE : écrire chaque mot de la marque avec une majuscule initiale. Exemples : "laneige" → "Laneige", "la neige" → "La Neige", "new balance" → "New Balance", "louis vuitton" → "Louis Vuitton".
 INFÉRENCE TYPE DEPUIS MARQUE : si aucun type d'objet n'est explicité, l'inférer depuis la marque en utilisant ta connaissance générale. Exemples : Nike/Adidas/New Balance sans précision → "Sneakers". Ne jamais laisser nom vide ni mettre la marque dans nom.
 DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
   1. Capacité / taille / poids (256Go, 20g, 1To, taille S, taille 42...)
@@ -671,6 +672,7 @@ If emplacement is global for the whole lot (e.g. "stored in bin 3") → apply it
 Rule nom + description (inventory_add CRITICAL — read carefully):
 NOM = type or model ONLY, without the brand. Short and clean. NO qualifiers in nom.
 The brand must NEVER appear in nom, even when the user doesn't specify the type.
+BRAND CASING: capitalise the first letter of each word in the brand name. Examples: "laneige" → "Laneige", "new balance" → "New Balance", "louis vuitton" → "Louis Vuitton".
 TYPE INFERENCE FROM BRAND: if no product type is stated, infer it from the brand using general knowledge. Examples: Nike/Adidas/New Balance with no further detail → "Sneakers". Never leave nom empty or put the brand in nom.
 DESCRIPTION = everything else, in this order if present:
   1. Capacity / size / weight (256GB, 20g, 1TB, size S, size 10...)
