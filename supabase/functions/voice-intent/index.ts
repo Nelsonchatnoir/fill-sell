@@ -319,6 +319,9 @@ Format : "256Go, écran cassé" ou "Taille S, rose" ou "20g". null si aucun qual
 Exemples OBLIGATOIRES :
 ✅ "crème Erborian" → nom:"Crème", marque:"Erborian"
 ✅ "sérum Medik8" → nom:"Sérum", marque:"Medik8"
+✅ "crème anti-cernes La Neige" → nom:"Crème", marque:"La Neige", description:"anti-cernes"  (anti-cernes qualifie la crème → description, pas nom)
+✅ "crème hydratante Erborian" → nom:"Crème", marque:"Erborian", description:"hydratante"
+✅ "fond de teint Fenty Beauty" → nom:"Fond de teint", marque:"Fenty Beauty"
 ✅ "La Neige Lip Sleeping Mask Berry 20g" → nom:"Lip Sleeping Mask Berry", marque:"Laneige", description:"20g"
 ✅ "iPhone 13 256Go écran cassé" → nom:"iPhone 13", description:"256Go, écran cassé"
 ✅ "Nike Air Max 90 taille 42 coloris blanc" → nom:"Air Max 90", marque:"Nike", description:"Taille 42, coloris blanc"
@@ -679,6 +682,8 @@ Format: "256GB, cracked screen" or "Size S, pink" or "20g". null if no qualifier
 Mandatory examples:
 ✅ "Erborian cream" → nom:"Cream", marque:"Erborian"
 ✅ "Medik8 serum" → nom:"Serum", marque:"Medik8"
+✅ "La Neige anti-dark circle cream" → nom:"Cream", marque:"La Neige", description:"anti-dark circle"  (qualifier modifying the object type → description, not nom)
+✅ "Erborian moisturising cream" → nom:"Cream", marque:"Erborian", description:"moisturising"
 ✅ "iPhone 13 256GB cracked screen" → nom:"iPhone 13", description:"256GB, cracked screen"
 ✅ "Nike Air Max 90 size 10 white" → nom:"Air Max 90", marque:"Nike", description:"Size 10, white"
 ✅ "PS4 Pro 1TB with 2 controllers" → nom:"PS4 Pro", description:"1TB, with 2 controllers"
