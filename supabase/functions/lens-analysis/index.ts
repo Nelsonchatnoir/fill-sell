@@ -60,7 +60,7 @@ ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 
 PROCESS:
-1. BRAND: Identify the brand from visible logos, labels or style cues. If uncertain, marque=null.
+1. BRAND & DESCRIPTION: Identify the brand from visible logos, labels or style cues. If uncertain, marque=null. Write a description of 1–2 sentences max identifying the item (brand, type, visible condition, notable features).
 2. PRICE: Estimate resale price range based on your training knowledge. confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
 3. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 4. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. If purchase price provided: use it to compute verdict only. prix_achat_suggere: your market estimate of what to pay — set to null if user provided their purchase price. notes: one actionable selling tip.`;
@@ -85,7 +85,7 @@ ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
 
 PROCESSUS :
-1. MARQUE : Identifie la marque à partir des logos, étiquettes ou indices visuels. Si incertain, marque=null.
+1. MARQUE ET DESCRIPTION : Identifie la marque à partir des logos, étiquettes ou indices visuels. Si incertain, marque=null. Rédige une description de 1 à 2 phrases max identifiant l'article (marque, type, état visible, caractéristiques notables).
 2. PRIX : Estime la fourchette de prix de revente d'après ta connaissance du type d'article et de la marque. confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
 3. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 4. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. Si prix d'achat fourni : utiliser uniquement pour calculer le verdict. prix_achat_suggere : ton estimation marché de ce que vaut l'article à l'achat — mettre à null si prix d'achat fourni par l'utilisateur. notes : un conseil concret pour vendre plus vite.`;

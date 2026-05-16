@@ -90,6 +90,13 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           )}
         </div>
 
+        {/* Description IA courte (Free uniquement) */}
+        {!isPremium&&result.description&&(
+          <div style={{fontSize:12,color:'#374151',lineHeight:1.55,marginBottom:12,padding:'8px 12px',background:'#F9FAFB',borderRadius:8,borderLeft:'2px solid #D1FAE5'}}>
+            {result.description}
+          </div>
+        )}
+
         {/* 💰 Prix de vente conseillé */}
         <div style={{background:'#F8FFFE',borderRadius:12,padding:'12px 14px',marginBottom:12,border:'1px solid rgba(29,158,117,0.15)'}}>
           <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>
@@ -503,6 +510,19 @@ const LensTab = memo(function LensTab({
           >
             {lensMicLoading?"⏳":lensMicActive?"⏹":"🎙️"}
           </button>
+        </div>
+
+        {/* Champ prix d'achat optionnel */}
+        <div style={{marginBottom:10}}>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={lensBuy}
+            onChange={e=>setLensBuy(e.target.value)}
+            placeholder={lang==="en"?"Purchase price paid (optional, e.g. 15)":"Prix d'achat payé (optionnel, ex. 15)"}
+            style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid rgba(0,0,0,0.1)",fontSize:16,fontFamily:"inherit",outline:"none",background:"#F9FAFB",color:"#0D0D0D",boxSizing:"border-box"}}
+          />
         </div>
 
         {/* Bouton Analyser */}
