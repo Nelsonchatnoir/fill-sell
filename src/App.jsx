@@ -315,6 +315,20 @@ function CurrencyOnboardingModal({lang,onConfirm}){
     </div>
   );
 }
+function UsernameOnboardingInput({lang,onConfirm}){
+  const [val,setVal]=useState('');
+  return(
+    <>
+      <input value={val} onChange={e=>setVal(e.target.value.slice(0,30))} maxLength={30}
+        placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
+        style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:15,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
+      <button onClick={()=>onConfirm(val.trim())}
+        style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+        {lang==='en'?"Let's go !":"C'est parti !"}
+      </button>
+    </>
+  );
+}
 // Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
 const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : "Sans marque";
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
@@ -3034,6 +3048,7 @@ export default function App({ loginOnly = false }){
   });
   const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
   const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
+  const [showUsernameOnboarding,setShowUsernameOnboarding]=useState(false);
   const [username,setUsername]=useState('');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
@@ -3248,6 +3263,9 @@ export default function App({ loginOnly = false }){
         localStorage.setItem('fs_currency',p.data.currency);
       } else if(!confirmed){
         setShowCurrencyOnboarding(true);
+      }
+      if(!p.data?.username&&!localStorage.getItem('fs_username_asked')&&confirmed){
+        setShowUsernameOnboarding(true);
       }
     }
     if(!fc.error&&fc.data) setSlotsRemaining(fc.data.slots_total-fc.data.slots_used);
@@ -5558,11 +5576,28 @@ export default function App({ loginOnly = false }){
       {showCurrencyOnboarding&&(
         <CurrencyOnboardingModal lang={lang} onConfirm={async(code,uname)=>{
           await saveCurrency(code);
-          if(uname) await supabase.rpc('set_profile_username',{p_username:uname});
-          if(uname) setUsername(uname);
+          if(uname){await supabase.rpc('set_profile_username',{p_username:uname});setUsername(uname);localStorage.setItem('fs_username_asked','1');}
           localStorage.setItem('fs_currency_confirmed','1');
           setShowCurrencyOnboarding(false);
         }}/>
+      )}
+      {showUsernameOnboarding&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
+          <div style={{background:'#fff',borderRadius:24,padding:'32px 28px',maxWidth:360,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',textAlign:'center'}}>
+            <div style={{fontSize:36,marginBottom:12}}>👋</div>
+            <div style={{fontSize:20,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
+              {lang==='en'?"What's your name?":"Comment tu t'appelles ?"}
+            </div>
+            <div style={{fontSize:13,color:'#6B7280',marginBottom:20}}>
+              {lang==='en'?'Optional — first name or nickname.':'Optionnel — prénom ou pseudo.'}
+            </div>
+            <UsernameOnboardingInput lang={lang} onConfirm={async(uname)=>{
+              if(uname){await supabase.rpc('set_profile_username',{p_username:uname});setUsername(uname);}
+              localStorage.setItem('fs_username_asked','1');
+              setShowUsernameOnboarding(false);
+            }}/>
+          </div>
+        </div>
       )}
     </div>
   );
