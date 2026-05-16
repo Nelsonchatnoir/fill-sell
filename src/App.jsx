@@ -4655,8 +4655,8 @@ export default function App({ loginOnly = false }){
       const msg=e?.message||'';
       // Annulation volontaire → rien
       if(msg.includes('cancelled')||msg.includes('canceled')||msg.includes('User cancelled'))return;
-      // Plugin absent (build sans cap sync) → fallback file input silencieux
-      if(msg.includes('not implemented')||msg.includes('not available')||msg.includes('Plugin')){
+      // Plugin absent ou non enregistré → fallback file input silencieux
+      if(msg.includes('not implemented')||msg.includes('not available')||msg.includes('Plugin')||msg.includes('not found')||msg.includes('could not be found')||!msg){
         lensFileRef.current?.click();return;
       }
       // Permission refusée explicitement

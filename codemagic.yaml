@@ -54,7 +54,8 @@ workflows:
               "CAPBrowserPlugin",
               "SplashScreenPlugin",
               "NativePurchasesPlugin",
-              "AppleSignInPlugin"
+              "AppleSignInPlugin",
+              "CameraPlugin"
             ]
           }
           EOF
