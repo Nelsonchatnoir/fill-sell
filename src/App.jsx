@@ -277,7 +277,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
           {lang==='en'?'Display only — no conversion.':'Affichage uniquement, aucune conversion.'}
         </div>
         <input placeholder={lang==='en'?'Search: USD, Dollar…':'Rechercher : EUR, Euro…'} value={search} onChange={e=>setSearch(e.target.value)}
-          style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:13,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
+          style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
         <div style={{overflowY:'auto',flex:1}}>
           {['Europe','America','Africa','Asia/Pacific'].map(reg=>{
             const items=grouped[reg];
@@ -305,7 +305,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             onChange={e=>setUsernameInput(e.target.value.slice(0,30))}
             placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
             maxLength={30}
-            style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:13,fontFamily:'inherit',outline:'none',marginBottom:10}}
+            style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:10}}
           />
         </div>
         <button onClick={()=>onConfirm(selected,usernameInput.trim())}
@@ -322,7 +322,7 @@ function UsernameOnboardingInput({lang,onConfirm}){
     <>
       <input value={val} onChange={e=>setVal(e.target.value.slice(0,30))} maxLength={30}
         placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
-        style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:15,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
+        style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
       <button onClick={()=>onConfirm(val.trim())}
         style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
         {lang==='en'?"Let's go !":"C'est parti !"}
@@ -613,7 +613,7 @@ const Field=({label,value,set,placeholder,type="text",icon,suffix})=>(
       <div style={{display:"flex",alignItems:"center",gap:4}}>
         <input type={type} value={value} onChange={e=>set(e.target.value)} placeholder={placeholder}
           inputMode={type==="number"?"decimal":undefined}
-          style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:15,fontWeight:600,width:"100%",fontFamily:"inherit"}}/>
+          style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:16,fontWeight:600,width:"100%",fontFamily:"inherit"}}/>
         {suffix&&<span style={{color:C.label,fontSize:13,fontWeight:600,flexShrink:0}}>{suffix}</span>}
       </div>
     </div>
@@ -1785,7 +1785,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const ef=vaEdits[idx]?.editFields||{};
                           const isSold=item.statut==="vendu"||item.statut==="sold";
                           const nom=item.titre||item.title||item.nom||"";
-                          const inputSt={fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
+                          const inputSt={fontSize:16,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
                           const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
                           const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
                           return(

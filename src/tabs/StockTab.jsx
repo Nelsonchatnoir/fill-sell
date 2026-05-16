@@ -86,7 +86,7 @@ const StockTab = memo(function StockTab({
                       <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280",flexWrap:"wrap",alignItems:"center"}}>
                         {voiceParsed.isLot?(
                           <span style={{display:"flex",alignItems:"center",gap:4}}>
-                            🛒 <input type="number" value={item.prix_estime_lot??""} onChange={e=>{const v=parseFloat(e.target.value)||0;setVoiceParsed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:60,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:11,fontFamily:"inherit",outline:"none"}}/>{CURRENCY_SYMBOLS[currency]||'€'}
+                            🛒 <input type="number" value={item.prix_estime_lot??""} onChange={e=>{const v=parseFloat(e.target.value)||0;setVoiceParsed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:60,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:16,fontFamily:"inherit",outline:"none"}}/>{CURRENCY_SYMBOLS[currency]||'€'}
                             <span style={{fontSize:10,color:"#9CA3AF",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée":"Estimated split"}</span>
                           </span>
                         ):(
@@ -283,7 +283,7 @@ const StockTab = memo(function StockTab({
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>🛍️ {lang==='fr'?"Prix total du lot (€)":"Total lot price (€)"}</div>
                 <div className="inp" style={{background:"#fff",borderRadius:14,padding:"0 16px",height:58,border:lotManualTotal?`1px solid ${C.teal}55`:"1px solid rgba(0,0,0,0.08)",display:"flex",alignItems:"center",gap:12,boxShadow:lotManualTotal?`0 0 0 3px ${C.teal}11`:"0 2px 8px rgba(0,0,0,0.04)"}}>
                   <span style={{fontSize:20,flexShrink:0,opacity:0.7}}>💰</span>
-                  <input type="number" value={lotManualTotal} onChange={e=>setLotManualTotal(e.target.value)} placeholder="0,00" inputMode="decimal" style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:15,fontWeight:600,flex:1,fontFamily:"inherit"}}/>
+                  <input type="number" value={lotManualTotal} onChange={e=>setLotManualTotal(e.target.value)} placeholder="0,00" inputMode="decimal" style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:16,fontWeight:600,flex:1,fontFamily:"inherit"}}/>
                   <span style={{color:C.label,fontSize:13,fontWeight:600}}>€</span>
                 </div>
               </div>
@@ -303,7 +303,7 @@ const StockTab = memo(function StockTab({
                     </div>
                     {lotDistributed?.items?.[i]&&(
                       <div style={{display:"flex",alignItems:"center",gap:8,paddingLeft:4,animation:"fadeIn 0.3s ease"}}>
-                        <input type="number" value={lotDistributed.items[i].prix_estime_lot} onChange={e=>{const v=parseFloat(e.target.value)||0;setLotDistributed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:64,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:12,fontFamily:"inherit",outline:"none",fontWeight:700,color:C.green}}/>
+                        <input type="number" value={lotDistributed.items[i].prix_estime_lot} onChange={e=>{const v=parseFloat(e.target.value)||0;setLotDistributed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:64,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:16,fontFamily:"inherit",outline:"none",fontWeight:700,color:C.green}}/>
                         <span style={{fontSize:12,color:C.label}}>€</span>
                         {lotDistributed.items[i].categorie&&(()=>{const ts=getTypeStyle(lotDistributed.items[i].categorie);return <span style={{background:ts.bg,color:ts.color,border:`1px solid ${ts.border}`,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700}}>{ts.emoji} {typeLabel(lotDistributed.items[i].categorie,lang)}</span>;})()}
                         {lotDistributed.items[i].marque&&<span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>{lotDistributed.items[i].marque}</span>}
