@@ -4579,7 +4579,8 @@ export default function App({ loginOnly = false }){
     addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat})=>{
       const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       const pa=parseFloat(String(prix_achat??0).replace(",","."))||0;
-      const row={user_id:user.id,titre:nom||"Article",marque:marque||"Sans marque",type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0]};
+      const marqueNorm=normalizeMarque(marque);
+      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0]};
       const{data,error}=await supabase.from('ventes').insert([row]).select().single();
       if(error)throw new Error(error.message);
       if(data)setSales(prev=>[mapSale(data),...prev]);
