@@ -2327,12 +2327,16 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                             // Résoudre l'ambiguïté : on réinjecte le result avec l'ID sélectionné
                             replaceResult(idx,{...result,taskData:{...taskData,candidates:null,matched_id:c.id}});
                           }} style={{textAlign:"left",padding:"10px 12px",borderRadius:10,border:"1.5px solid #E5E7EB",background:"#F9FAFB",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",gap:4}}>
-                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cItem.title}</div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
+                              <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cItem.title}</div>
+                              {cItem.buy>0&&<div style={{fontWeight:700,fontSize:12,color:"#6B7280",flexShrink:0}}>{fmt(cItem.buy)}</div>}
+                            </div>
                             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                               {cItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{cItem.marque}</span>}
                               {cItem.type&&cItem.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {cItem.type}</span>}
                               {cItem.emplacement&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {cItem.emplacement}</span>}
                             </div>
+                            {cItem.description&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,fontStyle:"italic"}}>{cItem.description}</div>}
                           </button>
                         );
                       })}
