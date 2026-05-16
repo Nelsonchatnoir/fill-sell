@@ -27,6 +27,209 @@ const scoreBg    = s => s>=6.5?'#F0FDF4':s>=4?'#FFFBEB':'#FFF5F5';
 const scoreBd    = s => s>=6.5?'rgba(22,163,74,0.2)':s>=4?'rgba(217,119,6,0.2)':'rgba(220,38,38,0.2)';
 const scoreLabel = (s,lang) => s>=6.5?(lang==='en'?'Good deal':'Bon deal'):s>=4?(lang==='en'?'Average':'Mitigé'):(lang==='en'?'Avoid':'Éviter');
 
+const VERDICT_INFO = {
+  excellent:{ icon:'🔥', fr:'Excellent', en:'Excellent', bg:'#F0FDF4', color:'#1D9E75', border:'#9FE1CB' },
+  bon:      { icon:'✅', fr:'Bon deal',  en:'Good deal', bg:'#EFF6FF', color:'#2563EB', border:'#BFDBFE' },
+  moyen:    { icon:'⚠️', fr:'Moyen',    en:'Average',   bg:'#FFFBEB', color:'#D97706', border:'#FCD34D' },
+  eviter:   { icon:'❌', fr:'À éviter', en:'Avoid',     bg:'#FFF5F5', color:'#DC2626', border:'#FED7D7' },
+};
+const VITESSE_INFO = {
+  rapide:{ icon:'⚡', fr:'Vente rapide',  en:'Fast sale',    color:'#1D9E75' },
+  moyen: { icon:'🕐', fr:'Vente moyenne', en:'Average sale', color:'#D97706' },
+  lent:  { icon:'🐢', fr:'Vente lente',   en:'Slow sale',    color:'#DC2626' },
+};
+
+function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAdded, addLensItem, onReset }) {
+  if (result.error) {
+    return (
+      <>
+        <div style={{background:'#FFF5F5',borderRadius:14,padding:'16px',border:'1px solid #FED7D7',marginBottom:10}}>
+          <div style={{fontSize:14,color:'#C53030',fontWeight:600}}>{result.error}</div>
+        </div>
+        <button onClick={onReset} style={{width:'100%',padding:'9px',background:'transparent',border:'1px solid rgba(0,0,0,0.12)',borderRadius:10,fontSize:13,fontWeight:600,color:'#6B7280',cursor:'pointer',fontFamily:'inherit'}}>
+          🔄 {lang==='en'?'New analysis':'Nouvelle analyse'}
+        </button>
+      </>
+    );
+  }
+
+  const hasBuy = parseFloat(lensBuy) > 0;
+  const v = VERDICT_INFO[result.verdict] || VERDICT_INFO.moyen;
+  const sc = result.score != null ? scoreColor(result.score) : '#6B7280';
+  const vi = result.vitesse_vente ? (VITESSE_INFO[result.vitesse_vente] || VITESSE_INFO.moyen) : null;
+
+  return (
+    <div style={{animation:'vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both'}}>
+      <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.08)',marginBottom:10,boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
+
+        {/* Titre + verdict badge */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12,gap:8}}>
+          <div style={{fontWeight:800,fontSize:16,color:'#0D0D0D',flex:1,lineHeight:1.3}}>{result.titre||'Article'}</div>
+          {result.verdict&&(
+            <div style={{flexShrink:0,padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:800,background:v.bg,color:v.color,border:`1px solid ${v.border}`}}>
+              {v.icon} {lang==='en'?v.en:v.fr}
+            </div>
+          )}
+        </div>
+
+        {/* 🏷️ Identification pills */}
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+          {result.marque&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#F0FDF4',color:'#1D9E75',border:'1px solid #9FE1CB'}}>{result.marque}</span>}
+          {result.modele&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#F8FAFC',color:'#475569',border:'1px solid #E2E8F0'}}>{result.modele}</span>}
+          {result.etat_estime&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#F5F3FF',color:'#7C3AED',border:'1px solid #DDD6FE'}}>{result.etat_estime}</span>}
+          {result.matiere&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#FFF7ED',color:'#C2410C',border:'1px solid #FED7AA'}}>{result.matiere}</span>}
+          {result.categorie&&(()=>{const s=getTypeStyle(result.categorie);return(
+            <span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:s.bg,color:s.color,border:`1px solid ${s.border}`}}>{s.emoji} {typeLabel(result.categorie,lang)}</span>
+          );})()}
+          {result.confiance&&(
+            <span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,
+              background:result.confiance==='haute'?'#F0FDF4':result.confiance==='moyenne'?'#FFFBEB':'#FFF5F5',
+              color:result.confiance==='haute'?'#1D9E75':result.confiance==='moyenne'?'#D97706':'#DC2626'}}>
+              {result.confiance==='haute'?(lang==='en'?'High confidence':'Confiance haute'):result.confiance==='moyenne'?(lang==='en'?'Medium confidence':'Confiance moyenne'):(lang==='en'?'Low confidence':'Confiance basse')}
+            </span>
+          )}
+        </div>
+
+        {/* 💰 Prix de vente conseillé */}
+        <div style={{background:'#F8FFFE',borderRadius:12,padding:'12px 14px',marginBottom:12,border:'1px solid rgba(29,158,117,0.15)'}}>
+          <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>
+            💰 {lang==='en'?'Suggested sell price':'Prix de vente conseillé'}
+          </div>
+          <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+            <div style={{fontSize:32,fontWeight:900,color:'#1D9E75',letterSpacing:'-0.02em'}}>{formatCurrency(result.prix_vente_suggere??0,currency)}</div>
+            {(result.fourchette_min!=null||result.fourchette_max!=null)&&(
+              <div style={{fontSize:12,color:'#9CA3AF',fontWeight:600}}>({formatCurrency(result.fourchette_min??0,currency)} – {formatCurrency(result.fourchette_max??0,currency)})</div>
+            )}
+          </div>
+          {hasBuy?(
+            <div style={{fontSize:12,color:'#6B7280',marginTop:6}}>
+              {lang==='en'?'Your purchase price:':'Ton prix d\'achat :'}{' '}
+              <strong style={{color:'#F59E0B'}}>{formatCurrency(parseFloat(lensBuy),currency)}</strong>
+            </div>
+          ):result.prix_achat_suggere!=null&&(
+            <div style={{fontSize:12,color:'#6B7280',marginTop:6}}>
+              {lang==='en'?'Suggested buy price:':'Prix d\'achat conseillé :'}{' '}
+              <strong style={{color:'#F59E0B'}}>{formatCurrency(result.prix_achat_suggere,currency)}</strong>
+            </div>
+          )}
+        </div>
+
+        {/* 📊 Fourchette marché (Premium) */}
+        {isPremium&&result.fourchette_marche&&(
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+              📊 {lang==='en'?'Market range':'Fourchette marché'}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {[
+                {key:'bas',  fr:'Bas',   en:'Low',  bg:'#FFF5F5',color:'#DC2626',border:'#FED7D7'},
+                {key:'moyen',fr:'Moyen', en:'Mid',  bg:'#FFFBEB',color:'#D97706',border:'#FCD34D'},
+                {key:'haut', fr:'Haut',  en:'High', bg:'#F0FDF4',color:'#1D9E75',border:'#9FE1CB'},
+              ].map(({key,fr,en,bg,color,border})=>(
+                <div key={key} style={{flex:1,background:bg,border:`1px solid ${border}`,borderRadius:8,padding:'8px',textAlign:'center'}}>
+                  <div style={{fontSize:9,fontWeight:800,color,textTransform:'uppercase',marginBottom:2}}>{lang==='en'?en:fr}</div>
+                  <div style={{fontSize:15,fontWeight:800,color}}>{formatCurrency(result.fourchette_marche[key],currency)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ⚡ Vitesse de vente (Premium) */}
+        {isPremium&&vi&&(
+          <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:12,background:'#F9FAFB',borderRadius:10,padding:'10px 12px'}}>
+            <span style={{fontSize:18}}>{vi.icon}</span>
+            <div>
+              <div style={{fontSize:12,fontWeight:800,color:vi.color}}>{lang==='en'?vi.en:vi.fr}</div>
+              {result.vitesse_vente_explication&&<div style={{fontSize:12,color:'#4B5563',marginTop:2,lineHeight:1.4}}>{result.vitesse_vente_explication}</div>}
+            </div>
+          </div>
+        )}
+
+        {/* 🛍️ Plateformes */}
+        {result.plateformes?.length>0&&(isPremium?(
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+              🛍️ {lang==='en'?'Best platforms':'Meilleures plateformes'}
+            </div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {result.plateformes.map((p,i)=>(
+                <span key={i} style={{padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:700,
+                  background:i===0?'#E8F5F0':'#F3F4F6',color:i===0?'#1D9E75':'#4B5563',
+                  border:`1px solid ${i===0?'#9FE1CB':'rgba(0,0,0,0.08)'}`}}>
+                  {i===0?'⭐ ':''}{p}
+                </span>
+              ))}
+            </div>
+          </div>
+        ):(
+          <div style={{fontSize:12,color:'#6B7280',marginBottom:10}}>📦 {result.plateformes.join(' · ')}</div>
+        ))}
+
+        {/* 💡 Conseils (Premium) / Notes (Free) */}
+        {isPremium&&result.conseils?.length>0?(
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+              💡 {lang==='en'?'Tips to sell faster':'Conseils pour vendre mieux'}
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {result.conseils.map((c,i)=>(
+                <div key={i} style={{display:'flex',gap:8,background:'#F9FAFB',borderRadius:8,padding:'8px 12px'}}>
+                  <span style={{color:'#1D9E75',fontWeight:800,flexShrink:0}}>{i+1}.</span>
+                  <span style={{fontSize:12,color:'#374151',lineHeight:1.45}}>{c}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ):!isPremium&&result.notes&&(
+          <div style={{background:'#F9FAFB',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#4B5563',borderLeft:'3px solid #1D9E75',marginBottom:10}}>
+            💡 {result.notes}
+          </div>
+        )}
+
+        {/* 🎯 Score */}
+        {result.score!=null&&(
+          <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4}}>
+            <div style={{flexShrink:0}}>
+              <div style={{fontSize:9,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>DEAL SCORE</div>
+              <div style={{fontSize:24,fontWeight:900,color:sc,letterSpacing:'-0.02em',lineHeight:1}}>
+                {Number(result.score).toFixed(1)}<span style={{fontSize:11,fontWeight:600,color:'#A3A9A6'}}>/10</span>
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{height:8,background:'#F3F4F6',borderRadius:4,overflow:'hidden'}}>
+                <div style={{height:'100%',background:sc,width:`${(result.score/10)*100}%`,borderRadius:4}}/>
+              </div>
+              <div style={{fontSize:10,fontWeight:700,color:sc,marginTop:2}}>{scoreLabel(result.score,lang)}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Notes source (Premium) */}
+        {isPremium&&result.notes&&(
+          <div style={{fontSize:11,color:'#9CA3AF',marginTop:8,fontStyle:'italic'}}>{result.notes}</div>
+        )}
+
+        {/* Description */}
+        {result.description&&(
+          <div style={{fontSize:13,color:'#374151',lineHeight:1.6,marginTop:8}}>{result.description}</div>
+        )}
+      </div>
+
+      {result.titre&&(
+        <button onClick={addLensItem} disabled={lensAdded}
+          style={{width:'100%',padding:'12px',background:lensAdded?'#E8F5F0':'linear-gradient(135deg,#1D9E75,#0F6E56)',color:lensAdded?'#1D9E75':'#fff',border:lensAdded?'1px solid #9FE1CB':'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?'default':'pointer',fontFamily:'inherit',transition:'all 0.2s',marginBottom:6}}>
+          {lensAdded?(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !'):(lang==='en'?'➕ Use this analysis':'➕ Utiliser cette analyse')}
+        </button>
+      )}
+      <button onClick={onReset}
+        style={{width:'100%',padding:'9px',background:'transparent',border:'1px solid rgba(0,0,0,0.12)',borderRadius:10,fontSize:13,fontWeight:600,color:'#6B7280',cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s',marginTop:4}}>
+        🔄 {lang==='en'?'New analysis':'Nouvelle analyse'}
+      </button>
+    </div>
+  );
+}
+
 function LensTicker({ lang, onScan }) {
   const [idx, setIdx]           = useState(0);
   const [visible, setVisible]   = useState(true);
@@ -311,102 +514,17 @@ const LensTab = memo(function LensTab({
 
         {/* Résultat */}
         {lensResult&&(
-          <div style={{marginTop:14,animation:"vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both"}}>
-            {lensResult.error?(
-              <div style={{background:"#FFF5F5",borderRadius:14,padding:"16px",border:"1px solid #FED7D7",marginBottom:10}}>
-                <div style={{fontSize:14,color:"#C53030",fontWeight:600}}>{lensResult.error}</div>
-              </div>
-            ):(
-              <div style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                {/* Titre + verdict badge */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
-                  <div style={{fontWeight:800,fontSize:16,color:"#0D0D0D",flex:1,lineHeight:1.3}}>{lensResult.titre||"Article"}</div>
-                  {lensResult.verdict&&(
-                    <div style={{flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,
-                      background:lensResult.verdict==="excellent"?"#F0FDF4":lensResult.verdict==="bon"?"#EFF6FF":lensResult.verdict==="moyen"?"#FFFBEB":"#FFF5F5",
-                      color:lensResult.verdict==="excellent"?"#1D9E75":lensResult.verdict==="bon"?"#2563EB":lensResult.verdict==="moyen"?"#D97706":"#DC2626",
-                    }}>
-                      {lensResult.verdict==="excellent"?"🔥 Excellent":lensResult.verdict==="bon"?"✅ Bon deal":lensResult.verdict==="moyen"?"⚠️ Moyen":"❌ Éviter"}
-                    </div>
-                  )}
-                </div>
-
-                {/* Pills: marque, catégorie, confiance */}
-                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-                  {lensResult.marque&&(
-                    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"#F0FDF4",color:"#1D9E75",border:"1px solid #9FE1CB"}}>{lensResult.marque}</span>
-                  )}
-                  {lensResult.categorie&&(()=>{const s=getTypeStyle(lensResult.categorie);return(
-                    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:s.bg,color:s.color,border:`1px solid ${s.border}`}}>{s.emoji} {typeLabel(lensResult.categorie,lang)}</span>
-                  );})()}
-                  {lensResult.confiance&&(
-                    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,
-                      background:lensResult.confiance==="haute"?"#F0FDF4":lensResult.confiance==="moyenne"?"#FFFBEB":"#FFF5F5",
-                      color:lensResult.confiance==="haute"?"#1D9E75":lensResult.confiance==="moyenne"?"#D97706":"#DC2626",
-                    }}>
-                      {lensResult.confiance==="haute"?(lang==="en"?"High confidence":"Confiance haute"):lensResult.confiance==="moyenne"?(lang==="en"?"Medium confidence":"Confiance moyenne"):(lang==="en"?"Low confidence":"Confiance basse")}
-                    </span>
-                  )}
-                </div>
-
-                {/* Prix suggéré + fourchette */}
-                <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
-                  <div style={{fontSize:30,fontWeight:900,color:"#1D9E75",letterSpacing:"-0.02em"}}>{formatCurrency(lensResult.prix_vente_suggere??0,currency)}</div>
-                  {(lensResult.fourchette_min!=null||lensResult.fourchette_max!=null)&&(
-                    <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>
-                      ({formatCurrency(lensResult.fourchette_min??0,currency)} – {formatCurrency(lensResult.fourchette_max??0,currency)})
-                    </div>
-                  )}
-                </div>
-
-                {/* Prix d'achat — label adapté selon que l'user a fourni son coût ou non */}
-                {(parseFloat(lensBuy)>0||lensResult.prix_achat_suggere!=null)&&(
-                  <div style={{fontSize:12,color:"#6B7280",marginBottom:8}}>
-                    {parseFloat(lensBuy)>0
-                      ?(lang==="en"?"Your purchase price:":"Ton prix d'achat :")
-                      :(lang==="en"?"Suggested buy price:":"Prix d'achat conseillé :")}{" "}
-                    <strong style={{color:"#F59E0B"}}>
-                      {formatCurrency(parseFloat(lensBuy)>0?parseFloat(lensBuy):lensResult.prix_achat_suggere,currency)}
-                    </strong>
-                  </div>
-                )}
-
-                {/* Description */}
-                {lensResult.description&&(
-                  <div style={{fontSize:13,color:"#374151",lineHeight:1.6,marginBottom:8}}>{lensResult.description}</div>
-                )}
-
-                {/* Plateformes */}
-                {lensResult.plateformes?.length>0&&(
-                  <div style={{fontSize:12,color:"#6B7280",marginBottom:8}}>📦 {lensResult.plateformes.join(" · ")}</div>
-                )}
-
-                {/* Notes */}
-                {lensResult.notes&&(
-                  <div style={{background:"#F9FAFB",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4B5563",borderLeft:"3px solid #1D9E75",marginTop:4}}>
-                    💡 {lensResult.notes}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Utiliser cette analyse */}
-            {lensResult.titre&&(
-              <button
-                onClick={addLensItem}
-                disabled={lensAdded}
-                style={{width:"100%",padding:"12px",background:lensAdded?"#E8F5F0":"linear-gradient(135deg,#1D9E75,#0F6E56)",color:lensAdded?"#1D9E75":"#fff",border:lensAdded?"1px solid #9FE1CB":"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?"default":"pointer",fontFamily:"inherit",transition:"all 0.2s",marginBottom:6}}
-              >
-                {lensAdded?(lang==="en"?"✅ Added to stock!":"✅ Ajouté au stock !"):(lang==="en"?"➕ Use this analysis":"➕ Utiliser cette analyse")}
-              </button>
-            )}
-
-            <button
-              onClick={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
-              style={{width:"100%",padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",marginTop:4}}
-            >
-              🔄 {lang==="en"?"New analysis":"Nouvelle analyse"}
-            </button>
+          <div style={{marginTop:14}}>
+            <LensAnalysisResult
+              result={lensResult}
+              lensBuy={lensBuy}
+              lang={lang}
+              currency={currency}
+              isPremium={isPremium}
+              lensAdded={lensAdded}
+              addLensItem={addLensItem}
+              onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
+            />
           </div>
         )}
       </div>

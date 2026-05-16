@@ -48,7 +48,9 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
         : ` Tu as ${photoCount} photos du même article — croise-les.`)
     : "";
 
-  const schema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","notes":string}`;
+  const freeSchema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string}`;
+  const premiumSchema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string}`;
+  const schema = isPremium ? premiumSchema : freeSchema;
 
   if (lang === "en") {
     if (!isPremium) {
@@ -58,9 +60,10 @@ ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 
 PROCESS:
-1. BRAND: Identify the brand from visible logos, labels or style cues. If uncertain, set marque to null.
-2. PRICE: Estimate the resale price range based on your training knowledge of this item type and brand. Set confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
-3. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. If purchase price provided: use it to compute verdict. notes: one actionable selling tip.`;
+1. BRAND: Identify the brand from visible logos, labels or style cues. If uncertain, marque=null.
+2. PRICE: Estimate resale price range based on your training knowledge. confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
+3. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
+4. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. If purchase price provided: use it to compute verdict only. prix_achat_suggere: your market estimate of what to pay — set to null if user provided their purchase price. notes: one actionable selling tip.`;
     }
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
@@ -68,9 +71,12 @@ ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 
 MANDATORY PROCESS — follow in order:
-1. BRAND VALIDATION: If you detect a brand visually, you MUST do a web search to confirm the exact spelling and that the brand exists (e.g. visual "pict pure clothing" → search → "Picture Organic Clothing"). Never return a brand without web search confirmation. If no brand found or confirmed, set marque to null.
-2. PRICE ESTIMATION: Always base the price range on a real web search. Query: "[brand] [item type] Vinted price" or "[brand] [item type] site:vinted.com". If no Vinted results, try eBay. Set fourchette_min/fourchette_max from actual listings found. Mention the source in notes (e.g. "Price based on 5 Vinted listings"). If no market data found: set confiance="basse" and state it in notes.
-3. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand/model confirmed by search + prices found, "moyenne" if partial, "basse" if uncertain or no data. If purchase price provided: use it ONLY to compute the verdict/margin — NEVER use it to anchor prix_vente_suggere (market data only). prix_achat_suggere = your independent market estimate of what someone should pay, never echo the user's purchase price. notes: source of price estimate + one actionable selling tip.`;
+1. IDENTIFICATION: Identify marque, modele, matiere, etat_estime from visual cues and labels.
+2. BRAND VALIDATION: If you detect a brand visually, you MUST do a web search to confirm exact spelling and existence (e.g. "pict pure clothing" → search → "Picture Organic Clothing"). Never return a brand without web search confirmation. If not found, marque=null.
+3. PRICE ESTIMATION: Always base prices on a real web search. Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). If no data: confiance="basse".
+4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
+5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
+6. RULES: verdict="excellent" if margin>40%, "bon" if>20%, "moyen" if>0%, "eviter" if negative. confiance="haute" if brand confirmed + prices found, "moyenne" if partial, "basse" if uncertain. If purchase price provided: use ONLY for verdict/margin — NEVER anchor prix_vente_suggere on it (market data only). prix_achat_suggere: your independent market estimate — set to null if user provided their purchase price. notes: price source + one actionable tip.`;
   }
   if (!isPremium) {
     return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
@@ -79,9 +85,10 @@ ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
 
 PROCESSUS :
-1. MARQUE : Identifie la marque à partir des logos, étiquettes ou indices visuels visibles. Si incertain, mettre marque à null.
-2. PRIX : Estime la fourchette de prix de revente à partir de ta connaissance de ce type d'article et de cette marque. Mettre confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
-3. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. Si prix d'achat fourni : l'utiliser pour calculer le verdict. notes : un conseil concret pour vendre plus vite.`;
+1. MARQUE : Identifie la marque à partir des logos, étiquettes ou indices visuels. Si incertain, marque=null.
+2. PRIX : Estime la fourchette de prix de revente d'après ta connaissance du type d'article et de la marque. confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
+3. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
+4. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. Si prix d'achat fourni : utiliser uniquement pour calculer le verdict. prix_achat_suggere : ton estimation marché de ce que vaut l'article à l'achat — mettre à null si prix d'achat fourni par l'utilisateur. notes : un conseil concret pour vendre plus vite.`;
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
@@ -89,9 +96,12 @@ ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
 
 PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
-1. VALIDATION MARQUE : Si tu détectes une marque visuellement, tu DOIS faire une web search pour confirmer l'orthographe exacte et l'existence de la marque (ex : visuel "pict pure clothing" → recherche → "Picture Organic Clothing"). Ne jamais retourner une marque sans confirmation par web search. Si aucune marque trouvée ou confirmée, mettre marque à null.
-2. ESTIMATION PRIX : Toujours baser la fourchette de prix sur une web search réelle. Requête : "[marque] [type article] Vinted prix" ou "[marque] [type article] site:vinted.fr". Si pas de résultat Vinted, essayer eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max à partir des annonces trouvées. Mentionner la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Si aucune donnée marché trouvée : confiance="basse" et le préciser dans notes.
-3. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. confiance="haute" si marque confirmée par recherche ET prix trouvés, "moyenne" si partiel, "basse" si incertain ou aucune donnée. Si prix d'achat fourni par l'utilisateur : l'utiliser UNIQUEMENT pour calculer la marge et le verdict — NE JAMAIS l'utiliser pour fixer prix_vente_suggere (toujours basé sur les données marché). prix_achat_suggere = ton estimation marché indépendante de ce que vaut l'article à l'achat, jamais le prix fourni par l'utilisateur. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
+1. IDENTIFICATION : Identifie marque, modele, matiere, etat_estime à partir des indices visuels et étiquettes.
+2. VALIDATION MARQUE : Si tu détectes une marque visuellement, tu DOIS faire une web search pour confirmer l'orthographe exacte et l'existence (ex : "pict pure clothing" → recherche → "Picture Organic Clothing"). Ne jamais retourner une marque sans confirmation. Si non trouvée, marque=null.
+3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Si aucune donnée : confiance="basse".
+4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
+5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
+6. RÈGLES : verdict="excellent" si marge>40%, "bon" si>20%, "moyen" si>0%, "eviter" si marge négative. confiance="haute" si marque confirmée ET prix trouvés, "moyenne" si partiel, "basse" si incertain. Si prix d'achat fourni par l'utilisateur : utiliser UNIQUEMENT pour calculer la marge et le verdict — NE JAMAIS l'utiliser pour fixer prix_vente_suggere (toujours basé sur les données marché). prix_achat_suggere : estimation marché indépendante — mettre à null si prix d'achat fourni par l'utilisateur. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
 }
 
 async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
@@ -215,7 +225,7 @@ serve(async (req) => {
 
     const textParts: string[] = [];
     if (description) textParts.push(_lang === "en" ? `Details: ${description}` : `Détails : ${description}`);
-    if (prixAchat != null) textParts.push(_lang === "en" ? `Purchase price: €${prixAchat}` : `Prix d'achat : ${prixAchat}€`);
+    if (prixAchat != null) textParts.push(_lang === "en" ? `My actual purchase price (cost paid): €${prixAchat}` : `Mon prix d'achat réel (coût payé) : ${prixAchat}€`);
     if (userStats?.avgMargin != null) textParts.push(_lang === "en" ? `My average margin: ${userStats.avgMargin}%` : `Ma marge moyenne : ${userStats.avgMargin}%`);
     if (userStats?.topCategories?.length) textParts.push(_lang === "en" ? `My top categories: ${userStats.topCategories.join(", ")}` : `Mes meilleures catégories : ${userStats.topCategories.join(", ")}`);
     const userText = textParts.length ? textParts.join("\n") : (_lang === "en" ? "Analyze this item." : "Analyse cet article.");
@@ -231,7 +241,7 @@ serve(async (req) => {
 
     const basePayload = {
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 800,
+      max_tokens: isPremium ? 1200 : 800,
       temperature: 0,
       system: systemPrompt,
     };
@@ -291,6 +301,9 @@ serve(async (req) => {
         throw new Error(_lang === "en" ? "AI response could not be parsed" : "Réponse IA non parsable");
       }
     }
+
+    // Si l'utilisateur a fourni son prix d'achat, on ne retourne pas prix_achat_suggere
+    if (prixAchat != null) itemData.prix_achat_suggere = null;
 
     return new Response(JSON.stringify(itemData), {
       headers: { "Content-Type": "application/json", ...CORS },
