@@ -4639,6 +4639,22 @@ export default function App({ loginOnly = false }){
 
   async function handleLensPhotoNative(){
     try{
+      // Vérifier l'état des permissions avant d'ouvrir
+      let perms;
+      try{ perms=await Camera.checkPermissions(); }catch(_){ perms=null; }
+
+      if(perms?.camera==='denied'){
+        alert(lang==='fr'
+          ?'Accès à la caméra refusé.\n\nVa dans Réglages › Fill & Sell › Active Appareil photo et Photos.'
+          :'Camera access denied.\n\nGo to Settings › Fill & Sell › Enable Camera and Photos.');
+        return;
+      }
+
+      // Si "prompt" (jamais demandé) → demander explicitement avant d'ouvrir
+      if(perms?.camera==='prompt'||perms?.camera==='prompt-with-rationale'){
+        try{ await Camera.requestPermissions({permissions:['camera','photos']}); }catch(_){}
+      }
+
       const photo=await Camera.getPhoto({
         quality:90,
         allowEditing:false,
@@ -4652,15 +4668,16 @@ export default function App({ loginOnly = false }){
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
       });
     }catch(e){
-      const msg=e?.message||'';
-      // Annulation volontaire → rien
-      if(msg.includes('cancelled')||msg.includes('canceled')||msg.includes('User cancelled'))return;
-      // Plugin absent ou non enregistré → fallback file input silencieux
-      if(msg.includes('not implemented')||msg.includes('not available')||msg.includes('Plugin')||msg.includes('not found')||msg.includes('could not be found')||!msg){
-        lensFileRef.current?.click();return;
+      const msg=(e?.message||'').toLowerCase();
+      if(msg.includes('cancel'))return;
+      if(msg.includes('denied')||msg.includes('permission')){
+        alert(lang==='fr'
+          ?'Accès à la caméra refusé.\n\nVa dans Réglages › Fill & Sell › Active Appareil photo et Photos.'
+          :'Camera access denied.\n\nGo to Settings › Fill & Sell › Enable Camera and Photos.');
+        return;
       }
-      // Permission refusée explicitement
-      alert(lang==='fr'?'Accès à la caméra refusé. Active-le dans Réglages > Fill & Sell.':'Camera access denied. Enable it in Settings > Fill & Sell.');
+      // Plugin absent ou erreur interne → fallback silencieux vers file input
+      lensFileRef.current?.click();
     }
   }
 
