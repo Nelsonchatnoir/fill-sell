@@ -1634,13 +1634,24 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             }
           }
           const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken});
+          // Vente directe auto si article non trouvé en stock (no_match)
+          const resolvedResults=await Promise.all(results.map(async r=>{
+            if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match){
+              try{
+                const dmCat=r.taskData?.categorie||r.taskData?.type||null;
+                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente});
+                return{...r,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"};
+              }catch(e){return{...r,status:"error",message:e.message};}
+            }
+            return r;
+          }));
           // Store price_advice data for potential follow-up "ajoute le au stock"
-          const paRes=results.find(r=>r.intent==="price_advice"&&r.status==="success");
+          const paRes=resolvedResults.find(r=>r.intent==="price_advice"&&r.status==="success");
           if(paRes?.taskData)setLastPriceAdviceData(paRes.taskData);
           else setLastPriceAdviceData(null);
-          setVaResults(results);setVaStep("results");
+          setVaResults(resolvedResults);setVaStep("results");
           const QUICK_INTENTS=new Set(["inventory_add","inventory_sell","inventory_delete","inventory_update","inventory_lot"]);
-          const isQuickOnly=results.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));
+          const isQuickOnly=resolvedResults.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));
           if(isQuickOnly){
             autoCloseRef.current=setTimeout(()=>resetVA(),3500);
           }
