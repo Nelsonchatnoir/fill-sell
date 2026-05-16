@@ -175,7 +175,7 @@ Réponses INCORRECTES (ne jamais faire) :
 
 DISTINCTIONS price_advice :
 - price_question UNIQUEMENT si l'utilisateur demande explicitement d'ajouter ET pose une question de prix (ex: "ajoute un iPhone 13 à 80€, ça vaut combien ?") → inventory_add + price_question.
-- deal_score : si l'utilisateur donne DEUX prix (achat ET vente) pour un calcul de marge.
+- deal_score : UNIQUEMENT si l'utilisateur pose une question HYPOTHÉTIQUE sur une marge ("si j'achète X à Y€ et je revends Z€, c'est rentable ?"). INTERDIT si l'utilisateur décrit une transaction passée ("j'ai acheté" + "j'ai vendu") → dans ce cas : inventory_sell avec no_match:true et prix_achat.
 - business_advice UNIQUEMENT si aucun article précis n'est mentionné.
 INTERDIT : générer business_advice quand un article précis est mentionné avec une question de prix.
 INTERDIT : générer inventory_add quand une question de prix de revente est présente dans l'utterance.
@@ -196,10 +196,13 @@ Déclencheurs business_advice : "comment je m'en sors ?", "qu'est-ce que tu me c
 INTERDIT : générer business_advice si un article précis (nom, marque, modèle) est mentionné avec une question de prix.
 Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
-Règle multi-articles :
-Si achat ET vente sont mentionnés pour le même article → génère 1 seule tâche :
+Règle multi-articles (PRIORITÉ SUR deal_score) :
+Si l'utilisateur décrit avoir ACHETÉ ET VENDU le même article (passé composé : "j'ai acheté … j'ai vendu …") → génère 1 seule tâche :
   1. inventory_sell avec no_match:true, prix_achat ET prix_vente renseignés (vente directe — l'article passe directement en ventes, pas dans l'inventaire).
+INTERDIT de générer deal_score dans ce cas. INTERDIT de générer inventory_add.
 Si plusieurs articles différents → répéter par article.
+✅ "j'ai acheté une imprimante HP 20€ et je l'ai vendue 30€" → [inventory_sell {nom:"Imprimante",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
+✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
 
 Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) :
 "high tech"|"hightech"|"tech"|"smartphone"|"téléphone"|"console"|"pc"|"ordinateur"|"tablette"|"casque"|"écouteurs" → "High-Tech"
@@ -282,7 +285,7 @@ analytics_dormant:{ days }
 analytics_date:   { date (ISO), date_to (ISO|null), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
-Déclencheurs deal_score : "si j'achète X je revends Y", "ça fait combien de bénéfice", "quelle marge si", calcul achat/vente EXPLICITE avec les deux prix mentionnés
+Déclencheurs deal_score : scénarios HYPOTHÉTIQUES uniquement — "si j'achète X je revends Y", "quelle marge si", "c'est rentable si", "est-ce un bon deal si". INTERDIT si l'utilisateur dit "j'ai acheté" + "j'ai vendu" (passé composé = transaction réelle → inventory_sell no_match:true).
 price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
@@ -537,7 +540,7 @@ INCORRECT responses (never do this):
 
 DISTINCTIONS price_advice:
 - price_question ONLY if the user explicitly asks to add AND asks a price question (e.g.: "add an iPhone 13 at €80, how much is it worth?") → inventory_add + price_question.
-- deal_score: if the user gives TWO prices (buy AND sell) for a margin calculation.
+- deal_score: ONLY if the user asks a HYPOTHETICAL margin question ("if I buy X for €Y and sell for €Z, is it worth it?"). FORBIDDEN if the user describes a past transaction ("I bought" + "I sold") → use inventory_sell with no_match:true and prix_achat instead.
 - business_advice ONLY if no specific item is mentioned.
 FORBIDDEN: generating business_advice when a specific item is mentioned with a price question.
 FORBIDDEN: generating inventory_add when a resale price question is present in the utterance.
@@ -558,10 +561,13 @@ Triggers business_advice: "how am I doing?", "what do you advise?", "am I profit
 FORBIDDEN: generating business_advice if a specific item (name, brand, model) is mentioned with a price question.
 Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
-Multi-article rule:
-If a purchase AND sale are mentioned for the same item → generate 1 task only:
+Multi-article rule (PRIORITY OVER deal_score):
+If the user describes having BOUGHT AND SOLD the same item (past tense: "I bought … I sold …") → generate 1 task only:
   1. inventory_sell with no_match:true, both prix_achat AND prix_vente filled (direct sale — item goes straight to sales, not inventory).
+FORBIDDEN to generate deal_score in this case. FORBIDDEN to generate inventory_add.
 If multiple different items → repeat per item.
+✅ "I bought an HP printer for €20 and sold it for €30" → [inventory_sell {nom:"Printer",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
+✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
 
 Canonical categories (always use the exact value from the allowed list — 15 categories):
 "high tech"|"tech"|"smartphone"|"phone"|"console"|"pc"|"laptop"|"tablet"|"headphones"|"earbuds" → "High-Tech"
@@ -644,7 +650,7 @@ analytics_dormant:{ days }
 analytics_date:   { date (ISO), date_to (ISO|null), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
-Triggers for deal_score: "if I buy X and sell for Y", "how much profit", "what margin if", EXPLICIT buy/sell calculation with both prices mentioned
+Triggers for deal_score: HYPOTHETICAL scenarios only — "if I buy X and sell for Y", "what margin if", "is it worth it if". FORBIDDEN if the user says "I bought" + "I sold" (past tense = real transaction → inventory_sell no_match:true).
 price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
