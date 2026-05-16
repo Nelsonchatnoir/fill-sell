@@ -2772,10 +2772,6 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
                         <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
                       </div>
-                      {svUnit>0&&<div style={{textAlign:"right"}}>
-                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Net profit":"Bénéfice net"}</div>
-                        <div style={{fontSize:18,fontWeight:900,color:totalBenef>=0?"#1D9E75":"#EF4444"}}>{totalBenef>=0?"+":""}{fmt(totalBenef)}</div>
-                      </div>}
                     </div>
                   </div>
                 );
