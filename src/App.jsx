@@ -298,7 +298,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
           })}
         </div>
         <div style={{marginTop:12,flexShrink:0}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#6B7280',marginBottom:6}}>{lang==='en'?'What's your name? (optional)':'Comment tu t\'appelles ? (optionnel)'}</div>
+          <div style={{fontSize:11,fontWeight:700,color:'#6B7280',marginBottom:6}}>{lang==='en'?"What's your name? (optional)":"Comment tu t'appelles ? (optionnel)"}</div>
           <input
             value={usernameInput}
             onChange={e=>setUsernameInput(e.target.value.slice(0,30))}
