@@ -684,89 +684,6 @@ function stripMarque(nom,marque){
   const cleaned=nom.replace(new RegExp(`\\b${escaped}\\b`,'gi'),'').replace(/\s+/g,' ').trim();
   return cleaned||nom;
 }
-const _LENS_TYPES=[
-  ['sweatshirt','Sweatshirt'],['hoodie','Hoodie'],['pull','Pull'],['sweater','Pull'],['knitwear','Pull'],['cardigan','Cardigan'],
-  ['robe','Robe'],['dress','Robe'],['jupe','Jupe'],['skirt','Jupe'],
-  ['pantalon','Pantalon'],['trousers','Pantalon'],['pants','Pantalon'],
-  ['jean','Jean'],['jeans','Jean'],['denim','Jean'],
-  ['veste','Veste'],['jacket','Veste'],['blouson','Blouson'],['bomber','Blouson'],
-  ['manteau','Manteau'],['coat','Manteau'],['parka','Parka'],
-  ['doudoune','Doudoune'],['puffer','Doudoune'],
-  ['chemise','Chemise'],['shirt','Chemise'],['blouse','Blouse'],
-  ['débardeur','Débardeur'],['tank top','Débardeur'],
-  ['combinaison','Combinaison'],['jumpsuit','Combinaison'],['salopette','Salopette'],
-  ['short','Short'],['shorts','Short'],['bermuda','Bermuda'],
-  ['legging','Legging'],['leggings','Legging'],
-  ['maillot','Maillot'],['bikini','Bikini'],['lingerie','Lingerie'],
-  ['pyjama','Pyjama'],['body','Body'],['bustier','Bustier'],
-  ['sneakers','Sneakers'],['sneaker','Sneakers'],
-  ['baskets','Baskets'],['basket','Baskets'],
-  ['bottes','Bottes'],['botte','Bottes'],['boots','Bottes'],['boot','Bottes'],
-  ['sandales','Sandales'],['sandale','Sandales'],['sandals','Sandales'],
-  ['espadrilles','Espadrilles'],['espadrille','Espadrilles'],
-  ['mocassins','Mocassins'],['loafer','Mocassins'],
-  ['ballerines','Ballerines'],['ballerine','Ballerines'],
-  ['chaussures','Chaussures'],['chaussure','Chaussures'],['shoes','Chaussures'],
-  ['sac à dos','Sac à dos'],['backpack','Sac à dos'],
-  ['sac','Sac'],['bag','Sac'],['handbag','Sac'],['tote','Sac'],
-  ['pochette','Pochette'],['clutch','Pochette'],
-  ['portefeuille','Portefeuille'],['wallet','Portefeuille'],
-  ['ceinture','Ceinture'],['belt','Ceinture'],
-  ['écharpe','Écharpe'],['scarf','Écharpe'],['foulard','Foulard'],
-  ['casquette','Casquette'],['cap','Casquette'],
-  ['chapeau','Chapeau'],['hat','Chapeau'],
-  ['bonnet','Bonnet'],['beanie','Bonnet'],
-  ['lunettes','Lunettes'],['sunglasses','Lunettes'],['glasses','Lunettes'],
-  ['collier','Collier'],['necklace','Collier'],['bracelet','Bracelet'],
-  ['bague','Bague'],['ring','Bague'],
-  ['montre','Montre'],['watch','Montre'],
-  ['iphone','iPhone'],['smartphone','Smartphone'],['téléphone','Téléphone'],['phone','Téléphone'],
-  ['tablette','Tablette'],['tablet','Tablette'],['ipad','iPad'],
-  ['macbook','MacBook'],['laptop','Laptop'],['ordinateur','Ordinateur'],
-  ['airpods','AirPods'],['écouteurs','Écouteurs'],['earbuds','Écouteurs'],
-  ['headphones','Casque audio'],['casque audio','Casque audio'],
-  ['enceinte','Enceinte'],['speaker','Enceinte'],
-  ['console','Console'],['playstation','PlayStation'],['xbox','Xbox'],
-  ['manette','Manette'],['controller','Manette'],
-  ['clavier','Clavier'],['keyboard','Clavier'],['souris','Souris'],['mouse','Souris'],
-  ['écran','Écran'],['monitor','Écran'],['screen','Écran'],
-  ['smartwatch','Smartwatch'],['télévision','Télévision'],
-  ['drone','Drone'],['appareil photo','Appareil photo'],['camera','Appareil photo'],
-  ['canapé','Canapé'],['sofa','Canapé'],['couch','Canapé'],
-  ['table','Table'],['chaise','Chaise'],['chair','Chaise'],
-  ['bureau','Bureau'],['desk','Bureau'],
-  ['armoire','Armoire'],['wardrobe','Armoire'],['commode','Commode'],
-  ['lit','Lit'],['bed','Lit'],['matelas','Matelas'],['mattress','Matelas'],
-  ['étagère','Étagère'],['shelf','Étagère'],
-  ['lampe','Lampe'],['lamp','Lampe'],['miroir','Miroir'],['mirror','Miroir'],
-  ['vase','Vase'],['tapis','Tapis'],['rug','Tapis'],
-  ['cafetière','Cafetière'],['aspirateur','Aspirateur'],['vacuum','Aspirateur'],
-  ['poêle','Poêle'],['casserole','Casserole'],
-  ['vélo','Vélo'],['bike','Vélo'],['bicycle','Vélo'],
-  ['trottinette','Trottinette'],['skateboard','Skateboard'],['ski','Ski'],['snowboard','Snowboard'],
-  ['raquette','Raquette'],['racket','Raquette'],['kayak','Kayak'],
-  ['tente','Tente'],['tent','Tente'],
-  ['guitare','Guitare'],['guitar','Guitare'],['piano','Piano'],
-  ['violon','Violon'],['violin','Violon'],['trompette','Trompette'],['saxophone','Saxophone'],
-  ['platine','Platine'],['turntable','Platine'],['vinyle','Vinyle'],['vinyl','Vinyle'],
-  ['parfum','Parfum'],['perfume','Parfum'],['crème','Crème'],['cream','Crème'],
-  ['sérum','Sérum'],['serum','Sérum'],['mascara','Mascara'],['palette','Palette'],
-  ['shampooing','Shampooing'],['shampoo','Shampooing'],
-  ['lego','Lego'],['playmobil','Playmobil'],
-  ['puzzle','Puzzle'],['peluche','Peluche'],['plush','Peluche'],
-  ['figurine','Figurine'],['figure','Figurine'],['poupée','Poupée'],['doll','Poupée'],
-  ['manga','Manga'],['roman','Roman'],['novel','Roman'],['magazine','Magazine'],
-  ['livre','Livre'],['book','Livre'],
-  ['pneu','Pneu'],['tire','Pneu'],['jante','Jante'],['rim','Jante'],
-];
-function normalizeLensTitle(titre,marque){
-  if(!titre)return"Article";
-  const t=titre.toLowerCase();
-  for(const[kw,label]of _LENS_TYPES){if(t.includes(kw))return label;}
-  // Fallback: strip brand + garder 2 premiers mots
-  const cleaned=stripMarque(titre,marque).split(/\s+/).filter(Boolean);
-  return cleaned.slice(0,2).join(' ')||titre;
-}
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
   // Luxury brands always take absolute priority over article type
@@ -4907,8 +4824,17 @@ export default function App({ loginOnly = false }){
   async function addLensItem(){
     if(!lensResult?.titre||lensAdded)return;
     try{
+      let nom=lensResult.titre||"Article";
+      try{
+        const{data:{session:lSess}}=await supabase.auth.getSession();
+        const lToken=lSess?.access_token;
+        if(lToken){
+          const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${lToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:lensResult.titre})});
+          if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nom=nJson.nom;}
+        }
+      }catch{}
       await vaActions.addItem({
-        nom:normalizeLensTitle(lensResult.titre,lensResult.marque||null),
+        nom,
         marque:lensResult.marque||null,
         categorie:lensResult.categorie||"Autre",
         description:lensResult.description||(lensDesc.trim()||null),
