@@ -2841,24 +2841,45 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               if(status==="success"&&intent==="location_items"){
                 const locItems=data?.items||[];
                 const locEmp=data?.emplacement||taskData?.emplacement||"";
+                // Agréger les articles identiques (même titre + marque)
+                const locGrouped=(()=>{
+                  const map=new Map();
+                  for(const item of locItems){
+                    const key=`${(item.title||"").toLowerCase()}||${(item.marque||"").toLowerCase()}`;
+                    if(map.has(key)){
+                      const g=map.get(key);
+                      g.qty+=(item.quantite||1);
+                      g.totalVal+=(item.quantite||1)*(item.prix_achat||item.buy||0);
+                    } else {
+                      map.set(key,{...item,qty:(item.quantite||1),totalVal:(item.quantite||1)*(item.prix_achat||item.buy||0)});
+                    }
+                  }
+                  return [...map.values()];
+                })();
+                const totalQty=locGrouped.reduce((s,g)=>s+g.qty,0);
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {locItems.length} {lang==="en"?"item(s)":"article(s)"}</div>
-                    {locItems.length===0
+                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
+                    {locGrouped.length===0
                       ?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>)
                       :(<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          {locItems.map((item,i)=>{
+                          {locGrouped.map((item,i)=>{
                             const ts2=item.type?getTypeStyle(item.type):null;
                             return(
-                              <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 0",borderBottom:i<locItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
+                              <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 0",borderBottom:i<locGrouped.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                                 <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                                  <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {item.title}{item.qty>1?<span style={{color:"#A3A9A6",fontWeight:600}}> ×{item.qty}</span>:null}
+                                  </div>
                                   <div className="vr-pills" style={{marginTop:2}}>
                                     {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                                     {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
                                   </div>
                                 </div>
-                                <div style={{fontSize:13,fontWeight:700,color:"#F9A26C",flexShrink:0}}>{fmt(item.prix_achat||item.buy||0)}</div>
+                                <div style={{fontSize:13,fontWeight:700,color:"#F9A26C",flexShrink:0,textAlign:"right"}}>
+                                  {fmt(item.totalVal)}
+                                  {item.qty>1&&<div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"tied up":"immobilisés"}</div>}
+                                </div>
                               </div>
                             );
                           })}
