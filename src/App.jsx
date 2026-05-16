@@ -2767,11 +2767,19 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                       {ts&&type&&type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {type}</span>}
                     </div>
-                    <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
                       <div>
-                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
-                        <div style={{fontSize:18,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
+                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
+                        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
                       </div>
+                      {cogs>0&&<>
+                        <div style={{width:1,alignSelf:"stretch",background:"#C6F0E0",borderRadius:1}}/>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{lang==="en"?"Net profit":"Profit net"}</div>
+                          <div style={{fontSize:20,fontWeight:900,color:totalBenef>=0?"#1D9E75":"#EF4444"}}>{totalBenef>0?"+":""}{fmt(totalBenef)}</div>
+                          {mgpUnit!=null&&<div style={{fontSize:11,fontWeight:700,color:totalBenef>=0?"#1D9E75":"#EF4444",opacity:0.7,marginTop:1}}>{fmtp(mgpUnit)}</div>}
+                        </div>
+                      </>}
                     </div>
                   </div>
                 );
