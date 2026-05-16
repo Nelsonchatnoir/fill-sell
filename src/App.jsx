@@ -2742,7 +2742,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const nom=data?.nom||taskData?.nom||"";
                 const soldItem=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)):null;
                 const marque=soldItem?.marque||data?.marque||taskData?.marque||null;
-                const type=soldItem?.type||data?.type||data?.categorie||taskData?.type||taskData?.categorie||null;
+                const type=soldItem?.type||data?.categorie||taskData?.categorie||detectType(nom,data?.marque||taskData?.marque||"")||null;
                 const ts=type?getTypeStyle(type):null;
                 const cogs=soldItem?(soldItem.buy+(soldItem.purchaseCosts||0)):0;
                 const mgUnit=svUnit>0?svUnit-cogs-sfUnit:null;
