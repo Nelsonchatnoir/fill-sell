@@ -271,7 +271,7 @@ const LensTab = memo(function LensTab({
             onChange={e=>setLensDesc(e.target.value)}
             placeholder=""
             rows={2}
-            style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${lensMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",transition:"border-color 0.15s"}}
+            style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${lensMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:16,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#0D0D0D",transition:"border-color 0.15s"}}
           />
           <button
             onClick={toggleLensMic}
@@ -359,11 +359,15 @@ const LensTab = memo(function LensTab({
                   )}
                 </div>
 
-                {/* Prix d'achat conseillé */}
-                {lensResult.prix_achat_suggere!=null&&(
+                {/* Prix d'achat — label adapté selon que l'user a fourni son coût ou non */}
+                {(parseFloat(lensBuy)>0||lensResult.prix_achat_suggere!=null)&&(
                   <div style={{fontSize:12,color:"#6B7280",marginBottom:8}}>
-                    {lang==="en"?"Suggested buy price:":"Prix d'achat conseillé :"}{" "}
-                    <strong style={{color:"#F59E0B"}}>{formatCurrency(lensResult.prix_achat_suggere,currency)}</strong>
+                    {parseFloat(lensBuy)>0
+                      ?(lang==="en"?"Your purchase price:":"Ton prix d'achat :")
+                      :(lang==="en"?"Suggested buy price:":"Prix d'achat conseillé :")}{" "}
+                    <strong style={{color:"#F59E0B"}}>
+                      {formatCurrency(parseFloat(lensBuy)>0?parseFloat(lensBuy):lensResult.prix_achat_suggere,currency)}
+                    </strong>
                   </div>
                 )}
 
