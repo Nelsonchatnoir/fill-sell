@@ -197,10 +197,9 @@ INTERDIT : générer business_advice si un article précis (nom, marque, modèle
 Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
 Règle multi-articles :
-Si achat ET vente sont mentionnés pour le même article → génère 2 tâches dans l'ordre :
-  1. inventory_add  (requiresConfirmation: false)
-  2. inventory_sell (requiresConfirmation: false, confidence ≥ 0.85)
-Si plusieurs articles différents → répéter la paire par article.
+Si achat ET vente sont mentionnés pour le même article → génère 1 seule tâche :
+  1. inventory_sell avec no_match:true, prix_achat ET prix_vente renseignés (vente directe — l'article passe directement en ventes, pas dans l'inventaire).
+Si plusieurs articles différents → répéter par article.
 
 Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) :
 "high tech"|"hightech"|"tech"|"smartphone"|"téléphone"|"console"|"pc"|"ordinateur"|"tablette"|"casque"|"écouteurs" → "High-Tech"
@@ -560,10 +559,9 @@ FORBIDDEN: generating business_advice if a specific item (name, brand, model) is
 Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
 Multi-article rule:
-If a purchase AND sale are mentioned for the same item → generate 2 tasks in order:
-  1. inventory_add  (requiresConfirmation: false)
-  2. inventory_sell (requiresConfirmation: false, confidence ≥ 0.85)
-If multiple different items → repeat the pair per item.
+If a purchase AND sale are mentioned for the same item → generate 1 task only:
+  1. inventory_sell with no_match:true, both prix_achat AND prix_vente filled (direct sale — item goes straight to sales, not inventory).
+If multiple different items → repeat per item.
 
 Canonical categories (always use the exact value from the allowed list — 15 categories):
 "high tech"|"tech"|"smartphone"|"phone"|"console"|"pc"|"laptop"|"tablet"|"headphones"|"earbuds" → "High-Tech"

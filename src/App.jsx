@@ -1639,7 +1639,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match){
               try{
                 const dmCat=r.taskData?.categorie||r.taskData?.type||null;
-                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente});
+                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat});
                 return{...r,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"};
               }catch(e){return{...r,status:"error",message:e.message};}
             }
@@ -4576,9 +4576,10 @@ export default function App({ loginOnly = false }){
     },
     // Vente directe sans article en stock (intent inventory_sell + no_match).
     // Insère uniquement dans ventes — pas de suppression inventaire.
-    addDirectSale:async({nom,marque,type,description,prix_vente})=>{
+    addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat})=>{
       const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
-      const row={user_id:user.id,titre:nom||"Article",marque:marque||"Sans marque",type:type||null,description:description||null,prix_achat:0,prix_vente:pv,benefice:pv,date:new Date().toISOString().split('T')[0]};
+      const pa=parseFloat(String(prix_achat??0).replace(",","."))||0;
+      const row={user_id:user.id,titre:nom||"Article",marque:marque||"Sans marque",type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0]};
       const{data,error}=await supabase.from('ventes').insert([row]).select().single();
       if(error)throw new Error(error.message);
       if(data)setSales(prev=>[mapSale(data),...prev]);
