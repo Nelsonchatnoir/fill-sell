@@ -4918,7 +4918,7 @@ export default function App({ loginOnly = false }){
           {!isPremium&&!isNative?(
             <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>setShowUpgradeModal(true)}/>
           ):!isPremium&&isNative?(
-            <button onClick={handleIAPPurchase} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>setShowUpgradeModal(true)} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
             <div className="tb-premium">⭐ Premium</div>
           ):null}
