@@ -45,8 +45,14 @@ serve(async (req) => {
     }
     const userId = authUser.id;
 
-    // 3. Suppression admin
-    console.log("[delete-account] Tentative suppression userId:", userId);
+    // 3. Suppression des données utilisateur (FK constraints)
+    console.log("[delete-account] Suppression données userId:", userId);
+    await supabaseAdmin.from('inventaire').delete().eq('user_id', userId);
+    await supabaseAdmin.from('ventes').delete().eq('user_id', userId);
+    await supabaseAdmin.from('profiles').delete().eq('id', userId);
+
+    // 4. Suppression admin
+    console.log("[delete-account] Tentative suppression auth userId:", userId);
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteError) {
