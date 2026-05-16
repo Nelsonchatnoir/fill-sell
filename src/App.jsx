@@ -4833,15 +4833,27 @@ export default function App({ loginOnly = false }){
           if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nom=nJson.nom;}
         }
       }catch{}
-      await vaActions.addItem({
-        nom,
-        marque:lensResult.marque||null,
-        categorie:lensResult.categorie||"Autre",
-        description:lensResult.description||(lensDesc.trim()||null),
-        prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
-        prix_vente:lensResult.prix_vente_suggere||null,
-        quantite:1,
-      });
+      if(lensResult.est_vendu===true){
+        const pv=lensResult.prix_vente_reel||lensResult.prix_vente_suggere||0;
+        const pa=lensResult.prix_achat_reel||0;
+        const marqueNorm=normalizeMarque(lensResult.marque);
+        const _td=detectType(nom,marqueNorm);
+        const typeAuto=_td==='Luxe'?'Luxe':(lensResult.categorie||_td);
+        const srow={user_id:user.id,titre:stripMarque(nom,marqueNorm),prix_achat:pa,prix_vente:pv,benefice:pv-pa,marque:marqueNorm||null,type:typeAuto||null,description:lensResult.description||(lensDesc.trim()||null),emplacement:null,date:new Date().toISOString().split('T')[0]};
+        const{data:sd,error:se}=await supabase.from('ventes').insert([srow]).select().single();
+        if(se)throw new Error(se.message);
+        if(sd)setSales(prev=>[mapSale(sd),...prev]);
+      }else{
+        await vaActions.addItem({
+          nom,
+          marque:lensResult.marque||null,
+          categorie:lensResult.categorie||"Autre",
+          description:lensResult.description||(lensDesc.trim()||null),
+          prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
+          prix_vente:lensResult.prix_vente_suggere||null,
+          quantite:1,
+        });
+      }
       setLensAdded(true);
     }catch(e){
       alert(e.message);

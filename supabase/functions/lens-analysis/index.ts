@@ -48,8 +48,8 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
         : ` Tu as ${photoCount} photos du même article — croise-les.`)
     : "";
 
-  const freeSchema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string}`;
-  const premiumSchema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string}`;
+  const freeSchema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null}`;
+  const premiumSchema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null}`;
   const schema = isPremium ? premiumSchema : freeSchema;
 
   if (lang === "en") {
@@ -64,7 +64,8 @@ PROCESS:
 2. PRICE: Estimate resale price range based on your training knowledge. confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
 3. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 4. PURCHASE PRICE EXTRACTION: Read the field labelled "User note:" in the message. If the user mentions a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price is mentioned, set prix_achat_reel to null.
-5. RULES:
+5. SALE DETECTION: Read the "User note:" field. If the user says they already sold this item — in any form ("sold for 80€", "sold it for X", "I sold it", "vendu 80€", "je l'ai vendu", etc.) — set est_vendu: true and prix_vente_reel to the numeric sale amount. Otherwise set est_vendu: false and prix_vente_reel: null.
+6. RULES:
    MARGIN CALCULATION (strict priority):
    - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score.
    - If prix_achat_reel is null: margin = prix_vente_suggere − prix_achat_suggere.
@@ -85,7 +86,8 @@ MANDATORY PROCESS — follow in order:
 4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
 5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 6. PURCHASE PRICE EXTRACTION: Read the field labelled "User note:" in the message. If the user mentions a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price is mentioned, set prix_achat_reel to null.
-7. RULES:
+7. SALE DETECTION: Read the "User note:" field. If the user says they already sold this item — in any form ("sold for 80€", "sold it for X", "I sold it", "vendu 80€", "je l'ai vendu", etc.) — set est_vendu: true and prix_vente_reel to the numeric sale amount. Otherwise set est_vendu: false and prix_vente_reel: null.
+8. RULES:
    MARGIN CALCULATION (strict priority):
    - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score. NEVER anchor prix_vente_suggere on it (market data only).
    - If prix_achat_reel is null: margin = prix_vente_suggere − prix_achat_suggere.
@@ -106,7 +108,8 @@ PROCESSUS :
 2. PRIX : Estime la fourchette de prix de revente d'après ta connaissance du type d'article et de la marque. confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
 3. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 4. EXTRACTION PRIX D'ACHAT : Lis le champ "Note de l'utilisateur :" dans le message. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
-5. RÈGLES :
+5. DÉTECTION VENTE : Lis le champ "Note de l'utilisateur :" dans le message. Si l'utilisateur mentionne avoir déjà vendu l'article — sous n'importe quelle forme ("vendu 80€", "je l'ai vendu", "sold for X", "vendu pour X", etc.) — mets est_vendu: true et prix_vente_reel au montant numérique. Sinon est_vendu: false et prix_vente_reel: null.
+6. RÈGLES :
    CALCUL DE MARGE (priorité stricte) :
    - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score.
    - Si prix_achat_reel est null : marge = prix_vente_suggere − prix_achat_suggere.
@@ -127,7 +130,8 @@ PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
 4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
 5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 6. EXTRACTION PRIX D'ACHAT : Lis le champ "Note de l'utilisateur :" dans le message. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
-7. RÈGLES :
+7. DÉTECTION VENTE : Lis le champ "Note de l'utilisateur :" dans le message. Si l'utilisateur mentionne avoir déjà vendu l'article — sous n'importe quelle forme ("vendu 80€", "je l'ai vendu", "sold for X", "vendu pour X", etc.) — mets est_vendu: true et prix_vente_reel au montant numérique. Sinon est_vendu: false et prix_vente_reel: null.
+8. RÈGLES :
    CALCUL DE MARGE (priorité stricte) :
    - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score — NE JAMAIS l'utiliser pour fixer prix_vente_suggere (toujours basé sur les données marché).
    - Si prix_achat_reel est null : marge = prix_vente_suggere − prix_achat_suggere.

@@ -246,7 +246,10 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
       {result.titre&&(
         <button onClick={addLensItem} disabled={lensAdded}
           style={{width:'100%',padding:'12px',background:lensAdded?'#E8F5F0':'linear-gradient(135deg,#1D9E75,#0F6E56)',color:lensAdded?'#1D9E75':'#fff',border:lensAdded?'1px solid #9FE1CB':'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?'default':'pointer',fontFamily:'inherit',transition:'all 0.2s',marginBottom:6}}>
-          {lensAdded?(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !'):(lang==='en'?'➕ Use this analysis':'➕ Utiliser cette analyse')}
+          {lensAdded
+            ?(result.est_vendu?(lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'):(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !'))
+            :(result.est_vendu?(lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'):(lang==='en'?'➕ Use this analysis':'➕ Utiliser cette analyse'))
+          }
         </button>
       )}
       <button onClick={onReset}
