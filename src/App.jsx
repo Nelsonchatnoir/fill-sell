@@ -2373,7 +2373,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const mgU=pv-buyU-sf;
                 const mgpU=pv>0?(mgU/pv)*100:0;
                 const ts=found?getTypeStyle(found.type):null;
-                const dCat=!found?(taskData?.categorie||taskData?.type||null):null;
+                const dCat=!found?(taskData?.categorie||null):null;
                 const dTs=dCat&&dCat!=="Autre"?getTypeStyle(dCat):null;
                 const daysInStock=found&&(found.date_ajout||found.date)?Math.floor((Date.now()-new Date(found.date_ajout||found.date).getTime())/(1000*60*60*24)):null;
                 return(
