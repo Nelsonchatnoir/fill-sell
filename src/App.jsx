@@ -3622,16 +3622,18 @@ export default function App({ loginOnly = false }){
     for(const item of voiceParsed.items){
       if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const qty=Math.max(1,item.quantite||1);
-      const fraisG=parseFloat(item.frais_global)||0;
-      const fraisU=fraisG>0?fraisG/qty:(parseFloat(item.frais_unitaire)||0);
       const isVente=voiceParsed.action==='vente';
+      const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
+      const s=voiceParsed.isLot?0:(parseFloat(item.prix_vente)||0);
+      // Résoudre les frais — priorité : absolu total (frais_global/frais_montant) > pourcentage > unitaire
+      const fraisG=parseFloat(item.frais_global)||parseFloat(item.frais_montant)||0;
+      const fraisPct=parseFloat(item.frais_pourcentage)||0;
+      const fraisU=fraisG>0?fraisG/qty:fraisPct>0?(isVente?s:bRaw)*fraisPct/100:(parseFloat(item.frais_unitaire)||0);
       // Pour achat non-lot : l'IA a inclus fraisU dans prix_achat → on sépare prix de base et frais
       // Pour lot achat : prix_estime_lot ne contient pas de frais → fraisU va dans purchase_costs
       // Pour vente : fraisU sont des frais de vente → selling_fees (ne pas toucher prix_achat)
-      const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
       const b=(!isVente&&!voiceParsed.isLot)?(bRaw-fraisU):bRaw;
       const pc=isVente?0:fraisU;
-      const s=voiceParsed.isLot?0:(parseFloat(item.prix_vente)||0);
       const sf=isVente?fraisU:0;
       const hasS=s>0;
       const cogs=b+pc;
