@@ -1699,6 +1699,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div className="vr-pills" style={{marginTop:4}}>
                         {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                         {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
+                        {(data?.plateforme||taskData?.plateforme)&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {data?.plateforme||taskData?.plateforme}</span>}
                       </div>
                     </div>
                   </div>
@@ -1751,6 +1752,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                                 {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
                                 {item.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {item.emplacement}</span>}
                                 {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
+                                {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
                               </div>
                               {(item.description||item.desc)&&<div style={{fontSize:11,color:"#6B7280",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description||item.desc}</div>}
                               {/* LIGNE 3 : date + boutons */}
@@ -2698,6 +2700,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
                       {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                       {ts&&type&&type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {type}</span>}
+                      {(taskData?.plateforme||data?.plateforme||soldItem?.plateforme)&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {taskData?.plateforme||data?.plateforme||soldItem?.plateforme}</span>}
                     </div>
                     <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
                       <div>
@@ -4437,7 +4440,7 @@ export default function App({ loginOnly = false }){
       return mapped;
     },
     markSold:(item)=>markSold(item),
-    confirmSellDirect:async(item,prix_vente,frais=0,quantite_vendue=1)=>{
+    confirmSellDirect:async(item,prix_vente,frais=0,quantite_vendue=1,plateforme=null)=>{
       const sv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       if(!sv||sv<=0)throw new Error("Prix vente invalide");
       const sf=parseFloat(String(frais??0).replace(",","."))||0;
@@ -4452,7 +4455,7 @@ export default function App({ loginOnly = false }){
         if(updQtyErr)throw new Error(updQtyErr.message);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
         // Insérer une ligne "vendu" séparée pour la quantité vendue
-        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString(),plateforme:item.plateforme||null};
+        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString(),plateforme:plateforme||item.plateforme||null};
         const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
         if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message);
         if(si)setItems(prev=>[mapItem(si),...prev]);
@@ -4470,7 +4473,7 @@ export default function App({ loginOnly = false }){
       }
       // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
       for(let q=0;q<qVendue;q++){
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:item.plateforme||null};
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:plateforme||item.plateforme||null};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }

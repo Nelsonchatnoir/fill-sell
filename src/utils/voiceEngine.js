@@ -647,7 +647,7 @@ export async function executeVoiceTasks(tasks, context) {
               // Article trouvé avec certitude → exécution directe
               if (context.actions.confirmSellDirect) {
                 await context.actions.confirmSellDirect(
-                  matched, parseNum(task.data.prix_vente), parseNum(task.data.frais), task.data.quantite_vendue || 1
+                  matched, parseNum(task.data.prix_vente), parseNum(task.data.frais), task.data.quantite_vendue || 1, task.data.plateforme||null
                 );
               } else {
                 await context.actions.markSold({
