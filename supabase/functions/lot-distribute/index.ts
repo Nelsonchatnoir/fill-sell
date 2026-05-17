@@ -160,13 +160,14 @@ serve(async (req) => {
 
     // Réinjecter nom, marque, description, emplacement depuis les items d'origine
     // (l'IA ne doit générer que prix_estime_lot et categorie)
-    const inputItems = items as Array<{ nom: string; marque?: string | null; description?: string | null; emplacement?: string | null }>;
+    const inputItems = items as Array<{ nom: string; marque?: string | null; description?: string | null; emplacement?: string | null; plateforme?: string | null }>;
     const mergedItems = resultItems.map((out, idx) => ({
       ...out,
       nom: inputItems[idx]?.nom ?? out.nom,
       marque: inputItems[idx]?.marque ?? out.marque ?? null,
       description: inputItems[idx]?.description ?? null,
       emplacement: inputItems[idx]?.emplacement ?? null,
+      plateforme: inputItems[idx]?.plateforme ?? null,
     }));
 
     return new Response(JSON.stringify({ items: mergedItems }), {

@@ -2222,7 +2222,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         <button onClick={()=>{
                           if(!cfItem){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
                           // Oui : markSold sur l'article trouvé
-                          actions.confirmSellDirect(cfItem,cfPv,taskData?.frais||0,taskData?.quantite_vendue||1)
+                          actions.confirmSellDirect(cfItem,cfPv,taskData?.frais||0,taskData?.quantite_vendue||1,taskData?.plateforme||null)
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
@@ -2357,7 +2357,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           return;
                         }
-                        actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv)
+                        actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
                           .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                           .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                       }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
@@ -2486,6 +2486,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
                                 {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                                 {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>}
+                                {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
                               </div>
                             )}
                             {/* Description (taille, couleur, état) */}
@@ -2523,6 +2524,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                             marque:item.marque||null,
                             description:item.description||null,
                             emplacement:item.emplacement||null,
+                            plateforme:item.plateforme||null,
                           }));
                           for(const item of toAdd) await actions.addItem(item);
                           replaceResult(idx,{...result,status:"success",message:lang==="en"?`${toAdd.length} items added`:`${toAdd.length} articles ajoutés`});
