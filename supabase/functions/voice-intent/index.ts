@@ -983,17 +983,35 @@ serve(async (req) => {
 
     // Base fetch — tools and maxTokens optional
     const _fetchClaude = async (msgs: unknown[], system: string, useWebSearch = false, maxTokens = 4096) => {
+      // Inject system prompt as first cached content block of the first user message
+      const _msgs = (msgs as any[]).map((m, i) => {
+        if (i === 0 && m.role === "user") {
+          const userText = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+          return {
+            role: "user",
+            content: [
+              { type: "text", text: system, cache_control: { type: "ephemeral" } },
+              { type: "text", text: userText },
+            ],
+          };
+        }
+        return m;
+      });
       const _body: Record<string, unknown> = {
         model: "claude-haiku-4-5-20251001",
         max_tokens: maxTokens,
         temperature: 0.1,
-        system,
-        messages: msgs,
+        messages: _msgs,
       };
       if (useWebSearch) _body.tools = [{ type: "web_search_20250305", name: "web_search" }];
       const _res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey!,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+        },
         body: JSON.stringify(_body),
       });
       if (!_res.ok) {

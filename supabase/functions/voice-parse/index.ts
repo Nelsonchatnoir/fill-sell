@@ -632,13 +632,19 @@ serve(async (req) => {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
         },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 8192,
           temperature: 0.1,
-          system: _lang === "en" ? SYSTEM_EN : SYSTEM_FR,
-          messages: [{ role: "user", content: text }],
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: _lang === "en" ? SYSTEM_EN : SYSTEM_FR, cache_control: { type: "ephemeral" } },
+              { type: "text", text: text },
+            ],
+          }],
         }),
       });
     } catch (e) {
