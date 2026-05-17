@@ -3620,10 +3620,15 @@ export default function App({ loginOnly = false }){
       const qty=Math.max(1,item.quantite||1);
       const fraisG=parseFloat(item.frais_global)||0;
       const fraisU=fraisG>0?fraisG/qty:(parseFloat(item.frais_unitaire)||0);
-      const b=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty+fraisU:(parseFloat(item.prix_achat)||0);
-      const pc=0;
+      const isVente=voiceParsed.action==='vente';
+      // Pour achat non-lot : l'IA a inclus fraisU dans prix_achat → on sépare prix de base et frais
+      // Pour lot achat : prix_estime_lot ne contient pas de frais → fraisU va dans purchase_costs
+      // Pour vente : fraisU sont des frais de vente → selling_fees (ne pas toucher prix_achat)
+      const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
+      const b=(!isVente&&!voiceParsed.isLot)?(bRaw-fraisU):bRaw;
+      const pc=isVente?0:fraisU;
       const s=voiceParsed.isLot?0:(parseFloat(item.prix_vente)||0);
-      const sf=0;
+      const sf=isVente?fraisU:0;
       const hasS=s>0;
       const cogs=b+pc;
       const mg=hasS?s-cogs-sf:0;
@@ -3636,7 +3641,7 @@ export default function App({ loginOnly = false }){
         if(!hasS) insertedCount++;
         setItems(prev=>[mapItem(data),...prev]);
         if(hasS){
-          const srow={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0]};
+          const srow={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc};
           const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
           if(sd)setSales(prev=>[mapSale(sd),...prev]);
         }
@@ -3676,7 +3681,10 @@ export default function App({ loginOnly = false }){
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:1};
+      // Récupérer les frais d'achat depuis voiceParsed si disponibles (même frais_global pour tout le lot)
+      const lotFraisG=parseFloat(voiceParsed?.items?.[0]?.frais_global)||0;
+      const lotFraisU=lotFraisG>0?lotFraisG/(voiceParsed?.items?.length||1):(parseFloat(voiceParsed?.items?.[0]?.frais_unitaire)||0);
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){insertedCount++;setItems(prev=>[mapItem(data),...prev]);}
     }

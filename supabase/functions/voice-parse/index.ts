@@ -71,8 +71,9 @@ La somme des prix_estime_lot DOIT être exactement égale à lotTotal.
 - Si prix individuels différents mentionnés → isLot: false, lotTotal: null, prix_estime_lot: null pour tous
 - Ne JAMAIS inventer des prix individuels hors contexte lot
 
-RÈGLES FRAIS D'ACHAT :
+RÈGLES FRAIS :
 
+ACTION=ACHAT — frais d'achat (port, livraison, frais de service...) :
 CAS 1 — Frais globaux (sans "chacun/chaque/pièce" sur les frais) :
 Si des frais sont mentionnés pour un groupe d'articles sans précision unitaire :
 → frais_global = montant total des frais, frais_unitaire = arrondi(frais_global ÷ quantite, 2)
@@ -92,6 +93,17 @@ Si les frais sont précisés par article (mots-clés "chacun/chaque/pièce" port
      frais_global:null, frais_unitaire:1, prix_achat:5+1=6, quantite:4
   ✅ "3 Nike à 15€ avec 3€ de livraison chaque"
      frais_global:null, frais_unitaire:3, prix_achat:15+3=18, quantite:3
+
+ACTION=VENTE — frais de vente (commission, frais Vinted/eBay/Leboncoin/plateforme...) :
+→ frais_global = montant total des frais de vente, frais_unitaire = arrondi(frais_global ÷ quantite, 2)
+→ NE PAS modifier prix_achat. Les frais de vente restent dans frais_global/frais_unitaire uniquement.
+→ prix_achat = prix d'achat original de l'article si mentionné, sinon null.
+  ✅ "vendu une robe pour 20€ avec 2€ de commission Vinted"
+     action:vente, prix_vente:20, frais_global:2, frais_unitaire:2, prix_achat:null
+  ✅ "vendu 3 t-shirts 15€ chacun, payés 8€ chacun, 1€ de frais de port total"
+     action:vente, prix_vente:15, prix_achat:8, frais_global:1, frais_unitaire:0.33, quantite:3
+  ✅ "vendu une Nike 45€ sur eBay avec 5% de commission (soit 2,25€)"
+     action:vente, prix_vente:45, frais_global:2.25, frais_unitaire:2.25, prix_achat:null
 
 Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat inchangé).
 
@@ -202,8 +214,9 @@ Sum of prix_estime_lot MUST equal exactly lotTotal.
 - If different individual prices mentioned → isLot: false, lotTotal: null, prix_estime_lot: null for all
 - NEVER invent individual prices outside lot context
 
-PURCHASE FEE RULES:
+FEE RULES:
 
+ACTION=PURCHASE — purchase fees (shipping, delivery, handling...):
 CASE 1 — Global fees (no "each/apiece/per piece" qualifier on fees):
 If fees are mentioned for a group of items without a per-unit qualifier:
 → frais_global = total fee amount, frais_unitaire = round(frais_global ÷ quantity, 2)
@@ -223,6 +236,17 @@ If fees are specified per item (keywords "each/apiece/per piece" apply to fees):
      frais_global:null, frais_unitaire:1, prix_achat:5+1=6, quantite:4
   ✅ "3 Nikes at €15 with €3 shipping each"
      frais_global:null, frais_unitaire:3, prix_achat:15+3=18, quantite:3
+
+ACTION=SALE — selling fees (commission, platform fees: Vinted/eBay/Depop...):
+→ frais_global = total selling fee amount, frais_unitaire = round(frais_global ÷ quantity, 2)
+→ DO NOT modify prix_achat. Selling fees stay in frais_global/frais_unitaire only.
+→ prix_achat = original purchase price of the item if mentioned, otherwise null.
+  ✅ "sold a dress for €20 with €2 Vinted commission"
+     action:vente, prix_vente:20, frais_global:2, frais_unitaire:2, prix_achat:null
+  ✅ "sold 3 t-shirts at €15 each, bought at €8 each, €1 total shipping"
+     action:vente, prix_vente:15, prix_achat:8, frais_global:1, frais_unitaire:0.33, quantite:3
+  ✅ "sold Nike for €45 on eBay with 5% commission (€2.25)"
+     action:vente, prix_vente:45, frais_global:2.25, frais_unitaire:2.25, prix_achat:null
 
 If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unchanged).
 
