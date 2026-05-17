@@ -75,6 +75,7 @@ serve(async (req) => {
     p_is_premium: isPremiumUser,
     p_daily_limit_free: 10,
     p_monthly_limit_free: 50,
+    p_daily_limit_premium: 20,
   });
   if (quotaData?.allowed === false) {
     return new Response(

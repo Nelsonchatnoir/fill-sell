@@ -1238,8 +1238,8 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
     ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only']
     : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement'];
   const PREM_F = lang==='en'
-    ? ['Unlimited stock','🎙️ Unlimited AI voice','📸 Lens Pro · 5/day · live market price','Advanced AI-powered stats','Import / Export Excel','Priority support']
-    : ['Stock illimité','🎙️ IA vocale illimitée','📸 Lens Pro · 5/jour · prix marché en direct','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
+    ? ['Unlimited stock','🎙️ AI voice · 20 commands/day','📸 Lens Pro · 5/day · live market price','Advanced AI-powered stats','Import / Export Excel','Priority support']
+    : ['Stock illimité','🎙️ IA vocale · 20 commandes/jour','📸 Lens Pro · 5/jour · prix marché en direct','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:10000,display:'flex',alignItems:'flex-end'}} onClick={onClose}>
       <style>{`@keyframes slideUpModal{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
