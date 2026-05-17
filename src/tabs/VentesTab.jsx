@@ -150,6 +150,7 @@ const VentesTab = memo(function VentesTab({
   iapProduct, iapLoading, handleIAPPurchase, handleIAPRestore,
   delSale, setTab,
   PremiumBanner, IAPUpgradeBlock,
+  openUpgradeModal, slotsRemaining,
 }) {
   const { t } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -188,7 +189,7 @@ const VentesTab = memo(function VentesTab({
         <div>
           <SalesTicker lang={lang} fmt={fmt} setTab={setTab}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
-          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
+          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>)}
         </div>
       ):(
         <>
@@ -246,7 +247,7 @@ const VentesTab = memo(function VentesTab({
             </button>
           )}
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
-          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
+          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>)}
         </>
       )}
 

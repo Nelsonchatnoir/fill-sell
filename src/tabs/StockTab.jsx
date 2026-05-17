@@ -259,7 +259,7 @@ const StockTab = memo(function StockTab({
               </button>
           }
           {isNative&&!isPremium&&items.length>=20&&(
-            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>
+            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>
           )}
           {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
             <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>

@@ -424,7 +424,7 @@ const LensTab = memo(function LensTab({
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem,
   handleIAPPurchase, handleIAPRestore,
   PremiumBanner, IAPUpgradeBlock,
-  openUpgradeModal, lensUsedToday, LENS_FREE_LIMIT,
+  openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT,
 }) {
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
@@ -564,7 +564,7 @@ const LensTab = memo(function LensTab({
         <LensTicker lang={lang} onScan={()=>lensFileRef.current?.click()}/>
       )}
       {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
-      {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={handleIAPPurchase} onRestore={handleIAPRestore}/>)}
+      {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>)}
     </div>
   );
 });

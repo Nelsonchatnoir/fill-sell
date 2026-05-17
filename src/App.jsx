@@ -527,9 +527,12 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   );
 }
 
-function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
+function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, slotsRemaining=null }) {
   return (
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      {slotsRemaining!==null&&slotsRemaining>0&&(
+        <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)"}}>🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever`}</div>
+      )}
       <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
         🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
       </div>
@@ -5050,6 +5053,7 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={()=>setShowUpgradeModal(true)}
+            slotsRemaining={slotsRemaining}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
           />
         )}
@@ -5065,6 +5069,8 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             delSale={delSale} setTab={setTab}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
+            openUpgradeModal={()=>setShowUpgradeModal(true)}
+            slotsRemaining={slotsRemaining}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
