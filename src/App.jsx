@@ -3545,7 +3545,11 @@ export default function App({ loginOnly = false }){
         method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vpToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({text,lang}),
       });
-      if(!res.ok)throw new Error("Parse failed");
+      if(!res.ok){
+        const errJson=await res.json().catch(()=>({}));
+        if(errJson?.error==='ai_unavailable'||res.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
+        throw new Error("Parse failed");
+      }
       const result=await res.json();
       if(result.error)throw new Error(result.error);
       setVoiceParsed(result);setVoiceStep("done");

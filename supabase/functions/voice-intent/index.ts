@@ -1205,7 +1205,7 @@ serve(async (req) => {
           : `Available stock (unsold items): ${stockJson}\n\nUser phrase: "${text}"\n\nIdentify which stock item the user wants to mark as sold.\n\nABSOLUTE RULE — BRAND: If the phrase mentions a specific brand, return ONLY items of that exact brand. Wrong brand → { "no_match": true }.\n\nScore each candidate on 3 criteria:\n\n1. Brand: exact match → 1, otherwise → 0\n\n2. Exact type (CRITICAL — read carefully):\n   MAIN RULE: if the phrase contains a SPECIFIC QUALIFIER for the type (e.g. flat, cutting, long, short, cross-head...) AND the stock item has a DIFFERENT qualifier → type_exact = 0 (conflict), even if the general family is the same.\n   • Identical qualifiers or no qualifier on either side → 1  (e.g. "flat pliers" vs "flat pliers", "dress" vs "dress")\n   • Phrase has no qualifier, stock has qualifier → 0.5  (e.g. "Facom pliers" vs "Facom flat pliers", "dress" vs "long dress")\n   • DIFFERENT qualifiers in phrase AND in stock → 0  (e.g. "flat pliers" vs "cutting pliers", "long dress" vs "short dress", "jacket" vs "dress")\n   MANDATORY EXAMPLES:\n   ✅ "flat pliers Facom" vs stock "Cutting pliers Facom" → type_exact = 0 (different qualifiers: flat ≠ cutting)\n   ✅ "cross-head screwdriver" vs stock "flat screwdriver" → type_exact = 0\n   ✅ "Facom pliers" vs stock "Facom flat pliers" → type_exact = 0.5 (generic phrase, specific stock)\n   ✅ "flat pliers Facom" vs stock "Flat pliers Facom" → type_exact = 1\n\n3. Extra details (colour, size, location) match → 0.5, otherwise → 0\n\nScore = criterion1 + criterion2 + criterion3\n\nReturn ONLY valid JSON, no text or markdown:\n• score ≥ 1.5 AND type_exact ≥ 0.5 → confirmed match: { "matched_id": "<id>", "confidence": <score/2.5> }\n• score ≥ 1 AND type_exact = 0 (brand OK, different item type) → { "conflict": true, "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque>", "score": <score> }] }\n• Ambiguous 2-3 items (score ≥ 1.5 each) → { "candidates": [{ "id": "<id>", "nom": "<nom>", "marque": "<marque or null>", "confidence": <score 0-1> }, ...] }\n• No matching item (or wrong brand) → { "no_match": true }`;
 
         try {
-          const matchRes = await fetch("https://api.anthropic.com/v1/messages", {
+          const matchRes = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -1274,7 +1274,7 @@ serve(async (req) => {
           : `Available stock (unsold items): ${stockForMove}\n\nThe user wants to store: "${article}"${quantite ? ` (${quantite} unit(s))` : ""}.\n\nIdentify which stock items match this description.\nUse name, brand AND description (colour, size, condition) to distinguish similar items.\nE.g.: "black Nike jacket size M" ≠ "white Nike jacket size L".\n${quantite ? `Return at most ${quantite} matching item(s).\n` : ""}Return ONLY valid JSON, no text or markdown:\n• 1 or more items found → { "matched_ids": ["<id>", ...] }\n• No matching item → { "no_match": true }`;
 
         try {
-          const moveMatchRes = await fetch("https://api.anthropic.com/v1/messages", {
+          const moveMatchRes = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
