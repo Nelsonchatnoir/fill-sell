@@ -94,16 +94,34 @@ Si les frais sont précisés par article (mots-clés "chacun/chaque/pièce" port
   ✅ "3 Nike à 15€ avec 3€ de livraison chaque"
      frais_global:null, frais_unitaire:3, prix_achat:15+3=18, quantite:3
 
+CAS 3 — Frais en pourcentage (achat) :
+Si les frais sont exprimés en % du prix d'achat total :
+→ frais_global = arrondi(prix_total_achat × pourcentage ÷ 100, 2)
+→ frais_unitaire = arrondi(frais_global ÷ quantite, 2)
+→ prix_achat par article = prix_unitaire_de_base + frais_unitaire
+  ✅ "10 t-shirts pour 50€ avec 10% de frais de service"
+     frais_global:arrondi(50×0.10,2)=5, frais_unitaire:0.5, prix_achat:(50÷10)+0.5=5.5, quantite:10
+  ✅ "une veste 30€ avec 5% de frais"
+     frais_global:arrondi(30×0.05,2)=1.5, frais_unitaire:1.5, prix_achat:30+1.5=31.5, quantite:1
+  ✅ "3 sacs à 8€ chacun avec 8% de commission"
+     frais_global:arrondi(24×0.08,2)=1.92, frais_unitaire:0.64, prix_achat:8+0.64=8.64, quantite:3
+
 ACTION=VENTE — frais de vente (commission, frais Vinted/eBay/Leboncoin/plateforme...) :
 → frais_global = montant total des frais de vente, frais_unitaire = arrondi(frais_global ÷ quantite, 2)
 → NE PAS modifier prix_achat. Les frais de vente restent dans frais_global/frais_unitaire uniquement.
 → prix_achat = prix d'achat original de l'article si mentionné, sinon null.
+Si les frais de vente sont en pourcentage du prix de vente total :
+→ frais_global = arrondi(prix_total_vente × pourcentage ÷ 100, 2)
   ✅ "vendu une robe pour 20€ avec 2€ de commission Vinted"
      action:vente, prix_vente:20, frais_global:2, frais_unitaire:2, prix_achat:null
+  ✅ "vendu une Nike 45€ sur eBay avec 5% de commission"
+     action:vente, prix_vente:45, frais_global:arrondi(45×0.05,2)=2.25, frais_unitaire:2.25, prix_achat:null
+  ✅ "vendu un iPhone 200€, eBay prend 13%"
+     action:vente, prix_vente:200, frais_global:arrondi(200×0.13,2)=26, frais_unitaire:26, prix_achat:null
+  ✅ "vendu 3 t-shirts 15€ pièce avec 5% de frais de plateforme"
+     action:vente, prix_vente:15, frais_global:arrondi(45×0.05,2)=2.25, frais_unitaire:0.75, quantite:3
   ✅ "vendu 3 t-shirts 15€ chacun, payés 8€ chacun, 1€ de frais de port total"
      action:vente, prix_vente:15, prix_achat:8, frais_global:1, frais_unitaire:0.33, quantite:3
-  ✅ "vendu une Nike 45€ sur eBay avec 5% de commission (soit 2,25€)"
-     action:vente, prix_vente:45, frais_global:2.25, frais_unitaire:2.25, prix_achat:null
 
 Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat inchangé).
 
@@ -237,16 +255,34 @@ If fees are specified per item (keywords "each/apiece/per piece" apply to fees):
   ✅ "3 Nikes at €15 with €3 shipping each"
      frais_global:null, frais_unitaire:3, prix_achat:15+3=18, quantite:3
 
+CASE 3 — Percentage-based fees (purchase):
+If fees are expressed as a % of the total purchase price:
+→ frais_global = round(total_purchase_price × percentage ÷ 100, 2)
+→ frais_unitaire = round(frais_global ÷ quantity, 2)
+→ prix_achat per item = base_unit_price + frais_unitaire
+  ✅ "10 t-shirts for €50 with 10% service fee"
+     frais_global:round(50×0.10,2)=5, frais_unitaire:0.5, prix_achat:(50÷10)+0.5=5.5, quantite:10
+  ✅ "a jacket €30 with 5% fees"
+     frais_global:round(30×0.05,2)=1.5, frais_unitaire:1.5, prix_achat:30+1.5=31.5, quantite:1
+  ✅ "3 bags at €8 each with 8% commission"
+     frais_global:round(24×0.08,2)=1.92, frais_unitaire:0.64, prix_achat:8+0.64=8.64, quantite:3
+
 ACTION=SALE — selling fees (commission, platform fees: Vinted/eBay/Depop...):
 → frais_global = total selling fee amount, frais_unitaire = round(frais_global ÷ quantity, 2)
 → DO NOT modify prix_achat. Selling fees stay in frais_global/frais_unitaire only.
 → prix_achat = original purchase price of the item if mentioned, otherwise null.
+If selling fees are expressed as a % of the total sale price:
+→ frais_global = round(total_sale_price × percentage ÷ 100, 2)
   ✅ "sold a dress for €20 with €2 Vinted commission"
      action:vente, prix_vente:20, frais_global:2, frais_unitaire:2, prix_achat:null
+  ✅ "sold Nike for €45 on eBay with 5% commission"
+     action:vente, prix_vente:45, frais_global:round(45×0.05,2)=2.25, frais_unitaire:2.25, prix_achat:null
+  ✅ "sold an iPhone for €200, eBay takes 13%"
+     action:vente, prix_vente:200, frais_global:round(200×0.13,2)=26, frais_unitaire:26, prix_achat:null
+  ✅ "sold 3 t-shirts at €15 each with 5% platform fee"
+     action:vente, prix_vente:15, frais_global:round(45×0.05,2)=2.25, frais_unitaire:0.75, quantite:3
   ✅ "sold 3 t-shirts at €15 each, bought at €8 each, €1 total shipping"
      action:vente, prix_vente:15, prix_achat:8, frais_global:1, frais_unitaire:0.33, quantite:3
-  ✅ "sold Nike for €45 on eBay with 5% commission (€2.25)"
-     action:vente, prix_vente:45, frais_global:2.25, frais_unitaire:2.25, prix_achat:null
 
 If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unchanged).
 
