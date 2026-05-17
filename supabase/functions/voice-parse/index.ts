@@ -139,6 +139,11 @@ RÈGLES CATÉGORIES — cas ambigus :
   ❌ perceuse, ponceuse → Bricolage (pas Électroménager)
 - Maison : mobilier, décoration, literie, vaisselle, rangement.
   ✅ canapé, lampe, tableau, coussin, étagère IKEA → Maison
+- Luxe : montres haut de gamme, maroquinerie de luxe, bijoux de créateur.
+  ✅ montre Rolex, Cartier, Omega, TAG Heuer, Audemars Piguet, Patek Philippe → Luxe
+- Mode : vêtements, chaussures, accessoires vestimentaires, montres entrée/milieu de gamme.
+  ✅ montre Casio, Fossil, Swatch, Timex, bracelet, sac à main non-luxe → Mode
+  ❌ montre, montre Casio, bracelet → Mode ou Luxe (pas Électroménager)
 
 RÈGLE EMPLACEMENT :
 emplacement = lieu de STOCKAGE PHYSIQUE de l'article (tiroir, portant, étagère, stockeur, bac, box...).
@@ -312,6 +317,11 @@ CATEGORY RULES — ambiguous cases :
   ❌ drill, sander → Bricolage (not Électroménager)
 - Maison : furniture, decoration, bedding, tableware, storage.
   ✅ sofa, lamp, painting, cushion, IKEA shelf → Maison
+- Luxe : high-end watches, luxury leather goods, designer jewellery.
+  ✅ Rolex, Cartier, Omega, TAG Heuer, Audemars Piguet, Patek Philippe watch → Luxe
+- Mode : clothing, shoes, fashion accessories, entry/mid-range watches.
+  ✅ Casio, Fossil, Swatch, Timex watch, bracelet, non-luxury handbag → Mode
+  ❌ watch, Casio watch, bracelet → Mode or Luxe (not Électroménager)
 
 EMPLACEMENT RULE:
 emplacement = PHYSICAL STORAGE location (drawer, rack, shelf, bin, box...).
