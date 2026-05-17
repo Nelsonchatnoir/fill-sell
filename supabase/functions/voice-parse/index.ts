@@ -128,22 +128,110 @@ Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat
 Catégories autorisées (valeurs exactes) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
 
-RÈGLES CATÉGORIES — cas ambigus :
-- Bricolage : outils électroportatifs et manuels, matériel de construction/rénovation.
-  ✅ perceuse, visseuse, ponceuse, scie sauteuse, meuleuse, niveau laser, marteau, pince, tournevis, établi, compresseur, pistolet à colle, Makita, Bosch, DeWalt, Stanley, Facom, Würth → Bricolage
-- Auto-Moto : pièces détachées, accessoires et équipements pour véhicules (voiture, moto, scooter, camion).
-  ✅ autoradio, GPS voiture, jante, casque moto, batterie voiture, filtre à huile, amortisseur → Auto-Moto
-  ❌ perceuse, tournevis, clé à molette (même de marque auto) → Bricolage (pas Auto-Moto)
-- Électroménager : appareils électroménagers de cuisine et maison (réfrigérateur, lave-linge, aspirateur, cafetière...).
-  ✅ aspirateur, robot de cuisine, cafetière, lave-vaisselle → Électroménager
-  ❌ perceuse, ponceuse → Bricolage (pas Électroménager)
-- Maison : mobilier, décoration, literie, vaisselle, rangement.
-  ✅ canapé, lampe, tableau, coussin, étagère IKEA → Maison
-- Luxe : montres haut de gamme, maroquinerie de luxe, bijoux de créateur.
-  ✅ montre Rolex, Cartier, Omega, TAG Heuer, Audemars Piguet, Patek Philippe → Luxe
-- Mode : vêtements, chaussures, accessoires vestimentaires, montres entrée/milieu de gamme.
-  ✅ montre Casio, Fossil, Swatch, Timex, bracelet, sac à main non-luxe → Mode
-  ❌ montre, montre Casio, bracelet → Mode ou Luxe (pas Électroménager)
+RÈGLES CATÉGORIES — guide complet (choisis TOUJOURS la plus précise) :
+
+- Mode : vêtements, chaussures, accessoires vestimentaires, montres non-luxe.
+  ✅ robe, jean, veste, manteau, sweat, hoodie, t-shirt, short, legging, pyjama, lingerie
+  ✅ basket, botte, sandale, sneaker, talon, mocassin, derby, chaussure de ville
+  ✅ sac, pochette, portefeuille, ceinture, écharpe, foulard, casquette, bonnet, gant, lunettes
+  ✅ bijou, collier, bracelet, bague, boucle d'oreille (non-luxe)
+  ✅ montre Casio, Fossil, Swatch, Timex, Citizen, Seiko entrée de gamme → Mode
+  ❌ montre → jamais Électroménager, jamais High-Tech
+
+- High-Tech : électronique grand public, informatique, photo/vidéo, domotique.
+  ✅ iPhone, Samsung, Xiaomi, MacBook, PC, ordinateur, tablette, iPad, écran, imprimante
+  ✅ PS5, Xbox, Switch, console, manette, jeu vidéo
+  ✅ AirPods, écouteurs, casque audio JBL/Sony/Bose/Beats, enceinte Bluetooth
+  ✅ appareil photo, drone, GoPro, objectif, trépied
+  ✅ TV, smart TV, vidéoprojecteur, Chromecast, box internet, routeur, répéteur WiFi
+  ✅ Apple Watch, Galaxy Watch, Fitbit, Garmin (montres connectées/sport)
+  ✅ SSD, disque dur, clé USB, carte SD, chargeur, câble, batterie externe
+  ❌ perceuse, ponceuse → Bricolage ; cafetière, four → Électroménager
+
+- Maison : mobilier, décoration, literie, vaisselle, luminaires, rangement.
+  ✅ canapé, table, chaise, lit, matelas, armoire, commode, étagère, bureau, pouf
+  ✅ lampe, lustre, guirlande, ampoule, applique, bougie, vase, miroir, tableau, cadre
+  ✅ tapis, rideau, coussin, couette, drap, plaid, serviette
+  ✅ assiette, verre, tasse, bol, casserole, poêle, ustensile de cuisine
+  ✅ boîte, panier, corbeille, organisateur, portant, cintre, pot de fleur
+  ❌ lave-linge, réfrigérateur, four, aspirateur → Électroménager (pas Maison)
+
+- Électroménager : appareils électriques ménagers (avec moteur, résistance ou compresseur).
+  ✅ réfrigérateur, congélateur, lave-linge, lave-vaisselle, sèche-linge
+  ✅ four, micro-ondes, hotte, plaque induction, gazinière
+  ✅ aspirateur, robot aspirateur Roomba/Dyson, fer à repasser
+  ✅ cafetière, Nespresso, Dolce Gusto, blender, mixeur, robot cuisine, Thermomix, friteuse
+  ✅ sèche-cheveux, lisseur, épilateur, rasoir électrique, brosse à dents électrique
+  ✅ ventilateur, climatiseur, radiateur électrique, chauffe-eau
+  ❌ perceuse, scie, visseuse → Bricolage ; tondeuse à gazon → Jardin
+  ❌ montre, bracelet, accessoire → Mode ou Luxe (jamais Électroménager)
+  ❌ enceinte Bluetooth, TV → High-Tech
+
+- Luxe : articles de grandes maisons de luxe (mode, horlogerie haut de gamme, joaillerie).
+  ✅ Louis Vuitton, Hermès (Birkin, Kelly), Gucci, Chanel, Dior, Prada, Balenciaga, Céline, Burberry
+  ✅ montre Rolex, Omega, Cartier, TAG Heuer, Breitling, Audemars Piguet, Patek Philippe, IWC, Richard Mille → Luxe
+  ✅ bijou Cartier, Van Cleef, Tiffany ; chaussures Louboutin, Manolo Blahnik
+  ❌ montre Casio, Fossil, Swatch → Mode (pas Luxe) ; aspirateur Dyson → Électroménager
+
+- Jouets : jouets pour enfants, jeux de société, peluches.
+  ✅ Lego, Playmobil, Duplo, Kapla, Hot Wheels, Barbie, peluche, poupée
+  ✅ voiture télécommandée enfant, puzzle enfant, jeu de société
+  ❌ console PS5/Xbox → High-Tech ; carte Pokémon collector → Collection
+
+- Livres : livres, BD, mangas, magazines, partitions.
+  ✅ roman, biographie, guide, encyclopédie, dictionnaire, atlas
+  ✅ BD, bande dessinée, manga, comics, magazine, revue
+
+- Sport : équipement sportif, vélos, trottinettes, matériel outdoor et fitness.
+  ✅ vélo, trottinette électrique, skateboard, roller, ski, snowboard, surf, kayak
+  ✅ ballon foot/basket/rugby, raquette tennis/badminton, gants de boxe, protège-tibias
+  ✅ tapis de course, vélo d'appartement, rameur, elliptique, haltère, kettlebell
+  ✅ chaussures running/trail/foot, crampon, spike, casque vélo
+  ✅ tente, sac à dos rando, canne à pêche, gourde, frontale, bâton de marche
+  ❌ tondeuse → Jardin ; casque moto → Auto-Moto
+
+- Auto-Moto : pièces et accessoires spécifiques aux véhicules (voiture, moto, scooter, camion).
+  ✅ pneu, jante, amortisseur, filtre à huile, plaquette de frein, batterie de voiture, courroie
+  ✅ autoradio, GPS voiture, caméra de recul, support téléphone voiture, cric
+  ✅ casque moto, combinaison moto, protège-genoux moto, valise moto
+  ❌ perceuse, visseuse, clé à molette → Bricolage (même si marque auto)
+  ❌ vélo, trottinette, casque vélo → Sport ; GPS Garmin randonnée → High-Tech ou Sport
+
+- Beauté : cosmétiques, maquillage, parfums, soins corps/visage/cheveux.
+  ✅ parfum, eau de toilette, fond de teint, rouge à lèvres, mascara, palette, eyeliner, blush
+  ✅ crème, sérum, lotion, gel douche, savon, exfoliant, masque visage
+  ✅ shampooing, après-shampooing, masque cheveux, huile capillaire
+  ✅ rasoir manuel, brosse, peigne, coton, démaquillant
+  ❌ rasoir électrique, sèche-cheveux, lisseur → Électroménager (pas Beauté)
+
+- Musique : instruments de musique, matériel audio professionnel, vinyles, équipement DJ.
+  ✅ guitare Gibson/Fender/Ibanez, basse, piano, violon, accordéon, trompette, saxophone
+  ✅ batterie (instrument), ampli guitare, table de mixage, pédale d'effet
+  ✅ vinyle, platine vinyle, platine DJ
+  ✅ micro de studio, enceinte moniteur de studio
+  ❌ enceinte Bluetooth portative → High-Tech ; casque JBL/Sony → High-Tech
+
+- Collection : articles de collection, cartes, timbres, monnaies, vintage rare, Funko.
+  ✅ carte Pokémon, Magic, Yu-Gi-Oh, carte sport (NBA, FIFA)
+  ✅ timbre, pièce de monnaie, billet ancien, objet vintage/antique
+  ✅ Funko Pop édition limitée, figurine collector, affiche ancienne, livre rare
+
+- Bricolage : outils électroportatifs et manuels, matériaux de construction et rénovation.
+  ✅ perceuse, visseuse, meuleuse, ponceuse, scie circulaire, scie sauteuse, marteau-piqueur
+  ✅ tournevis, marteau, pince, clé à molette, clé Allen, établi, serre-joint, étau, compresseur
+  ✅ Makita, Bosch, DeWalt, Ryobi, Stanley, Facom, Würth, Black+Decker → Bricolage
+  ✅ carrelage, parquet, enduit, mastic, silicone, joint plomberie, cheville, vis, boulon
+  ✅ niveau laser, mètre ruban, détecteur de métaux, pistolet à colle
+  ❌ perceuse/visseuse → jamais Auto-Moto, jamais Électroménager, jamais High-Tech
+  ❌ tondeuse à gazon → Jardin (pas Bricolage)
+
+- Jardin : outils et équipements de jardinage, plantes, arrosage.
+  ✅ tondeuse à gazon, débroussailleuse, taille-haie, tronçonneuse, souffleur de feuilles
+  ✅ sécateur, bêche, râteau, fourche, binette, brouette, arrosoir, tuyau d'arrosage
+  ✅ terreau, engrais, graines, pot de fleur, compost
+  ✅ Husqvarna, Stihl (jardinage), Honda (tondeuse)
+
+- Autre : uniquement si vraiment aucune des 14 catégories ci-dessus ne convient.
 
 RÈGLE EMPLACEMENT :
 emplacement = lieu de STOCKAGE PHYSIQUE de l'article (tiroir, portant, étagère, stockeur, bac, box...).
@@ -306,22 +394,110 @@ If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unch
 Allowed categories (exact values) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
 
-CATEGORY RULES — ambiguous cases :
-- Bricolage : power tools and hand tools, construction/renovation equipment.
-  ✅ drill, screwdriver, sander, jigsaw, grinder, laser level, hammer, pliers, workbench, compressor, glue gun, Makita, Bosch, DeWalt, Stanley, Facom, Würth → Bricolage
-- Auto-Moto : parts, accessories and equipment for vehicles (car, motorbike, scooter, truck).
-  ✅ car radio, car GPS, rim, motorcycle helmet, car battery, oil filter, shock absorber → Auto-Moto
-  ❌ drill, screwdriver, wrench (even automotive brand) → Bricolage (not Auto-Moto)
-- Électroménager : kitchen and home appliances (fridge, washing machine, vacuum, coffee maker...).
-  ✅ vacuum, food processor, coffee maker, dishwasher → Électroménager
-  ❌ drill, sander → Bricolage (not Électroménager)
-- Maison : furniture, decoration, bedding, tableware, storage.
-  ✅ sofa, lamp, painting, cushion, IKEA shelf → Maison
-- Luxe : high-end watches, luxury leather goods, designer jewellery.
-  ✅ Rolex, Cartier, Omega, TAG Heuer, Audemars Piguet, Patek Philippe watch → Luxe
-- Mode : clothing, shoes, fashion accessories, entry/mid-range watches.
-  ✅ Casio, Fossil, Swatch, Timex watch, bracelet, non-luxury handbag → Mode
-  ❌ watch, Casio watch, bracelet → Mode or Luxe (not Électroménager)
+CATEGORY RULES — complete guide (always pick the most specific one):
+
+- Mode : clothing, shoes, fashion accessories, non-luxury watches.
+  ✅ dress, jeans, jacket, coat, sweatshirt, hoodie, t-shirt, shorts, leggings, pyjamas, lingerie
+  ✅ sneakers, boots, sandals, heels, loafers, derbies, dress shoes
+  ✅ bag, clutch, wallet, belt, scarf, cap, beanie, gloves, sunglasses
+  ✅ jewellery, necklace, bracelet, ring, earrings (non-luxury)
+  ✅ Casio, Fossil, Swatch, Timex, Citizen, entry-level Seiko watch → Mode
+  ❌ watch → never Électroménager, never High-Tech
+
+- High-Tech : consumer electronics, computers, photo/video, smart home.
+  ✅ iPhone, Samsung, Xiaomi, MacBook, PC, laptop, tablet, iPad, monitor, printer
+  ✅ PS5, Xbox, Switch, console, controller, video game
+  ✅ AirPods, earbuds, headphones JBL/Sony/Bose/Beats, Bluetooth speaker
+  ✅ camera, drone, GoPro, lens, tripod
+  ✅ TV, smart TV, projector, Chromecast, internet box, router, WiFi extender
+  ✅ Apple Watch, Galaxy Watch, Fitbit, Garmin (smartwatch/sport)
+  ✅ SSD, hard drive, USB stick, SD card, charger, cable, power bank
+  ❌ drill, sander → Bricolage; coffee maker, oven → Électroménager
+
+- Maison : furniture, decoration, bedding, tableware, lighting, storage.
+  ✅ sofa, table, chair, bed, mattress, wardrobe, chest of drawers, shelf, desk, pouf
+  ✅ lamp, chandelier, fairy lights, bulb, candle, vase, mirror, painting, frame
+  ✅ rug, curtain, cushion, duvet, sheet, blanket, towel
+  ✅ plate, glass, mug, bowl, saucepan, frying pan, kitchen utensil
+  ✅ box, basket, organiser, clothes rack, hanger, flower pot
+  ❌ washing machine, fridge, oven, vacuum → Électroménager (not Maison)
+
+- Électroménager : electric household appliances (with motor, heating element or compressor).
+  ✅ fridge, freezer, washing machine, dishwasher, tumble dryer
+  ✅ oven, microwave, extractor hood, induction hob, gas stove
+  ✅ vacuum, robot vacuum Roomba/Dyson, iron
+  ✅ coffee maker, Nespresso, Dolce Gusto, blender, mixer, food processor, Thermomix, air fryer
+  ✅ hair dryer, hair straightener, epilator, electric shaver, electric toothbrush
+  ✅ fan, air conditioner, electric heater, water heater
+  ❌ drill, saw, screwdriver → Bricolage; lawnmower → Jardin
+  ❌ watch, bracelet, accessory → Mode or Luxe (never Électroménager)
+  ❌ Bluetooth speaker, TV → High-Tech
+
+- Luxe : items from luxury houses (fashion, fine watchmaking, jewellery).
+  ✅ Louis Vuitton, Hermès (Birkin, Kelly), Gucci, Chanel, Dior, Prada, Balenciaga, Céline, Burberry
+  ✅ Rolex, Omega, Cartier, TAG Heuer, Breitling, Audemars Piguet, Patek Philippe, IWC, Richard Mille watch → Luxe
+  ✅ Cartier, Van Cleef, Tiffany jewellery; Louboutin, Manolo Blahnik shoes
+  ❌ Casio, Fossil, Swatch watch → Mode (not Luxe); Dyson vacuum → Électroménager
+
+- Jouets : children's toys, board games, soft toys.
+  ✅ Lego, Playmobil, Duplo, Kapla, Hot Wheels, Barbie, soft toy, doll
+  ✅ remote-control car (child), children's puzzle, board game
+  ❌ PS5/Xbox console → High-Tech; Pokémon collector card → Collection
+
+- Livres : books, comics, manga, magazines, sheet music.
+  ✅ novel, biography, guide, encyclopedia, dictionary, atlas
+  ✅ comic book, manga, magazine, journal
+
+- Sport : sports equipment, bikes, scooters, outdoor and fitness gear.
+  ✅ bike, electric scooter, skateboard, roller skates, skis, snowboard, surf, kayak
+  ✅ football/basketball/rugby ball, tennis/badminton racket, boxing gloves, shin guards
+  ✅ treadmill, exercise bike, rowing machine, elliptical, dumbbell, kettlebell
+  ✅ running/trail/football shoes, cleats, cycling helmet
+  ✅ tent, hiking backpack, fishing rod, water bottle, head torch, trekking pole
+  ❌ lawnmower → Jardin; motorcycle helmet → Auto-Moto
+
+- Auto-Moto : parts and accessories specific to vehicles (car, motorbike, scooter, truck).
+  ✅ tyre, rim, shock absorber, oil filter, brake pad, car battery, timing belt
+  ✅ car radio, car GPS, reversing camera, car phone mount, car jack
+  ✅ motorcycle helmet, biker suit, knee protectors, motorbike case
+  ❌ drill, screwdriver, wrench → Bricolage (even if automotive brand)
+  ❌ bike, scooter, cycling helmet → Sport; Garmin hiking GPS → High-Tech or Sport
+
+- Beauté : cosmetics, make-up, perfumes, body/face/hair care.
+  ✅ perfume, eau de toilette, foundation, lipstick, mascara, palette, eyeliner, blush
+  ✅ cream, serum, lotion, shower gel, soap, exfoliator, face mask
+  ✅ shampoo, conditioner, hair mask, hair oil
+  ✅ manual razor, brush, comb, cotton pads, make-up remover
+  ❌ electric shaver, hair dryer, straightener → Électroménager (not Beauté)
+
+- Musique : musical instruments, professional audio gear, vinyl records, DJ equipment.
+  ✅ guitar Gibson/Fender/Ibanez, bass, piano, violin, accordion, trumpet, saxophone
+  ✅ drum kit (instrument), guitar amp, mixing desk, effects pedal
+  ✅ vinyl record, turntable, DJ deck
+  ✅ studio microphone, studio monitor speaker
+  ❌ portable Bluetooth speaker → High-Tech; JBL/Sony headphones → High-Tech
+
+- Collection : collectibles, trading cards, stamps, coins, rare vintage items, Funko.
+  ✅ Pokémon, Magic, Yu-Gi-Oh, sports trading card (NBA, FIFA)
+  ✅ stamp, coin, old banknote, vintage/antique object
+  ✅ limited-edition Funko Pop, collector figurine, old poster, rare book
+
+- Bricolage : power tools and hand tools, construction and renovation materials.
+  ✅ drill, screwdriver, angle grinder, sander, circular saw, jigsaw, rotary hammer
+  ✅ screwdriver (manual), hammer, pliers, adjustable wrench, Allen key, workbench, clamp, vice, compressor
+  ✅ Makita, Bosch, DeWalt, Ryobi, Stanley, Facom, Würth, Black+Decker → Bricolage
+  ✅ tiles, flooring, filler, mastic, silicone, plumbing joint, wall plug, screw, bolt
+  ✅ laser level, tape measure, stud finder, glue gun
+  ❌ drill/screwdriver → never Auto-Moto, never Électroménager, never High-Tech
+  ❌ lawnmower → Jardin (not Bricolage)
+
+- Jardin : gardening tools and equipment, plants, watering.
+  ✅ lawnmower, brush cutter, hedge trimmer, chainsaw, leaf blower
+  ✅ secateurs, spade, rake, pitchfork, hoe, wheelbarrow, watering can, garden hose
+  ✅ compost, fertiliser, seeds, flower pot, soil
+  ✅ Husqvarna, Stihl (gardening), Honda (lawnmower)
+
+- Autre : only if truly none of the 14 categories above fits.
 
 EMPLACEMENT RULE:
 emplacement = PHYSICAL STORAGE location (drawer, rack, shelf, bin, box...).
