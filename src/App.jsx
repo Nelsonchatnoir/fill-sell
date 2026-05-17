@@ -13,8 +13,6 @@ import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
-import { calculateDealScore } from './utils/dealScore';
-import { generateDealAnalysis } from './utils/dealAnalysis';
 import { executeVoiceTasks } from './utils/voiceEngine';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
@@ -944,78 +942,7 @@ function renderMd(text){
   return{__html:html};
 }
 
-function DealScoreCard({result,analysis,analysisLoading,lang}){
-  const [barsAnim,setBarsAnim]=useState(false);
-  useEffect(()=>{
-    if(!result) return;
-    setBarsAnim(false);
-    const t=setTimeout(()=>setBarsAnim(true),80);
-    return()=>clearTimeout(t);
-  },[result?.score]);
-  if(!result) return null;
-  const {score,label,confidence,dataQuality,dimensions,pills}=result;
-  const scoreClass=score>=7?'#1D9E75':score>=4?'#F9A26C':'#E53E3E';
-  const dimLabels=lang==='en'
-    ?{profitPotentiel:'Profit potential',liquidite:'Liquidity',safety:'Safety',upside:'Upside'}
-    :{profitPotentiel:'Potentiel profit',liquidite:'Liquidité',safety:'Sécurité',upside:'Upside'};
-  return(
-    <div style={{background:'#fff',borderRadius:16,border:'1px solid #ECF0F4',boxShadow:'0 1px 4px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.04)',padding:'16px 18px',display:'flex',flexDirection:'column',gap:14}}>
-      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
-        <div>
-          <div style={{fontSize:10,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Deal Score</div>
-          <div style={{display:'flex',alignItems:'baseline',gap:6}}>
-            <span className="score-num" style={{color:scoreClass}}>{score.toFixed(1)}</span>
-            <span style={{fontSize:13,color:'#A3A9A6',fontWeight:600}}>/10</span>
-          </div>
-        </div>
-        <div style={{textAlign:'right'}}>
-          <div className="score-tag" style={{background:scoreClass+'18',color:scoreClass,border:`1px solid ${scoreClass}33`}}>{label}</div>
-          <div style={{fontSize:10,color:'#A3A9A6',fontWeight:600,marginTop:6}}>{lang==='en'?`${confidence}% confidence`:`${confidence}% confiance`}</div>
-        </div>
-      </div>
-      <div className="bar-block">
-        {Object.entries(dimensions).map(([key,val])=>(
-          <div key={key} className="bar-row">
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-              <span style={{fontSize:11,fontWeight:700,color:'#6B7280'}}>{dimLabels[key]}</span>
-              <span style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{val}/10</span>
-            </div>
-            <div className="bar-track">
-              <div className="bar-fill" style={{width:barsAnim?`${val*10}%`:'0%'}}/>
-            </div>
-          </div>
-        ))}
-      </div>
-      {pills.length>0&&(
-        <div className="tag-row">
-          {pills.map((pill,i)=>(
-            <span key={i} style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'4px 10px',fontSize:11,fontWeight:700,border:'1px solid #C6E8DF'}}>{pill}</span>
-          ))}
-        </div>
-      )}
-      <div className="ai-insight">
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
-          <span style={{width:7,height:7,borderRadius:'50%',background:'#4ECDC4',display:'inline-block',flexShrink:0}}/>
-          <span style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em'}}>{lang==='en'?'AI Analysis':'Analyse IA'}</span>
-        </div>
-        {analysisLoading?(
-          <div style={{display:'flex',gap:6,alignItems:'center',paddingTop:2}}>
-            {[60,90,50].map((w,i)=><span key={i} style={{width:w,height:10,background:'#E5E7EB',borderRadius:4,display:'inline-block'}}/>)}
-          </div>
-        ):analysis?(
-          <div style={{fontSize:12,fontWeight:600,color:'#374151',lineHeight:1.6}} dangerouslySetInnerHTML={renderMd(analysis)}/>
-        ):(
-          <div style={{fontSize:11,color:'#A3A9A6',fontStyle:'italic'}}>{lang==='en'?'Analysis not available':'Analyse non disponible'}</div>
-        )}
-      </div>
-      {dataQuality==='low'&&(
-        <div style={{fontSize:10,color:'#A3A9A6',fontWeight:600}}>
-          {lang==='en'?'Limited precision — add more sales to improve':'Précision limitée — ajoute des ventes pour améliorer'}
-        </div>
-      )}
-    </div>
-  );
-}
+
 
 function DonutChart({segments, totalLabel, totalValue}){
   const r = 56, cx = 70, cy = 70, circ = 2 * Math.PI * r;
@@ -1308,11 +1235,11 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
 function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
   const isFounder = slotsRemaining !== null && slotsRemaining > 0;
   const FREE_F  = lang==='en'
-    ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only','Deal Score · 10/day']
-    : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement','Deal Score · 10/jour'];
+    ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only']
+    : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement'];
   const PREM_F = lang==='en'
-    ? ['Unlimited stock','🎙️ Unlimited AI voice','📸 Lens Pro · 5/day · live market price','Unlimited Deal Score','Advanced AI-powered stats','Import / Export Excel','Priority support']
-    : ['Stock illimité','🎙️ IA vocale illimitée','📸 Lens Pro · 5/jour · prix marché en direct','Deal Score illimité','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
+    ? ['Unlimited stock','🎙️ Unlimited AI voice','📸 Lens Pro · 5/day · live market price','Advanced AI-powered stats','Import / Export Excel','Priority support']
+    : ['Stock illimité','🎙️ IA vocale illimitée','📸 Lens Pro · 5/jour · prix marché en direct','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:10000,display:'flex',alignItems:'flex-end'}} onClick={onClose}>
       <style>{`@keyframes slideUpModal{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
@@ -3129,10 +3056,6 @@ export default function App({ loginOnly = false }){
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
   const [deleteConfirm,setDeleteConfirm]=useState(null); // {type:'soldItem'|'sale', item?, sale?}
-  const [dealScore,setDealScore]=useState(null);
-  const [dealAnalysis,setDealAnalysis]=useState(null);
-  const [dealAnalysisLoading,setDealAnalysisLoading]=useState(false);
-  const dealAnalysisTimer=useRef(null);
   const [dealIADesc,setDealIADesc]=useState("");
   const [dealIAResult,setDealIAResult]=useState(null);
   const [dealIALoading,setDealIALoading]=useState(false);
@@ -3372,34 +3295,6 @@ export default function App({ loginOnly = false }){
     }
     calcWasComplete.current = complete;
   },[cBuy, cSell, cShip, margin]);
-
-  useEffect(()=>{
-    const prixAchat=parseFloat(cBuy)||0;
-    const prixVente=parseFloat(cSell)||0;
-    const frais=parseFloat(cShip)||0;
-    if(prixAchat>0&&prixVente>0){
-      const historique=sales.map(s=>({
-        prix_achat:s.buy,
-        prix_vente:s.sell,
-        frais:(s.sellingFees||0)+(s.purchaseCosts||0),
-        date_vente:s.date,
-      }));
-      const scoreResult=calculateDealScore({prixAchat,prixVente,frais,lang,historique});
-      setDealScore(scoreResult);
-      setDealAnalysisLoading(true);
-      clearTimeout(dealAnalysisTimer.current);
-      dealAnalysisTimer.current=setTimeout(async()=>{
-        const analysis=await generateDealAnalysis(scoreResult,lang,currency,userCountry?.code??getCountryFallback());
-        setDealAnalysis(analysis);
-        setDealAnalysisLoading(false);
-      },1500);
-    }else{
-      setDealScore(null);
-      setDealAnalysis(null);
-      clearTimeout(dealAnalysisTimer.current);
-      setDealAnalysisLoading(false);
-    }
-  },[cBuy,cSell,cShip,lang,sales]);
 
   const now=new Date();
 

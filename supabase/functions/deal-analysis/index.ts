@@ -145,7 +145,6 @@ function buildScorePrompt(scoreResult: any, lang: string, currency: string): str
 
   if (lang === "en") {
     const lines = [
-      `Deal Score: ${score}/10 — ${label}`,
       `Margin: ${margePercent}%`,
       `Net profit: ${profitNet} ${cur}`,
     ];
@@ -158,7 +157,6 @@ function buildScorePrompt(scoreResult: any, lang: string, currency: string): str
   }
 
   const lines = [
-    `Deal Score: ${score}/10 — ${label}`,
     `Marge: ${margePercent}%`,
     `Profit net: ${profitNet} ${cur}`,
   ];

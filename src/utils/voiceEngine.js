@@ -1,4 +1,3 @@
-import { calculateDealScore } from './dealScore.js';
 import { supabaseUrl, supabaseAnonKey } from '../lib/supabase.js';
 
 const norm = s =>
@@ -735,54 +734,6 @@ export async function executeVoiceTasks(tasks, context) {
         case "query_stats":
           result = handleQueryStats(task, context);
           break;
-        case "deal_score": {
-          const pA = parseNum(task.data.prix_achat);
-          const pV = parseNum(task.data.prix_vente);
-          const pF = parseNum(task.data.frais);
-          if (!pA || !pV) {
-            result = {
-              intent: task.intent,
-              taskData: task.data,
-              status: "error",
-              data: {},
-              message: context.lang === "en" ? "Need buy and sell prices" : "Prix achat et vente requis",
-            };
-            break;
-          }
-          const historique = context.sales.map(s => ({
-            prix_vente: getPrixVente(s),
-            prix_achat: getPrixAchat(s),
-            frais: getFrais(s),
-            categorie: s.categorie ?? s.category ?? null,
-            marque: s.marque ?? s.brand ?? null,
-            date_achat: s.date_achat ?? s.createdAt ?? null,
-            date_vente: s.date_vente ?? s.date ?? null,
-          }));
-          const ds = calculateDealScore({
-            prixAchat: pA,
-            prixVente: pV,
-            frais: pF,
-            lang: context.lang,
-            historique,
-          });
-          result = {
-            intent: task.intent,
-            taskData: task.data,
-            status: "success",
-            data: {
-              score: ds.score,
-              label: ds.label,
-              profitNet: ds.context.profitNet,
-              margePercent: ds.context.margePercent,
-              dimensions: ds.dimensions,
-              pills: ds.pills,
-              confidence: ds.confidence,
-              dataQuality: ds.dataQuality,
-            },
-            message: `${ds.label} · ${ds.score}/10`,
-          };
-          break;
-        }
         case "price_advice": {
           const { nom, marque, prix_achat, description, categorie } = task.data;
           try {
