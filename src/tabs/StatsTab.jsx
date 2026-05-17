@@ -170,6 +170,84 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
+const PLATFORM_COLORS=['#7C3AED','#2563EB','#059669','#D97706','#DC2626','#0891B2','#BE185D','#F97316','#16A34A','#EA580C'];
+
+function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
+  const platVentes=useMemo(()=>{
+    const acc={};
+    salesFiltered.forEach(s=>{
+      const p=s.plateforme;if(!p)return;
+      if(!acc[p])acc[p]={count:0,revenue:0,profit:0,mpSum:0};
+      acc[p].count++;acc[p].revenue+=(s.sell||0);acc[p].profit+=(s.margin||0);acc[p].mpSum+=(s.marginPct||0);
+    });
+    return Object.entries(acc).map(([p,d])=>({p,count:d.count,revenue:d.revenue,profit:d.profit,avgMargin:d.count?d.mpSum/d.count:0})).sort((a,b)=>b.revenue-a.revenue);
+  },[salesFiltered]);
+  const platStock=useMemo(()=>{
+    const acc={};
+    stockItems.filter(i=>i.statut!=='vendu').forEach(i=>{
+      const p=i.plateforme;if(!p)return;
+      if(!acc[p])acc[p]={count:0,invested:0};
+      acc[p].count+=(i.quantite||1);acc[p].invested+=(i.buy||0)*(i.quantite||1);
+    });
+    return Object.entries(acc).map(([p,d])=>({p,count:d.count,invested:d.invested})).sort((a,b)=>b.invested-a.invested);
+  },[stockItems]);
+
+  if(!platVentes.length&&!platStock.length)return null;
+  const card={background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'};
+  const fmtP=n=>`${(Math.round(n*10)/10).toFixed(1)}%`;
+
+  return(<>
+    {platVentes.length>0&&(
+      <div style={card}>
+        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>{lang==='en'?'🏪 Sales by platform':'🏪 Ventes par plateforme'}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {platVentes.map(({p,count,revenue},i)=>{
+            const pct=(revenue/(platVentes[0].revenue||1))*100;
+            const color=PLATFORM_COLORS[i%PLATFORM_COLORS.length];
+            return(<div key={p} style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{width:76,flexShrink:0,fontSize:11,fontWeight:700,color:'#374151',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p}</div>
+              <div style={{flex:1,height:8,background:'#F3F4F6',borderRadius:99,overflow:'hidden'}}>
+                <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
+              </div>
+              <div style={{width:68,flexShrink:0,textAlign:'right'}}>
+                <div style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{fmt2(revenue)}</div>
+                <div style={{fontSize:10,color:'#6B7280'}}>{count} {lang==='en'?(count>1?'sales':'sale'):(count>1?'ventes':'vente')}</div>
+              </div>
+            </div>);
+          })}
+        </div>
+        {(()=>{const best=[...platVentes].sort((a,b)=>b.avgMargin-a.avgMargin)[0];if(!best)return null;return(
+          <div style={{marginTop:12,background:'#EDE9FE',borderRadius:10,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:11,fontWeight:700,color:'#7C3AED'}}>🏆 {lang==='en'?'Best margin:':'Meilleure marge :'} {best.p}</span>
+            <span style={{fontSize:12,fontWeight:900,color:'#7C3AED'}}>{fmtP(best.avgMargin)}</span>
+          </div>
+        );})()}
+      </div>
+    )}
+    {platStock.length>0&&(
+      <div style={card}>
+        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>{lang==='en'?'📦 Stock by platform':'📦 Stock par plateforme'}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {platStock.map(({p,count,invested},i)=>{
+            const pct=(invested/(platStock[0].invested||1))*100;
+            const color=PLATFORM_COLORS[i%PLATFORM_COLORS.length];
+            return(<div key={p} style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{width:76,flexShrink:0,fontSize:11,fontWeight:700,color:'#374151',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p}</div>
+              <div style={{flex:1,height:8,background:'#F3F4F6',borderRadius:99,overflow:'hidden'}}>
+                <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
+              </div>
+              <div style={{width:68,flexShrink:0,textAlign:'right'}}>
+                <div style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{fmt2(invested)}</div>
+                <div style={{fontSize:10,color:'#6B7280'}}>{count} {lang==='en'?(count>1?'items':'item'):(count>1?'articles':'article')}</div>
+              </div>
+            </div>);
+          })}
+        </div>
+      </div>
+    )}
+  </>);
+}
+
 const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{},setTab=()=>{},isActive=true}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const [range,setRange]=useState('6M');
@@ -261,6 +339,17 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     return Math.round(total/pairs.length);
   },[filtered,items]);
 
+  const platVentesAI=useMemo(()=>{
+    const acc={};
+    filtered.forEach(s=>{const p=s.plateforme;if(!p)return;if(!acc[p])acc[p]={count:0,ca:0,profit:0,mpSum:0};acc[p].count++;acc[p].ca+=(s.sell||0);acc[p].profit+=(s.margin||0);acc[p].mpSum+=(s.marginPct||0);});
+    return Object.entries(acc).map(([p,d])=>({p,count:d.count,ca:Math.round(d.ca),profit:Math.round(d.profit),avgMargin:d.count?Math.round(d.mpSum/d.count*10)/10:0})).sort((a,b)=>b.profit-a.profit).slice(0,5);
+  },[filtered]);
+  const platStockAI=useMemo(()=>{
+    const acc={};
+    items.filter(i=>i.statut!=='vendu').forEach(i=>{const p=i.plateforme;if(!p)return;if(!acc[p])acc[p]={count:0,invested:0};acc[p].count+=(i.quantite||1);acc[p].invested+=(i.buy||0)*(i.quantite||1);});
+    return Object.entries(acc).map(([p,d])=>({p,count:d.count,invested:Math.round(d.invested)})).sort((a,b)=>b.invested-a.invested).slice(0,3);
+  },[items]);
+
   const topSellers=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
   const topSellerDaysMap=useMemo(()=>{
     const m={};
@@ -318,7 +407,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         fetch(`${SURL}/functions/v1/stats-analysis`,{
           method:'POST',
           headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`,'apikey':supabaseAnonKey},
-          body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,lang}),
+          body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,plateformes_ventes:platVentesAI,plateformes_stock:platStockAI,lang}),
         })
           .then(async r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
           .then(d=>{
@@ -525,6 +614,9 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
 
       {/* Avg days to sell by category */}
       <AvgDaysChart filtered={filtered} items={items} lang={lang} />
+
+      {/* Platform stats */}
+      <PlatformStatsSection salesFiltered={filtered} stockItems={items} lang={lang} fmt2={fmt2}/>
 
       {/* Top sellers */}
       {topSellers.length>0&&(

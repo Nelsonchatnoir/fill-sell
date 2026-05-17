@@ -72,6 +72,7 @@ Intents disponibles :
 - analytics_dormant   → requiresConfirmation: false
 - analytics_date      → requiresConfirmation: false
 - query_stats         → requiresConfirmation: false
+- platform_stats      → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
@@ -285,6 +286,7 @@ Si l'utilisateur demande les meilleurs deals PAR catégorie → groupBy: "catego
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), date_to (ISO|null), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
+platform_stats:   { metric ("best_sell"|"worst_sell"|"by_name"|"most_invest"|"ranking"), plateforme: string|null, periode }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Déclencheurs deal_score : scénarios HYPOTHÉTIQUES uniquement — "si j'achète X je revends Y", "quelle marge si", "c'est rentable si", "est-ce un bon deal si". INTERDIT si l'utilisateur dit "j'ai acheté" + "j'ai vendu" (passé composé = transaction réelle → inventory_sell no_match:true).
 price_question:   { nom, marque, prix_achat, description, categorie }
@@ -380,7 +382,23 @@ Métriques :
 Règle limit (CRITIQUE — respecter exactement le nombre mentionné) :
   "ma meilleure" / "ma pire" → limit: 1 (TOUJOURS 1 pour "ma" sans nombre)
   "mes N meilleures" / "les N pires" → limit: N exact (N = nombre mentionné)
-  "mes meilleures" / "mes pires" (sans nombre) → limit: 5 (défaut)`;
+  "mes meilleures" / "mes pires" (sans nombre) → limit: 5 (défaut)
+
+Règles platform_stats (PRIORITÉ sur analytics_query pour les questions de plateformes) :
+Utilise platform_stats pour toute question sur les performances par plateforme de revente.
+Métriques :
+  best_sell   → "meilleure plateforme", "sur quelle plateforme je vends le mieux", "quelle plateforme me rapporte le plus", "quelle est ma meilleure plateforme", "ma plateforme la plus rentable"
+  worst_sell  → "pire plateforme", "plateforme qui rapporte le moins", "quelle plateforme me rapporte le moins", "ma moins bonne plateforme"
+  by_name     → "combien j'ai vendu sur [X]", "mes ventes sur [X]", "stats de [X]", "[X] combien ça m'a rapporté", "ma performance sur [X]"
+              → plateforme = nom exact mentionné (ex: "Vinted", "eBay", "Leboncoin"). Retourner le nom canonique officiel.
+  most_invest → "où est-ce que j'achète le plus", "sur quelle plateforme j'investis le plus", "où je dépense le plus en stock", "plateforme où je source le plus", "où j'ai le plus de stock"
+  ranking     → "classement des plateformes", "toutes mes plateformes", "compare mes plateformes", "quelles sont mes meilleures plateformes", "palmarès des plateformes"
+Exemples :
+✅ "sur quelle plateforme je vends le mieux ?" → [platform_stats {metric:"best_sell", plateforme:null, periode:null}]
+✅ "combien j'ai vendu sur Vinted ?" → [platform_stats {metric:"by_name", plateforme:"Vinted", periode:null}]
+✅ "où est-ce que j'achète le plus ?" → [platform_stats {metric:"most_invest", plateforme:null, periode:null}]
+✅ "classe mes plateformes" → [platform_stats {metric:"ranking", plateforme:null, periode:null}]
+✅ "quelle plateforme me rapporte le moins ?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]`;
 
 const SYSTEM_EN = `You are the intent engine of Fill & Sell, an intelligent resale app.
 You receive a sentence from a reseller. You extract ALL intentions present
@@ -450,6 +468,7 @@ Available intents:
 - analytics_dormant   → requiresConfirmation: false
 - analytics_date      → requiresConfirmation: false
 - query_stats         → requiresConfirmation: false
+- platform_stats      → requiresConfirmation: false
 - deal_score          → requiresConfirmation: false
 - price_question      → requiresConfirmation: false
 - price_advice        → requiresConfirmation: false
@@ -662,6 +681,7 @@ If the user asks for best deals BY category → groupBy: "categorie"
 analytics_dormant:{ days }
 analytics_date:   { date (ISO), date_to (ISO|null), type ("bought"|"sold"|"all") }
 query_stats:      { metric ("best_sales"|"worst_sales"|"profit_mois"|"marge_moyenne"|"stock_immobilise"|"stock_count"|"stock_by_period"), limit: number, periode ("today"|"week"|"month"|"year"|"all"|"custom"), date_from, date_to }
+platform_stats:   { metric ("best_sell"|"worst_sell"|"by_name"|"most_invest"|"ranking"), plateforme: string|null, periode }
 deal_score:       { prix_achat: number, prix_vente: number, frais: number|null }
 Triggers for deal_score: HYPOTHETICAL scenarios only — "if I buy X and sell for Y", "what margin if", "is it worth it if". FORBIDDEN if the user says "I bought" + "I sold" (past tense = real transaction → inventory_sell no_match:true).
 price_question:   { nom, marque, prix_achat, description, categorie }
@@ -764,7 +784,23 @@ Metrics:
 Limit rule (CRITICAL — respect the exact number stated):
   "my best sale" / "my worst sale" → limit: 1 (ALWAYS 1 for "my" without a number)
   "my N best" / "the N worst" → limit: N exact (N = stated number)
-  "my best sales" / "my worst sales" (no number) → limit: 5 (default)`;
+  "my best sales" / "my worst sales" (no number) → limit: 5 (default)
+
+platform_stats rules (PRIORITY over analytics_query for platform questions):
+Use platform_stats for any question about performance by resale platform.
+Metrics:
+  best_sell   → "best platform", "which platform do I sell best on", "which platform makes me the most", "my best platform", "most profitable platform"
+  worst_sell  → "worst platform", "platform that earns the least", "my worst platform", "least profitable platform"
+  by_name     → "how much did I sell on [X]", "my sales on [X]", "[X] stats", "how much did [X] make me", "my performance on [X]"
+              → plateforme = exact platform name mentioned (e.g. "Vinted", "eBay"). Return official canonical name.
+  most_invest → "where do I buy the most", "which platform do I invest most in", "where do I spend the most on stock", "platform where I source the most"
+  ranking     → "platform ranking", "all my platforms", "compare my platforms", "what are my best platforms"
+Examples:
+✅ "which platform do I sell best on?" → [platform_stats {metric:"best_sell", plateforme:null, periode:null}]
+✅ "how much did I sell on eBay?" → [platform_stats {metric:"by_name", plateforme:"eBay", periode:null}]
+✅ "where do I buy the most?" → [platform_stats {metric:"most_invest", plateforme:null, periode:null}]
+✅ "rank my platforms" → [platform_stats {metric:"ranking", plateforme:null, periode:null}]
+✅ "which platform makes me the least?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]`;
 
 // Normalise inventory_add nom/description: nom = type/model only (no brand), description = qualifiers in order
 function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unknown> {

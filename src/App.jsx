@@ -2802,6 +2802,59 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 );
               }
 
+              if(status==="success"&&intent==="platform_stats"){
+                const metric=data?.metric;
+                if(data?.empty){
+                  return(
+                    <div key={idx} style={{background:"#EDE9FE",borderRadius:12,padding:"14px 16px",border:"1px solid #C4B5FD"}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>🏪 {message}</div>
+                    </div>
+                  );
+                }
+                const isStock=metric==="most_invest";
+                const medals=["🥇","🥈","🥉"];
+                const metricLabel={best_sell:lang==="en"?"Best platform 🏆":"Meilleure plateforme 🏆",worst_sell:lang==="en"?"Worst platform ⚠️":"Pire plateforme ⚠️",by_name:"🏪 Stats",most_invest:lang==="en"?"Most invested 📦":"Plus investi 📦",ranking:lang==="en"?"Platform ranking 🏅":"Classement plateformes 🏅"}[metric]||"🏪";
+                const highlight=isStock?data?.most:data?.best||data?.worst||data?.found||null;
+                const ranked=data?.ranked||null;
+                const fmtP=n=>`${(Math.round((n||0)*10)/10).toFixed(1)}%`;
+                return(
+                  <div key={idx} style={{background:"#fff",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>{metricLabel}</div>
+                    {highlight&&metric!=="ranking"&&(
+                      <div style={{background:"#EDE9FE",borderRadius:10,padding:"10px 12px",marginBottom:metric==="by_name"?8:0}}>
+                        <div style={{fontSize:14,fontWeight:800,color:"#7C3AED"}}>🏪 {highlight.plateforme}</div>
+                        {isStock?(
+                          <div style={{fontSize:12,color:"#5B21B6",marginTop:3}}>{highlight.count} {lang==="en"?(highlight.count>1?"items":"item"):(highlight.count>1?"articles":"article")} · {fmt(highlight.invested)}</div>
+                        ):(
+                          <div style={{fontSize:12,color:"#5B21B6",marginTop:3}}>{highlight.count} {lang==="en"?(highlight.count>1?"sales":"sale"):(highlight.count>1?"ventes":"vente")} · {fmt(highlight.revenue)} CA · {fmtP(highlight.avgMargin)} {lang==="en"?"margin":"marge"}</div>
+                        )}
+                      </div>
+                    )}
+                    {metric==="by_name"&&data?.found&&(
+                      <div style={{background:"#F9FAFB",borderRadius:10,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Revenue":"CA"}</span><span style={{fontSize:12,fontWeight:800,color:"#0D0D0D"}}>{fmt(data.found.revenue)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Profit":"Bénéfice"}</span><span style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmt(data.found.profit)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Avg margin":"Marge moy."}</span><span style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmtP(data.found.avgMargin)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Sales":"Ventes"}</span><span style={{fontSize:12,fontWeight:800,color:"#0D0D0D"}}>{data.found.count}</span></div>
+                      </div>
+                    )}
+                    {metric==="ranking"&&ranked&&ranked.length>0&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {ranked.slice(0,5).map((p,i)=>(
+                          <div key={p.plateforme} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",background:"#F9FAFB",borderRadius:8}}>
+                            <span style={{fontSize:12,fontWeight:700,color:"#374151"}}>{medals[i]||`#${i+1}`} {p.plateforme}</span>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmt(p.profit)}</div>
+                              <div style={{fontSize:10,color:"#6B7280"}}>{p.count} {lang==="en"?(p.count>1?"sales":"sale"):(p.count>1?"ventes":"vente")}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               if(status==="success"&&intent==="off_topic"){
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}><div style={{fontSize:13,fontWeight:600,color:"#6B7280",lineHeight:1.5}}>{message}</div></div>);
               }

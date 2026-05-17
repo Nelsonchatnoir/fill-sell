@@ -458,6 +458,87 @@ function handleQueryStats(task, context) {
   }
 }
 
+function handlePlatformStats(task, context) {
+  const { metric, plateforme, periode } = task.data;
+  const lang = context.lang;
+
+  let sales = [...context.sales];
+  if (periode) sales = filterByPeriod(sales, periode, null, null);
+
+  const platSalesMap = {};
+  sales.forEach(s => {
+    const p = s.plateforme; if (!p) return;
+    if (!platSalesMap[p]) platSalesMap[p] = { count: 0, revenue: 0, profit: 0, mpSum: 0 };
+    platSalesMap[p].count++;
+    platSalesMap[p].revenue += getPrixVente(s);
+    platSalesMap[p].profit += getMargin(s);
+    platSalesMap[p].mpSum += (s.margin_pct ?? s.marginPct ?? 0);
+  });
+  const platSales = Object.entries(platSalesMap)
+    .map(([p, d]) => ({ plateforme: p, count: d.count, revenue: Math.round(d.revenue * 100) / 100, profit: Math.round(d.profit * 100) / 100, avgMargin: d.count ? Math.round(d.mpSum / d.count * 10) / 10 : 0 }))
+    .sort((a, b) => b.profit - a.profit);
+
+  const platStockMap = {};
+  context.items.filter(i => i.statut !== 'vendu' && i.statut !== 'sold').forEach(i => {
+    const p = i.plateforme; if (!p) return;
+    if (!platStockMap[p]) platStockMap[p] = { count: 0, invested: 0 };
+    platStockMap[p].count += (i.quantite || 1);
+    platStockMap[p].invested += (i.buy || 0) * (i.quantite || 1);
+  });
+  const platStock = Object.entries(platStockMap)
+    .map(([p, d]) => ({ plateforme: p, count: d.count, invested: Math.round(d.invested * 100) / 100 }))
+    .sort((a, b) => b.invested - a.invested);
+
+  const fmtV = n => `${Math.round(n * 100) / 100}€`;
+  const fmtP = n => `${(Math.round(n * 10) / 10).toFixed(1)}%`;
+  const noData = lang === 'en' ? 'No platform data yet' : 'Pas encore de données par plateforme';
+
+  switch (metric) {
+    case 'best_sell': {
+      if (!platSales.length) return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, empty: true }, message: noData };
+      const best = platSales[0];
+      const msg = lang === 'en'
+        ? `Best platform: **${best.plateforme}** — ${best.count} sale${best.count > 1 ? 's' : ''}, ${fmtV(best.revenue)} revenue, avg margin ${fmtP(best.avgMargin)}`
+        : `Meilleure plateforme : **${best.plateforme}** — ${best.count} vente${best.count > 1 ? 's' : ''}, ${fmtV(best.revenue)} de CA, marge moy. ${fmtP(best.avgMargin)}`;
+      return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, best, all: platSales }, message: msg };
+    }
+    case 'worst_sell': {
+      if (!platSales.length) return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, empty: true }, message: noData };
+      const worst = platSales[platSales.length - 1];
+      const msg = lang === 'en'
+        ? `Worst platform: **${worst.plateforme}** — ${worst.count} sale${worst.count > 1 ? 's' : ''}, ${fmtV(worst.revenue)} revenue, avg margin ${fmtP(worst.avgMargin)}`
+        : `Pire plateforme : **${worst.plateforme}** — ${worst.count} vente${worst.count > 1 ? 's' : ''}, ${fmtV(worst.revenue)} de CA, marge moy. ${fmtP(worst.avgMargin)}`;
+      return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, worst, all: platSales }, message: msg };
+    }
+    case 'by_name': {
+      if (!plateforme) return { intent: task.intent, taskData: task.data, status: 'error', data: {}, message: lang === 'en' ? 'Platform name required' : 'Nom de plateforme requis' };
+      const normP = norm(plateforme);
+      const found = platSales.find(p => norm(p.plateforme) === normP || norm(p.plateforme).includes(normP) || normP.includes(norm(p.plateforme)));
+      if (!found) return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, empty: true, plateforme }, message: lang === 'en' ? `No sales found on ${plateforme}` : `Aucune vente trouvée sur ${plateforme}` };
+      const msg = lang === 'en'
+        ? `**${found.plateforme}** — ${found.count} sale${found.count > 1 ? 's' : ''}, ${fmtV(found.revenue)} revenue, ${fmtV(found.profit)} profit, avg margin ${fmtP(found.avgMargin)}`
+        : `**${found.plateforme}** — ${found.count} vente${found.count > 1 ? 's' : ''}, ${fmtV(found.revenue)} de CA, ${fmtV(found.profit)} de bénéfice, marge moy. ${fmtP(found.avgMargin)}`;
+      return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, found, all: platSales }, message: msg };
+    }
+    case 'most_invest': {
+      if (!platStock.length) return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, empty: true }, message: noData };
+      const most = platStock[0];
+      const msg = lang === 'en'
+        ? `Most invested: **${most.plateforme}** — ${most.count} item${most.count > 1 ? 's' : ''}, ${fmtV(most.invested)} invested`
+        : `Plus investi sur : **${most.plateforme}** — ${most.count} article${most.count > 1 ? 's' : ''}, ${fmtV(most.invested)} investis`;
+      return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, most, all: platStock }, message: msg };
+    }
+    case 'ranking': {
+      if (!platSales.length) return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, empty: true }, message: noData };
+      const medals = ['🥇', '🥈', '🥉'];
+      const msg = platSales.map((p, i) => `${medals[i] || `#${i + 1}`} ${p.plateforme}: ${fmtV(p.profit)} (${p.count} ${lang === 'en' ? 'sale' : 'vente'}${p.count > 1 ? 's' : ''})`).join(' • ');
+      return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, ranked: platSales, all: platSales }, message: msg };
+    }
+    default:
+      return { intent: task.intent, taskData: task.data, status: 'error', data: {}, message: lang === 'en' ? 'Unknown metric' : 'Métrique inconnue' };
+  }
+}
+
 async function handleBusinessAdvice(task, context) {
   const { items = [], sales = [], lang, supabaseUrl, token } = context;
   const now = new Date();
@@ -536,6 +617,32 @@ async function handleBusinessAdvice(task, context) {
 
   const stock_total = items.filter(i => i.statut !== "vendu" && i.statut !== "sold").length;
 
+  // Plateformes de ventes
+  const platSalesData = {};
+  for (const s of sales) {
+    const p = s.plateforme; if (!p) continue;
+    if (!platSalesData[p]) platSalesData[p] = { count: 0, ca: 0, profit: 0, mpSum: 0 };
+    platSalesData[p].count++; platSalesData[p].ca += getPrixVente(s);
+    platSalesData[p].profit += s.margin ?? s.benefice ?? 0;
+    platSalesData[p].mpSum += s.margin_pct ?? 0;
+  }
+  const plateformes_ventes = Object.entries(platSalesData)
+    .map(([p, d]) => ({ p, count: d.count, ca: Math.round(d.ca), profit: Math.round(d.profit), avgMargin: d.count ? Math.round(d.mpSum / d.count * 10) / 10 : 0 }))
+    .sort((a, b) => b.profit - a.profit).slice(0, 5);
+
+  // Plateformes de stock
+  const platStockData = {};
+  for (const i of items) {
+    if (i.statut === "vendu" || i.statut === "sold") continue;
+    const p = i.plateforme; if (!p) continue;
+    if (!platStockData[p]) platStockData[p] = { count: 0, invested: 0 };
+    platStockData[p].count += (i.quantite || 1);
+    platStockData[p].invested += (i.buy || i.prix_achat || 0) * (i.quantite || 1);
+  }
+  const plateformes_stock = Object.entries(platStockData)
+    .map(([p, d]) => ({ p, count: d.count, invested: Math.round(d.invested) }))
+    .sort((a, b) => b.invested - a.invested).slice(0, 3);
+
   if (!supabaseUrl) {
     return { intent: "business_advice", taskData: task.data, status: "error", data: {}, message: lang === "en" ? "Service unavailable" : "Service indisponible" };
   }
@@ -562,6 +669,8 @@ async function handleBusinessAdvice(task, context) {
         articles_lents: slowItems.length,
         articles_lents_details,
         stock_total,
+        plateformes_ventes,
+        plateformes_stock,
         lang,
         question: task.data?.originalText || "",
       }),
@@ -733,6 +842,9 @@ export async function executeVoiceTasks(tasks, context) {
           break;
         case "query_stats":
           result = handleQueryStats(task, context);
+          break;
+        case "platform_stats":
+          result = handlePlatformStats(task, context);
           break;
         case "price_advice": {
           const { nom, marque, prix_achat, description, categorie } = task.data;
