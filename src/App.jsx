@@ -3619,6 +3619,8 @@ export default function App({ loginOnly = false }){
     if(!voiceParsed?.items?.length)return;
     let idBase=Date.now();
     let insertedCount=items.filter(i=>i.statut!=='vendu').length;
+    const{data:{session:avSess}}=await supabase.auth.getSession();
+    const avToken=avSess?.access_token;
     for(const item of voiceParsed.items){
       if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const qty=Math.max(1,item.quantite||1);
@@ -3641,13 +3643,15 @@ export default function App({ loginOnly = false }){
       const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null};
+      let nomNorm=item.nom||"Article";
+      if(avToken&&(qty>1||voiceParsed.isLot)){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${avToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         if(!hasS) insertedCount++;
         setItems(prev=>[mapItem(data),...prev]);
         if(hasS){
-          const srow={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc};
+          const srow={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc};
           const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
           if(sd)setSales(prev=>[mapSale(sd),...prev]);
         }
@@ -3682,6 +3686,8 @@ export default function App({ loginOnly = false }){
     if(!lotDistributed?.items?.length)return;
     let idBase=Date.now();
     let insertedCount=items.filter(i=>i.statut!=='vendu').length;
+    const{data:{session:ntSess}}=await supabase.auth.getSession();
+    const ntToken=ntSess?.access_token;
     for(const item of lotDistributed.items){
       if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
       const b=parseFloat(item.prix_estime_lot)||0;
@@ -3690,7 +3696,9 @@ export default function App({ loginOnly = false }){
       // Récupérer les frais d'achat depuis voiceParsed si disponibles (même frais_global pour tout le lot)
       const lotFraisG=parseFloat(voiceParsed?.items?.[0]?.frais_global)||0;
       const lotFraisU=lotFraisG>0?lotFraisG/(voiceParsed?.items?.length||1):(parseFloat(voiceParsed?.items?.[0]?.frais_unitaire)||0);
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(item.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1};
+      let nomNorm=item.nom||"Article";
+      if(ntToken){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ntToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){insertedCount++;setItems(prev=>[mapItem(data),...prev]);}
     }
