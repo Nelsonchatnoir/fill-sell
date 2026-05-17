@@ -244,6 +244,18 @@ Capitaliser le type, conserver le code/numéro tel quel.
 Aucune mention → emplacement: null.
 DISTINCTION : lieu de rangement → emplacement. Lieu d'ACHAT (brocante, Paris...) → description.
 
+RÈGLE PLATEFORME :
+plateforme = plateforme de revente mentionnée par l'utilisateur (Vinted, eBay, Depop, Leboncoin, Vestiaire Collective, Poshmark, Mercari, Wallapop, Facebook Marketplace, StockX, GOAT, Vide Dressing, Beebeep, Shpock, Tradesy, Grailed, Back Market, Etsy, Amazon, Rakuten, La Redoute, Priceminister...).
+Pour action=vente : plateforme où l'article EST VENDU.
+Pour action=achat : plateforme où l'article A ÉTÉ ACHETÉ si mentionné.
+Utilise ta connaissance pour reconnaître toute plateforme de revente mondiale même si mal orthographiée.
+Retourner le nom officiel canonique de la plateforme (ex: "leboncoin" → "Leboncoin", "FB marketplace" → "Facebook Marketplace").
+Aucune mention → plateforme: null.
+  ✅ "vendu sur Vinted pour 25€" → action:vente, plateforme:"Vinted"
+  ✅ "j'ai acheté un iPhone sur eBay à 120€" → action:achat, plateforme:"eBay"
+  ✅ "vendu un sac Zara depop 30€" → action:vente, plateforme:"Depop"
+  ✅ "veste achetée vinted 15€" → action:achat, plateforme:"Vinted"
+
 Format de réponse (JSON strict) :
 {
   "action": "achat" | "vente",
@@ -263,6 +275,7 @@ Format de réponse (JSON strict) :
       "categorie": string,
       "description": string | null,
       "emplacement": string | null,
+      "plateforme": string | null,
       "date": string | null,
       "confidence": number
     }
@@ -509,6 +522,18 @@ Capitalise the type, keep the code/number as-is.
 No storage mention → emplacement: null.
 DISTINCTION: storage location → emplacement. PURCHASE location (flea market, Paris...) → description.
 
+PLATFORM RULE:
+plateforme = resale platform mentioned by the user (Vinted, eBay, Depop, Leboncoin, Vestiaire Collective, Poshmark, Mercari, Wallapop, Facebook Marketplace, StockX, GOAT, Vide Dressing, Beebeep, Shpock, Tradesy, Grailed, Back Market, Etsy, Amazon, Rakuten...).
+For action=vente: platform WHERE the item IS SOLD.
+For action=achat: platform WHERE the item WAS PURCHASED, if mentioned.
+Use your knowledge to recognise any worldwide resale platform even if misspelled.
+Return the official canonical platform name (e.g. "fb marketplace" → "Facebook Marketplace", "vestiaire" → "Vestiaire Collective").
+No mention → plateforme: null.
+  ✅ "sold on Vinted for £25" → action:vente, plateforme:"Vinted"
+  ✅ "bought an iPhone on eBay for £120" → action:achat, plateforme:"eBay"
+  ✅ "sold a Zara bag on Depop £30" → action:vente, plateforme:"Depop"
+  ✅ "jacket bought vinted £15" → action:achat, plateforme:"Vinted"
+
 Response format (strict JSON) :
 {
   "action": "achat" | "vente",
@@ -528,6 +553,7 @@ Response format (strict JSON) :
       "categorie": string,
       "description": string | null,
       "emplacement": string | null,
+      "plateforme": string | null,
       "date": string | null,
       "confidence": number
     }

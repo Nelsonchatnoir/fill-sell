@@ -270,12 +270,12 @@ Structure retournée :
 }
 
 Data par intent :
-inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
+inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement, plateforme }
 inventory_location: { nom, marque }
 location_items:     { emplacement }
 inventory_move:     { article, emplacement, quantite }
-inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement}] }
-inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
+inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement, plateforme}] }
+inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue, plateforme }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -291,6 +291,7 @@ price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
+- plateforme = plateforme de revente mentionnée (Vinted, eBay, Depop, Leboncoin, Vestiaire Collective, Poshmark, Mercari, Facebook Marketplace, StockX, GOAT, Grailed, Vide Dressing, Beebeep, Back Market, Etsy...). null si non mentionné. Retourner le nom officiel canonique.
 
 Règle inventory_lot items — description + emplacement (CRITIQUE) :
 Pour CHAQUE article du lot, extraire les mêmes champs que inventory_add :
@@ -646,12 +647,12 @@ Returned structure:
 }
 
 Data per intent:
-inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement }
+inventory_add:      { nom, marque, type, prix_achat, prix_vente, categorie, quantite, description, emplacement, plateforme }
 inventory_location: { nom, marque }
 location_items:     { emplacement }
 inventory_move:     { article, emplacement, quantite }
-inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement}] }
-inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue }
+inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement, plateforme}] }
+inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue, plateforme }
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -667,6 +668,7 @@ price_question:   { nom, marque, prix_achat, description, categorie }
 price_advice:     { nom, marque, prix_achat, description, categorie }
 buy_advice:       { nom, marque, prix_propose, etat, plateforme_source, categorie }
 unknown:          { originalText }
+- plateforme = resale platform mentioned (Vinted, eBay, Depop, Leboncoin, Vestiaire Collective, Poshmark, Mercari, Facebook Marketplace, StockX, GOAT, Grailed, Vide Dressing, Beebeep, Back Market, Etsy...). null if not mentioned. Return official canonical platform name.
 
 Rule inventory_lot items — description + emplacement (CRITICAL):
 For EACH item in the lot, extract the same fields as inventory_add:

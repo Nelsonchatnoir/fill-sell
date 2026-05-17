@@ -677,7 +677,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null};}
+function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -829,7 +829,7 @@ const SKELETON_SOLD=[
   {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
 const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -1569,7 +1569,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match){
               try{
                 const dmCat=r.taskData?.categorie||r.taskData?.type||null;
-                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat,quantite_vendue:r.taskData?.quantite_vendue});
+                await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat,quantite_vendue:r.taskData?.quantite_vendue,plateforme:r.taskData?.plateforme||null});
                 return{...r,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"};
               }catch(e){return{...r,status:"error",message:e.message};}
             }
@@ -2174,7 +2174,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>{
                           // Vente directe confirmée : insertion sans article inventaire
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
@@ -2229,7 +2229,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         <button onClick={()=>{
                           // Non : vente directe sans associer l'article du stock
                           const dmCatCf=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
@@ -2280,6 +2280,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           description:taskData?.description,
                           prix_vente:taskData?.prix_vente,
                           quantite_vendue:taskData?.quantite_vendue,
+                          plateforme:taskData?.plateforme||null,
                         })
                           .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                           .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
@@ -2349,7 +2350,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <button onClick={()=>{
                         if(!found){
                           const dmCatN=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue})
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           return;
@@ -2989,6 +2990,7 @@ export default function App({ loginOnly = false }){
   const [iQuantite,setIQuantite]=useState(1);
   const [iSaved,setISaved]=useState(false);
   const [iEmplacement,setIEmplacement]=useState("");
+  const [iPlateforme,setIPlateforme]=useState("");
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
   const [pillsExpandedStock,setPillsExpandedStock]=useState(false);
@@ -3540,13 +3542,13 @@ export default function App({ loginOnly = false }){
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
       let nomNorm=item.nom||"Article";
       if(avToken&&(qty>1||voiceParsed.isLot)){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${avToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null};
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null,plateforme:item.plateforme||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         if(!hasS) insertedCount++;
         setItems(prev=>[mapItem(data),...prev]);
         if(hasS){
-          const srow={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc};
+          const srow={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc,plateforme:item.plateforme||null};
           const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
           if(sd)setSales(prev=>[mapSale(sd),...prev]);
         }
@@ -3593,7 +3595,7 @@ export default function App({ loginOnly = false }){
       const lotFraisU=lotFraisG>0?lotFraisG/(voiceParsed?.items?.length||1):(parseFloat(voiceParsed?.items?.[0]?.frais_unitaire)||0);
       let nomNorm=item.nom||"Article";
       if(ntToken){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ntToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1};
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1,plateforme:voiceParsed?.items?.[0]?.plateforme||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){insertedCount++;setItems(prev=>[mapItem(data),...prev]);}
     }
@@ -3610,13 +3612,13 @@ export default function App({ loginOnly = false }){
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: b, has_sell_price: hasS });
       setItems(prev=>[mapItem(data),...prev]);
       if(hasS){
-        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0]};
+        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0],plateforme:iPlateforme||null};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd) setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -3626,13 +3628,13 @@ export default function App({ loginOnly = false }){
     setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
-    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");
+    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
-    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total'});
+    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total',plateforme:item.plateforme||''});
   }
 
   async function confirmSell(){
@@ -3654,7 +3656,7 @@ export default function App({ loginOnly = false }){
     if(remaining>0){
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-      const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+      const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString(),plateforme:sellModal.plateforme||null};
       const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
       if(siErr)console.error("[confirmSell] soldRow insert failed:",siErr.message);
       if(si)setItems(prev=>[mapItem(si),...prev]);
@@ -3663,7 +3665,7 @@ export default function App({ loginOnly = false }){
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
     }
     for(let q=0;q<qVendue;q++){
-      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0]};
+      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:sellModal.plateforme||null};
       const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
       if(sd){
         if(q===0)track('mark_sold',{profit:mgUnit*qVendue,margin_pct:Math.round(mgpUnit*10)/10});
@@ -4426,7 +4428,7 @@ export default function App({ loginOnly = false }){
       const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
       const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null,plateforme:data.plateforme||null};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(error)throw new Error(error.message);
@@ -4450,7 +4452,7 @@ export default function App({ loginOnly = false }){
         if(updQtyErr)throw new Error(updQtyErr.message);
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
         // Insérer une ligne "vendu" séparée pour la quantité vendue
-        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString()};
+        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString(),plateforme:item.plateforme||null};
         const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
         if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message);
         if(si)setItems(prev=>[mapItem(si),...prev]);
@@ -4468,7 +4470,7 @@ export default function App({ loginOnly = false }){
       }
       // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
       for(let q=0;q<qVendue;q++){
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0]};
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:item.plateforme||null};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -4497,12 +4499,12 @@ export default function App({ loginOnly = false }){
     },
     // Vente directe sans article en stock (intent inventory_sell + no_match).
     // Insère uniquement dans ventes — pas de suppression inventaire.
-    addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat,quantite_vendue})=>{
+    addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat,quantite_vendue,plateforme})=>{
       const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       const pa=parseFloat(String(prix_achat??0).replace(",","."))||0;
       const qv=Math.max(1,parseInt(quantite_vendue)||1);
       const marqueNorm=normalizeMarque(marque);
-      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0]};
+      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0],plateforme:plateforme||null};
       for(let q=0;q<qv;q++){
         const{data,error}=await supabase.from('ventes').insert([row]).select().single();
         if(error)throw new Error(error.message);
@@ -4913,6 +4915,7 @@ export default function App({ loginOnly = false }){
             iRememberSellingFees={iRememberSellingFees} setIRememberSellingFees={setIRememberSellingFees}
             iDesc={iDesc} setIDesc={setIDesc}
             iEmplacement={iEmplacement} setIEmplacement={setIEmplacement}
+            iPlateforme={iPlateforme} setIPlateforme={setIPlateforme}
             iSaved={iSaved} firstItemAdded={firstItemAdded}
             lotManualTotal={lotManualTotal} setLotManualTotal={setLotManualTotal}
             lotManualItems={lotManualItems} setLotManualItems={setLotManualItems}
@@ -5131,6 +5134,7 @@ export default function App({ loginOnly = false }){
                   )}
                 </>
               )}
+              <Field label={`${lang==='fr'?'Plateforme de vente':'Resale platform'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.plateforme||''} set={v=>setSellModal(p=>({...p,plateforme:v}))} placeholder={lang==='fr'?"Ex: Vinted, eBay, Depop...":"Ex: Vinted, eBay, Depop..."} icon="🏪"/>
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
                 <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>

@@ -141,6 +141,8 @@ export const translations = {
     fieldNomHint:"Le nom de l'article que tu veux suivre",
     skeletonAchat:"Achat",
     skeletonVente:"Vente",
+    plateforme:"Plateforme de vente",
+    plateformePlaceholder:"Ex: Vinted, eBay, Depop, Leboncoin...",
   },
   en: {
     appName:"Fill & Sell",
@@ -284,6 +286,8 @@ export const translations = {
     fieldNomHint:"Name of the item you want to track",
     skeletonAchat:"Bought",
     skeletonVente:"Sold for",
+    plateforme:"Resale platform",
+    plateformePlaceholder:"Ex: Vinted, eBay, Depop, Leboncoin...",
   }
 };
 
