@@ -128,6 +128,18 @@ Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat
 Catégories autorisées (valeurs exactes) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
 
+RÈGLES CATÉGORIES — cas ambigus :
+- Bricolage : outils électroportatifs et manuels, matériel de construction/rénovation.
+  ✅ perceuse, visseuse, ponceuse, scie sauteuse, meuleuse, niveau laser, marteau, pince, tournevis, établi, compresseur, pistolet à colle, Makita, Bosch, DeWalt, Stanley, Facom, Würth → Bricolage
+- Auto-Moto : pièces détachées, accessoires et équipements pour véhicules (voiture, moto, scooter, camion).
+  ✅ autoradio, GPS voiture, jante, casque moto, batterie voiture, filtre à huile, amortisseur → Auto-Moto
+  ❌ perceuse, tournevis, clé à molette (même de marque auto) → Bricolage (pas Auto-Moto)
+- Électroménager : appareils électroménagers de cuisine et maison (réfrigérateur, lave-linge, aspirateur, cafetière...).
+  ✅ aspirateur, robot de cuisine, cafetière, lave-vaisselle → Électroménager
+  ❌ perceuse, ponceuse → Bricolage (pas Électroménager)
+- Maison : mobilier, décoration, literie, vaisselle, rangement.
+  ✅ canapé, lampe, tableau, coussin, étagère IKEA → Maison
+
 RÈGLE EMPLACEMENT :
 emplacement = lieu de STOCKAGE PHYSIQUE de l'article (tiroir, portant, étagère, stockeur, bac, box...).
 Déclencheurs : "dans le tiroir X", "sur le portant X", "dans le stockeur X", "rangé en X", "box X", "étagère X", "bac X".
@@ -288,6 +300,18 @@ If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unch
 
 Allowed categories (exact values) :
 ["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
+
+CATEGORY RULES — ambiguous cases :
+- Bricolage : power tools and hand tools, construction/renovation equipment.
+  ✅ drill, screwdriver, sander, jigsaw, grinder, laser level, hammer, pliers, workbench, compressor, glue gun, Makita, Bosch, DeWalt, Stanley, Facom, Würth → Bricolage
+- Auto-Moto : parts, accessories and equipment for vehicles (car, motorbike, scooter, truck).
+  ✅ car radio, car GPS, rim, motorcycle helmet, car battery, oil filter, shock absorber → Auto-Moto
+  ❌ drill, screwdriver, wrench (even automotive brand) → Bricolage (not Auto-Moto)
+- Électroménager : kitchen and home appliances (fridge, washing machine, vacuum, coffee maker...).
+  ✅ vacuum, food processor, coffee maker, dishwasher → Électroménager
+  ❌ drill, sander → Bricolage (not Électroménager)
+- Maison : furniture, decoration, bedding, tableware, storage.
+  ✅ sofa, lamp, painting, cushion, IKEA shelf → Maison
 
 EMPLACEMENT RULE:
 emplacement = PHYSICAL STORAGE location (drawer, rack, shelf, bin, box...).
