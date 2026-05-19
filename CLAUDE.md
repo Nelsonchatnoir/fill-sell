@@ -1,4 +1,4 @@
-# Fill & Sell — Instructions Claude
+# FillSell — Instructions Claude
 
 ## Git
 - Toujours push sur `main` directement.

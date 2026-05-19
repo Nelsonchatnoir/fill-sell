@@ -58,7 +58,7 @@ serve(async (req) => {
 
     const html = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-  <h2 style="color:#1D9E75;margin-bottom:4px">🐛 Bug Report — Fill &amp; Sell</h2>
+  <h2 style="color:#1D9E75;margin-bottom:4px">🐛 Bug Report — FillSell</h2>
   <p style="color:#6B7280;font-size:13px;margin-top:0">${platform} · ${new Date().toISOString()}</p>
   <hr style="border:none;border-top:1px solid #E5E7EB;margin:16px 0"/>
   <div style="background:#F9FAFB;border-radius:10px;padding:16px;font-size:14px;color:#111827;white-space:pre-wrap">${message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
@@ -75,7 +75,7 @@ serve(async (req) => {
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: "Fill & Sell <noreply@fillsell.app>",
+        from: "FillSell <noreply@fillsell.app>",
         to: ["support@fillsell.app"],
         subject: `[Bug Report] ${platform} — ${userEmail ?? "unknown"}`,
         html,

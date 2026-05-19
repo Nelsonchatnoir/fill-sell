@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
 
-const SYSTEM_FR = `Tu es le moteur d'intention de Fill & Sell, une app de revente intelligente.
+const SYSTEM_FR = `Tu es le moteur d'intention de FillSell, une app de revente intelligente.
 Tu reçois une phrase d'un revendeur. Tu extrais TOUTES les intentions présentes
 dans l'ordre naturel. Tu retournes UNIQUEMENT { "tasks": [...] } en JSON valide.
 Sans texte ni markdown. Si incompréhensible → intent: "unknown".
@@ -400,7 +400,7 @@ Exemples :
 ✅ "classe mes plateformes" → [platform_stats {metric:"ranking", plateforme:null, periode:null}]
 ✅ "quelle plateforme me rapporte le moins ?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]`;
 
-const SYSTEM_EN = `You are the intent engine of Fill & Sell, an intelligent resale app.
+const SYSTEM_EN = `You are the intent engine of FillSell, an intelligent resale app.
 You receive a sentence from a reseller. You extract ALL intentions present
 in natural order. Return ONLY { "tasks": [...] } as valid JSON.
 No text or markdown. If incomprehensible → intent: "unknown".

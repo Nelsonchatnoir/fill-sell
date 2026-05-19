@@ -148,9 +148,9 @@ const T = {
     stat3Label: 'Satisfaction', stat4Label: 'Pour démarrer',
     featEyebrow: 'Fonctionnalités',
     featTitle1: "Tout ce qu'il te faut pour ", featTitleAccent: 'vendre plus malin',
-    featSub: "Un outil simple, conçu par des revendeurs pour des revendeurs. Ajoute, calcule, vends — Fill & Sell s'occupe du reste.",
+    featSub: "Un outil simple, conçu par des revendeurs pour des revendeurs. Ajoute, calcule, vends — FillSell s'occupe du reste.",
     f1Title: 'Suivi automatique',
-    f1Desc: 'Ajoute tes articles en quelques secondes. Fill & Sell calcule tes marges automatiquement.',
+    f1Desc: 'Ajoute tes articles en quelques secondes. FillSell calcule tes marges automatiquement.',
     f1Header: '📦 Mon stock · 14 articles', f1Add: '+ Ajouter', f1BuyLabel: 'Achat → Vente',
     f1CatFashion: '👗 Mode', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxe',
     f1LocLevis: 'Portant 1', f1LocIphone: 'Étagère garage', f1LocHermes: 'Sac Vinted prêt', f1LocPolo: 'Carton cave',
@@ -292,14 +292,14 @@ const T = {
     premiumF6: 'Support prioritaire',
     premiumBtn: "Commencer l'essai gratuit ✨",
     ctaTitle: 'Prêt à maximiser tes profits ?',
-    ctaSub: 'Rejoins des centaines de revendeurs qui suivent leurs profits avec Fill & Sell.',
+    ctaSub: 'Rejoins des centaines de revendeurs qui suivent leurs profits avec FillSell.',
     ctaBtn: 'Créer mon compte gratuit →', ctaMicro: 'Gratuit · Sans carte bancaire · Prêt en 30 secondes',
     faqEyebrow: 'FAQ', faqTitle: 'Tu as des questions ?',
     faqSub: 'Voici les réponses aux questions les plus fréquentes. Tu peux aussi nous écrire à support@fillsell.app',
     footerTagline: 'Suis tes profits de revente, automatiquement. Pour les revendeurs Vinted, eBay, Depop et plus.',
     footerProduct: 'Produit', footerLegal: 'Légal', footerMentions: 'Mentions légales',
     footerPrivacy: 'Confidentialité', footerCgu: 'CGU', footerContact: 'Contact',
-    footerCopy: '© 2026 Fill & Sell. Tous droits réservés. Fait avec 💛 pour les revendeurs.',
+    footerCopy: '© 2026 FillSell. Tous droits réservés. Fait avec 💛 pour les revendeurs.',
   },
   en: {
     navFeatures: 'Features', navVocal: 'Voice AI', navPricing: 'Pricing', navFaq: 'FAQ',
@@ -315,9 +315,9 @@ const T = {
     stat3Label: 'Satisfaction', stat4Label: 'To get started',
     featEyebrow: 'Features',
     featTitle1: 'Everything you need to ', featTitleAccent: 'sell smarter',
-    featSub: "A simple tool, built by resellers for resellers. Add, calculate, sell — Fill & Sell handles the rest.",
+    featSub: "A simple tool, built by resellers for resellers. Add, calculate, sell — FillSell handles the rest.",
     f1Title: 'Automatic tracking',
-    f1Desc: 'Add your items in seconds. Fill & Sell calculates your margins automatically.',
+    f1Desc: 'Add your items in seconds. FillSell calculates your margins automatically.',
     f1Header: '📦 My stock · 14 items', f1Add: '+ Add', f1BuyLabel: 'Buy → Sell',
     f1CatFashion: '👗 Fashion', f1CatTech: '📱 High-Tech', f1CatLuxe: '💎 Luxury',
     f1LocLevis: 'Rail 1', f1LocIphone: 'Garage shelf', f1LocHermes: 'Ready Vinted bag', f1LocPolo: 'Storage box',
@@ -459,14 +459,14 @@ const T = {
     premiumF6: 'Priority support',
     premiumBtn: 'Start your free trial ✨',
     ctaTitle: 'Ready to maximize your profits?',
-    ctaSub: 'Join hundreds of resellers who track their profits with Fill & Sell.',
+    ctaSub: 'Join hundreds of resellers who track their profits with FillSell.',
     ctaBtn: 'Create my free account →', ctaMicro: 'Free · No credit card · Ready in 30 seconds',
     faqEyebrow: 'FAQ', faqTitle: 'Have questions?',
     faqSub: 'Here are answers to the most common questions. You can also reach us at support@fillsell.app',
     footerTagline: 'Track your resale profits, automatically. For Vinted, eBay, Depop and more resellers.',
     footerProduct: 'Product', footerLegal: 'Legal', footerMentions: 'Legal notice',
     footerPrivacy: 'Privacy', footerCgu: 'Terms', footerContact: 'Contact',
-    footerCopy: '© 2026 Fill & Sell. All rights reserved. Made with 💛 for resellers.',
+    footerCopy: '© 2026 FillSell. All rights reserved. Made with 💛 for resellers.',
   },
 };
 
@@ -476,22 +476,22 @@ const FAQ_ITEMS = {
     { q: 'Puis-je organiser mon stock par emplacement ?', a: "Oui. Tu peux dicter ou saisir l'emplacement de chaque article — portant, carton cave, bac brocante, étagère garage. L'emplacement s'affiche sur chaque article dans ton stock et tu peux le mettre à jour vocalement : 'range la veste dans le portant 2'." },
     { q: 'Comment fonctionne la fonction Lens ?', a: "Tu prends jusqu'à 5 photos de ton article directement depuis l'app. L'IA identifie la marque, le modèle, la taille et l'état, puis te donne une fourchette de prix de revente basée sur le marché actuel — avec les meilleures plateformes et un conseil concret. En version gratuite : 3 analyses/jour · 15/mois (estimation visuelle uniquement). En Premium : 5/jour · 60/mois avec prix marché en direct." },
     { q: 'Le Vocal IA est-il fiable sur les marques de luxe ?', a: "Oui — l'IA est entraînée sur les marques de luxe (Hermès, Chanel, Louis Vuitton, etc.) et reconnaît même les modèles spécifiques à partir d'une description partielle. Tu peux toujours corriger avant validation. Précision moyenne : 94 % sur catégorie + marque à partir d'une phrase courte." },
-    { q: 'Fill & Sell est-il gratuit ?', a: "Oui, le plan gratuit est permanent. Il inclut jusqu'à 20 articles, 5 commandes vocales/jour, 3 analyses Lens/jour · 15/mois et toutes les stats. Le plan Premium à 9,99 €/mois débloque les articles illimités, le vocal · 20 commandes/jour, Lens Pro avec prix marché en direct, l'export Excel et les stats avancées." },
+    { q: 'FillSell est-il gratuit ?', a: "Oui, le plan gratuit est permanent. Il inclut jusqu'à 20 articles, 5 commandes vocales/jour, 3 analyses Lens/jour · 15/mois et toutes les stats. Le plan Premium à 9,99 €/mois débloque les articles illimités, le vocal · 20 commandes/jour, Lens Pro avec prix marché en direct, l'export Excel et les stats avancées." },
     { q: 'Quelles plateformes sont compatibles ?', a: 'Toutes les grandes plateformes de revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. Tu peux étiqueter tes ventes par plateforme pour suivre tes meilleurs canaux.' },
-    { q: 'Comment calculer ma marge sur Vinted ?', a: "Avec le calculateur intégré, tu entres simplement le prix d'achat, le prix de vente et les frais (commission Vinted, livraison, emballage). Fill & Sell calcule ton bénéfice net et ton pourcentage de marge en temps réel — avant même que tu valides ton achat." },
+    { q: 'Comment calculer ma marge sur Vinted ?', a: "Avec le calculateur intégré, tu entres simplement le prix d'achat, le prix de vente et les frais (commission Vinted, livraison, emballage). FillSell calcule ton bénéfice net et ton pourcentage de marge en temps réel — avant même que tu valides ton achat." },
     { q: 'Puis-je importer et exporter mes données en Excel ?', a: 'Oui, avec un compte Premium tu peux importer ton stock existant depuis un fichier Excel ou CSV, et exporter toutes tes données quand tu veux. Tu gardes le contrôle total sur tes informations — elles sont à toi.' },
-    { q: 'Fill & Sell fonctionne-t-il sur mobile ?', a: "Bien sûr — Fill & Sell est conçu mobile-first. L'app marche dans ton navigateur sur iPhone et Android, et une version iOS native est disponible sur l'App Store. Tes données se synchronisent entre tous tes appareils." },
+    { q: 'FillSell fonctionne-t-il sur mobile ?', a: "Bien sûr — FillSell est conçu mobile-first. L'app marche dans ton navigateur sur iPhone et Android, et une version iOS native est disponible sur l'App Store. Tes données se synchronisent entre tous tes appareils." },
   ],
   en: [
     { q: 'How does Voice AI work?', a: 'You press the mic and describe your item naturally ("vintage Levi\'s jacket bought for £15 at a flea market"). AI transcribes, identifies brand, category, condition, size, color and buy price, then adds it to your stock. All in under 3 seconds — works in French and English.' },
     { q: 'Can I organise my stock by storage location?', a: "Yes. You can dictate or type the location of each item — clothing rail, storage box, market bin, garage shelf. The location shows on each item in your stock and you can update it by voice anytime: 'move the jacket to rail 2'." },
     { q: 'How does the Lens feature work?', a: 'Take up to 5 photos of your item directly from the app. The AI identifies the brand, model, size and condition, then gives you a resale price range based on the current market — with the best platforms and a concrete tip. Free plan: 3 analyses/day · 15/month (visual estimate only). Premium: 5/day · 60/month with live market prices.' },
     { q: 'Is Voice AI reliable for luxury brands?', a: "Yes — AI is trained on luxury brands (Hermès, Chanel, Louis Vuitton, etc.) and recognizes even specific models from a partial description. You can always correct before confirming. Average accuracy: 94% on category + brand from a short sentence." },
-    { q: 'Is Fill & Sell free?', a: 'Yes, the free plan is permanent. It includes up to 20 items, 5 voice commands/day, 3 Lens analyses/day · 15/month and all stats. The Premium plan at €9.99/month unlocks unlimited items, voice · 20 commands/day, Lens Pro with live market prices, Excel export and advanced stats.' },
+    { q: 'Is FillSell free?', a: 'Yes, the free plan is permanent. It includes up to 20 items, 5 voice commands/day, 3 Lens analyses/day · 15/month and all stats. The Premium plan at €9.99/month unlocks unlimited items, voice · 20 commands/day, Lens Pro with live market prices, Excel export and advanced stats.' },
     { q: 'Which platforms are compatible?', a: 'All major resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop, Vestiaire Collective, GOAT, StockX. You can tag your sales by platform to track your best channels.' },
-    { q: 'How do I calculate my margin on Vinted?', a: 'With the built-in calculator, you simply enter the buy price, sell price and fees (Vinted commission, shipping, packaging). Fill & Sell calculates your net profit and margin percentage in real time — before you even confirm your purchase.' },
+    { q: 'How do I calculate my margin on Vinted?', a: 'With the built-in calculator, you simply enter the buy price, sell price and fees (Vinted commission, shipping, packaging). FillSell calculates your net profit and margin percentage in real time — before you even confirm your purchase.' },
     { q: 'Can I import and export my data to Excel?', a: "Yes, with a Premium account you can import your existing stock from an Excel or CSV file, and export all your data whenever you want. You keep full control over your information — it's yours." },
-    { q: 'Does Fill & Sell work on mobile?', a: 'Of course — Fill & Sell is built mobile-first. The app works in your browser on iPhone and Android, and a native iOS version is available on the App Store. Your data syncs across all your devices.' },
+    { q: 'Does FillSell work on mobile?', a: 'Of course — FillSell is built mobile-first. The app works in your browser on iPhone and Android, and a native iOS version is available on the App Store. Your data syncs across all your devices.' },
   ],
 };
 
@@ -654,8 +654,8 @@ export default function LandingPage() {
       <nav className={`lp-nav${scrolled ? ' scrolled' : ''}`}>
         <div className="lp-nav-inner">
           <button className="lp-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <img src="/icon_180x180.png" alt="Fill & Sell logo" />
-            <span className="lp-brand-name">Fill &amp; Sell</span>
+            <img src="/icon_180x180.png" alt="FillSell logo" />
+            <span className="lp-brand-name">FillSell</span>
           </button>
           <div className="lp-nav-links">
             <a className="lp-nav-link" href="#features">{t.navFeatures}</a>
@@ -740,7 +740,7 @@ export default function LandingPage() {
                 </div>
                 <div className="vp-header">
                   <img src="/icon_180x180.png" alt="" loading="lazy" />
-                  <span className="name">Fill &amp; Sell</span>
+                  <span className="name">FillSell</span>
                 </div>
                 <div className="vp-content">
                   <div className="vp-greeting">{t.heroGreeting}</div>
@@ -898,10 +898,10 @@ export default function LandingPage() {
               <div className="mini-screen" style={{ maxWidth: 520, padding: '28px' }}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Analyse Lens IA Fill &amp; Sell - T-shirt Patagonia" loading="lazy" />
+                    <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Analyse Lens IA FillSell - T-shirt Patagonia" loading="lazy" />
                   </div>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Résultat analyse prix marché Fill &amp; Sell" loading="lazy" />
+                    <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Résultat analyse prix marché FillSell" loading="lazy" />
                   </div>
                   <div style={{ flex: 1, height: 120, borderRadius: 12, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: '#aaa', border: '1px dashed #ccc' }}>{t.lens_result_slot_plus}</div>
                 </div>
@@ -1095,17 +1095,17 @@ export default function LandingPage() {
                 <div className="appscr">
                   <div className="app-topbar">
                     <img src="/icon_180x180.png" alt="" loading="lazy" />
-                    <span className="app-topbar-name">Fill &amp; Sell</span>
+                    <span className="app-topbar-name">FillSell</span>
                     <span className="app-topbar-pill">⭐</span>
                   </div>
                   <div className="app-body">
                     <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '-0.02em', marginBottom: 10 }}>📸 Lens</div>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                       <div style={{ flex: 1, height: 90, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Analyse Lens IA Fill &amp; Sell - T-shirt Patagonia" loading="lazy" />
+                        <img src="/pata1.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Analyse Lens IA FillSell - T-shirt Patagonia" loading="lazy" />
                       </div>
                       <div style={{ flex: 1, height: 90, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(62,172,160,0.2)' }}>
-                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Résultat analyse prix marché Fill &amp; Sell" loading="lazy" />
+                        <img src="/pata2.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Résultat analyse prix marché FillSell" loading="lazy" />
                       </div>
                     </div>
                     <div style={{ background: '#fff', border: '1px solid rgba(62,172,160,0.15)', borderRadius: 12, padding: '10px 12px', marginBottom: 6 }}>
@@ -1138,7 +1138,7 @@ export default function LandingPage() {
                 <div className="appscr">
                   <div className="app-topbar">
                     <img src="/icon_180x180.png" alt="" loading="lazy" />
-                    <span className="app-topbar-name">Fill &amp; Sell</span>
+                    <span className="app-topbar-name">FillSell</span>
                     <span className="app-topbar-pill">⭐</span>
                   </div>
                   <div className="app-body">
@@ -1299,7 +1299,7 @@ export default function LandingPage() {
           <div className="footer-brand-block">
             <div className="footer-brand">
               <img src="/icon_180x180.png" alt="" loading="lazy" />
-              <span className="footer-brand-name">Fill &amp; Sell</span>
+              <span className="footer-brand-name">FillSell</span>
             </div>
             <p className="footer-tagline">{t.footerTagline}</p>
           </div>

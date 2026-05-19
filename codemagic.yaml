@@ -40,7 +40,7 @@ workflows:
           cat > ios/App/App/capacitor.config.json << 'EOF'
           {
             "appId": "app.fillsell.app",
-            "appName": "Fill & Sell",
+            "appName": "FillSell",
             "webDir": "dist",
             "server": { "androidScheme": "https" },
             "plugins": {

@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'app.fillsell.app',
-  appName: 'Fill & Sell',
+  appName: 'FillSell',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

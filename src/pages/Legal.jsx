@@ -76,7 +76,7 @@ const Section = ({ icon, title, children }) => (
 const privacyTexts = {
   fr: {
     title: "🔐 Politique de confidentialité (App Store)",
-    intro: "Fill & Sell collecte et traite les données utilisateur pour fournir ses fonctionnalités principales.",
+    intro: "FillSell collecte et traite les données utilisateur pour fournir ses fonctionnalités principales.",
     collectedTitle: "Données collectées :",
     collected: [
       "Adresse email (création de compte et authentification)",
@@ -92,12 +92,12 @@ const privacyTexts = {
     ],
     storage: "Les données sont stockées de manière sécurisée via Supabase (infrastructure EU) et protégées par des mesures de sécurité standard.",
     rights: "Les utilisateurs peuvent demander l'accès, la modification ou la suppression de leurs données en contactant :",
-    noTrack: "Fill & Sell ne contient aucun SDK de tracking ou de publicité.",
+    noTrack: "FillSell ne contient aucun SDK de tracking ou de publicité.",
     compliance: "This app complies with Apple App Store privacy requirements.",
   },
   en: {
     title: "🔐 Privacy Policy (App Store)",
-    intro: "Fill & Sell collects and processes user data to provide its core features.",
+    intro: "FillSell collects and processes user data to provide its core features.",
     collectedTitle: "Data collected:",
     collected: [
       "Email address (account creation and authentication)",
@@ -113,7 +113,7 @@ const privacyTexts = {
     ],
     storage: "Data is stored securely via Supabase (EU infrastructure) and protected by standard security measures.",
     rights: "Users may request access, modification, or deletion of their data by contacting:",
-    noTrack: "Fill & Sell contains no tracking or advertising SDKs.",
+    noTrack: "FillSell contains no tracking or advertising SDKs.",
     compliance: "This app complies with Apple App Store privacy requirements.",
   },
 };
@@ -160,13 +160,13 @@ export default function Legal() {
         <Section icon="🏢" title={en ? '1. Publisher' : '1. Éditeur du site'}>
           <p className="legal-p">
             {en
-              ? <>The website <span className="legal-strong">Fill & Sell</span> (accessible at <span className="legal-strong">fillsell.app</span>) is published by:</>
-              : <>Le site <span className="legal-strong">Fill & Sell</span> (accessible à l'adresse <span className="legal-strong">fillsell.app</span>) est édité par :</>}
+              ? <>The website <span className="legal-strong">FillSell</span> (accessible at <span className="legal-strong">fillsell.app</span>) is published by:</>
+              : <>Le site <span className="legal-strong">FillSell</span> (accessible à l'adresse <span className="legal-strong">fillsell.app</span>) est édité par :</>}
           </p>
           <ul className="legal-ul">
             <li><span className="legal-strong">{en ? 'Status:' : 'Statut :'}</span> {en ? 'Self-employed' : 'Auto-entrepreneur'}</li>
-            <li><span className="legal-strong">{en ? 'Trade name:' : 'Nom commercial :'}</span> Fill & Sell</li>
-            <li><span className="legal-strong">{en ? 'Publication manager:' : 'Responsable de publication :'}</span> {en ? 'The manager of Fill & Sell' : 'Le gérant de Fill & Sell'}</li>
+            <li><span className="legal-strong">{en ? 'Trade name:' : 'Nom commercial :'}</span> FillSell</li>
+            <li><span className="legal-strong">{en ? 'Publication manager:' : 'Responsable de publication :'}</span> {en ? 'The manager of FillSell' : 'Le gérant de FillSell'}</li>
             <li><span className="legal-strong">Contact :</span> <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a></li>
           </ul>
         </Section>
@@ -191,8 +191,8 @@ export default function Legal() {
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.1 Purpose' : '3.1 Objet'}</span><br />
             {en
-              ? 'Fill & Sell is a SaaS buy-and-resell tracking tool that allows users to manage their inventory, calculate their margins, and analyze their profits. Access to the service implies full acceptance of these Terms and Conditions.'
-              : "Fill & Sell est un outil SaaS de suivi d'achat-revente permettant aux utilisateurs de gérer leur inventaire, calculer leurs marges et analyser leurs profits. L'accès au service implique l'acceptation pleine et entière des présentes CGU."}
+              ? 'FillSell is a SaaS buy-and-resell tracking tool that allows users to manage their inventory, calculate their margins, and analyze their profits. Access to the service implies full acceptance of these Terms and Conditions.'
+              : "FillSell est un outil SaaS de suivi d'achat-revente permettant aux utilisateurs de gérer leur inventaire, calculer leurs marges et analyser leurs profits. L'accès au service implique l'acceptation pleine et entière des présentes CGU."}
           </p>
 
           <p className="legal-p">
@@ -240,15 +240,15 @@ export default function Legal() {
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.7 Service Availability' : '3.7 Disponibilité du service'}</span><br />
             {en
-              ? 'Fill & Sell strives to ensure service availability 24/7. Temporary interruptions may occur for maintenance. Fill & Sell cannot be held responsible for any temporary unavailability.'
-              : "Fill & Sell s'efforce d'assurer la disponibilité du service 24h/24 et 7j/7. Des interruptions temporaires peuvent survenir pour maintenance. Fill & Sell ne saurait être tenu responsable en cas d'indisponibilité temporaire."}
+              ? 'FillSell strives to ensure service availability 24/7. Temporary interruptions may occur for maintenance. FillSell cannot be held responsible for any temporary unavailability.'
+              : "FillSell s'efforce d'assurer la disponibilité du service 24h/24 et 7j/7. Des interruptions temporaires peuvent survenir pour maintenance. FillSell ne saurait être tenu responsable en cas d'indisponibilité temporaire."}
           </p>
 
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.8 Intellectual Property' : '3.8 Propriété intellectuelle'}</span><br />
             {en
-              ? 'All elements of the website (logo, design, code, content) are the exclusive property of Fill & Sell. Any reproduction, even partial, without prior written authorization is prohibited.'
-              : "L'ensemble des éléments du site (logo, design, code, contenus) sont la propriété exclusive de Fill & Sell. Toute reproduction, même partielle, sans autorisation écrite préalable est interdite."}
+              ? 'All elements of the website (logo, design, code, content) are the exclusive property of FillSell. Any reproduction, even partial, without prior written authorization is prohibited.'
+              : "L'ensemble des éléments du site (logo, design, code, contenus) sont la propriété exclusive de FillSell. Toute reproduction, même partielle, sans autorisation écrite préalable est interdite."}
           </p>
         </Section>
 
@@ -257,8 +257,8 @@ export default function Legal() {
           <p className="legal-p">
             <span className="legal-strong">{en ? '4.1 Data Controller' : '4.1 Responsable du traitement'}</span><br />
             {en
-              ? 'Fill & Sell is the controller of personal data collected through the service, in accordance with the General Data Protection Regulation (GDPR — EU 2016/679).'
-              : 'Fill & Sell est responsable du traitement des données personnelles collectées via le service, conformément au Règlement Général sur la Protection des Données (RGPD — UE 2016/679).'}
+              ? 'FillSell is the controller of personal data collected through the service, in accordance with the General Data Protection Regulation (GDPR — EU 2016/679).'
+              : 'FillSell est responsable du traitement des données personnelles collectées via le service, conformément au Règlement Général sur la Protection des Données (RGPD — UE 2016/679).'}
           </p>
 
           <p className="legal-p"><span className="legal-strong">{en ? '4.2 Data Collected' : '4.2 Données collectées'}</span></p>
@@ -312,8 +312,8 @@ export default function Legal() {
           <p className="legal-p">
             <span className="legal-strong">{en ? '4.6 Sub-processors' : '4.6 Sous-traitants'}</span><br />
             {en
-              ? 'Fill & Sell uses the following sub-processors, all GDPR-compliant:'
-              : 'Fill & Sell fait appel aux sous-traitants suivants, tous conformes au RGPD :'}
+              ? 'FillSell uses the following sub-processors, all GDPR-compliant:'
+              : 'FillSell fait appel aux sous-traitants suivants, tous conformes au RGPD :'}
           </p>
           <ul className="legal-ul">
             <li><span className="legal-strong">Supabase</span> — {en ? 'data storage (EU infrastructure)' : 'stockage des données (infrastructure EU)'}</li>
@@ -326,8 +326,8 @@ export default function Legal() {
         <Section icon="🍪" title={en ? '5. Cookie Policy' : '5. Politique de cookies'}>
           <p className="legal-p">
             {en
-              ? 'Fill & Sell uses a minimal number of cookies, strictly necessary for the operation of the service:'
-              : 'Fill & Sell utilise un nombre minimal de cookies, strictement nécessaires au fonctionnement du service :'}
+              ? 'FillSell uses a minimal number of cookies, strictly necessary for the operation of the service:'
+              : 'FillSell utilise un nombre minimal de cookies, strictement nécessaires au fonctionnement du service :'}
           </p>
           <ul className="legal-ul">
             <li><span className="legal-strong">{en ? 'Session cookie:' : 'Cookie de session :'}</span> {en ? 'maintaining user connection (Supabase Auth)' : 'maintien de la connexion utilisateur (Supabase Auth)'}</li>
@@ -335,8 +335,8 @@ export default function Legal() {
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <>Fill & Sell uses <span className="legal-strong">no advertising cookies</span> or third-party trackers for targeting purposes. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
-              : <>Fill & Sell n'utilise <span className="legal-strong">aucun cookie publicitaire</span> ni tracker tiers à des fins de ciblage. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
+              ? <>FillSell uses <span className="legal-strong">no advertising cookies</span> or third-party trackers for targeting purposes. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
+              : <>FillSell n'utilise <span className="legal-strong">aucun cookie publicitaire</span> ni tracker tiers à des fins de ciblage. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
           </p>
         </Section>
 
@@ -344,8 +344,8 @@ export default function Legal() {
         <Section icon="⚖️" title={en ? '6. Applicable Law and Disputes' : '6. Droit applicable et litiges'}>
           <p className="legal-p">
             {en
-              ? 'These Terms and Conditions and legal notices are governed by French law. In the event of a dispute, an amicable resolution will be sought first. Failing that, the competent courts will be those of Fill & Sell\'s registered office.'
-              : <>Les présentes CGU et mentions légales sont régies par le <span className="legal-strong">droit français</span>. En cas de litige, une solution amiable sera recherchée en priorité. À défaut, les tribunaux compétents seront ceux du ressort du siège de Fill & Sell.</>}
+              ? 'These Terms and Conditions and legal notices are governed by French law. In the event of a dispute, an amicable resolution will be sought first. Failing that, the competent courts will be those of FillSell\'s registered office.'
+              : <>Les présentes CGU et mentions légales sont régies par le <span className="legal-strong">droit français</span>. En cas de litige, une solution amiable sera recherchée en priorité. À défaut, les tribunaux compétents seront ceux du ressort du siège de FillSell.</>}
           </p>
           <p className="legal-p">
             {en

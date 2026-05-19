@@ -1,6 +1,6 @@
 {
-  "name": "Fill & Sell",
-  "short_name": "Fill & Sell",
+  "name": "FillSell",
+  "short_name": "FillSell",
   "description": "Suivi de profits revente",
   "start_url": "/",
   "display": "standalone",

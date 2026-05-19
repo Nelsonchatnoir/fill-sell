@@ -29,7 +29,7 @@ const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","
 const VOICE_FREE_LIMIT = 5;
 
 const C = {
-  // Design tokens Fill & Sell
+  // Design tokens FillSell
   primary:"#1D9E75",
   dark:"#0F6E56",
   soft:"#5DCAA5",
@@ -1465,7 +1465,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     let stream=vaStreamRef.current;
     const tracksLive=stream&&stream.getAudioTracks().length>0&&stream.getAudioTracks().every(t=>t.readyState==='live');
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-      setVaError(lang==="en"?"Microphone unavailable. Check permissions in Settings > Fill & Sell.":"Microphone non disponible. Vérifiez les permissions dans Réglages > Fill & Sell.");setVaStep("");return;
+      setVaError(lang==="en"?"Microphone unavailable. Check permissions in Settings > FillSell.":"Microphone non disponible. Vérifiez les permissions dans Réglages > FillSell.");setVaStep("");return;
     }
     if(!tracksLive){
       try{stream=await navigator.mediaDevices.getUserMedia({audio:true});vaStreamRef.current=stream;}
@@ -3532,7 +3532,7 @@ export default function App({ loginOnly = false }){
       setVoiceUsedToday(count+1);
     }
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-      setVoiceError("Microphone non disponible. Vérifiez les permissions dans Réglages > Fill & Sell.");setVoiceStep("error");return;
+      setVoiceError("Microphone non disponible. Vérifiez les permissions dans Réglages > FillSell.");setVoiceStep("error");return;
     }
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
@@ -4255,7 +4255,7 @@ export default function App({ loginOnly = false }){
         const blob=new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
         const file=new File([blob],filename,{type:blob.type});
         if(navigator.canShare&&navigator.canShare({files:[file]})){
-          await navigator.share({files:[file],title:'Export Fill & Sell'});
+          await navigator.share({files:[file],title:'Export FillSell'});
         }else{
           alert('Export disponible sur la version web : fillsell.app');
         }
@@ -4388,8 +4388,8 @@ export default function App({ loginOnly = false }){
   if(authLoading||appLoading)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",flexDirection:"column",gap:24}}>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
-        <img src="/icon_1024x1024.png" alt="Fill & Sell" style={{width:72,height:72,borderRadius:18,objectFit:"cover",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}/>
-        <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:"-0.02em"}}>Fill & Sell</div>
+        <img src="/icon_1024x1024.png" alt="FillSell" style={{width:72,height:72,borderRadius:18,objectFit:"cover",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}/>
+        <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:"-0.02em"}}>FillSell</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {[0,1,2].map(i=>(
@@ -4415,7 +4415,7 @@ export default function App({ loginOnly = false }){
       <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,background:"none",border:"none",color:"rgba(255,255,255,0.85)",fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>←</button>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
         <div style={{textAlign:"center",marginBottom:20}}>
-          <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="Fill & Sell"/>
+          <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="FillSell"/>
           <div style={{fontSize:15,color:C.sub,fontWeight:500}}>{loginTexts.subtitle}</div>
         </div>
         <div style={{display:"flex",background:"rgba(0,0,0,0.05)",borderRadius:99,padding:3,marginBottom:18}}>
@@ -4662,8 +4662,8 @@ export default function App({ loginOnly = false }){
 
       if(perms?.camera==='denied'){
         alert(lang==='fr'
-          ?'Accès à la caméra refusé.\n\nVa dans Réglages › Fill & Sell › Active Appareil photo et Photos.'
-          :'Camera access denied.\n\nGo to Settings › Fill & Sell › Enable Camera and Photos.');
+          ?'Accès à la caméra refusé.\n\nVa dans Réglages › FillSell › Active Appareil photo et Photos.'
+          :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera and Photos.');
         return;
       }
 
@@ -4689,8 +4689,8 @@ export default function App({ loginOnly = false }){
       if(msg.includes('cancel'))return;
       if(msg.includes('denied')||msg.includes('permission')){
         alert(lang==='fr'
-          ?'Accès à la caméra refusé.\n\nVa dans Réglages › Fill & Sell › Active Appareil photo et Photos.'
-          :'Camera access denied.\n\nGo to Settings › Fill & Sell › Enable Camera and Photos.');
+          ?'Accès à la caméra refusé.\n\nVa dans Réglages › FillSell › Active Appareil photo et Photos.'
+          :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera and Photos.');
         return;
       }
       // Plugin absent ou erreur interne → fallback silencieux vers file input
@@ -4882,9 +4882,9 @@ export default function App({ loginOnly = false }){
 
       <div className="topbar">
         <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} className="tb-logo">
-          <img src="/icon_1024x1024.png" alt="Fill & Sell" className="logo-mobile" style={{width:30,height:30,borderRadius:9,objectFit:"cover",flexShrink:0}}/>
-          <img src="/logo.png" alt="Fill & Sell" className="logo-desktop" style={{height:34,width:"auto",objectFit:"contain",flexShrink:0}}/>
-          <span className="name">Fill &amp; Sell</span>
+          <img src="/icon_1024x1024.png" alt="FillSell" className="logo-mobile" style={{width:30,height:30,borderRadius:9,objectFit:"cover",flexShrink:0}}/>
+          <img src="/logo.png" alt="FillSell" className="logo-desktop" style={{height:34,width:"auto",objectFit:"contain",flexShrink:0}}/>
+          <span className="name">FillSell</span>
         </button>
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
           <div style={{fontSize:13,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",lineHeight:1}}>

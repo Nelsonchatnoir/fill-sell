@@ -66,11 +66,11 @@ async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): 
 }
 
 function buildScoreSystem(lang: string): string {
-  if (lang === "en") return `You are the AI assistant of Fill & Sell, a profit tracking app for resellers.
+  if (lang === "en") return `You are the AI assistant of FillSell, a profit tracking app for resellers.
 Your tone is direct, intelligent and human — never cringe, never generic.
 Write ONE analysis of 1-2 sentences maximum, only based on the data provided.
 Never invent data not provided. No markdown. No emojis. No lists. Vary your phrasing.`;
-  return `Tu es l'assistant IA de Fill & Sell, une app de suivi de profits pour revendeurs.
+  return `Tu es l'assistant IA de FillSell, une app de suivi de profits pour revendeurs.
 Tu analyses des deals de revente. Ton ton est direct, intelligent et humain — jamais cringe, jamais générique.
 Tu tutoies l'utilisateur naturellement.
 Tu écris UNE analyse de 1-2 phrases maximum, uniquement basée sur les données reçues.
