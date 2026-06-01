@@ -111,6 +111,14 @@ serve(async (req) => {
 
     await supabaseAdmin.from("profiles").update({ is_premium: isPremium }).eq("id", userId);
 
+    if (isPremium) {
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "Purchase", value: 9.99, currency: "EUR" }),
+      });
+    }
+
     if (isFounderPurchase) {
       const { data: profile } = await supabaseAdmin.from("profiles").select("is_founder").eq("id", userId).single();
       if (!profile?.is_founder) {
