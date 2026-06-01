@@ -4,6 +4,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
+import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
@@ -4329,6 +4330,7 @@ export default function App({ loginOnly = false }){
     const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
     if(error){alert(error.message);return;}
     track('sign_up', { method: 'email' });
+    trackTikTokEvent("CompleteRegistration", emailVal);
     if(data?.session) navigate("/app");
     else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
   }
@@ -5679,7 +5681,7 @@ export default function App({ loginOnly = false }){
           lang={lang}
           slotsRemaining={slotsRemaining}
           onClose={()=>setShowUpgradeModal(false)}
-          onCheckout={()=>{setShowUpgradeModal(false);isNative?handleIAPPurchase():triggerCheckout();}}
+          onCheckout={()=>{setShowUpgradeModal(false);trackTikTokEvent("InitiateCheckout",user?.email,9.99);isNative?handleIAPPurchase():triggerCheckout();}}
         />
       )}
       {showCurrencyOnboarding&&(

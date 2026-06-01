@@ -70,6 +70,12 @@ serve(async (req) => {
         await supabase.rpc("increment_founder_slots");
       }
     }
+
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "Purchase", value: 9.99, currency: "EUR" }),
+    }).catch(() => {});
   }
 
   if (event.type === "customer.subscription.deleted") {
