@@ -3096,6 +3096,8 @@ export default function App({ loginOnly = false }){
   const [username,setUsername]=useState('');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
+  const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
   const [bugSending,setBugSending]=useState(false);
@@ -4904,7 +4906,7 @@ export default function App({ loginOnly = false }){
           ):isPremium?(
             <div className="tb-premium">⭐ Premium</div>
           ):null}
-          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
+          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
         </div>
       </div>
 
@@ -5348,6 +5350,38 @@ export default function App({ loginOnly = false }){
               <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{t('monCompte')}</div>
               <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
               {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
+            </div>
+
+            {/* Pseudo */}
+            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>{lang==='fr'?'Mon pseudo':'My username'}</div>
+              <div style={{display:"flex",gap:8}}>
+                <input
+                  value={settingsPseudoInput}
+                  onChange={e=>setSettingsPseudoInput(e.target.value.slice(0,30))}
+                  placeholder={lang==='fr'?'Prénom ou pseudo…':'First name or nickname…'}
+                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:600,color:C.text,background:"#fff",outline:"none",fontFamily:"inherit"}}
+                />
+                <button
+                  onClick={async()=>{
+                    setSettingsPseudoSaving(true);
+                    const val=settingsPseudoInput.trim();
+                    const{error}=await supabase.from('profiles').update({username:val}).eq('id',user.id);
+                    setSettingsPseudoSaving(false);
+                    if(error){
+                      setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'});
+                    }else{
+                      setUsername(val);
+                      setToast({visible:true,message:lang==='fr'?'✅ Pseudo enregistré !':'✅ Username saved!'});
+                    }
+                    setTimeout(()=>setToast({visible:false,message:''}),3000);
+                  }}
+                  disabled={settingsPseudoSaving}
+                  style={{padding:"8px 14px",borderRadius:10,border:"none",background:C.teal,color:"#fff",fontSize:13,fontWeight:700,cursor:settingsPseudoSaving?"not-allowed":"pointer",opacity:settingsPseudoSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                >
+                  {settingsPseudoSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
+                </button>
+              </div>
             </div>
 
             {/* Désabonnement — visible uniquement si premium */}
