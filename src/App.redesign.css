@@ -735,7 +735,8 @@ body.bg-dots {
   background: rgba(15, 23, 42, 0.03);
   border-radius: 12px;
   font-family: 'Nunito', sans-serif;
-  min-height: 42px;
+  height: 152px;
+  overflow: hidden;
 }
 .empty-hero .voice-ticker .vt-quote {
   font-size: 14px; font-weight: 900;
@@ -746,7 +747,10 @@ body.bg-dots {
   font-size: 13px; font-weight: 700;
   color: #0D0D0D; letter-spacing: -0.005em;
   font-style: italic; text-align: left;
-  white-space: normal; overflow-wrap: break-word; min-height: 42px;
+  white-space: normal; overflow-wrap: break-word;
+  height: 128px;
+  overflow: hidden;
+  line-height: 1.6;
 }
 .empty-hero .voice-ticker .vt-cursor {
   display: inline-block;
@@ -1328,7 +1332,7 @@ body.bg-dots {
   background: rgba(15, 23, 42, 0.03);
   border-radius: 12px;
   font-family: 'Nunito', sans-serif;
-  height: 108px;
+  height: 130px;
   overflow: hidden;
 }
 
@@ -1350,7 +1354,7 @@ body.bg-dots {
   white-space: normal;
   overflow-wrap: break-word;
   line-height: 1.6;
-  height: 84px;
+  height: 106px;
   overflow: hidden;
 }
 

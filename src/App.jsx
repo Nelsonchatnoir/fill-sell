@@ -1299,13 +1299,8 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
                 <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
               </div>
               <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:800,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
-                🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits · Sans CB'}
+                🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits'}
               </div>
-              {isFounder&&(
-                <div style={{fontSize:10,fontWeight:700,background:'rgba(255,255,255,0.15)',borderRadius:6,padding:'4px 8px',textAlign:'center',marginBottom:10,color:'rgba(255,255,255,0.9)'}}>
-                  {lang==='fr'?'Ensuite 12,99 €/mois pour les nouveaux':'Then €12.99/month for new subscribers'}
-                </div>
-              )}
               <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
                 {PREM_F.map((f,i)=>(
                   <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'rgba(255,255,255,0.95)'}}>
@@ -3455,7 +3450,7 @@ export default function App({ loginOnly = false }){
   const avgM=totalR>0?(totalM/totalR)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
-  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining} onOpenModal={()=>setShowUpgradeModal(true)}/>;return C;},[slotsRemaining]);
+  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>;return C;},[slotsRemaining]);
   const BoundEmptyState=useMemo(()=>{const C=(props)=><EmptyStateDashboard {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
   function searchMatch(item,query){
     if(!query.trim())return true;
@@ -4900,9 +4895,9 @@ export default function App({ loginOnly = false }){
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>setShowUpgradeModal(true)}/>
+            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>setShowUpgradeModal(true)} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
             <div className="tb-premium">⭐ Premium</div>
           ):null}
@@ -4943,7 +4938,7 @@ export default function App({ loginOnly = false }){
             resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
             triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
-            openUpgradeModal={()=>setShowUpgradeModal(true)}
+            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             setTab={setTab}
             EmptyStateDashboard={BoundEmptyState}
           />
@@ -5014,7 +5009,7 @@ export default function App({ loginOnly = false }){
             IAPUpgradeBlock={IAPUpgradeBlock}
             VoiceZone={VoiceZone}
             slotsRemaining={slotsRemaining}
-            openUpgradeModal={()=>setShowUpgradeModal(true)}
+            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
           />
         )}
 
@@ -5034,7 +5029,7 @@ export default function App({ loginOnly = false }){
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={()=>setShowUpgradeModal(true)}
+            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             slotsRemaining={slotsRemaining}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
           />
@@ -5051,7 +5046,7 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             delSale={delSale} setTab={setTab}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={()=>setShowUpgradeModal(true)}
+            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             slotsRemaining={slotsRemaining}
           />
         )}
