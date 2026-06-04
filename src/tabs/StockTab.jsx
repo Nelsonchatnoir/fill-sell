@@ -355,7 +355,7 @@ const StockTab = memo(function StockTab({
               {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
             </div>
           ):(
-            <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});triggerCheckout();}}}
+            <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});openUpgradeModal();}}}
               style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
               <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{t('importExcel')}</div>
               <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
