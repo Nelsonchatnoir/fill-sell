@@ -998,6 +998,7 @@ serve(async (req) => {
         }
         return m;
       });
+      if (!useWebSearch) _msgs.push({ role: "assistant", content: '{"tasks": [' });
       const _body: Record<string, unknown> = {
         model: "claude-haiku-4-5-20251001",
         max_tokens: maxTokens,
@@ -1164,23 +1165,12 @@ serve(async (req) => {
 
     let parsed: { tasks: unknown[] };
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse('{"tasks": [' + raw);
     } catch {
-      const _retrySystem = _systemPrompt + "\n\nCRITIQUE : retourne UNIQUEMENT du JSON valide { tasks: [...] }, aucun texte, aucun markdown, aucune explication.";
-      try {
-        const _retryData = await _fetchClaude([{ role: "user", content: text }], _retrySystem);
-        const _retryRaw = ((_retryData?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("") ?? "")
-          .replace(/^```json\s*/i, "")
-          .replace(/^```\s*/i, "")
-          .replace(/```\s*$/i, "")
-          .trim();
-        parsed = JSON.parse(_retryRaw);
-      } catch {
-        return new Response(JSON.stringify({ error: "Parse error", raw }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...CORS },
-        });
-      }
+      return new Response(JSON.stringify({ error: "Parse error", raw }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
     }
     // Step 2: validate brand spelling with web_search if a brand was extracted
     const _allMarques: string[] = [];
