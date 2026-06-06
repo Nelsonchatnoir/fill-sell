@@ -1166,10 +1166,21 @@ serve(async (req) => {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return new Response(JSON.stringify({ error: "Parse error", raw }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...CORS },
-      });
+      const _retrySystem = _systemPrompt + "\n\nCRITIQUE : retourne UNIQUEMENT du JSON valide { tasks: [...] }, aucun texte, aucun markdown, aucune explication.";
+      try {
+        const _retryData = await _fetchClaude([{ role: "user", content: text }], _retrySystem);
+        const _retryRaw = ((_retryData?.content as any[])?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("") ?? "")
+          .replace(/^```json\s*/i, "")
+          .replace(/^```\s*/i, "")
+          .replace(/```\s*$/i, "")
+          .trim();
+        parsed = JSON.parse(_retryRaw);
+      } catch {
+        return new Response(JSON.stringify({ error: "Parse error", raw }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
     }
     // Step 2: validate brand spelling with web_search if a brand was extracted
     const _allMarques: string[] = [];
