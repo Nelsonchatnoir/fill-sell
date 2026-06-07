@@ -210,12 +210,27 @@ INTERDIT : générer business_advice si un article précis (nom, marque, modèle
 Ne génère JAMAIS business_advice pour des requêtes de stats précises (profit, ventes, marge...) → utilise analytics_query ou query_stats à la place.
 
 Règle multi-articles (PRIORITÉ SUR deal_score) :
-Si l'utilisateur décrit avoir ACHETÉ ET VENDU le même article (passé composé : "j'ai acheté … j'ai vendu …") → génère 1 seule tâche :
+Si l'utilisateur décrit avoir ACHETÉ ET VENDU le même article (passé composé : "j'ai acheté … j'ai vendu …") ET que TOUS les articles achetés sont aussi vendus (M = N) → génère 1 seule tâche par article :
   1. inventory_sell avec no_match:true, prix_achat ET prix_vente renseignés (vente directe — l'article passe directement en ventes, pas dans l'inventaire).
-INTERDIT de générer deal_score dans ce cas. INTERDIT de générer inventory_add.
+INTERDIT de générer deal_score dans ce cas. INTERDIT de générer inventory_add (sauf cas lot partiellement vendu ci-dessous).
 Si plusieurs articles différents → répéter par article.
 ✅ "j'ai acheté une imprimante HP 20€ et je l'ai vendue 30€" → [inventory_sell {nom:"Imprimante",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
 ✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
+
+CAS SPÉCIAL — LOT PARTIELLEMENT VENDU (PRIORITAIRE sur la règle ci-dessus) :
+Si N articles DIFFÉRENTS sont achetés ensemble à un prix global ET que seulement M d'entre eux sont vendus dans la même phrase (M < N) :
+  → retourner inventory_add pour CHACUN des N articles avec prix_achat = total÷N, requiresConfirmation:false
+  → retourner inventory_sell pour chacun des M articles vendus, requiresConfirmation:false
+  → ORDRE OBLIGATOIRE : tous les inventory_add en premier, les inventory_sell ensuite.
+  → Cette règle prend PRIORITÉ sur inventory_lot : même si le prix est global, utiliser inventory_add (pas inventory_lot) quand une vente partielle est présente.
+✅ "j'ai acheté 2 iPhone 13 blanc et noir pour 250€ et j'ai vendu le noir pour 180€" →
+   [inventory_add {nom:"iPhone 13",marque:"Apple",description:"blanc",prix_achat:125,requiresConfirmation:false},
+    inventory_add {nom:"iPhone 13",marque:"Apple",description:"noir",prix_achat:125,requiresConfirmation:false},
+    inventory_sell {nom:"iPhone 13",marque:"Apple",description:"noir",prix_vente:180,requiresConfirmation:false}]
+✅ "j'ai acheté une veste et un jean pour 30€ et j'ai vendu la veste pour 20€" →
+   [inventory_add {nom:"Veste",prix_achat:15,requiresConfirmation:false},
+    inventory_add {nom:"Jean",prix_achat:15,requiresConfirmation:false},
+    inventory_sell {nom:"Veste",prix_vente:20,requiresConfirmation:false}]
 
 Catégories canoniques (utiliser la valeur exacte — 15 catégories possibles) :
 "smartphone"|"téléphone"|"pc"|"ordinateur"|"tablette"|"ipad"|"laptop"|"macbook"|"console"|"playstation"|"xbox"|"nintendo"|"casque"|"écouteurs"|"airpods"|"enceinte"|"montre connectée"|"apple watch"|"smartwatch"|"tv"|"télévision"|"projecteur"|"imprimante"|"imprimante 3d"|"scanner"|"webcam"|"micro"|"clavier"|"souris"|"écran"|"moniteur"|"disque dur"|"ssd"|"clé usb"|"carte sd"|"routeur"|"box internet"|"drone"|"gopro"|"appareil photo"|"camera"|"chargeur"|"batterie externe"|"powerbank"|"hub usb"|"câble"|"adaptateur"|"ring light" → "High-Tech"
@@ -617,12 +632,27 @@ FORBIDDEN: generating business_advice if a specific item (name, brand, model) is
 Never generate business_advice for specific stats queries (profit, sales, margin...) → use analytics_query or query_stats instead.
 
 Multi-article rule (PRIORITY OVER deal_score):
-If the user describes having BOUGHT AND SOLD the same item (past tense: "I bought … I sold …") → generate 1 task only:
+If the user describes having BOUGHT AND SOLD the same item (past tense: "I bought … I sold …") AND ALL bought items are also sold (M = N) → generate 1 task only per item:
   1. inventory_sell with no_match:true, both prix_achat AND prix_vente filled (direct sale — item goes straight to sales, not inventory).
-FORBIDDEN to generate deal_score in this case. FORBIDDEN to generate inventory_add.
+FORBIDDEN to generate deal_score in this case. FORBIDDEN to generate inventory_add (except for the partial lot case below).
 If multiple different items → repeat per item.
 ✅ "I bought an HP printer for €20 and sold it for €30" → [inventory_sell {nom:"Printer",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
 ✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
+
+SPECIAL CASE — PARTIALLY SOLD LOT (TAKES PRIORITY over the rule above):
+If N DIFFERENT items are bought together at a global price AND only M of them are sold in the same sentence (M < N):
+  → return inventory_add for EACH of the N items with prix_achat = total÷N, requiresConfirmation:false
+  → return inventory_sell for each of the M sold items, requiresConfirmation:false
+  → MANDATORY ORDER: all inventory_add first, all inventory_sell after.
+  → This rule TAKES PRIORITY over inventory_lot: even if the price is global, use inventory_add (not inventory_lot) when a partial sale is present.
+✅ "I bought 2 iPhone 13 white and black for €250 and I sold the black one for €180" →
+   [inventory_add {nom:"iPhone 13",marque:"Apple",description:"white",prix_achat:125,requiresConfirmation:false},
+    inventory_add {nom:"iPhone 13",marque:"Apple",description:"black",prix_achat:125,requiresConfirmation:false},
+    inventory_sell {nom:"iPhone 13",marque:"Apple",description:"black",prix_vente:180,requiresConfirmation:false}]
+✅ "I bought a jacket and jeans for €30 and I sold the jacket for €20" →
+   [inventory_add {nom:"Jacket",prix_achat:15,requiresConfirmation:false},
+    inventory_add {nom:"Jeans",prix_achat:15,requiresConfirmation:false},
+    inventory_sell {nom:"Jacket",prix_vente:20,requiresConfirmation:false}]
 
 Canonical categories (always use the exact value from the allowed list — 15 categories):
 "smartphone"|"phone"|"pc"|"laptop"|"computer"|"tablet"|"ipad"|"macbook"|"console"|"playstation"|"xbox"|"nintendo"|"headphones"|"earbuds"|"airpods"|"speaker"|"smartwatch"|"apple watch"|"tv"|"television"|"projector"|"printer"|"3d printer"|"scanner"|"webcam"|"microphone"|"keyboard"|"mouse"|"screen"|"monitor"|"hard drive"|"ssd"|"usb drive"|"sd card"|"router"|"drone"|"camera"|"gopro"|"charger"|"power bank"|"hub"|"cable"|"adapter"|"ring light" → "High-Tech"

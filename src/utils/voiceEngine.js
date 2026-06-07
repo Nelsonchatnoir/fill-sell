@@ -708,13 +708,24 @@ export async function executeVoiceTasks(tasks, context) {
             console.log("[inventory_add] quantite reçu:", task.data.quantite);
             result = await handleAdd(task, context);
             if (result.status === "success") {
-              executedResultsMap[norm(task.data.nom || "")] = result.data || task.data;
+              const _keyFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
+              const _keyNom = norm(task.data.nom || "");
+              if (_keyFull) executedResultsMap[_keyFull] = result.data || task.data;
+              if (_keyNom && !executedResultsMap[_keyNom]) executedResultsMap[_keyNom] = result.data || task.data;
               hadMutation = true;
             }
           }
           break;
         case "inventory_lot":
           result = await handleLot(task, context);
+          if (result.data?.items && Array.isArray(result.data.items)) {
+            for (const item of result.data.items) {
+              const _kFull = norm([item.nom, item.description].filter(Boolean).join(" ") || "");
+              const _kNom = norm(item.nom || "");
+              if (_kFull) executedResultsMap[_kFull] = item;
+              if (_kNom && !executedResultsMap[_kNom]) executedResultsMap[_kNom] = item;
+            }
+          }
           break;
         case "inventory_sell": {
           // Cas no_match : l'IA a explicitement indiqué qu'aucun article ne correspond
@@ -740,13 +751,14 @@ export async function executeVoiceTasks(tasks, context) {
             // Fallback : keyword matching si l'IA n'a pas fourni de matched_id
             // (rétrocompatibilité pour le flux buy+sell simultané via executedResultsMap)
             if (!matched) {
-              const q = norm(task.data.nom || "");
-              const fromMap = q ? executedResultsMap[q] : null;
-              matched = fromMap || (q
+              const qFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
+              const qNom = norm(task.data.nom || "");
+              const fromMap = (qFull ? executedResultsMap[qFull] : null) || (qNom ? executedResultsMap[qNom] : null);
+              matched = fromMap || (qNom
                 ? context.items.find(i =>
                     i.statut !== "vendu" && (
-                      norm(i.title || i.titre || i.nom || "").includes(q) ||
-                      q.includes(norm(i.title || i.titre || i.nom || ""))
+                      norm(i.title || i.titre || i.nom || "").includes(qNom) ||
+                      qNom.includes(norm(i.title || i.titre || i.nom || ""))
                     )
                   )
                 : null);
