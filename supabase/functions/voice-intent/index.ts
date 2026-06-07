@@ -49,6 +49,18 @@ Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéra
    choisir la plus probable dans le contexte revendeur et ajouter optionnellement
    "interpretation_note": "..." dans task.data pour debug.
 
+7. INTENTION GLOBALE — PRIORITÉ SUR LES VERBES DÉCLENCHEURS (règle critique) :
+   Analyser la phrase dans sa GLOBALITÉ pour comprendre l'intention réelle, sans se baser sur des verbes déclencheurs fixes.
+   "J'ai un/une [article] [description] [prix d'achat]" = l'utilisateur décrit un article qu'il possède et souhaite stocker → inventory_add.
+   Ne pas exiger "j'ai acheté" ou "ajoute" comme condition nécessaire.
+   La présence d'une description d'article + prix d'achat suffit à déclencher inventory_add, quel que soit le verbe utilisé.
+   ✅ "J'ai un T-shirt Nike taille S, acheté 25€" → inventory_add (description d'un article à stocker)
+   ✅ "J'ai un T-shirt que j'ai vendu 30€" → inventory_sell (vente détectée via "vendu")
+   ✅ "J'ai un T-shirt, combien ça vaut ?" → price_advice (question de prix détectée)
+   ✅ "J'ai un iPhone 13 256Go, je l'ai payé 120€" → inventory_add
+   ✅ "J'ai une veste Zara que je possède encore" + prix → inventory_add (possession actuelle d'un article acheté)
+   RÈGLE : "je possède encore", "je l'ai encore", "j'ai toujours" ne sont PAS des signaux de vente ni d'exclusion — ignorer ces formulations et se concentrer sur l'action principale (achat/vente/question).
+
 RÈGLE DE PRIORITÉ ABSOLUE (lire avant tout) :
 Si l'utterance contient l'un de ces déclencheurs de question de prix de revente :
 "combien je peux le revendre", "tu penses que je peux le vendre combien", "tu penses que je peux la vendre combien",
@@ -444,6 +456,18 @@ Your role is to understand the REAL INTENTION, not to parse the text literally.
 6. RESIDUAL AMBIGUITY — if multiple interpretations remain after correction,
    choose the most probable in the resale context and optionally add
    "interpretation_note": "..." to task.data for debugging.
+
+7. GLOBAL INTENT — PRIORITY OVER TRIGGER VERBS (critical rule):
+   Analyse the phrase as a WHOLE to understand the real intent, without relying on fixed trigger verbs.
+   "I have a/an [item] [description] [purchase price]" = the user is describing an item they own and want to stock → inventory_add.
+   Do not require "I bought" or "add" as a necessary condition.
+   The presence of an item description + purchase price is enough to trigger inventory_add, regardless of the verb used.
+   ✅ "I have a Nike T-shirt size S, bought for €25" → inventory_add (item description to stock)
+   ✅ "I have a T-shirt I sold for €30" → inventory_sell (sale detected via "sold")
+   ✅ "I have a T-shirt, how much is it worth?" → price_advice (price question detected)
+   ✅ "I have an iPhone 13 256GB, I paid €120 for it" → inventory_add
+   ✅ "I have a Zara jacket I still own" + price → inventory_add (current possession of a purchased item)
+   RULE: "I still have it", "I still own it", "I've still got it" are NOT sale signals or exclusion signals — ignore these phrases and focus on the main action (buy/sell/question).
 
 ABSOLUTE PRIORITY RULE (read before anything else):
 If the utterance contains any of these resale price question triggers:
