@@ -1227,5 +1227,30 @@ export async function executeVoiceTasks(tasks, context) {
   console.log("tasks", tasks);
   console.log("results", results);
   console.groupEnd();
+
+  // Log ce que le front a reçu et exécuté (fire & forget — non-blocking)
+  try {
+    const _uid = context.userId;
+    if (_uid && context.supabaseUrl && context.token) {
+      const _meta = {
+        tasks_received: tasks.map(t => ({ intent: t.intent, requiresConfirmation: t.requiresConfirmation ?? null })),
+        tasks_executed: results.filter(r => r.status === "success").map(r => ({ intent: r.intent })),
+        tasks_skipped_reason: results
+          .filter(r => r.status !== "success")
+          .map(r => ({ intent: r.intent, status: r.status, message: r.message })),
+      };
+      fetch(`${context.supabaseUrl}/rest/v1/usage_logs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${context.token}`,
+          "apikey": supabaseAnonKey,
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify({ user_id: _uid, feature: "voice_intent_result", metadata: _meta }),
+      }).catch(() => {});
+    }
+  } catch {}
+
   return { results };
 }

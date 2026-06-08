@@ -1556,7 +1556,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               finalTasks=[paTask];
             }
           }
-          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken});
+          const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken,userId:user?.id??null});
           // Vente directe auto si article non trouvé en stock (no_match)
           const resolvedResults=await Promise.all(results.map(async r=>{
             if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match){

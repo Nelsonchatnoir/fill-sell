@@ -957,6 +957,7 @@ serve(async (req) => {
     p_monthly_limit_free: 100,
     p_daily_limit_premium: 20,
   });
+  const quotaLogId: string | null = (quotaData as any)?.log_id ?? null;
   if (quotaData?.allowed === false) {
     return new Response(
       JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
@@ -1270,6 +1271,24 @@ serve(async (req) => {
 
     // Log de debug : intent(s) choisi(s) par Claude pour le diagnostic
     console.log("[voice-intent] intents:", JSON.stringify((parsed.tasks as any[]).map(t => ({ intent: t.intent, data: t.data }))));
+
+    // Log AI response into usage_logs metadata (fire & forget — non-blocking)
+    if (quotaLogId) {
+      void adminClient
+        .from("usage_logs")
+        .update({
+          metadata: {
+            raw_response: raw,
+            tasks: (parsed.tasks as any[]).map((t: any) => ({
+              intent: t.intent,
+              requiresConfirmation: t.requiresConfirmation ?? null,
+              confidence: t.confidence ?? null,
+              data: t.data ?? null,
+            })),
+          },
+        })
+        .eq("id", quotaLogId);
+    }
 
     if (!Array.isArray(parsed?.tasks)) {
       return new Response(JSON.stringify({ error: "Invalid response shape" }), {
