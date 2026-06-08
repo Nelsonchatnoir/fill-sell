@@ -748,6 +748,31 @@ export async function executeVoiceTasks(tasks, context) {
               ? context.items.find(i => String(i.id) === String(task.data.matched_id) && i.statut !== "vendu")
               : null;
 
+            // Validate color/description: reject matched_id if item color doesn't match voice
+            if (matched && task.data.description) {
+              const COLORS_FR_EN = ["blanc","blanche","noir","noire","rouge","rose","vert","verte","bleu","bleue","gris","grise","jaune","violet","violette","beige","marron","orange","creme","argente","dore","white","black","red","pink","green","blue","gray","grey","yellow","purple","brown","cream","silver","gold"];
+              const voiceDescNorm = norm(task.data.description);
+              const voiceColors = COLORS_FR_EN.filter(c => voiceDescNorm.includes(c));
+              if (voiceColors.length > 0) {
+                const itemFull = norm([matched.nom || matched.title || matched.titre || "", matched.description || ""].join(" "));
+                const noColorMatch = !voiceColors.some(c => itemFull.includes(c));
+                if (noColorMatch) {
+                  const qNom = norm(task.data.nom || "");
+                  const qMarque = norm(task.data.marque || "");
+                  const alt = context.items.find(i => {
+                    if (i.statut === "vendu" || String(i.id) === String(matched.id)) return false;
+                    const iNom = norm(i.nom || i.title || i.titre || "");
+                    const iMarque = norm(i.marque || "");
+                    if (!(iNom.includes(qNom) || qNom.includes(iNom))) return false;
+                    if (qMarque && !(iMarque.includes(qMarque) || qMarque.includes(iMarque))) return false;
+                    const iFull = norm([iNom, i.description || ""].join(" "));
+                    return voiceColors.some(c => iFull.includes(c));
+                  });
+                  matched = alt || null;
+                }
+              }
+            }
+
             // Fallback : keyword matching si l'IA n'a pas fourni de matched_id
             // (rétrocompatibilité pour le flux buy+sell simultané via executedResultsMap)
             if (!matched) {
