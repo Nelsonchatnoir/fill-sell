@@ -424,7 +424,7 @@ const LensTab = memo(function LensTab({
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem,
   handleIAPPurchase, handleIAPRestore,
   PremiumBanner, IAPUpgradeBlock,
-  openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT,
+  openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
 }) {
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
@@ -525,6 +525,13 @@ const LensTab = memo(function LensTab({
             ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </button>
+
+        {/* Bandeau premium : limite mensuelle atteinte */}
+        {isPremium&&lensPremiumLimitReached&&(
+          <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#9CA3AF"}}>
+            📸 {lang==="en"?"Monthly limit reached for this month":"Limite atteinte pour ce mois"}
+          </div>
+        )}
 
         {/* Bandeau free : compteur + analyse estimée */}
         {!isPremium&&(

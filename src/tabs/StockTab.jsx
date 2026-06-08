@@ -630,7 +630,7 @@ const StockTab = memo(function StockTab({
                         <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendu':'Sold'}</button>
+                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendre':'Sell'}</button>
                         <span onClick={e=>{e.stopPropagation();setExpandedStockId(isExpanded?null:item.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)"}}>›</span>
                       </div>
                     </SwipeRow>

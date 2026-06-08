@@ -241,26 +241,6 @@ const DashboardTab = memo(function DashboardTab({
               </div>
             </div>
           )}
-
-          <div style={{display:"flex",justifyContent:"center"}}>
-            <div className="card" style={{padding:"28px 32px",border:`1px solid ${C.red}30`,background:"rgba(254,242,242,0.6)",borderRadius:20,maxWidth:480,width:"100%",textAlign:"center"}}>
-              <div style={{fontSize:14,fontWeight:700,color:"#C53030",marginBottom:6}}>⚠️ {t('zoneDangereuse')}</div>
-              <div style={{fontSize:13,color:C.sub,marginBottom:20,lineHeight:1.6}}>{t('zoneDesc')}</div>
-              {resetStep===0&&(
-                <button onClick={handleReset} style={{padding:"10px 22px",background:"transparent",border:`1.5px solid ${C.red}99`,borderRadius:12,color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",display:"block",margin:"0 auto"}}
-                  onMouseEnter={e=>{e.currentTarget.style.background="rgba(229,62,62,0.08)";}}
-                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
-                >🗑️ {t('toutRemettre')}</button>
-              )}
-              {resetStep===1&&(
-                <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-                  <div style={{fontSize:13,fontWeight:600,color:C.red}}>{t('confirmeAction')}</div>
-                  <button onClick={handleReset} style={{padding:"10px 20px",background:C.red,border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{t('ouiToutSupprimer')}</button>
-                  <button onClick={()=>setResetStep(0)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>{t('annuler')}</button>
-                </div>
-              )}
-            </div>
-          </div>
         </>
       )}
     </div>

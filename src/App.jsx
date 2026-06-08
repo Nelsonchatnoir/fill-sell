@@ -3091,6 +3091,8 @@ export default function App({ loginOnly = false }){
   const [username,setUsername]=useState('');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [showPremiumModal,setShowPremiumModal]=useState(false);
+  const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
@@ -4633,7 +4635,7 @@ export default function App({ loginOnly = false }){
   function handleLensPhoto(e){
     const files=Array.from(e.target.files||[]);
     if(!files.length)return;
-    setLensResult(null);setLensAdded(false);
+    setLensResult(null);setLensAdded(false);setLensPremiumLimitReached(false);
     const ALLOWED_MIMES=["image/jpeg","image/png","image/gif","image/webp"];
     files.forEach(file=>{
       if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");return;}
@@ -4678,7 +4680,7 @@ export default function App({ loginOnly = false }){
         source:CameraSource.Prompt,
       });
       if(!photo.dataUrl)return;
-      setLensResult(null);setLensAdded(false);
+      setLensResult(null);setLensAdded(false);setLensPremiumLimitReached(false);
       setLensPhotos(prev=>{
         if(prev.length>=5)return prev;
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
@@ -4815,10 +4817,18 @@ export default function App({ loginOnly = false }){
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
         if(errBody.error==='quota_exceeded'){
-          const msg=errBody.reason==='monthly_limit'
-            ?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.')
-            :(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');
-          setToast({visible:true,message:`🔒 ${msg}`});
+          if(isPremium){
+            setLensPremiumLimitReached(true);
+            const msg=errBody.reason==='monthly_limit'
+              ?(lang==='fr'?'Limite mensuelle atteinte pour ce mois.':'Monthly limit reached for this month.')
+              :(lang==='fr'?'Limite journalière atteinte pour aujourd\'hui.':'Daily limit reached for today.');
+            setToast({visible:true,message:`📸 ${msg}`});
+          }else{
+            const msg=errBody.reason==='monthly_limit'
+              ?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.')
+              :(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');
+            setToast({visible:true,message:`🔒 ${msg}`});
+          }
           setTimeout(()=>setToast({visible:false,message:''}),4000);
           return;
         }
@@ -4899,7 +4909,7 @@ export default function App({ loginOnly = false }){
           ):!isPremium&&isNative?(
             <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
-            <div className="tb-premium">⭐ Premium</div>
+            <button onClick={()=>setShowPremiumModal(true)} className="tb-premium" style={{cursor:"pointer",border:"none",padding:0,background:"none",fontFamily:"inherit"}}>⭐ Premium</button>
           ):null}
           <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
         </div>
@@ -5032,6 +5042,7 @@ export default function App({ loginOnly = false }){
             openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             slotsRemaining={slotsRemaining}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
+            lensPremiumLimitReached={lensPremiumLimitReached}
           />
         )}
 
@@ -5543,6 +5554,26 @@ export default function App({ loginOnly = false }){
               )}
             </div>
 
+            {/* Réinitialisation inventaire — discrète, tout en bas */}
+            <div style={{marginTop:8,paddingTop:12,borderTop:"1px solid rgba(0,0,0,0.05)",textAlign:"center"}}>
+              {resetStep===0&&(
+                <button onClick={handleReset}
+                  style={{background:"none",border:"none",color:"#D1D5DB",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 8px",borderRadius:8,transition:"color 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.color="#9CA3AF"}
+                  onMouseLeave={e=>e.currentTarget.style.color="#D1D5DB"}
+                >{lang==='fr'?'Réinitialiser l\'inventaire':'Reset inventory'}</button>
+              )}
+              {resetStep===1&&(
+                <div>
+                  <div style={{fontSize:12,color:"#9CA3AF",marginBottom:8}}>{lang==='fr'?'⚠️ Supprimer tout le stock et les ventes ?':'⚠️ Delete all stock and sales?'}</div>
+                  <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+                    <button onClick={handleReset} style={{padding:"5px 14px",background:"none",border:"1px solid #D1D5DB",borderRadius:8,color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Confirmer':'Confirm'}</button>
+                    <button onClick={()=>setResetStep(0)} style={{padding:"5px 14px",background:"none",border:"1px solid #D1D5DB",borderRadius:8,color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Annuler':'Cancel'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Signaler un bug */}
             <button onClick={()=>{setShowBugReport(true);setBugMessage("");}}
               style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:"#9CA3AF",marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
@@ -5554,6 +5585,61 @@ export default function App({ loginOnly = false }){
           <style>{`
             @keyframes fadeInBd{from{opacity:0}to{opacity:1}}
           `}</style>
+        </>
+      )}
+
+      {/* ── PREMIUM ADVANTAGES MODAL ── */}
+      {showPremiumModal&&(
+        <>
+          <div onClick={()=>setShowPremiumModal(false)} style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.45)",backdropFilter:"blur(3px)",display:"flex",alignItems:"flex-end",justifyContent:"center",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",padding:"28px 24px 40px",animation:"slideUpPm 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
+            {/* Header */}
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:99,margin:"0 auto 20px"}}/>
+              <div style={{fontSize:26,marginBottom:6}}>⭐</div>
+              <div style={{fontSize:20,fontWeight:800,color:"#0D0D0D"}}>FillSell Premium</div>
+              <div style={{fontSize:13,color:"#6B7280",marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
+            </div>
+            {/* Avantages */}
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+              {[
+                {icon:"🎙️",fr:"IA vocale — 20 analyses/jour",en:"Voice AI — 20 analyses/day"},
+                {icon:"📸",fr:"Lens — 5/jour · 60/mois",en:"Lens — 5/day · 60/month"},
+                {icon:"💡",fr:"Price advice illimité",en:"Unlimited price advice"},
+                {icon:"📊",fr:"Stats avancées & analyse business",en:"Advanced stats & business insights"},
+                {icon:"⚡",fr:"Support prioritaire",en:"Priority support"},
+              ].map(({icon,fr,en},i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#F0FDF8",borderRadius:12,border:"1px solid rgba(29,158,117,0.15)"}}>
+                  <span style={{fontSize:17,flexShrink:0}}>{icon}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:"#0F4C3A"}}>{lang==='fr'?fr:en}</span>
+                </div>
+              ))}
+            </div>
+            {/* VS Excel */}
+            <div style={{background:"linear-gradient(135deg,rgba(29,158,117,0.07),rgba(249,162,108,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(29,158,117,0.12)"}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>
+                {lang==='fr'?'💪 FillSell vs Excel ?':'💪 FillSell vs Excel?'}
+              </div>
+              {[
+                {icon:"⏱️",fr:"~3h/semaine économisées sur la saisie",en:"~3h/week saved on manual entry"},
+                {icon:"🤖",fr:"Ajout vocal — zéro tableur à remplir",en:"Voice entry — no spreadsheet needed"},
+                {icon:"📱",fr:"Suivi multi-plateformes en temps réel",en:"Real-time multi-platform tracking"},
+                {icon:"📈",fr:"Marges & bénéfices calculés automatiquement",en:"Margins & profits calculated automatically"},
+              ].map(({icon,fr,en},i)=>(
+                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:i<3?8:0}}>
+                  <span style={{fontSize:14,flexShrink:0,marginTop:1}}>{icon}</span>
+                  <span style={{fontSize:12,color:"#374151",lineHeight:1.5}}>{lang==='fr'?fr:en}</span>
+                </div>
+              ))}
+            </div>
+            {/* Fermer */}
+            <button onClick={()=>setShowPremiumModal(false)} style={{width:"100%",padding:"13px",background:"#F1F5F9",border:"none",borderRadius:14,color:"#374151",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"background 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#E2E8F0"}
+              onMouseLeave={e=>e.currentTarget.style.background="#F1F5F9"}
+            >{lang==='fr'?'Fermer':'Close'}</button>
+          </div>
+          </div>
+          <style>{`@keyframes slideUpPm{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
         </>
       )}
 
