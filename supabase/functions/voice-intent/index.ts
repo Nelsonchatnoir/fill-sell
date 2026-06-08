@@ -284,6 +284,13 @@ JAMAIS inventory_lot pour N exemplaires du MÊME article avec un prix total.
   ✅ "5 vestes pour 50€" → inventory_add, quantite:5, prix_achat:10
   ✅ "3 sacs pour 30€" → inventory_add, quantite:3, prix_achat:10
 
+PRIX DIFFÉRENTS pour des exemplaires identiques (CRITIQUE) :
+Si l'utilisateur énumère N prix DIFFÉRENTS et EXPLICITES pour N exemplaires du même article → créer N inventory_add séparés, chacun avec son propre prix_achat.
+Si tous les prix sont identiques → un seul inventory_add avec quantite:N comme d'habitude.
+  ✅ "j'ai acheté 3 shorts Nike, un à 8€, un à 15€, un à 25€" → [inventory_add {nom:"Short",marque:"Nike",prix_achat:8}, inventory_add {nom:"Short",marque:"Nike",prix_achat:15}, inventory_add {nom:"Short",marque:"Nike",prix_achat:25}]
+  ✅ "j'ai acheté 2 iPhone 13, un à 120€ et un à 95€" → [inventory_add {nom:"iPhone 13",marque:"Apple",prix_achat:120}, inventory_add {nom:"iPhone 13",marque:"Apple",prix_achat:95}]
+  ✅ "j'ai acheté 3 robes à 10€ chacune" → inventory_add {nom:"Robe",prix_achat:10,quantite:3} (prix identiques → quantite)
+
 Structure retournée :
 {
   "tasks": [
@@ -705,6 +712,13 @@ NEVER inventory_lot for N units of the SAME item with a total price.
   ✅ "10 paintings for €100" → inventory_add, quantite:10, prix_achat:10
   ✅ "5 jackets for €50" → inventory_add, quantite:5, prix_achat:10
   ✅ "3 bags for €30" → inventory_add, quantite:3, prix_achat:10
+
+DIFFERENT PRICES for identical units (CRITICAL):
+If the user explicitly states N DIFFERENT prices for N units of the same item → create N separate inventory_add, each with its own prix_achat.
+If all prices are identical → one inventory_add with quantite:N as usual.
+  ✅ "I bought 3 Nike shorts, one for €8, one for €15, one for €25" → [inventory_add {nom:"Short",marque:"Nike",prix_achat:8}, inventory_add {nom:"Short",marque:"Nike",prix_achat:15}, inventory_add {nom:"Short",marque:"Nike",prix_achat:25}]
+  ✅ "I bought 2 iPhone 13s, one for €120 and one for €95" → [inventory_add {nom:"iPhone 13",marque:"Apple",prix_achat:120}, inventory_add {nom:"iPhone 13",marque:"Apple",prix_achat:95}]
+  ✅ "I bought 3 dresses at €10 each" → inventory_add {nom:"Dress",prix_achat:10,quantite:3} (identical prices → quantite)
 
 Returned structure:
 {
@@ -1447,12 +1461,16 @@ serve(async (req) => {
     const MOVE_VERBS_EN = ["i stored ", "i put ", "i placed ", "i moved ", "store the ", "put the ", "move the ", "place the "];
     const MOVE_LOC_FR   = [" dans le ", " dans la ", " dans les ", " dans mon ", " dans ma ", " dans un ", " dans une ", " sur le ", " sur la ", " sur les ", " sur mon ", " sur ma "];
     const MOVE_LOC_EN   = [" in the ", " in a ", " on the ", " on a ", " into the ", " onto the "];
+    const BUY_VERBS_FR  = ["j'ai acheté", "j'ai payé", "j'ai trouvé", "j'ai acquis", "j'ai récupéré", "j'ai pris", "j'ai rangé"];
+    const BUY_VERBS_EN  = ["i bought", "i paid", "i found", "i acquired", "i got", "i picked up", "i stored"];
     const moveVerbList = _lang === "fr" ? MOVE_VERBS_FR : MOVE_VERBS_EN;
     const moveLocList  = _lang === "fr" ? MOVE_LOC_FR : MOVE_LOC_EN;
+    const buyVerbList  = _lang === "fr" ? BUY_VERBS_FR : BUY_VERBS_EN;
     const hasMoveVerb  = moveVerbList.some(v => textLow.includes(v));
     const hasMoveLocMk = moveLocList.some(p => textLow.includes(p));
+    const hasBuyVerb   = buyVerbList.some(v => textLow.includes(v));
 
-    if (hasMoveVerb && hasMoveLocMk) {
+    if (hasMoveVerb && hasMoveLocMk && !hasBuyVerb) {
       const tasks = parsed.tasks as any[];
       const alreadyMove = tasks.some(t => t.intent === "inventory_move");
       if (!alreadyMove) {
