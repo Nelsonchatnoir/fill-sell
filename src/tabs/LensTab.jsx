@@ -39,7 +39,7 @@ const VITESSE_INFO = {
   lent:  { icon:'🐢', fr:'Vente lente',   en:'Slow sale',    color:'#DC2626' },
 };
 
-function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAdded, addLensItem, onReset, openUpgradeModal }) {
+function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAdded, addLensItem, openLensEditModal, onReset, openUpgradeModal }) {
   if (result.error) {
     return (
       <>
@@ -244,11 +244,11 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
       )}
 
       {result.titre&&(
-        <button onClick={addLensItem} disabled={lensAdded}
+        <button onClick={result.est_vendu?addLensItem:openLensEditModal} disabled={lensAdded}
           style={{width:'100%',padding:'12px',background:lensAdded?'#E8F5F0':'linear-gradient(135deg,#1D9E75,#0F6E56)',color:lensAdded?'#1D9E75':'#fff',border:lensAdded?'1px solid #9FE1CB':'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?'default':'pointer',fontFamily:'inherit',transition:'all 0.2s',marginBottom:6}}>
           {lensAdded
             ?(result.est_vendu?(lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'):(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !'))
-            :(result.est_vendu?(lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'):(lang==='en'?'➕ Use this analysis':'➕ Utiliser cette analyse'))
+            :(result.est_vendu?(lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'):(lang==='en'?'✏️ Edit & add to stock':'✏️ Modifier & ajouter au stock'))
           }
         </button>
       )}
@@ -421,7 +421,7 @@ const LensTab = memo(function LensTab({
   lensAdded, setLensAdded, lensDesc, setLensDesc,
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
-  lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem,
+  lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem, openLensEditModal,
   handleIAPPurchase, handleIAPRestore,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
@@ -560,6 +560,7 @@ const LensTab = memo(function LensTab({
               isPremium={isPremium}
               lensAdded={lensAdded}
               addLensItem={addLensItem}
+              openLensEditModal={openLensEditModal}
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
               openUpgradeModal={openUpgradeModal}
             />

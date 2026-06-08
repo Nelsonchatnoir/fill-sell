@@ -3784,9 +3784,22 @@ export default function App({ loginOnly = false }){
     const mg=hasS?s-b-f:null;
     const mgp=hasS?(mg/s)*100:null;
     const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
+    const marqueNorm=editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null;
+    if(editItem._isNew){
+      const row={user_id:user.id,titre:editItem.title,marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
+      const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
+      if(!error){
+        setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
+        setEditItem(null);
+        setLensAdded(true);
+        setToast({visible:true,message:lang==='fr'?'✓ Article ajouté au stock':'✓ Item added to stock'});
+        setTimeout(()=>setToast({visible:false,message:''}),3000);
+      }
+      return;
+    }
     const{error}=await supabase.from('inventaire').update({
       titre:editItem.title,
-      marque:editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null,
+      marque:marqueNorm,
       type:typeAuto,
       prix_achat:b,
       prix_vente:hasS?s:null,
@@ -4847,6 +4860,22 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  function openLensEditModal(){
+    if(!lensResult)return;
+    setEditItem({
+      _isNew:true,
+      title:lensResult.titre||"",
+      marque:lensResult.marque||"",
+      type:lensResult.categorie||"",
+      buy:"",
+      sell:"",
+      frais:0,
+      quantite:1,
+      description:lensResult.etat_estime||"",
+      priceMode:"unit",
+    });
+  }
+
   async function addLensItem(){
     if(!lensResult?.titre||lensAdded)return;
     try{
@@ -5036,7 +5065,7 @@ export default function App({ loginOnly = false }){
             lensLoading={lensLoading} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
-            handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem}
+            handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
@@ -5073,7 +5102,7 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"88vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>✏️ {lang==='fr'?"Modifier l'article":"Edit item"}</div>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
               <button onClick={()=>setEditItem(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
