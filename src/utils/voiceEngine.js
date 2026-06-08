@@ -1027,7 +1027,7 @@ export async function executeVoiceTasks(tasks, context) {
               break;
             }
             // Vérifier si déjà au bon emplacement
-            const allAlready = fallbackItems.every(i => (i.emplacement || "").toLowerCase() === emplacement.toLowerCase());
+            const allAlready = fallbackItems.every(i => (i.emplacement || "").toLowerCase() === String(emplacement).toLowerCase());
             result = {
               intent: task.intent,
               taskData: task.data,
@@ -1058,7 +1058,7 @@ export async function executeVoiceTasks(tasks, context) {
 
           // Vérifier si tous les articles sont déjà au bon emplacement
           const allAlreadyHere = matchedItems.every(
-            i => (i.emplacement || "").toLowerCase() === emplacement.toLowerCase()
+            i => (i.emplacement || "").toLowerCase() === String(emplacement).toLowerCase()
           );
 
           result = {
