@@ -1672,6 +1672,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               if(intent==="deal_score"&&!taskData?.prix_vente) return null;
 
               if(status==="error"||intent==="unknown"){
+                if(message?.startsWith("SESSION_EXPIRED:")){
+                  return(<div key={idx} style={{background:"#FFF7ED",borderRadius:12,padding:"12px 14px",border:"1px solid #FED7AA"}}><div style={{fontSize:13,color:"#C2410C",fontWeight:700}}>{lang==="en"?"Session expired":"Session expirée"}</div><div style={{fontSize:12,color:"#9A3412",marginTop:2}}>{lang==="en"?"Reload the app and try again":"Recharge l'app et réessaie"}</div><button onClick={()=>window.location.reload()} style={{marginTop:8,padding:"7px 14px",background:"#EA580C",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Reload":"Recharger"}</button></div>);
+                }
                 return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}><div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div></div>);
               }
 
@@ -4485,7 +4488,7 @@ export default function App({ loginOnly = false }){
       const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:data.description||null,type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null,plateforme:data.plateforme||null};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
-      if(error)throw new Error(error.message);
+      if(error){const isAuth=/jwt|auth|session|not authenticated|authorization/i.test(error.message);throw new Error(isAuth?`SESSION_EXPIRED:${error.message}`:error.message);}
       const mapped=mapItem({...d,quantite:d.quantite??row.quantite});
       setItems(prev=>[mapped,...prev]);
       return mapped;
