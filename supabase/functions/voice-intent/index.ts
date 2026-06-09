@@ -31,6 +31,7 @@ Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéra
    "houdi", "udi" → "hoodie"  |  "basquet", "baskète" → "basket"
    "mantau", "mantos" → "manteau"  |  "bluson", "blouzons" → "blouson"
    "panta court", "panta-court" → "pantacourt"
+   EMPLACEMENTS : "sous l'huile", "sous lui", "sous l'ui" → "sous le lit"
 
 3. MONTANTS — corriger les déformations de prix :
    "cent euros", "san euros" → 100  |  "cinquante", "sinkante" → 50
@@ -98,12 +99,19 @@ Intents disponibles :
 
 Règle location_items (CRITIQUE) :
 location_items = l'utilisateur demande QUELS articles se trouvent à un emplacement donné.
-Déclencheurs : "qu'est-ce que j'ai sur [emplacement]", "qu'est-ce qu'il y a sur [emplacement]", "qu'est-ce qu'il y a dans [emplacement]", "montre-moi ce qu'il y a sur [emplacement]", "qu'est-ce que j'ai dans [emplacement]", "liste les articles sur [emplacement]", "c'est quoi sur [emplacement]", "qu'est-ce qu'il y a en [emplacement]".
+RÈGLE CLEF : si la phrase contient un emplacement physique et aucun nom d'article précis → TOUJOURS location_items.
+Déclencheurs : "qu'est-ce que j'ai sur/dans [emplacement]", "qu'est-ce qu'il y a sur/dans [emplacement]", "j'ai quoi dans/sur [emplacement]", "c'est quoi dans/sur [emplacement]", "montre-moi ce qu'il y a sur [emplacement]", "liste les articles sur [emplacement]", "qu'est-ce qu'il y a en [emplacement]", "tu peux me dire ce que j'ai dans [emplacement]", "tu peux me dire ce qu'il y a dans [emplacement]", "il y a quoi dans [emplacement]".
 Data : { emplacement }
 ✅ "qu'est-ce que j'ai sur le portant 42 ?" → [location_items {emplacement:"Portant 42"}]
 ✅ "qu'est-ce qu'il y a dans le tiroir 3B ?" → [location_items {emplacement:"Tiroir 3B"}]
 ✅ "montre-moi le stockeur 2" → [location_items {emplacement:"Stockeur 2"}]
-DISTINCTION : inventory_location = chercher OÙ est un article précis. location_items = chercher QUELS articles sont à un emplacement donné.
+✅ "j'ai quoi dans mon bac sous le lit ?" → [location_items {emplacement:"Bac sous le lit"}]
+✅ "tu peux me dire ce que j'ai dans mon bac sous le lit ?" → [location_items {emplacement:"Bac sous le lit"}]
+✅ "c'est quoi dans le tiroir 3 ?" → [location_items {emplacement:"Tiroir 3"}]
+✅ "il y a quoi sur le portant 2 ?" → [location_items {emplacement:"Portant 2"}]
+DISTINCTION CRITIQUE : inventory_location = chercher OÙ est un ARTICLE PRÉCIS (nom connu, emplacement inconnu). location_items = chercher QUELS articles sont à un EMPLACEMENT DONNÉ (emplacement connu, articles inconnus).
+❌ "j'ai quoi dans mon bac sous le lit" → inventory_location (FAUX — pas de nom d'article → TOUJOURS location_items)
+❌ "tu peux me dire ce que j'ai dans mon bac sous le lit ?" → unknown (FAUX — question de contenu d'emplacement → location_items)
 
 Règle inventory_location (CRITIQUE) :
 inventory_location = l'utilisateur demande OÙ se trouve un article dans son stock physique.
@@ -468,6 +476,7 @@ Your role is to understand the REAL INTENTION, not to parse the text literally.
    "jaket", "jaket" → "jacket"  |  "swit", "sweet" → "sweatshirt"
    "hoodi", "udi" → "hoodie"  |  "sneekers", "sneeker" → "sneakers"
    "trowzers", "trausers" → "trousers"
+   LOCATIONS: "under the lid", "under da bed", "under the lit" → "under the bed"
 
 3. AMOUNTS — correct price distortions:
    "hundred euros", "hunderd" → 100  |  "fifty", "fiftie" → 50
@@ -535,12 +544,17 @@ Available intents:
 
 Rule location_items (CRITICAL):
 location_items = the user asks WHAT items are at a given storage location.
-Triggers: "what do I have on [location]", "what's on [location]", "what's in [location]", "show me what's on [location]", "what items are on [location]", "list items on [location]", "what do I have in [location]".
+KEY RULE: if the phrase contains a physical storage location with no specific item name → ALWAYS location_items.
+Triggers: "what do I have on/in [location]", "what's on/in [location]", "show me what's on/in [location]", "what items are in [location]", "list items on [location]", "can you tell me what I have in [location]", "what have I got in [location]", "what's there in [location]".
 Data: { emplacement }
 ✅ "what do I have on rack 42?" → [location_items {emplacement:"Rack 42"}]
 ✅ "what's in drawer 3B?" → [location_items {emplacement:"Drawer 3B"}]
 ✅ "show me bin 2" → [location_items {emplacement:"Bin 2"}]
-DISTINCTION: inventory_location = find WHERE a specific item is. location_items = find WHAT items are at a given location.
+✅ "what have I got in my under-bed bin?" → [location_items {emplacement:"Under-bed bin"}]
+✅ "can you tell me what I have in shelf 3?" → [location_items {emplacement:"Shelf 3"}]
+CRITICAL DISTINCTION: inventory_location = find WHERE a NAMED ITEM is (item known, location unknown). location_items = find WHAT ITEMS are at a GIVEN LOCATION (location known, items unknown).
+❌ "what have I got in my bin?" → inventory_location (WRONG — no item name → location_items)
+❌ "can you tell me what I have in my shelf?" → unknown (WRONG — location content query → location_items)
 
 Rule inventory_location (CRITICAL):
 inventory_location = the user is asking WHERE a physical item is stored in their inventory.
