@@ -1032,7 +1032,11 @@ export async function executeVoiceTasks(tasks, context) {
           break;
         }
         case "inventory_move": {
-          const { matched_ids, article, emplacement, no_match } = task.data;
+          const { matched_ids, emplacement, no_match } = task.data;
+          const _rawArt = task.data.article;
+          const article = typeof _rawArt === "object" && _rawArt !== null
+            ? [_rawArt.nom, _rawArt.marque, _rawArt.description].filter(Boolean).join(" ")
+            : String(_rawArt || "");
           const COLORS_MOVE = ["blanc","blanche","noir","noire","rouge","rose","vert","verte","bleu","bleue","gris","grise","jaune","violet","violette","beige","marron","orange","creme","argente","dore","white","black","red","pink","green","blue","gray","grey","yellow","purple","brown","cream","silver","gold"];
           const voiceMoveQ = norm([article, task.data.description].filter(Boolean).join(" "));
           const voiceMoveColors = COLORS_MOVE.filter(c => voiceMoveQ.includes(c));

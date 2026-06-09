@@ -135,7 +135,7 @@ PIÈGE EMPLACEMENT : "sac", "valise", "carton", "boîte", "caisse", "panier", "c
   ✅ "j'ai mis le pull dans la valise rouge" → emplacement:"Valise rouge"
 
 Data : { article, emplacement, quantite }
-  - article = description vocale de l'article (nom + marque + qualificatifs)
+  - article = description vocale de l'article (nom + marque + qualificatifs). TOUJOURS une string, jamais un objet JSON.
   - emplacement = container ou lieu de rangement physique
   - quantite = nombre d'exemplaires si mentionné, null sinon
 
@@ -148,6 +148,7 @@ Exemples OBLIGATOIRES (respecter scrupuleusement) :
 ✅ "j'ai mis le hoodie dans le bac vert" → [inventory_move {article:"hoodie", emplacement:"Bac vert", quantite:null}]
 ✅ "déplace la robe Zara dans la valise rouge" → [inventory_move {article:"robe Zara", emplacement:"Valise rouge", quantite:null}]
 ✅ "range les 3 robes Zara dans le bac rose" → [inventory_move {article:"robe Zara", emplacement:"Bac rose", quantite:3}]
+✅ "j'ai rangé mon iPhone 13 Pro noir dans le bac orange" → [inventory_move {article:"iPhone 13 Pro noir", emplacement:"Bac orange", quantite:null}]
 
 Réponses INCORRECTES (ne JAMAIS faire) :
 ❌ "j'ai rangé la robe Lacoste dans le sac beige" → inventory_add (FAUX — "j'ai rangé" ≠ "j'ai acheté")
@@ -578,7 +579,7 @@ LOCATION TRAP: "bag", "suitcase", "box", "carton", "basket", "bin", "crate" can 
   ✅ "I put the hoodie in the red suitcase" → emplacement:"Red suitcase"
 
 Data: { article, emplacement, quantite }
-  - article = vocal description of the item (name + brand + qualifiers)
+  - article = vocal description of the item (name + brand + qualifiers). ALWAYS a string, never a JSON object.
   - emplacement = container or physical storage location
   - quantite = number of units if mentioned, null otherwise
 
@@ -591,6 +592,7 @@ Mandatory examples (follow scrupulously):
 ✅ "I put the hoodie in the green bin" → [inventory_move {article:"hoodie", emplacement:"Green bin", quantite:null}]
 ✅ "move the Zara dress to the red suitcase" → [inventory_move {article:"Zara dress", emplacement:"Red suitcase", quantite:null}]
 ✅ "put the 3 Zara dresses in the pink bin" → [inventory_move {article:"Zara dress", emplacement:"Pink bin", quantite:3}]
+✅ "I stored my black iPhone 13 Pro in the orange bin" → [inventory_move {article:"black iPhone 13 Pro", emplacement:"Orange bin", quantite:null}]
 
 WRONG responses (NEVER do this):
 ❌ "I stored the Lacoste dress in the beige bag" → inventory_add (WRONG — "stored" ≠ "bought")
@@ -1349,6 +1351,16 @@ serve(async (req) => {
         (task.data as any).items = (task.data as any).items.map(
           (item: Record<string, unknown>) => normalizeInventoryAdd(item)
         );
+      }
+    }
+
+    // Normalise inventory_move article: toujours une string, jamais un objet
+    for (const task of parsed.tasks as any[]) {
+      if (task.intent === "inventory_move" && task.data?.article != null) {
+        const _raw = task.data.article;
+        if (typeof _raw === "object") {
+          task.data.article = [_raw.nom, _raw.marque, _raw.description].filter(Boolean).join(" ");
+        }
       }
     }
 
