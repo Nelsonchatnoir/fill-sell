@@ -2323,12 +2323,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const uPrice=unitIfTotal;
                           if(foundAmb){
                             actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }else{
                             const dmC=taskData?.categorie||taskData?.type||null;
                             actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
-                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }
                         }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
@@ -2340,12 +2340,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const uPrice=pm;
                           if(foundAmb){
                             actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }else{
                             const dmC=taskData?.categorie||taskData?.type||null;
                             actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
-                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }
                         }} style={{padding:"13px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
@@ -2739,7 +2739,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
               }
 
               if(status==="success"&&intent==="inventory_sell"){
-                const svUnit=parseFloat(String(data?.prix_vente??taskData?.prix_vente??0).replace(",","."))||0;
+                const svUnit=parseFloat(String(result._resolvedPrix??data?.prix_vente??taskData?.prix_vente??0).replace(",","."))||0;
                 const sfUnit=parseFloat(String(taskData?.frais??0).replace(",","."))||0;
                 const qv=Math.max(1,(data?.quantite_vendue||taskData?.quantite_vendue||1));
                 const nom=data?.nom||taskData?.nom||"";
