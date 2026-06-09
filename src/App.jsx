@@ -1559,7 +1559,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const{results}=await executeVoiceTasks(finalTasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken,userId:user?.id??null});
           // Vente directe auto si article non trouvé en stock (no_match)
           const resolvedResults=await Promise.all(results.map(async r=>{
-            if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match){
+            if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match&&!r.taskData?.price_ambiguous){
               try{
                 const dmCat=r.taskData?.categorie||r.taskData?.type||null;
                 await actions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat,quantite_vendue:r.taskData?.quantite_vendue,plateforme:r.taskData?.plateforme||null});
@@ -2144,7 +2144,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 }
 
                 // ── Cas no_match : article absent du stock → card "Vente directe" ──
-                if(taskData?.no_match){
+                if(taskData?.no_match&&!taskData?.price_ambiguous){
                   const pvDirect=parseFloat(taskData?.prix_vente)||0;
                   const dmCat=taskData?.categorie||taskData?.type||null;
                   const dmTs=dmCat?getTypeStyle(dmCat):null;
@@ -2288,6 +2288,68 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✕ {lang==="en"?"Cancel":"Annuler"}
                       </button>
+                    </div>
+                  );
+                }
+
+                // ── Ambiguïté de prix : total vs unitaire sur vente multi-articles ──
+                if(taskData?.price_ambiguous&&taskData?.prix_mentionne>0&&taskData?.quantite_vendue>1){
+                  const pm=parseFloat(taskData.prix_mentionne)||0;
+                  const qva=taskData.quantite_vendue;
+                  const unitIfTotal=taskData._unitIfTotal??Math.round((pm/qva)*100)/100;
+                  const totalIfUnit=taskData._totalIfUnit??Math.round(pm*qva*100)/100;
+                  const artLabel=(taskData.nom||"article")+(taskData.marque?" "+taskData.marque:"");
+                  const foundAmb=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu"):null;
+                  return(
+                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:16}}>🤔</span>
+                        <span style={{fontWeight:800,fontSize:14,color:"#92400E"}}>
+                          {lang==="en"?`${qva}× ${artLabel} — total or each?`:`${qva}× ${artLabel} — total ou pièce ?`}
+                        </span>
+                      </div>
+                      <div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>
+                        {lang==="en"
+                          ?`You mentioned ${fmt(pm)}. How should it be recorded?`
+                          :`Tu as mentionné ${fmt(pm)}. Comment enregistrer ?`}
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        <button onClick={()=>{
+                          const uPrice=unitIfTotal;
+                          if(foundAmb){
+                            actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
+                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                          }else{
+                            const dmC=taskData?.categorie||taskData?.type||null;
+                            actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
+                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                          }
+                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                          {lang==="en"
+                            ?`✓ ${fmt(pm)} total → ${fmt(unitIfTotal)}/item`
+                            :`✓ ${fmt(pm)} au total → ${fmt(unitIfTotal)}/pièce`}
+                        </button>
+                        <button onClick={()=>{
+                          const uPrice=pm;
+                          if(foundAmb){
+                            actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
+                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                          }else{
+                            const dmC=taskData?.categorie||taskData?.type||null;
+                            actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
+                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                          }
+                        }} style={{padding:"13px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                          {lang==="en"
+                            ?`${fmt(pm)}/item → ${fmt(totalIfUnit)} total`
+                            :`${fmt(pm)}/pièce → ${fmt(totalIfUnit)} au total`}
+                        </button>
+                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      </div>
                     </div>
                   );
                 }

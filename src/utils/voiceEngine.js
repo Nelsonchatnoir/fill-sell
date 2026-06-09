@@ -728,6 +728,24 @@ export async function executeVoiceTasks(tasks, context) {
           }
           break;
         case "inventory_sell": {
+          // Guard prix ambiguïté — priorité absolue, aucune exécution avant résolution
+          if (task.data.price_ambiguous && task.data.prix_mentionne > 0 && task.data.quantite_vendue > 1) {
+            const pm = parseNum(task.data.prix_mentionne);
+            const qv = task.data.quantite_vendue;
+            const unitIfTotal = Math.round((pm / qv) * 100) / 100;
+            const totalIfUnit = Math.round(pm * qv * 100) / 100;
+            const msg = context.lang === "en"
+              ? `Selling ${qv}× ${task.data.nom||"item"}${task.data.marque?" "+task.data.marque:""} — is that €${pm} total (€${unitIfTotal} each) or €${pm} each (€${totalIfUnit} total)?`
+              : `Tu vends ${qv}× ${task.data.nom||"article"}${task.data.marque?" "+task.data.marque:""} — c'est ${pm}€ au total (${String(unitIfTotal).replace(".",",")}€/pièce) ou ${pm}€ pièce (${String(totalIfUnit).replace(".",",")}€ total) ?`;
+            result = {
+              intent: task.intent,
+              taskData: { ...task.data, _unitIfTotal: unitIfTotal, _totalIfUnit: totalIfUnit },
+              status: "pending_confirmation",
+              data: { ...task.data, _unitIfTotal: unitIfTotal, _totalIfUnit: totalIfUnit },
+              message: msg,
+            };
+            break;
+          }
           // Cas no_match : l'IA a explicitement indiqué qu'aucun article ne correspond
           if (task.data.no_match) {
             result = {
