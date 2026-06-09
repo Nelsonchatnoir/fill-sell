@@ -313,7 +313,7 @@ export function groupSales(arr){
   const groups=[];
   for(const s of arr){
     const last=groups[groups.length-1];
-    if(last&&last.title===s.title&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
+    if(last&&last.title===s.title&&last.marque===s.marque&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
       last._qty=(last._qty||1)+1;
       last.margin=(last.margin||0)+(s.margin||0);
       last.marginPct=(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:0;
