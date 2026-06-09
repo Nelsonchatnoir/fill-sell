@@ -310,7 +310,9 @@ inventory_location: { nom, marque }
 location_items:     { emplacement }
 inventory_move:     { article, emplacement, quantite }
 inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement, plateforme}] }
-inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue, plateforme }
+inventory_sell:   { nom, marque, type, categorie, description, prix_vente, prix_mentionne, price_ambiguous, date, quantite_vendue, plateforme }
+  prix_mentionne = prix brut mentionné vocalement (utilisé quand price_ambiguous: true, prix_vente: null)
+  price_ambiguous = true uniquement quand quantite_vendue > 1 et prix sans mot-clé unitaire ni total
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -394,13 +396,18 @@ Règle quantite/quantite_vendue :
 
 PRIX VENTE et QUANTITÉ VENDUE (inventory_sell, CRITIQUE) :
 quantite_vendue = toujours le nombre d'articles mentionné.
-prix_vente = TOUJOURS le prix PAR UNITÉ :
-- Prix unitaire explicite ("à X€ chacun/chacune", "X€ la pièce", "X€ l'un") → prix_vente = X
-- Prix total sans "chacun" ("pour X€", "X€ en tout") avec quantité N → prix_vente = X÷N (arrondi 2 décimales)
-  ✅ "j'ai vendu 18 robes pour 20€" → prix_vente: 1.11, quantite_vendue: 18  (20÷18)
-  ✅ "j'ai vendu 18 robes à 20€ chacune" → prix_vente: 20, quantite_vendue: 18
-  ✅ "j'ai vendu 5 t-shirts pour 50€" → prix_vente: 10, quantite_vendue: 5  (50÷5)
-  ✅ "j'ai vendu 5 t-shirts à 10€ la pièce" → prix_vente: 10, quantite_vendue: 5
+prix_vente — règle selon le contexte :
+- Prix UNITAIRE explicite ("à X€ chacun/chacune", "X€ la pièce", "X€ l'un", "X€ par article") → prix_vente = X, requiresConfirmation: true
+  ✅ "j'ai vendu 3 porte-clés à 100€ chacun" → prix_vente: 100, quantite_vendue: 3, requiresConfirmation: true
+  ✅ "j'ai vendu 5 t-shirts à 10€ la pièce" → prix_vente: 10, quantite_vendue: 5, requiresConfirmation: true
+- Prix TOTAL explicite ("pour X€ en tout", "X€ au total", "X€ pour le lot") → prix_vente = X÷N (arrondi 2 décimales)
+  ✅ "j'ai vendu 5 t-shirts pour 50€ en tout" → prix_vente: 10, quantite_vendue: 5
+- AMBIGUÏTÉ (RÈGLE CRITIQUE — quantite_vendue > 1 + prix sans mot-clé unitaire ni total) :
+  Ne PAS calculer prix_vente. Retourner exactement : requiresConfirmation: true, price_ambiguous: true, prix_mentionne: X (le chiffre brut), prix_vente: null.
+  ✅ "j'ai vendu 3 porte-clés Akrapovic pour 100€" → {quantite_vendue:3, prix_mentionne:100, prix_vente:null, price_ambiguous:true, requiresConfirmation:true}
+  ✅ "j'ai vendu 5 t-shirts pour 50€" → {quantite_vendue:5, prix_mentionne:50, prix_vente:null, price_ambiguous:true, requiresConfirmation:true}
+  ✅ "j'ai vendu 18 robes pour 20€" → {quantite_vendue:18, prix_mentionne:20, prix_vente:null, price_ambiguous:true, requiresConfirmation:true}
+RÈGLE : "pour X€" seul ne lève PAS l'ambiguïté. "en tout" ou "au total" est REQUIS pour confirmer prix total sans ambiguïté.
 
 Règles query_stats (PRIORITÉ sur analytics_best et analytics_query pour les cas couverts) :
 Utilise query_stats pour classements meilleur/pire, marge moyenne, stock immobilisé, bénéfice mensuel, nombre d'articles en stock.
@@ -739,7 +746,9 @@ inventory_location: { nom, marque }
 location_items:     { emplacement }
 inventory_move:     { article, emplacement, quantite }
 inventory_lot:      { lotTotal, items: [{nom, marque, categorie, description, emplacement, plateforme}] }
-inventory_sell:   { nom, marque, type, categorie, description, prix_vente, date, quantite_vendue, plateforme }
+inventory_sell:   { nom, marque, type, categorie, description, prix_vente, prix_mentionne, price_ambiguous, date, quantite_vendue, plateforme }
+  prix_mentionne = raw price as spoken (used when price_ambiguous: true, prix_vente: null)
+  price_ambiguous = true only when quantite_vendue > 1 and price has no explicit unit or total keyword
 inventory_search: { brand, categorie, status ("stock"|"sold"|"all"), query, date_from, date_to, min_price, max_price }
 inventory_delete: { nom, marque }
 inventory_update: { nom, marque, field, value }
@@ -830,13 +839,18 @@ Quantity rules:
 
 SELL PRICE and QUANTITY (inventory_sell, CRITICAL):
 quantite_vendue = always the number of items mentioned.
-prix_vente = ALWAYS the price PER UNIT:
-- Explicit unit price ("at €X each", "€X apiece", "€X per item") → prix_vente = X
-- Total price without "each" ("for €X", "€X total") with quantity N → prix_vente = X÷N (rounded 2 decimals)
-  ✅ "I sold 18 dresses for €20" → prix_vente: 1.11, quantite_vendue: 18  (20÷18)
-  ✅ "I sold 18 dresses at €20 each" → prix_vente: 20, quantite_vendue: 18
-  ✅ "I sold 5 t-shirts for €50" → prix_vente: 10, quantite_vendue: 5  (50÷5)
-  ✅ "I sold 5 t-shirts at €10 each" → prix_vente: 10, quantite_vendue: 5
+prix_vente — rule depends on context:
+- EXPLICIT unit price ("at €X each", "€X apiece", "€X per item", "€X per piece") → prix_vente = X, requiresConfirmation: true
+  ✅ "I sold 3 keychains at €100 each" → prix_vente: 100, quantite_vendue: 3, requiresConfirmation: true
+  ✅ "I sold 5 t-shirts at €10 apiece" → prix_vente: 10, quantite_vendue: 5, requiresConfirmation: true
+- EXPLICIT total price ("for €X total", "€X in total", "€X for the lot", "€X altogether") → prix_vente = X÷N (rounded 2 decimals)
+  ✅ "I sold 5 t-shirts for €50 in total" → prix_vente: 10, quantite_vendue: 5
+- AMBIGUITY (CRITICAL RULE — quantite_vendue > 1 + price without explicit unit or total keyword):
+  Do NOT calculate prix_vente. Return exactly: requiresConfirmation: true, price_ambiguous: true, prix_mentionne: X (raw number), prix_vente: null.
+  ✅ "I sold 3 Akrapovic keychains for €100" → {quantite_vendue:3, prix_mentionne:100, prix_vente:null, price_ambiguous:true, requiresConfirmation:true}
+  ✅ "I sold 5 t-shirts for €50" → {quantite_vendue:5, prix_mentionne:50, prix_vente:null, price_ambiguous:true, requiresConfirmation:true}
+  ✅ "I sold 18 dresses for €20" → {quantite_vendue:18, prix_mentionne:20, prix_vente:null, price_ambiguous:true, requiresConfirmation:true}
+RULE: "for €X" alone does NOT resolve the ambiguity. "in total" or "each" is REQUIRED to avoid ambiguity.
 
 query_stats rules (PRIORITY over analytics_best and analytics_query for covered cases):
 Use query_stats for best/worst rankings, average margin, locked stock capital, monthly profit.
@@ -1578,6 +1592,38 @@ serve(async (req) => {
       } else {
         parsed.tasks = [paTask];
       }
+    }
+
+    // ── Guard : ambiguïté de prix sur vente multi-articles ────────────────────
+    // Si l'IA n'a pas positionné price_ambiguous mais quantite_vendue > 1 et prix_vente
+    // présent sans mot-clé unitaire/total explicite → forcer price_ambiguous: true.
+    const UNIT_KW_FR  = ["chacun","chacune","la pièce","par article","par pièce","l'un","l'une","chaque pièce"];
+    const UNIT_KW_EN  = ["each","apiece","per item","per piece","per pair","per unit"];
+    const TOTAL_KW_FR = ["en tout","au total","pour le lot","en total","au total"];
+    const TOTAL_KW_EN = ["in total","all together","for the lot","total price","overall"];
+    const _unitKw  = _lang === "fr" ? UNIT_KW_FR  : UNIT_KW_EN;
+    const _totalKw = _lang === "fr" ? TOTAL_KW_FR : TOTAL_KW_EN;
+    const _hasUnitKw  = _unitKw.some(k => textLow.includes(k));
+    const _hasTotalKw = _totalKw.some(k => textLow.includes(k));
+
+    for (const _t of parsed.tasks as any[]) {
+      if (_t.intent !== "inventory_sell") continue;
+      const _qv = _t.data?.quantite_vendue;
+      if (!_qv || _qv <= 1) continue;
+      if (_t.data?.price_ambiguous) continue; // déjà positionné par Claude
+      const _pv = _t.data?.prix_vente;
+      if (!_pv || _pv <= 0) continue;
+      if (_hasUnitKw || _hasTotalKw) continue; // mot-clé explicite → pas d'ambiguïté
+      // Tenter d'extraire le prix brut depuis le texte (avant division éventuelle par Claude)
+      const _priceRe = /\b(\d+(?:[.,]\d+)?)\s*(?:€|euros?|£|pounds?|\$|dollars?)/gi;
+      const _priceMatches = [...text.matchAll(_priceRe)];
+      const _rawPrice = _priceMatches.length === 1
+        ? parseFloat(_priceMatches[0][1].replace(",", "."))
+        : null;
+      _t.data.price_ambiguous = true;
+      _t.data.prix_mentionne  = _rawPrice ?? (_pv * _qv > _pv ? _pv * _qv : _pv);
+      _t.data.prix_vente      = null;
+      _t.requiresConfirmation = true;
     }
 
     return new Response(JSON.stringify({ tasks: parsed.tasks }), {
