@@ -2303,9 +2303,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   const unitIfTotal=taskData._unitIfTotal??Math.round((pm/qva)*100)/100;
                   const totalIfUnit=taskData._totalIfUnit??Math.round(pm*qva*100)/100;
                   const artLabel=(taskData.nom||"article")+(taskData.marque?" "+taskData.marque:"");
-                  const foundAmb=taskData?.matched_id
-                    ?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu")
-                    :items.find(i=>{if(i.statut==="vendu")return false;const q=(taskData?.nom||"").toLowerCase().trim();const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
+                  const _ambById=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu"):null;
+                  const foundAmb=_ambById||(()=>{const q=(taskData?.nom||"").toLowerCase().trim();return q?items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();return t.includes(q)||q.includes(t);}):null;})();
                   return(
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
