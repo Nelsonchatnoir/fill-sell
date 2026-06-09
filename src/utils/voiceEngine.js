@@ -1015,6 +1015,12 @@ export async function executeVoiceTasks(tasks, context) {
         }
         case "inventory_move": {
           const { matched_ids, article, emplacement, no_match } = task.data;
+          const COLORS_MOVE = ["blanc","blanche","noir","noire","rouge","rose","vert","verte","bleu","bleue","gris","grise","jaune","violet","violette","beige","marron","orange","creme","argente","dore","white","black","red","pink","green","blue","gray","grey","yellow","purple","brown","cream","silver","gold"];
+          const voiceMoveQ = norm([article, task.data.description].filter(Boolean).join(" "));
+          const voiceMoveColors = COLORS_MOVE.filter(c => voiceMoveQ.includes(c));
+          const colorFilterMove = items => voiceMoveColors.length > 0
+            ? items.filter(i => voiceMoveColors.some(c => norm([i.nom || i.title || i.titre || "", i.description || ""].join(" ")).includes(c)))
+            : items;
 
           // Article non trouvé par l'IA ou emplacement manquant
           if (no_match || !emplacement) {
@@ -1039,7 +1045,8 @@ export async function executeVoiceTasks(tasks, context) {
               const hay = [norm(i.title || ""), norm(i.marque || ""), norm(i.type || ""), norm(i.description || "")].join(" ");
               return words.length > 0 && words.every(w => hay.includes(w));
             });
-            if (fallbackItems.length === 0) {
+            const coloredFallback = colorFilterMove(fallbackItems);
+            if (coloredFallback.length === 0) {
               result = {
                 intent: task.intent,
                 taskData: task.data,
@@ -1052,12 +1059,12 @@ export async function executeVoiceTasks(tasks, context) {
               break;
             }
             // Vérifier si déjà au bon emplacement
-            const allAlready = fallbackItems.every(i => (i.emplacement || "").toLowerCase() === String(emplacement).toLowerCase());
+            const allAlready = coloredFallback.every(i => (i.emplacement || "").toLowerCase() === String(emplacement).toLowerCase());
             result = {
               intent: task.intent,
               taskData: task.data,
               status: "pending_confirmation",
-              data: { items: fallbackItems, emplacement, alreadyHere: allAlready },
+              data: { items: coloredFallback, emplacement, alreadyHere: allAlready },
               message: context.lang === "en" ? "Store here?" : "Ranger ici ?",
             };
             break;
@@ -1067,8 +1074,9 @@ export async function executeVoiceTasks(tasks, context) {
           const matchedItems = matched_ids
             .map(id => context.items.find(i => String(i.id) === String(id) && i.statut !== "vendu" && i.statut !== "sold"))
             .filter(Boolean);
+          const coloredMatchedItems = colorFilterMove(matchedItems);
 
-          if (matchedItems.length === 0) {
+          if (coloredMatchedItems.length === 0) {
             result = {
               intent: task.intent,
               taskData: task.data,
@@ -1082,7 +1090,7 @@ export async function executeVoiceTasks(tasks, context) {
           }
 
           // Vérifier si tous les articles sont déjà au bon emplacement
-          const allAlreadyHere = matchedItems.every(
+          const allAlreadyHere = coloredMatchedItems.every(
             i => (i.emplacement || "").toLowerCase() === String(emplacement).toLowerCase()
           );
 
@@ -1090,7 +1098,7 @@ export async function executeVoiceTasks(tasks, context) {
             intent: task.intent,
             taskData: task.data,
             status: "pending_confirmation",
-            data: { items: matchedItems, emplacement, alreadyHere: allAlreadyHere },
+            data: { items: coloredMatchedItems, emplacement, alreadyHere: allAlreadyHere },
             message: context.lang === "en" ? "Store here?" : "Ranger ici ?",
           };
           break;
@@ -1109,7 +1117,14 @@ export async function executeVoiceTasks(tasks, context) {
             }
             return false;
           });
-          if (locMatches.length === 0) {
+          // Color/description filter: prioritize items whose description matches voice color
+          const COLORS_LOC = ["blanc","blanche","noir","noire","rouge","rose","vert","verte","bleu","bleue","gris","grise","jaune","violet","violette","beige","marron","orange","creme","argente","dore","white","black","red","pink","green","blue","gray","grey","yellow","purple","brown","cream","silver","gold"];
+          const voiceLocQ = norm([task.data.nom, task.data.description].filter(Boolean).join(" "));
+          const voiceLocColors = COLORS_LOC.filter(c => voiceLocQ.includes(c));
+          const coloredLocMatches = voiceLocColors.length > 0
+            ? locMatches.filter(i => voiceLocColors.some(c => norm([i.nom || i.title || i.titre || "", i.description || ""].join(" ")).includes(c)))
+            : locMatches;
+          if (coloredLocMatches.length === 0) {
             result = {
               intent: task.intent, taskData: task.data, status: "error", data: {},
               message: context.lang === "en"
@@ -1117,7 +1132,7 @@ export async function executeVoiceTasks(tasks, context) {
                 : `Aucun article "${task.data.nom || task.data.marque}" trouvé dans ton inventaire`,
             };
           } else {
-            const hit = locMatches[0];
+            const hit = coloredLocMatches[0];
             result = {
               intent: task.intent, taskData: task.data, status: "success",
               data: {
