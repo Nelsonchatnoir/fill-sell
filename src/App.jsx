@@ -830,14 +830,18 @@ const SKELETON_SOLD=[
   {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
 const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
   const groups=[];
   for(const s of arr){
+    if(s.quantite!=null){
+      groups.push({...s,_qty:s.quantite});
+      continue;
+    }
     const last=groups[groups.length-1];
-    if(last&&last.title===s.title&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
+    if(last&&last.quantite==null&&last.title===s.title&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
       last._qty=(last._qty||1)+1;
       last.margin=(last.margin||0)+(s.margin||0);
       last.marginPct=(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:0;
@@ -2318,12 +2322,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const uPrice=unitIfTotal;
                           if(foundAmb){
                             actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }else{
                             const dmC=taskData?.categorie||taskData?.type||null;
                             actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
-                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }
                         }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
@@ -2335,12 +2339,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const uPrice=pm;
                           if(foundAmb){
                             actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }else{
                             const dmC=taskData?.categorie||taskData?.type||null;
                             actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
-                              .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                              .then(()=>replaceResult(idx,{...result,status:"success",taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }
                         }} style={{padding:"13px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
@@ -4603,8 +4607,8 @@ export default function App({ loginOnly = false }){
         setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
       }
       // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
-      for(let q=0;q<qVendue;q++){
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:plateforme||item.plateforme||null};
+      {
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:plateforme||item.plateforme||null,quantite:qVendue>1?qVendue:null};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -4638,12 +4642,10 @@ export default function App({ loginOnly = false }){
       const pa=parseFloat(String(prix_achat??0).replace(",","."))||0;
       const qv=Math.max(1,parseInt(quantite_vendue)||1);
       const marqueNorm=normalizeMarque(marque);
-      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0],plateforme:plateforme||null};
-      for(let q=0;q<qv;q++){
-        const{data,error}=await supabase.from('ventes').insert([row]).select().single();
-        if(error)throw new Error(error.message);
-        if(data)setSales(prev=>[mapSale(data),...prev]);
-      }
+      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0],plateforme:plateforme||null,quantite:qv>1?qv:null};
+      const{data,error}=await supabase.from('ventes').insert([row]).select().single();
+      if(error)throw new Error(error.message);
+      if(data)setSales(prev=>[mapSale(data),...prev]);
     },
   };
 
