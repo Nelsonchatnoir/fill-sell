@@ -1069,15 +1069,31 @@ export async function executeVoiceTasks(tasks, context) {
             });
             const coloredFallback = colorFilterMove(fallbackItems);
             if (coloredFallback.length === 0) {
-              result = {
-                intent: task.intent,
-                taskData: task.data,
-                status: "pending_confirmation",
-                data: { notFound: true },
-                message: context.lang === "en"
-                  ? `"${article}" not found in your stock`
-                  : `"${article}" introuvable dans ton stock`,
-              };
+              // Article absent du stock : relancer voice-intent pour créer en inventory_add
+              const addText = `J'ai ${article} que j'ai rangé dans ${emplacement}`;
+              const stockSnap = context.items
+                .filter(i => i.statut !== "vendu" && i.statut !== "sold")
+                .map(i => ({ id: i.id, nom: i.title || i.nom || "", marque: i.marque || null, type: i.type || null, description: i.description || null, emplacement: i.emplacement || null }));
+              const addRes = await fetch(`${supabaseUrl}/functions/v1/voice-intent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
+                body: JSON.stringify({ text: addText, lang: context.lang, currency: context.currency || "EUR", items: stockSnap }),
+              });
+              if (!addRes.ok) throw new Error(`voice-intent HTTP ${addRes.status}`);
+              const addJson = await addRes.json();
+              const addTask = (addJson.tasks || []).find(t => t.intent === "inventory_add");
+              if (!addTask) throw new Error(context.lang === "en" ? "Item add failed" : "Ajout article échoué");
+              if (addTask.requiresConfirmation) {
+                result = {
+                  intent: addTask.intent,
+                  taskData: addTask.data,
+                  status: "pending_confirmation",
+                  data: addTask.data,
+                  message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?",
+                };
+              } else {
+                result = await handleAdd(addTask, context);
+              }
               break;
             }
             // Vérifier si déjà au bon emplacement
