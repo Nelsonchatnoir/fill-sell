@@ -722,6 +722,35 @@ export async function executeVoiceTasks(tasks, context) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
             break;
           }
+          // "j'ai rangé X [marque] dans Y" — Edge Function v90 retourne inventory_add au lieu de
+          // inventory_move. Signal : emplacement présent + pas de prix_achat + marque présente.
+          // On cherche un article existant en stock avec la même marque+nom → si trouvé, on redirige
+          // vers le drawer "Ranger ici?" au lieu de créer un doublon.
+          {
+            const _empMove = task.data?.emplacement;
+            const _marqueMove = norm(task.data?.marque || "");
+            if (_empMove && !parseNum(task.data?.prix_achat) && _addNomNorm && _marqueMove) {
+              const _nomW = _addNomNorm.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+              const _stockMatches = context.items.filter(i => {
+                if (i.statut === "vendu" || i.statut === "sold") return false;
+                const _im = norm(i.marque || "");
+                if (!_im || (!_im.includes(_marqueMove) && !_marqueMove.includes(_im))) return false;
+                const _it = norm(i.title || "");
+                return _nomW.length === 0 || _nomW.every(w => _it.includes(w));
+              });
+              if (_stockMatches.length > 0) {
+                const _allHere = _stockMatches.every(i => norm(i.emplacement || "") === norm(_empMove));
+                result = {
+                  intent: "inventory_move",
+                  taskData: task.data,
+                  status: "pending_confirmation",
+                  data: { items: _stockMatches, emplacement: _empMove, alreadyHere: _allHere },
+                  message: context.lang === "en" ? "Store here?" : "Ranger ici ?",
+                };
+                break;
+              }
+            }
+          }
           if (task.requiresConfirmation) {
             result = {
               intent: task.intent,
