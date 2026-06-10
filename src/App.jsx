@@ -1519,7 +1519,6 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             setLastPriceAdviceData(null);
             const{results:fuResults}=await executeVoiceTasks([addTask],{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions,supabaseUrl:SURL,token:vaToken});
             setVaResults(fuResults);setVaStep("results");
-            if(fuResults.every(r=>r.status==="success")){autoCloseRef.current=setTimeout(()=>resetVA(),3500);}
             return;
           }
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
@@ -1579,9 +1578,6 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           setVaResults(resolvedResults);setVaStep("results");
           const QUICK_INTENTS=new Set(["inventory_add","inventory_sell","inventory_delete","inventory_update","inventory_lot"]);
           const isQuickOnly=resolvedResults.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));
-          if(isQuickOnly){
-            autoCloseRef.current=setTimeout(()=>resetVA(),3500);
-          }
         }catch(e){setVaError(e.message||"Error");setVaStep("");}
       };
       recorder.start();
