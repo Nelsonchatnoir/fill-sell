@@ -698,13 +698,13 @@ export async function executeVoiceTasks(tasks, context) {
         const _r = task.data?.article ?? task.data?.titre;
         if (_r != null) task.data = { ...task.data, nom: typeof _r === "object" && _r !== null ? [_r.nom, _r.marque, _r.description].filter(Boolean).join(" ") : String(_r) };
       }
-      if (task.intent === "inventory_move" && task.data?.no_match === true && task.data?.emplacement && (!Array.isArray(task.data?.matched_ids) || !task.data.matched_ids.length)) {
-        const _r = task.data.article;
-        task.data = { ...task.data, nom: typeof _r === "object" && _r !== null ? [_r.nom, _r.marque, _r.description].filter(Boolean).join(" ") : String(_r || "") };
-        task.intent = "inventory_add";
-      }
       switch (task.intent) {
-        case "inventory_add":
+        case "inventory_add": {
+          const _ddk = norm(task.data?.nom || "");
+          if (_ddk && executedResultsMap[_ddk]) {
+            result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
+            break;
+          }
           if (task.requiresConfirmation) {
             result = {
               intent: task.intent,
@@ -725,6 +725,7 @@ export async function executeVoiceTasks(tasks, context) {
             }
           }
           break;
+        }
         case "inventory_lot":
           result = await handleLot(task, context);
           if (result.data?.items && Array.isArray(result.data.items)) {
@@ -1053,8 +1054,8 @@ export async function executeVoiceTasks(tasks, context) {
             ? items.filter(i => voiceMoveColors.some(c => norm([i.nom || i.title || i.titre || "", i.description || ""].join(" ")).includes(c)))
             : items;
 
-          // Article non trouvé par l'IA ou emplacement manquant
-          if (no_match || !emplacement) {
+          // Emplacement manquant → introuvable
+          if (!emplacement) {
             result = {
               intent: task.intent,
               taskData: task.data,
@@ -1094,6 +1095,11 @@ export async function executeVoiceTasks(tasks, context) {
                 } catch {}
                 task.data = { ...(_addData || { nom: article }), emplacement };
                 task.intent = "inventory_add";
+                const _ddk3 = norm(task.data.nom || "");
+                if (_ddk3 && executedResultsMap[_ddk3]) {
+                  result = { intent: "inventory_add", taskData: task.data, status: "success", data: executedResultsMap[_ddk3], message: context.lang === "en" ? "Item added" : "Article ajouté" };
+                  break;
+                }
                 if (task.requiresConfirmation) {
                   result = { intent: "inventory_add", taskData: task.data, status: "pending_confirmation", data: task.data, message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?" };
                 } else {
