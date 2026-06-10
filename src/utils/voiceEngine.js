@@ -1044,8 +1044,8 @@ export async function executeVoiceTasks(tasks, context) {
             ? items.filter(i => voiceMoveColors.some(c => norm([i.nom || i.title || i.titre || "", i.description || ""].join(" ")).includes(c)))
             : items;
 
-          // Emplacement manquant : impossible d'ajouter sans destination
-          if (!emplacement) {
+          // Article non trouvé par l'IA ou emplacement manquant
+          if (no_match || !emplacement) {
             result = {
               intent: task.intent,
               taskData: task.data,
@@ -1054,18 +1054,6 @@ export async function executeVoiceTasks(tasks, context) {
               message: context.lang === "en"
                 ? `"${article}" not found in your stock`
                 : `"${article}" introuvable dans ton stock`,
-            };
-            break;
-          }
-          // Article non trouvé par le matching IA → créer en inventory_add avec l'emplacement
-          if (no_match) {
-            const added = await context.actions.addItem({ nom: article, emplacement });
-            result = {
-              intent: "inventory_add",
-              taskData: { nom: article, emplacement },
-              status: "success",
-              data: added || { nom: article, emplacement },
-              message: context.lang === "en" ? "Item added to stock" : "Article ajouté au stock",
             };
             break;
           }
@@ -1081,13 +1069,14 @@ export async function executeVoiceTasks(tasks, context) {
             });
             const coloredFallback = colorFilterMove(fallbackItems);
             if (coloredFallback.length === 0) {
-              const added = await context.actions.addItem({ nom: article, emplacement });
               result = {
-                intent: "inventory_add",
-                taskData: { nom: article, emplacement },
-                status: "success",
-                data: added || { nom: article, emplacement },
-                message: context.lang === "en" ? "Item added to stock" : "Article ajouté au stock",
+                intent: task.intent,
+                taskData: task.data,
+                status: "pending_confirmation",
+                data: { notFound: true },
+                message: context.lang === "en"
+                  ? `"${article}" not found in your stock`
+                  : `"${article}" introuvable dans ton stock`,
               };
               break;
             }
@@ -1110,13 +1099,14 @@ export async function executeVoiceTasks(tasks, context) {
           const coloredMatchedItems = colorFilterMove(matchedItems);
 
           if (coloredMatchedItems.length === 0) {
-            const added = await context.actions.addItem({ nom: article, emplacement });
             result = {
-              intent: "inventory_add",
-              taskData: { nom: article, emplacement },
-              status: "success",
-              data: added || { nom: article, emplacement },
-              message: context.lang === "en" ? "Item added to stock" : "Article ajouté au stock",
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: { notFound: true },
+              message: context.lang === "en"
+                ? `"${article}" not found in your stock`
+                : `"${article}" introuvable dans ton stock`,
             };
             break;
           }
