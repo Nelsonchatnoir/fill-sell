@@ -694,6 +694,10 @@ export async function executeVoiceTasks(tasks, context) {
   for (const task of tasks) {
     let result;
     try {
+      if (task.intent === "inventory_add" && !task.data?.nom) {
+        const _r = task.data?.article ?? task.data?.titre;
+        if (_r != null) task.data = { ...task.data, nom: typeof _r === "object" && _r !== null ? [_r.nom, _r.marque, _r.description].filter(Boolean).join(" ") : String(_r) };
+      }
       switch (task.intent) {
         case "inventory_add":
           if (task.requiresConfirmation) {
