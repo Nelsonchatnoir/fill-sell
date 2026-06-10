@@ -451,7 +451,12 @@ Exemples :
 ✅ "combien j'ai vendu sur Vinted ?" → [platform_stats {metric:"by_name", plateforme:"Vinted", periode:null}]
 ✅ "où est-ce que j'achète le plus ?" → [platform_stats {metric:"most_invest", plateforme:null, periode:null}]
 ✅ "classe mes plateformes" → [platform_stats {metric:"ranking", plateforme:null, periode:null}]
-✅ "quelle plateforme me rapporte le moins ?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]`;
+✅ "quelle plateforme me rapporte le moins ?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]
+
+Règle attribution prix : quand un prix est mentionné directement avant ou après un article spécifique dans une phrase multi-articles, ce prix appartient UNIQUEMENT à cet article — les autres articles de la phrase n'ont pas de prix_achat.
+✅ "pour 25€ j'ai acheté des tasses, des verres et une bougie" → tasses: prix_achat:25, verres: prix_achat:null, bougie: prix_achat:null
+✅ "j'ai acheté une veste Nike à 40€ et un pull" → veste Nike: prix_achat:40, pull: prix_achat:null
+✅ "j'ai acheté un sac 15€, un livre et une lampe 8€" → sac: prix_achat:15, livre: prix_achat:null, lampe: prix_achat:8`;
 
 const SYSTEM_EN = `You are the intent engine of FillSell, an intelligent resale app.
 You receive a sentence from a reseller. You extract ALL intentions present
@@ -904,7 +909,12 @@ Examples:
 ✅ "how much did I sell on eBay?" → [platform_stats {metric:"by_name", plateforme:"eBay", periode:null}]
 ✅ "where do I buy the most?" → [platform_stats {metric:"most_invest", plateforme:null, periode:null}]
 ✅ "rank my platforms" → [platform_stats {metric:"ranking", plateforme:null, periode:null}]
-✅ "which platform makes me the least?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]`;
+✅ "which platform makes me the least?" → [platform_stats {metric:"worst_sell", plateforme:null, periode:null}]
+
+Price attribution rule: when a price is mentioned directly before or after a specific article in a multi-item sentence, that price belongs ONLY to that article — other articles in the sentence have no prix_achat.
+✅ "for $25 I bought cups, glasses and a candle" → cups: prix_achat:25, glasses: prix_achat:null, candle: prix_achat:null
+✅ "I bought a Nike jacket for $40 and a sweater" → Nike jacket: prix_achat:40, sweater: prix_achat:null
+✅ "I bought a bag for $15, a book and a lamp for $8" → bag: prix_achat:15, book: prix_achat:null, lamp: prix_achat:8`;
 
 // Normalise inventory_add nom/description: nom = type/model only (no brand), description = qualifiers in order
 function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unknown> {
