@@ -139,6 +139,9 @@ Data : { article, emplacement, quantite }
   - emplacement = container ou lieu de rangement physique
   - quantite = nombre d'exemplaires si mentionné, null sinon
 
+Règle no_match : si l'article n'est PAS trouvé dans le stock lors du matching, basculer automatiquement vers inventory_add avec l'emplacement renseigné dans le champ emplacement.
+✅ "range la robe Lacoste dans le sac beige" → article absent du stock → [inventory_add {titre:"robe Lacoste", emplacement:"Sac beige"}]
+
 Exemples OBLIGATOIRES (respecter scrupuleusement) :
 ✅ "range la robe Lacoste dans le sac beige" → [inventory_move {article:"robe Lacoste", emplacement:"Sac beige", quantite:null}]
 ✅ "j'ai rangé la robe Lacoste dans le sac beige" → [inventory_move {article:"robe Lacoste", emplacement:"Sac beige", quantite:null}]
@@ -582,6 +585,9 @@ Data: { article, emplacement, quantite }
   - article = vocal description of the item (name + brand + qualifiers). ALWAYS a string, never a JSON object.
   - emplacement = container or physical storage location
   - quantite = number of units if mentioned, null otherwise
+
+No-match rule: if the item is NOT found in stock during matching, automatically switch to inventory_add with the location filled in the emplacement field.
+✅ "store the Lacoste dress in the beige bag" → item not in stock → [inventory_add {titre:"Lacoste dress", emplacement:"Beige bag"}]
 
 Mandatory examples (follow scrupulously):
 ✅ "store the Lacoste dress in the beige bag" → [inventory_move {article:"Lacoste dress", emplacement:"Beige bag", quantite:null}]
