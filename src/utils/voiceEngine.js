@@ -10,6 +10,8 @@ const STOP_WORDS = new Set([
   "ni","or","the","an","of","in","at","to","for","with","is","it","i","my","and","but",
 ]);
 
+const MARQUES_CONNUES = ["Nike","Adidas","Zara","H&M","Mango","Shein","Primark","Levi's","Levis","Ralph Lauren","Tommy Hilfiger","Lacoste","New Balance","Puma","Reebok","Under Armour","The North Face","Stone Island","Carhartt","Stussy","Supreme","Off-White","Balenciaga","Gucci","Louis Vuitton","Hermès","Hermes","Chanel","Dior","Givenchy","Burberry","Versace","Armani","Boss","Calvin Klein","Diesel","Guess","Michael Kors","Vans","Converse","Jordan","Timberland","UGG","Crocs","Uniqlo","Cos","Sandro","Maje","Ba&sh","Isabel Marant","Kiabi","Jules","Celio","Bershka","Pull&Bear","Stradivarius","Apple","Samsung","Sony","LG","HP","Dell","Lenovo","Asus","Acer","Microsoft","Huawei","Xiaomi","Motorola","Nokia"];
+
 const parseNum = v => parseFloat(String(v ?? 0).replace(",", ".")) || 0;
 
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
@@ -1062,7 +1064,10 @@ export async function executeVoiceTasks(tasks, context) {
           if (!Array.isArray(matched_ids) || matched_ids.length === 0) {
             if (emplacement) {
               // Article absent du stock : même code path que inventory_add
-              const syntheticAdd = { ...task, intent: "inventory_add", data: { ...task.data, nom: article } };
+              const detectedMarque = MARQUES_CONNUES.find(m =>
+                new RegExp('\\b' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(article)
+              ) ?? null;
+              const syntheticAdd = { ...task, intent: "inventory_add", data: { ...task.data, nom: article, marque: detectedMarque } };
               if (syntheticAdd.requiresConfirmation) {
                 result = {
                   intent: syntheticAdd.intent,
