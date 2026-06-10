@@ -2646,6 +2646,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 }
 
                 // Card de confirmation : liste des articles + ancien → nouvel emplacement
+                const _multiMove=moveItems.length>1;
+                const _selIds=data?.selectedIds||(moveItems.map(i=>i.id));
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>
@@ -2657,15 +2659,30 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         const _ts=_cat&&_cat!=="Autre"?getTypeStyle(_cat):null;
                         const prevEmp=item.emplacement||null;
                         const itemName=item.title||item.titre||item.nom||"";
+                        const _checked=_selIds.includes(item.id);
                         return(
-                          <div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid #BFDBFE"}}>
+                          <div key={i}
+                            onClick={_multiMove?()=>{
+                              const next=_checked?_selIds.filter(id=>id!==item.id):[..._selIds,item.id];
+                              replaceResult(idx,{...result,data:{...data,selectedIds:next}});
+                            }:undefined}
+                            role={_multiMove?"button":undefined}
+                            style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:`1px solid ${_multiMove&&!_checked?"#E5E7EB":"#BFDBFE"}`,opacity:_multiMove&&!_checked?0.55:1,cursor:_multiMove?"pointer":"default"}}>
+                            {_multiMove&&(
+                              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                                <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${_checked?"#1D9E75":"#D1D5DB"}`,background:_checked?"#1D9E75":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                  {_checked&&<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                </div>
+                                <span style={{fontSize:12,color:_checked?"#0D0D0D":"#9CA3AF",fontWeight:600}}>{itemName}</span>
+                              </div>
+                            )}
                             {(item.marque||_ts)&&(
                               <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
                                 {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
                                 {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(_cat,lang)}</span>}
                               </div>
                             )}
-                            <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{itemName}</div>
+                            {!_multiMove&&<div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{itemName}</div>}
                             <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                               <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
                               <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>
@@ -2678,16 +2695,18 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={async()=>{
                         try{
-                          const ids=moveItems.map(i=>i.id);
+                          const _toMove=_multiMove?moveItems.filter(i=>_selIds.includes(i.id)):moveItems;
+                          if(_toMove.length===0){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"});return;}
+                          const ids=_toMove.map(i=>i.id);
                           await actions.moveToLocation(ids,moveEmp);
                           replaceResult(idx,{...result,status:"success",message:
                             lang==="en"
-                              ?`✅ Stored! ${moveItems.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
-                              :`✅ Rangé ! ${moveItems.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
+                              ?`✅ Stored! ${_toMove.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
+                              :`✅ Rangé ! ${_toMove.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
                           });
                         }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
                       }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm":"Confirmer"}
+                        ✓ {lang==="en"?"Confirm":"Confirmer"}{_multiMove&&_selIds.length<moveItems.length?` (${_selIds.length})`:``}
                       </button>
                       <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
                         style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
