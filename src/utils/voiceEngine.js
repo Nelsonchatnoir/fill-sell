@@ -694,6 +694,11 @@ export async function executeVoiceTasks(tasks, context) {
   for (const task of tasks) {
     let result;
     try {
+      if (task.intent === "inventory_move" && !task.data.no_match && task.data.emplacement && (!Array.isArray(task.data.matched_ids) || !task.data.matched_ids.length)) {
+        const _r = task.data.article;
+        task.data = { ...task.data, nom: typeof _r === "object" && _r !== null ? [_r.nom, _r.marque, _r.description].filter(Boolean).join(" ") : String(_r || "") };
+        task.intent = "inventory_add";
+      }
       switch (task.intent) {
         case "inventory_add":
           if (task.requiresConfirmation) {
@@ -1060,29 +1065,6 @@ export async function executeVoiceTasks(tasks, context) {
 
           // Pas de matched_ids retournés par l'IA → essai fallback keyword
           if (!Array.isArray(matched_ids) || matched_ids.length === 0) {
-            if (emplacement) {
-              // Article absent du stock : même code path que inventory_add
-              const syntheticAdd = { ...task, intent: "inventory_add", data: { ...task.data, nom: article } };
-              if (syntheticAdd.requiresConfirmation) {
-                result = {
-                  intent: syntheticAdd.intent,
-                  taskData: syntheticAdd.data,
-                  status: "pending_confirmation",
-                  data: syntheticAdd.data,
-                  message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?",
-                };
-              } else {
-                result = await handleAdd(syntheticAdd, context);
-                if (result.status === "success") {
-                  const _keyFull = norm([syntheticAdd.data.nom, syntheticAdd.data.description].filter(Boolean).join(" ") || "");
-                  const _keyNom = norm(syntheticAdd.data.nom || "");
-                  if (_keyFull) executedResultsMap[_keyFull] = result.data || syntheticAdd.data;
-                  if (_keyNom && !executedResultsMap[_keyNom]) executedResultsMap[_keyNom] = result.data || syntheticAdd.data;
-                  hadMutation = true;
-                }
-              }
-              break;
-            }
             const normQ = norm(article || "");
             const words = normQ.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
             const fallbackItems = context.items.filter(i => {
