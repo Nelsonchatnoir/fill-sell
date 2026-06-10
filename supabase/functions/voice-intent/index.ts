@@ -1517,7 +1517,7 @@ serve(async (req) => {
     const MOVE_VERBS_EN = ["i stored ", "i put ", "i placed ", "i moved ", "store the ", "put the ", "move the ", "place the "];
     const MOVE_LOC_FR   = [" dans le ", " dans la ", " dans les ", " dans mon ", " dans ma ", " dans un ", " dans une ", " sur le ", " sur la ", " sur les ", " sur mon ", " sur ma "];
     const MOVE_LOC_EN   = [" in the ", " in a ", " on the ", " on a ", " into the ", " onto the "];
-    const BUY_VERBS_FR  = ["j'ai acheté", "j'ai payé", "j'ai trouvé", "j'ai acquis", "j'ai récupéré", "j'ai pris", "j'ai rangé"];
+    const BUY_VERBS_FR  = ["j'ai acheté", "j'ai payé", "j'ai trouvé", "j'ai acquis", "j'ai récupéré", "j'ai pris"];
     const BUY_VERBS_EN  = ["i bought", "i paid", "i found", "i acquired", "i got", "i picked up", "i stored"];
     const moveVerbList = _lang === "fr" ? MOVE_VERBS_FR : MOVE_VERBS_EN;
     const moveLocList  = _lang === "fr" ? MOVE_LOC_FR : MOVE_LOC_EN;
