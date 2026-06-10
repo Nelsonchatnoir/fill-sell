@@ -722,33 +722,6 @@ export async function executeVoiceTasks(tasks, context) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
             break;
           }
-          // inventory_add avec emplacement et sans prix_achat = signature "j'ai rangé X dans Y"
-          // La Edge Function ne retourne pas inventory_move dans ce cas → chercher en stock d'abord.
-          if (task.data?.emplacement && !task.data?.prix_achat && task.data?.nom) {
-            const _rNom = norm(task.data.nom);
-            const _rMarque = norm(task.data.marque || "");
-            const _rWords = _rNom.split(/[\s-]+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-            const _stockMatches = context.items.filter(i => {
-              if (i.statut === "vendu" || i.statut === "sold") return false;
-              const _hay = [norm(i.title || ""), norm(i.marque || ""), norm(i.description || "")].join(" ").replace(/-/g, " ");
-              if (_rMarque && !_hay.includes(_rMarque)) return false;
-              if (_rWords.length === 0) return false;
-              const _mc = _rWords.filter(w => _hay.includes(w)).length;
-              return _mc >= Math.ceil(_rWords.length * 0.6);
-            });
-            if (_stockMatches.length > 0) {
-              const _emp = task.data.emplacement;
-              const _allHere = _stockMatches.every(i => norm(i.emplacement || "") === norm(_emp));
-              result = {
-                intent: "inventory_move",
-                taskData: task.data,
-                status: "pending_confirmation",
-                data: { items: _stockMatches, emplacement: _emp, alreadyHere: _allHere },
-                message: context.lang === "en" ? "Store here?" : "Ranger ici ?",
-              };
-              break;
-            }
-          }
           if (task.requiresConfirmation) {
             result = {
               intent: task.intent,
