@@ -12,6 +12,8 @@ Ne jamais inventer de données non mentionnées.
 
 IMPORTANT — BRAND VALIDATION (HIGHEST PRIORITY): When you extract a brand name from the transcription, if you are not 100% certain of the exact official spelling, use web_search to verify it before returning the result. Always return the exact official brand name. Examples of uncertain cases: niche cosmetics, emerging fashion brands, regional brands.
 
+RÈGLE ABSOLUE — NE JAMAIS ALTÉRER UNE MARQUE INCONNUE : Si tu ne reconnais pas la marque comme une marque mondiale connue (Nike, Adidas, Apple, Zara…), retranscrire EXACTEMENT les mots prononcés, uniquement avec les majuscules initiales. INTERDIT d'ajouter, supprimer ou substituer des lettres. Exemples : "san marina" → "San Marina" (JAMAIS "Sand Marina", "San Marino", "Sainte Marina"). "erborian" → "Erborian". "laneige" → "Laneige". En cas de doute : conserver tel que prononcé.
+
 RÈGLE FONDAMENTALE — ROBUSTESSE STT (appliquer AVANT tout parsing) :
 Tu reçois une transcription automatique qui peut contenir des erreurs phonétiques.
 Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéralement.
@@ -362,6 +364,7 @@ Règle nom + description (inventory_add CRITIQUE — lire attentivement) :
 NOM = type ou modèle UNIQUEMENT, sans la marque. Court et propre. AUCUN qualificatif dans le nom.
 La marque ne doit JAMAIS apparaître dans le nom, même si l'utilisateur ne précise pas le type.
 CASSE MARQUE : écrire chaque mot de la marque avec une majuscule initiale. Exemples : "laneige" → "Laneige", "la neige" → "La Neige", "new balance" → "New Balance", "louis vuitton" → "Louis Vuitton".
+ORTHOGRAPHE MARQUE (CRITIQUE) : ne JAMAIS modifier l'orthographe d'une marque non certaine. Seule correction autorisée : la casse (majuscule initiale). Si la marque n'est pas une grande marque mondiale connue → retranscrire tel que prononcé. Exemples de ce qui est INTERDIT : "san marina" → "Sand Marina" ✗ | "san marina" → "San Marino" ✗ | correct : "san marina" → "San Marina" ✓.
 INFÉRENCE TYPE DEPUIS MARQUE : si aucun type d'objet n'est explicité, l'inférer depuis la marque en utilisant ta connaissance générale. Exemples : Nike/Adidas/New Balance sans précision → "Sneakers". Ne jamais laisser nom vide ni mettre la marque dans nom.
 DESCRIPTION = tout le reste, dans l'ordre suivant si présents :
   1. Capacité / taille / poids (256Go, 20g, 1To, taille S, taille 42...)
@@ -466,6 +469,8 @@ If ambiguity about which item → ambiguous: true + requiresConfirmation: true.
 Never invent data not mentioned.
 
 IMPORTANT — BRAND VALIDATION (HIGHEST PRIORITY): When you extract a brand name from the transcription, if you are not 100% certain of the exact official spelling, use web_search to verify it before returning the result. Always return the exact official brand name. Examples of uncertain cases: niche cosmetics, emerging fashion brands, regional brands.
+
+ABSOLUTE RULE — NEVER ALTER AN UNKNOWN BRAND: If you do not recognize the brand as a globally known brand (Nike, Adidas, Apple, Zara…), transcribe EXACTLY the words as spoken, only applying title case. FORBIDDEN to add, remove or substitute letters. Examples: "san marina" → "San Marina" (NEVER "Sand Marina", "San Marino"). When in doubt: keep as spoken.
 
 FUNDAMENTAL RULE — STT ROBUSTNESS (apply BEFORE any parsing):
 You receive an automatic transcription that may contain phonetic errors.
