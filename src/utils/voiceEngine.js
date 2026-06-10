@@ -1078,6 +1078,23 @@ export async function executeVoiceTasks(tasks, context) {
             });
             const coloredFallback = colorFilterMove(fallbackItems);
             if (coloredFallback.length === 0) {
+              if (emplacement) {
+                task.data = { ...task.data, nom: article };
+                task.intent = "inventory_add";
+                if (task.requiresConfirmation) {
+                  result = { intent: "inventory_add", taskData: task.data, status: "pending_confirmation", data: task.data, message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?" };
+                } else {
+                  result = await handleAdd(task, context);
+                  if (result.status === "success") {
+                    const _kf = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
+                    const _kn = norm(task.data.nom || "");
+                    if (_kf) executedResultsMap[_kf] = result.data || task.data;
+                    if (_kn && !executedResultsMap[_kn]) executedResultsMap[_kn] = result.data || task.data;
+                    hadMutation = true;
+                  }
+                }
+                break;
+              }
               result = {
                 intent: task.intent,
                 taskData: task.data,
