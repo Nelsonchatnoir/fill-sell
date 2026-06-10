@@ -1079,7 +1079,20 @@ export async function executeVoiceTasks(tasks, context) {
             const coloredFallback = colorFilterMove(fallbackItems);
             if (coloredFallback.length === 0) {
               if (emplacement) {
-                task.data = { ...task.data, nom: article };
+                let _addData = null;
+                try {
+                  const _r = await fetch(`${supabaseUrl}/functions/v1/voice-intent`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
+                    body: JSON.stringify({ text: `ajoute ${article}`, lang: context.lang, currency: context.currency || "EUR", items: [] }),
+                  });
+                  if (_r.ok) {
+                    const _j = await _r.json();
+                    const _t = (_j.tasks || []).find(t => t.intent === "inventory_add");
+                    if (_t?.data) _addData = _t.data;
+                  }
+                } catch {}
+                task.data = { ...(_addData || { nom: article }), emplacement };
                 task.intent = "inventory_add";
                 if (task.requiresConfirmation) {
                   result = { intent: "inventory_add", taskData: task.data, status: "pending_confirmation", data: task.data, message: context.lang === "en" ? "Confirm add?" : "Confirmer l'ajout ?" };
