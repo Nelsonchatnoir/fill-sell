@@ -12,6 +12,41 @@ const STOP_WORDS = new Set([
 
 const parseNum = v => parseFloat(String(v ?? 0).replace(",", ".")) || 0;
 
+// Scoring multi-champs partagé : nom (requis), marque (+4), description (+2/mot), catégorie (+1), plateforme (+1).
+// Retourne les candidats triés par score desc, filtrés à score > 0.
+function rankItems(candidates, { nom = "", marque = "", description = "", categorie = "", plateforme = "" } = {}) {
+  const qNom  = norm(nom);
+  const qMar  = norm(marque);
+  const qDesc = norm(description);
+  const qCat  = norm(categorie);
+  const qPlat = norm(plateforme);
+  if (!qNom && !qMar && !qDesc) return [];
+  return candidates.map(i => {
+    const _iT = norm(i.title || i.titre || i.nom || "");
+    const _im = norm(i.marque || "");
+    const _id = norm(i.description || "");
+    const _ic = norm(i.categorie || i.type || "");
+    const _ip = norm(i.plateforme || "");
+    if (qNom) {
+      const _ok = _iT.includes(qNom) || qNom.includes(_iT) || (() => {
+        const ws = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+        if (ws.length < 2) return false;
+        const iws = _iT.split(/\s+/);
+        return ws.every(qw => iws.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
+      })();
+      if (!_ok) return null;
+    }
+    if (qMar && _im && !_im.includes(qMar) && !qMar.includes(_im)) return null;
+    let s = 1;
+    if (qMar && _im && (_im.includes(qMar) || qMar.includes(_im))) s += 4;
+    if (qDesc) for (const w of qDesc.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w)))
+      if (_id.includes(w) || _iT.includes(w)) s += 2;
+    if (qCat && _ic && (_ic.includes(qCat) || qCat.includes(_ic))) s += 1;
+    if (qPlat && _ip && (_ip.includes(qPlat) || qPlat.includes(_ip))) s += 1;
+    return { item: i, score: s };
+  }).filter(Boolean).sort((a, b) => b.score - a.score);
+}
+
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
 const getPrixAchat = s => s.prix_achat ?? s.buy ?? s.purchase_price ?? 0;
 const getFrais     = s => s.frais ?? s.sellingFees ?? s.selling_fees ?? 0;
@@ -733,14 +768,10 @@ export async function executeVoiceTasks(tasks, context) {
               // Sans marque exiger ≥2 mots pour éviter les faux positifs sur noms génériques
               const _enoughWords = _marqueMove ? _nomW.length >= 1 : _nomW.length >= 2;
               if (_enoughWords) {
-                const _stockMatches = context.items.filter(i => {
-                  if (i.statut === "vendu" || i.statut === "sold") return false;
-                  const _im = norm(i.marque || "");
-                  // Si task ET item ont une marque → elles doivent correspondre
-                  if (_marqueMove && _im && !_im.includes(_marqueMove) && !_marqueMove.includes(_im)) return false;
-                  const _it = norm(i.title || "");
-                  return _nomW.every(w => _it.includes(w));
-                });
+                const _stockMatches = rankItems(
+                  context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold"),
+                  { nom: _addNomNorm, marque: _marqueMove, description: norm(task.data?.description || "") }
+                ).map(x => x.item);
                 if (_stockMatches.length > 0) {
                   const _allHere = _stockMatches.every(i => norm(i.emplacement || "") === norm(_empMove));
                   result = {
@@ -868,46 +899,11 @@ export async function executeVoiceTasks(tasks, context) {
               if (fromMap) {
                 matched = fromMap;
               } else if (qNom) {
-                const _scoreItem = (i) => {
-                  const _iT = norm(i.title || i.titre || i.nom || "");
-                  const _im = norm(i.marque || "");
-                  const _id = norm(i.description || "");
-                  const _ic = norm(i.categorie || i.type || "");
-
-                  // Nom : requis. Match substring ou mot-par-mot avec préfixe (tasse ↔ tasses)
-                  const _nomOk = (() => {
-                    if (_iT.includes(qNom) || qNom.includes(_iT)) return true;
-                    const _qW = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-                    if (_qW.length < 2) return false;
-                    const _iW = _iT.split(/\s+/);
-                    return _qW.every(qw => _iW.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
-                  })();
-                  if (!_nomOk) return -1;
-
-                  // Marque : si spécifiée ET item a une marque → doit correspondre, sinon élimination
-                  if (qMarque && _im && !_im.includes(qMarque) && !qMarque.includes(_im)) return -1;
-
-                  let score = 1;
-                  // Marque match → +4
-                  if (qMarque && _im && (_im.includes(qMarque) || qMarque.includes(_im))) score += 4;
-                  // Mots de la description (couleur, taille, état...) → +2 par mot trouvé dans item
-                  if (qDesc) {
-                    const _dW = qDesc.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-                    for (const w of _dW) {
-                      if (_id.includes(w) || _iT.includes(w)) score += 2;
-                    }
-                  }
-                  // Catégorie → +1
-                  if (qCat && _ic && (_ic.includes(qCat) || qCat.includes(_ic))) score += 1;
-                  return score;
-                };
-
-                const _ranked = context.items
-                  .filter(i => i.statut !== "vendu" && i.statut !== "sold")
-                  .map(i => ({ i, s: _scoreItem(i) }))
-                  .filter(x => x.s > 0)
-                  .sort((a, b) => b.s - a.s);
-                matched = _ranked[0]?.i || null;
+                const _ranked = rankItems(
+                  context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold"),
+                  { nom: qNom, marque: qMarque, description: qDesc, categorie: qCat, plateforme: norm(task.data.plateforme || "") }
+                );
+                matched = _ranked[0]?.item || null;
               }
             }
 
@@ -1162,15 +1158,18 @@ export async function executeVoiceTasks(tasks, context) {
             break;
           }
 
-          // Pas de matched_ids retournés par l'IA → essai fallback keyword
+          // Pas de matched_ids retournés par l'IA → essai fallback scoring
           if (!Array.isArray(matched_ids) || matched_ids.length === 0) {
-            const normQ = norm(article || "");
-            const words = normQ.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-            const fallbackItems = context.items.filter(i => {
-              if (i.statut === "vendu" || i.statut === "sold") return false;
-              const hay = [norm(i.title || ""), norm(i.marque || ""), norm(i.type || ""), norm(i.description || "")].join(" ");
-              return words.length > 0 && words.every(w => hay.includes(w));
-            });
+            const _mvNom  = (typeof _rawArt === "object" && _rawArt !== null) ? (_rawArt.nom  || article) : article;
+            const _mvMar  = (typeof _rawArt === "object" && _rawArt !== null) ? (_rawArt.marque || "") : "";
+            const _mvDesc = [
+              (typeof _rawArt === "object" && _rawArt !== null) ? (_rawArt.description || "") : "",
+              task.data.description || "",
+            ].filter(Boolean).join(" ");
+            const fallbackItems = rankItems(
+              context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold"),
+              { nom: _mvNom, marque: _mvMar, description: _mvDesc, categorie: task.data.categorie || "" }
+            ).map(x => x.item);
             const coloredFallback = colorFilterMove(fallbackItems);
             if (coloredFallback.length === 0) {
               if (emplacement) {
@@ -1265,23 +1264,13 @@ export async function executeVoiceTasks(tasks, context) {
           break;
         }
         case "inventory_location": {
-          const locNom = norm(task.data.nom || "");
-          const locMarque = norm(task.data.marque || "");
-          const locMatches = context.items.filter(item => {
-            const t = norm(item.title || "");
-            const m = norm(item.marque || "");
-            if (locNom && t.includes(locNom)) return true;
-            if (locMarque && m.includes(locMarque)) return true;
-            if (locNom) {
-              const words = locNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-              return words.length > 0 && words.every(w => t.includes(w));
-            }
-            return false;
-          });
-          // Color/description filter: prioritize items whose description matches voice color
           const COLORS_LOC = ["blanc","blanche","noir","noire","rouge","rose","vert","verte","bleu","bleue","gris","grise","jaune","violet","violette","beige","marron","orange","creme","argente","dore","white","black","red","pink","green","blue","gray","grey","yellow","purple","brown","cream","silver","gold"];
           const voiceLocQ = norm([task.data.nom, task.data.description].filter(Boolean).join(" "));
           const voiceLocColors = COLORS_LOC.filter(c => voiceLocQ.includes(c));
+          const locMatches = rankItems(
+            context.items,
+            { nom: task.data.nom || "", marque: task.data.marque || "", description: task.data.description || "", categorie: task.data.categorie || "" }
+          ).map(x => x.item);
           const coloredLocMatches = voiceLocColors.length > 0
             ? locMatches.filter(i => voiceLocColors.some(c => norm([i.nom || i.title || i.titre || "", i.description || ""].join(" ")).includes(c)))
             : locMatches;
