@@ -694,11 +694,6 @@ export async function executeVoiceTasks(tasks, context) {
   for (const task of tasks) {
     let result;
     try {
-      if (task.intent === "inventory_move" && !task.data.no_match && task.data.emplacement && (!Array.isArray(task.data.matched_ids) || !task.data.matched_ids.length)) {
-        const _r = task.data.article;
-        task.data = { ...task.data, nom: typeof _r === "object" && _r !== null ? [_r.nom, _r.marque, _r.description].filter(Boolean).join(" ") : String(_r || "") };
-        task.intent = "inventory_add";
-      }
       switch (task.intent) {
         case "inventory_add":
           if (task.requiresConfirmation) {
