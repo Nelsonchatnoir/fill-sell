@@ -700,6 +700,23 @@ export async function executeVoiceTasks(tasks, context) {
       }
       switch (task.intent) {
         case "inventory_add": {
+          // Si un inventory_move pour le même article est présent dans la même exécution,
+          // c'est un conflit no_match/INTERDIT de la Edge Function — laisser inventory_move gérer.
+          const _addNomNorm = norm(task.data?.nom || "");
+          if (_addNomNorm) {
+            const _hasCompanionMove = tasks.some(t => {
+              if (t === task || t.intent !== "inventory_move") return false;
+              const _ma = typeof t.data?.article === "object" && t.data.article !== null
+                ? [t.data.article.nom, t.data.article.marque, t.data.article.description].filter(Boolean).join(" ")
+                : String(t.data?.article || "");
+              const _mn = norm(_ma);
+              return _mn && (_mn.includes(_addNomNorm) || _addNomNorm.includes(_mn));
+            });
+            if (_hasCompanionMove) {
+              result = { intent: task.intent, taskData: task.data, status: "skipped", data: {}, message: "" };
+              break;
+            }
+          }
           const _ddk = norm(task.data?.nom || "");
           if (_ddk && executedResultsMap[_ddk]) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
