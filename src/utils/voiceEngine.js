@@ -861,19 +861,34 @@ export async function executeVoiceTasks(tasks, context) {
             if (!matched) {
               const qFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
               const qNom = norm(task.data.nom || "");
+              const qMarque = norm(task.data.marque || "");
               const fromMap = (qFull ? executedResultsMap[qFull] : null) || (qNom ? executedResultsMap[qNom] : null);
-              matched = fromMap || (qNom
-                ? context.items.find(i => {
+              if (fromMap) {
+                matched = fromMap;
+              } else if (qNom) {
+                const _titleMatch = (i) => {
+                  const _iT = norm(i.title || i.titre || i.nom || "");
+                  if (_iT.includes(qNom) || qNom.includes(_iT)) return true;
+                  // Correspondance mot-par-mot avec préfixe : "tasse" ↔ "tasses"
+                  const _qW = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+                  if (_qW.length < 2) return false;
+                  const _iW = _iT.split(/\s+/);
+                  return _qW.every(qw => _iW.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
+                };
+                // Si marque spécifiée → match obligatoire marque+nom pour éviter les faux positifs
+                // (ex: "T-shirt Nike" ne doit pas matcher "T-shirt Picture")
+                if (qMarque) {
+                  matched = context.items.find(i => {
                     if (i.statut === "vendu") return false;
-                    const _iT = norm(i.title || i.titre || i.nom || "");
-                    if (_iT.includes(qNom) || qNom.includes(_iT)) return true;
-                    // Correspondance mot-par-mot avec préfixe : "tasse" ↔ "tasses", "lot de tasses" ↔ "tasse à café"
-                    const _qW = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-                    if (_qW.length < 2) return false;
-                    const _iW = _iT.split(/\s+/);
-                    return _qW.every(qw => _iW.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
-                  })
-                : null);
+                    const _im = norm(i.marque || "");
+                    if (!_im || (!_im.includes(qMarque) && !qMarque.includes(_im))) return false;
+                    return _titleMatch(i);
+                  }) || null;
+                  // Pas de fallback nom-seul si marque spécifiée → drawer de confirmation si non trouvé
+                } else {
+                  matched = context.items.find(i => i.statut !== "vendu" && _titleMatch(i)) || null;
+                }
+              }
             }
 
             if (matched) {
