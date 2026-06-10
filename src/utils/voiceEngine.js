@@ -863,12 +863,16 @@ export async function executeVoiceTasks(tasks, context) {
               const qNom = norm(task.data.nom || "");
               const fromMap = (qFull ? executedResultsMap[qFull] : null) || (qNom ? executedResultsMap[qNom] : null);
               matched = fromMap || (qNom
-                ? context.items.find(i =>
-                    i.statut !== "vendu" && (
-                      norm(i.title || i.titre || i.nom || "").includes(qNom) ||
-                      qNom.includes(norm(i.title || i.titre || i.nom || ""))
-                    )
-                  )
+                ? context.items.find(i => {
+                    if (i.statut === "vendu") return false;
+                    const _iT = norm(i.title || i.titre || i.nom || "");
+                    if (_iT.includes(qNom) || qNom.includes(_iT)) return true;
+                    // Correspondance mot-par-mot avec préfixe : "tasse" ↔ "tasses", "lot de tasses" ↔ "tasse à café"
+                    const _qW = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+                    if (_qW.length < 2) return false;
+                    const _iW = _iT.split(/\s+/);
+                    return _qW.every(qw => _iW.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
+                  })
                 : null);
             }
 
