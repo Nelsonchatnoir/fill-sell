@@ -715,6 +715,11 @@ export async function executeVoiceTasks(tasks, context) {
             };
           } else {
             console.log("[inventory_add] quantite reçu:", task.data.quantite);
+            if (!task.data.emplacement) {
+              const _nomKey = norm(task.data.nom || "");
+              const _mv = tasks.find(t => t.intent === "inventory_move" && t.data?.emplacement && _nomKey && norm(String(t.data?.article || "")).includes(_nomKey));
+              if (_mv) task.data = { ...task.data, emplacement: _mv.data.emplacement };
+            }
             result = await handleAdd(task, context);
             if (result.status === "success") {
               const _keyFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
