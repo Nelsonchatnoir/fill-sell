@@ -856,38 +856,58 @@ export async function executeVoiceTasks(tasks, context) {
               }
             }
 
-            // Fallback : keyword matching si l'IA n'a pas fourni de matched_id
-            // (rétrocompatibilité pour le flux buy+sell simultané via executedResultsMap)
+            // Fallback : scoring multi-champs si l'IA n'a pas fourni de matched_id.
+            // Utilise tous les signaux disponibles : nom, marque, description, catégorie.
             if (!matched) {
               const qFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
-              const qNom = norm(task.data.nom || "");
+              const qNom  = norm(task.data.nom || "");
               const qMarque = norm(task.data.marque || "");
+              const qDesc = norm(task.data.description || "");
+              const qCat  = norm(task.data.categorie || "");
               const fromMap = (qFull ? executedResultsMap[qFull] : null) || (qNom ? executedResultsMap[qNom] : null);
               if (fromMap) {
                 matched = fromMap;
               } else if (qNom) {
-                const _titleMatch = (i) => {
+                const _scoreItem = (i) => {
                   const _iT = norm(i.title || i.titre || i.nom || "");
-                  if (_iT.includes(qNom) || qNom.includes(_iT)) return true;
-                  // Correspondance mot-par-mot avec préfixe : "tasse" ↔ "tasses"
-                  const _qW = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
-                  if (_qW.length < 2) return false;
-                  const _iW = _iT.split(/\s+/);
-                  return _qW.every(qw => _iW.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
+                  const _im = norm(i.marque || "");
+                  const _id = norm(i.description || "");
+                  const _ic = norm(i.categorie || i.type || "");
+
+                  // Nom : requis. Match substring ou mot-par-mot avec préfixe (tasse ↔ tasses)
+                  const _nomOk = (() => {
+                    if (_iT.includes(qNom) || qNom.includes(_iT)) return true;
+                    const _qW = qNom.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+                    if (_qW.length < 2) return false;
+                    const _iW = _iT.split(/\s+/);
+                    return _qW.every(qw => _iW.some(tw => tw === qw || tw.startsWith(qw) || qw.startsWith(tw)));
+                  })();
+                  if (!_nomOk) return -1;
+
+                  // Marque : si spécifiée ET item a une marque → doit correspondre, sinon élimination
+                  if (qMarque && _im && !_im.includes(qMarque) && !qMarque.includes(_im)) return -1;
+
+                  let score = 1;
+                  // Marque match → +4
+                  if (qMarque && _im && (_im.includes(qMarque) || qMarque.includes(_im))) score += 4;
+                  // Mots de la description (couleur, taille, état...) → +2 par mot trouvé dans item
+                  if (qDesc) {
+                    const _dW = qDesc.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+                    for (const w of _dW) {
+                      if (_id.includes(w) || _iT.includes(w)) score += 2;
+                    }
+                  }
+                  // Catégorie → +1
+                  if (qCat && _ic && (_ic.includes(qCat) || qCat.includes(_ic))) score += 1;
+                  return score;
                 };
-                // Si marque spécifiée → match obligatoire marque+nom pour éviter les faux positifs
-                // (ex: "T-shirt Nike" ne doit pas matcher "T-shirt Picture")
-                if (qMarque) {
-                  matched = context.items.find(i => {
-                    if (i.statut === "vendu") return false;
-                    const _im = norm(i.marque || "");
-                    if (!_im || (!_im.includes(qMarque) && !qMarque.includes(_im))) return false;
-                    return _titleMatch(i);
-                  }) || null;
-                  // Pas de fallback nom-seul si marque spécifiée → drawer de confirmation si non trouvé
-                } else {
-                  matched = context.items.find(i => i.statut !== "vendu" && _titleMatch(i)) || null;
-                }
+
+                const _ranked = context.items
+                  .filter(i => i.statut !== "vendu" && i.statut !== "sold")
+                  .map(i => ({ i, s: _scoreItem(i) }))
+                  .filter(x => x.s > 0)
+                  .sort((a, b) => b.s - a.s);
+                matched = _ranked[0]?.i || null;
               }
             }
 
