@@ -1524,7 +1524,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
           const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null}));
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
-          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
+          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){const msg=iErrJson?.reason==='monthly_limit'?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.'):(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');setVoiceToast(`🔒 ${msg}`);setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
           if(iErr)throw new Error(iErr);
@@ -3585,7 +3585,7 @@ export default function App({ loginOnly = false }){
       });
       if(!res.ok){
         const errJson=await res.json().catch(()=>({}));
-        if(errJson?.error==='ai_unavailable'||res.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVoiceStep("");setVoiceLoading(false);return;}
+        if(errJson?.error==='ai_unavailable'||res.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
         throw new Error("Parse failed");
       }
       const result=await res.json();
