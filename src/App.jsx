@@ -2679,6 +2679,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               </div>
                             )}
                             {!_multiMove&&<div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{itemName}</div>}
+                            {item.description&&<div style={{fontSize:11,color:"#6B7280",marginBottom:4,fontStyle:"italic"}}>{item.description}</div>}
                             <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                               <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
                               <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>

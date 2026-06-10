@@ -12,7 +12,22 @@ const STOP_WORDS = new Set([
 
 const parseNum = v => parseFloat(String(v ?? 0).replace(",", ".")) || 0;
 
-// Scoring multi-champs partagé : nom (requis), marque (+4), description (+2/mot), catégorie (+1), plateforme (+1).
+function _lev(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length; if (!b.length) return a.length;
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = i;
+    for (let j = 1; j <= b.length; j++) {
+      const v = a[i-1] === b[j-1] ? row[j-1] : 1 + Math.min(row[j-1], row[j], prev);
+      row[j-1] = prev; prev = v;
+    }
+    row[b.length] = prev;
+  }
+  return row[b.length];
+}
+
+// Scoring multi-champs partagé : nom (requis), marque (+4 exact/+2 fuzzy), description (+2/mot), catégorie (+1), plateforme (+1).
 // Retourne les candidats triés par score desc, filtrés à score > 0.
 function rankItems(candidates, { nom = "", marque = "", description = "", categorie = "", plateforme = "" } = {}) {
   const qNom  = norm(nom);
@@ -36,9 +51,16 @@ function rankItems(candidates, { nom = "", marque = "", description = "", catego
       })();
       if (!_ok) return null;
     }
-    if (qMar && _im && !_im.includes(qMar) && !qMar.includes(_im)) return null;
     let s = 1;
-    if (qMar && _im && (_im.includes(qMar) || qMar.includes(_im))) s += 4;
+    if (qMar && _im) {
+      if (_im.includes(qMar) || qMar.includes(_im)) { s += 4; }
+      else {
+        // Fuzzy : légère différence d'orthographe (san marina ↔ san marino, etc.)
+        const _d = _lev(qMar, _im);
+        if (Math.max(qMar.length, _im.length) >= 6 && _d <= 2) { s += 2; }
+        else { return null; } // conflit de marque → élimination
+      }
+    }
     if (qDesc) for (const w of qDesc.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w)))
       if (_id.includes(w) || _iT.includes(w)) s += 2;
     if (qCat && _ic && (_ic.includes(qCat) || qCat.includes(_ic))) s += 1;
