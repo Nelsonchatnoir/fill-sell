@@ -3857,9 +3857,7 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleEditSave(){
-    console.log('[handleEditSave] start — editItem:', editItem, 'user:', user);
-    if(!editItem) { console.warn('[handleEditSave] no editItem'); return; }
-    try {
+    if(!editItem)return;
     const qty=Math.max(1,parseInt(editItem.quantite)||1);
     const rawB=parseFloat(editItem.buy)||0;
     const b=(editItem.priceMode==="total"&&qty>1)?rawB/qty:rawB;
@@ -3871,18 +3869,24 @@ export default function App({ loginOnly = false }){
     const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
     const marqueNorm=editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null;
     if(editItem._isNew){
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user?.id,titre:editItem.title,marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
-      console.log('[handleEditSave] _isNew row:', row);
+      const{data:{session:sess}}=await supabase.auth.getSession();
+      const uid=sess?.user?.id??user?.id;
+      if(!uid){
+        setToast({visible:true,message:lang==='fr'?'⚠️ Session expirée, rechargez la page':'⚠️ Session expired, please reload'});
+        setTimeout(()=>setToast({visible:false,message:''}),4000);
+        return;
+      }
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:editItem.title,marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
-      console.log('[handleEditSave] insert result — error:', error, 'data:', d);
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
         setEditItem(null);
         setLensAdded(true);
         setToast({visible:true,message:lang==='fr'?'✓ Article ajouté au stock':'✓ Item added to stock'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
-      } else {
-        console.error('[handleEditSave] insert FAILED:', error.message, error.details, error.hint);
+      }else{
+        setToast({visible:true,message:`⚠️ ${error.message}`});
+        setTimeout(()=>setToast({visible:false,message:''}),5000);
       }
       return;
     }
@@ -3902,6 +3906,9 @@ export default function App({ loginOnly = false }){
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
+    }else{
+      setToast({visible:true,message:`⚠️ ${error.message}`});
+      setTimeout(()=>setToast({visible:false,message:''}),5000);
     }
   }
 
