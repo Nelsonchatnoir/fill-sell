@@ -3876,7 +3876,7 @@ export default function App({ loginOnly = false }){
         setTimeout(()=>setToast({visible:false,message:''}),4000);
         return;
       }
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:editItem.title,marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
