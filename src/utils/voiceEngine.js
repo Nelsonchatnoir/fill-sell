@@ -775,7 +775,7 @@ export async function executeVoiceTasks(tasks, context) {
               break;
             }
           }
-          const _ddk = norm([task.data?.nom, task.data?.marque].filter(Boolean).join(" ") || "");
+          const _ddk = norm([task.data?.nom, task.data?.marque, task.data?.description].filter(Boolean).join(" ") || "");
           if (_ddk && executedResultsMap[_ddk]) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
             break;
@@ -1211,7 +1211,7 @@ export async function executeVoiceTasks(tasks, context) {
                 } catch {}
                 task.data = { ...(_addData || { nom: article }), emplacement };
                 task.intent = "inventory_add";
-                const _ddk3 = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
+                const _ddk3 = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
                 if (_ddk3 && executedResultsMap[_ddk3]) {
                   result = { intent: "inventory_add", taskData: task.data, status: "success", data: executedResultsMap[_ddk3], message: context.lang === "en" ? "Item added" : "Article ajouté" };
                   break;
