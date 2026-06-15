@@ -775,7 +775,7 @@ export async function executeVoiceTasks(tasks, context) {
               break;
             }
           }
-          const _ddk = norm(task.data?.nom || "");
+          const _ddk = norm([task.data?.nom, task.data?.marque].filter(Boolean).join(" ") || "");
           if (_ddk && executedResultsMap[_ddk]) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
             break;
@@ -826,8 +826,8 @@ export async function executeVoiceTasks(tasks, context) {
             }
             result = await handleAdd(task, context);
             if (result.status === "success") {
-              const _keyFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
-              const _keyNom = norm(task.data.nom || "");
+              const _keyFull = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
+              const _keyNom = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
               if (_keyFull) executedResultsMap[_keyFull] = result.data || task.data;
               if (_keyNom && !executedResultsMap[_keyNom]) executedResultsMap[_keyNom] = result.data || task.data;
               hadMutation = true;
@@ -913,8 +913,8 @@ export async function executeVoiceTasks(tasks, context) {
             // Fallback : scoring multi-champs si l'IA n'a pas fourni de matched_id.
             // Utilise tous les signaux disponibles : nom, marque, description, catégorie.
             if (!matched) {
-              const qFull = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
-              const qNom  = norm(task.data.nom || "");
+              const qFull = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
+              const qNom  = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
               const qMarque = norm(task.data.marque || "");
               const qDesc = norm(task.data.description || "");
               const qCat  = norm(task.data.categorie || "");
@@ -1211,7 +1211,7 @@ export async function executeVoiceTasks(tasks, context) {
                 } catch {}
                 task.data = { ...(_addData || { nom: article }), emplacement };
                 task.intent = "inventory_add";
-                const _ddk3 = norm(task.data.nom || "");
+                const _ddk3 = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
                 if (_ddk3 && executedResultsMap[_ddk3]) {
                   result = { intent: "inventory_add", taskData: task.data, status: "success", data: executedResultsMap[_ddk3], message: context.lang === "en" ? "Item added" : "Article ajouté" };
                   break;
@@ -1221,8 +1221,8 @@ export async function executeVoiceTasks(tasks, context) {
                 } else {
                   result = await handleAdd(task, context);
                   if (result.status === "success") {
-                    const _kf = norm([task.data.nom, task.data.description].filter(Boolean).join(" ") || "");
-                    const _kn = norm(task.data.nom || "");
+                    const _kf = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
+                    const _kn = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
                     if (_kf) executedResultsMap[_kf] = result.data || task.data;
                     if (_kn && !executedResultsMap[_kn]) executedResultsMap[_kn] = result.data || task.data;
                     hadMutation = true;
