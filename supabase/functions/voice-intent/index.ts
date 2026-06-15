@@ -526,6 +526,12 @@ Your role is to understand the REAL INTENTION, not to parse the text literally.
    ✅ "I have an iPhone 13 256GB, I paid €120 for it" → inventory_add
    ✅ "I have a Zara jacket I still own" + price → inventory_add (current possession of a purchased item)
    RULE: "I still have it", "I still own it", "I've still got it" are NOT sale signals or exclusion signals — ignore these phrases and focus on the main action (buy/sell/question).
+   CRITICAL RULE — "I'm selling" + "I paid" = inventory_add (NOT inventory_sell):
+   "I paid X€" ALWAYS indicates a purchase price (prix_achat). Only "I sold" (past tense) triggers inventory_sell.
+   "I'm selling" (present) + "I paid" = the user is listing an item they bought → inventory_add with prix_achat.
+   ✅ "I'm selling a white Patagonia T-shirt I paid €8 for" → [inventory_add {nom:"T-shirt",marque:"Patagonia",description:"white",prix_achat:8}]
+   ✅ "I'm selling my Nike jacket I paid €15 for" → [inventory_add {nom:"Jacket",marque:"Nike",prix_achat:15}]
+   ❌ "I'm selling a white Patagonia T-shirt I paid €8 for" → inventory_sell (WRONG — "I paid" = purchase, not sale)
 
 ABSOLUTE PRIORITY RULE (read before anything else):
 If the utterance contains any of these resale price question triggers:
