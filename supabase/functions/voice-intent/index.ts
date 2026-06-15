@@ -1168,14 +1168,6 @@ serve(async (req) => {
         "medichuit": "Medik8", "medikhuit": "Medik8",
         "medicale": "Medik8", "medicaid": "Medik8",
         "medikate": "Medik8", "medicate": "Medik8",
-        // Desigual — variantes STT
-        "desigual": "Desigual", "iguales": "Desigual",
-        "desiguales": "Desigual", "desgual": "Desigual",
-        "dessigual": "Desigual",
-        // Morgan
-        "morgane": "Morgan",
-        // Guess
-        "guess": "Guess", "gaisse": "Guess",
       };
 
       const _norm = _normalize(rawBrand);
@@ -1310,8 +1302,8 @@ serve(async (req) => {
     }
     const _uniqueMarques = [...new Set(_allMarques.filter(Boolean))];
     if (_uniqueMarques.length > 0) {
-      for (const _rawMarque of _uniqueMarques) {
-        try {
+      try {
+        for (const _rawMarque of _uniqueMarques) {
           console.log("[VALIDATE] rawBrand input:", _rawMarque);
           const _corrected = await _validateBrand(_rawMarque);
           console.log("[VALIDATE] corrected output:", _corrected);
@@ -1324,9 +1316,9 @@ serve(async (req) => {
               }
             }
           }
-        } catch {
-          // brand validation non-fatal — keep raw brand for this task
         }
+      } catch {
+        // brand validation non-fatal — keep raw brand
       }
     }
 
