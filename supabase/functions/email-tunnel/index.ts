@@ -433,6 +433,27 @@ serve(async (req) => {
     });
   }
 
+  // ── Relance mode: send custom one-off emails using standard wrapper ────────
+  const relanceEmails: Array<{to: string; subject: string; body_text: string}> = body?.relance_emails ?? [];
+  if (relanceEmails.length > 0) {
+    for (const item of relanceEmails) {
+      const html = emailWrapper(`
+        <p style="color:#6B7280;font-size:15px;line-height:1.75;margin:0 0 28px;
+          font-family:sans-serif;white-space:pre-line;">${item.body_text.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
+        <a href="https://fillsell.app"
+           style="display:block;text-align:center;background:#2DD4BF;
+             color:#fff;font-weight:800;font-size:15px;padding:14px 24px;
+             border-radius:12px;text-decoration:none;font-family:sans-serif;">
+          Ouvrir FillSell
+        </a>`, "fr");
+      const ok = await sendEmail(item.to, item.subject, html);
+      if (ok) sent.push(`relance:${item.to}`); else errors.push(`relance:${item.to}`);
+    }
+    return new Response(JSON.stringify({ relance: true, sent, errors }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   async function logEmail(userId: string, emailType: string): Promise<void> {
     await supabase.from("email_logs").insert({ user_id: userId, email_type: emailType });
   }
