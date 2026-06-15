@@ -2386,6 +2386,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         {dTs&&dCat&&dCat!=="Autre"&&<span style={{background:dTs.bg,color:dTs.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${dTs.border}`}}>{dTs.emoji} {typeLabel(dCat,lang)}</span>}
                         {daysInStock!==null&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:600}}>{daysInStock}j en stock</span>}
                       </div>
+                      {found?.description&&<div style={{fontSize:11,color:"#6B7280",marginTop:5,fontStyle:"italic"}}>{found.description}</div>}
                     </div>
                     {/* Prix achat → vente */}
                     <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
