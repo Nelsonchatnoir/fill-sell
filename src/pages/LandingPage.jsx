@@ -1225,15 +1225,14 @@ export default function LandingPage() {
               </button>
             </div>
             <div className="price-card premium reveal delay-1">
-              {slotsRemaining !== null && slotsRemaining > 0
-                ? <div className="price-popular" style={{ background: 'linear-gradient(90deg,#E53E3E,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>🔥 {lang === 'fr' ? `Il reste ${slotsRemaining} place${slotsRemaining > 1 ? 's' : ''} Founder` : `Only ${slotsRemaining} Founder spot${slotsRemaining > 1 ? 's' : ''} left`}</div>
-                : <div className="price-popular" style={{ background: 'linear-gradient(90deg,#0D9488,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>{t.premiumBadge}</div>
-              }
+              <div className="price-popular" style={{ background: slotsRemaining !== null && slotsRemaining > 0 ? 'linear-gradient(90deg,#E53E3E,#F97316)' : 'linear-gradient(90deg,#0D9488,#F97316)', color: '#fff', fontWeight: 700, textAlign: 'center' }}>
+                {slotsRemaining !== null && slotsRemaining > 0 ? `🔥 ${lang === 'fr' ? 'Offre Fondateur' : 'Founder Offer'}` : t.premiumBadge}
+              </div>
               <div className="price-tier">{t.premiumTier}</div>
               <h3 className="price-name">{t.premiumName}</h3>
               <div className="price-amount"><span className="num">{slotsRemaining !== null && slotsRemaining > 0 ? '9,99 €' : '12,99 €'}</span><span className="per">{t.premiumPer}</span></div>
               <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
-              <div className="price-tagline">{slotsRemaining !== null && slotsRemaining > 0 ? (lang === 'fr' ? 'Prix Founder · Sans engagement.' : 'Founder price · No commitment.') : t.premiumTagline}</div>
+              <div className="price-tagline">{slotsRemaining !== null && slotsRemaining > 0 ? (lang === 'fr' ? 'Prix réservé aux premiers utilisateurs' : 'Price reserved for early users') : t.premiumTagline}</div>
               {slotsRemaining !== null && slotsRemaining > 0 && (
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 8, padding: '6px 14px', textAlign: 'center', marginBottom: 6 }}>
                   {lang === 'fr' ? 'Ensuite 12,99 €/mois pour les nouveaux abonnés' : 'Then €12.99/month for new subscribers'}

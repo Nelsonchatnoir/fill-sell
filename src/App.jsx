@@ -514,7 +514,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   return(
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       {slotsRemaining!==null&&slotsRemaining>0&&(
-        <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)"}}>🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie — Ensuite 12,99€`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever — Then €12.99`}</div>
+        <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
       )}
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
@@ -530,7 +530,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
   return (
     <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       {slotsRemaining!==null&&slotsRemaining>0&&(
-        <div style={{fontSize:11,fontWeight:800,background:"rgba(229,62,62,0.08)",color:"#C53030",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(229,62,62,0.25)"}}>🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie`:`${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever`}</div>
+        <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
       )}
       <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
         🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
@@ -1258,11 +1258,6 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
         </div>
         {/* Cards */}
         <div style={{padding:'16px 16px 0'}}>
-          {isFounder&&(
-            <div style={{background:'rgba(229,62,62,0.06)',border:'1px solid rgba(229,62,62,0.2)',borderRadius:10,padding:'8px 12px',textAlign:'center',marginBottom:12,fontSize:12,fontWeight:800,color:'#C53030'}}>
-              🔥 {lang==='fr'?`Il reste ${slotsRemaining} place${slotsRemaining>1?'s':''} Founder à 9,99€/mois à vie`:`Only ${slotsRemaining} Founder spot${slotsRemaining>1?'s':''} left at €9.99/month forever`}
-            </div>
-          )}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
             {/* Free */}
             <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.1)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0}}>
@@ -1302,6 +1297,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
                 <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'12,99 €'}</span>
                 <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
               </div>
+              {isFounder&&<div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.9)',marginBottom:6}}>{lang==='en'?'Price reserved for early users':'Prix réservé aux premiers utilisateurs'}</div>}
               <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:800,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
                 🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits'}
               </div>
@@ -2303,7 +2299,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   const totalIfUnit=taskData._totalIfUnit??Math.round(pm*qva*100)/100;
                   const artLabel=(taskData.nom||"article")+(taskData.marque?" "+taskData.marque:"");
                   const _ambById=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu"):null;
-                  const foundAmb=_ambById||(()=>{const q=(taskData?.nom||"").toLowerCase().trim();return q?items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();return t.includes(q)||q.includes(t);}):null;})();
+                  const foundAmb=taskData?.no_match?null:(_ambById||(()=>{const q=(taskData?.nom||"").toLowerCase().trim();const mb=(taskData?.marque||"").toLowerCase().trim();return q?items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();const im=(i.marque||"").toLowerCase().trim();if(mb&&im&&im!==mb)return false;return t.includes(q)||q.includes(t);}):null;})());
                   return(
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
