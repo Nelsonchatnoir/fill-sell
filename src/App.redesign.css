@@ -735,7 +735,7 @@ body.bg-dots {
   background: rgba(15, 23, 42, 0.03);
   border-radius: 12px;
   font-family: 'Nunito', sans-serif;
-  height: 152px;
+  height: 86px;
   overflow: hidden;
 }
 .empty-hero .voice-ticker .vt-quote {
@@ -748,7 +748,7 @@ body.bg-dots {
   color: #0D0D0D; letter-spacing: -0.005em;
   font-style: italic; text-align: left;
   white-space: normal; overflow-wrap: break-word;
-  height: 128px;
+  height: 62px;
   overflow: hidden;
   line-height: 1.6;
 }
@@ -1332,7 +1332,7 @@ body.bg-dots {
   background: rgba(15, 23, 42, 0.03);
   border-radius: 12px;
   font-family: 'Nunito', sans-serif;
-  height: 130px;
+  height: 86px;
   overflow: hidden;
 }
 
@@ -1354,7 +1354,7 @@ body.bg-dots {
   white-space: normal;
   overflow-wrap: break-word;
   line-height: 1.6;
-  height: 106px;
+  height: 62px;
   overflow: hidden;
 }
 
