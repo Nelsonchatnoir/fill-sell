@@ -62,6 +62,12 @@ Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéra
    ✅ "J'ai un T-shirt, combien ça vaut ?" → price_advice (question de prix détectée)
    ✅ "J'ai un iPhone 13 256Go, je l'ai payé 120€" → inventory_add
    ✅ "J'ai une veste Zara que je possède encore" + prix → inventory_add (possession actuelle d'un article acheté)
+   RÈGLE CRITIQUE — "je vend" + "j'ai payé" = inventory_add (PAS inventory_sell) :
+   "j'ai payé X€" indique TOUJOURS un prix d'achat (prix_achat). Seul "j'ai vendu" (passé composé du verbe vendre) déclenche inventory_sell.
+   "je vend" au présent + "j'ai payé" = l'utilisateur met un article en vente après l'avoir acheté → inventory_add avec prix_achat.
+   ✅ "je vend un t-shirt patagonia blanc que j'ai payé 8€" → [inventory_add {nom:"T-shirt",marque:"Patagonia",description:"blanc",prix_achat:8}]
+   ✅ "je vend ma veste Nike que j'ai payé 15€" → [inventory_add {nom:"Veste",marque:"Nike",prix_achat:15}]
+   ❌ "je vend un t-shirt patagonia blanc que j'ai payé 8€" → inventory_sell (FAUX — "j'ai payé" = achat, pas vente)
    RÈGLE : "je possède encore", "je l'ai encore", "j'ai toujours" ne sont PAS des signaux de vente ni d'exclusion — ignorer ces formulations et se concentrer sur l'action principale (achat/vente/question).
 
 RÈGLE DE PRIORITÉ ABSOLUE (lire avant tout) :
@@ -986,7 +992,7 @@ serve(async (req) => {
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
   const CORS = {
     "Access-Control-Allow-Origin": corsOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-normalize",
   };
 
   if (req.method === "OPTIONS") {
@@ -1011,23 +1017,28 @@ serve(async (req) => {
   }
 
   // ── Intent quota — reads is_premium from DB (server-side, not from client) ──
+  // Skip quota for internal normalize calls (e.g. inventory_move fallback re-parse)
+  const isInternalNormalize = req.headers.get("x-internal-normalize") === "true";
   const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
-  const isPremiumUser = profileData?.is_premium === true;
-  const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
-    p_user_id: user.id,
-    p_feature: "voice_intent",
-    p_is_premium: isPremiumUser,
-    p_daily_limit_free: 20,
-    p_monthly_limit_free: 100,
-    p_daily_limit_premium: 20,
-  });
-  const quotaLogId: string | null = (quotaData as any)?.log_id ?? null;
-  if (quotaData?.allowed === false) {
-    return new Response(
-      JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
-      { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
-    );
+  let quotaLogId: string | null = null;
+  if (!isInternalNormalize) {
+    const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
+    const isPremiumUser = profileData?.is_premium === true;
+    const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
+      p_user_id: user.id,
+      p_feature: "voice_intent",
+      p_is_premium: isPremiumUser,
+      p_daily_limit_free: 20,
+      p_monthly_limit_free: 100,
+      p_daily_limit_premium: 20,
+    });
+    quotaLogId = (quotaData as any)?.log_id ?? null;
+    if (quotaData?.allowed === false) {
+      return new Response(
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
   }
 
   try {

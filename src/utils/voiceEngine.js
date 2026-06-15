@@ -1205,7 +1205,7 @@ export async function executeVoiceTasks(tasks, context) {
                 try {
                   const _r = await fetch(`${supabaseUrl}/functions/v1/voice-intent`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey },
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${context.token}`, "apikey": supabaseAnonKey, "x-internal-normalize": "true" },
                     body: JSON.stringify({ text: `ajoute ${article}`, lang: context.lang, currency: context.currency || "EUR", items: [] }),
                   });
                   if (_r.ok) {
