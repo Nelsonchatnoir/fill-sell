@@ -749,6 +749,7 @@ export async function executeVoiceTasks(tasks, context) {
   let hadMutation = false;
 
   for (const task of tasks) {
+    if (!task.data) task.data = {};
     let result;
     try {
       if (task.intent === "inventory_add" && !task.data?.nom) {
