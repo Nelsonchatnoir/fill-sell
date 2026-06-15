@@ -106,17 +106,17 @@ function welcomeHtml(lang: string): string {
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">🗣️ Ajouter un article</p>
       <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "J'ai acheté un jean Levi's 501 taille 32 pour 8€, je veux le vendre 35€"
+        "J'ai un jean Levi's taille M, acheté 8€"
       </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Article créé dans ton stock avec marges calculées automatiquement</p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Marque, taille et prix d'achat détectés automatiquement</p>
     </div>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Ajouter un lot</p>
       <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "J'ai eu 5 pulls pour 20€ au vide-grenier"
+        "10 robes Zara pour 100€ le lot"
       </p>
       <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Lot de 3 paires de sneakers pour 30€ sur Vinted"
+        "5 Nike, 10€ chacune"
       </p>
       <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
         "Pour 30€ j'ai eu une robe Zara, un short Oakley rouge et des Adidas vertes taille 44"
@@ -184,17 +184,17 @@ function welcomeHtml(lang: string): string {
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">🗣️ Add an item</p>
       <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "I bought a Levi's 501 jeans size 32 for €8, I want to sell it for €35"
+        "I have a Levi's jeans size M, bought for €8"
       </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Item created in your stock with margins calculated automatically</p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Brand, size and purchase price detected automatically</p>
     </div>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Add a batch</p>
       <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "I got 5 jumpers for €20 at a car boot sale"
+        "10 Zara dresses for €100 the lot"
       </p>
       <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Lot of 3 pairs of sneakers for €30 on Vinted"
+        "5 Nikes, €10 each"
       </p>
       <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
         "For €30 I got a Zara dress, a red Oakley short and green Adidas size 44"
