@@ -1375,6 +1375,13 @@ serve(async (req) => {
       }
     }
 
+    // Guard: supprimer les inventory_add sans nom extractible — évite les ajouts "Article" côté client
+    (parsed as any).tasks = (parsed.tasks as any[]).filter((_t: any) => {
+      if (_t.intent !== "inventory_add") return true;
+      const _nom = _t.data?.nom || _t.data?.titre || _t.data?.article;
+      return Boolean(_nom);
+    });
+
     // Normalise inventory_move article: toujours une string, jamais un objet
     for (const task of parsed.tasks as any[]) {
       if (task.intent === "inventory_move" && task.data?.article != null) {
