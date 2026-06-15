@@ -756,6 +756,11 @@ export async function executeVoiceTasks(tasks, context) {
         const _r = task.data?.article ?? task.data?.titre;
         if (_r != null) task.data = { ...task.data, nom: typeof _r === "object" && _r !== null ? [_r.nom, _r.marque, _r.description].filter(Boolean).join(" ") : String(_r) };
       }
+      if (task.intent === "inventory_add" && !task.data?.nom) {
+        result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Item name missing — please try again" : "Nom de l'article manquant — réessaie" };
+        results.push(result);
+        continue;
+      }
       switch (task.intent) {
         case "inventory_add": {
           // Si un inventory_move pour le même article est présent dans la même exécution,
