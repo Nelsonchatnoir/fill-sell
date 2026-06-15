@@ -1447,7 +1447,8 @@ serve(async (req) => {
               // Sibling check: si d'autres articles ont le même nom+marque et qu'aucune description
               // n'a été fournie par l'utilisateur, on ne peut pas distinguer → candidates
               const _matchedItem = (_stock as any[]).find((s: any) => String(s.id) === String(matchResult.matched_id));
-              if (_matchedItem && !_extractedDesc) {
+              // Sibling check only when marque is known — prevents matching all unbranded items together
+              if (_matchedItem && !_extractedDesc && _matchedItem.marque) {
                 const _siblings = (_stock as any[]).filter((s: any) =>
                   String(s.id) !== String(matchResult.matched_id) &&
                   (s.nom || "").toLowerCase() === (_matchedItem.nom || "").toLowerCase() &&
