@@ -1444,12 +1444,33 @@ serve(async (req) => {
             const matchResult = JSON.parse(matchRaw);
 
             if (matchResult.matched_id) {
-              // Match haute confiance : l'article est identifié avec certitude
-              // Supprimer no_match éventuellement posé par le premier LLM (règle multi-articles)
-              // pour éviter que le client court-circuite matched_id avec la garde no_match.
-              delete sellTask.data.no_match;
-              sellTask.data.matched_id = matchResult.matched_id;
-              sellTask.data.match_confidence = matchResult.confidence ?? 1;
+              // Sibling check: si d'autres articles ont le même nom+marque et qu'aucune description
+              // n'a été fournie par l'utilisateur, on ne peut pas distinguer → candidates
+              const _matchedItem = (_stock as any[]).find((s: any) => String(s.id) === String(matchResult.matched_id));
+              if (_matchedItem && !_extractedDesc) {
+                const _siblings = (_stock as any[]).filter((s: any) =>
+                  String(s.id) !== String(matchResult.matched_id) &&
+                  (s.nom || "").toLowerCase() === (_matchedItem.nom || "").toLowerCase() &&
+                  (s.marque || "").toLowerCase() === (_matchedItem.marque || "").toLowerCase()
+                );
+                if (_siblings.length > 0) {
+                  sellTask.data.candidates = [_matchedItem, ..._siblings].map((s: any) => ({
+                    id: s.id,
+                    nom: s.nom,
+                    marque: s.marque,
+                    confidence: matchResult.confidence ?? 1,
+                  }));
+                } else {
+                  delete sellTask.data.no_match;
+                  sellTask.data.matched_id = matchResult.matched_id;
+                  sellTask.data.match_confidence = matchResult.confidence ?? 1;
+                }
+              } else {
+                // Description fournie ou item introuvable dans le stock local → faire confiance au LLM
+                delete sellTask.data.no_match;
+                sellTask.data.matched_id = matchResult.matched_id;
+                sellTask.data.match_confidence = matchResult.confidence ?? 1;
+              }
             } else if (matchResult.conflict && Array.isArray(matchResult.candidates) && matchResult.candidates.length > 0) {
               // Conflit de type : marque correcte mais type d'article différent
               // (ex : "pince plate" vs "pinces coupantes" — même marque, outil différent)
