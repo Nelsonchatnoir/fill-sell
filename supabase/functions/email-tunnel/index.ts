@@ -104,11 +104,45 @@ function welcomeHtml(lang: string): string {
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Exemples vocaux</p>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">🗣️ Ajouter un article</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "J'ai acheté un jean Levi's 501 taille 32 pour 8€, je veux le vendre 35€"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Article créé dans ton stock avec marges calculées automatiquement</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Ajouter un lot</p>
+      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "J'ai eu 5 pulls pour 20€ au vide-grenier"
+      </p>
+      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Lot de 3 paires de sneakers pour 30€ sur Vinted"
+      </p>
       <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
         "Pour 30€ j'ai eu une robe Zara, un short Oakley rouge et des Adidas vertes taille 44"
       </p>
       <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Chaque article créé séparément, prix réparti automatiquement</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📍 Ranger un article</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Le pull Zara rouge est dans le carton bleu sous le lit"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Emplacement enregistré dans ton stock</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💸 Enregistrer une vente</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "J'ai vendu les Nike Air Max 90 taille 43 pour 65€ sur Vinted"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Vente enregistrée, statut mis à jour automatiquement</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Consulter tes stats</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Combien j'ai gagné ce mois-ci ?"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Résumé de tes ventes et marges en temps réel</p>
     </div>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💰 Estimer un prix de revente</p>
@@ -148,11 +182,45 @@ function welcomeHtml(lang: string): string {
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Voice examples</p>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">🗣️ Add an item</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "I bought a Levi's 501 jeans size 32 for €8, I want to sell it for €35"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Item created in your stock with margins calculated automatically</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Add a batch</p>
+      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "I got 5 jumpers for €20 at a car boot sale"
+      </p>
+      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Lot of 3 pairs of sneakers for €30 on Vinted"
+      </p>
       <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
         "For €30 I got a Zara dress, a red Oakley short and green Adidas size 44"
       </p>
       <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Each item created separately, price split automatically</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📍 Store an item</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "The red Zara jumper is in the blue box under the bed"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Location saved in your stock</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💸 Record a sale</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "I sold the Nike Air Max 90 size 43 for €65 on Vinted"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Sale recorded, status updated automatically</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Check your stats</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "How much have I earned this month?"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Summary of your sales and margins in real time</p>
     </div>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
       <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💰 Estimate a resale price</p>
