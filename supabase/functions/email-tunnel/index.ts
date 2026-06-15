@@ -101,6 +101,29 @@ function welcomeHtml(lang: string): string {
         <li>🚀 Publiez directement sur vos plateformes</li>
       </ul>
     </div>
+    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
+      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Exemples vocaux</p>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Ajouter un lot</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Pour 30€ j'ai eu une robe Zara, un short Oakley rouge et des Adidas vertes taille 44"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Chaque article créé séparément, prix réparti automatiquement</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💰 Estimer un prix de revente</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "J'ai une paire de New Balance 9060 taille 44 un peu usées, je peux les revendre combien ?"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Estimation du prix de revente par l'IA</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Analyser ton business</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Tu peux me parler de mon business ? Comment je peux améliorer mes ventes ?"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Analyse complète de ton activité par l'IA</p>
+    </div>
     ${ctaButton("Ouvrir FillSell")}` : `
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
@@ -121,6 +144,29 @@ function welcomeHtml(lang: string): string {
         <li>📊 Track your margins in real time</li>
         <li>🚀 List directly on your platforms</li>
       </ul>
+    </div>
+    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
+      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Voice examples</p>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Add a batch</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "For €30 I got a Zara dress, a red Oakley short and green Adidas size 44"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Each item created separately, price split automatically</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💰 Estimate a resale price</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "I have a pair of New Balance 9060 size 44 slightly worn, how much can I resell them for?"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ AI-powered resale price estimate</p>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Analyse your business</p>
+      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
+        "Can you talk to me about my business? How can I improve my sales?"
+      </p>
+      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Complete AI analysis of your activity</p>
     </div>
     ${ctaButton("Open FillSell")}`;
   return emailWrapper(content, lang);
@@ -284,6 +330,9 @@ serve(async (req) => {
     });
   }
 
+  const body = await req.json().catch(() => ({}));
+  const testEmail: string | null = body?.test_email ?? null;
+
   const sent: string[] = [];
   const errors: string[] = [];
 
@@ -301,6 +350,19 @@ serve(async (req) => {
     } catch {
       return false;
     }
+  }
+
+  // ── Test mode: send all 3 templates to the specified email ────────────────
+  if (testEmail) {
+    const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
+    if (r1) sent.push(`welcome:${testEmail}`); else errors.push(`welcome:${testEmail}`);
+    const r2 = await sendEmail(testEmail, "Le Founder Plan vous attend 🚀", founderHtml("fr", 0));
+    if (r2) sent.push(`founder_plan:${testEmail}`); else errors.push(`founder_plan:${testEmail}`);
+    const r3 = await sendEmail(testEmail, "Limite vocale atteinte — passez illimité 🎙️", voiceConversionHtml("fr"));
+    if (r3) sent.push(`voice_conversion:${testEmail}`); else errors.push(`voice_conversion:${testEmail}`);
+    return new Response(JSON.stringify({ test: true, sent, errors }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   async function logEmail(userId: string, emailType: string): Promise<void> {
