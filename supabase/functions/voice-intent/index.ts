@@ -1447,8 +1447,7 @@ serve(async (req) => {
               // Sibling check: si d'autres articles ont le même nom+marque et qu'aucune description
               // n'a été fournie par l'utilisateur, on ne peut pas distinguer → candidates
               const _matchedItem = (_stock as any[]).find((s: any) => String(s.id) === String(matchResult.matched_id));
-              // Sibling check only when marque is known — prevents matching all unbranded items together
-              if (_matchedItem && !_extractedDesc && _matchedItem.marque) {
+              if (_matchedItem && !_extractedDesc) {
                 const _siblings = (_stock as any[]).filter((s: any) =>
                   String(s.id) !== String(matchResult.matched_id) &&
                   (s.nom || "").toLowerCase() === (_matchedItem.nom || "").toLowerCase() &&
@@ -1478,8 +1477,24 @@ serve(async (req) => {
               sellTask.data.conflict = true;
               sellTask.data.candidates = matchResult.candidates;
             } else if (Array.isArray(matchResult.candidates) && matchResult.candidates.length > 0) {
-              // Ambiguïté : plusieurs candidats, l'utilisateur devra choisir
-              sellTask.data.candidates = matchResult.candidates;
+              // Filtrer les candidats LLM aux seuls articles dont la marque correspond vraiment.
+              // Cas typique : LLM retourne tout le stock au lieu d'un matched_id unique.
+              let _cands = matchResult.candidates as any[];
+              if (_extractedMarque) {
+                const _cf = _cands.filter((c: any) => {
+                  const _si = (_stock as any[]).find((s: any) => String(s.id) === String(c.id));
+                  return _si && (_si.marque || "").toLowerCase() === _extractedMarque.toLowerCase();
+                });
+                if (_cf.length > 0) _cands = _cf;
+              }
+              if (_cands.length === 1) {
+                // Un seul candidat → promouvoir en matched_id, pas besoin de sélection
+                delete sellTask.data.no_match;
+                sellTask.data.matched_id = String(_cands[0].id);
+                sellTask.data.match_confidence = _cands[0].confidence ?? 0.8;
+              } else {
+                sellTask.data.candidates = _cands;
+              }
             } else if (matchResult.no_match) {
               // Aucun article correspondant dans le stock
               sellTask.data.no_match = true;
