@@ -2242,8 +2242,11 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 if(taskData?.candidates?.length>0){
                   return(
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:10}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
-                        {lang==="en"?"Which item do you mean?":"Quel article veux-tu dire ?"}
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
+                        <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
+                          {lang==="en"?"Which item do you mean?":"Quel article veux-tu dire ?"}
+                        </div>
+                        {taskData?.prix_vente!=null&&<div style={{fontWeight:800,fontSize:14,color:"#1D9E75",flexShrink:0}}>{lang==="en"?"Sale":"Vendu"} {fmt(taskData.prix_vente)}</div>}
                       </div>
                       {taskData.candidates.map((c,ci)=>{
                         // Même normalisation String() que pour matched_id
