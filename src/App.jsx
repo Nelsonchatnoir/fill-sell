@@ -3312,8 +3312,12 @@ export default function App({ loginOnly = false }){
     setIapLoading(true);
     try{
       const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
-      const {isPremium,receipt}=await purchasePremium(productId);
+      const {isPremium,receipt:rawReceipt}=await purchasePremium(productId,user.id);
       if(isPremium){
+        let receipt=rawReceipt;
+        if(!receipt){
+          try{const restored=await restorePurchases('post-purchase');receipt=restored.receipt??null;}catch(_){}
+        }
         if(receipt){
           const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');

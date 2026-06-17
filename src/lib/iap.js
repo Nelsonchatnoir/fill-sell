@@ -17,17 +17,16 @@ export const initIAP = async () => {
   }
 };
 
-export const purchasePremium = async (productId = PRODUCT_IDS.sub) => {
+export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined) => {
   try {
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [productId],
       productType: 'subs',
     });
     if (!products || products.length === 0) throw new Error('Produit introuvable');
-    const result = await NativePurchases.purchaseProduct({
-      productIdentifier: productId,
-      productType: 'subs',
-    });
+    const purchaseOptions = { productIdentifier: productId, productType: 'subs' };
+    if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
+    const result = await NativePurchases.purchaseProduct(purchaseOptions);
     const isPremium = result?.productIdentifier === productId;
     return { isPremium, receipt: result?.receipt ?? null };
   } catch (e) {
