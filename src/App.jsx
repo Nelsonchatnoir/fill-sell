@@ -1325,6 +1325,67 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
   );
 }
 
+function PremiumWelcomeModal({ lang, isFounder, onClose }) {
+  const PERKS = lang === 'en'
+    ? [
+        { icon: '🎙️', label: 'AI Voice — 20 commands/day' },
+        { icon: '📸', label: 'Lens Pro — 5/day · live market price' },
+        { icon: '📦', label: 'Unlimited stock' },
+        { icon: '📊', label: 'Advanced AI-powered stats' },
+        { icon: '📤', label: 'Import / Export Excel' },
+      ]
+    : [
+        { icon: '🎙️', label: 'IA vocale — 20 commandes/jour' },
+        { icon: '📸', label: 'Lens Pro — 5/jour · prix marché en direct' },
+        { icon: '📦', label: 'Stock illimité' },
+        { icon: '📊', label: 'Stats avancées analysées par IA' },
+        { icon: '📤', label: 'Import / Export Excel' },
+      ];
+  const title = isFounder
+    ? (lang === 'en' ? 'Welcome, Founder!' : 'Bienvenue, Founder !')
+    : (lang === 'en' ? 'Welcome to FillSell Premium' : 'Bienvenue dans FillSell Premium');
+  const subtitle = lang === 'en'
+    ? 'Your benefits are active right now'
+    : 'Tes avantages sont actifs dès maintenant';
+  const cta = lang === 'en' ? '🚀 Start selling' : '🚀 Commencer à vendre';
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:10100,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',animation:'fadeInOverlay 0.25s ease'}}>
+      <style>{`
+        @keyframes fadeInOverlay{from{opacity:0}to{opacity:1}}
+        @keyframes welcomeCardIn{from{opacity:0;transform:scale(0.82) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}
+        @keyframes crownPop{0%{transform:scale(0) rotate(-15deg)}60%{transform:scale(1.2) rotate(6deg)}100%{transform:scale(1) rotate(0deg)}}
+      `}</style>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#F2F2EE',borderRadius:28,width:'100%',maxWidth:360,overflow:'hidden',boxShadow:'0 24px 60px rgba(0,0,0,0.25)',animation:'welcomeCardIn 0.35s cubic-bezier(0.22,1,0.36,1)'}}>
+        <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',padding:'32px 24px 28px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+          <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.2),transparent 55%)',pointerEvents:'none'}}/>
+          <div style={{fontSize:44,lineHeight:1,marginBottom:12,display:'inline-block',animation:'crownPop 0.5s cubic-bezier(0.22,1,0.36,1) 0.2s both'}}>
+            {isFounder?'👑':'⭐'}
+          </div>
+          {isFounder&&(
+            <div style={{display:'flex',justifyContent:'center',marginBottom:10}}>
+              <span style={{background:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.5)',borderRadius:99,padding:'4px 12px',fontSize:10,fontWeight:800,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase'}}>🔥 Founder</span>
+            </div>
+          )}
+          <div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",fontSize:22,fontWeight:900,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
+          <div style={{fontSize:13,color:'rgba(255,255,255,0.88)',fontWeight:600}}>{subtitle}</div>
+        </div>
+        <div style={{padding:'20px 20px 0',display:'flex',flexDirection:'column',gap:8}}>
+          {PERKS.map(({icon,label},i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(62,172,160,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+              <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
+              <span style={{fontSize:13,fontWeight:700,color:'#0D0D0D',lineHeight:1.3,flex:1}}>{label}</span>
+              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#3EACA0,#2DD4BF)',color:'#fff',fontSize:10,fontWeight:900}}>✓</span>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:'20px'}}>
+          <button onClick={onClose} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#3EACA0,#E8956D)',border:'none',borderRadius:16,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",boxShadow:'0 4px 16px rgba(62,172,160,0.4)',letterSpacing:'-0.01em'}}>{cta}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
   const { t } = useTranslation(lang);
   if (isRes) return null;
@@ -3171,6 +3232,8 @@ export default function App({ loginOnly = false }){
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
+  const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
+  const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
@@ -3310,8 +3373,9 @@ export default function App({ loginOnly = false }){
 
   async function handleIAPPurchase(){
     setIapLoading(true);
+    const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
+    const isFounderProduct=productId===PRODUCT_IDS.sub;
     try{
-      const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
       const {cancelled,receipt:purchaseReceipt}=await purchasePremium(productId,user.id);
       if(cancelled) return;
       const {receipt:restoredReceipt}=await restorePurchases('post-purchase');
@@ -3328,19 +3392,18 @@ export default function App({ loginOnly = false }){
         }
         if(!confirmed) throw new Error('Premium not confirmed by server');
       }
-      const isFounderProduct=productId===PRODUCT_IDS.sub;
       if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       setIsPremium(true);
-      setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
-      setTimeout(()=>setToast({visible:false,message:''}),3000);
+      setPremiumWelcomeIsFounder(isFounderProduct);
+      setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
       try{
         const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
         if(data?.is_premium){
           setIsPremium(true);
-          setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
-          setTimeout(()=>setToast({visible:false,message:''}),3000);
+          setPremiumWelcomeIsFounder(isFounderProduct);
+          setShowPremiumWelcome(true);
           return;
         }
       }catch{}
@@ -5724,6 +5787,11 @@ export default function App({ loginOnly = false }){
             @keyframes fadeInBd{from{opacity:0}to{opacity:1}}
           `}</style>
         </>
+      )}
+
+      {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
+      {showPremiumWelcome&&(
+        <PremiumWelcomeModal lang={lang} isFounder={premiumWelcomeIsFounder} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
       {/* ── PREMIUM ADVANTAGES MODAL ── */}
