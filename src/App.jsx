@@ -3312,12 +3312,22 @@ export default function App({ loginOnly = false }){
     setIapLoading(true);
     try{
       const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
-      const {cancelled}=await purchasePremium(productId,user.id);
+      const {cancelled,receipt:purchaseReceipt}=await purchasePremium(productId,user.id);
       if(cancelled) return;
-      const {receipt}=await restorePurchases('post-purchase');
-      if(!receipt) throw new Error('No active subscription found after purchase');
-      const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
-      if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+      const {receipt:restoredReceipt}=await restorePurchases('post-purchase');
+      const receipt=restoredReceipt||purchaseReceipt;
+      if(receipt){
+        const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
+        if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+      } else {
+        let confirmed=false;
+        for(let i=0;i<6;i++){
+          await new Promise(r=>setTimeout(r,2000));
+          const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
+          if(data?.is_premium){confirmed=true;break;}
+        }
+        if(!confirmed) throw new Error('Premium not confirmed by server');
+      }
       const isFounderProduct=productId===PRODUCT_IDS.sub;
       if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       setIsPremium(true);
@@ -3325,6 +3335,15 @@ export default function App({ loginOnly = false }){
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
+      try{
+        const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
+        if(data?.is_premium){
+          setIsPremium(true);
+          setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
+          setTimeout(()=>setToast({visible:false,message:''}),3000);
+          return;
+        }
+      }catch{}
       setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de l\'achat':'❌ Purchase failed'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }finally{setIapLoading(false);}
