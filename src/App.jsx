@@ -3421,6 +3421,14 @@ export default function App({ loginOnly = false }){
         if(receipt){
           const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+        } else {
+          let confirmed=false;
+          for(let i=0;i<6;i++){
+            await new Promise(r=>setTimeout(r,2000));
+            const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
+            if(data?.is_premium){confirmed=true;break;}
+          }
+          if(!confirmed) throw new Error('Premium not confirmed by server');
         }
         setIsPremium(true);
         setPremiumWelcomeIsFounder(isFounderProduct);
