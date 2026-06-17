@@ -420,6 +420,48 @@ serve(async (req) => {
     }
   }
 
+  // ── Immediate welcome (fired from handle_new_user DB trigger) ───────────
+  const welcomeNow: boolean = body?.welcome_now === true;
+  const welcomeUserId: string | null = body?.user_id ?? null;
+  const welcomeUserEmail: string | null = body?.user_email ?? null;
+
+  if (welcomeNow && welcomeUserId && welcomeUserEmail) {
+    const { data: existing } = await supabase
+      .from("email_logs")
+      .select("id")
+      .eq("user_id", welcomeUserId)
+      .eq("email_type", "welcome")
+      .maybeSingle();
+    if (existing) {
+      return new Response(JSON.stringify({ skipped: true, reason: "already_sent" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("lang")
+      .eq("id", welcomeUserId)
+      .maybeSingle();
+    const lang = profile?.lang ?? "fr";
+
+    const subject = lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
+    const ok = await sendEmail(welcomeUserEmail, subject, welcomeHtml(lang));
+    if (ok) {
+      await supabase
+        .from("email_logs")
+        .insert({ user_id: welcomeUserId, email_type: "welcome" });
+      return new Response(
+        JSON.stringify({ success: true, sent: [`welcome:${welcomeUserEmail}`] }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({ success: false, error: `Failed to send to ${welcomeUserEmail}` }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // ── Test mode: send all 3 templates to the specified email ────────────────
   if (testEmail) {
     const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
