@@ -133,7 +133,52 @@ serve(async (req) => {
     const data = notification.data as Record<string, unknown> | undefined;
 
     const signedTransactionInfo = data?.signedTransactionInfo as string | undefined;
+    const signedRenewalInfo     = data?.signedRenewalInfo     as string | undefined;
+
     if (!signedTransactionInfo) {
+      // DID_CHANGE_RENEWAL_STATUS peut arriver sans signedTransactionInfo
+      if (notificationType === "DID_CHANGE_RENEWAL_STATUS" && signedRenewalInfo) {
+        let renewal: Record<string, unknown>;
+        try {
+          renewal = await verifyAndDecodeJWS(signedRenewalInfo);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error("[apple-iap-webhook] Rejected — renewal JWS invalid:", msg);
+          return new Response(JSON.stringify({ error: "Renewal JWS verification failed" }), {
+            status: 403, headers: { "Content-Type": "application/json" },
+          });
+        }
+        const autoRenewStatus     = renewal.autoRenewStatus     as number | undefined;
+        const renewalToken        = renewal.appAccountToken     as string | undefined;
+        const renewalProductId    = (renewal.productId || renewal.autoRenewProductId) as string | undefined;
+        const renewalOriginalTxId = renewal.originalTransactionId as string | undefined;
+
+        if (autoRenewStatus !== 1) {
+          console.log("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS autoRenewStatus=0 — skipping (still active)");
+          return new Response(JSON.stringify({ ok: true, skipped: "DID_CHANGE_RENEWAL_STATUS_cancelled" }), {
+            status: 200, headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (!renewalToken || !renewalProductId || !PREMIUM_PRODUCT_IDS.includes(renewalProductId)) {
+          console.warn("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS: missing token or non-premium product");
+          return new Response(JSON.stringify({ ok: true, skipped: "missing_token_or_product" }), {
+            status: 200, headers: { "Content-Type": "application/json" },
+          });
+        }
+        const upd: Record<string, unknown> = { is_premium: true };
+        if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
+        const { error } = await supabaseAdmin.from("profiles").update(upd).eq("id", renewalToken);
+        if (error) {
+          console.error("[apple-iap-webhook] DB error:", error.message);
+          return new Response(JSON.stringify({ error: error.message }), {
+            status: 500, headers: { "Content-Type": "application/json" },
+          });
+        }
+        console.log(`[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS re-enabled → userId=${renewalToken} is_premium=true`);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({ ok: true, skipped: "no transaction" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -175,6 +220,17 @@ serve(async (req) => {
     let isPremium: boolean | null = null;
     if (PREMIUM_ON.includes(notificationType))  isPremium = true;
     if (PREMIUM_OFF.includes(notificationType)) isPremium = false;
+
+    // DID_CHANGE_RENEWAL_STATUS avec signedTransactionInfo : lire autoRenewStatus
+    if (isPremium === null && notificationType === "DID_CHANGE_RENEWAL_STATUS" && signedRenewalInfo) {
+      try {
+        const renewal = await verifyAndDecodeJWS(signedRenewalInfo);
+        if (renewal.autoRenewStatus === 1) isPremium = true;
+        // autoRenewStatus=0 → résilié, encore actif jusqu'à expiry → skip
+      } catch {
+        console.warn("[apple-iap-webhook] Could not decode signedRenewalInfo for DID_CHANGE_RENEWAL_STATUS");
+      }
+    }
 
     if (isPremium === null) {
       console.log(`[apple-iap-webhook] Unhandled type: ${notificationType} — skipping`);
