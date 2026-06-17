@@ -28,9 +28,9 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     const isPremium = result?.productIdentifier === productId;
-    return { isPremium, receipt: result?.receipt ?? null };
+    return { isPremium, receipt: result?.receipt ?? null, cancelled: false };
   } catch (e) {
-    if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null };
+    if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null, cancelled: true };
     throw e;
   }
 };

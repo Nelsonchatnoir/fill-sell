@@ -3312,22 +3312,17 @@ export default function App({ loginOnly = false }){
     setIapLoading(true);
     try{
       const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
-      const {isPremium,receipt:rawReceipt}=await purchasePremium(productId,user.id);
-      if(isPremium){
-        let receipt=rawReceipt;
-        if(!receipt){
-          try{const restored=await restorePurchases('post-purchase');receipt=restored.receipt??null;}catch(_){}
-        }
-        if(receipt){
-          const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
-          if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
-        }
-        const isFounderProduct=productId===PRODUCT_IDS.sub;
-        if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
-        setIsPremium(true);
-        setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
-        setTimeout(()=>setToast({visible:false,message:''}),3000);
-      }
+      const {cancelled}=await purchasePremium(productId,user.id);
+      if(cancelled) return;
+      const {receipt}=await restorePurchases('post-purchase');
+      if(!receipt) throw new Error('No active subscription found after purchase');
+      const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
+      if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+      const isFounderProduct=productId===PRODUCT_IDS.sub;
+      if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
+      setIsPremium(true);
+      setToast({visible:true,message:lang==='fr'?'✅ Premium activé !':'✅ Premium activated!'});
+      setTimeout(()=>setToast({visible:false,message:''}),3000);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
       setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de l\'achat':'❌ Purchase failed'});
