@@ -3376,22 +3376,15 @@ export default function App({ loginOnly = false }){
     const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
     const isFounderProduct=productId===PRODUCT_IDS.sub;
     try{
-      const {cancelled,receipt:purchaseReceipt}=await purchasePremium(productId,user.id);
+      const {cancelled}=await purchasePremium(productId,user.id);
       if(cancelled) return;
-      const {receipt:restoredReceipt}=await restorePurchases('post-purchase');
-      const receipt=restoredReceipt||purchaseReceipt;
-      if(receipt){
-        const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
-        if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
-      } else {
-        let confirmed=false;
-        for(let i=0;i<6;i++){
-          await new Promise(r=>setTimeout(r,2000));
-          const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
-          if(data?.is_premium){confirmed=true;break;}
-        }
-        if(!confirmed) throw new Error('Premium not confirmed by server');
+      let confirmed=false;
+      for(let i=0;i<10;i++){
+        await new Promise(r=>setTimeout(r,2000));
+        const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
+        if(data?.is_premium){confirmed=true;break;}
       }
+      if(!confirmed) throw new Error('Premium not confirmed by server');
       if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       setIsPremium(true);
       setPremiumWelcomeIsFounder(isFounderProduct);
