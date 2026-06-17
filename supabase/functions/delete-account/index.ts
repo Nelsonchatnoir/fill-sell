@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
+  apiVersion: "2023-10-16",
+  httpClient: Stripe.createFetchHttpClient(),
+});
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
 
@@ -45,13 +51,38 @@ serve(async (req) => {
     }
     const userId = authUser.id;
 
-    // 3. Suppression des données utilisateur (FK constraints)
+    // 3. Annulation abonnement Stripe avant suppression du profil
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', userId)
+      .single();
+
+    if (profile?.stripe_customer_id) {
+      try {
+        const subs = await stripe.subscriptions.list({
+          customer: profile.stripe_customer_id,
+          status: "all",
+          limit: 10,
+        });
+        const toCancel = subs.data.filter(s => s.status !== "canceled");
+        for (const sub of toCancel) {
+          await stripe.subscriptions.cancel(sub.id);
+          console.log(`[delete-account] Stripe sub annulé: ${sub.id} (${sub.status}) customer=${profile.stripe_customer_id}`);
+        }
+      } catch (stripeErr: unknown) {
+        const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
+        console.error("[delete-account] Erreur annulation Stripe (non bloquant):", msg);
+      }
+    }
+
+    // 4. Suppression des données utilisateur (FK constraints)
     console.log("[delete-account] Suppression données userId:", userId);
     await supabaseAdmin.from('inventaire').delete().eq('user_id', userId);
     await supabaseAdmin.from('ventes').delete().eq('user_id', userId);
     await supabaseAdmin.from('profiles').delete().eq('id', userId);
 
-    // 4. Suppression admin
+    // 5. Suppression auth user
     console.log("[delete-account] Tentative suppression auth userId:", userId);
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
