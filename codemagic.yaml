@@ -67,7 +67,7 @@ workflows:
         script: |
           BUILD_NUMBER=$(date +%y%m%d%H%M)
           echo "Build number (timestamp): $BUILD_NUMBER"
-          cd ios/App && agvtool new-marketing-version 1.7 && agvtool new-version -all $BUILD_NUMBER
+          cd ios/App && agvtool new-marketing-version 1.8 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles
