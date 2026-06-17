@@ -3414,6 +3414,7 @@ export default function App({ loginOnly = false }){
 
   async function handleIAPRestore(){
     setIapLoading(true);
+    const isFounderProduct=slotsRemaining>0;
     try{
       const {isPremium,receipt}=await restorePurchases('button');
       if(isPremium){
@@ -3422,14 +3423,23 @@ export default function App({ loginOnly = false }){
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
         }
         setIsPremium(true);
-        setToast({visible:true,message:lang==='fr'?'✅ Achat restauré !':'✅ Purchase restored!'});
-        setTimeout(()=>setToast({visible:false,message:''}),3000);
+        setPremiumWelcomeIsFounder(isFounderProduct);
+        setShowPremiumWelcome(true);
       }else{
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
       }
     }catch(e){
       console.error('[IAP] restore failed:',e);
+      try{
+        const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
+        if(data?.is_premium){
+          setIsPremium(true);
+          setPremiumWelcomeIsFounder(isFounderProduct);
+          setShowPremiumWelcome(true);
+          return;
+        }
+      }catch{}
       setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la restauration':'❌ Restore failed'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }finally{setIapLoading(false);}
