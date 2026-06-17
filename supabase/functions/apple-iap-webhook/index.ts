@@ -55,8 +55,9 @@ serve(async (req) => {
     }
 
     const tx = decodeJWSPayload(signedTransactionInfo);
-    const appAccountToken = tx.appAccountToken as string | undefined;
-    const productId       = tx.productId as string;
+    const appAccountToken        = tx.appAccountToken as string | undefined;
+    const productId              = tx.productId as string;
+    const originalTransactionId = tx.originalTransactionId as string | undefined;
 
     if (!appAccountToken) {
       console.warn("[apple-iap-webhook] No appAccountToken — cannot identify user");
@@ -85,9 +86,12 @@ serve(async (req) => {
       });
     }
 
+    const update: Record<string, unknown> = { is_premium: isPremium };
+    if (originalTransactionId) update.apple_original_transaction_id = originalTransactionId;
+
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update({ is_premium: isPremium })
+      .update(update)
       .eq("id", appAccountToken);
 
     if (error) {
@@ -99,7 +103,7 @@ serve(async (req) => {
     }
 
     console.log(
-      `[apple-iap-webhook] ${notificationType} → userId=${appAccountToken} is_premium=${isPremium} product=${productId}`
+      `[apple-iap-webhook] ${notificationType} → userId=${appAccountToken} is_premium=${isPremium} product=${productId} originalTransactionId=${originalTransactionId}`
     );
 
     return new Response(JSON.stringify({ ok: true }), {
