@@ -6,7 +6,7 @@
 <title>FillSell — Feature Graphic 1024×500</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:#e7e5df;display:flex;align-items:center;justify-content:center;min-height:100vh;}
@@ -22,13 +22,14 @@ body{background:#e7e5df;display:flex;align-items:center;justify-content:center;m
   <div style="position:absolute;width:340px;height:340px;left:-140px;bottom:-170px;border-radius:50%;background:radial-gradient(circle at 50% 50%, rgba(29,158,117,0.08), rgba(29,158,117,0) 70%);pointer-events:none;"></div>
 
   <!-- LEFT: brand block -->
-  <div style="position:absolute;left:80px;top:0;height:500px;width:500px;display:flex;flex-direction:column;justify-content:center;">
+  <div style="position:absolute;left:80px;top:0;height:500px;width:480px;display:flex;flex-direction:column;justify-content:center;">
 
-    <img src="../public/logo.png" alt="" style="width:54px;height:54px;border-radius:14px;box-shadow:0 8px 20px rgba(29,158,117,0.20);margin-bottom:30px;" />
+    <img src="../public/logo.png" alt="" style="width:54px;height:54px;border-radius:14px;box-shadow:0 8px 20px rgba(29,158,117,0.20);margin-bottom:28px;" />
 
-    <h1 style="font-size:104px;line-height:0.92;font-weight:900;font-style:italic;letter-spacing:-0.035em;color:#2DD4BF;margin-bottom:24px;">FillSell</h1>
+    <!-- wordmark : exactement comme le header de l'app (Plus Jakarta Sans, italic 800, gradient #3EACA0→#E8956D) -->
+    <h1 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:100px;line-height:0.9;font-weight:800;font-style:italic;letter-spacing:0.2px;margin-bottom:24px;background:linear-gradient(135deg,#3EACA0 0%,#E8956D 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;">FillSell</h1>
 
-    <p style="font-size:30px;font-weight:800;letter-spacing:-0.02em;color:#3A4742;margin-bottom:34px;">Assistant <span style="color:#1D9E75;">IA</span> pour revendeurs</p>
+    <p style="font-family:'Nunito',sans-serif;font-size:29px;font-weight:800;letter-spacing:-0.02em;color:#3A4742;margin-bottom:34px;">Assistant <span style="color:#1D9E75;">IA</span> pour revendeurs</p>
 
     <!-- feature pills -->
     <div style="display:flex;align-items:center;gap:11px;">
@@ -41,71 +42,86 @@ body{background:#e7e5df;display:flex;align-items:center;justify-content:center;m
   <div style="position:absolute;right:92px;top:50%;transform:translateY(-50%) rotate(-5deg);width:266px;height:548px;border-radius:42px;background:#0D0D0D;padding:11px;box-shadow:0 36px 76px rgba(8,40,36,0.42), 0 8px 22px rgba(0,0,0,0.16);">
     <div style="width:100%;height:100%;border-radius:32px;overflow:hidden;background:#F5F6F5;position:relative;">
 
-      <!-- topbar -->
-      <div style="height:70px;background:linear-gradient(135deg,#1D9E75,#4ECDC4);display:flex;align-items:flex-end;padding:0 18px 13px;justify-content:space-between;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <img src="../public/logo.png" alt="" style="width:25px;height:25px;border-radius:7px;" />
-          <span style="font-weight:900;font-size:17px;color:#fff;letter-spacing:-0.035em;">FillSell</span>
+      <!-- topbar : même style que l'app (verre dépoli, texte gradient) -->
+      <div style="height:58px;background:rgba(250,250,248,0.97);border-bottom:1px solid rgba(0,0,0,0.07);display:flex;align-items:center;padding:0 14px;justify-content:space-between;backdrop-filter:blur(14px);">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <img src="../public/logo.png" alt="" style="width:26px;height:26px;border-radius:8px;object-fit:cover;" />
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-style:italic;font-weight:800;font-size:18px;letter-spacing:0.2px;background:linear-gradient(135deg,#3EACA0 0%,#E8956D 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;padding-right:4px;">FillSell</span>
         </div>
-        <span style="background:rgba(255,255,255,0.22);color:#fff;font-size:11px;font-weight:800;border-radius:99px;padding:5px 10px;">⭐ Premium</span>
+        <span style="background:linear-gradient(110deg,#1D9E75,#3EACA0,#F9A26C);color:#fff;font-size:10px;font-weight:900;border-radius:99px;padding:4px 10px;">⭐ Premium</span>
       </div>
 
       <!-- body -->
-      <div style="padding:15px 14px 0;">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;">
-          <div style="font-size:19px;font-weight:900;letter-spacing:-0.03em;color:#0D0D0D;">Ton stock</div>
-          <div style="font-size:11px;font-weight:700;color:#A3A9A6;">15 articles</div>
+      <div style="padding:13px 13px 0;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px;">
+          <div style="font-size:18px;font-weight:900;letter-spacing:-0.03em;color:#0D0D0D;">Ton stock</div>
+          <div style="font-size:10px;font-weight:700;color:#A3A9A6;">15 articles · 722 €</div>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:9px;">
+        <div style="display:flex;flex-direction:column;gap:8px;">
 
           <!-- NEW item, just added by voice -->
-          <div style="background:#E8F5F0;border:1.5px solid #1D9E75;border-radius:13px;padding:10px 11px;display:flex;align-items:center;gap:9px;box-shadow:0 8px 20px rgba(29,158,117,0.22);">
-            <div style="width:3px;align-self:stretch;border-radius:2px;background:#1D9E75;"></div>
+          <div style="background:#E8F5F0;border:1.5px solid #1D9E75;border-radius:13px;padding:9px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 20px rgba(29,158,117,0.22);">
+            <div style="width:3px;align-self:stretch;border-radius:2px;background:#1D9E75;flex-shrink:0;"></div>
             <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:900;color:#0D0D0D;letter-spacing:-0.01em;">Veste Levi's vintage</div>
-              <div style="display:flex;gap:5px;margin-top:6px;">
-                <span style="background:#fff;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">Levi's</span>
-                <span style="background:#FDF2F8;color:#9D174D;border:1px solid #F9A8D4;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">👗 Mode</span>
+              <div style="font-size:12px;font-weight:900;color:#0D0D0D;letter-spacing:-0.01em;">Veste Levi's vintage</div>
+              <div style="display:flex;gap:4px;margin-top:5px;">
+                <span style="background:#fff;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">Levi's</span>
+                <span style="background:#FDF2F8;color:#9D174D;border:1px solid #F9A8D4;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">👗 Mode</span>
               </div>
             </div>
-            <div style="text-align:right;">
-              <div style="display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:800;color:#1D9E75;text-transform:uppercase;letter-spacing:0.06em;"><span style="width:6px;height:6px;border-radius:50%;background:#1D9E75;display:inline-block;"></span>À l'instant</div>
-              <div style="font-size:16px;font-weight:900;color:#1D9E75;letter-spacing:-0.02em;margin-top:2px;">12,00 €</div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:7px;font-weight:800;color:#1D9E75;text-transform:uppercase;letter-spacing:0.06em;">● À l'instant</div>
+              <div style="font-size:15px;font-weight:900;color:#1D9E75;letter-spacing:-0.02em;margin-top:2px;">12 €</div>
             </div>
           </div>
 
-          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:10px 11px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
+          <!-- item 2 -->
+          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:9px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:800;color:#0D0D0D;">Nike Air Max 90</div>
-              <div style="display:flex;gap:5px;margin-top:6px;">
-                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">Nike</span>
-                <span style="background:#FDF2F8;color:#9D174D;border:1px solid #F9A8D4;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">👗 Mode</span>
+              <div style="font-size:12px;font-weight:800;color:#0D0D0D;">Nike Air Max 90</div>
+              <div style="display:flex;gap:4px;margin-top:5px;">
+                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">Nike</span>
+                <span style="background:#FDF2F8;color:#9D174D;border:1px solid #F9A8D4;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">👗 Mode</span>
               </div>
             </div>
-            <div style="font-size:15px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;">45,00 €</div>
+            <div style="font-size:14px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;flex-shrink:0;">45 €</div>
           </div>
 
-          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:10px 11px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
+          <!-- item 3 -->
+          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:9px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:800;color:#0D0D0D;">PS5 DualSense</div>
-              <div style="display:flex;gap:5px;margin-top:6px;">
-                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">Sony</span>
-                <span style="background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">📱 High-Tech</span>
+              <div style="font-size:12px;font-weight:800;color:#0D0D0D;">PS5 DualSense</div>
+              <div style="display:flex;gap:4px;margin-top:5px;">
+                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">Sony</span>
+                <span style="background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">📱 High-Tech</span>
               </div>
             </div>
-            <div style="font-size:15px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;">35,00 €</div>
+            <div style="font-size:14px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;flex-shrink:0;">35 €</div>
           </div>
 
-          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:10px 11px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
+          <!-- item 4 -->
+          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:9px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:800;color:#0D0D0D;">Sac Chanel Classic</div>
-              <div style="display:flex;gap:5px;margin-top:6px;">
-                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">Chanel</span>
-                <span style="background:#FDF8F0;color:#92400E;border:1px solid #F59E0B;border-radius:99px;padding:2px 9px;font-size:9px;font-weight:800;">💎 Luxe</span>
+              <div style="font-size:12px;font-weight:800;color:#0D0D0D;">Sac Chanel Classic</div>
+              <div style="display:flex;gap:4px;margin-top:5px;">
+                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">Chanel</span>
+                <span style="background:#FDF8F0;color:#92400E;border:1px solid #F59E0B;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">💎 Luxe</span>
               </div>
             </div>
-            <div style="font-size:15px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;">450,00 €</div>
+            <div style="font-size:14px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;flex-shrink:0;">450 €</div>
+          </div>
+
+          <!-- item 5 : inventaire -->
+          <div style="background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:13px;padding:9px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:800;color:#0D0D0D;">iPhone 13 Pro 128Go</div>
+              <div style="display:flex;gap:4px;margin-top:5px;">
+                <span style="background:#E8F5F0;color:#1D9E75;border:1px solid #9FE1CB;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">Apple</span>
+                <span style="background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD;border-radius:99px;padding:2px 8px;font-size:8px;font-weight:800;">📱 High-Tech</span>
+              </div>
+            </div>
+            <div style="font-size:14px;font-weight:900;color:#F9A26C;letter-spacing:-0.02em;flex-shrink:0;">180 €</div>
           </div>
 
         </div>
