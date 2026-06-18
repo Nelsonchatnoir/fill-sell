@@ -7,6 +7,7 @@ import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
+const platform = Capacitor.getPlatform();
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import Toast from './components/Toast';
 import StatsPage from './pages/StatsPage';
@@ -4625,7 +4626,7 @@ export default function App({ loginOnly = false }){
           </button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {isNative&&(
+          {isNative&&platform==='ios'&&(
             <div style={{marginBottom:16}}>
               <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:12,padding:"14px 16px",fontSize:16,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
                 <span style={{fontSize:20}}>&#63743;</span>
@@ -5985,7 +5986,7 @@ export default function App({ loginOnly = false }){
                   const res=await fetch(`${supabaseUrl}/functions/v1/send-bug-report`,{
                     method:"POST",
                     headers:{"Content-Type":"application/json","apikey":supabaseAnonKey},
-                    body:JSON.stringify({message:bugMessage.trim(),userEmail:user?.email,platform:isNative?'iOS':'Web',userId:user?.id}),
+                    body:JSON.stringify({message:bugMessage.trim(),userEmail:user?.email,platform:platform,userId:user?.id}),
                   });
                   if(!res.ok)throw new Error("send error");
                   setShowBugReport(false);setBugMessage("");
