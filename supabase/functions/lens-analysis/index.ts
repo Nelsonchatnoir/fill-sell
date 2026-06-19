@@ -218,18 +218,20 @@ serve(async (req) => {
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: profile } = await adminClient
     .from("profiles")
-    .select("is_premium")
+    .select("is_premium, lens_daily_override, lens_monthly_override")
     .eq("id", user.id)
     .single();
   const isPremium = profile?.is_premium === true;
+  const dailyOverride: number | null = profile?.lens_daily_override ?? null;
+  const monthlyOverride: number | null = profile?.lens_monthly_override ?? null;
   const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
     p_user_id: user.id,
     p_feature: "lens",
     p_is_premium: isPremium,
-    p_daily_limit_free: 3,
-    p_monthly_limit_free: 15,
-    p_daily_limit_premium: 5,
-    p_monthly_limit_premium: 60,
+    p_daily_limit_free: dailyOverride ?? 3,
+    p_monthly_limit_free: monthlyOverride ?? 15,
+    p_daily_limit_premium: dailyOverride ?? 5,
+    p_monthly_limit_premium: monthlyOverride ?? 60,
   });
   if (quotaData?.allowed === false) {
     return new Response(
