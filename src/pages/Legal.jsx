@@ -310,7 +310,37 @@ export default function Legal() {
           </p>
 
           <p className="legal-p">
-            <span className="legal-strong">{en ? '4.6 Sub-processors' : '4.6 Sous-traitants'}</span><br />
+            <span className="legal-strong">{en ? '4.6 Account Deletion' : '4.6 Suppression de compte'}</span><br />
+            {en
+              ? <>You can delete your FillSell account and all associated data directly from the app: go to <span className="legal-strong">Profile → Settings → Delete my account</span>, then confirm the action.</>
+              : <>Vous pouvez supprimer votre compte FillSell et l'ensemble de vos données associées directement depuis l'application : rendez-vous dans <span className="legal-strong">Profil → Paramètres → Supprimer mon compte</span>, puis confirmez l'action.</>}
+          </p>
+          <p className="legal-p">
+            {en
+              ? 'Deletion is immediate and permanent. It results in:'
+              : 'La suppression est immédiate et définitive. Elle entraîne :'}
+          </p>
+          <ul className="legal-ul">
+            <li>{en ? 'Deletion of your profile (email, username, preferences)' : 'La suppression de votre profil (email, pseudo, préférences)'}</li>
+            <li>{en ? 'Deletion of all your inventory and sales history' : "La suppression de l'intégralité de votre inventaire et de votre historique de ventes"}</li>
+            <li>{en
+              ? 'Automatic cancellation of your current Premium subscription (Stripe or Apple/Google depending on your payment method)'
+              : "L'annulation automatique de votre abonnement Premium en cours (Stripe ou Apple/Google selon votre méthode de paiement)"}
+            </li>
+          </ul>
+          <p className="legal-p" style={{ marginTop: 10 }}>
+            {en
+              ? 'Some billing data may be retained beyond the account deletion to meet our legal and accounting obligations (retention of transaction records as required by applicable law).'
+              : "Certaines données de facturation peuvent être conservées au-delà de la suppression du compte, pour répondre à nos obligations légales et comptables (conservation des justificatifs de transaction imposée par la loi française)."}
+          </p>
+          <p className="legal-p">
+            {en
+              ? <>If you encounter any difficulty deleting your account from the app, you can also submit your request by email at <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>.</>
+              : <>Si vous rencontrez une difficulté pour supprimer votre compte depuis l'application, vous pouvez également faire votre demande par email à <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>.</>}
+          </p>
+
+          <p className="legal-p">
+            <span className="legal-strong">{en ? '4.7 Sub-processors' : '4.7 Sous-traitants'}</span><br />
             {en
               ? 'FillSell uses the following sub-processors, all GDPR-compliant:'
               : 'FillSell fait appel aux sous-traitants suivants, tous conformes au RGPD :'}
