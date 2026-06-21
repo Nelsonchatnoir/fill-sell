@@ -438,3 +438,36 @@ h2.section-title { font-family: 'Nunito', sans-serif; font-size: clamp(32px, 4vw
   .platform-pill { font-size: 13px; padding: 10px 16px; }
   .voice-detect-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── ANDROID / SMALL SCREEN FIXES ── */
+
+/* Tap minimum 44px & élimination délai 300ms Android */
+.btn { touch-action: manipulation; }
+.lp-brand, .lp-lang-seg button, .faq-q { touch-action: manipulation; }
+
+@media (max-width: 540px) {
+  /* hero-ticker contraint pour éviter l'overflow horizontal (décale les taps Android) */
+  .hero-ticker {
+    max-width: calc(100vw - 40px);
+    overflow: hidden;
+  }
+  .hero-ticker .val {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 28vw;
+    min-width: 0;
+  }
+  /* Touch target min 44px pour les boutons de nav */
+  .lp-nav-actions .btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 420px) {
+  /* 393px (Redmi Note 10 Pro) : cache le sélecteur de langue dans la nav
+     pour garantir l'accès au bouton Connexion sans overflow */
+  .lp-lang-seg { display: none; }
+  .lp-nav-inner { padding: 0 16px; }
+}
