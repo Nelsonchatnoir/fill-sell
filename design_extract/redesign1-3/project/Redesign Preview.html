@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fill &amp; Sell — Redesign Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@1,800&family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/App.css">
+<link rel="stylesheet" href="src/App.redesign.css">
+<style>
+  html, body { background: #0E1418 !important; }
+  body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .stage {
+    width: 100%; max-width: 430px; min-height: 880px;
+    background: var(--bg);
+    border-radius: 44px;
+    box-shadow: 0 0 0 12px #1a1a1a, 0 0 0 14px #2a2a2a, 0 30px 80px rgba(0,0,0,0.6);
+    overflow: hidden; position: relative; display: flex; flex-direction: column;
+  }
+  .ios-statusbar {
+    height: 50px; padding: 0 28px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding-bottom: 8px;
+    font-family: -apple-system, 'SF Pro Display', sans-serif;
+    font-size: 15px; font-weight: 600; color: #1A1A1A;
+    background: var(--bg); z-index: 11;
+  }
+  .ios-notch { position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 110px; height: 32px; background: #000; border-radius: 99px; z-index: 12; }
+  .ios-icons { display: flex; gap: 5px; align-items: center; }
+  .ios-icons svg { width: 16px; height: 11px; }
+  .ios-home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    width: 134px; height: 5px; background: #000; border-radius: 99px; z-index: 11; }
+  .scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden;
+    padding: 0 16px 110px; -webkit-overflow-scrolling: touch; }
+  .scroll-area::-webkit-scrollbar { display: none; }
+  .stack { display: flex; flex-direction: column; gap: 14px; padding-top: 8px; }
+  .bnav { position: absolute !important; left: 0; right: 0; bottom: 0;
+    display: flex !important;
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border-top: 0.5px solid var(--line-mid);
+    padding: 6px 4px 30px; z-index: 5; }
+  .demo-title { font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 800;
+    color: var(--label); text-transform: uppercase; letter-spacing: 0.10em;
+    margin: 8px 4px 4px; }
+  .profit-hero { position: relative; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div class="ios-notch"></div>
+  <div class="ios-statusbar">
+    <span>9:41</span>
+    <div class="ios-icons">
+      <svg viewBox="0 0 18 12"><rect x="0" y="6" width="3" height="6" rx="1" fill="currentColor"/><rect x="5" y="3" width="3" height="9" rx="1" fill="currentColor"/><rect x="10" y="0" width="3" height="12" rx="1" fill="currentColor"/></svg>
+      <span style="font-weight:700;">5G</span>
+      <svg viewBox="0 0 25 12"><rect x="1" y="1" width="20" height="10" rx="3" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="22" y="4" width="2" height="4" rx="0.5" fill="currentColor"/><rect x="3" y="3" width="16" height="6" rx="1.5" fill="currentColor"/></svg>
+    </div>
+  </div>
+
+  <div class="topbar" style="position:relative;">
+    <button class="tb-logo"><span class="name">Fill &amp; Sell</span></button>
+    <div class="tb-right">
+      <div class="lang-switch" data-lang="fr" id="langSwitch">
+        <span class="pill"></span>
+        <button class="on" data-l="fr">FR</button>
+        <button data-l="en">EN</button>
+      </div>
+      <button class="tb-premium"><span>✨ Premium</span></button>
+    </div>
+  </div>
+
+  <div class="scroll-area">
+
+    <!-- ===== DASHBOARD ===== -->
+    <div class="pane on" id="pane-dashboard">
+      <div class="stack">
+        <div class="demo-title">KPI Hero — Profit Net</div>
+        <div class="profit-hero card-enter">
+          <div class="lbl">Ce mois-ci</div>
+          <div class="amt"><span class="count-up" data-target="847.50" data-format="money">0,00 €</span></div>
+          <div class="meta">
+            <span class="delta">📈 +18,3% vs mois dernier</span>
+            <span class="delta">23 ventes</span>
+          </div>
+        </div>
+
+        <div class="kpi-hero-row">
+          <div class="kpi-hero ghost">
+            <div class="lbl">Revenu</div>
+            <div class="amt"><span class="count-up" data-target="2143" data-format="money">0,00 €</span></div>
+            <div style="margin-top:8px;"><span class="trend-pill up"><span class="arrow"></span>+12%</span></div>
+          </div>
+          <div class="kpi-hero ghost">
+            <div class="lbl">Marge moy.</div>
+            <div class="amt"><span class="count-up" data-target="39.5" data-format="pct">0%</span></div>
+            <div style="margin-top:8px;"><span class="trend-pill down"><span class="arrow"></span>-2,1%</span></div>
+          </div>
+        </div>
+
+        <div class="spark-row">
+          <div class="spark-card">
+            <div class="lbl">Ventes</div>
+            <div class="v"><span class="count-up" data-target="23" data-format="int">0</span></div>
+            <div class="trend up">↗ +6 cette semaine</div>
+          </div>
+          <div class="spark-card">
+            <div class="lbl">En stock</div>
+            <div class="v"><span class="count-up" data-target="14" data-format="int">0</span></div>
+            <div class="trend down">↘ 3 invendus &gt;30j</div>
+          </div>
+        </div>
+
+        <div class="demo-title">CTA Premium · 9,99€/mois</div>
+        <button class="cta-premium">✨ Passer Premium · 7 jours gratuits</button>
+        <div style="text-align:center;font-size:11px;font-weight:700;color:var(--sub);margin-top:-6px;">
+          Puis 9,99€/mois — annulable à tout moment
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== STATS ===== -->
+    <div class="pane" id="pane-stats">
+      <div class="stack">
+        <div class="demo-title">Courbe d'activité</div>
+        <div id="curveMount"></div>
+        <div class="demo-title">Donut profit par catégorie</div>
+        <div id="donutMount"></div>
+      </div>
+    </div>
+
+    <!-- ===== STOCK IA ===== -->
+    <div class="pane" id="pane-stock">
+      <div class="stack">
+        <div class="ai-zone-header" style="display:flex;align-items:center;gap:12px;">
+          <div class="ico-wrap" style="width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🤖</div>
+          <div style="position:relative;z-index:1;">
+            <div style="font-size:15px;font-weight:900;color:#fff;letter-spacing:-0.02em;">Stock IA</div>
+            <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.78);margin-top:2px;">Catégorie auto · vocal · marges live</div>
+          </div>
+        </div>
+
+        <div class="voice-zone">
+          <div class="vz-prompt">Dis simplement <b>"j'ai acheté une veste Zara 8 €"</b> — l'IA détecte la catégorie et l'ajoute au stock.</div>
+          <button class="vz-button">
+            <div class="vz-mic">🎙️</div>
+            <div class="vz-meta">
+              <div class="vz-t">Parle à ton IA</div>
+              <div class="vz-d">Maintenir pour enregistrer</div>
+            </div>
+            <div class="vz-arrow">→</div>
+          </button>
+
+          <div class="voice-ticker">
+            <span class="vt-quote">«</span>
+            <span class="vt-text" id="vtText"></span><span class="vt-cursor"></span>
+            <span class="vt-tag" id="vtTag">Ajouter</span>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <button class="cat-pill cp-all on">Tout · 14</button>
+          <button class="cat-pill cp-mode">👗 Mode · 6</button>
+          <button class="cat-pill cp-tech">📱 Tech · 3</button>
+          <button class="cat-pill cp-luxe">💎 Luxe · 2</button>
+          <button class="cat-pill cp-maison">🏠 Maison · 2</button>
+          <button class="cat-pill cp-sport">⚽ Sport · 1</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="inv-item stock" style="border-left-color:#DB2777;">
+            <div style="flex:1;min-width:0;">
+              <div class="name">Veste Zara oversize</div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                <span class="inv-tag fashion">Mode</span>
+                <span style="font-size:11px;font-weight:700;color:var(--sub);">Achat 8 € · cible 32 €</span>
+              </div>
+            </div>
+            <button class="btn-mark-sold">Marquer vendu</button>
+          </div>
+          <div class="inv-item stock" style="border-left-color:#2563EB;">
+            <div style="flex:1;min-width:0;">
+              <div class="name">iPhone 12 64Go</div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                <span class="inv-tag tech">High-Tech</span>
+                <span style="font-size:11px;font-weight:700;color:var(--sub);">Achat 180 € · cible 285 €</span>
+              </div>
+            </div>
+            <button class="btn-mark-sold">Marquer vendu</button>
+          </div>
+          <div class="inv-item sold">
+            <div style="flex:1;min-width:0;">
+              <div class="name" style="text-decoration:line-through;opacity:0.6;">Sac Longchamp</div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                <span class="inv-tag luxe">Luxe</span>
+                <span style="font-size:11px;font-weight:700;color:var(--teal-strong);">+47,00 € margin</span>
+              </div>
+            </div>
+            <button class="btn-mark-sold sold">Vendu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== DEAL SCORE ===== -->
+    <div class="pane" id="pane-deal">
+      <div class="stack">
+        <div class="demo-title">Calculateur de marge</div>
+
+        <div class="field-card">
+          <div class="row">
+            <div class="ico">💰</div>
+            <div class="meta">
+              <div class="lbl">Prix d'achat</div>
+              <input type="text" value="8" />
+            </div>
+            <div class="suf">€</div>
+          </div>
+        </div>
+        <div class="field-card">
+          <div class="row">
+            <div class="ico">🏷️</div>
+            <div class="meta">
+              <div class="lbl">Prix de vente</div>
+              <input type="text" value="32" />
+            </div>
+            <div class="suf">€</div>
+          </div>
+        </div>
+        <div class="field-card">
+          <div class="row">
+            <div class="ico">🧾</div>
+            <div class="meta">
+              <div class="lbl">Frais (livraison + commission)</div>
+              <input type="text" value="3,50" />
+            </div>
+            <div class="suf">€</div>
+          </div>
+        </div>
+
+        <div class="score-card card-enter">
+          <div class="lbl">Bénéfice net</div>
+          <div>
+            <span class="score-num"><span class="count-up" data-target="20.5" data-format="money-bare">0</span></span>
+            <span class="currency">€</span>
+          </div>
+          <div class="score-tag green">💪 Belle marge — 64 %</div>
+
+          <div class="bar-block" style="margin-top:18px;text-align:left;">
+            <div class="bar-row">
+              <div class="head">
+                <span class="t">Marge bénéficiaire</span>
+                <span class="v">64 %</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:64%;"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="head">
+                <span class="t">ROI estimé</span>
+                <span class="v">256 %</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:90%;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-insight">
+          <div class="ico">🤖</div>
+          <div class="body">
+            Bon deal. La <b>Mode oversize Zara</b> se revend en moyenne entre 28 et 38 € sur Vinted en ce moment. Tu es dans le bon range.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VENTES ===== -->
+    <div class="pane" id="pane-sales">
+      <div class="stack">
+        <div class="demo-title">Ventes — Historique</div>
+
+        <div class="sales-kpi-row">
+          <div class="sales-kpi"><div class="lbl">Ventes</div><div class="v"><span class="count-up" data-target="23" data-format="int">0</span></div></div>
+          <div class="sales-kpi"><div class="lbl">Profit</div><div class="v teal"><span class="count-up" data-target="847.5" data-format="money">0,00 €</span></div></div>
+          <div class="sales-kpi"><div class="lbl">Marge</div><div class="v"><span class="count-up" data-target="39.5" data-format="pct">0%</span></div></div>
+        </div>
+
+        <div class="brand-filter-row">
+          <button class="brand-chip on">Toutes <span class="count">23</span></button>
+          <button class="brand-chip">Zara <span class="count">7</span></button>
+          <button class="brand-chip">Apple <span class="count">3</span></button>
+          <button class="brand-chip">Longchamp <span class="count">2</span></button>
+          <button class="brand-chip">Nike <span class="count">3</span></button>
+          <button class="brand-chip">Sézane <span class="count">2</span></button>
+        </div>
+
+        <div class="sale-list">
+          <div class="sale-row">
+            <div>
+              <div class="t">Sac Longchamp Pliage</div>
+              <div class="d">Aujourd'hui · Vinted · Luxe</div>
+            </div>
+            <div>
+              <div class="amt">+47,00 €</div>
+              <div class="pct">+58 %</div>
+            </div>
+          </div>
+          <div class="sale-row">
+            <div>
+              <div class="t">iPhone 11 64Go</div>
+              <div class="d">Hier · Leboncoin · High-Tech</div>
+            </div>
+            <div>
+              <div class="amt">+85,00 €</div>
+              <div class="pct">+42 %</div>
+            </div>
+          </div>
+          <div class="sale-row">
+            <div>
+              <div class="t">Pull Sézane Mathilde</div>
+              <div class="d">2 mai · Vinted · Mode</div>
+            </div>
+            <div>
+              <div class="amt">+22,00 €</div>
+              <div class="pct">+78 %</div>
+            </div>
+          </div>
+          <div class="sale-row">
+            <div>
+              <div class="t">Mug vintage</div>
+              <div class="d">28 avr · Vinted · Maison</div>
+            </div>
+            <div>
+              <div class="amt red">-1,50 €</div>
+              <div class="pct" style="color:var(--red);">-12 %</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== WELCOME (EMPTY STATE) ===== -->
+    <div class="pane" id="pane-welcome">
+      <div class="stack">
+        <div class="demo-title">Empty state — Dashboard new user</div>
+        <div class="empty-hero card-enter">
+          <div class="empty-hero-art"><span class="glyph">🎙️</span></div>
+          <h1>Parle, l'IA fait le reste.</h1>
+          <p>
+            Pas de formulaire, pas de tutoriel. <b style="color:var(--teal-strong);">Tu parles, l'IA comprend.</b>
+            Voici ce que tu peux lui dire :
+          </p>
+
+          <div class="voice-categories">
+            <div class="voice-cat">
+              <div class="ico">➕</div>
+              <div class="lbl">Ajouter</div>
+              <div class="cnt">Stock</div>
+            </div>
+            <div class="voice-cat">
+              <div class="ico">💰</div>
+              <div class="lbl">Vendre</div>
+              <div class="cnt">Ventes</div>
+            </div>
+            <div class="voice-cat">
+              <div class="ico">🔍</div>
+              <div class="lbl">Demander</div>
+              <div class="cnt">Insights</div>
+            </div>
+          </div>
+
+          <div class="voice-examples">
+            <div class="voice-examples-title">Exemples · dis-le à ton IA</div>
+            <div class="voice-ex-row"><span class="badge add">➕</span><span class="quote">J'ai acheté une veste Zara pour 8€</span></div>
+            <div class="voice-ex-row"><span class="badge sell">💰</span><span class="quote">J'ai vendu 3 paquets Pokémon à 15€ chacun</span></div>
+            <div class="voice-ex-row"><span class="badge query">🔍</span><span class="quote">Combien j'ai gagné ce mois-ci ?</span></div>
+            <div class="voice-ex-row"><span class="badge query">🔍</span><span class="quote">C'est quoi mes articles les plus rentables ?</span></div>
+            <div class="voice-ex-row"><span class="badge add">➕</span><span class="quote">Ajoute 10 iPhone 12 à 100€ le lot</span></div>
+            <div class="voice-ex-row"><span class="badge query">🔍</span><span class="quote">Analyse mes profits de la semaine</span></div>
+          </div>
+
+          <div class="empty-hero-cta-stack">
+            <button class="cta-premium">🎙️ Essayer le vocal IA · 7 jours gratuits</button>
+            <button class="empty-hero-secondary">➕ Ajouter manuellement</button>
+          </div>
+          <div style="font-size:11px;font-weight:700;color:var(--sub);margin-top:14px;">
+            Premium 9,99€/mois après les 7 jours d'essai · annulable à tout moment
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FAB with orbital text -->
+  <div class="fab-wrap" id="fabWrap">
+    <div class="fab-orbit">
+      <svg viewBox="0 0 120 120">
+        <defs>
+          <path id="orbitPath" d="M 60,60 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"/>
+        </defs>
+        <text>
+          <textPath href="#orbitPath" startOffset="0">PARLE À TON IA · APPUIE POUR PARLER · </textPath>
+        </text>
+      </svg>
+    </div>
+    <button class="fab-vocal" id="fab" aria-label="Vocal">🎙️</button>
+    <div class="fab-tooltip">Parle à ton IA</div>
+  </div>
+
+  <div class="bnav">
+    <button class="bnav-item on" data-pane="dashboard"><span class="ic">📊</span><span class="lbl">Dashboard</span><span class="ind"></span></button>
+    <button class="bnav-item" data-pane="stock"><span class="ic">📦</span><span class="lbl">Stock IA</span><span class="ind"></span></button>
+    <button class="bnav-item" data-pane="deal"><span class="ic">🧮</span><span class="lbl">Calcul</span><span class="ind"></span></button>
+    <button class="bnav-item" data-pane="sales"><span class="ic">💰</span><span class="lbl">Ventes</span><span class="ind"></span></button>
+    <button class="bnav-item" data-pane="stats"><span class="ic">📈</span><span class="lbl">Stats</span><span class="ind"></span></button>
+  </div>
+
+  <div class="ios-home"></div>
+</div>
+
+<script>
+// === Pane switcher ===
+document.querySelectorAll('.bnav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.bnav-item').forEach(b => b.classList.remove('on'));
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('pane-' + btn.dataset.pane).classList.add('on');
+    document.querySelectorAll('.pane.on .card-enter').forEach(el => {
+      el.style.animation = 'none'; el.offsetHeight; el.style.animation = '';
+    });
+    runCountUps();
+    if (btn.dataset.pane === 'stats') { renderCurve(); renderDonut(); }
+  });
+});
+
+// === Welcome shortcut: long-tap on Dashboard tab ===
+let tapCount = 0, tapTimer;
+document.querySelector('[data-pane="dashboard"]').addEventListener('dblclick', () => {
+  document.querySelectorAll('.bnav-item').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+  document.getElementById('pane-welcome').classList.add('on');
+});
+
+// === Lang switch ===
+document.querySelectorAll('#langSwitch button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#langSwitch button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    document.getElementById('langSwitch').dataset.lang = b.dataset.l;
+  });
+});
+
+// === FAB toggle listening ===
+document.getElementById('fab').addEventListener('click', e => {
+  e.currentTarget.classList.toggle('listening');
+});
+
+// === Count-up ===
+function runCountUps() {
+  document.querySelectorAll('.pane.on .count-up').forEach(el => {
+    const target = parseFloat(el.dataset.target);
+    const fmt = el.dataset.format;
+    const dur = 900, start = performance.now();
+    function step(t) {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = target * eased;
+      if (fmt === 'money') el.textContent = v.toFixed(2).replace('.', ',') + ' €';
+      else if (fmt === 'money-bare') el.textContent = v.toFixed(2).replace('.', ',');
+      else if (fmt === 'pct') el.textContent = v.toFixed(1).replace('.', ',') + '%';
+      else el.textContent = Math.round(v);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+runCountUps();
+
+// === Typewriter for voice examples ===
+const VOICE_EXAMPLES = [
+  { text: "J'ai acheté une veste Zara pour 8€",        tag: "Ajouter",  cls: "add"   },
+  { text: "J'ai vendu 3 paquets Pokémon à 15€ chacun", tag: "Vendre",   cls: "sell"  },
+  { text: "Combien j'ai gagné ce mois-ci ?",           tag: "Demander", cls: "query" },
+  { text: "Mes articles les plus rentables ?",         tag: "Demander", cls: "query" },
+  { text: "Combien d'articles Nike en stock ?",        tag: "Demander", cls: "query" },
+  { text: "Analyse mes profits de la semaine",         tag: "Demander", cls: "query" },
+  { text: "Ajoute 10 iPhone 12 à 100€ le lot",         tag: "Ajouter",  cls: "add"   },
+  { text: "Qu'est-ce que j'ai vendu cette semaine ?",  tag: "Demander", cls: "query" }
+];
+let vtIdx = 0, vtChar = 0, vtMode = "type", vtTimer;
+function vtTick() {
+  const el = document.getElementById('vtText');
+  const tag = document.getElementById('vtTag');
+  if (!el || !tag) { vtTimer = setTimeout(vtTick, 200); return; }
+  const cur = VOICE_EXAMPLES[vtIdx];
+  tag.textContent = cur.tag;
+  tag.className = 'vt-tag ' + cur.cls;
+  if (vtMode === 'type') {
+    vtChar++;
+    el.textContent = cur.text.slice(0, vtChar);
+    if (vtChar >= cur.text.length) { vtMode = 'hold'; vtTimer = setTimeout(vtTick, 1800); return; }
+    vtTimer = setTimeout(vtTick, 32 + Math.random() * 30);
+  } else if (vtMode === 'hold') {
+    vtMode = 'erase'; vtTimer = setTimeout(vtTick, 30);
+  } else {
+    vtChar -= 3;
+    el.textContent = cur.text.slice(0, Math.max(0, vtChar));
+    if (vtChar <= 0) {
+      vtChar = 0; vtMode = 'type';
+      vtIdx = (vtIdx + 1) % VOICE_EXAMPLES.length;
+      vtTimer = setTimeout(vtTick, 200);
+    } else {
+      vtTimer = setTimeout(vtTick, 14);
+    }
+  }
+}
+vtTick();
+
+// === Activity curve ===
+function renderCurve() {
+  const mount = document.getElementById('curveMount');
+  mount.innerHTML = '';
+  const W = 320, H = 130, P = 8, N = 84;
+  const days = [];
+  let acc = 0;
+  for (let i = 0; i < N; i++) {
+    const base = 8 + Math.sin(i / 6) * 6 + Math.random() * 14;
+    const spike = i === 32 || i === 58 || i === 75 ? 40 + Math.random() * 30 : 0;
+    const profit = Math.max(0, base + spike - 6);
+    const date = new Date(); date.setDate(date.getDate() - (N - 1 - i));
+    days.push({ date, profit }); acc += profit;
+  }
+  const max = Math.max(1, ...days.map(d => d.profit));
+  const pts = days.map((d, i) => [
+    P + (i / (N - 1)) * (W - 2*P),
+    H - P - (d.profit / max) * (H - 2*P)
+  ]);
+  let path = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 1; i < pts.length; i++) {
+    const [px, py] = pts[i-1], [x, y] = pts[i];
+    const cx = (px + x) / 2;
+    path += ` Q${px},${py} ${cx},${(py + y)/2} T${x},${y}`;
+  }
+  const area = `${path} L${pts[N-1][0]},${H-P} L${pts[0][0]},${H-P} Z`;
+
+  const card = document.createElement('div');
+  card.className = 'activity-curve-card';
+  card.innerHTML = `
+    <div class="activity-curve-head">
+      <div><div class="t">Activité</div><div class="sub">84 derniers jours</div></div>
+      <div class="total">${acc.toFixed(2).replace('.', ',')} €</div>
+    </div>
+    <div style="position:relative;">
+      <svg class="activity-curve-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="acGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.30"/>
+            <stop offset="100%" stop-color="#1D9E75" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path class="ac-area" d="${area}"/>
+        <path class="ac-line" d="${path}"/>
+        <line class="ac-crosshair" id="cx" style="display:none"/>
+        <circle class="ac-dot" id="cd" r="5" style="display:none"/>
+      </svg>
+      <div class="ac-tooltip" id="tt" style="display:none"></div>
+    </div>
+  `;
+  mount.appendChild(card);
+
+  const svg = card.querySelector('svg');
+  const cx = card.querySelector('#cx'), cd = card.querySelector('#cd'), tt = card.querySelector('#tt');
+  svg.addEventListener('mousemove', e => {
+    const rect = svg.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    const idx = Math.max(0, Math.min(N-1, Math.round(((x - P) / (W - 2*P)) * (N - 1))));
+    const [px, py] = pts[idx];
+    cx.style.display = 'block';
+    cx.setAttribute('x1', px); cx.setAttribute('x2', px);
+    cx.setAttribute('y1', P); cx.setAttribute('y2', H - P);
+    cd.style.display = 'block';
+    cd.setAttribute('cx', px); cd.setAttribute('cy', py);
+    tt.style.display = 'block';
+    tt.style.left = `${(px / W) * 100}%`;
+    tt.style.top = `${(py / H) * 100}%`;
+    tt.innerHTML = `<div class="v">${days[idx].profit.toFixed(2).replace('.', ',')} €</div><div class="d">${days[idx].date.toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}</div>`;
+  });
+  svg.addEventListener('mouseleave', () => {
+    cx.style.display = 'none'; cd.style.display = 'none'; tt.style.display = 'none';
+  });
+}
+
+// === Donut ===
+function renderDonut() {
+  const mount = document.getElementById('donutMount');
+  mount.innerHTML = '';
+  const segs = [
+    { label: 'Mode',      emoji: '👗', color: '#DB2777', val: 320 },
+    { label: 'High-Tech', emoji: '📱', color: '#2563EB', val: 245 },
+    { label: 'Luxe',      emoji: '💎', color: '#D97706', val: 180 },
+    { label: 'Maison',    emoji: '🏠', color: '#16A34A', val: 102.50 },
+  ];
+  const total = segs.reduce((a, s) => a + s.val, 0);
+  segs.forEach(s => s.pct = (s.val / total) * 100);
+
+  const r = 56, cx = 70, cy = 70, circ = 2 * Math.PI * r;
+  const GAP = 3;
+  let offset = 0;
+  let circles = '';
+  segs.forEach((s, i) => {
+    const dash = Math.max(0, (s.pct / 100) * circ - GAP);
+    const gap = circ - dash;
+    circles += `<circle class="seg" cx="${cx}" cy="${cy}" r="${r}" stroke="${s.color}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${-offset}" style="animation: legendGrow 0.9s cubic-bezier(0.65,0,0.35,1) ${0.1 + i*0.08}s both;"/>`;
+    offset += dash + GAP;
+  });
+
+  const card = document.createElement('div');
+  card.className = 'donut-card';
+  card.innerHTML = `
+    <div class="head">Profit par catégorie</div>
+    <div class="donut-row">
+      <div class="donut-svg">
+        <svg width="140" height="140" viewBox="0 0 140 140">
+          <g transform="rotate(-90 70 70)">
+            <circle class="track" cx="${cx}" cy="${cy}" r="${r}"/>
+            ${circles}
+          </g>
+        </svg>
+        <div class="center-stack">
+          <div class="lbl">Total</div>
+          <div class="v">${total.toFixed(2).replace('.', ',')} €</div>
+        </div>
+      </div>
+      <div class="donut-legend">
+        ${segs.map(s => `
+          <div class="donut-legend-row">
+            <div class="top">
+              <span class="name"><span class="emo">${s.emoji}</span>${s.label}</span>
+              <span class="pct">${Math.round(s.pct)}%</span>
+            </div>
+            <div class="donut-legend-bar">
+              <span style="width: ${s.pct}%; background: ${s.color};"></span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  mount.appendChild(card);
+}
+
+// === Tweaks panel ===
+const TWEAKS = /*EDITMODE-BEGIN*/{
+  "background": "pure",
+  "shimmer": true,
+  "halo": true,
+  "fab_orbit": true
+}/*EDITMODE-END*/;
+
+let tweakState = {...TWEAKS};
+function applyTweaks() {
+  document.body.classList.toggle('bg-grain', tweakState.background === 'grain');
+  document.body.classList.toggle('bg-dots',  tweakState.background === 'dots');
+  document.body.style.setProperty('--bg',
+    tweakState.background === 'pure' ? '#FFFFFF' : '#FAFBFB');
+  document.querySelectorAll('.fab-vocal').forEach(el => {
+    el.style.animationPlayState = tweakState.halo ? 'running' : 'paused';
+  });
+  document.querySelectorAll('.fab-orbit').forEach(el => {
+    el.style.display = tweakState.fab_orbit ? 'block' : 'none';
+  });
+}
+applyTweaks();
+
+const styleEl = document.createElement('style');
+styleEl.textContent = `
+  body.shimmer-off .profit-hero::after,
+  body.shimmer-off .cta-premium::before,
+  body.shimmer-off .tb-premium::before { animation-play-state: paused !important; opacity: 0 !important; }
+`;
+document.head.appendChild(styleEl);
+function applyShimmer() { document.body.classList.toggle('shimmer-off', !tweakState.shimmer); }
+applyShimmer();
+
+window.addEventListener('message', e => {
+  if (e.data?.type === '__activate_edit_mode') showPanel();
+  if (e.data?.type === '__deactivate_edit_mode') hidePanel();
+});
+window.parent.postMessage({type: '__edit_mode_available'}, '*');
+
+let panelEl;
+function showPanel() {
+  if (panelEl) { panelEl.style.display = 'block'; return; }
+  panelEl = document.createElement('div');
+  panelEl.style.cssText = `
+    position: fixed; right: 16px; bottom: 16px; z-index: 999;
+    background: #fff; border-radius: 14px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+    padding: 14px 16px; width: 244px;
+    font-family: 'Nunito', sans-serif;
+    border: 1px solid rgba(15,23,42,0.06);
+  `;
+  panelEl.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <strong style="font-size:13px; letter-spacing:-0.01em;">Tweaks</strong>
+      <button id="tw-close" style="border:none; background:transparent; cursor:pointer; font-size:18px; color:#999;">×</button>
+    </div>
+    <label style="display:block; font-size:10px; font-weight:800; color:#6B7280; text-transform:uppercase; letter-spacing:0.07em; margin-bottom:6px;">Background</label>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:14px;">
+      <button data-tw="background" data-val="tinted" class="tw-opt">Tinté</button>
+      <button data-tw="background" data-val="pure" class="tw-opt">Pur</button>
+      <button data-tw="background" data-val="grain" class="tw-opt">Grain</button>
+      <button data-tw="background" data-val="dots" class="tw-opt">Dots</button>
+    </div>
+    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; padding:6px 0;">
+      <span>Shimmer KPI/CTA</span>
+      <input type="checkbox" data-tw="shimmer" ${tweakState.shimmer ? 'checked' : ''}>
+    </label>
+    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; padding:6px 0;">
+      <span>Halo FAB</span>
+      <input type="checkbox" data-tw="halo" ${tweakState.halo ? 'checked' : ''}>
+    </label>
+    <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; padding:6px 0;">
+      <span>Texte orbital FAB</span>
+      <input type="checkbox" data-tw="fab_orbit" ${tweakState.fab_orbit ? 'checked' : ''}>
+    </label>
+  `;
+  const s = document.createElement('style');
+  s.textContent = `
+    .tw-opt { padding:7px 4px; font-size:11px; font-weight:800; border-radius:8px; border:1px solid rgba(15,23,42,0.08); background:#FAFBFB; cursor:pointer; font-family:inherit; transition:all 0.15s; }
+    .tw-opt.on { background:#1D9E75; color:#fff; border-color:#1D9E75; }
+  `;
+  document.head.appendChild(s);
+  document.body.appendChild(panelEl);
+  panelEl.querySelectorAll('.tw-opt').forEach(b => {
+    if (tweakState[b.dataset.tw] === b.dataset.val) b.classList.add('on');
+    b.addEventListener('click', () => {
+      panelEl.querySelectorAll(`[data-tw="${b.dataset.tw}"]`).forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      tweakState[b.dataset.tw] = b.dataset.val;
+      applyTweaks(); applyShimmer();
+      window.parent.postMessage({type:'__edit_mode_set_keys', edits:{[b.dataset.tw]: b.dataset.val}}, '*');
+    });
+  });
+  panelEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      tweakState[cb.dataset.tw] = cb.checked;
+      applyTweaks(); applyShimmer();
+      window.parent.postMessage({type:'__edit_mode_set_keys', edits:{[cb.dataset.tw]: cb.checked}}, '*');
+    });
+  });
+  panelEl.querySelector('#tw-close').addEventListener('click', () => {
+    hidePanel();
+    window.parent.postMessage({type:'__edit_mode_dismissed'}, '*');
+  });
+}
+function hidePanel() { if (panelEl) panelEl.style.display = 'none'; }
+</script>
+
+</body>
+</html>
