@@ -3473,7 +3473,14 @@ export default function App({ loginOnly = false }){
         setCurrency(p.data.currency);
         localStorage.setItem('fs_currency',p.data.currency);
       } else if(!confirmed){
-        setShowCurrencyOnboarding(true);
+        if(p.data?.currency){
+          // Compte existant sur nouvel appareil — pas d'onboarding
+          setCurrency(p.data.currency);
+          localStorage.setItem('fs_currency',p.data.currency);
+          localStorage.setItem('fs_currency_confirmed','1');
+        } else {
+          setShowCurrencyOnboarding(true);
+        }
       }
       if(!p.data?.username&&!localStorage.getItem('fs_username_asked')&&confirmed){
         setShowUsernameOnboarding(true);
