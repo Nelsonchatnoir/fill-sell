@@ -698,8 +698,8 @@ export default function LandingPage() {
                 : "The reseller app with AI voice. Track your stock and profits automatically."}
             </p>
             {!Capacitor.isNativePlatform() && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
-                <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0, marginBottom: 14 }}>
+                <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener" style={{ display: 'block', lineHeight: 0 }}>
                   <img
                     src={lang === 'fr'
                       ? 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/fr-fr'
@@ -707,18 +707,18 @@ export default function LandingPage() {
                     alt={lang === 'fr' ? 'Télécharger sur l\'App Store' : 'Download on the App Store'}
                     height="54"
                     loading="eager"
-                    style={{ borderRadius: 13, display: 'block' }}
+                    style={{ height: 54, width: 'auto', borderRadius: 13, display: 'block' }}
                   />
                 </a>
-                <a href="https://play.google.com/store/apps/details?id=app.fillsell.app" target="_blank" rel="noopener">
+                <a href="https://play.google.com/store/apps/details?id=app.fillsell.app" target="_blank" rel="noopener" style={{ display: 'block', lineHeight: 0 }}>
                   <img
                     src={lang === 'fr'
                       ? 'https://play.google.com/intl/en_us/badges/static/images/badges/fr_badge_web_generic.png'
                       : 'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png'}
                     alt={lang === 'fr' ? 'Disponible sur Google Play' : 'Get it on Google Play'}
-                    height="54"
+                    height="81"
                     loading="eager"
-                    style={{ display: 'block' }}
+                    style={{ height: 81, width: 'auto', display: 'block' }}
                   />
                 </a>
               </div>
