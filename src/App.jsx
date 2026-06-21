@@ -5211,8 +5211,9 @@ export default function App({ loginOnly = false }){
             stockVal={stockVal} stockQty={stockQty} soldQty={soldQty}
             voiceStep={voiceStep} setVoiceStep={setVoiceStep}
             voiceParsed={voiceParsed} setVoiceParsed={setVoiceParsed}
-            voiceZoneResults={voiceZoneResults}
+            voiceZoneResults={voiceZoneResults} setVoiceZoneResults={setVoiceZoneResults}
             voiceZoneOpen={voiceZoneOpen} setVoiceZoneOpen={setVoiceZoneOpen}
+            vaActions={vaActions}
             voiceText={voiceText} setVoiceText={setVoiceText}
             voiceLoading={voiceLoading} voicePlaceholderIdx={voicePlaceholderIdx}
             voiceError={voiceError}
