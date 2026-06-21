@@ -1,8 +1,20 @@
 apply plugin: 'com.android.application'
 
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) { localPropsFile.withInputStream { localProps.load(it) } }
+
 android {
     namespace = "app.fillsell.app"
     compileSdk = rootProject.ext.compileSdkVersion
+    signingConfigs {
+        release {
+            storeFile     file(localProps['FILLSELL_STORE_FILE'] ?: 'fillsell-release.keystore')
+            storePassword localProps['FILLSELL_STORE_PASSWORD'] ?: ''
+            keyAlias      localProps['FILLSELL_KEY_ALIAS']      ?: 'fillsell'
+            keyPassword   localProps['FILLSELL_KEY_PASSWORD']   ?: ''
+        }
+    }
     defaultConfig {
         applicationId "app.fillsell.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -20,6 +32,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 }
