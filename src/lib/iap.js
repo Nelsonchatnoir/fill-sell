@@ -42,7 +42,7 @@ export const restorePurchases = async (source) => {
     const allIds = Object.values(PRODUCT_IDS);
     const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
     if (!tx) return { isPremium: false, receipt: null };
-    const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date());
+    const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date()) || tx.purchaseState === '1';
     return { isPremium: !!isActive, receipt: tx.receipt ?? null };
   } catch (e) {
     throw e;

@@ -3412,7 +3412,7 @@ export default function App({ loginOnly = false }){
     try{
       const {isPremium,receipt}=await restorePurchases('button');
       if(isPremium){
-        if(receipt){
+        if(receipt&&platform==='ios'){
           const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
         } else {
