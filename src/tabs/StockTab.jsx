@@ -18,6 +18,7 @@ const StockTab = memo(function StockTab({
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
   voiceStep, setVoiceStep, voiceParsed, setVoiceParsed,
+  voiceZoneResults, voiceZoneOpen, setVoiceZoneOpen,
   voiceText, setVoiceText, voiceLoading, voicePlaceholderIdx, voiceError,
   // Manual form state
   showManualForm, setShowManualForm, manualMode, setManualMode,
@@ -52,62 +53,62 @@ const StockTab = memo(function StockTab({
 
   return (
     <>
-      <div className="ai-zone-header">
+      <div className="ai-zone-header" onClick={()=>setVoiceZoneOpen(v=>!v)}
+        style={{cursor:"pointer",userSelect:"none"}}>
         <div className="ico-wrap">🤖</div>
-        <div><div className="t">{lang==='en'?'AI Stock':'Stock IA'}</div><div className="d">{lang==='en'?'Manage your inventory with AI':'Gérez votre inventaire avec l\'IA'}</div></div>
+        <div style={{flex:1}}><div className="t">{lang==='en'?'AI Stock':'Stock IA'}</div><div className="d">{lang==='en'?'Manage your inventory with AI':'Gérez votre inventaire avec l\'IA'}</div></div>
+        <div style={{fontSize:14,color:"#94A3B8",transition:"transform 0.2s",transform:voiceZoneOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
       </div>
       <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
+        {voiceZoneOpen&&(
         <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Voice Capture ── */}
-          {voiceStep==="done"&&voiceParsed?(
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                <span style={{background:voiceParsed.action==="achat"?"#E8F5F0":"#FFF4EE",color:voiceParsed.action==="achat"?"#1D9E75":"#F9A26C",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:700,border:`1px solid ${voiceParsed.action==="achat"?"#C6E8DF":"#FDDCB5"}`}}>
-                  {voiceParsed.action==="achat"?(lang==='fr'?"Achat":"Purchase"):(lang==='fr'?"Vente":"Sale")}
-                </span>
-                <span style={{fontSize:12,color:"#6B7280"}}>{voiceParsed.items.length} {lang==='fr'?`article${voiceParsed.items.length>1?"s":""}`:voiceParsed.items.length>1?"items":"item"} {lang==='fr'?"détecté(s)":"detected"}</span>
-                {voiceParsed.isLot&&(
-                  <span style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #93C5FD",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:700}}>
-                    🛍️ {lang==='fr'?`Lot — ${fmt(voiceParsed.lotTotal||0)} au total`:`Lot — ${fmt(voiceParsed.lotTotal||0)} total`}
-                  </span>
-                )}
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {voiceParsed.items.map((item,i)=>{
-                  const ts=getTypeStyle(item.categorie);
-                  return(
-                    <div key={i} style={{background:item.confidence<0.7?"#FFF4EE":"#F9FAFB",borderRadius:10,padding:"10px 12px",border:`1px solid ${item.confidence<0.7?"#FDDCB5":"rgba(0,0,0,0.06)"}`,display:"flex",flexDirection:"column",gap:4}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-                        <div style={{fontWeight:700,fontSize:13,color:C.text}}>
-                          {item.nom}{item.marque&&<span style={{color:"#6B7280",fontWeight:600}}> · {item.marque}</span>}{item.type&&<span style={{color:"#A3A9A6",fontWeight:500}}> {item.type}</span>}
-                        </div>
-                        <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`,flexShrink:0}}>{ts.emoji} {typeLabel(item.categorie,lang)}</span>
-                      </div>
-                      <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280",flexWrap:"wrap",alignItems:"center"}}>
-                        {voiceParsed.isLot?(
-                          <span style={{display:"flex",alignItems:"center",gap:4}}>
-                            🛒 <input type="number" value={item.prix_estime_lot??""} onChange={e=>{const v=parseFloat(e.target.value)||0;setVoiceParsed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:60,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:16,fontFamily:"inherit",outline:"none"}}/>{CURRENCY_SYMBOLS[currency]||'€'}
-                            <span style={{fontSize:10,color:"#9CA3AF",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée":"Estimated split"}</span>
-                          </span>
-                        ):(
-                          <>
-                            {item.prix_achat!==null&&<span>🛒 {fmt(item.prix_achat)}</span>}
-                            {item.prix_vente!==null&&<span>💰 {fmt(item.prix_vente)}</span>}
-                          </>
-                        )}
-                        {item.quantite>1&&<span>×{item.quantite}</span>}
-                        {item.date&&<span>📅 {item.date}</span>}
-                        {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
-                      </div>
-                      {item.confidence<0.7&&<div style={{fontSize:11,color:"#F9A26C",fontWeight:700}}>{lang==='fr'?"⚠️ À vérifier":"⚠️ To verify"}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-              <button onClick={addItemsFromVoice} style={{width:"100%",padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                {lang==='fr'?"✓ Ajouter à l'inventaire":"✓ Add to inventory"}
-              </button>
-              <button onClick={resetVoiceFlow} style={{width:"100%",padding:"12px",background:"transparent",color:"#6B7280",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          {voiceStep==="done"&&voiceZoneResults.length>0?(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {voiceZoneResults.map((r,idx)=>{
+                const isOk=r.status==="success";
+                const isErr=r.status==="error"||r.intent==="unknown";
+                const AI_INTENTS=["analytics_query","price_advice","buy_advice","deal_score","business_advice"];
+                if(isOk&&AI_INTENTS.includes(r.intent)){
+                  const aiLabel=r.intent==="price_advice"?`💡 ${lang==='fr'?"Conseil prix":"Price advice"}`:r.intent==="buy_advice"?`🛒 ${lang==='fr'?"Conseil achat":"Buy advice"}`:r.intent==="analytics_query"?`📊 ${lang==='fr'?"Analyse":"Analytics"}`:`💼`;
+                  return(<div key={idx} style={{background:"#F0F9FF",borderRadius:12,padding:"12px 14px",border:"1px solid #BAE6FD"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#0369A1",marginBottom:6}}>{aiLabel}</div>
+                    <div style={{fontSize:13,color:"#0F172A",lineHeight:1.55}}>{r.taskData?.reply||r.taskData?.analysis||r.message||"✓"}</div>
+                  </div>);
+                }
+                if(isErr){
+                  return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}>
+                    <div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{r.message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div>
+                  </div>);
+                }
+                if(r.status==="pending_confirmation"){
+                  return(<div key={idx} style={{background:"#FFF7ED",borderRadius:12,padding:"12px 14px",border:"1px solid #FED7AA"}}>
+                    <div style={{fontSize:13,color:"#C2410C",fontWeight:600}}>{lang==="en"?"Needs confirmation":"Nécessite confirmation"}{r.taskData?.nom?` — ${r.taskData.nom}`:""}</div>
+                  </div>);
+                }
+                const nom=r.data?.title||r.data?.nom||r.taskData?.nom||"";
+                const prix=r.data?.buy??r.data?.prix_achat??r.taskData?.prix_achat;
+                const prixV=r.data?.sell??r.data?.prix_vente??r.taskData?.prix_vente;
+                const ICONS={inventory_add:"✅",inventory_sell:"💰",inventory_move:"📍",inventory_delete:"🗑️",inventory_update:"✏️",inventory_lot:"📦"};
+                const LABELS={
+                  inventory_add:lang==='fr'?"ajouté":"added",
+                  inventory_sell:lang==='fr'?"vendu":"sold",
+                  inventory_move:lang==='fr'?`déplacé → ${r.taskData?.emplacement||"?"}`:`moved → ${r.taskData?.emplacement||"?"}`,
+                  inventory_delete:lang==='fr'?"supprimé":"deleted",
+                  inventory_update:lang==='fr'?"modifié":"updated",
+                  inventory_lot:lang==='fr'?"lot ajouté":"lot added",
+                };
+                const icon=ICONS[r.intent]||"✓";
+                const label=LABELS[r.intent]||r.message||"";
+                const priceStr=r.intent==="inventory_sell"&&prixV?` · ${fmt(prixV)}`:prix?` · ${fmt(prix)}`:"";
+                return(
+                  <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:16}}>{icon}</span>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {label}{priceStr}</div>
+                  </div>
+                );
+              })}
+              <button onClick={resetVoiceFlow} style={{width:"100%",padding:"10px",background:"transparent",color:"#6B7280",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {lang==='fr'?"✗ Recommencer":"✗ Start over"}
               </button>
             </div>
@@ -334,6 +335,7 @@ const StockTab = memo(function StockTab({
           )}
           </>)}
         </div>
+        )}
 
         <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
 

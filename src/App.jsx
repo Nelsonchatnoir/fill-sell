@@ -3318,6 +3318,8 @@ export default function App({ loginOnly = false }){
   const [voiceStep,setVoiceStep]=useState("");
   const [voiceParsed,setVoiceParsed]=useState(null);
   const [voiceError,setVoiceError]=useState(null);
+  const [voiceZoneResults,setVoiceZoneResults]=useState([]);
+  const [voiceZoneOpen,setVoiceZoneOpen]=useState(false);
   useEffect(()=>{if(!voiceError)return;const t=setTimeout(()=>{setVoiceError(null);setVoiceStep("");},4000);return()=>clearTimeout(t);},[voiceError]);
   const [showManualForm,setShowManualForm]=useState(false);
   useEffect(()=>{
@@ -3668,25 +3670,49 @@ export default function App({ loginOnly = false }){
   function resetVoiceFlow(){
     setVoiceText("");setVoiceLoading(false);setVoiceStep("");
     setVoiceParsed(null);setVoiceError(null);setIsRecording(false);
+    setVoiceZoneResults([]);
   }
 
   async function callVoiceParse(text){
+    // Quota check — identique à handleVoiceToggle
+    if(!isPremium){
+      const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
+      if(count>=VOICE_FREE_LIMIT){
+        setVoiceError(lang==='fr'?"🔒 Limite atteinte · 5 vocaux/jour en gratuit":"🔒 Daily limit reached · 5 voices/day on free plan");
+        setVoiceStep("error");return;
+      }
+      await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
+      supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
+      setVoiceUsedToday(count+1);
+    }
     setVoiceStep("parsing");setVoiceLoading(true);
     try{
       const{data:{session:vpSess}}=await supabase.auth.getSession();
       const vpToken=vpSess?.access_token;
-      const res=await fetch(`${supabaseUrl}/functions/v1/voice-parse`,{
-        method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vpToken}`,"apikey":supabaseAnonKey},
-        body:JSON.stringify({text,lang}),
-      });
-      if(!res.ok){
-        const errJson=await res.json().catch(()=>({}));
-        if(errJson?.error==='ai_unavailable'||res.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
-        throw new Error("Parse failed");
+      if(!vpToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
+      // Snapshot du stock — identique au FAB vocal
+      const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1}));
+      const iRes=await fetch(`${supabaseUrl}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vpToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
+      if(!iRes.ok){
+        const iErrJson=await iRes.json().catch(()=>({}));
+        if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
+        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){const msg=iErrJson?.reason==='monthly_limit'?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.'):(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');setVoiceError(`🔒 ${msg}`);setVoiceStep("error");setVoiceLoading(false);return;}
+        throw new Error(lang==="en"?"Intent failed":"Erreur intention");
       }
-      const result=await res.json();
-      if(result.error)throw new Error(result.error);
-      setVoiceParsed(result);setVoiceStep("done");
+      let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
+      const{tasks,error:iErr}=iJson;
+      if(iErr)throw new Error(iErr);
+      if(!Array.isArray(tasks)||!tasks.length)throw new Error(lang==="en"?"Nothing understood":"Rien compris");
+      const{results}=await executeVoiceTasks(tasks,{items,sales,lang,currency,country:userCountry?.code??getCountryFallback(),actions:vaActions,supabaseUrl,token:vpToken,userId:user?.id??null});
+      // Vente directe auto si article non trouvé en stock (no_match) — identique au FAB
+      const resolvedResults=await Promise.all(results.map(async r=>{
+        if(r.status==="pending_confirmation"&&r.intent==="inventory_sell"&&r.taskData?.no_match&&!r.taskData?.price_ambiguous){
+          try{const dmCat=r.taskData?.categorie||r.taskData?.type||null;await vaActions.addDirectSale({nom:r.taskData?.nom,marque:r.taskData?.marque,type:dmCat,description:r.taskData?.description||null,prix_vente:r.taskData?.prix_vente,prix_achat:r.taskData?.prix_achat,quantite_vendue:r.taskData?.quantite_vendue,plateforme:r.taskData?.plateforme||null});return{...r,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"};}
+          catch(e){return{...r,status:"error",message:e.message};}
+        }
+        return r;
+      }));
+      setVoiceZoneResults(resolvedResults);setVoiceStep("done");
     }catch(e){
       setVoiceError(e.message||"Erreur analyse");setVoiceStep("error");
     }
@@ -5185,6 +5211,8 @@ export default function App({ loginOnly = false }){
             stockVal={stockVal} stockQty={stockQty} soldQty={soldQty}
             voiceStep={voiceStep} setVoiceStep={setVoiceStep}
             voiceParsed={voiceParsed} setVoiceParsed={setVoiceParsed}
+            voiceZoneResults={voiceZoneResults}
+            voiceZoneOpen={voiceZoneOpen} setVoiceZoneOpen={setVoiceZoneOpen}
             voiceText={voiceText} setVoiceText={setVoiceText}
             voiceLoading={voiceLoading} voicePlaceholderIdx={voicePlaceholderIdx}
             voiceError={voiceError}
