@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { track } from '../analytics/analytics';
 import { supabase } from '../lib/supabase';
+import { Capacitor } from '@capacitor/core';
 import './landing.css';
 
 function getBrowserLang() {
@@ -696,17 +697,32 @@ export default function LandingPage() {
                 ? "L'application pour revendeurs avec IA vocale. Suivez votre stock et vos profits automatiquement."
                 : "The reseller app with AI voice. Track your stock and profits automatically."}
             </p>
-            <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener">
-              <img
-                src={lang === 'fr'
-                  ? 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/fr-fr'
-                  : 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us'}
-                alt={lang === 'fr' ? 'Télécharger sur l\'App Store' : 'Download on the App Store'}
-                height="54"
-                loading="eager"
-                style={{ borderRadius: 13, display: 'block', marginBottom: 14 }}
-              />
-            </a>
+            {!Capacitor.isNativePlatform() && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                <a href="https://apps.apple.com/app/id6762152785" target="_blank" rel="noopener">
+                  <img
+                    src={lang === 'fr'
+                      ? 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/fr-fr'
+                      : 'https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us'}
+                    alt={lang === 'fr' ? 'Télécharger sur l\'App Store' : 'Download on the App Store'}
+                    height="54"
+                    loading="eager"
+                    style={{ borderRadius: 13, display: 'block' }}
+                  />
+                </a>
+                <a href="https://play.google.com/store/apps/details?id=app.fillsell.app" target="_blank" rel="noopener">
+                  <img
+                    src={lang === 'fr'
+                      ? 'https://play.google.com/intl/en_us/badges/static/images/badges/fr_badge_web_generic.png'
+                      : 'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png'}
+                    alt={lang === 'fr' ? 'Disponible sur Google Play' : 'Get it on Google Play'}
+                    height="54"
+                    loading="eager"
+                    style={{ display: 'block' }}
+                  />
+                </a>
+              </div>
+            )}
             <p className="lp-hero-sub reveal delay-2">{t.heroSub}</p>
             <div className="lp-hero-ctas reveal delay-3">
               <button className="btn btn-grad btn-lg"
