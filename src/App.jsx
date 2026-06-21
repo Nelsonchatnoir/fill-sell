@@ -3319,7 +3319,7 @@ export default function App({ loginOnly = false }){
   const [voiceParsed,setVoiceParsed]=useState(null);
   const [voiceError,setVoiceError]=useState(null);
   const [voiceZoneResults,setVoiceZoneResults]=useState([]);
-  const [voiceZoneOpen,setVoiceZoneOpen]=useState(false);
+  const [voiceZoneOpen,setVoiceZoneOpen]=useState(true);
   useEffect(()=>{if(!voiceError)return;const t=setTimeout(()=>{setVoiceError(null);setVoiceStep("");},4000);return()=>clearTimeout(t);},[voiceError]);
   const [showManualForm,setShowManualForm]=useState(false);
   useEffect(()=>{

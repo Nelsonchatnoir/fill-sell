@@ -128,6 +128,16 @@ const StockTab = memo(function StockTab({
               <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
                 {t('stockIaHint')}
               </div>
+              {!voiceText&&(
+                <div style={{width:"100%",display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {getRotatingExamples(currency,lang).slice(0,3).map((ex,i)=>(
+                    <button key={i} onClick={()=>setVoiceText(ex.text)}
+                      style={{fontSize:11,padding:"5px 10px",borderRadius:99,border:"1px solid rgba(0,0,0,0.1)",background:"#F9FAFB",cursor:"pointer",color:"#6B7280",fontFamily:"inherit",lineHeight:1.4,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      ↗ {ex.text}
+                    </button>
+                  ))}
+                </div>
+              )}
               {!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:4}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:4}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
               <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
                 style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
