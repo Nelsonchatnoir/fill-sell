@@ -60,9 +60,9 @@ const StockTab = memo(function StockTab({
         <div style={{fontSize:14,color:"#94A3B8",transition:"transform 0.2s",transform:voiceZoneOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
       </div>
       <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
-        {voiceZoneOpen&&(
         <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-          {/* ── Voice Capture ── */}
+          {/* ── Voice Capture (collapsible) ── */}
+          {voiceZoneOpen&&(<>
           {voiceStep==="done"&&voiceZoneResults.length>0?(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {voiceZoneResults.map((r,idx)=>{
@@ -135,6 +135,7 @@ const StockTab = memo(function StockTab({
               </button>
             </div>
           )}
+          </>)}
           {/* ── Toggle formulaire manuel ── */}
           <button onClick={()=>setShowManualForm(v=>!v)}
             style={{width:"100%",padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all 0.15s"}}
@@ -335,7 +336,6 @@ const StockTab = memo(function StockTab({
           )}
           </>)}
         </div>
-        )}
 
         <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
 
