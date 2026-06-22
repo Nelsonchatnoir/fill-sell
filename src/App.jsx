@@ -3381,14 +3381,24 @@ export default function App({ loginOnly = false }){
     try{
       const {cancelled}=await purchasePremium(productId,user.id);
       if(cancelled) return;
-      let confirmed=false;
-      for(let i=0;i<10;i++){
-        await new Promise(r=>setTimeout(r,2000));
-        const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
-        if(data?.is_premium){confirmed=true;break;}
+      if(platform==='android'){
+        // Android : succès Play Billing côté client → écriture directe, sans polling
+        // Le webhook Google Play ne sert que pour les renouvellements automatiques
+        // obfuscatedAccountId déjà passé via appAccountToken dans purchasePremium
+        const updates={is_premium:true};
+        if(isFounderProduct) updates.is_founder=true;
+        await supabase.from('profiles').update(updates).eq('id',user.id);
+      } else {
+        // iOS : attendre confirmation via webhook Apple
+        let confirmed=false;
+        for(let i=0;i<10;i++){
+          await new Promise(r=>setTimeout(r,2000));
+          const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
+          if(data?.is_premium){confirmed=true;break;}
+        }
+        if(!confirmed) throw new Error('Premium not confirmed by server');
+        if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       }
-      if(!confirmed) throw new Error('Premium not confirmed by server');
-      if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       setIsPremium(true);
       setPremiumWelcomeIsFounder(isFounderProduct);
       setShowPremiumWelcome(true);
