@@ -108,7 +108,8 @@
       "PowerShell(npx supabase db query --linked --output json \"SELECT id, is_premium, apple_original_transaction_id, subscription_cancel_at_period_end, subscription_period_end FROM profiles WHERE apple_original_transaction_id = '2000001157647032';\" 2>&1)",
       "PowerShell(npx supabase db query --linked --output json \"SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' ORDER BY ordinal_position;\" 2>&1)",
       "PowerShell(npx supabase db query --linked --output json \"SELECT id, is_premium, is_founder, apple_original_transaction_id, subscription_cancel_at_period_end, subscription_period_end FROM profiles WHERE id='5322fa18-c194-458b-a222-7ee4093c4968';\" 2>&1)",
-      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; cd C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android; .\\\\gradlew assembleDebug 2>&1)"
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; cd C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android; .\\\\gradlew assembleDebug 2>&1)",
+      "mcp__9ce8c7c3-d4dc-48cf-a887-7a33a74d94e6__deploy_to_vercel"
     ]
   }
 }
