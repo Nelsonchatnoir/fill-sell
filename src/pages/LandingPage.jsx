@@ -710,6 +710,7 @@ export default function LandingPage() {
                     style={{ height: 54, width: 'auto', borderRadius: 13, display: 'block' }}
                   />
                 </a>
+                {/* Google Play button hidden
                 <a href="https://play.google.com/store/apps/details?id=app.fillsell.app" target="_blank" rel="noopener" style={{ display: 'block', lineHeight: 0 }}>
                   <img
                     src={lang === 'fr'
@@ -721,6 +722,7 @@ export default function LandingPage() {
                     style={{ height: 76, width: 'auto', display: 'block' }}
                   />
                 </a>
+                */}
               </div>
             )}
             <p className="lp-hero-sub reveal delay-2">{t.heroSub}</p>
