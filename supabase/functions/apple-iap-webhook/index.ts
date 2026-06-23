@@ -167,6 +167,7 @@ serve(async (req) => {
         }
         const upd: Record<string, unknown> = { is_premium: true };
         if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
+        if (renewalProductId === "app.fillsell.premium.sub") upd.is_founder = true;
         const { error } = await supabaseAdmin.from("profiles").update(upd).eq("id", renewalToken);
         if (error) {
           console.error("[apple-iap-webhook] DB error:", error.message);
@@ -242,6 +243,7 @@ serve(async (req) => {
 
     const update: Record<string, unknown> = { is_premium: isPremium };
     if (originalTransactionId) update.apple_original_transaction_id = originalTransactionId;
+    if (isPremium && productId === "app.fillsell.premium.sub") update.is_founder = true;
 
     const { error } = await supabaseAdmin
       .from("profiles")

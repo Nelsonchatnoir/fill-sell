@@ -108,7 +108,23 @@
       "PowerShell(npx supabase db query --linked --output json \"SELECT id, is_premium, apple_original_transaction_id, subscription_cancel_at_period_end, subscription_period_end FROM profiles WHERE apple_original_transaction_id = '2000001157647032';\" 2>&1)",
       "PowerShell(npx supabase db query --linked --output json \"SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' ORDER BY ordinal_position;\" 2>&1)",
       "PowerShell(npx supabase db query --linked --output json \"SELECT id, is_premium, is_founder, apple_original_transaction_id, subscription_cancel_at_period_end, subscription_period_end FROM profiles WHERE id='5322fa18-c194-458b-a222-7ee4093c4968';\" 2>&1)",
-      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; cd C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android; .\\\\gradlew assembleDebug 2>&1)"
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; cd C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android; .\\\\gradlew assembleDebug 2>&1)",
+      "PowerShell(adb devices *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(& \"C:\\\\Users\\\\nicol\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" devices)",
+      "PowerShell(& \"C:\\\\Users\\\\nicol\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" push \"C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\debug\\\\app-debug.apk\" /sdcard/Download/app-debug.apk)",
+      "PowerShell(& \"C:\\\\Users\\\\nicol\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" -s ydjzjj4t9txgduiv push \"C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\debug\\\\app-debug.apk\" /sdcard/Download/app-debug.apk)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; cd C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android; .\\\\gradlew bundleRelease 2>&1)",
+      "PowerShell(Get-Item \"C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android\\\\app\\\\build\\\\outputs\\\\bundle\\\\release\\\\app-release.aab\" | Select-Object FullName, @{N='Size_MB';E={[math]::Round\\($_.Length/1MB,2\\)}})",
+      "PowerShell($f = Get-Item \"C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android\\\\app\\\\build\\\\outputs\\\\bundle\\\\release\\\\app-release.aab\"; Write-Host $f.FullName; Write-Host \\([math]::Round\\($f.Length/1MB,2\\)\\)\"MB\")",
+      "Bash(dir *)",
+      "Bash('div[style*=\\\\\"width:1024px\\\\\"]')",
+      "Bash(Test-Path *)",
+      "Bash(./gradlew bundleRelease)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" cd \"C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android\")",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew bundleRelease)",
+      "Bash(adb devices *)",
+      "Bash(grep -E \"index.ts|\\\\.ts$\")"
     ]
   }
 }
