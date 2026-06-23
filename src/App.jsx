@@ -5838,7 +5838,7 @@ export default function App({ loginOnly = false }){
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={()=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger);setConversionModal(m=>({...m,open:false}));handleIAPPurchase();}}
+        onUpgrade={()=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger,'isNative:',isNative);setConversionModal(m=>({...m,open:false}));trackTikTokEvent("InitiateCheckout",user?.email,9.99);isNative?handleIAPPurchase():triggerCheckout();}}
         trigger={conversionModal.trigger}
         founderSpotsLeft={slotsRemaining}
         lang={lang}
