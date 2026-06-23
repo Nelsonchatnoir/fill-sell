@@ -274,8 +274,8 @@ function founderHtml(lang: string, premiumCount: number): string {
         letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Founder Plan inclut</p>
       <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Voix illimitée (vs 5/jour en gratuit)</li>
-        <li>📸 Analyse photo IA (Lens) sans limite</li>
+        <li>🎙️ Voix illimitée (cap 300/mois · vs 5/jour en gratuit)</li>
+        <li>📸 Lens Pro · 10 scans/jour · 120/mois</li>
         <li>📊 Stats avancées &amp; export multi-plateformes</li>
         <li>⭐ Accès Fondateur — prix bloqué à vie</li>
       </ul>
@@ -301,8 +301,8 @@ function founderHtml(lang: string, premiumCount: number): string {
         letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Founder Plan includes</p>
       <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Unlimited voice (vs 5/day on free)</li>
-        <li>📸 Unlimited AI photo analysis (Lens)</li>
+        <li>🎙️ Unlimited voice (300/month cap · vs 5/day on free)</li>
+        <li>📸 Lens Pro · 10 scans/day · 120/month</li>
         <li>📊 Advanced stats &amp; multi-platform export</li>
         <li>⭐ Founder access — price locked for life</li>
       </ul>
@@ -325,7 +325,7 @@ function voiceConversionHtml(lang: string): string {
     </p>
     <div style="background:#FEF3C7;border-radius:12px;padding:16px 20px;margin:0 0 24px;">
       <p style="margin:0;color:#92400E;font-size:14px;font-family:sans-serif;line-height:1.6;">
-        ⚡ Avec le plan Premium, la saisie vocale est <strong>illimitée</strong> —
+        ⚡ Avec le plan Premium, la saisie vocale est <strong>illimitée (cap 300/mois)</strong> —
         ajoutez autant d'articles que vous voulez, quand vous voulez.
       </p>
     </div>
@@ -334,8 +334,8 @@ function voiceConversionHtml(lang: string): string {
         letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium débloque</p>
       <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Voix illimitée (vs 5/jour en gratuit)</li>
-        <li>📸 Analyse photo IA sans limite</li>
+        <li>🎙️ Voix illimitée (cap 300/mois · vs 5/jour en gratuit)</li>
+        <li>📸 Lens Pro · 10 scans/jour · 120/mois</li>
         <li>📊 Stats avancées &amp; export</li>
       </ul>
     </div>
@@ -351,7 +351,7 @@ function voiceConversionHtml(lang: string): string {
     </p>
     <div style="background:#FEF3C7;border-radius:12px;padding:16px 20px;margin:0 0 24px;">
       <p style="margin:0;color:#92400E;font-size:14px;font-family:sans-serif;line-height:1.6;">
-        ⚡ With Premium, voice input is <strong>unlimited</strong> —
+        ⚡ With Premium, voice input is <strong>unlimited (300/month cap)</strong> —
         add as many items as you want, whenever you want.
       </p>
     </div>
@@ -360,8 +360,8 @@ function voiceConversionHtml(lang: string): string {
         letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium unlocks</p>
       <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Unlimited voice (vs 5/day on free)</li>
-        <li>📸 Unlimited AI photo analysis</li>
+        <li>🎙️ Unlimited voice (300/month cap · vs 5/day on free)</li>
+        <li>📸 Lens Pro · 10 scans/day · 120/month</li>
         <li>📊 Advanced stats &amp; export</li>
       </ul>
     </div>
