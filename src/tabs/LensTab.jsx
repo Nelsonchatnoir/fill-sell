@@ -367,7 +367,7 @@ function LensTicker({ lang, onScan }) {
             <span style={{color:'#0D0D0D',fontWeight:800}}>{ex.priceMin}–{ex.priceMax}€</span>
           </div>
 
-          <div style={{background:scoreBg(ex.score),border:`1px solid ${scoreBd(ex.score)}`,borderRadius:10,padding:'10px 12px',height:110,overflow:'hidden'}}>
+          <div style={{background:scoreBg(ex.score),border:`1px solid ${scoreBd(ex.score)}`,borderRadius:10,padding:'10px 12px',height:160,overflow:'hidden'}}>
             <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
               <div style={{width:6,height:6,borderRadius:'50%',background:sc,opacity:dotOn?1:0.2,transition:'opacity 0.3s ease',flexShrink:0}}/>
               <span style={{fontSize:9,fontWeight:800,color:sc,textTransform:'uppercase',letterSpacing:'0.06em'}}>
