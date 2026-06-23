@@ -3499,7 +3499,7 @@ export default function App({ loginOnly = false }){
         setShowUsernameOnboarding(true);
       }
     }
-    if(!fc.error&&fc.data) setSlotsRemaining(fc.data.slots_total-fc.data.slots_used);
+    if(!fc.error&&fc.data) setSlotsRemaining(Math.max(0,20-fc.data.slots_used));
     setLoading(false);
     setAppLoading(false);
     const lensCount=await checkAndResetDaily(supabase,uid,'lens_count_today','lens_count_date');

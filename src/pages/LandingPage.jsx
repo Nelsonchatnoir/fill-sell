@@ -523,14 +523,14 @@ export default function LandingPage() {
     try {
       const c = JSON.parse(localStorage.getItem(FC_KEY) || 'null');
       if (c && Date.now() - c.ts < FC_TTL) {
-        if (c.data) setSlotsRemaining(c.data.slots_total - c.data.slots_used);
+        if (c.data) setSlotsRemaining(Math.max(0, 20 - c.data.slots_used));
         return;
       }
     } catch {}
     supabase.from('founder_config').select('slots_total,slots_used').eq('id', 1).maybeSingle()
       .then(({ data, error }) => {
         if (!error && data) {
-          setSlotsRemaining(data.slots_total - data.slots_used);
+          setSlotsRemaining(Math.max(0, 20 - data.slots_used));
           try { localStorage.setItem(FC_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
         }
       });
