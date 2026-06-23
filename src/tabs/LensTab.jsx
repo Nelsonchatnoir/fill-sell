@@ -237,7 +237,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
             ))}
           </div>
           <button onClick={openUpgradeModal}
-            style={{width:'100%',padding:'10px',background:'linear-gradient(135deg,#1D9E75,#0F6E56)',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+            style={{width:'100%',padding:'14px',background:'linear-gradient(90deg,#1D9E75,#E8845A,#1D9E75)',backgroundSize:'200% 100%',color:'#fff',border:'none',borderRadius:14,fontSize:14,fontWeight:900,letterSpacing:'-0.2px',cursor:'pointer',fontFamily:'inherit',animation:'fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite'}}>
             {lang==='en'?'Upgrade to Premium →':'Passer Premium →'}
           </button>
         </div>

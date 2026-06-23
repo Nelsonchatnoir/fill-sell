@@ -563,49 +563,24 @@ body.bg-dots {
   width: 100%;
   padding: 16px 22px;
   border: none;
-  border-radius: 16px;
+  border-radius: 14px;
   font-family: 'Nunito', sans-serif;
   font-size: 15px;
   font-weight: 900;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.2px;
   color: #fff;
   cursor: pointer;
   overflow: hidden;
   isolation: isolate;
-  background: linear-gradient(
-    110deg,
-    #0E7C5F 0%,
-    #1D9E75 30%,
-    #3EACA0 55%,
-    #F9A26C 90%
-  );
+  background: linear-gradient(90deg, #1D9E75, #E8845A, #1D9E75);
   background-size: 200% 100%;
-  background-position: 0 0;
-  box-shadow:
-    0 1px 3px rgba(14, 124, 95, 0.25),
-    0 12px 28px rgba(29, 158, 117, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  animation: ctaGradient 6s ease-in-out infinite;
+  box-shadow: 0 12px 34px rgba(45,184,154,0.45), 0 4px 12px rgba(45,184,154,0.25);
+  animation: fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite;
   transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
               box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.cta-premium::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.45) 50%,
-    transparent 70%
-  );
-  background-size: 220% 100%;
-  background-position: 200% 0;
-  animation: ctaShimmer 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  pointer-events: none;
-  border-radius: inherit;
-}
+.cta-premium::before { content: none; }
 
 .cta-premium > * { position: relative; z-index: 1; }
 
@@ -629,6 +604,14 @@ body.bg-dots {
   letter-spacing: -0.005em;
 }
 
+@keyframes fsShimmer {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes fsGlow {
+  0%, 100% { box-shadow: 0 12px 34px rgba(45,184,154,0.45), 0 4px 12px rgba(45,184,154,0.25); }
+  50%       { box-shadow: 0 16px 46px rgba(232,132,90,0.5), 0 4px 14px rgba(45,184,154,0.3); }
+}
 @keyframes ctaGradient {
   0%, 100% { background-position: 0 0; }
   50%      { background-position: 100% 0; }
