@@ -3375,6 +3375,7 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleIAPPurchase(){
+    console.log('[IAP] handleIAPPurchase started — slotsRemaining:',slotsRemaining,'platform:',platform);
     setIapLoading(true);
     const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
     const isFounderProduct=productId===PRODUCT_IDS.sub;
@@ -5837,7 +5838,7 @@ export default function App({ loginOnly = false }){
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={()=>{setConversionModal(m=>({...m,open:false}));handleIAPPurchase();}}
+        onUpgrade={()=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger);setConversionModal(m=>({...m,open:false}));handleIAPPurchase();}}
         trigger={conversionModal.trigger}
         founderSpotsLeft={slotsRemaining}
         lang={lang}
