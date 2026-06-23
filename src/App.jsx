@@ -1461,7 +1461,7 @@ const CAT_COLORS_MAP={
 };
 
 
-function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday}){
+function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,setConversionModal}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const vaStreamRef=useRef(null);
@@ -6003,6 +6003,7 @@ export default function App({ loginOnly = false }){
         user={user}
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
+        setConversionModal={setConversionModal}
       />
 
 
