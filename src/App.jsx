@@ -10,6 +10,7 @@ const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import Toast from './components/Toast';
+import ConversionModal from './components/ConversionModal';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -1540,9 +1541,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       // Gate check before Whisper — use in-memory state, no Supabase read
       if(!isPremium&&user?.id){
         if(voiceUsedToday>=VOICE_FREE_LIMIT){
-          showVoiceToast(lang==='fr'
-            ?"🔒 Limite atteinte · 5 vocaux/jour en gratuit"
-            :"🔒 Daily limit reached · 5 voices/day on free plan");
+          setConversionModal({open:true,trigger:'voice'});
           setVaStep("");
           return;
         }
@@ -3236,6 +3235,7 @@ export default function App({ loginOnly = false }){
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
+  const [conversionModal,setConversionModal]=useState({open:false,trigger:'lens'});
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
@@ -3688,8 +3688,8 @@ export default function App({ loginOnly = false }){
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
       if(count>=VOICE_FREE_LIMIT){
-        setVoiceError(lang==='fr'?"🔒 Limite atteinte · 5 vocaux/jour en gratuit":"🔒 Daily limit reached · 5 voices/day on free plan");
-        setVoiceStep("error");return;
+        setConversionModal({open:true,trigger:'voice'});
+        setVoiceStep("");return;
       }
       await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
       supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
@@ -3706,7 +3706,7 @@ export default function App({ loginOnly = false }){
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
         if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
-        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){const msg=iErrJson?.reason==='monthly_limit'?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.'):(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');setVoiceError(`🔒 ${msg}`);setVoiceStep("error");setVoiceLoading(false);return;}
+        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){setConversionModal({open:true,trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;}
         throw new Error(lang==="en"?"Intent failed":"Erreur intention");
       }
       let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
@@ -3734,10 +3734,7 @@ export default function App({ loginOnly = false }){
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
       if(count>=VOICE_FREE_LIMIT){
-        setVoiceError(lang==='fr'
-          ?"🔒 Limite atteinte · 5 vocaux/jour en gratuit"
-          :"🔒 Daily limit reached · 5 voices/day on free plan");
-        setVoiceStep("error");
+        setConversionModal({open:true,trigger:'voice'});
         return;
       }
       await supabase.from('profiles')
@@ -5009,10 +5006,7 @@ export default function App({ loginOnly = false }){
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'lens_count_today','lens_count_date');
       if(count>=LENS_FREE_LIMIT){
-        setToast({visible:true,message:lang==='fr'
-          ?'🔒 Limite journalière atteinte. Revenez demain ou passez Premium.'
-          :'🔒 Daily limit reached. Come back tomorrow or upgrade to Premium.'});
-        setTimeout(()=>setToast({visible:false,message:''}),4000);
+        setConversionModal({open:true,trigger:'lens'});
         return;
       }
       await supabase.from('profiles')
@@ -5063,13 +5057,10 @@ export default function App({ loginOnly = false }){
               ?(lang==='fr'?'Limite mensuelle atteinte pour ce mois.':'Monthly limit reached for this month.')
               :(lang==='fr'?'Limite journalière atteinte pour aujourd\'hui.':'Daily limit reached for today.');
             setToast({visible:true,message:`📸 ${msg}`});
+            setTimeout(()=>setToast({visible:false,message:''}),4000);
           }else{
-            const msg=errBody.reason==='monthly_limit'
-              ?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.')
-              :(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');
-            setToast({visible:true,message:`🔒 ${msg}`});
+            setConversionModal({open:true,trigger:'lens'});
           }
-          setTimeout(()=>setToast({visible:false,message:''}),4000);
           return;
         }
         throw new Error(errBody.error||`HTTP ${r.status}`);
@@ -5846,6 +5837,16 @@ export default function App({ loginOnly = false }){
           `}</style>
         </>
       )}
+
+      {/* ── CONVERSION MODAL (limit reached for Lens / Voice) ── */}
+      <ConversionModal
+        isOpen={conversionModal.open}
+        onClose={()=>setConversionModal(m=>({...m,open:false}))}
+        onUpgrade={()=>{setConversionModal(m=>({...m,open:false}));handleIAPPurchase();}}
+        trigger={conversionModal.trigger}
+        founderSpotsLeft={slotsRemaining}
+        lang={lang}
+      />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
