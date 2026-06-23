@@ -1555,7 +1555,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
-          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){const msg=tErrJson?.reason==='monthly_limit'?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.'):(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');showVoiceToast(`🔒 ${msg}`);setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
+          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){setConversionModal({open:true,trigger:'voice'});setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
           if(!isPremium&&user?.id){const nextCount=voiceUsedToday+1;if(setVoiceUsedToday)setVoiceUsedToday(nextCount);supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);}
           let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
@@ -5053,11 +5053,6 @@ export default function App({ loginOnly = false }){
         if(errBody.error==='quota_exceeded'){
           if(isPremium){
             setLensPremiumLimitReached(true);
-            const msg=errBody.reason==='monthly_limit'
-              ?(lang==='fr'?'Limite mensuelle atteinte pour ce mois.':'Monthly limit reached for this month.')
-              :(lang==='fr'?'Limite journalière atteinte pour aujourd\'hui.':'Daily limit reached for today.');
-            setToast({visible:true,message:`📸 ${msg}`});
-            setTimeout(()=>setToast({visible:false,message:''}),4000);
           }else{
             setConversionModal({open:true,trigger:'lens'});
           }
