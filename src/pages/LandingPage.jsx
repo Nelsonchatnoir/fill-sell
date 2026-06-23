@@ -1248,12 +1248,12 @@ export default function LandingPage() {
               </div>
               <div className="price-tier">{t.premiumTier}</div>
               <h3 className="price-name">{t.premiumName}</h3>
-              <div className="price-amount"><span className="num">{slotsRemaining !== null && slotsRemaining > 0 ? '9,99 €' : '12,99 €'}</span><span className="per">{t.premiumPer}</span></div>
+              <div className="price-amount"><span className="num">{slotsRemaining !== null && slotsRemaining > 0 ? '9,99 €' : '14,99 €'}</span><span className="per">{t.premiumPer}</span></div>
               <div className="price-trial-badge">🎁 {t.premiumTrialBadge}</div>
               <div className="price-tagline">{slotsRemaining !== null && slotsRemaining > 0 ? (lang === 'fr' ? 'Prix réservé aux premiers utilisateurs' : 'Price reserved for early users') : t.premiumTagline}</div>
               {slotsRemaining !== null && slotsRemaining > 0 && (
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 8, padding: '6px 14px', textAlign: 'center', marginBottom: 6 }}>
-                  {lang === 'fr' ? 'Ensuite 12,99 €/mois pour les nouveaux abonnés' : 'Then €12.99/month for new subscribers'}
+                  {lang === 'fr' ? 'Ensuite 14,99 €/mois pour les nouveaux abonnés' : 'Then €14.99/month for new subscribers'}
                 </div>
               )}
               <ul className="price-features">

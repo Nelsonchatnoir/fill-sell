@@ -519,7 +519,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
       )}
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois — 7j gratuits':'✨ Become a Founder · €9.99/mo — 7 days free'):(lang==='fr'?'✨ Passer Premium · 12,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €12.99/mo — 7 days free'))}
+        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois — 7j gratuits':'✨ Become a Founder · €9.99/mo — 7 days free'):(lang==='fr'?'✨ Passer Premium · 14,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €14.99/mo — 7 days free'))}
         disabled={loading}
         sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
@@ -1291,7 +1291,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
                 {lang==='en'?'To go further':'Pour aller plus loin'}
               </div>
               <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'12,99 €'}</span>
+                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'14,99 €'}</span>
                 <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
               </div>
               {isFounder&&<div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.9)',marginBottom:6}}>{lang==='en'?'Price reserved for early users':'Prix réservé aux premiers utilisateurs'}</div>}
@@ -1314,7 +1314,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
           <button onClick={onCheckout} style={{width:'100%',padding:'15px',background:isFounder?'linear-gradient(135deg,#E53E3E,#F97316)':'#1D9E75',color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit',boxShadow:isFounder?'0 4px 16px rgba(229,62,62,0.35)':'0 4px 14px rgba(29,158,117,0.3)',letterSpacing:'-0.01em'}}>
             {isFounder
               ?(lang==='en'?'✨ Become a Founder · €9.99/mo — 7 days free':'✨ Devenir Founder · 9,99€/mois — 7j gratuits')
-              :(lang==='en'?'✨ Upgrade to Premium · €12.99/mo — 7 days free':'✨ Passer Premium · 12,99€/mois — 7j gratuits')
+              :(lang==='en'?'✨ Upgrade to Premium · €14.99/mo — 7 days free':'✨ Passer Premium · 14,99€/mois — 7j gratuits')
             }
           </button>
           <button onClick={onClose} style={{background:'none',border:'none',color:'#9CA3AF',fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
