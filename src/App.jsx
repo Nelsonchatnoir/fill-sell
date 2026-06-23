@@ -1284,10 +1284,10 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
             {/* Premium/Founder */}
             <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0,position:'relative',overflow:'hidden',color:'#fff'}}>
               <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.18),transparent 55%)',borderRadius:16,pointerEvents:'none'}}/>
-              <div style={{position:'absolute',top:-1,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:800,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
+              <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:800,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
                 {isFounder?`🔥 ${lang==='fr'?'Prix Founder':'Founder Price'}`:(lang==='en'?'⭐ Most popular':'⭐ Le plus populaire')}
               </div>
-              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:14}}>Premium</div>
+              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:24}}>Premium</div>
               <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
                 {lang==='en'?'To go further':'Pour aller plus loin'}
               </div>
