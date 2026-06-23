@@ -230,8 +230,8 @@ serve(async (req) => {
     p_is_premium: isPremium,
     p_daily_limit_free: dailyOverride ?? 3,
     p_monthly_limit_free: monthlyOverride ?? 15,
-    p_daily_limit_premium: dailyOverride ?? 5,
-    p_monthly_limit_premium: monthlyOverride ?? 60,
+    p_daily_limit_premium: dailyOverride ?? 10,
+    p_monthly_limit_premium: monthlyOverride ?? 120,
   });
   if (quotaData?.allowed === false) {
     return new Response(

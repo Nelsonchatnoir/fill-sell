@@ -1037,6 +1037,7 @@ serve(async (req) => {
       p_daily_limit_free: 20,
       p_monthly_limit_free: 100,
       p_daily_limit_premium: 20,
+      p_monthly_limit_premium: 300,
     });
     quotaLogId = (quotaData as any)?.log_id ?? null;
     if (quotaData?.allowed === false) {
