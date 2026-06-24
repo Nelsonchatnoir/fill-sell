@@ -1545,6 +1545,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           setVaStep("");
           return;
         }
+        // Incrément avant le fetch pour qu'Android accumule le compteur même si le réseau coupe
+        const nextCount=voiceUsedToday+1;
+        if(setVoiceUsedToday)setVoiceUsedToday(nextCount);
+        supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
       }
       setVaStep("thinking");
         try{
@@ -1556,7 +1560,6 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
           if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){setConversionModal({open:true,trigger:'voice'});setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
-          if(!isPremium&&user?.id){const nextCount=voiceUsedToday+1;if(setVoiceUsedToday)setVoiceUsedToday(nextCount);supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);}
           let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
           if(tErr)throw new Error(tErr);

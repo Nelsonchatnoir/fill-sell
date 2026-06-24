@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
 const SYSTEM_FR = `Tu es le moteur d'intention de FillSell, une app de revente intelligente.
 Tu reçois une phrase d'un revendeur. Tu extrais TOUTES les intentions présentes
