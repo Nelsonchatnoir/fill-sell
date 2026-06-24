@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
 const SYSTEM = `You are an item type normalizer for a resale app.
 Given a product title, return ONLY the base item type as a short word or phrase (1-2 words max).

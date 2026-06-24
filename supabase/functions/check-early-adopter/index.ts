@@ -6,7 +6,7 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost"];
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
