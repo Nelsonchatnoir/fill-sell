@@ -3707,7 +3707,7 @@ export default function App({ loginOnly = false }){
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
         if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
-        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){setConversionModal({open:true,trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;}
+        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){if(isPremium){setToast({visible:true,message:lang==='fr'?'🎙️ Limite vocale mensuelle atteinte.':'🎙️ Monthly voice limit reached.'});setTimeout(()=>setToast({visible:false,message:''}),5000);}else{setConversionModal({open:true,trigger:'voice'});}setVoiceStep("");setVoiceLoading(false);return;}
         throw new Error(lang==="en"?"Intent failed":"Erreur intention");
       }
       let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
