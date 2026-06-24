@@ -518,8 +518,8 @@ const LensTab = memo(function LensTab({
         {/* Bouton Analyser */}
         <button
           onClick={analyzeLens}
-          disabled={!lensPhotos.length||lensLoading}
-          style={{width:"100%",padding:"13px",background:!lensPhotos.length||lensLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotos.length||lensLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:!lensPhotos.length||lensLoading?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotos.length||lensLoading?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
+          disabled={!lensPhotos.length||lensLoading||lensPremiumLimitReached}
+          style={{width:"100%",padding:"13px",background:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
         >
           {lensLoading
             ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
