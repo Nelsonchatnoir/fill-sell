@@ -203,6 +203,11 @@ serve(async (req) => {
     const productId              = tx.productId as string;
     const originalTransactionId = tx.originalTransactionId as string | undefined;
 
+    // Log immédiat — visible même si la suite échoue et qu'Apple réessaie
+    console.log(
+      `[apple-iap-webhook] received type=${notificationType} product=${productId} originalTransactionId=${originalTransactionId} appAccountToken=${appAccountToken ?? "MISSING"}`
+    );
+
     if (!appAccountToken) {
       console.warn("[apple-iap-webhook] No appAccountToken — cannot identify user");
       return new Response(JSON.stringify({ ok: true, skipped: "no appAccountToken" }), {

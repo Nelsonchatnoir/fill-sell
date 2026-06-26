@@ -124,7 +124,8 @@
       "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" cd \"C:\\\\Users\\\\nicol\\\\fill-and-sell\\\\android\")",
       "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew bundleRelease)",
       "Bash(adb devices *)",
-      "Bash(grep -E \"index.ts|\\\\.ts$\")"
+      "Bash(grep -E \"index.ts|\\\\.ts$\")",
+      "Bash(export JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")"
     ]
   }
 }

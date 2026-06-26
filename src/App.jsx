@@ -3417,8 +3417,9 @@ export default function App({ loginOnly = false }){
           return;
         }
       }catch{}
-      setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de l\'achat':'❌ Purchase failed'});
-      setTimeout(()=>setToast({visible:false,message:''}),3000);
+      const errMsg=e?.message||e?.code||String(e);
+      setToast({visible:true,message:`❌ ${errMsg}`});
+      setTimeout(()=>setToast({visible:false,message:''}),8000);
     }finally{setIapLoading(false);}
   }
 
