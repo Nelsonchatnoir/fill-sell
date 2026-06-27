@@ -125,7 +125,9 @@
       "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew bundleRelease)",
       "Bash(adb devices *)",
       "Bash(grep -E \"index.ts|\\\\.ts$\")",
-      "Bash(export JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")"
+      "Bash(export JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")",
+      "Bash(git rebase *)",
+      "Bash(grep -v \"//\\\\|isPremium\\\\|setIs\")"
     ]
   }
 }

@@ -72,24 +72,53 @@ async function fetchAppleStatus(originalTransactionId: string, sandbox = false):
 serve(async (req) => {
   const CORS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-admin-key",
   };
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const jwt = authHeader.replace("Bearer ", "").trim();
+    const url        = new URL(req.url);
+    const adminKey   = req.headers.get("x-admin-key") ?? "";
+    const serviceKey = Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const isAdmin    = adminKey && serviceKey && adminKey === serviceKey;
 
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
+    let targetUserId: string;
+
+    if (isAdmin) {
+      // Mode admin : userId ou email en query param
+      const email = url.searchParams.get("email");
+      const uid   = url.searchParams.get("userId");
+
+      if (email) {
+        const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+        const found = users?.find((u) => u.email === email);
+        if (!found) {
+          return new Response(JSON.stringify({ error: `No user found for email ${email}` }), {
+            status: 404,
+            headers: { ...CORS, "Content-Type": "application/json" },
+          });
+        }
+        targetUserId = found.id;
+      } else if (uid) {
+        targetUserId = uid;
+      } else {
+        return new Response(JSON.stringify({ error: "Admin mode: provide ?userId= or ?email=" }), {
+          status: 400,
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const authHeader = req.headers.get("Authorization") ?? "";
+      const jwt = authHeader.replace("Bearer ", "").trim();
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      targetUserId = url.searchParams.get("userId") ?? user.id;
     }
-
-    const url = new URL(req.url);
-    const targetUserId = url.searchParams.get("userId") ?? user.id;
 
     const { data: profile, error: dbErr } = await supabaseAdmin
       .from("profiles")
