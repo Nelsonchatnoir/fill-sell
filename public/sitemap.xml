@@ -10,4 +10,24 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://fillsell.app"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://fillsell.app"/>
   </url>
+  <url>
+    <loc>https://fillsell.app/blog</loc>
+    <lastmod>2026-06-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://fillsell.app/blog/comment-calculer-profits-vinted</loc>
+    <lastmod>2026-06-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://fillsell.app/blog/comment-calculer-profits-vinted"/>
+  </url>
+  <url>
+    <loc>https://fillsell.app/blog/how-to-calculate-reselling-profits</loc>
+    <lastmod>2026-06-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://fillsell.app/blog/how-to-calculate-reselling-profits"/>
+  </url>
 </urlset>
