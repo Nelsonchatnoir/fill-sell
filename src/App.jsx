@@ -5643,12 +5643,19 @@ export default function App({ loginOnly = false }){
             {/* Désabonnement — visible uniquement si premium */}
             {isPremium&&(
               <div style={{marginBottom:12}}>
-                {isNative?(
-                  /* iOS IAP : géré par Apple, pas Stripe */
+                {platform==='ios'?(
+                  /* iOS IAP : géré par Apple */
                   <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
                     ⭐ {lang==='fr'
                       ? 'Pour gérer votre abonnement, allez dans Réglages → Apple ID → Abonnements.'
                       : 'To manage your subscription, go to Settings → Apple ID → Subscriptions.'}
+                  </div>
+                ):platform==='android'?(
+                  /* Android IAP : géré par Google Play */
+                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
+                    ⭐ {lang==='fr'
+                      ? <span>Pour gérer votre abonnement, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:"#276749",textDecoration:"underline"}}>ouvrez vos abonnements Google Play</a>.</span>
+                      : <span>To manage your subscription, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:"#276749",textDecoration:"underline"}}>open your Google Play subscriptions</a>.</span>}
                   </div>
                 ):(cancelAtPeriodEnd||cancelMsg)?(
                   <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.5}}>
