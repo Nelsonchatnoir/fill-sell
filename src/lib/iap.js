@@ -40,7 +40,8 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     console.log('[IAP] purchaseProduct result:', JSON.stringify(result));
     const isPremium = result?.productIdentifier === productId;
-    return { isPremium, receipt: result?.receipt ?? null, cancelled: false };
+    // receipt = iOS only ; purchaseToken = Android only (cf. @capgo/native-purchases types)
+    return { isPremium, receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
   } catch (e) {
     console.error('[IAP] purchasePremium error — code:', e?.code, 'message:', e?.message, 'full:', JSON.stringify(e));
     if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null, cancelled: true };

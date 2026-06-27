@@ -3383,14 +3383,14 @@ export default function App({ loginOnly = false }){
     const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
     const isFounderProduct=productId===PRODUCT_IDS.sub;
     try{
-      const {cancelled}=await purchasePremium(productId,user.id);
+      const {cancelled,purchaseToken}=await purchasePremium(productId,user.id);
       if(cancelled) return;
       if(platform==='android'){
-        // Android : succès Play Billing côté client → écriture directe, sans polling
-        // Le webhook Google Play ne sert que pour les renouvellements automatiques
-        // obfuscatedAccountId déjà passé via appAccountToken dans purchasePremium
+        // Android : succès Play Billing côté client → écriture directe + sauvegarde du token
+        // Le webhook Google Play gère les renouvellements ; le token ici couvre le 1er achat
         const updates={is_premium:true};
         if(isFounderProduct) updates.is_founder=true;
+        if(purchaseToken){updates.google_purchase_token=purchaseToken;updates.google_product_id=productId;}
         await supabase.from('profiles').update(updates).eq('id',user.id);
       } else {
         // iOS : attendre confirmation via webhook Apple
