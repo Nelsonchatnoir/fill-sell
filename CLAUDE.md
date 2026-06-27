@@ -20,8 +20,8 @@ Ne jamais déployer ces fonctions sans ce flag, sinon `verify_jwt` repasse à `t
 
 ## Trigger handle_new_user
 
-Le trigger pg_net appelle email-tunnel via query param : `?token=fs-cron-2026-tunnel`
-Ne jamais utiliser de header `Authorization` dans pg_net — ça ne fonctionne pas.
+Le trigger pg_net appelle email-tunnel via le header `x-cron-secret: fs-cron-2026-tunnel`.
+Ne pas utiliser de query param ni de header `Authorization` dans pg_net — seul le header custom fonctionne.
 
 ## Premium detection
 
