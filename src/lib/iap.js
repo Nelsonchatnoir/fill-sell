@@ -55,9 +55,9 @@ export const restorePurchases = async (source) => {
     const { purchases } = await NativePurchases.getPurchases();
     const allIds = Object.values(PRODUCT_IDS);
     const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
-    if (!tx) return { isPremium: false, receipt: null };
+    if (!tx) return { isPremium: false, receipt: null, purchaseToken: null, productId: null };
     const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date()) || tx.purchaseState === '1';
-    return { isPremium: !!isActive, receipt: tx.receipt ?? null };
+    return { isPremium: !!isActive, receipt: tx.receipt ?? null, purchaseToken: tx.purchaseToken ?? null, productId: tx.productIdentifier ?? null };
   } catch (e) {
     throw e;
   }
