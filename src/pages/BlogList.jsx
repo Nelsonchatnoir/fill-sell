@@ -45,7 +45,7 @@ export default function BlogList() {
       <nav className="blog-nav">
         <div className="blog-nav-inner">
           <Link to="/" className="blog-brand">
-            <img src="/icon-192.png" alt="FillSell" width={28} height={28} style={{ borderRadius: 7 }} />
+            <img src="/icon_180x180.png" alt="FillSell" width={28} height={28} style={{ borderRadius: 7 }} />
             <span className="blog-brand-name">FillSell</span>
           </Link>
           <div className="blog-nav-links">
