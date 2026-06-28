@@ -29,6 +29,34 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
+// 6 angle prompts — GPT-image-1 generates each from the original photo
+const ANGLES = [
+  {
+    type: "vue_globale",
+    prompt: "Product photo of this exact garment, lightly pressed, soft natural window light, neutral warm background, flat lay, preserve all colors logos and prints exactly, full view, lifestyle feel",
+  },
+  {
+    type: "vue_rapprochee",
+    prompt: "Same garment, natural window light, neutral warm background, close-up upper half, preserve all details exactly",
+  },
+  {
+    type: "zoom_logo",
+    prompt: "Same garment, macro shot of the logo/brand mark, natural light, sharp focus, preserve exact colors and typography",
+  },
+  {
+    type: "detail_matiere",
+    prompt: "Same garment, macro shot of the fabric texture, natural light, sharp focus",
+  },
+  {
+    type: "etiquette",
+    prompt: "Same garment, close-up of the care label/tag, natural light, sharp and readable",
+  },
+  {
+    type: "vue_dos",
+    prompt: "Same garment back view, lightly pressed, natural window light, neutral warm background, flat lay",
+  },
+];
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -52,7 +80,6 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    // Gate: is_pro required
     const { data: profile } = await adminClient
       .from("profiles")
       .select("is_pro")
@@ -62,7 +89,9 @@ serve(async (req) => {
     if (!profile?.is_pro) return json({ error: "Pro plan required" }, 403);
 
     const body = await req.json();
-    const { inventaire_id, photos, platforms, photo_option } = body;
+    const { inventaire_id, photos, platforms } = body;
+    // Force ia for all requests during development
+    const photo_option = "ia";
 
     if (
       !inventaire_id ||
@@ -72,7 +101,6 @@ serve(async (req) => {
       return json({ error: "Missing required fields: inventaire_id, photos, platforms" }, 400);
     }
 
-    // Fetch inventaire item
     const { data: item, error: itemErr } = await adminClient
       .from("inventaire")
       .select("id, titre, marque, description, type, statut, prix_vente")
@@ -81,113 +109,78 @@ serve(async (req) => {
 
     if (itemErr || !item) return json({ error: "Item not found" }, 404);
 
-    const REMOVE_BG_KEY = Deno.env.get("REMOVE_BG_API_KEY") ?? "";
     const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
     const BUCKET = "listing-photos";
 
-    if (!REMOVE_BG_KEY) {
-      console.error("[generate-listing] REMOVE_BG_API_KEY secret not set");
+    // ── Step 1: Download first uploaded photo ──────────────────────────────
+    const originalUrl = photos[0] as string;
+    const srcRes = await fetch(originalUrl);
+    if (!srcRes.ok) {
+      console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
+      return json({ error: "Failed to fetch uploaded photo" }, 500);
     }
+    const srcBlob = await srcRes.blob();
+    const srcType = srcBlob.type || "image/jpeg";
 
-    // ── Step 1: Remove.bg on each photo ────────────────────────────────────
-    const processedPhotos: Array<{ original: string; bg_removed: string; enhanced: string }> = [];
+    // ── Step 2: GPT-image-1 — generate 6 angles in parallel ───────────────
+    const ts = Date.now();
 
-    for (let i = 0; i < photos.length; i++) {
-      const original = photos[i] as string;
-      let bgRemoved = original;
-      let enhanced = original;
+    const angleResults = await Promise.allSettled(
+      ANGLES.map(async (angle, idx) => {
+        const form = new FormData();
+        form.append("model", "gpt-image-1");
+        form.append("image[]", new File([srcBlob], "product.jpg", { type: srcType }));
+        form.append("prompt", angle.prompt);
+        form.append("n", "1");
+        form.append("size", "1024x1024");
+        form.append("quality", "medium");
 
-      if (REMOVE_BG_KEY) {
-        try {
-          // Download image locally first — image_url is blocked by some CDNs for Remove.bg
-          const srcRes = await fetch(original);
-          if (!srcRes.ok) {
-            console.error(`[generate-listing] fetch original photo ${i} failed: ${srcRes.status}`);
-          } else {
-            const srcBlob = await srcRes.blob();
-            const ext = original.includes(".png") ? "png" : "jpg";
+        const res = await fetch("https://api.openai.com/v1/images/edits", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+          body: form,
+        });
 
-            const form = new FormData();
-            form.append("image_file", new File([srcBlob], `photo.${ext}`, { type: srcBlob.type || "image/jpeg" }));
-            form.append("size", "auto");
-
-            const bgRes = await fetch("https://api.remove.bg/v1.0/removebg", {
-              method: "POST",
-              headers: { "X-Api-Key": REMOVE_BG_KEY },
-              body: form,
-            });
-
-            if (bgRes.ok) {
-              const blob = await bgRes.blob();
-              const path = `${user.id}/${inventaire_id}/bg_${Date.now()}_${i}.png`;
-              const { error: upErr } = await adminClient.storage
-                .from(BUCKET)
-                .upload(path, blob, { contentType: "image/png", upsert: true });
-
-              if (!upErr) {
-                bgRemoved = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-                console.log(`[generate-listing] remove.bg OK photo ${i} → ${bgRemoved}`);
-              } else {
-                console.error(`[generate-listing] upload bg_removed ${i}:`, upErr);
-              }
-            } else {
-              const errText = await bgRes.text();
-              console.error(`[generate-listing] remove.bg HTTP ${bgRes.status} photo ${i}:`, errText);
-            }
-          }
-        } catch (e) {
-          console.error(`[generate-listing] remove.bg exception ${i}:`, e);
+        if (!res.ok) {
+          const err = await res.text();
+          console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, err);
+          return { type: angle.type, url: originalUrl };
         }
-      }
 
-      enhanced = bgRemoved;
-
-      // ── Step 2: GPT-image-1 enhancement (main photo only, if photo_option=ia) ──
-      if (photo_option === "ia" && i === 0) {
-        try {
-          const imgRes = await fetch(bgRemoved);
-          const imgBlob = await imgRes.blob();
-          const label = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "fashion item";
-
-          const oaiForm = new FormData();
-          oaiForm.append("model", "gpt-image-1");
-          oaiForm.append("image[]", new File([imgBlob], "product.png", { type: "image/png" }));
-          oaiForm.append("prompt", `Professional e-commerce product photo of this ${label}, perfectly pressed, pure white background, soft studio lighting, flat lay, ultra sharp, commercial photography style, no text, no watermark`);
-          oaiForm.append("n", "1");
-          oaiForm.append("size", "1024x1024");
-          oaiForm.append("quality", "medium");
-
-          const oaiRes = await fetch("https://api.openai.com/v1/images/edits", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-            body: oaiForm,
-          });
-
-          if (oaiRes.ok) {
-            const oaiData = await oaiRes.json();
-            const b64: string | undefined = oaiData.data?.[0]?.b64_json;
-            if (b64) {
-              const binary = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-              const enhBlob = new Blob([binary], { type: "image/png" });
-              const enhPath = `${user.id}/${inventaire_id}/enhanced_${Date.now()}.png`;
-              const { error: enhErr } = await adminClient.storage
-                .from(BUCKET)
-                .upload(enhPath, enhBlob, { contentType: "image/png", upsert: true });
-              if (!enhErr) {
-                enhanced = adminClient.storage.from(BUCKET).getPublicUrl(enhPath).data.publicUrl;
-              }
-            }
-          } else {
-            console.error("[generate-listing] gpt-image-1:", await oaiRes.text());
-          }
-        } catch (e) {
-          console.error("[generate-listing] gpt-image-1 exception:", e);
+        const data = await res.json();
+        const b64: string | undefined = data.data?.[0]?.b64_json;
+        if (!b64) {
+          console.error(`[generate-listing] gpt-image-1 ${angle.type}: no b64_json`);
+          return { type: angle.type, url: originalUrl };
         }
-      }
 
-      processedPhotos.push({ original, bg_removed: bgRemoved, enhanced });
-    }
+        const binary = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const outBlob = new Blob([binary], { type: "image/png" });
+        const path = `${user.id}/${inventaire_id}/${angle.type}_${ts}_${idx}.png`;
+
+        const { error: upErr } = await adminClient.storage
+          .from(BUCKET)
+          .upload(path, outBlob, { contentType: "image/png", upsert: true });
+
+        if (upErr) {
+          console.error(`[generate-listing] upload ${angle.type}:`, upErr);
+          return { type: angle.type, url: originalUrl };
+        }
+
+        const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+        console.log(`[generate-listing] angle ${angle.type} OK → ${url}`);
+        return { type: angle.type, url };
+      })
+    );
+
+    // Collect: original + all generated angles
+    const processedPhotos: Array<{ type: string; url: string }> = [
+      { type: "original", url: originalUrl },
+      ...angleResults.map((r, i) =>
+        r.status === "fulfilled" ? r.value : { type: ANGLES[i].type, url: originalUrl }
+      ),
+    ];
 
     // ── Step 3: Claude Haiku — title + description per platform ────────────
     const itemContext = [
@@ -252,14 +245,14 @@ serve(async (req) => {
       }
     }
 
-    // ── Step 4: Write cross_post_jobs ───────────────────────────────────────
+    // ── Step 4: Write cross_post_jobs ──────────────────────────────────────
     const now = new Date().toISOString();
     const jobs = (platforms as string[]).map((platform) => ({
       user_id: user.id,
       inventaire_id: item.id,
       platform,
       status: "pending",
-      photo_option: photo_option ?? "standard",
+      photo_option,
       title: platformListings[platform]?.title ?? fallbackTitle,
       description: platformListings[platform]?.description ?? "",
       price: item.prix_vente ?? null,

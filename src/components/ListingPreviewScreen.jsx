@@ -19,7 +19,8 @@ export default function ListingPreviewScreen({ jobs, onClose, supabase, lang }) 
   const [done, setDone] = useState(false);
 
   function displayUrl(photo) {
-    return photoOption === "ia" ? (photo.enhanced || photo.bg_removed || photo.original) : (photo.bg_removed || photo.original);
+    // New structure: {type, url} — Old structure: {original, bg_removed, enhanced}
+    return photo.url || photo.enhanced || photo.bg_removed || photo.original;
   }
 
   function togglePlatform(p) {
