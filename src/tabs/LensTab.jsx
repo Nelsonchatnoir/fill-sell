@@ -1,4 +1,5 @@
 import { memo, useState, useEffect } from 'react';
+import ListingPreviewScreen from '../components/ListingPreviewScreen';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
 
 const LENS_EXAMPLES = [
@@ -425,7 +426,47 @@ const LensTab = memo(function LensTab({
   handleIAPPurchase, handleIAPRestore,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
+  supabase, saveLensItemForListing,
 }) {
+  const [generatingListing,setGeneratingListing]=useState(false);
+  const [listingJobs,setListingJobs]=useState([]);
+  const [showListingPreview,setShowListingPreview]=useState(false);
+  const [listingError,setListingError]=useState('');
+
+  async function handleCreateListing(){
+    setGeneratingListing(true);
+    setListingError('');
+    try{
+      const inventaireId=await saveLensItemForListing();
+      if(!inventaireId)throw new Error(lang==='en'?'Could not save item.':'Impossible de sauvegarder l\'article.');
+
+      const uploadedUrls=[];
+      for(let i=0;i<lensPhotos.length;i++){
+        const photo=lensPhotos[i];
+        const res=await fetch(photo.preview);
+        const blob=await res.blob();
+        const ext=photo.mime?.includes('png')?'png':'jpg';
+        const path=`${user.id}/raw/${Date.now()}_${i}.${ext}`;
+        const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:photo.mime||'image/jpeg',upsert:true});
+        if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
+      }
+      if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+
+      const{data,error:fnErr}=await supabase.functions.invoke('generate-listing',{
+        body:{inventaire_id:inventaireId,photos:uploadedUrls,platforms:['vinted','leboncoin','beebs','ebay'],photo_option:'ia'},
+      });
+      if(fnErr)throw new Error(fnErr.message||'Erreur de génération');
+      if(!data?.jobs?.length)throw new Error('Aucune annonce retournée');
+
+      setListingJobs(data.jobs);
+      setShowListingPreview(true);
+    }catch(e){
+      setListingError(e.message||'Erreur inattendue');
+    }finally{
+      setGeneratingListing(false);
+    }
+  }
+
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
@@ -595,12 +636,20 @@ const LensTab = memo(function LensTab({
               openUpgradeModal={openUpgradeModal}
             />
             {isPro&&!lensResult.error&&(
-              <button
-                style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#6366F1,#4F46E5)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",marginTop:8,boxShadow:"0 4px 14px rgba(99,102,241,0.3)"}}
-                onClick={()=>{}}
-              >
-                ✨ {lang==="en"?"Create a listing":"Créer une annonce"}
-              </button>
+              <>
+                <button
+                  style={{width:"100%",padding:"13px",background:generatingListing?"#9CA3AF":"linear-gradient(135deg,#6366F1,#4F46E5)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:generatingListing?"not-allowed":"pointer",fontFamily:"inherit",marginTop:8,boxShadow:generatingListing?"none":"0 4px 14px rgba(99,102,241,0.3)",transition:"background 0.2s"}}
+                  onClick={handleCreateListing}
+                  disabled={generatingListing}
+                >
+                  ✨ {lang==="en"?"Create a listing":"Créer une annonce"}
+                </button>
+                {listingError&&(
+                  <div style={{marginTop:8,padding:"8px 12px",background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:8,fontSize:12,color:"#DC2626",fontWeight:500}}>
+                    {listingError}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -611,6 +660,28 @@ const LensTab = memo(function LensTab({
       )}
       {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
       {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>)}
+
+      {generatingListing&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.78)",zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:"0 40px"}}>
+          <style>{`@keyframes ls-spin{to{transform:rotate(360deg)}}`}</style>
+          <div style={{width:48,height:48,border:"4px solid rgba(255,255,255,0.25)",borderTopColor:"#fff",borderRadius:"50%",animation:"ls-spin 0.8s linear infinite"}}/>
+          <div style={{color:"#fff",fontWeight:800,fontSize:18,textAlign:"center"}}>
+            {lang==="en"?"Generating your listing...":"Génération de ton annonce..."}
+          </div>
+          <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,textAlign:"center",lineHeight:1.6}}>
+            {lang==="en"?"Remove.bg · AI photo · listing text\n~20-30 sec":"Remove.bg · photo IA · texte annonce\n~20-30 sec"}
+          </div>
+        </div>
+      )}
+
+      {showListingPreview&&(
+        <ListingPreviewScreen
+          jobs={listingJobs}
+          onClose={()=>setShowListingPreview(false)}
+          supabase={supabase}
+          lang={lang}
+        />
+      )}
     </div>
   );
 });

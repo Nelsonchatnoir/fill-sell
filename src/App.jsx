@@ -3218,6 +3218,7 @@ export default function App({ loginOnly = false }){
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
   const [isPro,setIsPro]=useState(false);
+  const [lensInventaireId,setLensInventaireId]=useState(null);
   const [slotsRemaining,setSlotsRemaining]=useState(null);
   const [showUpgradeModal,setShowUpgradeModal]=useState(false);
   const [aiCache,setAiCache]=useState({});
@@ -5017,7 +5018,7 @@ export default function App({ loginOnly = false }){
         .eq('id',user.id);
       setLensUsedToday(count+1);
     }
-    setLensLoading(true);setLensResult(null);setLensAdded(false);
+    setLensLoading(true);setLensResult(null);setLensAdded(false);setLensInventaireId(null);
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
     const catProfit={};
@@ -5092,6 +5093,28 @@ export default function App({ loginOnly = false }){
     });
   }
 
+  async function saveLensItemForListing(){
+    if(lensInventaireId)return lensInventaireId;
+    if(!lensResult?.titre||lensResult.est_vendu)return null;
+    try{
+      const mapped=await vaActions.addItem({
+        nom:lensResult.titre||"Article",
+        marque:lensResult.marque||null,
+        categorie:lensResult.categorie||"Autre",
+        description:lensResult.description||(lensDesc.trim()||null),
+        prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
+        prix_vente:lensResult.prix_vente_suggere||null,
+        quantite:1,
+      });
+      setLensInventaireId(mapped.id);
+      if(!lensAdded)setLensAdded(true);
+      return mapped.id;
+    }catch(e){
+      console.error('[saveLensItemForListing]',e);
+      return null;
+    }
+  }
+
   async function addLensItem(){
     if(!lensResult?.titre||lensAdded)return;
     try{
@@ -5115,7 +5138,7 @@ export default function App({ loginOnly = false }){
         if(se)throw new Error(se.message);
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }else{
-        await vaActions.addItem({
+        const _lensItem=await vaActions.addItem({
           nom,
           marque:lensResult.marque||null,
           categorie:lensResult.categorie||"Autre",
@@ -5124,6 +5147,7 @@ export default function App({ loginOnly = false }){
           prix_vente:lensResult.prix_vente_suggere||null,
           quantite:1,
         });
+        setLensInventaireId(_lensItem.id);
       }
       setLensAdded(true);
     }catch(e){
@@ -5292,6 +5316,8 @@ export default function App({ loginOnly = false }){
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
             lensPremiumLimitReached={lensPremiumLimitReached}
             isPro={isPro}
+            supabase={supabase}
+            saveLensItemForListing={saveLensItemForListing}
           />
         )}
 
