@@ -1030,7 +1030,7 @@ serve(async (req) => {
   if (!isInternalNormalize) {
     const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
     const isPremiumUser = profileData?.is_premium === true;
-    const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
+    const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
       p_user_id: user.id,
       p_feature: "voice_intent",
       p_is_premium: isPremiumUser,
@@ -1039,6 +1039,7 @@ serve(async (req) => {
       p_daily_limit_premium: 20,
       p_monthly_limit_premium: 300,
     });
+    if (quotaError) console.error("[voice-intent] check_and_log_usage error:", quotaError.message);
     quotaLogId = (quotaData as any)?.log_id ?? null;
     if (quotaData?.allowed === false) {
       return new Response(
@@ -1361,6 +1362,7 @@ serve(async (req) => {
         .from("usage_logs")
         .update({
           metadata: {
+            raw_text: text,
             raw_response: raw,
             tasks: (parsed.tasks as any[]).map((t: any) => ({
               intent: t.intent,
