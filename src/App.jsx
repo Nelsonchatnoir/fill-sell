@@ -3471,13 +3471,13 @@ export default function App({ loginOnly = false }){
     const [v,i,p,fc]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,is_pro,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
+      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
       fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
-    let premiumValue=p.data?.is_premium===true;
-    console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
+    let premiumValue=p.data?.is_premium===true||p.data?.is_founder===true||!!p.data?.apple_original_transaction_id||!!p.data?.google_purchase_token;
+    console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, 'is_founder:', p.data?.is_founder, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
       setIsPro(p.data?.is_pro===true);
