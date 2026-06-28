@@ -81,10 +81,14 @@ serve(async (req) => {
 
     if (itemErr || !item) return json({ error: "Item not found" }, 404);
 
-    const REMOVE_BG_KEY = Deno.env.get("REMOVE_BG_API_KEY")!;
+    const REMOVE_BG_KEY = Deno.env.get("REMOVE_BG_API_KEY") ?? "";
     const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
     const BUCKET = "listing-photos";
+
+    if (!REMOVE_BG_KEY) {
+      console.error("[generate-listing] REMOVE_BG_API_KEY secret not set");
+    }
 
     // ── Step 1: Remove.bg on each photo ────────────────────────────────────
     const processedPhotos: Array<{ original: string; bg_removed: string; enhanced: string }> = [];
@@ -94,32 +98,47 @@ serve(async (req) => {
       let bgRemoved = original;
       let enhanced = original;
 
-      try {
-        const form = new FormData();
-        form.append("image_url", original);
-        form.append("size", "auto");
+      if (REMOVE_BG_KEY) {
+        try {
+          // Download image locally first — image_url is blocked by some CDNs for Remove.bg
+          const srcRes = await fetch(original);
+          if (!srcRes.ok) {
+            console.error(`[generate-listing] fetch original photo ${i} failed: ${srcRes.status}`);
+          } else {
+            const srcBlob = await srcRes.blob();
+            const ext = original.includes(".png") ? "png" : "jpg";
 
-        const bgRes = await fetch("https://api.remove.bg/v1.0/removebg", {
-          method: "POST",
-          headers: { "X-Api-Key": REMOVE_BG_KEY },
-          body: form,
-        });
+            const form = new FormData();
+            form.append("image_file", new File([srcBlob], `photo.${ext}`, { type: srcBlob.type || "image/jpeg" }));
+            form.append("size", "auto");
 
-        if (bgRes.ok) {
-          const blob = await bgRes.blob();
-          const path = `${user.id}/${inventaire_id}/bg_${Date.now()}_${i}.png`;
-          const { error: upErr } = await adminClient.storage
-            .from(BUCKET)
-            .upload(path, blob, { contentType: "image/png", upsert: true });
+            const bgRes = await fetch("https://api.remove.bg/v1.0/removebg", {
+              method: "POST",
+              headers: { "X-Api-Key": REMOVE_BG_KEY },
+              body: form,
+            });
 
-          if (!upErr) {
-            bgRemoved = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+            if (bgRes.ok) {
+              const blob = await bgRes.blob();
+              const path = `${user.id}/${inventaire_id}/bg_${Date.now()}_${i}.png`;
+              const { error: upErr } = await adminClient.storage
+                .from(BUCKET)
+                .upload(path, blob, { contentType: "image/png", upsert: true });
+
+              if (!upErr) {
+                bgRemoved = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+                console.log(`[generate-listing] remove.bg OK photo ${i} → ${bgRemoved}`);
+              } else {
+                console.error(`[generate-listing] upload bg_removed ${i}:`, upErr);
+              }
+            } else {
+              const errText = await bgRes.text();
+              console.error(`[generate-listing] remove.bg HTTP ${bgRes.status} photo ${i}:`, errText);
+            }
           }
-        } else {
-          console.error(`[generate-listing] remove.bg ${i}:`, await bgRes.text());
+        } catch (e) {
+          console.error(`[generate-listing] remove.bg exception ${i}:`, e);
         }
-      } catch (e) {
-        console.error(`[generate-listing] remove.bg exception ${i}:`, e);
       }
 
       enhanced = bgRemoved;
