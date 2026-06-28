@@ -1358,21 +1358,25 @@ serve(async (req) => {
 
     // Log AI response into usage_logs metadata (fire & forget — non-blocking)
     if (quotaLogId) {
-      void adminClient
-        .from("usage_logs")
-        .update({
-          metadata: {
-            raw_text: text,
-            raw_response: raw,
-            tasks: (parsed.tasks as any[]).map((t: any) => ({
-              intent: t.intent,
-              requiresConfirmation: t.requiresConfirmation ?? null,
-              confidence: t.confidence ?? null,
-              data: t.data ?? null,
-            })),
-          },
-        })
-        .eq("id", quotaLogId);
+      try {
+        await adminClient
+          .from("usage_logs")
+          .update({
+            metadata: {
+              raw_text: text,
+              raw_response: raw,
+              tasks: (parsed.tasks as any[]).map((t: any) => ({
+                intent: t.intent,
+                requiresConfirmation: t.requiresConfirmation ?? null,
+                confidence: t.confidence ?? null,
+                data: t.data ?? null,
+              })),
+            },
+          })
+          .eq("id", quotaLogId);
+      } catch (e) {
+        console.error("[voice-intent] usage_logs update failed:", e);
+      }
     }
 
     if (!Array.isArray(parsed?.tasks)) {
