@@ -415,7 +415,7 @@ function LensTicker({ lang, onScan }) {
 }
 
 const LensTab = memo(function LensTab({
-  lang, currency, userCountry, isPremium, isNative, user,
+  lang, currency, userCountry, isPremium, isPro, isNative, user,
   iapProduct, iapLoading,
   lensPhotos, setLensPhotos, lensResult, setLensResult,
   lensAdded, setLensAdded, lensDesc, setLensDesc,
@@ -453,27 +453,57 @@ const LensTab = memo(function LensTab({
         />
         {lensPhotos.length>0?(
           <div style={{marginBottom:12}}>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:lensPhotos.length<5?8:0}}>
-              {lensPhotos.map((p,i)=>(
-                <div key={i} style={{position:"relative",width:"calc(33.33% - 6px)",aspectRatio:"1",flexShrink:0}}>
-                  <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10,display:"block"}}/>
-                  <button
-                    onClick={()=>{setLensPhotos(prev=>prev.filter((_,j)=>j!==i));setLensResult(null);setLensAdded(false);}}
-                    style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
-                  >×</button>
+            {isPro?(
+              /* ── Carrousel horizontal Pro (max 8) ── */
+              <>
+                <div style={{display:"flex",overflowX:"auto",gap:10,paddingBottom:8,scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch"}}>
+                  {lensPhotos.map((p,i)=>(
+                    <div key={i} style={{position:"relative",flexShrink:0,width:140,height:140,scrollSnapAlign:"start"}}>
+                      <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10,display:"block"}}/>
+                      <button
+                        onClick={()=>{setLensPhotos(prev=>prev.filter((_,j)=>j!==i));setLensResult(null);setLensAdded(false);}}
+                        style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
+                      >×</button>
+                    </div>
+                  ))}
+                  {lensPhotos.length<8&&(
+                    <button
+                      onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
+                      style={{flexShrink:0,width:140,height:140,background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#9CA3AF",fontSize:11,fontWeight:700,fontFamily:"inherit",scrollSnapAlign:"start"}}
+                    >
+                      <span style={{fontSize:22}}>➕</span>
+                      {lang==="en"?"Add":"Ajouter"}
+                    </button>
+                  )}
                 </div>
-              ))}
-              {lensPhotos.length<5&&(
-                <button
-                  onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
-                  style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#9CA3AF",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
-                >
-                  <span style={{fontSize:22}}>➕</span>
-                  {lang==="en"?"Add":"Ajouter"}
-                </button>
-              )}
-            </div>
-            <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/5 {lang==="en"?"photos":"photos"}</div>
+                <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/8 {lang==="en"?"photos":"photos"}</div>
+              </>
+            ):(
+              /* ── Grille existante non-Pro (max 5, inchangé) ── */
+              <>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:lensPhotos.length<5?8:0}}>
+                  {lensPhotos.map((p,i)=>(
+                    <div key={i} style={{position:"relative",width:"calc(33.33% - 6px)",aspectRatio:"1",flexShrink:0}}>
+                      <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10,display:"block"}}/>
+                      <button
+                        onClick={()=>{setLensPhotos(prev=>prev.filter((_,j)=>j!==i));setLensResult(null);setLensAdded(false);}}
+                        style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
+                      >×</button>
+                    </div>
+                  ))}
+                  {lensPhotos.length<5&&(
+                    <button
+                      onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
+                      style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#9CA3AF",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
+                    >
+                      <span style={{fontSize:22}}>➕</span>
+                      {lang==="en"?"Add":"Ajouter"}
+                    </button>
+                  )}
+                </div>
+                <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/5 {lang==="en"?"photos":"photos"}</div>
+              </>
+            )}
           </div>
         ):(
           <button
@@ -564,6 +594,14 @@ const LensTab = memo(function LensTab({
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
               openUpgradeModal={openUpgradeModal}
             />
+            {isPro&&!lensResult.error&&(
+              <button
+                style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#6366F1,#4F46E5)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",marginTop:8,boxShadow:"0 4px 14px rgba(99,102,241,0.3)"}}
+                onClick={()=>{}}
+              >
+                ✨ {lang==="en"?"Create a listing":"Créer une annonce"}
+              </button>
+            )}
           </div>
         )}
       </div>

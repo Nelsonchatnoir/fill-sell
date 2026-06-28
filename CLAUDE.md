@@ -1,7 +1,9 @@
 # FillSell — Instructions Claude
 
 ## Git
-- Toujours push sur `main` directement.
+- **Migrations Supabase** : toujours appliquées directement en prod (comportement normal et irréversible).
+- **Code applicatif** (React, Edge Functions, extension Chrome) : toujours sur une branche feature, jamais sur `main` avant validation complète et tests OK.
+- Pour les hotfixes urgents uniquement : push direct sur `main` autorisé.
 
 ## Déploiement des Edge Functions
 

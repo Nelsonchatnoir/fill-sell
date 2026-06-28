@@ -3217,6 +3217,7 @@ export default function App({ loginOnly = false }){
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
+  const [isPro,setIsPro]=useState(false);
   const [slotsRemaining,setSlotsRemaining]=useState(null);
   const [showUpgradeModal,setShowUpgradeModal]=useState(false);
   const [aiCache,setAiCache]=useState({});
@@ -3469,7 +3470,7 @@ export default function App({ loginOnly = false }){
     const [v,i,p,fc]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
+      supabase.from('profiles').select('is_premium,is_pro,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
       fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
@@ -3478,6 +3479,7 @@ export default function App({ loginOnly = false }){
     console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
+      setIsPro(p.data?.is_pro===true);
       setUsername(p.data?.username||'');
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
@@ -5289,6 +5291,7 @@ export default function App({ loginOnly = false }){
             slotsRemaining={slotsRemaining}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
             lensPremiumLimitReached={lensPremiumLimitReached}
+            isPro={isPro}
           />
         )}
 
