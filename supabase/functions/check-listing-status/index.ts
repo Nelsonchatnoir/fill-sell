@@ -164,6 +164,14 @@ serve(async (req) => {
 
     if (!userId) return json({ error: "user_id manquant" }, 400);
 
+    // Valider que userId existe en base (défense en profondeur, surtout pour le chemin cron)
+    const { data: profileCheck } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .single();
+    if (!profileCheck) return json({ error: "user_id invalide" }, 400);
+
     // ── Récupération des jobs published ──────────────────────────────────────
     const { data: jobs, error: jobsErr } = await supabase
       .from("cross_post_jobs")
