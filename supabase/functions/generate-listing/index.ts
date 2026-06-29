@@ -33,27 +33,27 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
 const ANGLES = [
   {
     type: "vue_globale",
-    prompt: "Product photo of this exact garment, lightly pressed, soft natural window light, neutral warm background, flat lay, preserve all colors logos and prints exactly, full view, lifestyle feel",
+    prompt: "Professional e-commerce photo of this exact item, full front view, pure white background",
   },
   {
     type: "vue_rapprochee",
-    prompt: "Same garment, natural window light, neutral warm background, close-up upper half, preserve all details exactly",
+    prompt: "Close-up detail photo of this exact item, pure white background",
   },
   {
     type: "zoom_logo",
-    prompt: "Same garment, macro shot of the logo/brand mark, natural light, sharp focus, preserve exact colors and typography",
+    prompt: "Extreme close-up of the logo/brand detail on this exact item, pure white background",
   },
   {
     type: "detail_matiere",
-    prompt: "Same garment, macro shot of the fabric texture, natural light, sharp focus",
+    prompt: "Macro photo showing fabric texture and material detail of this exact item",
   },
   {
     type: "etiquette",
-    prompt: "Same garment, close-up of the care label/tag, natural light, sharp and readable",
+    prompt: "Close-up of the care label and size tag of this exact item",
   },
   {
     type: "vue_dos",
-    prompt: "Same garment back view, lightly pressed, natural window light, neutral warm background, flat lay",
+    prompt: "Professional e-commerce photo of this exact item, full back view, pure white background",
   },
 ];
 
@@ -118,6 +118,10 @@ serve(async (req) => {
 
     // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
     let processedPhotos: Array<{ type: string; url: string }>;
+    let dbgImgStatus: number | null = null;
+    let dbgImgContentType: string | null = null;
+    let dbgImgContentLength: string | null = null;
+    let dbgOpenaiError: string | null = null;
 
     if (photo_option === "original") {
       // No AI generation — return photos as-is
@@ -128,40 +132,45 @@ serve(async (req) => {
     } else {
       // GPT-image-1: "ia_simple" → first angle only, "ia_multi" → all 6
       const srcRes = await fetch(originalUrl);
-      console.log("[img-fetch] status:", srcRes.status);
-      console.log("[img-fetch] content-type:", srcRes.headers.get("content-type"));
-      console.log("[img-fetch] content-length:", srcRes.headers.get("content-length"));
+      dbgImgStatus = srcRes.status;
+      dbgImgContentType = srcRes.headers.get("content-type");
+      dbgImgContentLength = srcRes.headers.get("content-length");
+      console.log("[img-fetch] status:", dbgImgStatus);
+      console.log("[img-fetch] content-type:", dbgImgContentType);
+      console.log("[img-fetch] content-length:", dbgImgContentLength);
       if (!srcRes.ok) {
         console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
         return json({ error: "Failed to fetch uploaded photo" }, 500);
       }
-      // gpt-image-1 /images/edits requires PNG — force type regardless of source format
       const srcBytes = await srcRes.arrayBuffer();
-      const srcBlob = new Blob([srcBytes], { type: "image/png" });
+      const b64Src = btoa(String.fromCharCode(...new Uint8Array(srcBytes)));
       const ts = Date.now();
       const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
 
       const angleResults = await Promise.allSettled(
         anglesToProcess.map(async (angle, idx) => {
-          const form = new FormData();
-          form.append("model", "gpt-image-1");
-          form.append("image", srcBlob, "product.png");
-          form.append("prompt", angle.prompt);
-          form.append("n", "1");
-          form.append("size", "1024x1024");
-          form.append("quality", "medium");
-
-          const res = await fetch("https://api.openai.com/v1/images/edits", {
+          const res = await fetch("https://api.openai.com/v1/images/generations", {
             method: "POST",
-            headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-            body: form,
+            headers: {
+              Authorization: `Bearer ${OPENAI_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "gpt-image-1",
+              prompt: angle.prompt,
+              image: [{ type: "input_image", image_url: `data:image/jpeg;base64,${b64Src}` }],
+              n: 1,
+              size: "1024x1024",
+              quality: "medium",
+            }),
           });
 
-          console.log(`[gpt-image-1] status: ${res.status}`);
+          console.log(`[gpt-image-1] ${angle.type} status: ${res.status}`);
           const rawText = await res.text();
-          console.log(`[gpt-image-1] response: ${rawText.substring(0, 500)}`);
+          console.log(`[gpt-image-1] ${angle.type} response: ${rawText.substring(0, 500)}`);
 
           if (!res.ok) {
+            if (idx === 0) dbgOpenaiError = rawText.substring(0, 1000);
             console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, rawText);
             return { type: angle.type, url: originalUrl };
           }
@@ -274,6 +283,12 @@ serve(async (req) => {
       photos: processedPhotos,
       platforms: platformListings,
       price: item.prix_vente ?? body_price ?? null,
+      debug: photo_option !== "original" ? {
+        imgStatus: dbgImgStatus,
+        imgContentType: dbgImgContentType,
+        imgContentLength: dbgImgContentLength,
+        openaiError: dbgOpenaiError,
+      } : undefined,
     });
 
   } catch (e) {
