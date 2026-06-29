@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -118,10 +119,6 @@ serve(async (req) => {
 
     // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
     let processedPhotos: Array<{ type: string; url: string }>;
-    let dbgImgStatus: number | null = null;
-    let dbgImgContentType: string | null = null;
-    let dbgImgContentLength: string | null = null;
-    let dbgOpenaiError: string | null = null;
 
     if (photo_option === "original") {
       // No AI generation — return photos as-is
@@ -132,37 +129,31 @@ serve(async (req) => {
     } else {
       // GPT-image-1: "ia_simple" → first angle only, "ia_multi" → all 6
       const srcRes = await fetch(originalUrl);
-      dbgImgStatus = srcRes.status;
-      dbgImgContentType = srcRes.headers.get("content-type");
-      dbgImgContentLength = srcRes.headers.get("content-length");
-      console.log("[img-fetch] status:", dbgImgStatus);
-      console.log("[img-fetch] content-type:", dbgImgContentType);
-      console.log("[img-fetch] content-length:", dbgImgContentLength);
       if (!srcRes.ok) {
         console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
         return json({ error: "Failed to fetch uploaded photo" }, 500);
       }
-      const srcBytes = await srcRes.arrayBuffer();
-      const b64Src = btoa(String.fromCharCode(...new Uint8Array(srcBytes)));
+      const srcBuffer = new Uint8Array(await srcRes.arrayBuffer());
+      const img = await Image.decode(srcBuffer);
+      const pngBuffer = await img.encode();
+      const pngBlob = new Blob([pngBuffer], { type: "image/png" });
       const ts = Date.now();
       const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
 
       const angleResults = await Promise.allSettled(
         anglesToProcess.map(async (angle, idx) => {
-          const res = await fetch("https://api.openai.com/v1/images/generations", {
+          const form = new FormData();
+          form.append("model", "gpt-image-1");
+          form.append("image", pngBlob, "product.png");
+          form.append("prompt", angle.prompt);
+          form.append("n", "1");
+          form.append("size", "1024x1024");
+          form.append("quality", "medium");
+
+          const res = await fetch("https://api.openai.com/v1/images/edits", {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${OPENAI_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "gpt-image-1",
-              prompt: angle.prompt,
-              image: [{ type: "input_image", image_url: `data:image/jpeg;base64,${b64Src}` }],
-              n: 1,
-              size: "1024x1024",
-              quality: "medium",
-            }),
+            headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+            body: form,
           });
 
           console.log(`[gpt-image-1] ${angle.type} status: ${res.status}`);
@@ -170,7 +161,6 @@ serve(async (req) => {
           console.log(`[gpt-image-1] ${angle.type} response: ${rawText.substring(0, 500)}`);
 
           if (!res.ok) {
-            if (idx === 0) dbgOpenaiError = rawText.substring(0, 1000);
             console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, rawText);
             return { type: angle.type, url: originalUrl };
           }
@@ -283,12 +273,6 @@ serve(async (req) => {
       photos: processedPhotos,
       platforms: platformListings,
       price: item.prix_vente ?? body_price ?? null,
-      debug: photo_option !== "original" ? {
-        imgStatus: dbgImgStatus,
-        imgContentType: dbgImgContentType,
-        imgContentLength: dbgImgContentLength,
-        openaiError: dbgOpenaiError,
-      } : undefined,
     });
 
   } catch (e) {
