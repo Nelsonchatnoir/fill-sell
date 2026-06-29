@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
@@ -56,6 +56,29 @@ const StockTab = memo(function StockTab({
   const sym = CURRENCY_SYMBOLS[currency] || "€";
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
+  const [jobsByInventaire, setJobsByInventaire] = useState({});
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("cross_post_jobs")
+      .select("id, inventaire_id, platform, status")
+      .eq("user_id", user.id)
+      .in("status", ["pending", "published"])
+      .then(({ data }) => {
+        if (!data) return;
+        const map = {};
+        for (const job of data) {
+          if (!map[job.inventaire_id]) map[job.inventaire_id] = [];
+          map[job.inventaire_id].push(job);
+        }
+        setJobsByInventaire(map);
+      });
+  }, [user?.id]);
+
+  const pendingTotal = Object.values(jobsByInventaire).flat()
+    .filter(j => j.status === "pending").length;
+
   function replaceZoneResult(idx, patch) {
     setVoiceZoneResults(prev => prev.map((r, i) => i === idx ? {...r, ...patch} : r));
   }
@@ -68,6 +91,17 @@ const StockTab = memo(function StockTab({
         <div style={{flex:1}}><div className="t">{lang==='en'?'AI Stock':'Stock IA'}</div><div className="d">{lang==='en'?'Manage your inventory with AI':'Gérez votre inventaire avec l\'IA'}</div></div>
         <div style={{fontSize:14,color:"#94A3B8",transition:"transform 0.2s",transform:voiceZoneOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
       </div>
+      {pendingTotal > 0 && (
+        <div style={{ background:"#FFFBEB", border:"1px solid #FCD34D", borderRadius:10,
+          padding:"10px 14px", display:"flex", alignItems:"center", gap:8,
+          fontSize:13, color:"#92400E", fontWeight:600, margin:"0 0 8px" }}>
+          <span>⏳</span>
+          <span>{lang === "en"
+            ? `${pendingTotal} listing${pendingTotal > 1 ? "s" : ""} being posted…`
+            : `${pendingTotal} annonce${pendingTotal > 1 ? "s" : ""} en cours de dépôt…`}
+          </span>
+        </div>
+      )}
       <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Voice Capture (collapsible) ── */}
@@ -1056,6 +1090,23 @@ const StockTab = memo(function StockTab({
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
                           {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
+                          {(() => {
+                            const jobs = jobsByInventaire[item.id];
+                            if (!jobs?.length) return null;
+                            const hasPending = jobs.some(j => j.status === "pending");
+                            const published = jobs.filter(j => j.status === "published").map(j => j.platform);
+                            if (hasPending) return (
+                              <span style={{background:"#FFFBEB",color:"#92400E",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #FCD34D"}}>
+                                ⏳ {lang === "en" ? "Posting…" : "En cours…"}
+                              </span>
+                            );
+                            if (published.length) return (
+                              <span style={{background:"#EEF2FF",color:"#4F46E5",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C7D2FE"}}>
+                                🌐 {published.join(" · ")}
+                              </span>
+                            );
+                            return null;
+                          })()}
                         </div>
                         {!isExpanded&&(_itemDesc||_itemLoc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_itemDesc}{_itemDesc&&_itemLoc?" · ":""}{_itemLoc&&`📍 ${_itemLoc}`}</div>}
                         {item.emplacement&&<span style={{display:"inline-block",marginTop:4,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {item.emplacement}</span>}
