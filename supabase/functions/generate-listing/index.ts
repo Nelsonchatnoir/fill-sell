@@ -132,8 +132,10 @@ serve(async (req) => {
         console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
         return json({ error: "Failed to fetch uploaded photo" }, 500);
       }
-      const srcBlob = await srcRes.blob();
-      const srcType = srcBlob.type || "image/jpeg";
+      const srcType = /\.png(\?|$)/i.test(originalUrl) ? "image/png" : "image/jpeg";
+      const srcFilename = srcType === "image/png" ? "product.png" : "product.jpg";
+      const srcBytes = await srcRes.arrayBuffer();
+      const srcBlob = new Blob([srcBytes], { type: srcType });
       const ts = Date.now();
       const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
 
@@ -141,7 +143,7 @@ serve(async (req) => {
         anglesToProcess.map(async (angle, idx) => {
           const form = new FormData();
           form.append("model", "gpt-image-1");
-          form.append("image", new File([srcBlob], "product.jpg", { type: srcType }));
+          form.append("image", srcBlob, srcFilename);
           form.append("prompt", angle.prompt);
           form.append("n", "1");
           form.append("size", "1024x1024");
