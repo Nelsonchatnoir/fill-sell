@@ -188,6 +188,15 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
       }));
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
       if (insErr) throw new Error(insErr.message);
+
+      // Persister les photos traitées sur l'article inventaire
+      if (processedPhotos?.length) {
+        await supabase
+          .from("inventaire")
+          .update({ photos: processedPhotos })
+          .eq("id", inventaireId);
+      }
+
       setStep("done");
     } catch (e) {
       setError(e.message);
