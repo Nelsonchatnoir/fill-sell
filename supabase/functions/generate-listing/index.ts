@@ -128,14 +128,16 @@ serve(async (req) => {
     } else {
       // GPT-image-1: "ia_simple" → first angle only, "ia_multi" → all 6
       const srcRes = await fetch(originalUrl);
+      console.log("[img-fetch] status:", srcRes.status);
+      console.log("[img-fetch] content-type:", srcRes.headers.get("content-type"));
+      console.log("[img-fetch] content-length:", srcRes.headers.get("content-length"));
       if (!srcRes.ok) {
         console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
         return json({ error: "Failed to fetch uploaded photo" }, 500);
       }
-      const srcType = /\.png(\?|$)/i.test(originalUrl) ? "image/png" : "image/jpeg";
-      const srcFilename = srcType === "image/png" ? "product.png" : "product.jpg";
+      // gpt-image-1 /images/edits requires PNG — force type regardless of source format
       const srcBytes = await srcRes.arrayBuffer();
-      const srcBlob = new Blob([srcBytes], { type: srcType });
+      const srcBlob = new Blob([srcBytes], { type: "image/png" });
       const ts = Date.now();
       const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
 
@@ -143,7 +145,7 @@ serve(async (req) => {
         anglesToProcess.map(async (angle, idx) => {
           const form = new FormData();
           form.append("model", "gpt-image-1");
-          form.append("image", srcBlob, srcFilename);
+          form.append("image", srcBlob, "product.png");
           form.append("prompt", angle.prompt);
           form.append("n", "1");
           form.append("size", "1024x1024");
