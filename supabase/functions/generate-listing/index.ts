@@ -29,33 +29,7 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
-// 6 angle prompts — GPT-image-1 generates each from the original photo
-const ANGLES = [
-  {
-    type: "vue_globale",
-    prompt: "Professional e-commerce photo of this exact item, full front view, pure white background",
-  },
-  {
-    type: "vue_rapprochee",
-    prompt: "Close-up detail photo of this exact item, pure white background",
-  },
-  {
-    type: "zoom_logo",
-    prompt: "Extreme close-up of the logo/brand detail on this exact item, pure white background",
-  },
-  {
-    type: "detail_matiere",
-    prompt: "Macro photo showing fabric texture and material detail of this exact item",
-  },
-  {
-    type: "etiquette",
-    prompt: "Close-up of the care label and size tag of this exact item",
-  },
-  {
-    type: "vue_dos",
-    prompt: "Professional e-commerce photo of this exact item, full back view, pure white background",
-  },
-];
+const PHOTOROOM_PROMPT = "Professional product photo, improve lighting, sharpness and colors, keep exact same angle and composition, e-commerce quality";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -111,88 +85,71 @@ serve(async (req) => {
 
     if (itemErr || !item) return json({ error: "Item not found" }, 404);
 
-    const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+    const PHOTOROOM_KEY = Deno.env.get("PHOTOROOM_API_KEY")!;
     const BUCKET = "listing-photos";
-    const originalUrl = photos[0] as string;
 
     // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
     let processedPhotos: Array<{ type: string; url: string }>;
 
     if (photo_option === "original") {
-      // No AI generation — return photos as-is
       processedPhotos = (photos as string[]).map((url, i) => ({
         type: i === 0 ? "original" : `photo_${i}`,
         url,
       }));
     } else {
-      // GPT-image-1: "ia_simple" → first angle only, "ia_multi" → all 6
-      const srcRes = await fetch(originalUrl);
-      if (!srcRes.ok) {
-        console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
-        return json({ error: "Failed to fetch uploaded photo" }, 500);
-      }
-      const srcBlob = await srcRes.blob();
+      // Photoroom: enhance every uploaded photo
       const ts = Date.now();
-      const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
+      const results = await Promise.allSettled(
+        (photos as string[]).map(async (photoUrl, idx) => {
+          const srcRes = await fetch(photoUrl);
+          if (!srcRes.ok) {
+            console.error(`[photoroom] fetch photo ${idx} failed: ${srcRes.status}`);
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+          const srcBlob = await srcRes.blob();
 
-      const angleResults = await Promise.allSettled(
-        anglesToProcess.map(async (angle, idx) => {
           const form = new FormData();
-          form.append("model", "gpt-image-1");
-          form.append("image", srcBlob, "product.jpg");
-          form.append("prompt", angle.prompt);
-          form.append("n", "1");
-          form.append("size", "1024x1024");
-          form.append("quality", "medium");
+          form.append("imageFile", srcBlob, "product.jpg");
+          form.append("prompt", PHOTOROOM_PROMPT);
 
-          const res = await fetch("https://api.openai.com/v1/images/edits", {
+          const res = await fetch("https://image-api.photoroom.com/v2/edit", {
             method: "POST",
-            headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+            headers: { "x-api-key": PHOTOROOM_KEY },
             body: form,
           });
 
-          console.log(`[gpt-image-1] ${angle.type} status: ${res.status}`);
-          const rawText = await res.text();
-          console.log(`[gpt-image-1] ${angle.type} response: ${rawText.substring(0, 500)}`);
+          console.log(`[photoroom] photo ${idx} status: ${res.status}`);
 
           if (!res.ok) {
-            console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, rawText);
-            return { type: angle.type, url: originalUrl };
+            console.error(`[photoroom] photo ${idx} error:`, await res.text());
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
 
-          const data = JSON.parse(rawText);
-          const b64: string | undefined = data.data?.[0]?.b64_json;
-          if (!b64) {
-            console.error(`[generate-listing] gpt-image-1 ${angle.type}: no b64_json`);
-            return { type: angle.type, url: originalUrl };
-          }
-
-          const binary = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-          const outBlob = new Blob([binary], { type: "image/png" });
-          const path = `${user.id}/${inventaire_id}/${angle.type}_${ts}_${idx}.png`;
+          const imgBuffer = await res.arrayBuffer();
+          const outBlob = new Blob([imgBuffer], { type: "image/jpeg" });
+          const path = `${user.id}/enhanced/${ts}_${idx}.jpg`;
 
           const { error: upErr } = await adminClient.storage
             .from(BUCKET)
-            .upload(path, outBlob, { contentType: "image/png", upsert: true });
+            .upload(path, outBlob, { contentType: "image/jpeg", upsert: true });
 
           if (upErr) {
-            console.error(`[generate-listing] upload ${angle.type}:`, upErr);
-            return { type: angle.type, url: originalUrl };
+            console.error(`[photoroom] upload photo ${idx}:`, upErr);
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
 
           const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-          console.log(`[generate-listing] angle ${angle.type} OK → ${url}`);
-          return { type: angle.type, url };
+          console.log(`[photoroom] photo ${idx} OK → ${url}`);
+          return { type: idx === 0 ? "original" : `enhanced_${idx}`, url };
         })
       );
 
-      processedPhotos = [
-        { type: "original", url: originalUrl },
-        ...angleResults.map((r, i) =>
-          r.status === "fulfilled" ? r.value : { type: anglesToProcess[i].type, url: originalUrl }
-        ),
-      ];
+      processedPhotos = results.map((r, i) =>
+        r.status === "fulfilled"
+          ? r.value
+          : { type: i === 0 ? "original" : `photo_${i}`, url: (photos as string[])[i] }
+      );
     }
 
     // ── Step 3: Claude Haiku — title + description per platform ──────────────
