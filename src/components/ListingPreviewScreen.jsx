@@ -54,6 +54,16 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
 
   // ── Step "checking" ──────────────────────────────────────────────────────────
   useEffect(() => {
+    // Pre-fetch prix_vente so price is available even if generate-listing times out
+    supabase
+      .from("inventaire")
+      .select("prix_vente")
+      .eq("id", inventaireId)
+      .single()
+      .then(({ data: item }) => {
+        if (item?.prix_vente != null) setPrice(item.prix_vente);
+      });
+
     if (initialPhotos.length > 0) {
       setPhotos(initialPhotos);
       setStep("style-pick");
@@ -148,13 +158,15 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
           photos,
           platforms: PLATFORMS_DEFAULT,
           photo_option: optionToUse,
+          price,
         },
       });
       if (fnErr) throw new Error(fnErr.message || "Erreur de génération");
       if (!data?.platforms) throw new Error(lang === "en" ? "No listings returned" : "Aucune annonce retournée");
 
       setProcessedPhotos(data.photos ?? []);
-      setPrice(data.price ?? null);
+      // Preserve pre-fetched price if edge function returns null (e.g. prix_vente not set in DB)
+      setPrice(prev => data.price ?? prev);
 
       const initialEdited = {};
       for (const p of PLATFORMS_DEFAULT) {
@@ -418,7 +430,7 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         })}
       </div>
       <div style={S.footer}>
-        <button onClick={handleGenerate} style={S.primaryBtn("#6366F1")}>
+        <button onClick={() => handleGenerate()} style={S.primaryBtn("#6366F1")}>
           {lang === "en" ? "Generate listings →" : "Générer les annonces →"}
         </button>
       </div>
