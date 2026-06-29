@@ -146,7 +146,6 @@ serve(async (req) => {
           form.append("n", "1");
           form.append("size", "1024x1024");
           form.append("quality", "medium");
-          form.append("response_format", "b64_json");
 
           const res = await fetch("https://api.openai.com/v1/images/edits", {
             method: "POST",
@@ -154,13 +153,16 @@ serve(async (req) => {
             body: form,
           });
 
+          console.log(`[gpt-image-1] status: ${res.status}`);
+          const rawText = await res.text();
+          console.log(`[gpt-image-1] response: ${rawText.substring(0, 500)}`);
+
           if (!res.ok) {
-            const err = await res.text();
-            console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, err);
+            console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, rawText);
             return { type: angle.type, url: originalUrl };
           }
 
-          const data = await res.json();
+          const data = JSON.parse(rawText);
           const b64: string | undefined = data.data?.[0]?.b64_json;
           if (!b64) {
             console.error(`[generate-listing] gpt-image-1 ${angle.type}: no b64_json`);
