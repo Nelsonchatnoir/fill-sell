@@ -163,7 +163,7 @@ serve(async (req) => {
     // ── Récupération des jobs published ──────────────────────────────────────
     const { data: jobs, error: jobsErr } = await supabase
       .from("cross_post_jobs")
-      .select("id, listing_url, platform")
+      .select("id, listing_url, platform, inventaire_id")
       .eq("user_id", userId)
       .eq("status", "published")
       .not("listing_url", "is", null);
@@ -193,6 +193,23 @@ serve(async (req) => {
 
       if (updateErr) {
         console.error(`[check-listing] Update error job ${job.id}:`, updateErr.message);
+      }
+
+      // Annuler tous les autres jobs du même article
+      if (detected === "sold" && job.inventaire_id) {
+        const { error: cancelErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "cancelled" })
+          .eq("inventaire_id", job.inventaire_id)
+          .eq("user_id", userId)
+          .eq("status", "published")
+          .neq("id", job.id);
+
+        if (cancelErr) {
+          console.error(`[check-listing] Cancel siblings error (inventaire_id=${job.inventaire_id}):`, cancelErr.message);
+        } else {
+          console.log(`[check-listing] Siblings cancelled for inventaire_id=${job.inventaire_id}`);
+        }
       }
 
       results.push({ id: job.id, platform: job.platform, detected });
