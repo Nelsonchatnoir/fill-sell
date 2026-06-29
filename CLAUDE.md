@@ -1,5 +1,9 @@
 # FillSell — Instructions Claude
 
+## Format des réponses
+
+Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ```) pour faciliter le copier-coller. Diagnostics, rapports, récapitulatifs, listes de changements — tout doit être dans un bloc.
+
 ## Git
 - **Migrations Supabase** : toujours appliquées directement en prod (comportement normal et irréversible).
 - **Code applicatif** (React, Edge Functions, extension Chrome) : toujours sur une branche feature, jamais sur `main` avant validation complète et tests OK.
