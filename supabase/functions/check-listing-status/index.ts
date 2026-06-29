@@ -3,6 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGINS.includes(origin) || origin.startsWith("chrome-extension://");
+}
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -123,7 +127,7 @@ async function checkListingUrl(
 
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
-  const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
+  const corsOrigin = isAllowedOrigin(origin) ? origin : "https://fillsell.app";
   const CORS = {
     "Access-Control-Allow-Origin": corsOrigin,
     "Access-Control-Allow-Headers": "authorization, content-type, apikey",
