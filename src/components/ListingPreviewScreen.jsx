@@ -39,6 +39,7 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
   const [uploading, setUploading] = useState(false);
 
   const [photoOption, setPhotoOption] = useState("ia_multi");
+  const [timedOut, setTimedOut] = useState(false);
 
   // generate-listing response
   const [processedPhotos, setProcessedPhotos] = useState([]);
@@ -134,16 +135,19 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
   }
 
   // ── Generate listing ─────────────────────────────────────────────────────────
-  async function handleGenerate() {
+  async function handleGenerate(photoOptionOverride) {
+    const optionToUse = photoOptionOverride ?? photoOption;
+    if (photoOptionOverride) setPhotoOption(photoOptionOverride);
     setStep("generating");
     setError("");
+    setTimedOut(false);
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
           inventaire_id: inventaireId,
           photos,
           platforms: PLATFORMS_DEFAULT,
-          photo_option: photoOption,
+          photo_option: optionToUse,
         },
       });
       if (fnErr) throw new Error(fnErr.message || "Erreur de génération");
@@ -163,7 +167,16 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
       setEdited(initialEdited);
       setStep("review");
     } catch (e) {
-      setError(e.message);
+      const isTimeout = optionToUse === "ia_multi" &&
+        /abort|timeout|failed to fetch|non-2xx/i.test(e.message ?? "");
+      if (isTimeout) {
+        setError(lang === "en"
+          ? "Generation timed out (6 AI photos takes time). Choose a faster option below."
+          : "Génération expirée (6 photos IA prend du temps). Choisis une option plus rapide.");
+        setTimedOut(true);
+      } else {
+        setError(e.message);
+      }
       setStep("style-pick");
     }
   }
@@ -336,6 +349,26 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
       </div>
       <div style={{ overflowY:"auto", flex:1, padding:"20px" }}>
         {error && <div style={S.errorBox}>{error}</div>}
+        {timedOut && (
+          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+            <button
+              onClick={() => handleGenerate("ia_simple")}
+              style={{ flex:1, padding:"10px 8px", borderRadius:12, border:"2px solid #6366F1",
+                background:"#EEF2FF", color:"#4F46E5", fontWeight:700, fontSize:13,
+                cursor:"pointer", fontFamily:"inherit" }}
+            >
+              {lang === "en" ? "🎨 Retry — 1 angle" : "🎨 Réessayer IA 1 angle"}
+            </button>
+            <button
+              onClick={() => handleGenerate("original")}
+              style={{ flex:1, padding:"10px 8px", borderRadius:12, border:"2px solid #D1D5DB",
+                background:"#F9FAFB", color:"#374151", fontWeight:700, fontSize:13,
+                cursor:"pointer", fontFamily:"inherit" }}
+            >
+              {lang === "en" ? "📸 Use originals" : "📸 Photos originales"}
+            </button>
+          </div>
+        )}
         <div style={{ fontSize:13, color:"#6B7280", marginBottom:20, lineHeight:1.5 }}>
           {lang === "en"
             ? "Choose how your photos will be processed before generating listings."
