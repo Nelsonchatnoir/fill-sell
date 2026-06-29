@@ -434,6 +434,22 @@ const LensTab = memo(function LensTab({
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
 
+  function compressImage(file, maxWidth = 1024, quality = 0.85) {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, maxWidth / img.width);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   async function handleCreateListing(){
     setGeneratingListing(true);
     setListingError('');
@@ -446,10 +462,10 @@ const LensTab = memo(function LensTab({
       for(let i=0;i<lensPhotos.length;i++){
         const photo=lensPhotos[i];
         const res=await fetch(photo.preview);
-        const blob=await res.blob();
-        const ext=photo.mime?.includes('png')?'png':'jpg';
-        const path=`${user.id}/raw/${ts}_${i}.${ext}`;
-        const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:photo.mime||'image/jpeg',upsert:true});
+        const rawBlob=await res.blob();
+        const blob=await compressImage(rawBlob);
+        const path=`${user.id}/raw/${ts}_${i}.jpg`;
+        const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:'image/jpeg',upsert:true});
         if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
       }
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');

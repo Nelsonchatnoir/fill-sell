@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -133,10 +132,7 @@ serve(async (req) => {
         console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
         return json({ error: "Failed to fetch uploaded photo" }, 500);
       }
-      const srcBuffer = new Uint8Array(await srcRes.arrayBuffer());
-      const img = await Image.decode(srcBuffer);
-      const pngBuffer = await img.encode();
-      const pngBlob = new Blob([pngBuffer], { type: "image/png" });
+      const srcBlob = await srcRes.blob();
       const ts = Date.now();
       const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
 
@@ -144,7 +140,7 @@ serve(async (req) => {
         anglesToProcess.map(async (angle, idx) => {
           const form = new FormData();
           form.append("model", "gpt-image-1");
-          form.append("image", pngBlob, "product.png");
+          form.append("image", srcBlob, "product.jpg");
           form.append("prompt", angle.prompt);
           form.append("n", "1");
           form.append("size", "1024x1024");
