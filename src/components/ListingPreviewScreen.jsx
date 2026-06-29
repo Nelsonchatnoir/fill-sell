@@ -4,6 +4,19 @@ const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs",
 const PLATFORM_COLORS = { vinted:"#08A05C", leboncoin:"#F56B2A", beebs:"#FF3366", ebay:"#E53238", vestiaire:"#1B1B1B" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
+const FIELD_LABELS = {
+  taille:       { fr:"Taille",       en:"Size" },
+  matiere:      { fr:"Matière",      en:"Material" },
+  etat:         { fr:"État",         en:"Condition" },
+  marque:       { fr:"Marque",       en:"Brand" },
+  format_colis: { fr:"Format colis", en:"Package" },
+  categorie:    { fr:"Catégorie",    en:"Category" },
+  size:         { fr:"Taille",       en:"Size" },
+  material:     { fr:"Matière",      en:"Material" },
+  condition:    { fr:"État",         en:"Condition" },
+  brand:        { fr:"Marque",       en:"Brand" },
+};
+
 function primaryColor(p) { return PLATFORM_COLORS[p] ?? "#6366F1"; }
 
 // Props:
@@ -144,6 +157,7 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         initialEdited[p] = {
           title: data.platforms[p]?.title ?? "",
           description: data.platforms[p]?.description ?? "",
+          platform_fields: data.platforms[p]?.platform_fields ?? {},
         };
       }
       setEdited(initialEdited);
@@ -170,7 +184,7 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         description: edited[platform]?.description ?? "",
         price: price,
         photos: processedPhotos,
-        platform_fields: {},
+        platform_fields: edited[platform]?.platform_fields ?? {},
       }));
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
       if (insErr) throw new Error(insErr.message);
@@ -183,6 +197,16 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
 
   function setField(platform, field, value) {
     setEdited(prev => ({ ...prev, [platform]: { ...prev[platform], [field]: value } }));
+  }
+
+  function setPlatformField(platform, key, value) {
+    setEdited(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        platform_fields: { ...(prev[platform]?.platform_fields ?? {}), [key]: value },
+      },
+    }));
   }
 
   function displayUrl(photo) {
@@ -493,7 +517,7 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
             />
           </div>
           {price != null && (
-            <div>
+            <div style={{ marginBottom:14 }}>
               <label style={S.fieldLabel}>{lang === "en" ? "Price (€)" : "Prix (€)"}</label>
               <input
                 type="number"
@@ -503,6 +527,22 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
               />
             </div>
           )}
+          {/* Platform-specific fields inferred by AI */}
+          {Object.entries(edited[activePlatform]?.platform_fields ?? {})
+            .filter(([, v]) => v !== null && v !== "null" && v !== "")
+            .map(([key, val]) => {
+              const lbl = FIELD_LABELS[key]?.[lang] ?? key;
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={S.fieldLabel}>{lbl}</label>
+                  <input
+                    value={val ?? ""}
+                    onChange={e => setPlatformField(activePlatform, key, e.target.value)}
+                    style={S.input}
+                  />
+                </div>
+              );
+            })}
         </div>
       </div>
 

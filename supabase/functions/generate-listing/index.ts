@@ -9,23 +9,23 @@ const CORS = {
 const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   vinted: {
     lang: "fr",
-    system: `Tu es un revendeur professionnel sur Vinted. Ton: conversationnel, chaleureux, quelques emojis 🌟✨, mentionne envoi rapide. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"..."}`,
+    system: `Tu es un revendeur professionnel sur Vinted. Ton: conversationnel, chaleureux, quelques emojis 🌟✨, mentionne envoi rapide. Infère taille, matière, état et marque depuis le contexte article. Si un champ ne s'applique pas (ex: taille pour un objet), utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","matiere":"...ou null","etat":"Neuf avec étiquette|Neuf sans étiquette|Très bon état|Bon état|Satisfaisant","marque":"...ou null"}}`,
   },
   leboncoin: {
     lang: "fr",
-    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"..."}`,
+    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état et le format colis depuis le contexte article. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"Neuf|Très bon état|Bon état|État correct|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini"}}`,
   },
   beebs: {
     lang: "fr",
-    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"..."}`,
+    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état et marque depuis le contexte. Si un champ ne s'applique pas, utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","etat":"Neuf|Très bon état|Bon état","marque":"...ou null"}}`,
   },
   ebay: {
     lang: "en",
-    system: `You are a professional reseller writing eBay listings in English. Tone: structured, technical, include condition grade (Good/Very Good/Like New), measurements if relevant. Return ONLY valid JSON: {"title":"...","description":"..."}`,
+    system: `You are a professional reseller writing eBay listings in English. Tone: structured, technical. Infer size, material, condition and brand from the item context. Use null if a field doesn't apply (e.g. size for a non-clothing item). Return ONLY valid JSON: {"title":"...","description":"...","platform_fields":{"size":"XS|S|M|L|XL|XXL|One Size|null","material":"...or null","condition":"New|Like New|Very Good|Good|Acceptable","brand":"...or null"}}`,
   },
   vestiaire: {
     lang: "fr",
-    system: `Tu es un vendeur sur Vestiaire Collective. Ton: luxueux, précis, descriptif matières et état, style magazine, pas d'emojis. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"..."}`,
+    system: `Tu es un vendeur sur Vestiaire Collective. Ton: luxueux, précis, descriptif matières et état, style magazine, pas d'emojis. Infère taille, matière, état et marque depuis le contexte. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","matiere":"...ou null","etat":"Neuf avec étiquette|Neuf sans étiquette|Excellent état|Très bon état|Bon état","marque":"...ou null"}}`,
   },
 };
 
@@ -202,12 +202,12 @@ serve(async (req) => {
     ].filter(Boolean).join("\n");
 
     const fallbackTitle = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "Article";
-    const platformListings: Record<string, { title: string; description: string }> = {};
+    const platformListings: Record<string, { title: string; description: string; platform_fields: Record<string, string | null> }> = {};
 
     for (const platform of platforms as string[]) {
       const cfg = PLATFORM_CFG[platform];
       if (!cfg) {
-        platformListings[platform] = { title: fallbackTitle, description: item.description ?? "" };
+        platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
         continue;
       }
 
@@ -225,7 +225,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             model: "claude-haiku-4-5-20251001",
-            max_tokens: 600,
+            max_tokens: 900,
             system: cfg.system,
             messages: [{ role: "user", content: userMsg }],
           }),
@@ -234,13 +234,19 @@ serve(async (req) => {
         if (claudeRes.ok) {
           const claudeData = await claudeRes.json();
           const text: string = claudeData.content?.[0]?.text ?? "";
-          const match = text.match(/\{[\s\S]*?\}/);
-          if (match) {
-            const parsed = JSON.parse(match[0]);
-            platformListings[platform] = {
-              title: String(parsed.title ?? fallbackTitle),
-              description: String(parsed.description ?? ""),
-            };
+          const firstBrace = text.indexOf("{");
+          const lastBrace = text.lastIndexOf("}");
+          if (firstBrace !== -1 && lastBrace > firstBrace) {
+            try {
+              const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+              platformListings[platform] = {
+                title: String(parsed.title ?? fallbackTitle),
+                description: String(parsed.description ?? ""),
+                platform_fields: parsed.platform_fields ?? {},
+              };
+            } catch (parseErr) {
+              console.error(`[generate-listing] JSON parse error ${platform}:`, parseErr);
+            }
           }
         } else {
           console.error(`[generate-listing] claude ${platform}:`, await claudeRes.text());
@@ -250,7 +256,7 @@ serve(async (req) => {
       }
 
       if (!platformListings[platform]) {
-        platformListings[platform] = { title: fallbackTitle, description: item.description ?? "" };
+        platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
       }
     }
 
