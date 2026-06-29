@@ -26,7 +26,7 @@ function detectLeboncoin(html: string): "sold" | "active" | "unknown" {
   }
   if (
     html.includes("Cette annonce n’est plus disponible") ||
-    html.includes("Cette annonce n'est plus disponible") ||
+    html.includes("Cette annonce n’est plus disponible") ||
     html.includes("a été supprimée") ||
     html.includes('"isActive":false') ||
     html.includes('"adStatus":"INACTIVE"') ||
@@ -65,7 +65,7 @@ function detectBeebs(html: string): "sold" | "active" | "unknown" {
     html.includes('"sold":true') ||
     html.includes('"is_sold":true') ||
     html.includes("n’est plus disponible") ||
-    html.includes("n'est plus disponible")
+    html.includes("n’est plus disponible")
   ) return "sold";
   return "active";
 }
