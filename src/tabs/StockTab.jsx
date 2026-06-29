@@ -3,6 +3,8 @@ import { useTranslation } from '../i18n/useTranslation';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
+import ListingPreviewScreen from '../components/ListingPreviewScreen';
+import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType, normalizeMarque,
@@ -12,7 +14,7 @@ import {
 
 const StockTab = memo(function StockTab({
   // Config
-  lang, currency, isPremium, isNative, items, user, voiceUsedToday,
+  lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
   iapProduct, iapLoading,
   // Computed lists
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
@@ -53,6 +55,7 @@ const StockTab = memo(function StockTab({
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const sym = CURRENCY_SYMBOLS[currency] || "€";
   const [zoneEdits, setZoneEdits] = useState({});
+  const [publishItem, setPublishItem] = useState(null);
   function replaceZoneResult(idx, patch) {
     setVoiceZoneResults(prev => prev.map((r, i) => i === idx ? {...r, ...patch} : r));
   }
@@ -1059,6 +1062,11 @@ const StockTab = memo(function StockTab({
                         <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                        {isPro&&(
+                          <button onClick={(e)=>{e.stopPropagation();setPublishItem(item);}} style={{background:"#EEF2FF",color:"#4F46E5",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                            {lang==='fr'?'Publier':'Publish'}
+                          </button>
+                        )}
                         <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendre':'Sell'}</button>
                         <span onClick={e=>{e.stopPropagation();setExpandedStockId(isExpanded?null:item.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)"}}>›</span>
                       </div>
@@ -1085,6 +1093,16 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       </div>
+      {publishItem&&(
+        <ListingPreviewScreen
+          inventaireId={publishItem.id}
+          userId={user.id}
+          initialPhotos={[]}
+          onClose={()=>setPublishItem(null)}
+          supabase={supabase}
+          lang={lang}
+        />
+      )}
     </>
   );
 });

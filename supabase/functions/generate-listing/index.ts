@@ -90,8 +90,8 @@ serve(async (req) => {
 
     const body = await req.json();
     const { inventaire_id, photos, platforms } = body;
-    // Force ia for all requests during development
-    const photo_option = "ia";
+    // photo_option: "ia_multi" (6 angles), "ia_simple" (1 angle), "original" (no AI)
+    const photo_option = (body.photo_option as string) || "ia_multi";
 
     if (
       !inventaire_id ||
@@ -112,77 +112,86 @@ serve(async (req) => {
     const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
     const BUCKET = "listing-photos";
-
-    // ── Step 1: Download first uploaded photo ──────────────────────────────
     const originalUrl = photos[0] as string;
-    const srcRes = await fetch(originalUrl);
-    if (!srcRes.ok) {
-      console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
-      return json({ error: "Failed to fetch uploaded photo" }, 500);
+
+    // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
+    let processedPhotos: Array<{ type: string; url: string }>;
+
+    if (photo_option === "original") {
+      // No AI generation — return photos as-is
+      processedPhotos = (photos as string[]).map((url, i) => ({
+        type: i === 0 ? "original" : `photo_${i}`,
+        url,
+      }));
+    } else {
+      // GPT-image-1: "ia_simple" → first angle only, "ia_multi" → all 6
+      const srcRes = await fetch(originalUrl);
+      if (!srcRes.ok) {
+        console.error(`[generate-listing] fetch original failed: ${srcRes.status}`);
+        return json({ error: "Failed to fetch uploaded photo" }, 500);
+      }
+      const srcBlob = await srcRes.blob();
+      const srcType = srcBlob.type || "image/jpeg";
+      const ts = Date.now();
+      const anglesToProcess = photo_option === "ia_simple" ? ANGLES.slice(0, 1) : ANGLES;
+
+      const angleResults = await Promise.allSettled(
+        anglesToProcess.map(async (angle, idx) => {
+          const form = new FormData();
+          form.append("model", "gpt-image-1");
+          form.append("image[]", new File([srcBlob], "product.jpg", { type: srcType }));
+          form.append("prompt", angle.prompt);
+          form.append("n", "1");
+          form.append("size", "1024x1024");
+          form.append("quality", "medium");
+
+          const res = await fetch("https://api.openai.com/v1/images/edits", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+            body: form,
+          });
+
+          if (!res.ok) {
+            const err = await res.text();
+            console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, err);
+            return { type: angle.type, url: originalUrl };
+          }
+
+          const data = await res.json();
+          const b64: string | undefined = data.data?.[0]?.b64_json;
+          if (!b64) {
+            console.error(`[generate-listing] gpt-image-1 ${angle.type}: no b64_json`);
+            return { type: angle.type, url: originalUrl };
+          }
+
+          const binary = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const outBlob = new Blob([binary], { type: "image/png" });
+          const path = `${user.id}/${inventaire_id}/${angle.type}_${ts}_${idx}.png`;
+
+          const { error: upErr } = await adminClient.storage
+            .from(BUCKET)
+            .upload(path, outBlob, { contentType: "image/png", upsert: true });
+
+          if (upErr) {
+            console.error(`[generate-listing] upload ${angle.type}:`, upErr);
+            return { type: angle.type, url: originalUrl };
+          }
+
+          const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+          console.log(`[generate-listing] angle ${angle.type} OK → ${url}`);
+          return { type: angle.type, url };
+        })
+      );
+
+      processedPhotos = [
+        { type: "original", url: originalUrl },
+        ...angleResults.map((r, i) =>
+          r.status === "fulfilled" ? r.value : { type: anglesToProcess[i].type, url: originalUrl }
+        ),
+      ];
     }
-    const srcBlob = await srcRes.blob();
-    const srcType = srcBlob.type || "image/jpeg";
 
-    // ── Step 2: GPT-image-1 — generate 6 angles in parallel ───────────────
-    const ts = Date.now();
-
-    const angleResults = await Promise.allSettled(
-      ANGLES.map(async (angle, idx) => {
-        const form = new FormData();
-        form.append("model", "gpt-image-1");
-        form.append("image[]", new File([srcBlob], "product.jpg", { type: srcType }));
-        form.append("prompt", angle.prompt);
-        form.append("n", "1");
-        form.append("size", "1024x1024");
-        form.append("quality", "medium");
-
-        const res = await fetch("https://api.openai.com/v1/images/edits", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-          body: form,
-        });
-
-        if (!res.ok) {
-          const err = await res.text();
-          console.error(`[generate-listing] gpt-image-1 ${angle.type} HTTP ${res.status}:`, err);
-          return { type: angle.type, url: originalUrl };
-        }
-
-        const data = await res.json();
-        const b64: string | undefined = data.data?.[0]?.b64_json;
-        if (!b64) {
-          console.error(`[generate-listing] gpt-image-1 ${angle.type}: no b64_json`);
-          return { type: angle.type, url: originalUrl };
-        }
-
-        const binary = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-        const outBlob = new Blob([binary], { type: "image/png" });
-        const path = `${user.id}/${inventaire_id}/${angle.type}_${ts}_${idx}.png`;
-
-        const { error: upErr } = await adminClient.storage
-          .from(BUCKET)
-          .upload(path, outBlob, { contentType: "image/png", upsert: true });
-
-        if (upErr) {
-          console.error(`[generate-listing] upload ${angle.type}:`, upErr);
-          return { type: angle.type, url: originalUrl };
-        }
-
-        const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-        console.log(`[generate-listing] angle ${angle.type} OK → ${url}`);
-        return { type: angle.type, url };
-      })
-    );
-
-    // Collect: original + all generated angles
-    const processedPhotos: Array<{ type: string; url: string }> = [
-      { type: "original", url: originalUrl },
-      ...angleResults.map((r, i) =>
-        r.status === "fulfilled" ? r.value : { type: ANGLES[i].type, url: originalUrl }
-      ),
-    ];
-
-    // ── Step 3: Claude Haiku — title + description per platform ────────────
+    // ── Step 3: Claude Haiku — title + description per platform ──────────────
     const itemContext = [
       item.marque && `Marque: ${item.marque}`,
       item.titre && `Article: ${item.titre}`,
@@ -245,32 +254,13 @@ serve(async (req) => {
       }
     }
 
-    // ── Step 4: Write cross_post_jobs ──────────────────────────────────────
-    const now = new Date().toISOString();
-    const jobs = (platforms as string[]).map((platform) => ({
-      user_id: user.id,
-      inventaire_id: item.id,
-      platform,
-      status: "pending",
-      photo_option,
-      title: platformListings[platform]?.title ?? fallbackTitle,
-      description: platformListings[platform]?.description ?? "",
-      price: item.prix_vente ?? null,
+    // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
+    return json({
       photos: processedPhotos,
-      generated_at: now,
-    }));
+      platforms: platformListings,
+      price: item.prix_vente ?? null,
+    });
 
-    const { data: createdJobs, error: insertErr } = await adminClient
-      .from("cross_post_jobs")
-      .insert(jobs)
-      .select();
-
-    if (insertErr) {
-      console.error("[generate-listing] insert:", insertErr);
-      return json({ error: "Failed to create jobs", detail: insertErr.message }, 500);
-    }
-
-    return json({ jobs: createdJobs });
   } catch (e) {
     console.error("[generate-listing] unhandled:", e);
     return json({ error: "Internal server error" }, 500);

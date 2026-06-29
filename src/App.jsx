@@ -5225,7 +5225,7 @@ export default function App({ loginOnly = false }){
 
         {tab===1&&(
           <StockTab
-            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative}
+            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             iapProduct={iapProduct} iapLoading={iapLoading}
             stock={stock} sold={sold}

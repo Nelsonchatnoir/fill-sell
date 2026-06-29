@@ -429,7 +429,8 @@ const LensTab = memo(function LensTab({
   supabase, saveLensItemForListing,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
-  const [listingJobs,setListingJobs]=useState([]);
+  const [lensListingInvId,setLensListingInvId]=useState(null);
+  const [lensListingPhotos,setLensListingPhotos]=useState([]);
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
 
@@ -441,24 +442,20 @@ const LensTab = memo(function LensTab({
       if(!inventaireId)throw new Error(lang==='en'?'Could not save item.':'Impossible de sauvegarder l\'article.');
 
       const uploadedUrls=[];
+      const ts=Date.now();
       for(let i=0;i<lensPhotos.length;i++){
         const photo=lensPhotos[i];
         const res=await fetch(photo.preview);
         const blob=await res.blob();
         const ext=photo.mime?.includes('png')?'png':'jpg';
-        const path=`${user.id}/raw/${Date.now()}_${i}.${ext}`;
+        const path=`${user.id}/raw/${ts}_${i}.${ext}`;
         const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:photo.mime||'image/jpeg',upsert:true});
         if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
       }
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
 
-      const{data,error:fnErr}=await supabase.functions.invoke('generate-listing',{
-        body:{inventaire_id:inventaireId,photos:uploadedUrls,platforms:['vinted','leboncoin','beebs','ebay'],photo_option:'ia'},
-      });
-      if(fnErr)throw new Error(fnErr.message||'Erreur de génération');
-      if(!data?.jobs?.length)throw new Error('Aucune annonce retournée');
-
-      setListingJobs(data.jobs);
+      setLensListingInvId(inventaireId);
+      setLensListingPhotos(uploadedUrls);
       setShowListingPreview(true);
     }catch(e){
       setListingError(e.message||'Erreur inattendue');
@@ -669,15 +666,17 @@ const LensTab = memo(function LensTab({
             {lang==="en"?"Generating your listing...":"Génération de ton annonce..."}
           </div>
           <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,textAlign:"center",lineHeight:1.6}}>
-            {lang==="en"?"Remove.bg · AI photo · listing text\n~20-30 sec":"Remove.bg · photo IA · texte annonce\n~20-30 sec"}
+            {lang==="en"?"Uploading photos · generating listing\n~10-20 sec":"Upload photos · génération annonce\n~10-20 sec"}
           </div>
         </div>
       )}
 
-      {showListingPreview&&(
+      {showListingPreview&&lensListingInvId&&(
         <ListingPreviewScreen
-          jobs={listingJobs}
-          onClose={()=>setShowListingPreview(false)}
+          inventaireId={lensListingInvId}
+          userId={user.id}
+          initialPhotos={lensListingPhotos}
+          onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
           supabase={supabase}
           lang={lang}
         />
