@@ -92,6 +92,8 @@ serve(async (req) => {
     const { inventaire_id, photos, platforms } = body;
     // photo_option: "ia_multi" (6 angles), "ia_simple" (1 angle), "original" (no AI)
     const photo_option = (body.photo_option as string) || "ia_multi";
+    // price may be pre-fetched client-side; used as fallback if prix_vente is null in DB
+    const body_price = body.price != null ? Number(body.price) : null;
 
     if (
       !inventaire_id ||
@@ -264,7 +266,7 @@ serve(async (req) => {
     return json({
       photos: processedPhotos,
       platforms: platformListings,
-      price: item.prix_vente ?? null,
+      price: item.prix_vente ?? body_price ?? null,
     });
 
   } catch (e) {
