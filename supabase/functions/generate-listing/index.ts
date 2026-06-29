@@ -141,11 +141,12 @@ serve(async (req) => {
         anglesToProcess.map(async (angle, idx) => {
           const form = new FormData();
           form.append("model", "gpt-image-1");
-          form.append("image[]", new File([srcBlob], "product.jpg", { type: srcType }));
+          form.append("image", new File([srcBlob], "product.jpg", { type: srcType }));
           form.append("prompt", angle.prompt);
           form.append("n", "1");
           form.append("size", "1024x1024");
           form.append("quality", "medium");
+          form.append("response_format", "b64_json");
 
           const res = await fetch("https://api.openai.com/v1/images/edits", {
             method: "POST",

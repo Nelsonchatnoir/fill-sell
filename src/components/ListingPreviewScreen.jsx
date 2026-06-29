@@ -54,14 +54,15 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
 
   // ── Step "checking" ──────────────────────────────────────────────────────────
   useEffect(() => {
-    // Pre-fetch prix_vente so price is available even if generate-listing times out
+    // Pre-fetch prix_vente (fallback prix_achat) so price is available even if generate-listing times out
     supabase
       .from("inventaire")
-      .select("prix_vente")
+      .select("prix_vente, prix_achat")
       .eq("id", inventaireId)
       .single()
       .then(({ data: item }) => {
-        if (item?.prix_vente != null) setPrice(item.prix_vente);
+        const p = item?.prix_vente ?? item?.prix_achat ?? null;
+        if (p != null) setPrice(p);
       });
 
     if (initialPhotos.length > 0) {
@@ -570,17 +571,16 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
               style={{ ...S.input, resize:"vertical", lineHeight:1.55 }}
             />
           </div>
-          {price != null && (
-            <div style={{ marginBottom:14 }}>
-              <label style={S.fieldLabel}>{lang === "en" ? "Price (€)" : "Prix (€)"}</label>
-              <input
-                type="number"
-                value={price}
-                onChange={e => setPrice(Number(e.target.value))}
-                style={{ ...S.input, width:120 }}
-              />
-            </div>
-          )}
+          <div style={{ marginBottom:14 }}>
+            <label style={S.fieldLabel}>{lang === "en" ? "Price (€)" : "Prix de vente (€)"}</label>
+            <input
+              type="number"
+              value={price ?? ""}
+              onChange={e => setPrice(e.target.value === "" ? null : Number(e.target.value))}
+              placeholder={lang === "en" ? "Sale price" : "Prix de vente"}
+              style={{ ...S.input, width:120 }}
+            />
+          </div>
           {/* Platform-specific fields inferred by AI */}
           {Object.entries(edited[activePlatform]?.platform_fields ?? {})
             .filter(([, v]) => v !== null && v !== "null" && v !== "")
