@@ -167,7 +167,7 @@ serve(async (req) => {
     // ── Récupération des jobs published ──────────────────────────────────────
     const { data: jobs, error: jobsErr } = await supabase
       .from("cross_post_jobs")
-      .select("id, listing_url, platform, inventaire_id")
+      .select("id, listing_url, platform, inventaire_id, title, price")
       .eq("user_id", userId)
       .eq("status", "published")
       .not("listing_url", "is", null);
@@ -213,6 +213,79 @@ serve(async (req) => {
           console.error(`[check-listing] Cancel siblings error (inventaire_id=${job.inventaire_id}):`, cancelErr.message);
         } else {
           console.log(`[check-listing] Siblings cancelled for inventaire_id=${job.inventaire_id}`);
+        }
+
+        // Auto-create vente (dedup par inventaire_id + plateforme)
+        const { data: existing } = await supabase
+          .from("ventes")
+          .select("id")
+          .eq("inventaire_id", job.inventaire_id)
+          .eq("plateforme", job.platform)
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (!existing) {
+          const { data: inv } = await supabase
+            .from("inventaire")
+            .select("titre, prix_achat, marque, type")
+            .eq("id", job.inventaire_id)
+            .single();
+
+          const prixVente = Number(job.price ?? 0);
+          const prixAchat = Number(inv?.prix_achat ?? 0);
+          const benefice = prixVente - prixAchat;
+
+          const { error: venteErr } = await supabase
+            .from("ventes")
+            .insert({
+              user_id: userId,
+              inventaire_id: job.inventaire_id,
+              titre: job.title ?? inv?.titre ?? null,
+              prix_vente: prixVente,
+              prix_achat: prixAchat,
+              benefice,
+              plateforme: job.platform,
+              date: new Date().toISOString().slice(0, 10),
+              statut: "vendu",
+              marque: inv?.marque ?? null,
+              type: inv?.type ?? null,
+            });
+
+          if (venteErr) {
+            console.error(`[check-listing] Insert vente error (inventaire_id=${job.inventaire_id}):`, venteErr.message);
+          } else {
+            console.log(`[check-listing] Vente créée inventaire_id=${job.inventaire_id} plateforme=${job.platform}`);
+
+            // Push notification si push_token présent
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("push_token")
+              .eq("id", userId)
+              .single();
+
+            if (profile?.push_token) {
+              const platformLabel = job.platform.charAt(0).toUpperCase() + job.platform.slice(1);
+              const sign = benefice >= 0 ? "+" : "";
+              const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({
+                  to: profile.push_token,
+                  title: `Vendu sur ${platformLabel} 🎉`,
+                  body: `${sign}${benefice.toFixed(0)}€ de bénéfice`,
+                  sound: "default",
+                  data: { inventaire_id: job.inventaire_id, platform: job.platform },
+                }),
+              });
+              if (!pushRes.ok) {
+                console.error(`[check-listing] Push failed:`, await pushRes.text());
+              } else {
+                console.log(`[check-listing] Push envoyé à userId=${userId}`);
+              }
+            }
+          }
+        } else {
+          console.log(`[check-listing] Vente déjà existante inventaire_id=${job.inventaire_id} plateforme=${job.platform}, skip`);
         }
       }
 
