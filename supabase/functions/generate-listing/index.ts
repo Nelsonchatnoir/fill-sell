@@ -29,7 +29,7 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
-const PHOTOROOM_PROMPT = "Professional product photo, improve lighting, sharpness and colors, keep exact same angle and composition, e-commerce quality";
+const OPENAI_IMG_PROMPT = "Improve lighting, color warmth, and sharpness. Keep the exact same angle, composition, framing, and background. No new angles, no recomposition, no background changes. E-commerce product photo quality.";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -86,7 +86,7 @@ serve(async (req) => {
     if (itemErr || !item) return json({ error: "Item not found" }, 404);
 
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
-    const PHOTOROOM_KEY = Deno.env.get("PHOTOROOM_API_KEY")!;
+    const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const BUCKET = "listing-photos";
 
     // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
@@ -98,49 +98,64 @@ serve(async (req) => {
         url,
       }));
     } else {
-      // Photoroom: enhance every uploaded photo
+      // GPT Image 2: retouch each photo (lighting, warmth, sharpness — same angle/composition)
+      // ia_simple → first photo only; ia_multi → all provided photos
+      const photosToProcess = photo_option === "ia_simple"
+        ? (photos as string[]).slice(0, 1)
+        : (photos as string[]);
       const ts = Date.now();
       const results = await Promise.allSettled(
-        (photos as string[]).map(async (photoUrl, idx) => {
+        photosToProcess.map(async (photoUrl, idx) => {
           const srcRes = await fetch(photoUrl);
           if (!srcRes.ok) {
-            console.error(`[photoroom] fetch photo ${idx} failed: ${srcRes.status}`);
+            console.error(`[gpt-image] fetch photo ${idx} failed: ${srcRes.status}`);
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
           const srcBlob = await srcRes.blob();
 
           const form = new FormData();
-          form.append("imageFile", srcBlob, "product.jpg");
-          form.append("prompt", PHOTOROOM_PROMPT);
+          form.append("model", "gpt-image-2");
+          form.append("prompt", OPENAI_IMG_PROMPT);
+          form.append("n", "1");
+          form.append("size", "1024x1024");
+          form.append("quality", "medium");
+          form.append("image[]", srcBlob, "product.jpg");
 
-          const res = await fetch("https://image-api.photoroom.com/v2/edit", {
+          const res = await fetch("https://api.openai.com/v1/images/edits", {
             method: "POST",
-            headers: { "x-api-key": PHOTOROOM_KEY },
+            headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
             body: form,
           });
 
-          console.log(`[photoroom] photo ${idx} status: ${res.status}`);
+          console.log(`[gpt-image] photo ${idx} status: ${res.status}`);
 
           if (!res.ok) {
-            console.error(`[photoroom] photo ${idx} error:`, await res.text());
+            console.error(`[gpt-image] photo ${idx} error:`, await res.text());
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
 
-          const imgBuffer = await res.arrayBuffer();
-          const outBlob = new Blob([imgBuffer], { type: "image/jpeg" });
-          const path = `${user.id}/enhanced/${ts}_${idx}.jpg`;
+          const resData = await res.json();
+          const b64 = resData.data?.[0]?.b64_json;
+          if (!b64) {
+            console.error(`[gpt-image] photo ${idx}: no b64_json in response`);
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const outBlob = new Blob([bytes], { type: "image/png" });
+          const path = `${user.id}/enhanced/${ts}_${idx}.png`;
 
           const { error: upErr } = await adminClient.storage
             .from(BUCKET)
-            .upload(path, outBlob, { contentType: "image/jpeg", upsert: true });
+            .upload(path, outBlob, { contentType: "image/png", upsert: true });
 
           if (upErr) {
-            console.error(`[photoroom] upload photo ${idx}:`, upErr);
+            console.error(`[gpt-image] upload photo ${idx}:`, upErr);
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
 
           const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-          console.log(`[photoroom] photo ${idx} OK → ${url}`);
+          console.log(`[gpt-image] photo ${idx} OK → ${url}`);
           return { type: idx === 0 ? "original" : `enhanced_${idx}`, url };
         })
       );
@@ -148,7 +163,7 @@ serve(async (req) => {
       processedPhotos = results.map((r, i) =>
         r.status === "fulfilled"
           ? r.value
-          : { type: i === 0 ? "original" : `photo_${i}`, url: (photos as string[])[i] }
+          : { type: i === 0 ? "original" : `photo_${i}`, url: photosToProcess[i] }
       );
     }
 
