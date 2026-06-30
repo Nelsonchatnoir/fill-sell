@@ -9,6 +9,79 @@ const BG    = "#F2F2EE";
 const PLATFORM_LABELS   = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
+const PLATFORM_FIELDS_CONFIG = {
+  vinted: [
+    { key:"etat",      label:"État",      type:"select", options:["Neuf avec étiquette","Neuf sans étiquette","Très bon état","Bon état","Satisfaisant"] },
+    { key:"taille",    label:"Taille",    type:"select", options:["XS","S","M","L","XL","XXL","Unique"] },
+    { key:"marque",    label:"Marque",    type:"text" },
+    { key:"matiere",   label:"Matière",   type:"text" },
+    { key:"categorie", label:"Catégorie", type:"text" },
+  ],
+  leboncoin: [
+    { key:"etat",         label:"État",         type:"select", options:["Neuf","Très bon état","Bon état","État correct","Pour pièces"] },
+    { key:"format_colis", label:"Format colis", type:"select", options:["Lettre","Petit colis","Moyen colis","Grand colis","Très grand colis","Non défini"] },
+  ],
+  beebs: [
+    { key:"etat",   label:"État",   type:"select", options:["Neuf","Très bon état","Bon état"] },
+    { key:"taille", label:"Taille", type:"select", options:["XS","S","M","L","XL","XXL","Unique"] },
+    { key:"marque", label:"Marque", type:"text" },
+  ],
+  ebay: [
+    { key:"condition", label:"Condition", type:"select", options:["New","Like New","Very Good","Good","Acceptable"] },
+    { key:"size",      label:"Size",      type:"select", options:["XS","S","M","L","XL","XXL","One Size"] },
+    { key:"brand",     label:"Brand",     type:"text" },
+    { key:"material",  label:"Material",  type:"text" },
+  ],
+};
+
+const FR_TO_EBAY_CONDITION = {
+  "neuf avec étiquette": "New",
+  "neuf sans étiquette": "Like New",
+  "neuf":                "New",
+  "très bon état":       "Very Good",
+  "bon état":            "Good",
+  "état correct":        "Good",
+  "satisfaisant":        "Acceptable",
+  "pour pièces":         "Acceptable",
+};
+
+function findMatchingOption(raw, options) {
+  if (!raw || raw === "null") return "";
+  const n = raw.toLowerCase().trim();
+  const exact = options.find(o => o.toLowerCase() === n);
+  if (exact) return exact;
+  const mapped = FR_TO_EBAY_CONDITION[n];
+  if (mapped && options.includes(mapped)) return mapped;
+  const partial = options.find(o => o.toLowerCase().includes(n) || n.includes(o.toLowerCase()));
+  return partial ?? "";
+}
+
+function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
+  const result = {};
+  for (const field of fieldConfigs) {
+    const fromApi = platformFields?.[field.key];
+    if (fromApi && fromApi !== "null") {
+      result[field.key] = field.type === "select"
+        ? (findMatchingOption(fromApi, field.options) || fromApi)
+        : fromApi;
+      continue;
+    }
+    let lensVal = null;
+    switch (field.key) {
+      case "etat":
+      case "condition":   lensVal = lensResult?.etat_estime ?? null; break;
+      case "marque":
+      case "brand":       lensVal = lensResult?.marque       ?? null; break;
+      case "categorie":   lensVal = lensResult?.categorie    ?? null; break;
+      default:            lensVal = null;
+    }
+    result[field.key] = lensVal
+      ? (field.type === "select" ? (findMatchingOption(lensVal, field.options) || "") : lensVal)
+      : "";
+  }
+  return result;
+}
+
 const STEPS = [
   { id:0, label:"Upload",     Icon:Camera },
   { id:1, label:"Photos",     Icon:Images },
@@ -383,11 +456,28 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
-function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, price, setPrice, onPhotoClick, onRetry, lang }) {
+function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, lang }) {
   const isFr = lang !== "en";
+  const [elapsed, setElapsed] = useState(0);
+  const [openCards, setOpenCards] = useState(new Set());
+
+  useEffect(() => {
+    if (platformListings) return;
+    const t = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [platformListings]);
+
+  const toggleCard = p => setOpenCards(prev => {
+    const s = new Set(prev);
+    s.has(p) ? s.delete(p) : s.add(p);
+    return s;
+  });
 
   // Phase A — loading
   if (generating || (!platformListings && !generateError)) {
+    const msg = elapsed < 20
+      ? (isFr ? "Retouche des photos en cours…" : "Enhancing your photos…")
+      : (isFr ? "Génération des annonces pour chaque plateforme…" : "Generating listings for each platform…");
     return (
       <div>
         <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
@@ -396,8 +486,8 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </h2>
         <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
           {isFr
-            ? "L'IA retouche tes photos et prépare le texte pour chaque plateforme."
-            : "AI is enhancing your photos and preparing text for each platform."}
+            ? "Ça prend ~1-2 minutes pour les retouches IA."
+            : "AI photo enhancement takes ~1–2 minutes."}
         </p>
         <div style={{
           background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
@@ -408,8 +498,8 @@ function StepGeneration({ generating, generateError, platformListings, processed
             border:`4px solid ${TEAL}33`, borderTopColor:TEAL,
             animation:"lps-spin 0.8s linear infinite",
           }} />
-          <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center", lineHeight:1.6 }}>
-            {isFr ? "Vinted · Leboncoin · Beebs · eBay · ~15-25 sec" : "Vinted · Leboncoin · Beebs · eBay · ~15–25 sec"}
+          <p style={{ margin:0, fontSize:13.5, color:"#374151", textAlign:"center", lineHeight:1.6, fontWeight:700, minHeight:44 }}>
+            {msg}
           </p>
         </div>
       </div>
@@ -442,7 +532,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
     );
   }
 
-  // Phase B — review
+  // Phase B — review with collapsible cards
   const platforms = [...selected].filter(p => platformListings?.platforms?.[p]);
 
   return (
@@ -453,8 +543,8 @@ function StepGeneration({ generating, generateError, platformListings, processed
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
         {isFr
-          ? "Modifie titre, description et prix si besoin avant de publier."
-          : "Edit title, description and price if needed before publishing."}
+          ? "Clique sur une carte pour voir et éditer le détail."
+          : "Tap a card to view and edit details."}
       </p>
 
       {processedPhotos?.length > 0 && (
@@ -476,63 +566,115 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
-      <div style={{ marginBottom:20 }}>
-        <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
-          {isFr ? "Prix de vente (€)" : "Sale price (€)"}
-        </div>
-        <input
-          type="number"
-          value={price ?? ""}
-          onChange={e => setPrice(e.target.value === "" ? null : Number(e.target.value))}
-          placeholder="—"
-          style={{
-            width:"100%", padding:"12px 14px", borderRadius:12,
-            border:"1.5px solid #ECEAE3", fontSize:15, fontWeight:800,
-            fontFamily:"inherit", outline:"none", background:"#fff",
-            boxSizing:"border-box",
-          }}
-        />
-      </div>
-
-      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {platforms.map(p => {
-          const e = edited[p] ?? { title:"", description:"" };
+          const e = edited[p] ?? { title:"", description:"", platform_fields:{}, price:null };
+          const isOpen = openCards.has(p);
+          const fieldConfigs = PLATFORM_FIELDS_CONFIG[p] ?? [];
+          const etatField = fieldConfigs.find(f => f.key === "etat" || f.key === "condition");
+          const etatVal = etatField ? (e.platform_fields?.[etatField.key] ?? "") : "";
+          const summaryParts = [
+            e.title ? (e.title.length > 32 ? e.title.slice(0, 32) + "…" : e.title) : "—",
+            etatVal || null,
+            e.price != null && e.price !== "" ? `${e.price}€` : null,
+          ].filter(Boolean);
+
           return (
-            <div key={p} style={{ background:"#fff", borderRadius:16, padding:16, border:"1px solid #ECEAE3" }}>
-              <div style={{ fontSize:11, fontWeight:800, color:TEAL, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>
-                {PLATFORM_LABELS[p]}
-              </div>
-              <div style={{ marginBottom:10 }}>
-                <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>
-                  {isFr ? "Titre" : "Title"}
+            <div key={p} style={{ background:"#fff", borderRadius:16, border: isOpen ? `1.5px solid ${TEAL}` : "1px solid #ECEAE3", overflow:"hidden" }}>
+              <button
+                onClick={() => toggleCard(p)}
+                style={{
+                  width:"100%", padding:"14px 16px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  background:"none", border:"none", cursor:"pointer", fontFamily:"inherit", textAlign:"left",
+                }}
+              >
+                <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0, overflow:"hidden" }}>
+                  <span style={{
+                    fontSize:10, fontWeight:900, color:"#fff",
+                    background: isOpen ? `linear-gradient(135deg,${TEAL},${PEACH})` : "#9B9890",
+                    padding:"3px 8px", borderRadius:999, flexShrink:0,
+                    transition:"background 0.15s",
+                  }}>
+                    {PLATFORM_LABELS[p].toUpperCase()}
+                  </span>
+                  <span style={{ fontSize:13, color:"#374151", fontWeight: isOpen ? 700 : 500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {summaryParts.join(" · ")}
+                  </span>
                 </div>
-                <input
-                  type="text"
-                  value={e.title}
-                  onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } }))}
-                  style={{
-                    width:"100%", padding:"10px 12px", borderRadius:10,
-                    border:"1px solid #ECEAE3", fontSize:13.5, fontFamily:"inherit",
-                    outline:"none", background:"#F9FAFB", boxSizing:"border-box",
-                  }}
-                />
-              </div>
-              <div>
-                <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>
-                  {isFr ? "Description" : "Description"}
+                <span style={{ fontSize:18, color:"#9B9890", flexShrink:0, marginLeft:8, transition:"transform 0.15s", display:"inline-block", transform: isOpen ? "rotate(90deg)" : "none" }}>›</span>
+              </button>
+
+              {isOpen && (
+                <div style={{ padding:"0 16px 16px", borderTop:"1px solid #F0EDE6" }}>
+                  <div style={{ marginBottom:10, paddingTop:12 }}>
+                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{isFr ? "Titre" : "Title"}</div>
+                    <input
+                      type="text"
+                      value={e.title}
+                      onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } }))}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13.5, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box" }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom:12 }}>
+                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{isFr ? "Description" : "Description"}</div>
+                    <textarea
+                      value={e.description}
+                      onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } }))}
+                      rows={4}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
+                    />
+                  </div>
+
+                  {fieldConfigs.length > 0 && (
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                      {fieldConfigs.map((field, fi) => {
+                        const val = e.platform_fields?.[field.key] ?? "";
+                        const isLastOdd = fi === fieldConfigs.length - 1 && fieldConfigs.length % 2 !== 0;
+                        const onChange = nv => setEdited(prev => ({
+                          ...prev,
+                          [p]: { ...prev[p], platform_fields: { ...prev[p].platform_fields, [field.key]: nv } },
+                        }));
+                        return (
+                          <div key={field.key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
+                            <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{field.label}</div>
+                            {field.type === "select" ? (
+                              <select
+                                value={val}
+                                onChange={ev => onChange(ev.target.value)}
+                                style={{ width:"100%", padding:"9px 10px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box", color: val ? "#111" : "#9B9890" }}
+                              >
+                                <option value="">—</option>
+                                {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={val}
+                                onChange={ev => onChange(ev.target.value)}
+                                placeholder="—"
+                                style={{ width:"100%", padding:"9px 10px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box" }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div>
+                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{isFr ? "Prix de vente (€)" : "Sale price (€)"}</div>
+                    <input
+                      type="number"
+                      value={e.price ?? ""}
+                      onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], price: ev.target.value === "" ? null : Number(ev.target.value) } }))}
+                      placeholder="—"
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:14, fontWeight:700, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box" }}
+                    />
+                  </div>
                 </div>
-                <textarea
-                  value={e.description}
-                  onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } }))}
-                  rows={4}
-                  style={{
-                    width:"100%", padding:"10px 12px", borderRadius:10,
-                    border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit",
-                    outline:"none", background:"#F9FAFB", resize:"vertical",
-                    boxSizing:"border-box", lineHeight:1.5,
-                  }}
-                />
-              </div>
+              )}
             </div>
           );
         })}
@@ -832,7 +974,12 @@ export default function ListingPreviewScreen({
         initialEdited[p] = {
           title:           data.platforms[p]?.title           ?? "",
           description:     data.platforms[p]?.description     ?? "",
-          platform_fields: data.platforms[p]?.platform_fields ?? {},
+          platform_fields: mergeFieldsWithLens(
+            data.platforms[p]?.platform_fields ?? {},
+            initialListing,
+            PLATFORM_FIELDS_CONFIG[p] ?? []
+          ),
+          price: data.price ?? price ?? null,
         };
       }
       setEdited(initialEdited);
@@ -874,7 +1021,7 @@ export default function ListingPreviewScreen({
         photo_option:    photoOption,
         title:           edited[platform]?.title           ?? "",
         description:     edited[platform]?.description     ?? "",
-        price,
+        price:           edited[platform]?.price           ?? price,
         photos:          processedPhotos,
         platform_fields: edited[platform]?.platform_fields ?? {},
       }));
@@ -1091,8 +1238,6 @@ export default function ListingPreviewScreen({
             selected={selected}
             edited={edited}
             setEdited={setEdited}
-            price={price}
-            setPrice={setPrice}
             onPhotoClick={setLightboxUrl}
             onRetry={handleGeneratePlatforms}
             lang={lang}
