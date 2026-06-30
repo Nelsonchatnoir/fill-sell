@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
-import { Camera, Wand2, Send, Check, ChevronLeft, ChevronRight, Mic, TrendingUp, Images, Zap } from "lucide-react";
+import { Camera, Send, Check, ChevronLeft, ChevronRight, Mic, Images, Zap } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 
 const TEAL  = "#3EACA0";
@@ -10,12 +10,10 @@ const PLATFORM_LABELS   = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
 const STEPS = [
-  { id:0, label:"Upload",     Icon:Camera     },
-  { id:1, label:"Deal",       Icon:TrendingUp },
-  { id:2, label:"Photos",     Icon:Images     },
-  { id:3, label:"Style",      Icon:Wand2      },
-  { id:4, label:"Génération", Icon:Zap        },
-  { id:5, label:"Publier",    Icon:Send       },
+  { id:0, label:"Upload",     Icon:Camera },
+  { id:1, label:"Photos",     Icon:Images },
+  { id:2, label:"Génération", Icon:Zap    },
+  { id:3, label:"Publier",    Icon:Send   },
 ];
 
 // ── QuotaLimitModal ───────────────────────────────────────────────────────────
@@ -54,6 +52,39 @@ function QuotaLimitModal({ onClose, lang }) {
   );
 }
 
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+
+function Lightbox({ url, onClose }) {
+  if (!url) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:20000,
+        background:"rgba(0,0,0,0.92)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+      }}
+    >
+      <img
+        src={url}
+        alt=""
+        style={{ maxWidth:"95vw", maxHeight:"90vh", objectFit:"contain", borderRadius:8 }}
+        onClick={e => e.stopPropagation()}
+      />
+      <button
+        onClick={onClose}
+        style={{
+          position:"absolute", top:16, right:16,
+          background:"rgba(255,255,255,0.18)", border:"none",
+          color:"#fff", width:36, height:36, borderRadius:"50%",
+          fontSize:20, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center",
+        }}
+      >×</button>
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function Eyebrow({ n, label }) {
@@ -69,29 +100,6 @@ function Eyebrow({ n, label }) {
         {label}
       </span>
     </div>
-  );
-}
-
-function ScoreBar({ score }) {
-  const color = score >= 6.5 ? "#16A34A" : score >= 4 ? "#D97706" : "#DC2626";
-  const label = score >= 6.5 ? "Bon deal" : score >= 4 ? "Mitigé" : "À éviter";
-  return (
-    <>
-      <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
-        <span style={{ fontSize:30, fontWeight:900, color:TEAL, letterSpacing:"-0.02em" }}>
-          {Number(score).toFixed(1)}
-        </span>
-        <span style={{ fontSize:13, color:"#9B9890" }}>/10</span>
-        <span style={{ fontSize:12.5, fontWeight:800, color }}>{label}</span>
-      </div>
-      <div style={{ height:6, borderRadius:99, background:"#ECEAE3", overflow:"hidden" }}>
-        <div style={{
-          height:"100%", width:`${(score / 10) * 100}%`,
-          background:`linear-gradient(90deg,${TEAL},#2DD4BF)`,
-          transition:"width 0.8s cubic-bezier(0.22,1,0.36,1)",
-        }} />
-      </div>
-    </>
   );
 }
 
@@ -229,123 +237,56 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
   );
 }
 
-// ── Step 1 — Deal ─────────────────────────────────────────────────────────────
+// ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepDeal({ listing, price, lang }) {
-  const isFr = lang !== "en";
-
-  if (!listing) {
-    return (
-      <div>
-        <Eyebrow n="2" label="Deal" />
-        <h2 style={{ margin:"4px 0 16px", fontSize:20, fontWeight:900, color:"#111" }}>
-          {isFr ? "Résultat de l'analyse" : "Analysis result"}
-        </h2>
-        <div style={{
-          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
-          display:"flex", flexDirection:"column", alignItems:"center", gap:12,
-        }}>
-          <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center" }}>
-            {isFr ? "Aucune analyse disponible." : "No analysis available."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <Eyebrow n="2" label="Deal" />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Résultat de ton scan" : "Your scan result"}
-      </h2>
-      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {isFr
-          ? "Résumé de l'analyse Lens. Appuie sur Continuer pour créer ton annonce."
-          : "Lens analysis summary. Tap Continue to create your listing."}
-      </p>
-
-      <div style={{ background:"#fff", borderRadius:16, padding:18, border:"1px solid #ECEAE3" }}>
-        {listing.titre && (
-          <div style={{ fontWeight:900, fontSize:16, color:"#111", marginBottom:10 }}>
-            {listing.titre}
-          </div>
-        )}
-
-        {(listing.marque || listing.categorie || listing.etat_estime) && (
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
-            {listing.marque && (
-              <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F0FDF9", color:"#065F46", border:"1px solid #D1FAE5" }}>
-                {listing.marque}
-              </span>
-            )}
-            {listing.categorie && (
-              <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F8FAFC", color:"#475569", border:"1px solid #E2E8F0" }}>
-                {listing.categorie}
-              </span>
-            )}
-            {listing.etat_estime && (
-              <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE" }}>
-                {listing.etat_estime}
-              </span>
-            )}
-          </div>
-        )}
-
-        {listing.score != null && (
-          <div style={{ marginBottom:14 }}>
-            <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>
-              Deal score
-            </div>
-            <ScoreBar score={listing.score} />
-          </div>
-        )}
-
-        {(listing.prix_vente_suggere != null || listing.fourchette_min != null || price != null) && (
-          <div style={{ fontSize:13, color:"#374151" }}>
-            {isFr ? "Prix conseillé :" : "Suggested price:"}{" "}
-            <strong style={{ color:"#111" }}>
-              {listing.prix_vente_suggere != null
-                ? `${listing.prix_vente_suggere}€`
-                : listing.fourchette_min != null && listing.fourchette_max != null
-                  ? `${listing.fourchette_min}–${listing.fourchette_max}€`
-                  : price != null ? `${price}€` : "—"}
-            </strong>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Step 2 — Photos review + platform picker ──────────────────────────────────
-
-function StepPhotosReview({ photos, onRemovePhoto, onAddPhotos, selected, setSelected, lang }) {
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, isPremium, isPro, onLockTap, lang }) {
   const isFr = lang !== "en";
   const addRef = useRef();
   const MAX = 5;
 
+  const retouchOptions = [
+    {
+      id: "ia_multi",
+      label: isFr ? "Retouche IA avancée" : "Advanced AI retouch",
+      desc: isFr ? "Lumière, netteté, plusieurs angles valorisés" : "Lighting, clarity, multiple angles enhanced",
+      lockedFor: isPro ? null : "pro",
+    },
+    {
+      id: "ia_simple",
+      label: isFr ? "Retouche IA légère" : "Light AI retouch",
+      desc: isFr ? "Amélioration rapide de la luminosité" : "Quick brightness improvement",
+      lockedFor: (isPremium || isPro) ? null : "premium",
+    },
+    {
+      id: "original",
+      label: isFr ? "Photos originales" : "Original photos",
+      desc: isFr ? "Aucune retouche" : "No retouch",
+      lockedFor: null,
+    },
+  ];
+
   return (
     <div>
-      <Eyebrow n="3" label={isFr ? "Photos & plateformes" : "Photos & platforms"} />
+      <Eyebrow n="2" label={isFr ? "Photos & retouche" : "Photos & retouch"} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Revois tes photos" : "Review your photos"}
+        {isFr ? "Tes photos" : "Your photos"}
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
         {isFr
-          ? "Vérifie tes photos, ajoute-en si besoin, puis choisis les plateformes."
-          : "Review your photos, add more if needed, then choose platforms."}
+          ? "Vérifie tes photos et choisis le style de retouche."
+          : "Check your photos and choose the retouch style."}
       </p>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
         {photos.map((url, i) => (
           <div
             key={i}
-            style={{ aspectRatio:"1", borderRadius:14, overflow:"hidden", border:`2px solid ${TEAL}`, position:"relative" }}
+            onClick={() => onPhotoClick(url)}
+            style={{ aspectRatio:"1", borderRadius:14, overflow:"hidden", border:`2px solid ${TEAL}`, position:"relative", cursor:"pointer" }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
             <button
-              onClick={() => onRemovePhoto(i)}
+              onClick={e => { e.stopPropagation(); onRemovePhoto(i); }}
               style={{
                 position:"absolute", top:4, right:4,
                 width:20, height:20, borderRadius:"50%",
@@ -359,7 +300,7 @@ function StepPhotosReview({ photos, onRemovePhoto, onAddPhotos, selected, setSel
         ))}
       </div>
 
-      {photos.length < MAX && (
+      {photos.length < MAX ? (
         <>
           <input
             ref={addRef}
@@ -386,101 +327,15 @@ function StepPhotosReview({ photos, onRemovePhoto, onAddPhotos, selected, setSel
             + {isFr ? `Ajouter une photo (${photos.length}/${MAX})` : `Add photo (${photos.length}/${MAX})`}
           </button>
         </>
+      ) : (
+        <div style={{ marginBottom:20 }} />
       )}
 
-      {photos.length >= MAX && <div style={{ marginBottom:20 }} />}
-
       <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
-        {isFr ? "Plateformes" : "Platforms"}
+        {isFr ? "Style de retouche" : "Retouch style"}
       </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-        {PLATFORMS_DEFAULT.map(p => {
-          const on = selected.has(p);
-          return (
-            <button
-              key={p}
-              onClick={() => setSelected(prev => {
-                const s = new Set(prev);
-                s.has(p) ? s.delete(p) : s.add(p);
-                return s;
-              })}
-              style={{
-                display:"flex", alignItems:"center", justifyContent:"space-between",
-                background:"#fff", borderRadius:14, padding:"14px 16px",
-                border: on ? `1.5px solid ${TEAL}` : "1px solid #ECEAE3",
-                cursor:"pointer", fontFamily:"inherit", textAlign:"left",
-                transition:"border 0.15s",
-              }}
-            >
-              <span style={{ fontWeight:800, fontSize:14, color: on ? "#111" : "#9B9890" }}>
-                {PLATFORM_LABELS[p]}
-              </span>
-              <div style={{
-                width:40, height:24, borderRadius:99,
-                background: on ? TEAL : "#E5E3DC",
-                display:"flex", alignItems:"center",
-                padding:3, transition:"background 0.2s", flexShrink:0,
-              }}>
-                <div style={{
-                  width:18, height:18, borderRadius:"50%", background:"#fff",
-                  marginLeft: on ? "auto" : 0,
-                  transition:"margin 0.2s",
-                  boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
-                }} />
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Step 3 — Style ────────────────────────────────────────────────────────────
-
-function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, lang }) {
-  const isFr = lang !== "en";
-  const options = [
-    {
-      id: "ia_multi",
-      label: isFr ? "Retouche IA avancée" : "Advanced AI retouch",
-      desc: isFr
-        ? "Fond nettoyé, lumière corrigée, plusieurs angles valorisés"
-        : "Background cleaned, lighting corrected, multiple angles enhanced",
-      tag: isFr ? "Recommandé" : "Recommended",
-      lockedFor: isPro ? null : "pro",
-    },
-    {
-      id: "ia_simple",
-      label: isFr ? "Retouche IA légère" : "Light AI retouch",
-      desc: isFr
-        ? "Amélioration rapide de la luminosité et netteté"
-        : "Quick brightness and sharpness improvement",
-      tag: null,
-      lockedFor: (isPremium || isPro) ? null : "premium",
-    },
-    {
-      id: "original",
-      label: isFr ? "Photos originales" : "Original photos",
-      desc: isFr ? "Aucune retouche, publication telle quelle" : "No retouch, published as-is",
-      tag: null,
-      lockedFor: null,
-    },
-  ];
-
-  return (
-    <div>
-      <Eyebrow n="4" label={isFr ? "Style de retouche" : "Retouch style"} />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Choisis le rendu" : "Choose the render"}
-      </h2>
-      <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {isFr
-          ? "L'IA améliore la qualité photo — elle n'invente pas de nouveaux angles."
-          : "AI enhances photo quality — it doesn't invent new angles."}
-      </p>
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-        {options.map(o => {
+        {retouchOptions.map(o => {
           const active = photoOption === o.id;
           const locked = !!o.lockedFor;
           return (
@@ -489,18 +344,11 @@ function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, l
               onClick={() => { if (locked) { onLockTap(o.id); return; } setPhotoOption(o.id); }}
               style={{
                 textAlign:"left", background:"#fff", borderRadius:14, padding:14,
-                border: active ? `2px solid ${TEAL}` : "1px solid #ECEAE3",
+                border: active && !locked ? `2px solid ${TEAL}` : "1px solid #ECEAE3",
                 cursor:"pointer", fontFamily:"inherit", position:"relative",
-                opacity: locked ? 0.7 : 1,
+                opacity: locked ? 0.75 : 1,
               }}
             >
-              {!locked && o.tag && (
-                <span style={{
-                  position:"absolute", top:-8, right:12,
-                  fontSize:9.5, fontWeight:800, color:"#fff",
-                  background:PEACH, padding:"3px 8px", borderRadius:999,
-                }}>{o.tag}</span>
-              )}
               {locked && (
                 <span style={{
                   position:"absolute", top:-8, right:12,
@@ -518,7 +366,7 @@ function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, l
                   transition:"border 0.15s",
                 }} />
                 <div>
-                  <div style={{ fontWeight:800, fontSize:14.5, color: locked ? "#9B9890" : "#111", display:"flex", alignItems:"center", gap:6 }}>
+                  <div style={{ fontWeight:800, fontSize:14, color: locked ? "#9B9890" : "#111", display:"flex", alignItems:"center", gap:6 }}>
                     {o.label}
                     {locked && <span style={{ fontSize:12 }}>🔒</span>}
                   </div>
@@ -533,20 +381,23 @@ function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, l
   );
 }
 
-// ── Step 4 — Génération ───────────────────────────────────────────────────────
+// ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
-function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, onRetry, lang }) {
+function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, price, setPrice, onPhotoClick, onRetry, lang }) {
   const isFr = lang !== "en";
 
+  // Phase A — loading
   if (generating || (!platformListings && !generateError)) {
     return (
       <div>
-        <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
+        <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
         <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-          {isFr ? "Génération des annonces…" : "Generating listings…"}
+          {isFr ? "Génération en cours…" : "Generating…"}
         </h2>
         <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-          {isFr ? "L'IA prépare le texte pour chaque plateforme." : "AI is preparing text for each platform."}
+          {isFr
+            ? "L'IA retouche tes photos et prépare le texte pour chaque plateforme."
+            : "AI is enhancing your photos and preparing text for each platform."}
         </p>
         <div style={{
           background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
@@ -558,17 +409,18 @@ function StepGeneration({ generating, generateError, platformListings, processed
             animation:"lps-spin 0.8s linear infinite",
           }} />
           <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center", lineHeight:1.6 }}>
-            {isFr ? "Vinted · Leboncoin · Beebs · eBay · ~10-20 sec" : "Vinted · Leboncoin · Beebs · eBay · ~10–20 sec"}
+            {isFr ? "Vinted · Leboncoin · Beebs · eBay · ~15-25 sec" : "Vinted · Leboncoin · Beebs · eBay · ~15–25 sec"}
           </p>
         </div>
       </div>
     );
   }
 
+  // Error
   if (generateError && !platformListings) {
     return (
       <div>
-        <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
+        <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
         <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
           {isFr ? "Erreur de génération" : "Generation error"}
         </h2>
@@ -590,27 +442,33 @@ function StepGeneration({ generating, generateError, platformListings, processed
     );
   }
 
+  // Phase B — review
   const platforms = [...selected].filter(p => platformListings?.platforms?.[p]);
+
   return (
     <div>
-      <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
+      <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Annonces générées ✅" : "Listings generated ✅"}
+        {isFr ? "Vérifie tes annonces" : "Review your listings"}
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
         {isFr
-          ? `${platforms.length} annonce${platforms.length > 1 ? "s" : ""} prête${platforms.length > 1 ? "s" : ""} à publier.`
-          : `${platforms.length} listing${platforms.length > 1 ? "s" : ""} ready to publish.`}
+          ? "Modifie titre, description et prix si besoin avant de publier."
+          : "Edit title, description and price if needed before publishing."}
       </p>
 
       {processedPhotos?.length > 0 && (
-        <div style={{ marginBottom:16 }}>
+        <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
             {isFr ? "Photos retouchées" : "Enhanced photos"}
           </div>
           <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
             {processedPhotos.map((ph, i) => (
-              <div key={i} style={{ flexShrink:0, width:72, height:72, borderRadius:10, overflow:"hidden", border:`2px solid ${TEAL}` }}>
+              <div
+                key={i}
+                onClick={() => onPhotoClick(ph.url ?? ph)}
+                style={{ flexShrink:0, width:80, height:80, borderRadius:10, overflow:"hidden", border:`2px solid ${TEAL}`, cursor:"pointer" }}
+              >
                 <img src={ph.url ?? ph} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
               </div>
             ))}
@@ -618,32 +476,80 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
-      <div style={{ background:"#fff", borderRadius:14, padding:16, border:"1px solid #ECEAE3", display:"flex", flexDirection:"column", gap:10 }}>
-        {platforms.map(p => (
-          <div key={p} style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <Check size={16} color="#16A34A" strokeWidth={3} />
-            <span style={{ fontSize:14, fontWeight:700, color:"#111", flexShrink:0 }}>{PLATFORM_LABELS[p]}</span>
-            {platformListings?.platforms?.[p]?.title && (
-              <span style={{ fontSize:12, color:"#9B9890", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                — {platformListings.platforms[p].title}
-              </span>
-            )}
-          </div>
-        ))}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
+          {isFr ? "Prix de vente (€)" : "Sale price (€)"}
+        </div>
+        <input
+          type="number"
+          value={price ?? ""}
+          onChange={e => setPrice(e.target.value === "" ? null : Number(e.target.value))}
+          placeholder="—"
+          style={{
+            width:"100%", padding:"12px 14px", borderRadius:12,
+            border:"1.5px solid #ECEAE3", fontSize:15, fontWeight:800,
+            fontFamily:"inherit", outline:"none", background:"#fff",
+            boxSizing:"border-box",
+          }}
+        />
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {platforms.map(p => {
+          const e = edited[p] ?? { title:"", description:"" };
+          return (
+            <div key={p} style={{ background:"#fff", borderRadius:16, padding:16, border:"1px solid #ECEAE3" }}>
+              <div style={{ fontSize:11, fontWeight:800, color:TEAL, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>
+                {PLATFORM_LABELS[p]}
+              </div>
+              <div style={{ marginBottom:10 }}>
+                <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>
+                  {isFr ? "Titre" : "Title"}
+                </div>
+                <input
+                  type="text"
+                  value={e.title}
+                  onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } }))}
+                  style={{
+                    width:"100%", padding:"10px 12px", borderRadius:10,
+                    border:"1px solid #ECEAE3", fontSize:13.5, fontFamily:"inherit",
+                    outline:"none", background:"#F9FAFB", boxSizing:"border-box",
+                  }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>
+                  {isFr ? "Description" : "Description"}
+                </div>
+                <textarea
+                  value={e.description}
+                  onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } }))}
+                  rows={4}
+                  style={{
+                    width:"100%", padding:"10px 12px", borderRadius:10,
+                    border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit",
+                    outline:"none", background:"#F9FAFB", resize:"vertical",
+                    boxSizing:"border-box", lineHeight:1.5,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// ── Step 5 — Publier ──────────────────────────────────────────────────────────
+// ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, publishError, lang }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang }) {
   const isFr = lang !== "en";
-  const selectedArr = [...selected];
+  const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
 
   return (
     <div>
-      <Eyebrow n="6" label={isFr ? "Publication" : "Publication"} />
+      <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
         {isFr ? "Confirme la publication" : "Confirm publication"}
       </h2>
@@ -660,7 +566,7 @@ function StepPublish({ selected, setSelected, publishError, lang }) {
       )}
 
       <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-        {selectedArr.map(p => (
+        {chips.map(p => (
           <div
             key={p}
             style={{
@@ -683,7 +589,8 @@ function StepPublish({ selected, setSelected, publishError, lang }) {
           </div>
         ))}
       </div>
-      {selectedArr.length === 0 && (
+
+      {chips.length === 0 && (
         <p style={{ fontSize:13, color:"#9B9890", textAlign:"center", marginTop:16 }}>
           {isFr ? "Aucune plateforme sélectionnée." : "No platform selected."}
         </p>
@@ -701,6 +608,8 @@ export default function ListingPreviewScreen({
   const [step, setStep]         = useState(0);
   const [initializing, setInit] = useState(true);
 
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+
   // Step 0
   const [pickedFiles, setPickedFiles]       = useState([]);
   const [pickedPreviews, setPickedPreviews] = useState([]);
@@ -710,34 +619,31 @@ export default function ListingPreviewScreen({
   const [uploadError, setUploadError]       = useState("");
   const recognitionRef                      = useRef(null);
 
-  // Ready URLs
+  // Photos prêtes
   const [photos, setPhotos] = useState(initialPhotos);
 
-  // Step 1 — pre-computed result from Lens
-  const [listing, setListing] = useState(initialListing ?? null);
-  const [price, setPrice]     = useState(null);
+  // Prix (depuis Lens ou DB)
+  const [price, setPrice] = useState(null);
 
-  // Step 3 — default based on tier
+  // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
     isPro ? "ia_multi" : isPremium ? "ia_simple" : "original"
   );
 
-  // Step 4 — generate-listing (per-platform content)
+  // Step 2 — résultats generate-listing
   const [generatingPlatforms, setGeneratingPlatforms] = useState(false);
   const [platformError, setPlatformError]             = useState("");
   const [platformListings, setPlatformListings]       = useState(null);
   const [processedPhotos, setProcessedPhotos]         = useState([]);
   const [edited, setEdited]                           = useState({});
 
-  // Step 2 & 5 — platform selection
-  const [selected, setSelected] = useState(new Set(PLATFORMS_DEFAULT));
-
-  // Step 5 — publish
+  // Step 3 — sélection plateformes (chips) + publication
+  const [selected, setSelected]         = useState(new Set(PLATFORMS_DEFAULT));
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
 
-  // Quota / tier modal
+  // Modal quota / tier
   const [quotaModal, setQuotaModal] = useState({
     open: false, trigger: "lens", targetTiers: ["premium"], isProCoins: false,
   });
@@ -787,9 +693,9 @@ export default function ListingPreviewScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Trigger platform generation on step 4 arrival ─────────────────────────
+  // ── Déclenche la génération à l'arrivée sur step 2 ────────────────────────
   useEffect(() => {
-    if (step === 4 && !platformListings && !generatingPlatforms && !platformError) {
+    if (step === 2 && !platformListings && !generatingPlatforms && !platformError) {
       handleGeneratePlatforms();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -819,7 +725,7 @@ export default function ListingPreviewScreen({
     setMicActive(true);
   }
 
-  // ── File helpers ──────────────────────────────────────────────────────────
+  // ── Fichiers step 0 ───────────────────────────────────────────────────────
   function addFiles(files) {
     const toAdd = files.slice(0, 5 - pickedFiles.length);
     if (!toAdd.length) return;
@@ -850,7 +756,7 @@ export default function ListingPreviewScreen({
     });
   }
 
-  // ── Upload ────────────────────────────────────────────────────────────────
+  // ── Upload step 0 ─────────────────────────────────────────────────────────
   async function handleUpload() {
     if (!pickedFiles.length) return;
     setUploading(true);
@@ -877,7 +783,7 @@ export default function ListingPreviewScreen({
     }
   }
 
-  // ── Add more photos (Step 2) ──────────────────────────────────────────────
+  // ── Ajouter / supprimer photos step 1 ────────────────────────────────────
   async function handleAddMorePhotos(files) {
     const toAdd = files.slice(0, 5 - photos.length);
     if (!toAdd.length) return;
@@ -899,7 +805,7 @@ export default function ListingPreviewScreen({
     setPhotos(prev => prev.filter((_, i) => i !== idx));
   }
 
-  // ── Generate platform listings ────────────────────────────────────────────
+  // ── Génération plateformes ────────────────────────────────────────────────
   async function handleGeneratePlatforms() {
     setGeneratingPlatforms(true);
     setPlatformError("");
@@ -924,8 +830,8 @@ export default function ListingPreviewScreen({
       const initialEdited = {};
       for (const p of platforms) {
         initialEdited[p] = {
-          title: data.platforms[p]?.title ?? "",
-          description: data.platforms[p]?.description ?? "",
+          title:           data.platforms[p]?.title           ?? "",
+          description:     data.platforms[p]?.description     ?? "",
           platform_fields: data.platforms[p]?.platform_fields ?? {},
         };
       }
@@ -938,38 +844,38 @@ export default function ListingPreviewScreen({
     }
   }
 
-  // ── Publish ───────────────────────────────────────────────────────────────
+  // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
     setPublishing(true);
     setPublishError("");
     try {
       const { data: quotaData, error: quotaErr } = await supabase.rpc("check_and_log_publish", {
-        p_user_id: userId,
+        p_user_id:    userId,
         p_is_premium: isPremium,
-        p_is_pro: isPro,
+        p_is_pro:     isPro,
       });
       if (quotaErr) throw new Error(quotaErr.message);
       if (quotaData?.allowed === false) {
         setPublishing(false);
-        if (quotaData.reason === "tier_free") {
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
-        } else {
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["pro"], isProCoins: false });
-        }
+        setQuotaModal({
+          open: true, trigger: "publish",
+          targetTiers: quotaData.reason === "tier_free" ? ["premium","pro"] : ["pro"],
+          isProCoins: false,
+        });
         return;
       }
 
       const rows = [...selected].map(platform => ({
-        user_id: userId,
-        inventaire_id: inventaireId,
+        user_id:         userId,
+        inventaire_id:   inventaireId,
         platform,
-        status: "pending",
-        photo_option: photoOption,
-        title: edited[platform]?.title ?? "",
-        description: edited[platform]?.description ?? "",
+        status:          "pending",
+        photo_option:    photoOption,
+        title:           edited[platform]?.title           ?? "",
+        description:     edited[platform]?.description     ?? "",
         price,
-        photos: processedPhotos,
+        photos:          processedPhotos,
         platform_fields: edited[platform]?.platform_fields ?? {},
       }));
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
@@ -984,24 +890,26 @@ export default function ListingPreviewScreen({
     }
   }
 
-  // ── Style lock tap ────────────────────────────────────────────────────────
+  // ── Lock retouche ─────────────────────────────────────────────────────────
   function handleStyleLockTap(optionId) {
     if (optionId === "ia_multi") {
       setQuotaModal({
         open: true, trigger: "style",
-        targetTiers: isPremium ? ["pro"] : ["premium", "pro"],
+        targetTiers: isPremium ? ["pro"] : ["premium","pro"],
         isProCoins: false,
       });
     } else if (optionId === "ia_simple") {
-      setQuotaModal({ open: true, trigger: "style", targetTiers: ["premium", "pro"], isProCoins: false });
+      setQuotaModal({ open: true, trigger: "style", targetTiers: ["premium","pro"], isProCoins: false });
     }
   }
 
-  // ── Nav helpers ───────────────────────────────────────────────────────────
+  // ── Nav ───────────────────────────────────────────────────────────────────
   const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;
   const photoCount      = displayPreviews.length;
   const isLocked        = uploading || publishing || generatingPlatforms;
   const canGoBack       = step > 0 && !(step === 1 && pickedFiles.length === 0 && photos.length > 0);
+
+  const publishChips = [...selected].filter(p => platformListings?.platforms?.[p]);
 
   function ctaLabel() {
     if (step === 0) {
@@ -1009,21 +917,17 @@ export default function ListingPreviewScreen({
       if (photoCount === 0) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
       return `${lang === "en" ? "Continue" : "Continuer"} · ${photoCount} photo${photoCount > 1 ? "s" : ""}`;
     }
-    if (step === 1) return lang === "en" ? "Create listing" : "Créer l'annonce";
+    if (step === 1) {
+      if (!photos.length) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
+      return lang === "en" ? "Generate listings" : "Générer les annonces";
+    }
     if (step === 2) {
-      const n = selected.size;
-      if (!n) return lang === "en" ? "Select at least 1 platform" : "Sélectionne 1 plateforme";
-      return `${lang === "en" ? "Continue" : "Continuer"} · ${n} plateforme${n > 1 ? "s" : ""}`;
+      if (generatingPlatforms || !platformListings) return lang === "en" ? "Generating…" : "Génération…";
+      return lang === "en" ? "Continue to publish" : "Continuer vers la publication";
     }
-    if (step === 3) return lang === "en" ? "Generate listings" : "Générer les annonces";
-    if (step === 4) {
-      if (generatingPlatforms) return lang === "en" ? "Generating…" : "Génération…";
-      if (platformListings)    return lang === "en" ? "Continue to publish" : "Continuer vers la publication";
-      return lang === "en" ? "Generating…" : "Génération…";
-    }
-    if (step === 5) {
+    if (step === 3) {
       if (publishing) return lang === "en" ? "Publishing…" : "Publication en cours…";
-      const n = selected.size;
+      const n = publishChips.length;
       return `${lang === "en" ? "Publish on" : "Publier sur"} ${n} plateforme${n > 1 ? "s" : ""}`;
     }
     return "";
@@ -1031,27 +935,25 @@ export default function ListingPreviewScreen({
 
   const ctaDisabled =
     (step === 0 && (photoCount === 0 || uploading)) ||
-    (step === 2 && selected.size === 0) ||
-    (step === 4 && (generatingPlatforms || !platformListings)) ||
-    (step === 5 && (selected.size === 0 || publishing));
+    (step === 1 && photos.length === 0) ||
+    (step === 2 && (generatingPlatforms || !platformListings)) ||
+    (step === 3 && (publishChips.length === 0 || publishing));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
-    if (step === 1) { setStep(2); return; }
-    if (step === 2) { if (selected.size) setStep(3); return; }
-    if (step === 3) {
+    if (step === 1) {
       if (!isPremium && !isPro) {
-        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
+        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], isProCoins: false });
         return;
       }
-      setStep(4);
+      setStep(2);
       return;
     }
-    if (step === 4) { if (platformListings) setStep(5); return; }
-    if (step === 5) { handlePublish(); }
+    if (step === 2) { if (platformListings) { setStep(3); } return; }
+    if (step === 3) { handlePublish(); }
   }
 
-  // ── Render: initializing ──────────────────────────────────────────────────
+  // ── Render : initializing ─────────────────────────────────────────────────
   if (initializing) return (
     <div style={{ background:BG, display:"flex", alignItems:"center", justifyContent:"center", minHeight:200 }}>
       <style>{`@keyframes lps-spin{to{transform:rotate(360deg)}}`}</style>
@@ -1059,7 +961,7 @@ export default function ListingPreviewScreen({
     </div>
   );
 
-  // ── Render: done ──────────────────────────────────────────────────────────
+  // ── Render : done ─────────────────────────────────────────────────────────
   if (done) return (
     <div style={{ background:BG, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"60px 32px 32px", fontFamily:"'Nunito',system-ui,sans-serif", minHeight:"60vh" }}>
       <style>{`@keyframes lps-popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
@@ -1087,19 +989,16 @@ export default function ListingPreviewScreen({
     </div>
   );
 
-  // ── Render: stepper shell ─────────────────────────────────────────────────
+  // ── Render : stepper ──────────────────────────────────────────────────────
   return (
-    <div style={{
-      display:"flex", flexDirection:"column", width:"100%",
-      background:BG, fontFamily:"'Nunito',system-ui,sans-serif",
-    }}>
+    <div style={{ display:"flex", flexDirection:"column", width:"100%", background:BG, fontFamily:"'Nunito',system-ui,sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap');
         * { box-sizing: border-box; }
         @keyframes lps-spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* Stepper progress bar */}
+      {/* Barre de progression */}
       <div style={{ padding:"16px 20px 6px" }}>
         <div style={{ display:"flex", alignItems:"center" }}>
           {STEPS.map((s, i) => {
@@ -1137,8 +1036,7 @@ export default function ListingPreviewScreen({
         </div>
       </div>
 
-      {/* Annuler link — visible from Style (step 3) onwards */}
-      {step >= 3 && (
+      {step >= 2 && (
         <div style={{ textAlign:"center", paddingBottom:2 }}>
           <button
             onClick={onClose}
@@ -1154,7 +1052,7 @@ export default function ListingPreviewScreen({
         </div>
       )}
 
-      {/* Content */}
+      {/* Contenu de l'étape */}
       <div style={{ padding:"16px 20px 8px" }}>
         {step === 0 && (
           <StepUpload
@@ -1171,24 +1069,11 @@ export default function ListingPreviewScreen({
           />
         )}
         {step === 1 && (
-          <StepDeal
-            listing={listing}
-            price={price}
-            lang={lang}
-          />
-        )}
-        {step === 2 && (
-          <StepPhotosReview
+          <StepPhotos
             photos={photos}
             onAddPhotos={handleAddMorePhotos}
             onRemovePhoto={handleRemovePhoto}
-            selected={selected}
-            setSelected={setSelected}
-            lang={lang}
-          />
-        )}
-        {step === 3 && (
-          <StepStyle
+            onPhotoClick={setLightboxUrl}
             photoOption={photoOption}
             setPhotoOption={setPhotoOption}
             isPremium={isPremium}
@@ -1197,21 +1082,27 @@ export default function ListingPreviewScreen({
             lang={lang}
           />
         )}
-        {step === 4 && (
+        {step === 2 && (
           <StepGeneration
             generating={generatingPlatforms}
             generateError={platformError}
             platformListings={platformListings}
             processedPhotos={processedPhotos}
             selected={selected}
+            edited={edited}
+            setEdited={setEdited}
+            price={price}
+            setPrice={setPrice}
+            onPhotoClick={setLightboxUrl}
             onRetry={handleGeneratePlatforms}
             lang={lang}
           />
         )}
-        {step === 5 && (
+        {step === 3 && (
           <StepPublish
             selected={selected}
             setSelected={setSelected}
+            platformListings={platformListings}
             publishError={publishError}
             lang={lang}
           />
@@ -1249,12 +1140,11 @@ export default function ListingPreviewScreen({
           }}
         >
           {ctaLabel()}
-          {!ctaDisabled && step < 5 && !uploading && !generatingPlatforms && <ChevronRight size={18} />}
-          {!ctaDisabled && step === 5 && !publishing && <Send size={16} />}
+          {!ctaDisabled && step < 3 && !uploading && !generatingPlatforms && <ChevronRight size={18} />}
+          {!ctaDisabled && step === 3 && !publishing && <Send size={16} />}
         </button>
       </div>
 
-      {/* Quota / conversion modal */}
       {quotaModal.open && !quotaModal.isProCoins && (
         <ConversionModal
           isOpen={true}
@@ -1272,6 +1162,8 @@ export default function ListingPreviewScreen({
           lang={lang}
         />
       )}
+
+      <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }

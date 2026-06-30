@@ -198,61 +198,63 @@ serve(async (req) => {
     const fallbackTitle = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "Article";
     const platformListings: Record<string, { title: string; description: string; platform_fields: Record<string, string | null> }> = {};
 
-    for (const platform of platforms as string[]) {
-      const cfg = PLATFORM_CFG[platform];
-      if (!cfg) {
-        platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
-        continue;
-      }
-
-      const userMsg = cfg.lang === "en"
-        ? `Write a listing for:\n${itemContext}`
-        : `Rédige une annonce pour:\n${itemContext}`;
-
-      try {
-        const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 900,
-            system: cfg.system,
-            messages: [{ role: "user", content: userMsg }],
-          }),
-        });
-
-        if (claudeRes.ok) {
-          const claudeData = await claudeRes.json();
-          const text: string = claudeData.content?.[0]?.text ?? "";
-          const firstBrace = text.indexOf("{");
-          const lastBrace = text.lastIndexOf("}");
-          if (firstBrace !== -1 && lastBrace > firstBrace) {
-            try {
-              const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
-              platformListings[platform] = {
-                title: String(parsed.title ?? fallbackTitle),
-                description: String(parsed.description ?? ""),
-                platform_fields: parsed.platform_fields ?? {},
-              };
-            } catch (parseErr) {
-              console.error(`[generate-listing] JSON parse error ${platform}:`, parseErr);
-            }
-          }
-        } else {
-          console.error(`[generate-listing] claude ${platform}:`, await claudeRes.text());
+    await Promise.all(
+      (platforms as string[]).map(async (platform) => {
+        const cfg = PLATFORM_CFG[platform];
+        if (!cfg) {
+          platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
+          return;
         }
-      } catch (e) {
-        console.error(`[generate-listing] claude exception ${platform}:`, e);
-      }
 
-      if (!platformListings[platform]) {
-        platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
-      }
-    }
+        const userMsg = cfg.lang === "en"
+          ? `Write a listing for:\n${itemContext}`
+          : `Rédige une annonce pour:\n${itemContext}`;
+
+        try {
+          const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": ANTHROPIC_KEY,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 900,
+              system: cfg.system,
+              messages: [{ role: "user", content: userMsg }],
+            }),
+          });
+
+          if (claudeRes.ok) {
+            const claudeData = await claudeRes.json();
+            const text: string = claudeData.content?.[0]?.text ?? "";
+            const firstBrace = text.indexOf("{");
+            const lastBrace = text.lastIndexOf("}");
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              try {
+                const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+                platformListings[platform] = {
+                  title: String(parsed.title ?? fallbackTitle),
+                  description: String(parsed.description ?? ""),
+                  platform_fields: parsed.platform_fields ?? {},
+                };
+              } catch (parseErr) {
+                console.error(`[generate-listing] JSON parse error ${platform}:`, parseErr);
+              }
+            }
+          } else {
+            console.error(`[generate-listing] claude ${platform}:`, await claudeRes.text());
+          }
+        } catch (e) {
+          console.error(`[generate-listing] claude exception ${platform}:`, e);
+        }
+
+        if (!platformListings[platform]) {
+          platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
+        }
+      })
+    );
 
     // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
     return json({
