@@ -29,7 +29,21 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
-const OPENAI_IMG_PROMPT = "Improve lighting, color warmth, and sharpness. Keep the exact same angle, composition, framing, and background. No new angles, no recomposition, no background changes. E-commerce product photo quality.";
+const OPENAI_IMG_PROMPT = `Enhance this clothing product photo to make it look appealing and sale-ready, while keeping the garment exactly as it is.
+
+Lighting: Apply soft, natural, warm-toned lighting — as if photographed near a bright window on a clear day. Even, flattering light with no harsh shadows or overexposed areas.
+
+Fabric: Very lightly and naturally smooth out wrinkles and creases, as if the garment had been gently steamed — subtle and realistic, never artificial, never overly perfect or plastic-looking.
+
+Color and clarity: Improve color accuracy and sharpness slightly, keeping tones true to the original.
+
+Strict constraints — do NOT change:
+- The pose, framing, angle, or camera perspective
+- The background
+- The garment's shape, cut, size, color, pattern, fabric texture, or any design detail (buttons, logos, stitching, prints, labels)
+- Do not add, remove, or invent any element
+
+The result must be the exact same garment in the exact same photo, only with improved lighting and a very light, natural pressing effect.`;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
