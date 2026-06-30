@@ -330,7 +330,7 @@ function StepAnalyse({ generating, generateError, listing, price, lang }) {
           <p style={{ margin:0, fontSize:12.5, color:"#9B9890", textAlign:"center" }}>
             {isFr
               ? "Appuie sur « Analyser avec l'IA » en bas de l'écran"
-              : "Tap "Analyse with AI" below to start"}
+              : 'Tap "Analyse with AI" below to start'}
           </p>
         </div>
       )}
