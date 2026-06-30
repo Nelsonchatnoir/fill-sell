@@ -218,12 +218,13 @@ serve(async (req) => {
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: profile } = await adminClient
     .from("profiles")
-    .select("is_founder, apple_original_transaction_id, google_purchase_token, lens_daily_override, lens_monthly_override")
+    .select("is_founder, apple_original_transaction_id, google_purchase_token, is_pro, lens_daily_override, lens_monthly_override")
     .eq("id", user.id)
     .single();
   const isPremium = profile?.is_founder === true
     || profile?.apple_original_transaction_id != null
-    || profile?.google_purchase_token != null;
+    || profile?.google_purchase_token != null
+    || profile?.is_pro === true;
   const dailyOverride: number | null = profile?.lens_daily_override ?? null;
   const monthlyOverride: number | null = profile?.lens_monthly_override ?? null;
   const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {

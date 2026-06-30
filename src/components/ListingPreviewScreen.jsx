@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { Camera, Wand2, Sparkles, Send, Check, ChevronLeft, ChevronRight, Mic } from "lucide-react";
+import ConversionModal from "./ConversionModal";
 
 const TEAL  = "#3EACA0";
 const PEACH = "#E8956D";
@@ -14,6 +15,42 @@ const STEPS = [
   { id:2, label:"Analyse", Icon:Sparkles },
   { id:3, label:"Publier", Icon:Send     },
 ];
+
+// ── QuotaLimitModal — Pro coins stub (future) ─────────────────────────────────
+
+function QuotaLimitModal({ onClose, lang }) {
+  const isFr = lang !== "en";
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:10001,
+      background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"flex-end", justifyContent:"center",
+    }}>
+      <div style={{
+        background:"#fff", borderRadius:"24px 24px 0 0", padding:"28px 24px 36px",
+        width:"100%", maxWidth:480, fontFamily:"'Nunito',system-ui,sans-serif",
+      }}>
+        <div style={{ fontWeight:900, fontSize:18, color:"#111", marginBottom:8 }}>
+          {isFr ? "Limite Pro atteinte" : "Pro limit reached"}
+        </div>
+        <p style={{ fontSize:13.5, color:"#6B6862", lineHeight:1.6, margin:"0 0 20px" }}>
+          {isFr
+            ? "Tu as atteint ta limite Pro. Des crédits supplémentaires arrivent bientôt."
+            : "You've reached your Pro limit. Additional credits are coming soon."}
+        </p>
+        <button
+          onClick={onClose}
+          style={{
+            width:"100%", padding:"14px", borderRadius:14, border:"none",
+            background:"#111", color:"#fff", fontWeight:800, fontSize:15,
+            cursor:"pointer", fontFamily:"inherit",
+          }}
+        >
+          {isFr ? "Fermer" : "Close"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -192,7 +229,7 @@ function StepPhotos({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Style ────────────────────────────────────────────────────────────
 
-function StepStyle({ photoOption, setPhotoOption, lang }) {
+function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, lang }) {
   const isFr = lang !== "en";
   const options = [
     {
@@ -202,6 +239,7 @@ function StepStyle({ photoOption, setPhotoOption, lang }) {
         ? "Fond nettoyé, lumière corrigée, plusieurs angles valorisés"
         : "Background cleaned, lighting corrected, multiple angles enhanced",
       tag: isFr ? "Recommandé" : "Recommended",
+      lockedFor: isPro ? null : "pro",
     },
     {
       id: "ia_simple",
@@ -210,12 +248,14 @@ function StepStyle({ photoOption, setPhotoOption, lang }) {
         ? "Amélioration rapide de la luminosité et netteté"
         : "Quick brightness and sharpness improvement",
       tag: null,
+      lockedFor: (isPremium || isPro) ? null : "premium",
     },
     {
       id: "original",
       label: isFr ? "Photos originales" : "Original photos",
       desc: isFr ? "Aucune retouche, publication telle quelle" : "No retouch, published as-is",
       tag: null,
+      lockedFor: null,
     },
   ];
 
@@ -233,31 +273,46 @@ function StepStyle({ photoOption, setPhotoOption, lang }) {
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {options.map(o => {
           const active = photoOption === o.id;
+          const locked = !!o.lockedFor;
           return (
             <button
               key={o.id}
-              onClick={() => setPhotoOption(o.id)}
+              onClick={() => { if (locked) { onLockTap(o.id); return; } setPhotoOption(o.id); }}
               style={{
                 textAlign:"left", background:"#fff", borderRadius:14, padding:14,
                 border: active ? `2px solid ${TEAL}` : "1px solid #ECEAE3",
                 cursor:"pointer", fontFamily:"inherit", position:"relative",
+                opacity: locked ? 0.7 : 1,
               }}
             >
-              {o.tag && (
+              {!locked && o.tag && (
                 <span style={{
                   position:"absolute", top:-8, right:12,
                   fontSize:9.5, fontWeight:800, color:"#fff",
                   background:PEACH, padding:"3px 8px", borderRadius:999,
                 }}>{o.tag}</span>
               )}
+              {locked && (
+                <span style={{
+                  position:"absolute", top:-8, right:12,
+                  fontSize:9.5, fontWeight:800, color:"#fff",
+                  background: o.lockedFor === "pro" ? "#7C3AED" : PEACH,
+                  padding:"3px 8px", borderRadius:999,
+                }}>
+                  {o.lockedFor === "pro" ? "Pro" : "Premium"}
+                </span>
+              )}
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <div style={{
                   width:18, height:18, borderRadius:"50%", flexShrink:0,
-                  border: active ? `5px solid ${TEAL}` : "2px solid #D9D6CC",
+                  border: active && !locked ? `5px solid ${TEAL}` : "2px solid #D9D6CC",
                   transition:"border 0.15s",
                 }} />
                 <div>
-                  <div style={{ fontWeight:800, fontSize:14.5, color:"#111" }}>{o.label}</div>
+                  <div style={{ fontWeight:800, fontSize:14.5, color: locked ? "#9B9890" : "#111", display:"flex", alignItems:"center", gap:6 }}>
+                    {o.label}
+                    {locked && <span style={{ fontSize:12 }}>🔒</span>}
+                  </div>
                   <div style={{ fontSize:12.5, color:"#6B6862", marginTop:2, lineHeight:1.4 }}>{o.desc}</div>
                 </div>
               </div>
@@ -289,8 +344,8 @@ function StepAnalyse({ generating, generateError, listing, price, lang }) {
         {hasResult
           ? (isFr ? "Voici ce que l'IA a détecté sur ton article." : "Here's what the AI detected on your item.")
           : (isFr
-              ? "L'IA va estimer le prix et générer une fiche optimisée par plateforme."
-              : "The AI will estimate the price and generate an optimised listing for each platform.")}
+              ? "L'IA va estimer le prix et scorer ton article."
+              : "The AI will estimate the price and score your item.")}
       </p>
 
       {generating && (
@@ -304,7 +359,7 @@ function StepAnalyse({ generating, generateError, listing, price, lang }) {
             animation:"lps-spin 0.8s linear infinite",
           }} />
           <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center", lineHeight:1.6 }}>
-            {isFr ? "Photo IA · texte annonce · ~15-45 sec" : "AI photo · listing text · ~15–45 sec"}
+            {isFr ? "Identification · prix marché · score · ~15-45 sec" : "Identification · market price · score · ~15–45 sec"}
           </p>
         </div>
       )}
@@ -337,9 +392,9 @@ function StepAnalyse({ generating, generateError, listing, price, lang }) {
 
       {!generating && hasResult && (
         <div style={{ background:"#fff", borderRadius:16, padding:18, border:"1px solid #ECEAE3" }}>
-          {(listing.titre || listing.platforms?.vinted?.title) && (
+          {listing.titre && (
             <div style={{ fontWeight:900, fontSize:16, color:"#111", marginBottom:10 }}>
-              {listing.titre || listing.platforms?.vinted?.title}
+              {listing.titre}
             </div>
           )}
 
@@ -383,8 +438,8 @@ function StepAnalyse({ generating, generateError, listing, price, lang }) {
           {!listing.titre && !listing.marque && !listing.score && !listing.prix_vente_suggere && (
             <div style={{ fontSize:13.5, color:"#374151", lineHeight:1.6 }}>
               {isFr
-                ? "✅ Fiche générée pour toutes les plateformes. Passe à l'étape suivante pour publier."
-                : "✅ Listing generated for all platforms. Go to the next step to publish."}
+                ? "✅ Analyse terminée. Passe à l'étape suivante pour publier."
+                : "✅ Analysis done. Go to the next step to publish."}
             </div>
           )}
         </div>
@@ -395,8 +450,60 @@ function StepAnalyse({ generating, generateError, listing, price, lang }) {
 
 // ── Step 3 — Publier ──────────────────────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, publishError, lang }) {
+function StepPublish({ selected, setSelected, publishError, generatingPlatforms, platformError, onRetryPlatforms, lang }) {
   const isFr = lang !== "en";
+
+  if (generatingPlatforms) {
+    return (
+      <div>
+        <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+        <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+          {isFr ? "Génération des annonces…" : "Generating listings…"}
+        </h2>
+        <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+          {isFr ? "L'IA prépare le texte pour chaque plateforme." : "AI is preparing the text for each platform."}
+        </p>
+        <div style={{
+          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
+          display:"flex", flexDirection:"column", alignItems:"center", gap:16,
+        }}>
+          <div style={{
+            width:48, height:48, borderRadius:"50%",
+            border:`4px solid ${TEAL}33`, borderTopColor:TEAL,
+            animation:"lps-spin 0.8s linear infinite",
+          }} />
+          <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center", lineHeight:1.6 }}>
+            {isFr ? "Vinted · Leboncoin · Beebs · eBay · ~10-20 sec" : "Vinted · Leboncoin · Beebs · eBay · ~10–20 sec"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (platformError) {
+    return (
+      <div>
+        <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+        <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+          {isFr ? "Erreur de génération" : "Generation error"}
+        </h2>
+        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, fontSize:13, color:"#B91C1C", marginBottom:14 }}>
+          {platformError}
+        </div>
+        <button
+          onClick={onRetryPlatforms}
+          style={{
+            width:"100%", padding:"12px", borderRadius:12,
+            border:`1.5px solid ${TEAL}`, background:"#fff",
+            color:TEAL, fontWeight:800, fontSize:13.5,
+            cursor:"pointer", fontFamily:"inherit",
+          }}
+        >
+          {isFr ? "Réessayer" : "Retry"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -435,11 +542,9 @@ function StepPublish({ selected, setSelected, publishError, lang }) {
                 transition:"border 0.15s",
               }}
             >
-              {/* Texte — logos à swapper ici */}
               <span style={{ fontWeight:800, fontSize:14, color: on ? "#111" : "#9B9890" }}>
                 {PLATFORM_LABELS[p]}
               </span>
-
               <div style={{
                 width:40, height:24, borderRadius:99,
                 background: on ? TEAL : "#E5E3DC",
@@ -463,39 +568,53 @@ function StepPublish({ selected, setSelected, publishError, lang }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-// Props: inventaireId, userId, initialPhotos?, supabase, lang, onClose
-export default function ListingPreviewScreen({ inventaireId, userId, initialPhotos = [], supabase, lang, onClose }) {
-  const [step, setStep]           = useState(0);
-  const [initializing, setInit]   = useState(true);
+export default function ListingPreviewScreen({
+  inventaireId, userId, initialPhotos = [], supabase, lang, onClose,
+  isPremium = false, isPro = false, founderSpotsLeft = 7, onUpgrade = () => {},
+}) {
+  const [step, setStep]         = useState(0);
+  const [initializing, setInit] = useState(true);
 
   // Step 0
-  const [pickedFiles, setPickedFiles]         = useState([]);
-  const [pickedPreviews, setPickedPreviews]   = useState([]);
-  const [notes, setNotes]                     = useState("");
-  const [micActive, setMicActive]             = useState(false);
-  const [uploading, setUploading]             = useState(false);
-  const [uploadError, setUploadError]         = useState("");
-  const recognitionRef                        = useRef(null);
+  const [pickedFiles, setPickedFiles]       = useState([]);
+  const [pickedPreviews, setPickedPreviews] = useState([]);
+  const [notes, setNotes]                   = useState("");
+  const [micActive, setMicActive]           = useState(false);
+  const [uploading, setUploading]           = useState(false);
+  const [uploadError, setUploadError]       = useState("");
+  const recognitionRef                      = useRef(null);
 
   // Ready URLs
   const [photos, setPhotos] = useState(initialPhotos);
 
-  // Step 1
-  const [photoOption, setPhotoOption] = useState("ia_multi");
+  // Step 1 — default based on tier
+  const [photoOption, setPhotoOption] = useState(() =>
+    isPro ? "ia_multi" : isPremium ? "ia_simple" : "original"
+  );
 
-  // Step 2
-  const [generating, setGenerating]           = useState(false);
-  const [generateError, setGenerateError]     = useState("");
-  const [listing, setListing]                 = useState(null);
-  const [price, setPrice]                     = useState(null);
-  const [processedPhotos, setProcessedPhotos] = useState([]);
-  const [edited, setEdited]                   = useState({});
+  // Step 2 — lens-analysis result
+  const [generating, setGenerating]       = useState(false);
+  const [generateError, setGenerateError] = useState("");
+  const [listing, setListing]             = useState(null);
+  const [price, setPrice]                 = useState(null);
 
-  // Step 3
-  const [selected, setSelected]       = useState(new Set(PLATFORMS_DEFAULT));
-  const [publishing, setPublishing]   = useState(false);
+  // Step 3 — generate-listing (per-platform content)
+  const [generatingPlatforms, setGeneratingPlatforms] = useState(false);
+  const [platformError, setPlatformError]             = useState("");
+  const [platformListings, setPlatformListings]       = useState(null);
+  const [processedPhotos, setProcessedPhotos]         = useState([]);
+  const [edited, setEdited]                           = useState({});
+
+  // Step 3 — publish
+  const [selected, setSelected]         = useState(new Set(PLATFORMS_DEFAULT));
+  const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
-  const [done, setDone]               = useState(false);
+  const [done, setDone]                 = useState(false);
+
+  // Quota / tier modal
+  const [quotaModal, setQuotaModal] = useState({
+    open: false, trigger: "lens", targetTiers: ["premium"], isProCoins: false,
+  });
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -540,6 +659,14 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Trigger platform generation on step 3 arrival ─────────────────────────
+  useEffect(() => {
+    if (step === 3 && !platformListings && !generatingPlatforms && !platformError) {
+      handleGeneratePlatforms();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   // ── Mic ───────────────────────────────────────────────────────────────────
   function toggleMic() {
@@ -623,10 +750,47 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
     }
   }
 
-  // ── Generate ──────────────────────────────────────────────────────────────
-  async function handleGenerate() {
+  // ── Analyse — calls lens-analysis ─────────────────────────────────────────
+  async function handleAnalyse() {
     setGenerating(true);
     setGenerateError("");
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("lens-analysis", {
+        body: {
+          urls: photos,
+          ...(notes ? { description: notes } : {}),
+          ...(price != null ? { prixAchat: price } : {}),
+          lang,
+        },
+      });
+      if (fnErr) {
+        if (fnErr.context?.status === 429) {
+          if (isPro) {
+            setQuotaModal({ open: true, trigger: "lens", targetTiers: [], isProCoins: true });
+          } else {
+            setQuotaModal({
+              open: true, trigger: "lens",
+              targetTiers: isPremium ? ["pro"] : ["premium", "pro"],
+              isProCoins: false,
+            });
+          }
+          return;
+        }
+        throw new Error(fnErr.message || (lang === "en" ? "Analysis error" : "Erreur d'analyse"));
+      }
+      setListing(data);
+      if (data?.prix_vente_suggere != null) setPrice(data.prix_vente_suggere);
+    } catch (e) {
+      setGenerateError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // ── Generate platform listings — calls generate-listing ───────────────────
+  async function handleGeneratePlatforms() {
+    setGeneratingPlatforms(true);
+    setPlatformError("");
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
@@ -638,7 +802,7 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
           ...(notes ? { notes } : {}),
         },
       });
-      if (fnErr) throw new Error(fnErr.message || "Erreur de génération");
+      if (fnErr) throw new Error(fnErr.message || (lang === "en" ? "Generation error" : "Erreur de génération"));
       if (!data?.platforms) throw new Error(lang === "en" ? "No listings returned" : "Aucune annonce retournée");
 
       setProcessedPhotos(data.photos ?? []);
@@ -653,11 +817,11 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         };
       }
       setEdited(initialEdited);
-      setListing(data);
+      setPlatformListings(data);
     } catch (e) {
-      setGenerateError(e.message);
+      setPlatformError(e.message);
     } finally {
-      setGenerating(false);
+      setGeneratingPlatforms(false);
     }
   }
 
@@ -667,6 +831,23 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
     setPublishing(true);
     setPublishError("");
     try {
+      const { data: quotaData, error: quotaErr } = await supabase.rpc("check_and_log_publish", {
+        p_user_id: userId,
+        p_is_premium: isPremium,
+        p_is_pro: isPro,
+      });
+      if (quotaErr) throw new Error(quotaErr.message);
+      if (quotaData?.allowed === false) {
+        setPublishing(false);
+        if (quotaData.reason === "tier_free") {
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
+        } else {
+          // weekly_limit hit by Premium → suggest Pro
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["pro"], isProCoins: false });
+        }
+        return;
+      }
+
       const rows = [...selected].map(platform => ({
         user_id: userId,
         inventaire_id: inventaireId,
@@ -691,28 +872,41 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
     }
   }
 
+  // ── Style lock tap ────────────────────────────────────────────────────────
+  function handleStyleLockTap(optionId) {
+    if (optionId === "ia_multi") {
+      setQuotaModal({
+        open: true, trigger: "style",
+        targetTiers: isPremium ? ["pro"] : ["premium", "pro"],
+        isProCoins: false,
+      });
+    } else if (optionId === "ia_simple") {
+      setQuotaModal({ open: true, trigger: "style", targetTiers: ["premium", "pro"], isProCoins: false });
+    }
+  }
+
   // ── Nav helpers ───────────────────────────────────────────────────────────
   const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;
   const photoCount      = displayPreviews.length;
-  const isLocked        = generating || uploading || publishing;
-  // Hide back on step 1 when photos came from outside (initialPhotos / cross_post_jobs)
+  const isLocked        = generating || uploading || publishing || generatingPlatforms;
   const canGoBack       = step > 0 && !(step === 1 && pickedFiles.length === 0 && photos.length > 0);
 
   function ctaLabel() {
     if (step === 0) {
-      if (uploading)      return lang === "en" ? "Uploading…" : "Upload en cours…";
+      if (uploading)        return lang === "en" ? "Uploading…" : "Upload en cours…";
       if (photoCount === 0) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
       return `${lang === "en" ? "Continue" : "Continuer"} · ${photoCount} photo${photoCount > 1 ? "s" : ""}`;
     }
     if (step === 1) return lang === "en" ? "Launch AI analysis" : "Lancer l'analyse IA";
     if (step === 2) {
-      if (generating)                 return lang === "en" ? "Analysing…" : "Analyse en cours…";
-      if (generateError && !listing)  return lang === "en" ? "Retry" : "Réessayer";
-      if (listing)                    return lang === "en" ? "See the result" : "Voir le résultat";
+      if (generating)                return lang === "en" ? "Analysing…" : "Analyse en cours…";
+      if (generateError && !listing) return lang === "en" ? "Retry" : "Réessayer";
+      if (listing)                   return lang === "en" ? "Continue to publish" : "Continuer vers la publication";
       return lang === "en" ? "Analyse with AI" : "Analyser avec l'IA";
     }
     if (step === 3) {
-      if (publishing) return lang === "en" ? "Publishing…" : "Publication en cours…";
+      if (generatingPlatforms) return lang === "en" ? "Preparing listings…" : "Préparation…";
+      if (publishing)          return lang === "en" ? "Publishing…" : "Publication en cours…";
       const n = selected.size;
       return `${lang === "en" ? "Publish on" : "Publier sur"} ${n} plateforme${n > 1 ? "s" : ""}`;
     }
@@ -722,12 +916,23 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
   const ctaDisabled =
     (step === 0 && (photoCount === 0 || uploading)) ||
     (step === 2 && generating) ||
-    (step === 3 && (selected.size === 0 || publishing));
+    (step === 3 && (selected.size === 0 || publishing || generatingPlatforms || (!!platformError && !platformListings)));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
     if (step === 1) { setStep(2); return; }
-    if (step === 2) { listing ? setStep(3) : handleGenerate(); return; }
+    if (step === 2) {
+      if (listing) {
+        if (!isPremium && !isPro) {
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
+          return;
+        }
+        setStep(3);
+        return;
+      }
+      handleAnalyse();
+      return;
+    }
     if (step === 3) { handlePublish(); }
   }
 
@@ -847,7 +1052,14 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
           />
         )}
         {step === 1 && (
-          <StepStyle photoOption={photoOption} setPhotoOption={setPhotoOption} lang={lang} />
+          <StepStyle
+            photoOption={photoOption}
+            setPhotoOption={setPhotoOption}
+            isPremium={isPremium}
+            isPro={isPro}
+            onLockTap={handleStyleLockTap}
+            lang={lang}
+          />
         )}
         {step === 2 && (
           <StepAnalyse
@@ -863,6 +1075,9 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
             selected={selected}
             setSelected={setSelected}
             publishError={publishError}
+            generatingPlatforms={generatingPlatforms}
+            platformError={platformError}
+            onRetryPlatforms={handleGeneratePlatforms}
             lang={lang}
           />
         )}
@@ -900,9 +1115,28 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         >
           {ctaLabel()}
           {!ctaDisabled && step < 3 && !generating && !uploading && <ChevronRight size={18} />}
-          {!ctaDisabled && step === 3 && !publishing && <Send size={16} />}
+          {!ctaDisabled && step === 3 && !publishing && !generatingPlatforms && <Send size={16} />}
         </button>
       </div>
+
+      {/* Quota / conversion modal */}
+      {quotaModal.open && !quotaModal.isProCoins && (
+        <ConversionModal
+          isOpen={true}
+          onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
+          onUpgrade={tier => { onUpgrade(tier); setQuotaModal(m => ({ ...m, open: false })); }}
+          trigger={quotaModal.trigger}
+          targetTiers={quotaModal.targetTiers}
+          founderSpotsLeft={founderSpotsLeft}
+          lang={lang}
+        />
+      )}
+      {quotaModal.open && quotaModal.isProCoins && (
+        <QuotaLimitModal
+          onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
+          lang={lang}
+        />
+      )}
     </div>
   );
 }

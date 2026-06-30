@@ -695,6 +695,10 @@ const LensTab = memo(function LensTab({
           onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
           supabase={supabase}
           lang={lang}
+          isPremium={isPremium}
+          isPro={isPro}
+          founderSpotsLeft={slotsRemaining}
+          onUpgrade={openUpgradeModal}
         />
       )}
     </div>
