@@ -482,19 +482,21 @@ const LensTab = memo(function LensTab({
 
   if (showListingPreview && lensListingInvId) {
     return (
-      <ListingPreviewScreen
-        inventaireId={lensListingInvId}
-        userId={user.id}
-        initialPhotos={lensListingPhotos}
-        initialListing={lensResult}
-        onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
-        supabase={supabase}
-        lang={lang}
-        isPremium={isPremium}
-        isPro={isPro}
-        founderSpotsLeft={slotsRemaining}
-        onUpgrade={openUpgradeModal}
-      />
+      <div style={{ margin:"-18px -14px" }}>
+        <ListingPreviewScreen
+          inventaireId={lensListingInvId}
+          userId={user.id}
+          initialPhotos={lensListingPhotos}
+          initialListing={lensResult}
+          onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
+          supabase={supabase}
+          lang={lang}
+          isPremium={isPremium}
+          isPro={isPro}
+          founderSpotsLeft={slotsRemaining}
+          onUpgrade={openUpgradeModal}
+        />
+      </div>
     );
   }
 

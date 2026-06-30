@@ -320,8 +320,10 @@ function StepDeal({ listing, price, lang }) {
 
 // ── Step 2 — Photos review + platform picker ──────────────────────────────────
 
-function StepPhotosReview({ photos, selected, setSelected, lang }) {
+function StepPhotosReview({ photos, onRemovePhoto, onAddPhotos, selected, setSelected, lang }) {
   const isFr = lang !== "en";
+  const addRef = useRef();
+  const MAX = 5;
 
   return (
     <div>
@@ -331,20 +333,62 @@ function StepPhotosReview({ photos, selected, setSelected, lang }) {
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
         {isFr
-          ? "Vérifie tes photos et choisis les plateformes."
-          : "Check your photos and choose the platforms."}
+          ? "Vérifie tes photos, ajoute-en si besoin, puis choisis les plateformes."
+          : "Review your photos, add more if needed, then choose platforms."}
       </p>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
         {photos.map((url, i) => (
           <div
             key={i}
-            style={{ aspectRatio:"1", borderRadius:14, overflow:"hidden", border:`2px solid ${TEAL}` }}
+            style={{ aspectRatio:"1", borderRadius:14, overflow:"hidden", border:`2px solid ${TEAL}`, position:"relative" }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+            <button
+              onClick={() => onRemovePhoto(i)}
+              style={{
+                position:"absolute", top:4, right:4,
+                width:20, height:20, borderRadius:"50%",
+                background:"rgba(0,0,0,0.55)", border:"none",
+                color:"#fff", fontSize:12, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                padding:0, lineHeight:1,
+              }}
+            >×</button>
           </div>
         ))}
       </div>
+
+      {photos.length < MAX && (
+        <>
+          <input
+            ref={addRef}
+            type="file"
+            accept="image/*"
+            multiple
+            capture="environment"
+            style={{ display:"none" }}
+            onChange={e => {
+              const files = Array.from(e.target.files || []);
+              if (files.length) { onAddPhotos(files); e.target.value = ""; }
+            }}
+          />
+          <button
+            onClick={() => addRef.current?.click()}
+            style={{
+              width:"100%", padding:"10px", borderRadius:12, marginBottom:20,
+              border:`1.5px dashed ${TEAL}`, background:"#fff",
+              color:TEAL, fontWeight:800, fontSize:13,
+              cursor:"pointer", fontFamily:"inherit",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+            }}
+          >
+            + {isFr ? `Ajouter une photo (${photos.length}/${MAX})` : `Add photo (${photos.length}/${MAX})`}
+          </button>
+        </>
+      )}
+
+      {photos.length >= MAX && <div style={{ marginBottom:20 }} />}
 
       <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
         {isFr ? "Plateformes" : "Platforms"}
@@ -491,7 +535,7 @@ function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, l
 
 // ── Step 4 — Génération ───────────────────────────────────────────────────────
 
-function StepGeneration({ generating, generateError, platformListings, selected, onRetry, lang }) {
+function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, onRetry, lang }) {
   const isFr = lang !== "en";
 
   if (generating || (!platformListings && !generateError)) {
@@ -546,7 +590,7 @@ function StepGeneration({ generating, generateError, platformListings, selected,
     );
   }
 
-  const platforms = [...selected].filter(p => platformListings[p]);
+  const platforms = [...selected].filter(p => platformListings?.platforms?.[p]);
   return (
     <div>
       <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
@@ -558,14 +602,30 @@ function StepGeneration({ generating, generateError, platformListings, selected,
           ? `${platforms.length} annonce${platforms.length > 1 ? "s" : ""} prête${platforms.length > 1 ? "s" : ""} à publier.`
           : `${platforms.length} listing${platforms.length > 1 ? "s" : ""} ready to publish.`}
       </p>
+
+      {processedPhotos?.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
+            {isFr ? "Photos retouchées" : "Enhanced photos"}
+          </div>
+          <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
+            {processedPhotos.map((ph, i) => (
+              <div key={i} style={{ flexShrink:0, width:72, height:72, borderRadius:10, overflow:"hidden", border:`2px solid ${TEAL}` }}>
+                <img src={ph.url ?? ph} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ background:"#fff", borderRadius:14, padding:16, border:"1px solid #ECEAE3", display:"flex", flexDirection:"column", gap:10 }}>
         {platforms.map(p => (
           <div key={p} style={{ display:"flex", alignItems:"center", gap:8 }}>
             <Check size={16} color="#16A34A" strokeWidth={3} />
             <span style={{ fontSize:14, fontWeight:700, color:"#111", flexShrink:0 }}>{PLATFORM_LABELS[p]}</span>
-            {platformListings[p]?.title && (
+            {platformListings?.platforms?.[p]?.title && (
               <span style={{ fontSize:12, color:"#9B9890", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                — {platformListings[p].title}
+                — {platformListings.platforms[p].title}
               </span>
             )}
           </div>
@@ -579,17 +639,18 @@ function StepGeneration({ generating, generateError, platformListings, selected,
 
 function StepPublish({ selected, setSelected, publishError, lang }) {
   const isFr = lang !== "en";
+  const selectedArr = [...selected];
 
   return (
     <div>
       <Eyebrow n="6" label={isFr ? "Publication" : "Publication"} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Prêt à publier" : "Ready to publish"}
+        {isFr ? "Confirme la publication" : "Confirm publication"}
       </h2>
       <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
         {isFr
-          ? "Désactive les plateformes que tu ne veux pas publier maintenant."
-          : "Disable the platforms you don't want to publish now."}
+          ? "Appuie sur × pour retirer une plateforme avant de publier."
+          : "Tap × to remove a platform before publishing."}
       </p>
 
       {publishError && (
@@ -598,45 +659,35 @@ function StepPublish({ selected, setSelected, publishError, lang }) {
         </div>
       )}
 
-      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-        {PLATFORMS_DEFAULT.map(p => {
-          const on = selected.has(p);
-          return (
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+        {selectedArr.map(p => (
+          <div
+            key={p}
+            style={{
+              display:"inline-flex", alignItems:"center", gap:8,
+              background:"#fff", border:`1.5px solid ${TEAL}`,
+              borderRadius:12, padding:"10px 14px",
+              fontWeight:800, fontSize:14, color:"#111",
+            }}
+          >
+            <Check size={14} color={TEAL} strokeWidth={3} />
+            {PLATFORM_LABELS[p]}
             <button
-              key={p}
-              onClick={() => setSelected(prev => {
-                const s = new Set(prev);
-                s.has(p) ? s.delete(p) : s.add(p);
-                return s;
-              })}
+              onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(p); return s; })}
               style={{
-                display:"flex", alignItems:"center", justifyContent:"space-between",
-                background:"#fff", borderRadius:14, padding:"14px 16px",
-                border: on ? `1.5px solid ${TEAL}` : "1px solid #ECEAE3",
-                cursor:"pointer", fontFamily:"inherit", textAlign:"left",
-                transition:"border 0.15s",
+                background:"none", border:"none", padding:0,
+                cursor:"pointer", color:"#9B9890", fontSize:18,
+                lineHeight:1, display:"flex", alignItems:"center",
               }}
-            >
-              <span style={{ fontWeight:800, fontSize:14, color: on ? "#111" : "#9B9890" }}>
-                {PLATFORM_LABELS[p]}
-              </span>
-              <div style={{
-                width:40, height:24, borderRadius:99,
-                background: on ? TEAL : "#E5E3DC",
-                display:"flex", alignItems:"center",
-                padding:3, transition:"background 0.2s", flexShrink:0,
-              }}>
-                <div style={{
-                  width:18, height:18, borderRadius:"50%", background:"#fff",
-                  marginLeft: on ? "auto" : 0,
-                  transition:"margin 0.2s",
-                  boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
-                }} />
-              </div>
-            </button>
-          );
-        })}
+            >×</button>
+          </div>
+        ))}
       </div>
+      {selectedArr.length === 0 && (
+        <p style={{ fontSize:13, color:"#9B9890", textAlign:"center", marginTop:16 }}>
+          {isFr ? "Aucune plateforme sélectionnée." : "No platform selected."}
+        </p>
+      )}
     </div>
   );
 }
@@ -824,6 +875,28 @@ export default function ListingPreviewScreen({
     } finally {
       setUploading(false);
     }
+  }
+
+  // ── Add more photos (Step 2) ──────────────────────────────────────────────
+  async function handleAddMorePhotos(files) {
+    const toAdd = files.slice(0, 5 - photos.length);
+    if (!toAdd.length) return;
+    const ts = Date.now();
+    const urls = [];
+    for (let i = 0; i < toAdd.length; i++) {
+      const blob = await compressImage(toAdd[i]);
+      const path = `${userId}/raw/${ts}_extra_${i}.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from("listing-photos")
+        .upload(path, blob, { contentType:"image/jpeg", upsert:true });
+      if (!upErr)
+        urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
+    }
+    if (urls.length) setPhotos(prev => [...prev, ...urls]);
+  }
+
+  function handleRemovePhoto(idx) {
+    setPhotos(prev => prev.filter((_, i) => i !== idx));
   }
 
   // ── Generate platform listings ────────────────────────────────────────────
@@ -1107,6 +1180,8 @@ export default function ListingPreviewScreen({
         {step === 2 && (
           <StepPhotosReview
             photos={photos}
+            onAddPhotos={handleAddMorePhotos}
+            onRemovePhoto={handleRemovePhoto}
             selected={selected}
             setSelected={setSelected}
             lang={lang}
@@ -1127,6 +1202,7 @@ export default function ListingPreviewScreen({
             generating={generatingPlatforms}
             generateError={platformError}
             platformListings={platformListings}
+            processedPhotos={processedPhotos}
             selected={selected}
             onRetry={handleGeneratePlatforms}
             lang={lang}
