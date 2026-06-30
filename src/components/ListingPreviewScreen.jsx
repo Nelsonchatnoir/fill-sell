@@ -1,76 +1,521 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
+import { Camera, Wand2, Sparkles, Send, Check, ChevronLeft, ChevronRight, Mic } from "lucide-react";
 
-const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay", vestiaire:"Vestiaire" };
-const PLATFORM_COLORS = { vinted:"#08A05C", leboncoin:"#F56B2A", beebs:"#FF3366", ebay:"#E53238", vestiaire:"#1B1B1B" };
+const TEAL  = "#3EACA0";
+const PEACH = "#E8956D";
+const BG    = "#F2F2EE";
+
+const PLATFORM_LABELS   = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
-const FIELD_LABELS = {
-  taille:       { fr:"Taille",       en:"Size" },
-  matiere:      { fr:"Matière",      en:"Material" },
-  etat:         { fr:"État",         en:"Condition" },
-  marque:       { fr:"Marque",       en:"Brand" },
-  format_colis: { fr:"Format colis", en:"Package" },
-  categorie:    { fr:"Catégorie",    en:"Category" },
-  size:         { fr:"Taille",       en:"Size" },
-  material:     { fr:"Matière",      en:"Material" },
-  condition:    { fr:"État",         en:"Condition" },
-  brand:        { fr:"Marque",       en:"Brand" },
-};
+const STEPS = [
+  { id:0, label:"Photos",  Icon:Camera   },
+  { id:1, label:"Style",   Icon:Wand2    },
+  { id:2, label:"Analyse", Icon:Sparkles },
+  { id:3, label:"Publier", Icon:Send     },
+];
 
-function primaryColor(p) { return PLATFORM_COLORS[p] ?? "#6366F1"; }
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Props:
-//   inventaireId  – required
-//   userId        – required
-//   initialPhotos – optional string[] of already-uploaded URLs; skips upload step
-//   supabase      – required
-//   lang          – "fr" | "en"
-//   onClose       – required
-export default function ListingPreviewScreen({ inventaireId, userId, initialPhotos = [], supabase, lang, onClose }) {
-  // "checking" | "upload" | "style-pick" | "generating" | "review" | "publishing" | "done"
-  const [step, setStep] = useState("checking");
-  const [error, setError] = useState("");
+function Eyebrow({ n, label }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+      <span style={{
+        fontSize:11, fontWeight:900, color:"#fff",
+        background:`linear-gradient(135deg,${TEAL},${PEACH})`,
+        width:20, height:20, borderRadius:6,
+        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+      }}>{n}</span>
+      <span style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.06em" }}>
+        {label}
+      </span>
+    </div>
+  );
+}
 
-  // photos ready to send to generate-listing
-  const [photos, setPhotos] = useState(initialPhotos);
-  // photos picked in the upload UI (File objects)
-  const [pickedFiles, setPickedFiles] = useState([]);
-  const [pickedPreviews, setPickedPreviews] = useState([]);
-  const [uploading, setUploading] = useState(false);
+function ScoreBar({ score }) {
+  const color = score >= 6.5 ? "#16A34A" : score >= 4 ? "#D97706" : "#DC2626";
+  const label = score >= 6.5 ? "Bon deal" : score >= 4 ? "Mitigé" : "À éviter";
+  return (
+    <>
+      <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
+        <span style={{ fontSize:30, fontWeight:900, color:TEAL, letterSpacing:"-0.02em" }}>
+          {Number(score).toFixed(1)}
+        </span>
+        <span style={{ fontSize:13, color:"#9B9890" }}>/10</span>
+        <span style={{ fontSize:12.5, fontWeight:800, color }}>{label}</span>
+      </div>
+      <div style={{ height:6, borderRadius:99, background:"#ECEAE3", overflow:"hidden" }}>
+        <div style={{
+          height:"100%", width:`${(score / 10) * 100}%`,
+          background:`linear-gradient(90deg,${TEAL},#2DD4BF)`,
+          transition:"width 0.8s cubic-bezier(0.22,1,0.36,1)",
+        }} />
+      </div>
+    </>
+  );
+}
 
-  const [photoOption, setPhotoOption] = useState("ia_multi");
-  const [timedOut, setTimedOut] = useState(false);
+// ── Step 0 — Photos ───────────────────────────────────────────────────────────
 
-  // generate-listing response
-  const [processedPhotos, setProcessedPhotos] = useState([]);
-  const [price, setPrice] = useState(null);
-
-  // per-platform editable fields, keyed by platform name
-  const [edited, setEdited] = useState({});
-  const [selected, setSelected] = useState(new Set(PLATFORMS_DEFAULT));
-  const [activePlatform, setActivePlatform] = useState(PLATFORMS_DEFAULT[0]);
-
+function StepPhotos({ previews, removable, onAdd, onRemove, notes, setNotes, micActive, toggleMic, error, lang }) {
   const fileRef = useRef();
+  const count = previews.length;
+  const MAX = 5;
+  const isFr = lang !== "en";
 
-  // ── Step "checking" ──────────────────────────────────────────────────────────
+  return (
+    <div>
+      <Eyebrow n="1" label={isFr ? "Photos de l'article" : "Item photos"} />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {isFr ? "Montre ton article" : "Show your item"}
+      </h2>
+      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {isFr
+          ? "Jusqu'à 5 photos. Plus tu en ajoutes, plus l'estimation sera précise."
+          : "Up to 5 photos. More photos = better price estimate."}
+      </p>
+
+      {error && (
+        <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14 }}>
+        {Array.from({ length: MAX }).map((_, i) => {
+          const filled = i < count;
+          const url = previews[i];
+          return (
+            <div
+              key={i}
+              onClick={() => !filled && fileRef.current?.click()}
+              style={{
+                aspectRatio:"1", borderRadius:14, overflow:"hidden", position:"relative",
+                background: filled ? "#fff" : BG,
+                border: filled ? `2px solid ${TEAL}` : "2px dashed #D9D6CC",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                cursor: filled ? "default" : "pointer",
+              }}
+            >
+              {filled ? (
+                <>
+                  <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                  {removable && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onRemove(i); }}
+                      style={{
+                        position:"absolute", top:4, right:4,
+                        width:20, height:20, borderRadius:"50%",
+                        background:"rgba(0,0,0,0.55)", border:"none",
+                        color:"#fff", fontSize:12, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        padding:0, lineHeight:1,
+                      }}
+                    >×</button>
+                  )}
+                </>
+              ) : (
+                <Camera size={18} color="#9B9890" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        capture="environment"
+        style={{ display:"none" }}
+        onChange={e => {
+          const files = Array.from(e.target.files || []);
+          if (files.length) { onAdd(files); e.target.value = ""; }
+        }}
+      />
+
+      {count > 0 && count < MAX && removable && (
+        <button
+          onClick={() => fileRef.current?.click()}
+          style={{
+            width:"100%", padding:"10px", borderRadius:12,
+            border:`1.5px dashed ${TEAL}`, background:"#fff",
+            color:TEAL, fontWeight:800, fontSize:13,
+            cursor:"pointer", fontFamily:"inherit", marginBottom:12,
+            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+          }}
+        >
+          + {isFr ? `Ajouter (${count}/${MAX})` : `Add more (${count}/${MAX})`}
+        </button>
+      )}
+
+      <div style={{ background:"#fff", borderRadius:14, padding:14, border:"1px solid #ECEAE3" }}>
+        <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
+          {isFr ? "Précisions (optionnel)" : "Notes (optional)"}
+        </div>
+        <div style={{ position:"relative" }}>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder={isFr ? "Taille M, bon état, avec boîte…" : "Size M, good condition, includes box…"}
+            rows={2}
+            style={{
+              width:"100%", padding:"8px 44px 8px 12px",
+              borderRadius:10, border:`1.5px solid ${micActive ? "#EF4444" : "rgba(0,0,0,0.1)"}`,
+              fontSize:13.5, fontFamily:"inherit", resize:"none", outline:"none",
+              background:"#F9FAFB", boxSizing:"border-box", lineHeight:1.5, color:"#111",
+              transition:"border-color 0.15s",
+            }}
+          />
+          <button
+            onClick={toggleMic}
+            style={{
+              position:"absolute", right:8, bottom:8,
+              width:28, height:28, borderRadius:"50%", border:"none",
+              background: micActive ? "#EF4444" : "rgba(0,0,0,0.07)",
+              color: micActive ? "#fff" : "#6B7280",
+              cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"all 0.15s",
+              boxShadow: micActive ? "0 0 0 3px rgba(239,68,68,0.2)" : "none",
+            }}
+          >
+            {micActive ? "⏹" : <Mic size={13} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 1 — Style ────────────────────────────────────────────────────────────
+
+function StepStyle({ photoOption, setPhotoOption, lang }) {
+  const isFr = lang !== "en";
+  const options = [
+    {
+      id: "ia_multi",
+      label: isFr ? "Retouche IA avancée" : "Advanced AI retouch",
+      desc: isFr
+        ? "Fond nettoyé, lumière corrigée, plusieurs angles valorisés"
+        : "Background cleaned, lighting corrected, multiple angles enhanced",
+      tag: isFr ? "Recommandé" : "Recommended",
+    },
+    {
+      id: "ia_simple",
+      label: isFr ? "Retouche IA légère" : "Light AI retouch",
+      desc: isFr
+        ? "Amélioration rapide de la luminosité et netteté"
+        : "Quick brightness and sharpness improvement",
+      tag: null,
+    },
+    {
+      id: "original",
+      label: isFr ? "Photos originales" : "Original photos",
+      desc: isFr ? "Aucune retouche, publication telle quelle" : "No retouch, published as-is",
+      tag: null,
+    },
+  ];
+
+  return (
+    <div>
+      <Eyebrow n="2" label={isFr ? "Style de retouche" : "Retouch style"} />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {isFr ? "Choisis le rendu" : "Choose the render"}
+      </h2>
+      <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {isFr
+          ? "L'IA améliore la qualité photo — elle n'invente pas de nouveaux angles."
+          : "AI enhances photo quality — it doesn't invent new angles."}
+      </p>
+      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+        {options.map(o => {
+          const active = photoOption === o.id;
+          return (
+            <button
+              key={o.id}
+              onClick={() => setPhotoOption(o.id)}
+              style={{
+                textAlign:"left", background:"#fff", borderRadius:14, padding:14,
+                border: active ? `2px solid ${TEAL}` : "1px solid #ECEAE3",
+                cursor:"pointer", fontFamily:"inherit", position:"relative",
+              }}
+            >
+              {o.tag && (
+                <span style={{
+                  position:"absolute", top:-8, right:12,
+                  fontSize:9.5, fontWeight:800, color:"#fff",
+                  background:PEACH, padding:"3px 8px", borderRadius:999,
+                }}>{o.tag}</span>
+              )}
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{
+                  width:18, height:18, borderRadius:"50%", flexShrink:0,
+                  border: active ? `5px solid ${TEAL}` : "2px solid #D9D6CC",
+                  transition:"border 0.15s",
+                }} />
+                <div>
+                  <div style={{ fontWeight:800, fontSize:14.5, color:"#111" }}>{o.label}</div>
+                  <div style={{ fontSize:12.5, color:"#6B6862", marginTop:2, lineHeight:1.4 }}>{o.desc}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 2 — Analyse ──────────────────────────────────────────────────────────
+
+function StepAnalyse({ generating, generateError, listing, price, lang }) {
+  const isFr = lang !== "en";
+  const hasResult = listing !== null;
+
+  return (
+    <div>
+      <Eyebrow n="3" label={isFr ? "Analyse IA" : "AI analysis"} />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {generating
+          ? (isFr ? "Analyse en cours…" : "Analysing…")
+          : hasResult
+            ? (isFr ? "Analyse terminée" : "Analysis done")
+            : (isFr ? "Prêt à analyser" : "Ready to analyse")}
+      </h2>
+      <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {hasResult
+          ? (isFr ? "Voici ce que l'IA a détecté sur ton article." : "Here's what the AI detected on your item.")
+          : (isFr
+              ? "L'IA va estimer le prix et générer une fiche optimisée par plateforme."
+              : "The AI will estimate the price and generate an optimised listing for each platform.")}
+      </p>
+
+      {generating && (
+        <div style={{
+          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
+          display:"flex", flexDirection:"column", alignItems:"center", gap:16,
+        }}>
+          <div style={{
+            width:48, height:48, borderRadius:"50%",
+            border:`4px solid ${TEAL}33`, borderTopColor:TEAL,
+            animation:"lps-spin 0.8s linear infinite",
+          }} />
+          <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center", lineHeight:1.6 }}>
+            {isFr ? "Photo IA · texte annonce · ~15-45 sec" : "AI photo · listing text · ~15–45 sec"}
+          </p>
+        </div>
+      )}
+
+      {!generating && generateError && !hasResult && (
+        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, fontSize:13, color:"#B91C1C" }}>
+          {generateError}
+        </div>
+      )}
+
+      {!generating && !generateError && !hasResult && (
+        <div style={{
+          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
+          display:"flex", flexDirection:"column", alignItems:"center", gap:12,
+        }}>
+          <div style={{
+            width:56, height:56, borderRadius:18,
+            background:`linear-gradient(135deg,${TEAL}22,${PEACH}22)`,
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}>
+            <Sparkles size={26} color={TEAL} />
+          </div>
+          <p style={{ margin:0, fontSize:12.5, color:"#9B9890", textAlign:"center" }}>
+            {isFr
+              ? "Appuie sur « Analyser avec l'IA » en bas de l'écran"
+              : "Tap "Analyse with AI" below to start"}
+          </p>
+        </div>
+      )}
+
+      {!generating && hasResult && (
+        <div style={{ background:"#fff", borderRadius:16, padding:18, border:"1px solid #ECEAE3" }}>
+          {(listing.titre || listing.platforms?.vinted?.title) && (
+            <div style={{ fontWeight:900, fontSize:16, color:"#111", marginBottom:10 }}>
+              {listing.titre || listing.platforms?.vinted?.title}
+            </div>
+          )}
+
+          {(listing.marque || listing.categorie) && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+              {listing.marque && (
+                <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F0FDF9", color:"#065F46", border:"1px solid #D1FAE5" }}>
+                  {listing.marque}
+                </span>
+              )}
+              {listing.categorie && (
+                <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F8FAFC", color:"#475569", border:"1px solid #E2E8F0" }}>
+                  {listing.categorie}
+                </span>
+              )}
+            </div>
+          )}
+
+          {listing.score != null && (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>
+                Deal score
+              </div>
+              <ScoreBar score={listing.score} />
+            </div>
+          )}
+
+          {(listing.fourchette_min != null || listing.fourchette_max != null || listing.prix_vente_suggere != null || price != null) && (
+            <div style={{ fontSize:13, color:"#374151", marginTop:listing.score != null ? 10 : 0 }}>
+              {isFr ? "Prix marché estimé :" : "Est. market price:"}{" "}
+              <strong style={{ color:"#111" }}>
+                {listing.fourchette_min != null && listing.fourchette_max != null
+                  ? `${listing.fourchette_min}–${listing.fourchette_max}€`
+                  : listing.prix_vente_suggere != null
+                    ? `${listing.prix_vente_suggere}€`
+                    : price != null ? `${price}€` : "—"}
+              </strong>
+            </div>
+          )}
+
+          {!listing.titre && !listing.marque && !listing.score && !listing.prix_vente_suggere && (
+            <div style={{ fontSize:13.5, color:"#374151", lineHeight:1.6 }}>
+              {isFr
+                ? "✅ Fiche générée pour toutes les plateformes. Passe à l'étape suivante pour publier."
+                : "✅ Listing generated for all platforms. Go to the next step to publish."}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Step 3 — Publier ──────────────────────────────────────────────────────────
+
+function StepPublish({ selected, setSelected, publishError, lang }) {
+  const isFr = lang !== "en";
+
+  return (
+    <div>
+      <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {isFr ? "Prêt à publier" : "Ready to publish"}
+      </h2>
+      <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {isFr
+          ? "La fiche est générée pour chaque plateforme. Désactive celles que tu ne veux pas."
+          : "The listing is generated for each platform. Disable the ones you don't want."}
+      </p>
+
+      {publishError && (
+        <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
+          {publishError}
+        </div>
+      )}
+
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {PLATFORMS_DEFAULT.map(p => {
+          const on = selected.has(p);
+          return (
+            <button
+              key={p}
+              onClick={() => setSelected(prev => {
+                const s = new Set(prev);
+                s.has(p) ? s.delete(p) : s.add(p);
+                return s;
+              })}
+              style={{
+                display:"flex", alignItems:"center", justifyContent:"space-between",
+                background:"#fff", borderRadius:14, padding:"14px 16px",
+                border: on ? `1.5px solid ${TEAL}` : "1px solid #ECEAE3",
+                cursor:"pointer", fontFamily:"inherit", textAlign:"left",
+                transition:"border 0.15s",
+              }}
+            >
+              {/* Texte — logos à swapper ici */}
+              <span style={{ fontWeight:800, fontSize:14, color: on ? "#111" : "#9B9890" }}>
+                {PLATFORM_LABELS[p]}
+              </span>
+
+              <div style={{
+                width:40, height:24, borderRadius:99,
+                background: on ? TEAL : "#E5E3DC",
+                display:"flex", alignItems:"center",
+                padding:3, transition:"background 0.2s", flexShrink:0,
+              }}>
+                <div style={{
+                  width:18, height:18, borderRadius:"50%", background:"#fff",
+                  marginLeft: on ? "auto" : 0,
+                  transition:"margin 0.2s",
+                  boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
+                }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+// Props: inventaireId, userId, initialPhotos?, supabase, lang, onClose
+export default function ListingPreviewScreen({ inventaireId, userId, initialPhotos = [], supabase, lang, onClose }) {
+  const [step, setStep]           = useState(0);
+  const [initializing, setInit]   = useState(true);
+
+  // Step 0
+  const [pickedFiles, setPickedFiles]         = useState([]);
+  const [pickedPreviews, setPickedPreviews]   = useState([]);
+  const [notes, setNotes]                     = useState("");
+  const [micActive, setMicActive]             = useState(false);
+  const [uploading, setUploading]             = useState(false);
+  const [uploadError, setUploadError]         = useState("");
+  const recognitionRef                        = useRef(null);
+
+  // Ready URLs
+  const [photos, setPhotos] = useState(initialPhotos);
+
+  // Step 1
+  const [photoOption, setPhotoOption] = useState("ia_multi");
+
+  // Step 2
+  const [generating, setGenerating]           = useState(false);
+  const [generateError, setGenerateError]     = useState("");
+  const [listing, setListing]                 = useState(null);
+  const [price, setPrice]                     = useState(null);
+  const [processedPhotos, setProcessedPhotos] = useState([]);
+  const [edited, setEdited]                   = useState({});
+
+  // Step 3
+  const [selected, setSelected]       = useState(new Set(PLATFORMS_DEFAULT));
+  const [publishing, setPublishing]   = useState(false);
+  const [publishError, setPublishError] = useState("");
+  const [done, setDone]               = useState(false);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // Pre-fetch prix_vente (fallback prix_achat) so price is available even if generate-listing times out
     supabase
       .from("inventaire")
-      .select("prix_vente, prix_achat")
+      .select("prix_vente,prix_achat")
       .eq("id", inventaireId)
       .single()
-      .then(({ data: item }) => {
-        const p = item?.prix_vente ?? item?.prix_achat ?? null;
+      .then(({ data }) => {
+        const p = data?.prix_vente ?? data?.prix_achat ?? null;
         if (p != null) setPrice(p);
       });
 
     if (initialPhotos.length > 0) {
       setPhotos(initialPhotos);
-      setStep("style-pick");
+      setStep(1);
+      setInit(false);
       return;
     }
-    // Query cross_post_jobs for any existing photos for this inventaire_id
+
     supabase
       .from("cross_post_jobs")
       .select("photos")
@@ -88,28 +533,47 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
             .filter(Boolean);
           if (urls.length > 0) {
             setPhotos(urls);
-            setStep("style-pick");
-            return;
+            setStep(1);
           }
         }
-        setStep("upload");
+        setInit(false);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Upload helpers ───────────────────────────────────────────────────────────
-  function onFilePick(e) {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    setPickedFiles(prev => [...prev, ...files]);
-    files.forEach(f => {
-      const url = URL.createObjectURL(f);
-      setPickedPreviews(prev => [...prev, url]);
-    });
-    e.target.value = "";
+  // ── Mic ───────────────────────────────────────────────────────────────────
+  function toggleMic() {
+    if (micActive) {
+      recognitionRef.current?.stop();
+      setMicActive(false);
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const r = new SR();
+    r.lang = lang === "en" ? "en-US" : "fr-FR";
+    r.continuous = false;
+    r.interimResults = false;
+    r.onresult = e => {
+      const text = e.results[0]?.[0]?.transcript ?? "";
+      setNotes(prev => (prev ? `${prev} ${text}` : text));
+    };
+    r.onend = () => setMicActive(false);
+    r.onerror = () => setMicActive(false);
+    recognitionRef.current = r;
+    r.start();
+    setMicActive(true);
   }
 
-  function removePicked(idx) {
+  // ── File helpers ──────────────────────────────────────────────────────────
+  function addFiles(files) {
+    const toAdd = files.slice(0, 5 - pickedFiles.length);
+    if (!toAdd.length) return;
+    setPickedFiles(prev => [...prev, ...toAdd]);
+    toAdd.forEach(f => setPickedPreviews(prev => [...prev, URL.createObjectURL(f)]));
+  }
+
+  function removeFile(idx) {
     setPickedFiles(prev => prev.filter((_, i) => i !== idx));
     setPickedPreviews(prev => {
       URL.revokeObjectURL(prev[idx]);
@@ -117,56 +581,67 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
     });
   }
 
-  async function handleUploadContinue() {
+  function compressImage(file, maxWidth = 1024, quality = 0.85) {
+    return new Promise(resolve => {
+      const img = new window.Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        const sc = Math.min(1, maxWidth / img.width);
+        c.width = img.width * sc;
+        c.height = img.height * sc;
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(b => resolve(b), "image/jpeg", quality);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  // ── Upload ────────────────────────────────────────────────────────────────
+  async function handleUpload() {
     if (!pickedFiles.length) return;
     setUploading(true);
-    setError("");
+    setUploadError("");
     try {
       const urls = [];
       const ts = Date.now();
       for (let i = 0; i < pickedFiles.length; i++) {
-        const f = pickedFiles[i];
-        const ext = f.type?.includes("png") ? "png" : "jpg";
-        const path = `${userId}/raw/${ts}_${i}.${ext}`;
+        const blob = await compressImage(pickedFiles[i]);
+        const path = `${userId}/raw/${ts}_${i}.jpg`;
         const { error: upErr } = await supabase.storage
           .from("listing-photos")
-          .upload(path, f, { contentType: f.type || "image/jpeg", upsert: true });
-        if (!upErr) {
+          .upload(path, blob, { contentType:"image/jpeg", upsert:true });
+        if (!upErr)
           urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
-        }
       }
       if (!urls.length) throw new Error(lang === "en" ? "Upload failed" : "Échec de l'upload");
       setPhotos(urls);
-      setStep("style-pick");
+      setStep(1);
     } catch (e) {
-      setError(e.message);
+      setUploadError(e.message);
     } finally {
       setUploading(false);
     }
   }
 
-  // ── Generate listing ─────────────────────────────────────────────────────────
-  async function handleGenerate(photoOptionOverride) {
-    const optionToUse = photoOptionOverride ?? photoOption;
-    if (photoOptionOverride) setPhotoOption(photoOptionOverride);
-    setStep("generating");
-    setError("");
-    setTimedOut(false);
+  // ── Generate ──────────────────────────────────────────────────────────────
+  async function handleGenerate() {
+    setGenerating(true);
+    setGenerateError("");
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
           inventaire_id: inventaireId,
           photos,
           platforms: PLATFORMS_DEFAULT,
-          photo_option: optionToUse,
+          photo_option: photoOption,
           price,
+          ...(notes ? { notes } : {}),
         },
       });
       if (fnErr) throw new Error(fnErr.message || "Erreur de génération");
       if (!data?.platforms) throw new Error(lang === "en" ? "No listings returned" : "Aucune annonce retournée");
 
       setProcessedPhotos(data.photos ?? []);
-      // Preserve pre-fetched price if edge function returns null (e.g. prix_vente not set in DB)
       setPrice(prev => data.price ?? prev);
 
       const initialEdited = {};
@@ -178,27 +653,19 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         };
       }
       setEdited(initialEdited);
-      setStep("review");
+      setListing(data);
     } catch (e) {
-      const isTimeout = optionToUse === "ia_multi" &&
-        /abort|timeout|failed to fetch|non-2xx/i.test(e.message ?? "");
-      if (isTimeout) {
-        setError(lang === "en"
-          ? "Generation timed out (6 AI photos takes time). Choose a faster option below."
-          : "Génération expirée (6 photos IA prend du temps). Choisis une option plus rapide.");
-        setTimedOut(true);
-      } else {
-        setError(e.message);
-      }
-      setStep("style-pick");
+      setGenerateError(e.message);
+    } finally {
+      setGenerating(false);
     }
   }
 
-  // ── Publish ──────────────────────────────────────────────────────────────────
+  // ── Publish ───────────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
-    setStep("publishing");
-    setError("");
+    setPublishing(true);
+    setPublishError("");
     try {
       const rows = [...selected].map(platform => ({
         user_id: userId,
@@ -208,464 +675,234 @@ export default function ListingPreviewScreen({ inventaireId, userId, initialPhot
         photo_option: photoOption,
         title: edited[platform]?.title ?? "",
         description: edited[platform]?.description ?? "",
-        price: price,
+        price,
         photos: processedPhotos,
         platform_fields: edited[platform]?.platform_fields ?? {},
       }));
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
       if (insErr) throw new Error(insErr.message);
-
-      // Persister les photos traitées sur l'article inventaire
       if (processedPhotos?.length) {
-        await supabase
-          .from("inventaire")
-          .update({ photos: processedPhotos })
-          .eq("id", inventaireId);
+        await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", inventaireId);
       }
-
-      setStep("done");
+      setDone(true);
     } catch (e) {
-      setError(e.message);
-      setStep("review");
+      setPublishError(e.message);
+      setPublishing(false);
     }
   }
 
-  function setField(platform, field, value) {
-    setEdited(prev => ({ ...prev, [platform]: { ...prev[platform], [field]: value } }));
+  // ── Nav helpers ───────────────────────────────────────────────────────────
+  const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;
+  const photoCount      = displayPreviews.length;
+  const isLocked        = generating || uploading || publishing;
+  // Hide back on step 1 when photos came from outside (initialPhotos / cross_post_jobs)
+  const canGoBack       = step > 0 && !(step === 1 && pickedFiles.length === 0 && photos.length > 0);
+
+  function ctaLabel() {
+    if (step === 0) {
+      if (uploading)      return lang === "en" ? "Uploading…" : "Upload en cours…";
+      if (photoCount === 0) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
+      return `${lang === "en" ? "Continue" : "Continuer"} · ${photoCount} photo${photoCount > 1 ? "s" : ""}`;
+    }
+    if (step === 1) return lang === "en" ? "Launch AI analysis" : "Lancer l'analyse IA";
+    if (step === 2) {
+      if (generating)                 return lang === "en" ? "Analysing…" : "Analyse en cours…";
+      if (generateError && !listing)  return lang === "en" ? "Retry" : "Réessayer";
+      if (listing)                    return lang === "en" ? "See the result" : "Voir le résultat";
+      return lang === "en" ? "Analyse with AI" : "Analyser avec l'IA";
+    }
+    if (step === 3) {
+      if (publishing) return lang === "en" ? "Publishing…" : "Publication en cours…";
+      const n = selected.size;
+      return `${lang === "en" ? "Publish on" : "Publier sur"} ${n} plateforme${n > 1 ? "s" : ""}`;
+    }
+    return "";
   }
 
-  function setPlatformField(platform, key, value) {
-    setEdited(prev => ({
-      ...prev,
-      [platform]: {
-        ...prev[platform],
-        platform_fields: { ...(prev[platform]?.platform_fields ?? {}), [key]: value },
-      },
-    }));
+  const ctaDisabled =
+    (step === 0 && (photoCount === 0 || uploading)) ||
+    (step === 2 && generating) ||
+    (step === 3 && (selected.size === 0 || publishing));
+
+  function handleNext() {
+    if (step === 0) { handleUpload(); return; }
+    if (step === 1) { setStep(2); return; }
+    if (step === 2) { listing ? setStep(3) : handleGenerate(); return; }
+    if (step === 3) { handlePublish(); }
   }
 
-  function displayUrl(photo) {
-    return photo.url || photo.enhanced || photo.bg_removed || photo.original || photo;
-  }
-
-  // ── Renders ──────────────────────────────────────────────────────────────────
-
-  if (step === "checking") return (
-    <div style={S.overlay}>
-      <div style={S.center}>
-        <div style={S.spinner} />
-      </div>
+  // ── Render: initializing ──────────────────────────────────────────────────
+  if (initializing) return (
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:BG, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{`@keyframes lps-spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${TEAL}33`, borderTopColor:TEAL, animation:"lps-spin 0.8s linear infinite" }} />
     </div>
   );
 
-  if (step === "done") return (
-    <div style={S.overlay}>
-      <style>{`@keyframes popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
-      <div style={S.center}>
-        <div style={{ fontSize:72, animation:"popIn 0.5s ease forwards" }}>✅</div>
-        <div style={{ fontSize:22, fontWeight:800, color:"#111827", textAlign:"center", marginTop:16 }}>
-          {lang === "en" ? "Listings sent!" : "Annonces envoyées !"}
-        </div>
-        <div style={{ fontSize:14, color:"#6B7280", textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
-          {lang === "en"
-            ? "Your Chrome extension will publish them automatically when you open it."
-            : "L'extension Chrome va les publier automatiquement dès que tu l'ouvres."}
-        </div>
-        <button onClick={onClose} style={{ ...S.primaryBtn("#6366F1"), marginTop:28 }}>
-          {lang === "en" ? "Done" : "Terminer"}
-        </button>
+  // ── Render: done ──────────────────────────────────────────────────────────
+  if (done) return (
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:BG, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 32px", fontFamily:"'Nunito',system-ui,sans-serif" }}>
+      <style>{`@keyframes lps-popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
+      <div style={{ fontSize:72, animation:"lps-popIn 0.5s ease forwards" }}>✅</div>
+      <div style={{ fontSize:22, fontWeight:900, color:"#111", textAlign:"center", marginTop:16 }}>
+        {lang === "en" ? "Listings sent!" : "Annonces envoyées !"}
       </div>
+      <div style={{ fontSize:14, color:"#6B6862", textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
+        {lang === "en"
+          ? "Your Chrome extension will publish them automatically when you open it."
+          : "L'extension Chrome va les publier automatiquement dès que tu l'ouvres."}
+      </div>
+      <button
+        onClick={onClose}
+        style={{
+          marginTop:28, padding:"14px 40px", borderRadius:16,
+          background:`linear-gradient(135deg,${TEAL},#2DD4BF)`,
+          color:"#fff", border:"none", fontSize:15, fontWeight:800,
+          cursor:"pointer", fontFamily:"inherit",
+          boxShadow:`0 8px 20px ${TEAL}55`,
+        }}
+      >
+        {lang === "en" ? "Done" : "Terminer"}
+      </button>
     </div>
   );
 
-  if (step === "upload") return (
-    <div style={S.overlay}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={S.header}>
-        <div style={{ fontSize:17, fontWeight:800, color:"#111827" }}>
-          {lang === "en" ? "Add photos" : "Ajouter des photos"}
-        </div>
-        <button onClick={onClose} style={S.closeBtn}>×</button>
-      </div>
-      <div style={{ overflowY:"auto", flex:1, padding:"20px" }}>
-        {error && <div style={S.errorBox}>{error}</div>}
-        {/* Photo grid */}
-        {pickedPreviews.length > 0 && (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
-            {pickedPreviews.map((url, i) => (
-              <div key={i} style={{ position:"relative", aspectRatio:"1", borderRadius:10, overflow:"hidden", background:"#F3F4F6" }}>
-                <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                <button onClick={() => removePicked(i)} style={{
-                  position:"absolute", top:4, right:4, width:20, height:20, borderRadius:"50%",
-                  background:"rgba(0,0,0,0.55)", border:"none", color:"#fff", fontSize:12,
-                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                  padding:0, lineHeight:1,
-                }}>×</button>
-              </div>
-            ))}
-            {/* Add more */}
-            <button onClick={() => fileRef.current?.click()} style={{
-              aspectRatio:"1", borderRadius:10, border:"2px dashed #E5E7EB",
-              background:"#F9FAFB", cursor:"pointer", display:"flex", alignItems:"center",
-              justifyContent:"center", fontSize:24, color:"#D1D5DB",
-            }}>+</button>
-          </div>
-        )}
-        {/* Empty state */}
-        {pickedPreviews.length === 0 && (
-          <button onClick={() => fileRef.current?.click()} style={{
-            width:"100%", aspectRatio:"4/3", borderRadius:16, border:"2px dashed #E5E7EB",
-            background:"#F9FAFB", cursor:"pointer", display:"flex", flexDirection:"column",
-            alignItems:"center", justifyContent:"center", gap:12,
-          }}>
-            <div style={{ fontSize:40 }}>📷</div>
-            <div style={{ fontSize:14, fontWeight:700, color:"#6B7280" }}>
-              {lang === "en" ? "Tap to add photos" : "Appuie pour ajouter des photos"}
-            </div>
-          </button>
-        )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          capture="environment"
-          style={{ display:"none" }}
-          onChange={onFilePick}
-        />
-      </div>
-      <div style={S.footer}>
-        <button
-          onClick={handleUploadContinue}
-          disabled={uploading || pickedFiles.length === 0}
-          style={{ ...S.primaryBtn("#6366F1"), opacity: uploading || pickedFiles.length === 0 ? 0.5 : 1 }}
-        >
-          {uploading ? (
-            <span style={S.spinRow}>
-              <span style={S.spinIcon} />
-              {lang === "en" ? "Uploading..." : "Upload en cours..."}
-            </span>
-          ) : (lang === "en" ? "Continue" : "Continuer")}
-        </button>
-      </div>
-    </div>
-  );
-
-  if (step === "style-pick") return (
-    <div style={S.overlay}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={S.header}>
-        <div style={{ fontSize:17, fontWeight:800, color:"#111827" }}>
-          {lang === "en" ? "Photo style" : "Style photos"}
-        </div>
-        <button onClick={onClose} style={S.closeBtn}>×</button>
-      </div>
-      <div style={{ overflowY:"auto", flex:1, padding:"20px" }}>
-        {error && <div style={S.errorBox}>{error}</div>}
-        {timedOut && (
-          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-            <button
-              onClick={() => handleGenerate("ia_simple")}
-              style={{ flex:1, padding:"10px 8px", borderRadius:12, border:"2px solid #6366F1",
-                background:"#EEF2FF", color:"#4F46E5", fontWeight:700, fontSize:13,
-                cursor:"pointer", fontFamily:"inherit" }}
-            >
-              {lang === "en" ? "🎨 Retry — 1 angle" : "🎨 Réessayer IA 1 angle"}
-            </button>
-            <button
-              onClick={() => handleGenerate("original")}
-              style={{ flex:1, padding:"10px 8px", borderRadius:12, border:"2px solid #D1D5DB",
-                background:"#F9FAFB", color:"#374151", fontWeight:700, fontSize:13,
-                cursor:"pointer", fontFamily:"inherit" }}
-            >
-              {lang === "en" ? "📸 Use originals" : "📸 Photos originales"}
-            </button>
-          </div>
-        )}
-        <div style={{ fontSize:13, color:"#6B7280", marginBottom:20, lineHeight:1.5 }}>
-          {lang === "en"
-            ? "Choose how your photos will be processed before generating listings."
-            : "Choisis comment tes photos seront retouchées avant de générer les annonces."}
-        </div>
-        {[
-          {
-            value:"ia_multi",
-            emoji:"✨",
-            label: lang === "en" ? "AI — 6 angles" : "IA — 6 angles",
-            desc: lang === "en" ? "Best quality. 6 shots generated by AI (front, close-up, logo, fabric, label, back)." : "Meilleure qualité. 6 visuels générés par IA (face, gros plan, logo, matière, étiquette, dos).",
-          },
-          {
-            value:"ia_simple",
-            emoji:"🎨",
-            label: lang === "en" ? "AI — 1 angle" : "IA — 1 angle",
-            desc: lang === "en" ? "Faster. One clean photo generated by AI from your original." : "Plus rapide. Un visuel propre généré par IA depuis ta photo originale.",
-          },
-          {
-            value:"original",
-            emoji:"📸",
-            label: lang === "en" ? "Keep originals" : "Photos originales",
-            desc: lang === "en" ? "No AI processing. Your photos are used as-is." : "Pas de retouche IA. Tes photos sont utilisées telles quelles.",
-          },
-        ].map(opt => {
-          const active = photoOption === opt.value;
-          return (
-            <button key={opt.value} onClick={() => setPhotoOption(opt.value)} style={{
-              width:"100%", padding:"14px 16px", borderRadius:14,
-              border: `2px solid ${active ? "#6366F1" : "#E5E7EB"}`,
-              background: active ? "#EEF2FF" : "#fff",
-              cursor:"pointer", textAlign:"left", marginBottom:10,
-              fontFamily:"inherit",
-            }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:22 }}>{opt.emoji}</span>
-                <div>
-                  <div style={{ fontSize:14, fontWeight:800, color: active ? "#4F46E5" : "#111827" }}>{opt.label}</div>
-                  <div style={{ fontSize:12, color:"#6B7280", marginTop:2, lineHeight:1.45 }}>{opt.desc}</div>
-                </div>
-                <div style={{ marginLeft:"auto", width:18, height:18, borderRadius:"50%", border:`2px solid ${active ? "#6366F1" : "#D1D5DB"}`, background: active ? "#6366F1" : "#fff", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                  {active && <div style={{ width:7, height:7, borderRadius:"50%", background:"#fff" }} />}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      <div style={S.footer}>
-        <button onClick={() => handleGenerate()} style={S.primaryBtn("#6366F1")}>
-          {lang === "en" ? "Generate listings →" : "Générer les annonces →"}
-        </button>
-      </div>
-    </div>
-  );
-
-  if (step === "generating") return (
-    <div style={S.overlay}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={S.center}>
-        <div style={S.spinner} />
-        <div style={{ color:"#111827", fontWeight:800, fontSize:18, marginTop:20, textAlign:"center" }}>
-          {lang === "en" ? "Generating your listings..." : "Génération de tes annonces..."}
-        </div>
-        <div style={{ color:"#6B7280", fontSize:13, marginTop:8, textAlign:"center", lineHeight:1.6 }}>
-          {photoOption === "ia_multi"
-            ? (lang === "en" ? "AI photo · 6 angles · listing text\n~30-45 sec" : "Photo IA · 6 angles · texte annonce\n~30-45 sec")
-            : photoOption === "ia_simple"
-            ? (lang === "en" ? "AI photo · listing text\n~15-25 sec" : "Photo IA · texte annonce\n~15-25 sec")
-            : (lang === "en" ? "Generating listing text\n~10 sec" : "Génération du texte\n~10 sec")}
-        </div>
-      </div>
-    </div>
-  );
-
-  if (step === "publishing") return (
-    <div style={S.overlay}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={S.center}>
-        <div style={S.spinner} />
-        <div style={{ color:"#111827", fontWeight:800, fontSize:16, marginTop:20 }}>
-          {lang === "en" ? "Saving listings..." : "Enregistrement..."}
-        </div>
-      </div>
-    </div>
-  );
-
-  // ── Review step ──────────────────────────────────────────────────────────────
+  // ── Render: stepper shell ─────────────────────────────────────────────────
   return (
-    <div style={S.overlay}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={S.header}>
-        <div style={{ fontSize:17, fontWeight:800, color:"#111827" }}>
-          {lang === "en" ? "Ready to publish" : "Prêt à publier"}
+    <div style={{
+      position:"fixed", inset:0, zIndex:9999, background:BG,
+      display:"flex", flexDirection:"column",
+      fontFamily:"'Nunito',system-ui,sans-serif",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap');
+        * { box-sizing: border-box; }
+        @keyframes lps-spin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px 0", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ width:28, height:28, borderRadius:8, background:`linear-gradient(135deg,${TEAL},${PEACH})` }} />
+          <span style={{ fontWeight:900, fontStyle:"italic", fontSize:17, color:"#111" }}>FillSell</span>
         </div>
-        <button onClick={onClose} style={S.closeBtn}>×</button>
+        <button
+          onClick={onClose}
+          style={{ background:"none", border:"none", fontSize:24, color:"#9B9890", cursor:"pointer", padding:"0 4px", lineHeight:1 }}
+        >×</button>
       </div>
 
-      <div style={{ overflowY:"auto", flex:1 }}>
-        {error && <div style={{ padding:"0 20px", marginTop:12 }}><div style={S.errorBox}>{error}</div></div>}
-
-        {/* Photo carousel */}
-        {processedPhotos.length > 0 && (
-          <div style={{ position:"relative" }}>
-            <div style={{ display:"flex", overflowX:"auto", scrollSnapType:"x mandatory", WebkitOverflowScrolling:"touch" }}>
-              {processedPhotos.map((p, i) => (
-                <div key={i} style={{ flexShrink:0, width:"100%", aspectRatio:"1", scrollSnapAlign:"start", background:"#F3F4F6", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                  <img src={displayUrl(p)} alt="" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
-                </div>
-              ))}
-            </div>
-            {processedPhotos.length > 1 && (
-              <div style={{ position:"absolute", bottom:8, left:0, right:0, display:"flex", justifyContent:"center", gap:5 }}>
-                {processedPhotos.map((_, i) => (
-                  <div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"rgba(0,0,0,0.3)" }} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Platform checkboxes */}
-        <div style={{ padding:"16px 20px 8px" }}>
-          <div style={S.sectionLabel}>{lang === "en" ? "Publish on" : "Publier sur"}</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
-            {PLATFORMS_DEFAULT.map(p => {
-              const on = selected.has(p);
-              const color = primaryColor(p);
-              return (
-                <button key={p} onClick={() => setSelected(prev => { const s = new Set(prev); s.has(p) ? s.delete(p) : s.add(p); return s; })} style={{
-                  display:"flex", alignItems:"center", gap:7,
-                  padding:"7px 13px", borderRadius:20, cursor:"pointer", fontFamily:"inherit",
-                  fontSize:13, fontWeight:700,
-                  border:`2px solid ${on ? color : "#E5E7EB"}`,
-                  background: on ? `${color}15` : "#fff",
-                  color: on ? color : "#9CA3AF",
-                }}>
-                  <span style={{
-                    width:14, height:14, borderRadius:3, flexShrink:0,
-                    border:`2px solid ${on ? color : "#D1D5DB"}`,
-                    background: on ? color : "#fff",
-                    display:"inline-flex", alignItems:"center", justifyContent:"center",
-                  }}>
-                    {on && <span style={{ width:6, height:6, borderRadius:1, background:"#fff" }} />}
-                  </span>
-                  {PLATFORM_LABELS[p] ?? p}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Platform tabs */}
-        <div style={{ display:"flex", overflowX:"auto", padding:"0 20px", gap:4, borderBottom:"1px solid #F3F4F6" }}>
-          {PLATFORMS_DEFAULT.map(p => {
-            const active = activePlatform === p;
-            const color = primaryColor(p);
+      {/* Stepper */}
+      <div style={{ padding:"16px 20px 6px", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center" }}>
+          {STEPS.map((s, i) => {
+            const { Icon } = s;
+            const state = i < step ? "done" : i === step ? "current" : "upcoming";
             return (
-              <button key={p} onClick={() => setActivePlatform(p)} style={{
-                flexShrink:0, padding:"10px 14px", background:"none", cursor:"pointer", fontFamily:"inherit",
-                border:"none", borderBottom: active ? `2px solid ${color}` : "2px solid transparent",
-                color: active ? color : "#9CA3AF",
-                fontWeight:700, fontSize:13, marginBottom:-1,
-              }}>
-                {PLATFORM_LABELS[p] ?? p}
-              </button>
+              <Fragment key={s.id}>
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
+                  <div style={{
+                    width:34, height:34, borderRadius:"50%",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    background: state === "upcoming" ? "#E5E3DC" : `linear-gradient(135deg,${TEAL},${PEACH})`,
+                    color: state === "upcoming" ? "#9B9890" : "#fff",
+                    boxShadow: state === "current" ? `0 0 0 4px ${TEAL}33` : "none",
+                    transition:"all 0.2s",
+                  }}>
+                    {state === "done"
+                      ? <Check size={16} strokeWidth={3} />
+                      : <Icon size={15} strokeWidth={2.5} />}
+                  </div>
+                  <span style={{ fontSize:10, fontWeight:800, color: state === "upcoming" ? "#9B9890" : "#111" }}>
+                    {s.label}
+                  </span>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div style={{
+                    flex:1, height:2, marginBottom:16,
+                    background: i < step ? `linear-gradient(90deg,${TEAL},${PEACH})` : "#E5E3DC",
+                    borderRadius:2,
+                  }} />
+                )}
+              </Fragment>
             );
           })}
         </div>
-
-        {/* Editable fields */}
-        <div style={{ padding:"16px 20px" }}>
-          <div style={{ marginBottom:14 }}>
-            <label style={S.fieldLabel}>{lang === "en" ? "Title" : "Titre"}</label>
-            <input
-              value={edited[activePlatform]?.title ?? ""}
-              onChange={e => setField(activePlatform, "title", e.target.value)}
-              style={S.input}
-            />
-          </div>
-          <div style={{ marginBottom:14 }}>
-            <label style={S.fieldLabel}>{lang === "en" ? "Description" : "Description"}</label>
-            <textarea
-              value={edited[activePlatform]?.description ?? ""}
-              onChange={e => setField(activePlatform, "description", e.target.value)}
-              rows={6}
-              style={{ ...S.input, resize:"vertical", lineHeight:1.55 }}
-            />
-          </div>
-          <div style={{ marginBottom:14 }}>
-            <label style={S.fieldLabel}>{lang === "en" ? "Price (€)" : "Prix de vente (€)"}</label>
-            <input
-              type="number"
-              value={price ?? ""}
-              onChange={e => setPrice(e.target.value === "" ? null : Number(e.target.value))}
-              placeholder={lang === "en" ? "Sale price" : "Prix de vente"}
-              style={{ ...S.input, width:120 }}
-            />
-          </div>
-          {/* Platform-specific fields inferred by AI */}
-          {Object.entries(edited[activePlatform]?.platform_fields ?? {})
-            .filter(([, v]) => v !== null && v !== "null" && v !== "")
-            .map(([key, val]) => {
-              const lbl = FIELD_LABELS[key]?.[lang] ?? key;
-              return (
-                <div key={key} style={{ marginBottom:10 }}>
-                  <label style={S.fieldLabel}>{lbl}</label>
-                  <input
-                    value={val ?? ""}
-                    onChange={e => setPlatformField(activePlatform, key, e.target.value)}
-                    style={S.input}
-                  />
-                </div>
-              );
-            })}
-        </div>
       </div>
 
-      {/* Publish button */}
-      <div style={S.footer}>
+      {/* Content */}
+      <div style={{ flex:1, overflowY:"auto", padding:"16px 20px 8px" }}>
+        {step === 0 && (
+          <StepPhotos
+            previews={displayPreviews}
+            removable={pickedPreviews.length > 0}
+            onAdd={addFiles}
+            onRemove={removeFile}
+            notes={notes}
+            setNotes={setNotes}
+            micActive={micActive}
+            toggleMic={toggleMic}
+            error={uploadError}
+            lang={lang}
+          />
+        )}
+        {step === 1 && (
+          <StepStyle photoOption={photoOption} setPhotoOption={setPhotoOption} lang={lang} />
+        )}
+        {step === 2 && (
+          <StepAnalyse
+            generating={generating}
+            generateError={generateError}
+            listing={listing}
+            price={price}
+            lang={lang}
+          />
+        )}
+        {step === 3 && (
+          <StepPublish
+            selected={selected}
+            setSelected={setSelected}
+            publishError={publishError}
+            lang={lang}
+          />
+        )}
+      </div>
+
+      {/* Footer nav */}
+      <div style={{ padding:"8px 20px 28px", display:"flex", gap:10, flexShrink:0 }}>
+        {canGoBack && (
+          <button
+            onClick={() => !isLocked && setStep(s => s - 1)}
+            disabled={isLocked}
+            style={{
+              flex:"0 0 52px", height:52, borderRadius:16,
+              background:"#fff", border:"1px solid #E5E3DC",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              cursor: isLocked ? "not-allowed" : "pointer",
+              opacity: isLocked ? 0.4 : 1, transition:"opacity 0.15s",
+            }}
+          >
+            <ChevronLeft size={20} color="#111" />
+          </button>
+        )}
         <button
-          onClick={handlePublish}
-          disabled={selected.size === 0}
-          style={{ ...S.primaryBtn("#6366F1"), opacity: selected.size === 0 ? 0.5 : 1 }}
+          onClick={handleNext}
+          disabled={ctaDisabled}
+          style={{
+            flex:1, height:52, borderRadius:16, border:"none",
+            background: ctaDisabled ? "#D9D6CC" : `linear-gradient(135deg,${TEAL},#2DD4BF)`,
+            color:"#fff", fontWeight:800, fontSize:15, fontFamily:"inherit",
+            cursor: ctaDisabled ? "not-allowed" : "pointer",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            boxShadow: ctaDisabled ? "none" : `0 8px 20px ${TEAL}55`,
+            transition:"background 0.2s, box-shadow 0.2s",
+          }}
         >
-          {`${lang === "en" ? "Publish on" : "Publier sur"} ${selected.size} plateforme${selected.size > 1 ? "s" : ""} →`}
+          {ctaLabel()}
+          {!ctaDisabled && step < 3 && !generating && !uploading && <ChevronRight size={18} />}
+          {!ctaDisabled && step === 3 && !publishing && <Send size={16} />}
         </button>
       </div>
     </div>
   );
 }
-
-const S = {
-  overlay: {
-    position:"fixed", inset:0, zIndex:9999, background:"#fff",
-    display:"flex", flexDirection:"column",
-  },
-  center: {
-    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-    flex:1, padding:"0 32px",
-  },
-  spinner: {
-    width:44, height:44,
-    border:"4px solid rgba(0,0,0,0.1)", borderTopColor:"#6366F1",
-    borderRadius:"50%", animation:"spin 0.8s linear infinite",
-  },
-  spinIcon: {
-    width:18, height:18,
-    border:"3px solid rgba(255,255,255,0.4)", borderTopColor:"#fff",
-    borderRadius:"50%", display:"inline-block", animation:"spin 0.8s linear infinite",
-  },
-  spinRow: { display:"flex", alignItems:"center", justifyContent:"center", gap:10 },
-  header: {
-    display:"flex", alignItems:"center", justifyContent:"space-between",
-    padding:"16px 20px 12px", borderBottom:"1px solid #F3F4F6", flexShrink:0,
-  },
-  closeBtn: {
-    background:"none", border:"none", fontSize:24, color:"#9CA3AF",
-    cursor:"pointer", padding:"0 4px", lineHeight:1, fontFamily:"inherit",
-  },
-  sectionLabel: {
-    fontSize:11, fontWeight:700, color:"#6B7280",
-    textTransform:"uppercase", letterSpacing:"0.06em",
-  },
-  fieldLabel: {
-    display:"block", fontSize:11, fontWeight:700, color:"#6B7280",
-    textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:7,
-  },
-  input: {
-    width:"100%", padding:"10px 13px", border:"1.5px solid #E5E7EB",
-    borderRadius:10, fontSize:14, fontFamily:"inherit", color:"#111827",
-    outline:"none", boxSizing:"border-box", background:"#fff",
-  },
-  footer: {
-    padding:"12px 20px 20px", borderTop:"1px solid #F3F4F6",
-    background:"#fff", flexShrink:0,
-  },
-  primaryBtn: (color) => ({
-    width:"100%", padding:15, background:color, color:"#fff",
-    border:"none", borderRadius:13, fontSize:15, fontWeight:800,
-    cursor:"pointer", fontFamily:"inherit",
-  }),
-  errorBox: {
-    padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA",
-    borderRadius:10, fontSize:13, color:"#B91C1C",
-  },
-};
