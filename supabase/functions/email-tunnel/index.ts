@@ -242,8 +242,8 @@ function welcomeHtml(lang: string): string {
 
 function founderHtml(lang: string, premiumCount: number): string {
   const isFr = lang !== "en";
-  const hasSpots = premiumCount < 50;
-  const spotsLeft = Math.max(0, 50 - premiumCount);
+  const hasSpots = premiumCount < 20;
+  const spotsLeft = Math.max(0, 20 - premiumCount);
 
   const badge = isFr
     ? (hasSpots
@@ -525,12 +525,13 @@ serve(async (req) => {
   );
   const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
 
-  // ── Premium count for Founder spots text ──────────────────────────────────
-  const { count: premiumCount } = await supabase
-    .from("profiles")
-    .select("*", { count: "exact", head: true })
-    .eq("is_premium", true);
-  const founderPremiumCount = premiumCount ?? 0;
+  // ── Founder slots (même source que l'app : founder_config.slots_used) ──────
+  const { data: fcData } = await supabase
+    .from("founder_config")
+    .select("slots_used")
+    .eq("id", 1)
+    .single();
+  const founderPremiumCount = fcData?.slots_used ?? 0;
 
   // ── Date windows (UTC) ────────────────────────────────────────────────────
   const now = new Date();
