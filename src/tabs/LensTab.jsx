@@ -482,7 +482,7 @@ const LensTab = memo(function LensTab({
 
   if (showListingPreview && lensListingInvId) {
     return (
-      <div style={{ margin:"-18px -14px" }}>
+      <div style={{ width:"100%" }}>
         <ListingPreviewScreen
           inventaireId={lensListingInvId}
           userId={user.id}

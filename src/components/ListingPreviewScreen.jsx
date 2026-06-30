@@ -1090,7 +1090,7 @@ export default function ListingPreviewScreen({
   // ── Render: stepper shell ─────────────────────────────────────────────────
   return (
     <div style={{
-      display:"flex", flexDirection:"column",
+      display:"flex", flexDirection:"column", width:"100%",
       background:BG, fontFamily:"'Nunito',system-ui,sans-serif",
     }}>
       <style>{`
