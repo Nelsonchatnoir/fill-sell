@@ -480,6 +480,24 @@ const LensTab = memo(function LensTab({
     }
   }
 
+  if (showListingPreview && lensListingInvId) {
+    return (
+      <ListingPreviewScreen
+        inventaireId={lensListingInvId}
+        userId={user.id}
+        initialPhotos={lensListingPhotos}
+        initialListing={lensResult}
+        onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
+        supabase={supabase}
+        lang={lang}
+        isPremium={isPremium}
+        isPro={isPro}
+        founderSpotsLeft={slotsRemaining}
+        onUpgrade={openUpgradeModal}
+      />
+    );
+  }
+
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
@@ -687,20 +705,6 @@ const LensTab = memo(function LensTab({
         </div>
       )}
 
-      {showListingPreview&&lensListingInvId&&(
-        <ListingPreviewScreen
-          inventaireId={lensListingInvId}
-          userId={user.id}
-          initialPhotos={lensListingPhotos}
-          onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
-          supabase={supabase}
-          lang={lang}
-          isPremium={isPremium}
-          isPro={isPro}
-          founderSpotsLeft={slotsRemaining}
-          onUpgrade={openUpgradeModal}
-        />
-      )}
     </div>
   );
 });

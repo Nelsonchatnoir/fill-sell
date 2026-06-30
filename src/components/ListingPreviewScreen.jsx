@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
-import { Camera, Wand2, Sparkles, Send, Check, ChevronLeft, ChevronRight, Mic } from "lucide-react";
+import { Camera, Wand2, Send, Check, ChevronLeft, ChevronRight, Mic, TrendingUp, Images, Zap } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 
 const TEAL  = "#3EACA0";
@@ -10,13 +10,15 @@ const PLATFORM_LABELS   = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
 const STEPS = [
-  { id:0, label:"Photos",  Icon:Camera   },
-  { id:1, label:"Style",   Icon:Wand2    },
-  { id:2, label:"Analyse", Icon:Sparkles },
-  { id:3, label:"Publier", Icon:Send     },
+  { id:0, label:"Upload",     Icon:Camera     },
+  { id:1, label:"Deal",       Icon:TrendingUp },
+  { id:2, label:"Photos",     Icon:Images     },
+  { id:3, label:"Style",      Icon:Wand2      },
+  { id:4, label:"Génération", Icon:Zap        },
+  { id:5, label:"Publier",    Icon:Send       },
 ];
 
-// ── QuotaLimitModal — Pro coins stub (future) ─────────────────────────────────
+// ── QuotaLimitModal ───────────────────────────────────────────────────────────
 
 function QuotaLimitModal({ onClose, lang }) {
   const isFr = lang !== "en";
@@ -93,9 +95,9 @@ function ScoreBar({ score }) {
   );
 }
 
-// ── Step 0 — Photos ───────────────────────────────────────────────────────────
+// ── Step 0 — Upload ───────────────────────────────────────────────────────────
 
-function StepPhotos({ previews, removable, onAdd, onRemove, notes, setNotes, micActive, toggleMic, error, lang }) {
+function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, micActive, toggleMic, error, lang }) {
   const fileRef = useRef();
   const count = previews.length;
   const MAX = 5;
@@ -227,7 +229,170 @@ function StepPhotos({ previews, removable, onAdd, onRemove, notes, setNotes, mic
   );
 }
 
-// ── Step 1 — Style ────────────────────────────────────────────────────────────
+// ── Step 1 — Deal ─────────────────────────────────────────────────────────────
+
+function StepDeal({ listing, price, lang }) {
+  const isFr = lang !== "en";
+
+  if (!listing) {
+    return (
+      <div>
+        <Eyebrow n="2" label="Deal" />
+        <h2 style={{ margin:"4px 0 16px", fontSize:20, fontWeight:900, color:"#111" }}>
+          {isFr ? "Résultat de l'analyse" : "Analysis result"}
+        </h2>
+        <div style={{
+          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
+          display:"flex", flexDirection:"column", alignItems:"center", gap:12,
+        }}>
+          <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center" }}>
+            {isFr ? "Aucune analyse disponible." : "No analysis available."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <Eyebrow n="2" label="Deal" />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {isFr ? "Résultat de ton scan" : "Your scan result"}
+      </h2>
+      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {isFr
+          ? "Résumé de l'analyse Lens. Appuie sur Continuer pour créer ton annonce."
+          : "Lens analysis summary. Tap Continue to create your listing."}
+      </p>
+
+      <div style={{ background:"#fff", borderRadius:16, padding:18, border:"1px solid #ECEAE3" }}>
+        {listing.titre && (
+          <div style={{ fontWeight:900, fontSize:16, color:"#111", marginBottom:10 }}>
+            {listing.titre}
+          </div>
+        )}
+
+        {(listing.marque || listing.categorie || listing.etat_estime) && (
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+            {listing.marque && (
+              <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F0FDF9", color:"#065F46", border:"1px solid #D1FAE5" }}>
+                {listing.marque}
+              </span>
+            )}
+            {listing.categorie && (
+              <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F8FAFC", color:"#475569", border:"1px solid #E2E8F0" }}>
+                {listing.categorie}
+              </span>
+            )}
+            {listing.etat_estime && (
+              <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE" }}>
+                {listing.etat_estime}
+              </span>
+            )}
+          </div>
+        )}
+
+        {listing.score != null && (
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>
+              Deal score
+            </div>
+            <ScoreBar score={listing.score} />
+          </div>
+        )}
+
+        {(listing.prix_vente_suggere != null || listing.fourchette_min != null || price != null) && (
+          <div style={{ fontSize:13, color:"#374151" }}>
+            {isFr ? "Prix conseillé :" : "Suggested price:"}{" "}
+            <strong style={{ color:"#111" }}>
+              {listing.prix_vente_suggere != null
+                ? `${listing.prix_vente_suggere}€`
+                : listing.fourchette_min != null && listing.fourchette_max != null
+                  ? `${listing.fourchette_min}–${listing.fourchette_max}€`
+                  : price != null ? `${price}€` : "—"}
+            </strong>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 2 — Photos review + platform picker ──────────────────────────────────
+
+function StepPhotosReview({ photos, selected, setSelected, lang }) {
+  const isFr = lang !== "en";
+
+  return (
+    <div>
+      <Eyebrow n="3" label={isFr ? "Photos & plateformes" : "Photos & platforms"} />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {isFr ? "Revois tes photos" : "Review your photos"}
+      </h2>
+      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {isFr
+          ? "Vérifie tes photos et choisis les plateformes."
+          : "Check your photos and choose the platforms."}
+      </p>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+        {photos.map((url, i) => (
+          <div
+            key={i}
+            style={{ aspectRatio:"1", borderRadius:14, overflow:"hidden", border:`2px solid ${TEAL}` }}
+          >
+            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
+        {isFr ? "Plateformes" : "Platforms"}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {PLATFORMS_DEFAULT.map(p => {
+          const on = selected.has(p);
+          return (
+            <button
+              key={p}
+              onClick={() => setSelected(prev => {
+                const s = new Set(prev);
+                s.has(p) ? s.delete(p) : s.add(p);
+                return s;
+              })}
+              style={{
+                display:"flex", alignItems:"center", justifyContent:"space-between",
+                background:"#fff", borderRadius:14, padding:"14px 16px",
+                border: on ? `1.5px solid ${TEAL}` : "1px solid #ECEAE3",
+                cursor:"pointer", fontFamily:"inherit", textAlign:"left",
+                transition:"border 0.15s",
+              }}
+            >
+              <span style={{ fontWeight:800, fontSize:14, color: on ? "#111" : "#9B9890" }}>
+                {PLATFORM_LABELS[p]}
+              </span>
+              <div style={{
+                width:40, height:24, borderRadius:99,
+                background: on ? TEAL : "#E5E3DC",
+                display:"flex", alignItems:"center",
+                padding:3, transition:"background 0.2s", flexShrink:0,
+              }}>
+                <div style={{
+                  width:18, height:18, borderRadius:"50%", background:"#fff",
+                  marginLeft: on ? "auto" : 0,
+                  transition:"margin 0.2s",
+                  boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
+                }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 3 — Style ────────────────────────────────────────────────────────────
 
 function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, lang }) {
   const isFr = lang !== "en";
@@ -261,7 +426,7 @@ function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, l
 
   return (
     <div>
-      <Eyebrow n="2" label={isFr ? "Style de retouche" : "Retouch style"} />
+      <Eyebrow n="4" label={isFr ? "Style de retouche" : "Retouch style"} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
         {isFr ? "Choisis le rendu" : "Choose the render"}
       </h2>
@@ -324,144 +489,20 @@ function StepStyle({ photoOption, setPhotoOption, isPremium, isPro, onLockTap, l
   );
 }
 
-// ── Step 2 — Analyse ──────────────────────────────────────────────────────────
+// ── Step 4 — Génération ───────────────────────────────────────────────────────
 
-function StepAnalyse({ generating, generateError, listing, price, lang }) {
-  const isFr = lang !== "en";
-  const hasResult = listing !== null;
-
-  return (
-    <div>
-      <Eyebrow n="3" label={isFr ? "Analyse IA" : "AI analysis"} />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {generating
-          ? (isFr ? "Analyse en cours…" : "Analysing…")
-          : hasResult
-            ? (isFr ? "Analyse terminée" : "Analysis done")
-            : (isFr ? "Prêt à analyser" : "Ready to analyse")}
-      </h2>
-      <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {hasResult
-          ? (isFr ? "Voici ce que l'IA a détecté sur ton article." : "Here's what the AI detected on your item.")
-          : (isFr
-              ? "L'IA va estimer le prix et scorer ton article."
-              : "The AI will estimate the price and score your item.")}
-      </p>
-
-      {generating && (
-        <div style={{
-          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
-          display:"flex", flexDirection:"column", alignItems:"center", gap:16,
-        }}>
-          <div style={{
-            width:48, height:48, borderRadius:"50%",
-            border:`4px solid ${TEAL}33`, borderTopColor:TEAL,
-            animation:"lps-spin 0.8s linear infinite",
-          }} />
-          <p style={{ margin:0, fontSize:13, color:"#9B9890", textAlign:"center", lineHeight:1.6 }}>
-            {isFr ? "Identification · prix marché · score · ~15-45 sec" : "Identification · market price · score · ~15–45 sec"}
-          </p>
-        </div>
-      )}
-
-      {!generating && generateError && !hasResult && (
-        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, fontSize:13, color:"#B91C1C" }}>
-          {generateError}
-        </div>
-      )}
-
-      {!generating && !generateError && !hasResult && (
-        <div style={{
-          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
-          display:"flex", flexDirection:"column", alignItems:"center", gap:12,
-        }}>
-          <div style={{
-            width:56, height:56, borderRadius:18,
-            background:`linear-gradient(135deg,${TEAL}22,${PEACH}22)`,
-            display:"flex", alignItems:"center", justifyContent:"center",
-          }}>
-            <Sparkles size={26} color={TEAL} />
-          </div>
-          <p style={{ margin:0, fontSize:12.5, color:"#9B9890", textAlign:"center" }}>
-            {isFr
-              ? "Appuie sur « Analyser avec l'IA » en bas de l'écran"
-              : 'Tap "Analyse with AI" below to start'}
-          </p>
-        </div>
-      )}
-
-      {!generating && hasResult && (
-        <div style={{ background:"#fff", borderRadius:16, padding:18, border:"1px solid #ECEAE3" }}>
-          {listing.titre && (
-            <div style={{ fontWeight:900, fontSize:16, color:"#111", marginBottom:10 }}>
-              {listing.titre}
-            </div>
-          )}
-
-          {(listing.marque || listing.categorie) && (
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
-              {listing.marque && (
-                <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F0FDF9", color:"#065F46", border:"1px solid #D1FAE5" }}>
-                  {listing.marque}
-                </span>
-              )}
-              {listing.categorie && (
-                <span style={{ fontSize:11.5, fontWeight:700, padding:"4px 10px", borderRadius:999, background:"#F8FAFC", color:"#475569", border:"1px solid #E2E8F0" }}>
-                  {listing.categorie}
-                </span>
-              )}
-            </div>
-          )}
-
-          {listing.score != null && (
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>
-                Deal score
-              </div>
-              <ScoreBar score={listing.score} />
-            </div>
-          )}
-
-          {(listing.fourchette_min != null || listing.fourchette_max != null || listing.prix_vente_suggere != null || price != null) && (
-            <div style={{ fontSize:13, color:"#374151", marginTop:listing.score != null ? 10 : 0 }}>
-              {isFr ? "Prix marché estimé :" : "Est. market price:"}{" "}
-              <strong style={{ color:"#111" }}>
-                {listing.fourchette_min != null && listing.fourchette_max != null
-                  ? `${listing.fourchette_min}–${listing.fourchette_max}€`
-                  : listing.prix_vente_suggere != null
-                    ? `${listing.prix_vente_suggere}€`
-                    : price != null ? `${price}€` : "—"}
-              </strong>
-            </div>
-          )}
-
-          {!listing.titre && !listing.marque && !listing.score && !listing.prix_vente_suggere && (
-            <div style={{ fontSize:13.5, color:"#374151", lineHeight:1.6 }}>
-              {isFr
-                ? "✅ Analyse terminée. Passe à l'étape suivante pour publier."
-                : "✅ Analysis done. Go to the next step to publish."}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Step 3 — Publier ──────────────────────────────────────────────────────────
-
-function StepPublish({ selected, setSelected, publishError, generatingPlatforms, platformError, onRetryPlatforms, lang }) {
+function StepGeneration({ generating, generateError, platformListings, selected, onRetry, lang }) {
   const isFr = lang !== "en";
 
-  if (generatingPlatforms) {
+  if (generating || (!platformListings && !generateError)) {
     return (
       <div>
-        <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+        <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
         <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
           {isFr ? "Génération des annonces…" : "Generating listings…"}
         </h2>
         <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-          {isFr ? "L'IA prépare le texte pour chaque plateforme." : "AI is preparing the text for each platform."}
+          {isFr ? "L'IA prépare le texte pour chaque plateforme." : "AI is preparing text for each platform."}
         </p>
         <div style={{
           background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
@@ -480,18 +521,18 @@ function StepPublish({ selected, setSelected, publishError, generatingPlatforms,
     );
   }
 
-  if (platformError) {
+  if (generateError && !platformListings) {
     return (
       <div>
-        <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+        <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
         <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
           {isFr ? "Erreur de génération" : "Generation error"}
         </h2>
         <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, fontSize:13, color:"#B91C1C", marginBottom:14 }}>
-          {platformError}
+          {generateError}
         </div>
         <button
-          onClick={onRetryPlatforms}
+          onClick={onRetry}
           style={{
             width:"100%", padding:"12px", borderRadius:12,
             border:`1.5px solid ${TEAL}`, background:"#fff",
@@ -505,16 +546,50 @@ function StepPublish({ selected, setSelected, publishError, generatingPlatforms,
     );
   }
 
+  const platforms = [...selected].filter(p => platformListings[p]);
   return (
     <div>
-      <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+      <Eyebrow n="5" label={isFr ? "Génération" : "Generation"} />
+      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        {isFr ? "Annonces générées ✅" : "Listings generated ✅"}
+      </h2>
+      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+        {isFr
+          ? `${platforms.length} annonce${platforms.length > 1 ? "s" : ""} prête${platforms.length > 1 ? "s" : ""} à publier.`
+          : `${platforms.length} listing${platforms.length > 1 ? "s" : ""} ready to publish.`}
+      </p>
+      <div style={{ background:"#fff", borderRadius:14, padding:16, border:"1px solid #ECEAE3", display:"flex", flexDirection:"column", gap:10 }}>
+        {platforms.map(p => (
+          <div key={p} style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <Check size={16} color="#16A34A" strokeWidth={3} />
+            <span style={{ fontSize:14, fontWeight:700, color:"#111", flexShrink:0 }}>{PLATFORM_LABELS[p]}</span>
+            {platformListings[p]?.title && (
+              <span style={{ fontSize:12, color:"#9B9890", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                — {platformListings[p].title}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 5 — Publier ──────────────────────────────────────────────────────────
+
+function StepPublish({ selected, setSelected, publishError, lang }) {
+  const isFr = lang !== "en";
+
+  return (
+    <div>
+      <Eyebrow n="6" label={isFr ? "Publication" : "Publication"} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
         {isFr ? "Prêt à publier" : "Ready to publish"}
       </h2>
       <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
         {isFr
-          ? "La fiche est générée pour chaque plateforme. Désactive celles que tu ne veux pas."
-          : "The listing is generated for each platform. Disable the ones you don't want."}
+          ? "Désactive les plateformes que tu ne veux pas publier maintenant."
+          : "Disable the platforms you don't want to publish now."}
       </p>
 
       {publishError && (
@@ -569,7 +644,7 @@ function StepPublish({ selected, setSelected, publishError, generatingPlatforms,
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function ListingPreviewScreen({
-  inventaireId, userId, initialPhotos = [], supabase, lang, onClose,
+  inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
   isPremium = false, isPro = false, founderSpotsLeft = 7, onUpgrade = () => {},
 }) {
   const [step, setStep]         = useState(0);
@@ -587,26 +662,26 @@ export default function ListingPreviewScreen({
   // Ready URLs
   const [photos, setPhotos] = useState(initialPhotos);
 
-  // Step 1 — default based on tier
+  // Step 1 — pre-computed result from Lens
+  const [listing, setListing] = useState(initialListing ?? null);
+  const [price, setPrice]     = useState(null);
+
+  // Step 3 — default based on tier
   const [photoOption, setPhotoOption] = useState(() =>
     isPro ? "ia_multi" : isPremium ? "ia_simple" : "original"
   );
 
-  // Step 2 — lens-analysis result
-  const [generating, setGenerating]       = useState(false);
-  const [generateError, setGenerateError] = useState("");
-  const [listing, setListing]             = useState(null);
-  const [price, setPrice]                 = useState(null);
-
-  // Step 3 — generate-listing (per-platform content)
+  // Step 4 — generate-listing (per-platform content)
   const [generatingPlatforms, setGeneratingPlatforms] = useState(false);
   const [platformError, setPlatformError]             = useState("");
   const [platformListings, setPlatformListings]       = useState(null);
   const [processedPhotos, setProcessedPhotos]         = useState([]);
   const [edited, setEdited]                           = useState({});
 
-  // Step 3 — publish
-  const [selected, setSelected]         = useState(new Set(PLATFORMS_DEFAULT));
+  // Step 2 & 5 — platform selection
+  const [selected, setSelected] = useState(new Set(PLATFORMS_DEFAULT));
+
+  // Step 5 — publish
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
@@ -624,8 +699,9 @@ export default function ListingPreviewScreen({
       .eq("id", inventaireId)
       .single()
       .then(({ data }) => {
-        const p = data?.prix_vente ?? data?.prix_achat ?? null;
-        if (p != null) setPrice(p);
+        const dbPrice = data?.prix_vente ?? data?.prix_achat ?? null;
+        const finalPrice = initialListing?.prix_vente_suggere ?? dbPrice;
+        if (finalPrice != null) setPrice(finalPrice);
       });
 
     if (initialPhotos.length > 0) {
@@ -660,9 +736,9 @@ export default function ListingPreviewScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Trigger platform generation on step 3 arrival ─────────────────────────
+  // ── Trigger platform generation on step 4 arrival ─────────────────────────
   useEffect(() => {
-    if (step === 3 && !platformListings && !generatingPlatforms && !platformError) {
+    if (step === 4 && !platformListings && !generatingPlatforms && !platformError) {
       handleGeneratePlatforms();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -750,53 +826,17 @@ export default function ListingPreviewScreen({
     }
   }
 
-  // ── Analyse — calls lens-analysis ─────────────────────────────────────────
-  async function handleAnalyse() {
-    setGenerating(true);
-    setGenerateError("");
-    try {
-      const { data, error: fnErr } = await supabase.functions.invoke("lens-analysis", {
-        body: {
-          urls: photos,
-          ...(notes ? { description: notes } : {}),
-          ...(price != null ? { prixAchat: price } : {}),
-          lang,
-        },
-      });
-      if (fnErr) {
-        if (fnErr.context?.status === 429) {
-          if (isPro) {
-            setQuotaModal({ open: true, trigger: "lens", targetTiers: [], isProCoins: true });
-          } else {
-            setQuotaModal({
-              open: true, trigger: "lens",
-              targetTiers: isPremium ? ["pro"] : ["premium", "pro"],
-              isProCoins: false,
-            });
-          }
-          return;
-        }
-        throw new Error(fnErr.message || (lang === "en" ? "Analysis error" : "Erreur d'analyse"));
-      }
-      setListing(data);
-      if (data?.prix_vente_suggere != null) setPrice(data.prix_vente_suggere);
-    } catch (e) {
-      setGenerateError(e.message);
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  // ── Generate platform listings — calls generate-listing ───────────────────
+  // ── Generate platform listings ────────────────────────────────────────────
   async function handleGeneratePlatforms() {
     setGeneratingPlatforms(true);
     setPlatformError("");
     try {
+      const platforms = [...selected];
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
           inventaire_id: inventaireId,
           photos,
-          platforms: PLATFORMS_DEFAULT,
+          platforms,
           photo_option: photoOption,
           price,
           ...(notes ? { notes } : {}),
@@ -809,7 +849,7 @@ export default function ListingPreviewScreen({
       setPrice(prev => data.price ?? prev);
 
       const initialEdited = {};
-      for (const p of PLATFORMS_DEFAULT) {
+      for (const p of platforms) {
         initialEdited[p] = {
           title: data.platforms[p]?.title ?? "",
           description: data.platforms[p]?.description ?? "",
@@ -842,7 +882,6 @@ export default function ListingPreviewScreen({
         if (quotaData.reason === "tier_free") {
           setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
         } else {
-          // weekly_limit hit by Premium → suggest Pro
           setQuotaModal({ open: true, trigger: "publish", targetTiers: ["pro"], isProCoins: false });
         }
         return;
@@ -888,7 +927,7 @@ export default function ListingPreviewScreen({
   // ── Nav helpers ───────────────────────────────────────────────────────────
   const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;
   const photoCount      = displayPreviews.length;
-  const isLocked        = generating || uploading || publishing || generatingPlatforms;
+  const isLocked        = uploading || publishing || generatingPlatforms;
   const canGoBack       = step > 0 && !(step === 1 && pickedFiles.length === 0 && photos.length > 0);
 
   function ctaLabel() {
@@ -897,16 +936,20 @@ export default function ListingPreviewScreen({
       if (photoCount === 0) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
       return `${lang === "en" ? "Continue" : "Continuer"} · ${photoCount} photo${photoCount > 1 ? "s" : ""}`;
     }
-    if (step === 1) return lang === "en" ? "Launch AI analysis" : "Lancer l'analyse IA";
+    if (step === 1) return lang === "en" ? "Create listing" : "Créer l'annonce";
     if (step === 2) {
-      if (generating)                return lang === "en" ? "Analysing…" : "Analyse en cours…";
-      if (generateError && !listing) return lang === "en" ? "Retry" : "Réessayer";
-      if (listing)                   return lang === "en" ? "Continue to publish" : "Continuer vers la publication";
-      return lang === "en" ? "Analyse with AI" : "Analyser avec l'IA";
+      const n = selected.size;
+      if (!n) return lang === "en" ? "Select at least 1 platform" : "Sélectionne 1 plateforme";
+      return `${lang === "en" ? "Continue" : "Continuer"} · ${n} plateforme${n > 1 ? "s" : ""}`;
     }
-    if (step === 3) {
-      if (generatingPlatforms) return lang === "en" ? "Preparing listings…" : "Préparation…";
-      if (publishing)          return lang === "en" ? "Publishing…" : "Publication en cours…";
+    if (step === 3) return lang === "en" ? "Generate listings" : "Générer les annonces";
+    if (step === 4) {
+      if (generatingPlatforms) return lang === "en" ? "Generating…" : "Génération…";
+      if (platformListings)    return lang === "en" ? "Continue to publish" : "Continuer vers la publication";
+      return lang === "en" ? "Generating…" : "Génération…";
+    }
+    if (step === 5) {
+      if (publishing) return lang === "en" ? "Publishing…" : "Publication en cours…";
       const n = selected.size;
       return `${lang === "en" ? "Publish on" : "Publier sur"} ${n} plateforme${n > 1 ? "s" : ""}`;
     }
@@ -915,30 +958,29 @@ export default function ListingPreviewScreen({
 
   const ctaDisabled =
     (step === 0 && (photoCount === 0 || uploading)) ||
-    (step === 2 && generating) ||
-    (step === 3 && (selected.size === 0 || publishing || generatingPlatforms || (!!platformError && !platformListings)));
+    (step === 2 && selected.size === 0) ||
+    (step === 4 && (generatingPlatforms || !platformListings)) ||
+    (step === 5 && (selected.size === 0 || publishing));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
     if (step === 1) { setStep(2); return; }
-    if (step === 2) {
-      if (listing) {
-        if (!isPremium && !isPro) {
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
-          return;
-        }
-        setStep(3);
+    if (step === 2) { if (selected.size) setStep(3); return; }
+    if (step === 3) {
+      if (!isPremium && !isPro) {
+        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium", "pro"], isProCoins: false });
         return;
       }
-      handleAnalyse();
+      setStep(4);
       return;
     }
-    if (step === 3) { handlePublish(); }
+    if (step === 4) { if (platformListings) setStep(5); return; }
+    if (step === 5) { handlePublish(); }
   }
 
   // ── Render: initializing ──────────────────────────────────────────────────
   if (initializing) return (
-    <div style={{ position:"fixed", inset:0, zIndex:9999, background:BG, display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ background:BG, display:"flex", alignItems:"center", justifyContent:"center", minHeight:200 }}>
       <style>{`@keyframes lps-spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${TEAL}33`, borderTopColor:TEAL, animation:"lps-spin 0.8s linear infinite" }} />
     </div>
@@ -946,7 +988,7 @@ export default function ListingPreviewScreen({
 
   // ── Render: done ──────────────────────────────────────────────────────────
   if (done) return (
-    <div style={{ position:"fixed", inset:0, zIndex:9999, background:BG, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 32px", fontFamily:"'Nunito',system-ui,sans-serif" }}>
+    <div style={{ background:BG, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"60px 32px 32px", fontFamily:"'Nunito',system-ui,sans-serif", minHeight:"60vh" }}>
       <style>{`@keyframes lps-popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ fontSize:72, animation:"lps-popIn 0.5s ease forwards" }}>✅</div>
       <div style={{ fontSize:22, fontWeight:900, color:"#111", textAlign:"center", marginTop:16 }}>
@@ -975,9 +1017,8 @@ export default function ListingPreviewScreen({
   // ── Render: stepper shell ─────────────────────────────────────────────────
   return (
     <div style={{
-      position:"fixed", inset:0, zIndex:9999, background:BG,
       display:"flex", flexDirection:"column",
-      fontFamily:"'Nunito',system-ui,sans-serif",
+      background:BG, fontFamily:"'Nunito',system-ui,sans-serif",
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap');
@@ -985,20 +1026,8 @@ export default function ListingPreviewScreen({
         @keyframes lps-spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px 0", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:28, height:28, borderRadius:8, background:`linear-gradient(135deg,${TEAL},${PEACH})` }} />
-          <span style={{ fontWeight:900, fontStyle:"italic", fontSize:17, color:"#111" }}>FillSell</span>
-        </div>
-        <button
-          onClick={onClose}
-          style={{ background:"none", border:"none", fontSize:24, color:"#9B9890", cursor:"pointer", padding:"0 4px", lineHeight:1 }}
-        >×</button>
-      </div>
-
-      {/* Stepper */}
-      <div style={{ padding:"16px 20px 6px", flexShrink:0 }}>
+      {/* Stepper progress bar */}
+      <div style={{ padding:"16px 20px 6px" }}>
         <div style={{ display:"flex", alignItems:"center" }}>
           {STEPS.map((s, i) => {
             const { Icon } = s;
@@ -1007,7 +1036,7 @@ export default function ListingPreviewScreen({
               <Fragment key={s.id}>
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
                   <div style={{
-                    width:34, height:34, borderRadius:"50%",
+                    width:32, height:32, borderRadius:"50%",
                     display:"flex", alignItems:"center", justifyContent:"center",
                     background: state === "upcoming" ? "#E5E3DC" : `linear-gradient(135deg,${TEAL},${PEACH})`,
                     color: state === "upcoming" ? "#9B9890" : "#fff",
@@ -1015,10 +1044,10 @@ export default function ListingPreviewScreen({
                     transition:"all 0.2s",
                   }}>
                     {state === "done"
-                      ? <Check size={16} strokeWidth={3} />
-                      : <Icon size={15} strokeWidth={2.5} />}
+                      ? <Check size={14} strokeWidth={3} />
+                      : <Icon size={13} strokeWidth={2.5} />}
                   </div>
-                  <span style={{ fontSize:10, fontWeight:800, color: state === "upcoming" ? "#9B9890" : "#111" }}>
+                  <span style={{ fontSize:9, fontWeight:800, color: state === "upcoming" ? "#9B9890" : "#111" }}>
                     {s.label}
                   </span>
                 </div>
@@ -1035,10 +1064,27 @@ export default function ListingPreviewScreen({
         </div>
       </div>
 
+      {/* Annuler link — visible from Style (step 3) onwards */}
+      {step >= 3 && (
+        <div style={{ textAlign:"center", paddingBottom:2 }}>
+          <button
+            onClick={onClose}
+            style={{
+              background:"none", border:"none", padding:"4px 12px",
+              fontSize:13, fontWeight:700, color:"#9B9890",
+              cursor:"pointer", fontFamily:"inherit",
+              display:"inline-flex", alignItems:"center", gap:4,
+            }}
+          >
+            ← {lang === "en" ? "Cancel" : "Annuler"}
+          </button>
+        </div>
+      )}
+
       {/* Content */}
-      <div style={{ flex:1, overflowY:"auto", padding:"16px 20px 8px" }}>
+      <div style={{ padding:"16px 20px 8px" }}>
         {step === 0 && (
-          <StepPhotos
+          <StepUpload
             previews={displayPreviews}
             removable={pickedPreviews.length > 0}
             onAdd={addFiles}
@@ -1052,6 +1098,21 @@ export default function ListingPreviewScreen({
           />
         )}
         {step === 1 && (
+          <StepDeal
+            listing={listing}
+            price={price}
+            lang={lang}
+          />
+        )}
+        {step === 2 && (
+          <StepPhotosReview
+            photos={photos}
+            selected={selected}
+            setSelected={setSelected}
+            lang={lang}
+          />
+        )}
+        {step === 3 && (
           <StepStyle
             photoOption={photoOption}
             setPhotoOption={setPhotoOption}
@@ -1061,30 +1122,28 @@ export default function ListingPreviewScreen({
             lang={lang}
           />
         )}
-        {step === 2 && (
-          <StepAnalyse
-            generating={generating}
-            generateError={generateError}
-            listing={listing}
-            price={price}
+        {step === 4 && (
+          <StepGeneration
+            generating={generatingPlatforms}
+            generateError={platformError}
+            platformListings={platformListings}
+            selected={selected}
+            onRetry={handleGeneratePlatforms}
             lang={lang}
           />
         )}
-        {step === 3 && (
+        {step === 5 && (
           <StepPublish
             selected={selected}
             setSelected={setSelected}
             publishError={publishError}
-            generatingPlatforms={generatingPlatforms}
-            platformError={platformError}
-            onRetryPlatforms={handleGeneratePlatforms}
             lang={lang}
           />
         )}
       </div>
 
       {/* Footer nav */}
-      <div style={{ padding:"8px 20px 28px", display:"flex", gap:10, flexShrink:0 }}>
+      <div style={{ padding:"8px 20px 28px", display:"flex", gap:10 }}>
         {canGoBack && (
           <button
             onClick={() => !isLocked && setStep(s => s - 1)}
@@ -1114,8 +1173,8 @@ export default function ListingPreviewScreen({
           }}
         >
           {ctaLabel()}
-          {!ctaDisabled && step < 3 && !generating && !uploading && <ChevronRight size={18} />}
-          {!ctaDisabled && step === 3 && !publishing && !generatingPlatforms && <Send size={16} />}
+          {!ctaDisabled && step < 5 && !uploading && !generatingPlatforms && <ChevronRight size={18} />}
+          {!ctaDisabled && step === 5 && !publishing && <Send size={16} />}
         </button>
       </div>
 
