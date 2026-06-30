@@ -7,6 +7,7 @@ const PEACH = "#E8956D";
 const BG    = "#F2F2EE";
 
 const PLATFORM_LABELS   = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
 const PLATFORM_FIELDS_CONFIG = {
@@ -312,7 +313,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, isPremium, isPro, onLockTap, lang }) {
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, isPremium, isPro, onLockTap, lang }) {
   const isFr = lang !== "en";
   const addRef = useRef();
   const MAX = 5;
@@ -449,6 +450,53 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
             </button>
           );
         })}
+      </div>
+
+      <div style={{ marginTop:20 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
+          {isFr ? "Plateformes" : "Platforms"}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          {PLATFORMS_DEFAULT.map(p => {
+            const isOn = selected.has(p);
+            const color = PLATFORM_COLORS[p];
+            return (
+              <button
+                key={p}
+                onClick={() => setSelected(prev => {
+                  const s = new Set(prev);
+                  s.has(p) ? s.delete(p) : s.add(p);
+                  return s;
+                })}
+                style={{
+                  display:"flex", alignItems:"center", gap:9,
+                  padding:"11px 14px", borderRadius:12,
+                  border: isOn ? `2px solid ${color}` : "1.5px solid #E5E3DC",
+                  background: isOn ? `${color}14` : "#fff",
+                  cursor:"pointer", fontFamily:"inherit", textAlign:"left",
+                  transition:"border 0.15s, background 0.15s",
+                }}
+              >
+                <div style={{
+                  width:20, height:20, borderRadius:6, flexShrink:0,
+                  background: isOn ? color : "#E5E3DC",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  transition:"background 0.15s",
+                }}>
+                  {isOn && <Check size={12} color="#fff" strokeWidth={3} />}
+                </div>
+                <span style={{ fontSize:13.5, fontWeight:800, color: isOn ? color : "#9B9890", transition:"color 0.15s" }}>
+                  {PLATFORM_LABELS[p]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {selected.size === 0 && (
+          <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:700 }}>
+            {isFr ? "Sélectionne au moins une plateforme." : "Select at least one platform."}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -736,6 +784,24 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
         <p style={{ fontSize:13, color:"#9B9890", textAlign:"center", marginTop:16 }}>
           {isFr ? "Aucune plateforme sélectionnée." : "No platform selected."}
         </p>
+      )}
+
+      {chips.length > 0 && (
+        <div style={{ marginTop:20, padding:"14px 16px", background:"#fff", borderRadius:14, border:"1px solid #ECEAE3" }}>
+          <p style={{ margin:"0 0 8px", fontSize:13.5, fontWeight:800, color:"#374151" }}>
+            {isFr ? "Tes annonces sont prêtes 🎉" : "Your listings are ready 🎉"}
+          </p>
+          <p style={{ margin:"0 0 8px", fontSize:13, color:"#6B6862", lineHeight:1.65 }}>
+            {isFr
+              ? "L'extension FillSell dans Chrome les publie automatiquement toutes les 30 minutes. PC allumé + Chrome ouvert = publication automatique, sans rien faire."
+              : "The FillSell Chrome extension publishes them automatically every 30 minutes. PC on + Chrome open = fully automatic, no action needed."}
+          </p>
+          <p style={{ margin:0, fontSize:12.5, color:"#9B9890", lineHeight:1.6 }}>
+            {isFr
+              ? "Si ton PC est éteint, tes annonces restent en attente et seront publiées dès la prochaine ouverture de Chrome."
+              : "If your PC is off, listings stay queued and will publish next time Chrome opens."}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -1082,7 +1148,7 @@ export default function ListingPreviewScreen({
 
   const ctaDisabled =
     (step === 0 && (photoCount === 0 || uploading)) ||
-    (step === 1 && photos.length === 0) ||
+    (step === 1 && (photos.length === 0 || selected.size === 0)) ||
     (step === 2 && (generatingPlatforms || !platformListings)) ||
     (step === 3 && (publishChips.length === 0 || publishing));
 
@@ -1223,6 +1289,8 @@ export default function ListingPreviewScreen({
             onPhotoClick={setLightboxUrl}
             photoOption={photoOption}
             setPhotoOption={setPhotoOption}
+            selected={selected}
+            setSelected={setSelected}
             isPremium={isPremium}
             isPro={isPro}
             onLockTap={handleStyleLockTap}
