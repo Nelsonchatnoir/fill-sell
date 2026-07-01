@@ -227,6 +227,13 @@ export const translations = {
     conditionNew:"Neuf",
     conditionCorrect:"État correct",
     conditionForParts:"Pour pièces",
+
+    packageLetter:"Lettre",
+    packageSmall:"Petit colis",
+    packageMedium:"Moyen colis",
+    packageLarge:"Grand colis",
+    packageXLarge:"Très grand colis",
+    packageUndefined:"Non défini",
   },
   en: {
     appName:"FillSell",
@@ -456,6 +463,13 @@ export const translations = {
     conditionNew:"New",
     conditionCorrect:"Fair condition",
     conditionForParts:"For parts",
+
+    packageLetter:"Letter",
+    packageSmall:"Small parcel",
+    packageMedium:"Medium parcel",
+    packageLarge:"Large parcel",
+    packageXLarge:"Extra large parcel",
+    packageUndefined:"Not specified",
   }
 };
 

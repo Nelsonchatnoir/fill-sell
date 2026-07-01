@@ -25,7 +25,14 @@ function getPlatformFieldsConfig(t) {
     forParts:      { value:"Pour pièces",          label:t("conditionForParts") },
   };
   const size = ["XS","S","M","L","XL","XXL","Unique"].map(v => ({ value:v, label:v }));
-  const packageFormat = ["Lettre","Petit colis","Moyen colis","Grand colis","Très grand colis","Non défini"].map(v => ({ value:v, label:v }));
+  const packageFormat = [
+    { value:"Lettre",           label:t("packageLetter") },
+    { value:"Petit colis",      label:t("packageSmall") },
+    { value:"Moyen colis",      label:t("packageMedium") },
+    { value:"Grand colis",      label:t("packageLarge") },
+    { value:"Très grand colis", label:t("packageXLarge") },
+    { value:"Non défini",       label:t("packageUndefined") },
+  ];
 
   return {
     vinted: [
