@@ -1,27 +1,172 @@
-import { memo, useState, useEffect } from 'react';
-import ListingPreviewScreen from '../components/ListingPreviewScreen';
+import { memo, useState } from 'react';
+import { Camera, Mic, Sparkles, Plus } from 'lucide-react';
+import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
+import { useTranslation } from '../i18n/useTranslation';
 
-const LENS_EXAMPLES = [
-  {
-    title:'Air Jordan 1 Retro High', marque:'Nike', type:'Sport', typeDisplay:'Sneakers',
-    score:8.2, priceMin:145, priceMax:180,
-    analyse:"✅ Excellente opportunité. Les Jordan 1 Retro High s'écoulent très bien sur Vinted et StockX. Délai moyen : 4 à 6 jours. Vends entre 155€ et 165€ pour maximiser ta marge. Inclure la boîte originale augmente la valeur perçue de ~15%.",
-    analyseEn:"✅ Great opportunity. Air Jordan 1 Retro Highs sell fast on StockX & Vinted. Avg. time: 4–6 days. Sell at €155–165 to maximise margin. Including the original box boosts perceived value by ~15%.",
-  },
-  {
-    title:'Sac Louis Vuitton Speedy', marque:'Louis Vuitton', type:'Luxe', typeDisplay:null,
-    score:5.1, priceMin:420, priceMax:550,
-    analyse:"⚠️ Score mitigé. Des signaux visuels alertent : coutures asymétriques et logo légèrement décalé. Risque contrefaçon modéré — fais authentifier avant d'acheter. Si authentique, potentiel de revente solide à 480–520€.",
-    analyseEn:"⚠️ Mixed score. Visual warnings: asymmetric stitching and slightly off-centre logo. Moderate counterfeit risk — get it authenticated first. If genuine, solid resale potential at €480–520.",
-  },
-  {
-    title:'iPhone 14 Pro écran fissuré', marque:'Apple', type:'High-Tech', typeDisplay:null,
-    score:3.4, priceMin:280, priceMax:320,
-    analyse:"❌ Mauvaise affaire au prix actuel. L'écran fissuré réduit la valeur de revente de 35–40%. Réparation : 80–120€ en SAV agréé. Marge nette quasi nulle. Négocie fortement sous 150€ ou passe ton tour.",
-    analyseEn:"❌ Bad deal at current price. Cracked screen cuts resale value by 35–40%. Repair: €80–120 at an authorised centre. Net margin nearly zero. Negotiate hard below €150 or walk away.",
-  },
-];
+const CANVAS    = '#F6F5F1';
+const INK       = '#10201B';
+const TEAL      = '#2F9E90';
+const TEAL_DEEP = '#1B6E62';
+const MUTE      = '#6B7A75';
+
+const LENS_PLATFORMS = Object.keys(PLATFORM_LABELS);
+
+function PlatformMarquee() {
+  const list = [...LENS_PLATFORMS, ...LENS_PLATFORMS];
+  return (
+    <div style={{ position:'relative', width:'100%', overflow:'hidden', padding:'4px 0', WebkitMaskImage:'linear-gradient(90deg, transparent, black 12%, black 88%, transparent)', maskImage:'linear-gradient(90deg, transparent, black 12%, black 88%, transparent)' }}>
+      <div className="lens-marquee-track" style={{ display:'flex', gap:12, width:'max-content' }}>
+        {list.map((p, i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 16px', borderRadius:999, flexShrink:0, background:'#FFFFFF', border:'1px solid #E7E3D8', boxShadow:'0 1px 2px rgba(16,32,27,0.04)' }}>
+            <span style={{ width:24, height:24, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:700, background:`linear-gradient(135deg,${TEAL},${TEAL_DEEP})`, color:'#FFFFFF' }}>
+              {PLATFORM_LABELS[p].slice(0,3).toUpperCase()}
+            </span>
+            <span style={{ fontSize:13, fontWeight:500, color:'#3A443F' }}>{PLATFORM_LABELS[p]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LensScanHome({
+  lang, currency, isPremium, isNative, isPro,
+  lensPhotos, setLensPhotos, setLensResult, setLensAdded,
+  lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
+  lensPlaceholderFade, lensPlaceholderIdx,
+  lensFileRef, handleLensPhoto, handleLensPhotoNative,
+  analyzeLens, lensLoading, lensPremiumLimitReached,
+  lensUsedToday, LENS_FREE_LIMIT,
+}) {
+  const { t, tpl } = useTranslation(lang);
+  const maxPhotos = isPro ? 8 : 5;
+  const photoCount = lensPhotos.length;
+
+  const triggerPhotoPicker = () => (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click());
+  const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
+
+  const analyzeDisabled = !lensPhotos.length || lensLoading || lensPremiumLimitReached;
+
+  return (
+    <div style={{ width:'100%', maxWidth:520, margin:'0 auto' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+        .lens-ff { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
+        @keyframes lensMarqueeScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        .lens-marquee-track { animation: lensMarqueeScroll 24s linear infinite; }
+        @keyframes lensRingPulse {
+          0% { transform: scale(0.9); opacity: 0.5; }
+          70% { transform: scale(1.35); opacity: 0; }
+          100% { transform: scale(1.35); opacity: 0; }
+        }
+        .lens-ring-pulse { animation: lensRingPulse 2.8s cubic-bezier(0.2,0.6,0.4,1) infinite; }
+        .lens-ring-pulse-delay { animation-delay: 0.9s; }
+      `}</style>
+
+      <input ref={lensFileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleLensPhoto} />
+
+      <div className="lens-ff" style={{ position:'relative', overflow:'hidden', borderRadius:28, background:CANVAS, border:'1px solid #E7E3D8', boxShadow:'0 1px 4px rgba(16,32,27,0.05)' }}>
+        {/* ambient teal glow */}
+        <div style={{ position:'absolute', pointerEvents:'none', top:'-8%', left:'50%', transform:'translateX(-50%)', width:460, height:320, background:'radial-gradient(ellipse, rgba(47,158,144,0.14) 0%, rgba(47,158,144,0) 70%)' }} />
+
+        {/* Hero copy */}
+        <div style={{ position:'relative', padding:'24px 24px 4px', textAlign:'center', zIndex:10 }}>
+          <h1 style={{ margin:0, fontSize:31, fontWeight:600, lineHeight:1.1, letterSpacing:'-0.02em', color:INK }}>
+            {t('lensHeroTitleLine1')}<br />{t('lensHeroTitleLine2')}
+          </h1>
+          <p style={{ fontSize:14, marginTop:12, marginBottom:0, lineHeight:1.375, padding:'0 16px', color:MUTE }}>
+            {t('lensHeroSubtitle')}
+          </p>
+        </div>
+
+        {/* Viewfinder hero CTA */}
+        <div style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 0', zIndex:10 }}>
+          <button onClick={triggerPhotoPicker} style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:210, height:210, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+            <span className="lens-ring-pulse" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
+            <span className="lens-ring-pulse lens-ring-pulse-delay" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
+            <span style={{ position:'absolute', inset:26, borderRadius:'50%', border:'1px solid rgba(47,158,144,0.25)' }} />
+            <span style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:124, height:124, borderRadius:'50%', background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})`, boxShadow:'0 14px 34px rgba(47,158,144,0.32)' }}>
+              <Camera size={38} color="#FFFFFF" strokeWidth={1.6} />
+            </span>
+          </button>
+
+          <span style={{ fontSize:13, fontWeight:500, marginTop:20, letterSpacing:'0.02em', color:'#8A8578' }}>
+            {photoCount === 0 ? t('lensViewfinderEmpty') : tpl('lensViewfinderPhotos', { n:photoCount })}
+          </span>
+
+          {photoCount > 0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, flexWrap:'wrap', justifyContent:'center', padding:'0 24px' }}>
+              {lensPhotos.map((p, i) => (
+                <div key={i} style={{ position:'relative', width:44, height:44, borderRadius:12, overflow:'hidden', flexShrink:0, background:'#E7F3F0', border:'1px solid #BFE0D9' }}>
+                  <img src={p.preview} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
+                  <button onClick={() => removePhoto(i)} style={{ position:'absolute', top:2, right:2, width:16, height:16, borderRadius:'50%', border:'none', background:'rgba(16,32,27,0.65)', color:'#FFFFFF', fontSize:10, lineHeight:1, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>×</button>
+                </div>
+              ))}
+              {photoCount < maxPhotos && (
+                <button onClick={triggerPhotoPicker} style={{ width:44, height:44, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'1px dashed #D8D2C4', cursor:'pointer' }}>
+                  <Plus size={15} color="#8A8578" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Note input + CTA */}
+        <div style={{ position:'relative', padding:'0 24px', zIndex:10 }}>
+          <div style={{ position:'relative' }}>
+            {!lensDesc && (
+              <div style={{ position:'absolute', top:'50%', left:20, right:48, transform:'translateY(-50%)', pointerEvents:'none', zIndex:1, fontSize:14, color:MUTE, fontFamily:'inherit', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', opacity:lensPlaceholderFade?1:0, transition:'opacity 0.3s ease' }}>
+                {getRotatingLensPlaceholders(currency,lang)[lensPlaceholderIdx]}
+              </div>
+            )}
+            <input
+              value={lensDesc}
+              onChange={e => setLensDesc(e.target.value)}
+              placeholder=""
+              style={{ width:'100%', boxSizing:'border-box', borderRadius:999, padding:'14px 48px 14px 20px', fontSize:14, outline:'none', background:'#FFFFFF', border:`1px solid ${lensMicActive ? '#EF4444' : '#E7E3D8'}`, color:INK, fontFamily:'inherit' }}
+            />
+            <button
+              onClick={toggleLensMic}
+              disabled={lensMicLoading}
+              style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', width:36, height:36, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background: lensMicActive ? 'rgba(239,68,68,0.12)' : '#F2F0E9', border:'none', cursor: lensMicLoading ? 'not-allowed' : 'pointer', opacity: lensMicLoading ? 0.6 : 1 }}
+            >
+              <Mic size={14} color={lensMicActive ? '#EF4444' : MUTE} />
+            </button>
+          </div>
+
+          <button
+            onClick={analyzeLens}
+            disabled={analyzeDisabled}
+            style={{ width:'100%', boxSizing:'border-box', marginTop:12, borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: analyzeDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
+          >
+            <Sparkles size={16} strokeWidth={2.2} />
+            {lensLoading ? t('lensAnalyzing') : t('lensAnalyzeCta')}
+          </button>
+
+          {isPremium && lensPremiumLimitReached && (
+            <div style={{ textAlign:'center', fontSize:11.5, marginTop:10, color:'#A6A192' }}>
+              {t('lensQuotaPremiumLimitReached')}
+            </div>
+          )}
+          {!isPremium && (
+            <div style={{ textAlign:'center', fontSize:11.5, marginTop:10, color:'#A6A192' }}>
+              {lensUsedToday >= LENS_FREE_LIMIT ? t('lensQuotaFreeLimitReached') : tpl('lensQuotaFree', { used:lensUsedToday, limit:LENS_FREE_LIMIT })}
+            </div>
+          )}
+        </div>
+
+        {/* Platform marquee */}
+        <div style={{ position:'relative', marginTop:28, paddingBottom:36, zIndex:10 }}>
+          <p style={{ textAlign:'center', fontSize:11, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.14em', marginBottom:12, color:'#A6A192' }}>
+            {t('lensMarqueeCaption')}
+          </p>
+          <PlatformMarquee />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const scoreColor = s => s>=6.5?'#16A34A':s>=4?'#D97706':'#DC2626';
 const scoreBg    = s => s>=6.5?'#F0FDF4':s>=4?'#FFFBEB':'#FFF5F5';
@@ -261,170 +406,13 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
   );
 }
 
-function LensTicker({ lang, onScan }) {
-  const [idx, setIdx]           = useState(0);
-  const [visible, setVisible]   = useState(true);
-  const [progress, setProgress] = useState(0);
-  const [displayed, setDisplayed] = useState('');
-  const [gaugeW, setGaugeW]     = useState(0);
-  const [dotOn, setDotOn]       = useState(true);
-
-  const DURATION = 5500;
-  const ex = LENS_EXAMPLES[idx];
-  const sc = scoreColor(ex.score);
-  const ts = getTypeStyle(ex.type);
-  const analyseText = lang==='en' ? ex.analyseEn : ex.analyse;
-
-  useEffect(() => {
-    let raf, timeout=null, startTs=null, cancelled=false;
-    function tick(ts) {
-      if (cancelled) return;
-      if (!startTs) startTs=ts;
-      const p=Math.min((ts-startTs)/DURATION,1);
-      setProgress(p);
-      if (p<1) { raf=requestAnimationFrame(tick); }
-      else {
-        setVisible(false);
-        timeout=setTimeout(()=>{
-          if (cancelled) return;
-          setIdx(i=>(i+1)%LENS_EXAMPLES.length);
-          setProgress(0);
-          setVisible(true);
-        },450);
-      }
-    }
-    raf=requestAnimationFrame(tick);
-    return ()=>{ cancelled=true; cancelAnimationFrame(raf); if(timeout) clearTimeout(timeout); };
-  },[idx]);
-
-  useEffect(()=>{
-    const text=lang==='en'?LENS_EXAMPLES[idx].analyseEn:LENS_EXAMPLES[idx].analyse;
-    setDisplayed('');
-    let charIdx=0, timer;
-    const startDelay=setTimeout(()=>{
-      timer=setInterval(()=>{
-        charIdx++;
-        setDisplayed(text.slice(0,charIdx));
-        if(charIdx>=text.length) clearInterval(timer);
-      },22);
-    },500);
-    return ()=>{ clearTimeout(startDelay); if(timer) clearInterval(timer); };
-  },[idx,lang]);
-
-  useEffect(()=>{
-    setGaugeW(0);
-    const t=setTimeout(()=>setGaugeW(LENS_EXAMPLES[idx].score*10),80);
-    return ()=>clearTimeout(t);
-  },[idx]);
-
-  useEffect(()=>{
-    const interval=setInterval(()=>setDotOn(p=>!p),800);
-    return ()=>clearInterval(interval);
-  },[]);
-
-  const featurePills = lang==='en'
-    ?['📸 Photo analysis','💰 Market price','⚠️ Risk detection']
-    :['📸 Analyse photo','💰 Prix marché','⚠️ Détection risques'];
-
-  return (
-    <div style={{marginBottom:8}}>
-      <div style={{fontSize:11,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
-        {lang==='fr'?"EXEMPLE D'ANALYSE LENS":"LENS ANALYSIS EXAMPLE"}
-      </div>
-
-      <div style={{background:'#fff',borderRadius:12,border:'1px solid rgba(0,0,0,0.06)',borderLeft:`3px solid ${sc}`,boxShadow:'0 1px 3px rgba(0,0,0,0.04)',overflow:'hidden',marginBottom:10}}>
-        <div style={{padding:'12px 14px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease,transform 0.45s ease'}}>
-
-          <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:6}}>
-            {ex.title}
-          </div>
-
-          <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:10}}>
-            <span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>
-              {ex.marque}
-            </span>
-            <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>
-              {ts.emoji} {ex.typeDisplay||typeLabel(ex.type,lang)}
-            </span>
-          </div>
-
-          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
-            <div style={{flexShrink:0}}>
-              <div style={{fontSize:9,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>DEAL SCORE</div>
-              <div style={{fontSize:26,fontWeight:900,color:sc,letterSpacing:'-0.03em',lineHeight:1}}>
-                {ex.score.toFixed(1)}<span style={{fontSize:12,fontWeight:600,color:'#A3A9A6'}}>/10</span>
-              </div>
-            </div>
-            <div style={{flex:1}}>
-              <div style={{height:8,background:'#F3F4F6',borderRadius:4,overflow:'hidden'}}>
-                <div style={{height:'100%',background:sc,width:`${gaugeW}%`,transition:'width 1.1s cubic-bezier(0.22,1,0.36,1)',borderRadius:4}}/>
-              </div>
-              <div style={{fontSize:10,fontWeight:700,color:sc,marginTop:3}}>{scoreLabel(ex.score,lang)}</div>
-            </div>
-          </div>
-
-          <div style={{fontSize:12,color:'#6B7280',fontWeight:600,marginBottom:8}}>
-            {lang==='fr'?'Prix marché estimé : ':'Est. market price: '}
-            <span style={{color:'#0D0D0D',fontWeight:800}}>{ex.priceMin}–{ex.priceMax}€</span>
-          </div>
-
-          <div style={{background:scoreBg(ex.score),border:`1px solid ${scoreBd(ex.score)}`,borderRadius:10,padding:'10px 12px',height:160,overflow:'hidden'}}>
-            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
-              <div style={{width:6,height:6,borderRadius:'50%',background:sc,opacity:dotOn?1:0.2,transition:'opacity 0.3s ease',flexShrink:0}}/>
-              <span style={{fontSize:9,fontWeight:800,color:sc,textTransform:'uppercase',letterSpacing:'0.06em'}}>
-                {lang==='fr'?'Analyse IA':'AI Analysis'}
-              </span>
-            </div>
-            <div style={{fontSize:12,color:'#374151',lineHeight:1.55,fontWeight:500}}>
-              {displayed}{displayed.length<analyseText.length&&<span style={{opacity:0.4}}>|</span>}
-            </div>
-          </div>
-
-          <div style={{marginTop:10,height:2,background:'#F3F4F6',borderRadius:2,overflow:'hidden'}}>
-            <div style={{height:'100%',background:sc,width:`${progress*100}%`}}/>
-          </div>
-        </div>
-      </div>
-
-      <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:16}}>
-        {LENS_EXAMPLES.map((_,i)=>(
-          <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?scoreColor(LENS_EXAMPLES[i].score):'#E5E7EB',transition:'background 0.3s ease'}}/>
-        ))}
-      </div>
-
-      <div style={{display:'flex',justifyContent:'center',gap:8,flexWrap:'wrap',marginBottom:16}}>
-        {featurePills.map((f,i)=>(
-          <span key={i} style={{background:'#F9FAFB',border:'1px solid rgba(0,0,0,0.1)',borderRadius:99,padding:'5px 12px',fontSize:11,fontWeight:700,color:'#4B5563'}}>{f}</span>
-        ))}
-      </div>
-
-      <button
-        onClick={onScan}
-        style={{width:'100%',padding:'14px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 4px 14px rgba(15,110,86,0.3)'}}
-        onMouseDown={e=>e.currentTarget.style.transform='scale(0.97)'}
-        onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
-        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
-      >
-        📷 {lang==='fr'?'Scanner mon premier article':'Scan my first item'}
-      </button>
-
-      <div style={{textAlign:'center',marginTop:8,fontSize:11,color:'#A3A9A6',fontWeight:500}}>
-        {lang==='fr'?'3 analyses offertes · Sans engagement':'3 free analyses · No commitment'}
-      </div>
-    </div>
-  );
-}
-
 const LensTab = memo(function LensTab({
   lang, currency, userCountry, isPremium, isPro, isNative, user,
-  iapProduct, iapLoading,
   lensPhotos, setLensPhotos, lensResult, setLensResult,
   lensAdded, setLensAdded, lensDesc, setLensDesc,
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem, openLensEditModal,
-  handleIAPPurchase, handleIAPRestore,
-  PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
   supabase, saveLensItemForListing,
 }) {
@@ -497,6 +485,20 @@ const LensTab = memo(function LensTab({
           onUpgrade={openUpgradeModal}
         />
       </div>
+    );
+  }
+
+  if (!lensResult) {
+    return (
+      <LensScanHome
+        lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
+        lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
+        lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
+        lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
+        lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative}
+        analyzeLens={analyzeLens} lensLoading={lensLoading} lensPremiumLimitReached={lensPremiumLimitReached}
+        lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
+      />
     );
   }
 
@@ -687,12 +689,6 @@ const LensTab = memo(function LensTab({
           </div>
         )}
       </div>
-
-      {!lensResult&&(
-        <LensTicker lang={lang} onScan={()=>lensFileRef.current?.click()}/>
-      )}
-      {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
-      {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>)}
 
       {generatingListing&&(
         <div style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.78)",zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:"0 40px"}}>

@@ -238,6 +238,18 @@ export const translations = {
     packageLarge:"Grand colis",
     packageXLarge:"Très grand colis",
     packageUndefined:"Non défini",
+
+    lensHeroTitleLine1:"Scanne.",
+    lensHeroTitleLine2:"On gère le reste.",
+    lensHeroSubtitle:"Une photo suffit. Fiche, prix et description générés pour chacune de tes plateformes.",
+    lensViewfinderEmpty:"Touche pour scanner un article",
+    lensViewfinderPhotos:"{n} photo{s} ajoutée{s}",
+    lensAnalyzeCta:"Analyser avec l'IA",
+    lensAnalyzing:"Analyse en cours…",
+    lensMarqueeCaption:"Publie sur tes plateformes préférées",
+    lensQuotaFree:"{used}/{limit} analyses · visuel uniquement",
+    lensQuotaFreeLimitReached:"Limite atteinte",
+    lensQuotaPremiumLimitReached:"Limite mensuelle atteinte",
   },
   en: {
     appName:"FillSell",
@@ -478,6 +490,18 @@ export const translations = {
     packageLarge:"Large parcel",
     packageXLarge:"Extra large parcel",
     packageUndefined:"Not specified",
+
+    lensHeroTitleLine1:"Scan.",
+    lensHeroTitleLine2:"We handle the rest.",
+    lensHeroSubtitle:"One photo is enough. Listing, price and description generated for each of your platforms.",
+    lensViewfinderEmpty:"Tap to scan an item",
+    lensViewfinderPhotos:"{n} photo{s} added",
+    lensAnalyzeCta:"Analyze with AI",
+    lensAnalyzing:"Analyzing…",
+    lensMarqueeCaption:"Publish on your favorite platforms",
+    lensQuotaFree:"{used}/{limit} scans · visual analysis only",
+    lensQuotaFreeLimitReached:"Limit reached",
+    lensQuotaPremiumLimitReached:"Monthly limit reached",
   }
 };
 
