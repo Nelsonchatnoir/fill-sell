@@ -881,6 +881,20 @@ export async function executeVoiceTasks(tasks, context) {
             };
             break;
           }
+          // Cas price_conflict : marque/type correspondent à un article du stock mais le prix
+          // d'achat dicté diffère trop de celui de cet article → ne JAMAIS matcher en silence ni
+          // forcer no_match. On laisse l'utilisateur trancher (rendu géré côté App.jsx). Le
+          // fallback de scoring client ci-dessous ne doit pas ré-attraper cet article.
+          if (task.data.price_conflict) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: task.data,
+              message: context.lang === "en" ? "Purchase price differs from the stock item" : "Prix d'achat différent de l'article en stock",
+            };
+            break;
+          }
 
           if (!task.requiresConfirmation) {
             // Priorité au matched_id fourni par l'IA (matching sémantique).

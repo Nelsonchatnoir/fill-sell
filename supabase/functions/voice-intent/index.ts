@@ -972,6 +972,19 @@ function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unkno
   return { ...d, nom: cleanNom, description: parts.length ? parts.join(", ") : null };
 }
 
+// Tolérance de prix pour le matching auto d'une vente sur un article déjà en stock :
+// un prix d'achat dicté qui diffère trop du prix d'achat réel de l'article stock
+// candidat indique très probablement un article DIFFÉRENT (nouvelle vente directe),
+// pas le même article. Tolérance : ±5% ou ±0,50€ (le plus grand des deux).
+// Si l'un des deux prix est absent/invalide, on ne bloque pas (comportement inchangé).
+function priceConflicts(dictatedRaw: unknown, stockPriceRaw: unknown): boolean {
+  const d = typeof dictatedRaw === "number" ? dictatedRaw : parseFloat(String(dictatedRaw ?? ""));
+  const s = typeof stockPriceRaw === "number" ? stockPriceRaw : parseFloat(String(stockPriceRaw ?? ""));
+  if (!isFinite(d) || d <= 0 || !isFinite(s) || s <= 0) return false;
+  const tolerance = Math.max(s * 0.05, 0.5);
+  return Math.abs(d - s) > tolerance;
+}
+
 async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1056,7 +1069,7 @@ serve(async (req) => {
     const _lang = lang === "en" ? "en" : "fr";
 
     // Articles en stock transmis par le client pour le matching IA
-    type StockItem = { id: string; nom: string; marque: string|null; type: string|null; description: string|null; emplacement: string|null };
+    type StockItem = { id: string; nom: string; marque: string|null; type: string|null; description: string|null; emplacement: string|null; prix_achat?: number|null };
     const _stock: StockItem[] = Array.isArray(stockItems) ? stockItems : [];
 
     // Dates dynamiques — calcul complet de toutes les périodes naturelles
@@ -1469,6 +1482,25 @@ serve(async (req) => {
 
             const matchResult = JSON.parse(matchRaw);
 
+            // Arbitrage prix : le matching automatique et silencieux ne doit avoir lieu que si
+            // la similarité nom/type/marque ET le prix d'achat dicté (s'il y en a un) concordent.
+            // Si un prix d'achat a été dicté et qu'il diffère trop de celui de l'article stock
+            // candidat, on ne matche PAS silencieusement (et on ne force pas no_match non plus) :
+            // on renvoie price_conflict pour laisser l'utilisateur trancher côté frontend.
+            const _dictatedPa = (sellTask.data as any)?.prix_achat;
+            const _applyMatch = (item: any, confidence: number, matchedId: unknown) => {
+              if (item && priceConflicts(_dictatedPa, item.prix_achat)) {
+                delete sellTask.data.no_match;
+                delete sellTask.data.matched_id;
+                sellTask.data.price_conflict = true;
+                sellTask.data.candidates = [{ id: item.id, nom: item.nom, marque: item.marque, confidence }];
+              } else {
+                delete sellTask.data.no_match;
+                sellTask.data.matched_id = matchedId;
+                sellTask.data.match_confidence = confidence;
+              }
+            };
+
             if (matchResult.matched_id) {
               // Sibling check: si d'autres articles ont le même nom+marque et qu'aucune description
               // n'a été fournie par l'utilisateur, on ne peut pas distinguer → candidates
@@ -1487,15 +1519,12 @@ serve(async (req) => {
                     confidence: matchResult.confidence ?? 1,
                   }));
                 } else {
-                  delete sellTask.data.no_match;
-                  sellTask.data.matched_id = matchResult.matched_id;
-                  sellTask.data.match_confidence = matchResult.confidence ?? 1;
+                  _applyMatch(_matchedItem, matchResult.confidence ?? 1, matchResult.matched_id);
                 }
               } else {
                 // Description fournie ou item introuvable dans le stock local → faire confiance au LLM
-                delete sellTask.data.no_match;
-                sellTask.data.matched_id = matchResult.matched_id;
-                sellTask.data.match_confidence = matchResult.confidence ?? 1;
+                // (sous réserve de l'arbitrage prix ci-dessus si l'item local est trouvé)
+                _applyMatch(_matchedItem, matchResult.confidence ?? 1, matchResult.matched_id);
               }
             } else if (matchResult.conflict && Array.isArray(matchResult.candidates) && matchResult.candidates.length > 0) {
               // Conflit de type : marque correcte mais type d'article différent
@@ -1515,9 +1544,9 @@ serve(async (req) => {
               }
               if (_cands.length === 1) {
                 // Un seul candidat → promouvoir en matched_id, pas besoin de sélection
-                delete sellTask.data.no_match;
-                sellTask.data.matched_id = String(_cands[0].id);
-                sellTask.data.match_confidence = _cands[0].confidence ?? 0.8;
+                // (sous réserve de l'arbitrage prix ci-dessus)
+                const _ci = (_stock as any[]).find((s: any) => String(s.id) === String(_cands[0].id));
+                _applyMatch(_ci, _cands[0].confidence ?? 0.8, String(_cands[0].id));
               } else {
                 sellTask.data.candidates = _cands;
               }
