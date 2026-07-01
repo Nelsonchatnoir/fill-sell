@@ -2237,7 +2237,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"stock",item:mi}}:it);
                           replaceResult(idx,{...result,taskData:{...taskData,items:next}});
                         }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✓ {lang==="en"?"Add stock item to lot":"Ajouter cet article du stock"}
+                          ✓ {lang==="en"?"Add stock item to lot":"Ajouter cet article du stock au lot"}
                         </button>
                         <button onClick={()=>{
                           const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"new"}}:it);
