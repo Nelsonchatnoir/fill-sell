@@ -2663,24 +2663,46 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           style={{flex:1,fontSize:14,fontWeight:700,border:"1.5px solid #1D9E75",borderRadius:10,padding:"10px 12px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",outline:"none"}}/>
                       </div>
                     )}
-                    {/* Boutons */}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>{
-                        if(!found){
+                    {/* Boutons — si un article stock est identifié, toujours proposer le choix
+                        explicite matcher/créer (jamais de matching silencieux). Sans match,
+                        comportement inchangé : bouton unique de confirmation. */}
+                    {found?(
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        <div style={{fontSize:12,color:"#6B7280",fontWeight:700}}>
+                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
+                        </div>
+                        <button onClick={()=>{
+                          actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)",textAlign:"left"}}>
+                          ✓ {lang==="en"?`Yes — confirm sale of ${found.title}`:`Oui — confirmer la vente de ${found.title}`}
+                        </button>
+                        <button onClick={()=>{
+                          const dmCatN=taskData?.categorie||taskData?.type||null;
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,prix_achat:taskData?.prix_achat,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{padding:"13px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.15)",borderRadius:12,color:"#374151",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                          ➕ {lang==="en"?"No — create a separate sale":"Non — créer une vente séparée"}
+                        </button>
+                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✕ {lang==="en"?"Cancel":"Annuler"}
+                        </button>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>{
                           const dmCatN=taskData?.categorie||taskData?.type||null;
                           actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                          return;
-                        }
-                        actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
-                          .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                          .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
-                        ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                    </div>
+                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
+                          ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
+                        </button>
+                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      </div>
+                    )}
                   </div>
                 );
               }

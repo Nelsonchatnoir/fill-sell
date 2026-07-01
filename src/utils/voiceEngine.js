@@ -1039,26 +1039,17 @@ export async function executeVoiceTasks(tasks, context) {
             }
 
             if (matched) {
-              // Article trouvé avec certitude → exécution directe
-              if (context.actions.confirmSellDirect) {
-                await context.actions.confirmSellDirect(
-                  matched, parseNum(task.data.prix_vente), parseNum(task.data.frais), task.data.quantite_vendue || 1, task.data.plateforme||null
-                );
-              } else {
-                await context.actions.markSold({
-                  ...matched,
-                  prix_vente: parseNum(task.data.prix_vente),
-                  frais: parseNum(task.data.frais),
-                });
-              }
-              hadMutation = true;
-              const _pa = task.data.prix_achat ?? matched.buy ?? matched.prix_achat ?? 0;
+              // Article trouvé → ne jamais matcher en silence, même ici (cas achat+vente
+              // simultané, requiresConfirmation:false). Laisser l'utilisateur choisir entre
+              // confirmer la vente de cet article ou créer une vente séparée : on renvoie
+              // pending_confirmation avec matched_id, la carte de choix côté App.jsx s'occupe
+              // du reste (cohérent avec le cas requiresConfirmation:true ci-dessous).
               result = {
                 intent: task.intent,
-                taskData: { ...task.data, prix_achat: _pa },
-                status: "success",
-                data: { ...task.data, prix_achat: _pa },
-                message: context.lang === "en" ? "Sale registered" : "Vente enregistrée",
+                taskData: { ...task.data, matched_id: matched.id },
+                status: "pending_confirmation",
+                data: task.data,
+                message: context.lang === "en" ? "Confirm sale?" : "Confirmer la vente ?",
               };
             } else if (task.data.candidates?.length > 0) {
               // Ambiguïté : l'utilisateur doit choisir parmi les candidats dans le drawer

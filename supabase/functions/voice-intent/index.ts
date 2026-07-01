@@ -44,7 +44,7 @@ Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéra
    pas seulement le champ marque extrait (voir règle correction marques ci-dessous).
 
 5. SENS GLOBAL — si la phrase est partiellement déformée, déduire l'intention par le contexte :
-   - Nombre + nom article + prix → inventory_lot ou inventory_add avec quantite
+   - Nombre + nom article + prix → inventory_lot (ACHAT uniquement) ou inventory_add avec quantite
    - Prix seul + nom article → intent vente (inventory_sell) ou achat (inventory_add)
    - Utiliser la connaissance du contexte revendeur (Vinted, brocante, vide-grenier).
 
@@ -83,7 +83,7 @@ Aujourd'hui = 2026-05-01, hier = 2026-04-30.
 
 Intents disponibles :
 - inventory_add       → requiresConfirmation: false
-- inventory_lot       → requiresConfirmation: true OBLIGATOIRE
+- inventory_lot       → requiresConfirmation: true OBLIGATOIRE (ACHATS uniquement, jamais pour une vente)
 - inventory_sell      → requiresConfirmation: true OBLIGATOIRE (false si achat+vente simultané, confidence ≥ 0.85)
 - inventory_search    → requiresConfirmation: false
 - inventory_delete    → requiresConfirmation: true OBLIGATOIRE
@@ -291,6 +291,18 @@ INTERDIT : générer inventory_lot quand des prix individuels sont mentionnés.
 
 Si tous les articles sont IDENTIQUES (même produit × N exemplaires) → inventory_add avec quantite.
 Le mot "lot" seul ne déclenche PAS inventory_lot si les articles ont des prix individuels.
+
+RÈGLE ABSOLUE — inventory_lot est RÉSERVÉ AUX ACHATS, JAMAIS AUX VENTES (CRITIQUE) :
+inventory_lot ne doit JAMAIS être généré pour une VENTE, même si le mot "lot" est prononcé.
+Un verbe de vente ("j'ai vendu", "j'ai revendu", "vendu") + plusieurs articles + un prix global
+→ TOUJOURS générer une tâche inventory_sell PAR ARTICLE (jamais inventory_lot), chacune avec :
+price_ambiguous:true, prix_mentionne:<prix total>, prix_vente:null, quantite_vendue:1, requiresConfirmation:true.
+✅ "j'ai vendu un lot de 30€ avec dedans le sac à main Zara, une robe verte Mango et une veste Carhartt en cuir" →
+   [inventory_sell {nom:"Sac à main",marque:"Zara",categorie:"Mode",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Robe",marque:"Mango",categorie:"Mode",description:"verte",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Veste",marque:"Carhartt",categorie:"Mode",description:"cuir",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true}]
+❌ "j'ai vendu un lot de 30€ avec dedans le sac Zara, la robe Mango et la veste Carhartt" → inventory_lot (FAUX — inventory_lot est réservé aux ACHATS, jamais à une vente, peu importe le mot "lot")
+INTERDIT : générer inventory_lot dès qu'un verbe de vente est présent dans la phrase, quel que soit le nombre d'articles ou la présence du mot "lot".
 
 PRIX UNITAIRE vs PRIX TOTAL (CRITIQUE) :
 Si l'utilisateur donne un prix UNITAIRE (mots-clés : "chacun", "chaque", "l'un", "la pièce",
@@ -508,7 +520,7 @@ Your role is to understand the REAL INTENTION, not to parse the text literally.
    not just the extracted brand field (see brand correction rule below).
 
 5. GLOBAL MEANING — if the phrase is partially garbled, infer intent from context:
-   - Number + item name + price → inventory_lot or inventory_add with quantite
+   - Number + item name + price → inventory_lot (PURCHASE only) or inventory_add with quantite
    - Price + item name → selling (inventory_sell) or buying (inventory_add)
    - Use knowledge of the resale context (eBay, Vinted, thrift stores, car boot sales).
 
@@ -547,7 +559,7 @@ Today = 2026-05-01, yesterday = 2026-04-30.
 
 Available intents:
 - inventory_add       → requiresConfirmation: false
-- inventory_lot       → requiresConfirmation: true MANDATORY
+- inventory_lot       → requiresConfirmation: true MANDATORY (PURCHASES only, never for a sale)
 - inventory_sell      → requiresConfirmation: true MANDATORY (false if simultaneous buy+sell, confidence ≥ 0.85)
 - inventory_search    → requiresConfirmation: false
 - inventory_delete    → requiresConfirmation: true MANDATORY
@@ -752,6 +764,18 @@ FORBIDDEN: generating inventory_lot when individual prices are mentioned.
 
 If all items are IDENTICAL (same product × N units) → inventory_add with quantite.
 The word "lot" alone does NOT trigger inventory_lot if items have individual prices.
+
+ABSOLUTE RULE — inventory_lot is RESERVED FOR PURCHASES, NEVER FOR SALES (CRITICAL):
+inventory_lot must NEVER be generated for a SALE, even if the word "lot" is spoken.
+A sale verb ("I sold", "sold", "I resold") + multiple items + one global price
+→ ALWAYS generate one inventory_sell task PER ITEM (never inventory_lot), each with:
+price_ambiguous:true, prix_mentionne:<total price>, prix_vente:null, quantite_vendue:1, requiresConfirmation:true.
+✅ "I sold a €30 lot with a Zara handbag, a green Mango dress and a leather Carhartt jacket in it" →
+   [inventory_sell {nom:"Handbag",marque:"Zara",categorie:"Mode",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Dress",marque:"Mango",categorie:"Mode",description:"green",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Jacket",marque:"Carhartt",categorie:"Mode",description:"leather",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true}]
+❌ "I sold a €30 lot with the Zara bag, the Mango dress and the Carhartt jacket in it" → inventory_lot (WRONG — inventory_lot is reserved for PURCHASES, never a sale, regardless of the word "lot")
+FORBIDDEN: generating inventory_lot whenever a sale verb is present in the sentence, regardless of item count or the presence of the word "lot".
 
 UNIT PRICE vs TOTAL PRICE (CRITICAL):
 If the user states a UNIT price (keywords: "each", "each one", "apiece", "per item",
