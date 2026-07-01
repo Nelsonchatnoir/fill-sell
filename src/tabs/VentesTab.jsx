@@ -58,7 +58,7 @@ function SalesTicker({ lang, fmt, setTab }) {
 
   return (
     <div style={{marginBottom:8}}>
-      <div style={{fontSize:11,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
+      <div style={{fontSize:11,fontWeight:700,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
         {lang==='fr'?'APERÇU — À QUOI ÇA RESSEMBLE':'PREVIEW — WHAT IT LOOKS LIKE'}
       </div>
 
@@ -80,7 +80,7 @@ function SalesTicker({ lang, fmt, setTab }) {
             </div>
             <div style={{textAlign:'right',flexShrink:0}}>
               <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D'}}>{fmt(s.sell)}</div>
-              <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>+{fmt(s.margin)}</div>
+              <div style={{fontWeight:700,fontSize:13,color:mc,marginTop:1}}>+{fmt(s.margin)}</div>
             </div>
           </div>
           <div style={{marginTop:10,height:2,background:'#F3F4F6',borderRadius:2,overflow:'hidden'}}>
@@ -97,7 +97,7 @@ function SalesTicker({ lang, fmt, setTab }) {
       </div>
 
       <div style={{textAlign:'center',marginBottom:16}}>
-        <div style={{fontSize:18,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
+        <div style={{fontSize:18,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
           {lang==='fr'?"Tes profits t'attendent":"Your profits are waiting"}
         </div>
         <div style={{fontSize:13,color:'#A3A9A6',fontWeight:500,lineHeight:1.5,maxWidth:240,margin:'0 auto'}}>
@@ -107,7 +107,7 @@ function SalesTicker({ lang, fmt, setTab }) {
 
       <button
         onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
-        style={{width:'100%',padding:'14px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 4px 14px rgba(15,110,86,0.3)'}}
+        style={{width:'100%',padding:'14px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 4px 14px rgba(15,110,86,0.3)'}}
         onMouseDown={e=>e.currentTarget.style.transform='scale(0.97)'}
         onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
         onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
@@ -116,7 +116,7 @@ function SalesTicker({ lang, fmt, setTab }) {
       </button>
 
       <div style={{marginTop:16}}>
-        <div style={{fontSize:11,fontWeight:800,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
           {lang==='fr'?'AVEC FILL & SELL':'WITH FILL & SELL'}
         </div>
         <div style={{fontSize:13,fontWeight:700,color:'#0D0D0D',textAlign:'center',marginBottom:10}}>
@@ -131,7 +131,7 @@ function SalesTicker({ lang, fmt, setTab }) {
             <div key={i} style={{background:'#F0FDFB',border:'1px solid rgba(13,148,136,0.18)',borderRadius:12,padding:'10px 8px',textAlign:'center'}}>
               <div style={{fontSize:18,marginBottom:4}}>{c.icon}</div>
               <div style={{fontSize:10,fontWeight:700,color:'#6B7280',marginBottom:4,lineHeight:1.2}}>{c.label}</div>
-              <div style={{fontSize:15,fontWeight:900,color:'#0F6E56',letterSpacing:'-0.02em',marginBottom:2}}>{c.value}</div>
+              <div style={{fontSize:15,fontWeight:700,color:'#0F6E56',letterSpacing:'-0.02em',marginBottom:2}}>{c.value}</div>
               <div style={{fontSize:9,color:'#A3A9A6',fontWeight:500}}>{lang==='fr'?'sur tes ventes':'on your sales'}</div>
             </div>
           ))}
@@ -168,8 +168,8 @@ const VentesTab = memo(function VentesTab({
             {label:t('profitMoyen'),value:fmt(salesForKpis.length?totalM/salesForKpis.length:0),color:"#5DCAA5"},
           ].map((s,i)=>(
             <div key={i} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
-              <div style={{fontSize:18,fontWeight:900,color:s.color,letterSpacing:"-0.03em"}}>{s.value}</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
+              <div style={{fontSize:18,fontWeight:700,color:s.color,letterSpacing:"-0.03em"}}>{s.value}</div>
             </div>
           ))}
         </div>
@@ -206,7 +206,7 @@ const VentesTab = memo(function VentesTab({
                   <div style={{flex:1,minWidth:0,cursor:hasDetail?"pointer":undefined}} onClick={hasDetail?()=>setExpandedSaleId(isExpanded?null:s.id):undefined}>
                     <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
                       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
-                      {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+                      {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
                       <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
@@ -223,7 +223,7 @@ const VentesTab = memo(function VentesTab({
                     </div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
-                      <div style={{fontWeight:800,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                      <div style={{fontWeight:700,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
                       <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
                     </div>
                     {hasDetail&&<span onClick={e=>{e.stopPropagation();setExpandedSaleId(isExpanded?null:s.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)",flexShrink:0}}>›</span>}
@@ -255,7 +255,7 @@ const VentesTab = memo(function VentesTab({
       {/* ── Bouton stats avancées ── */}
       {isPremium&&(
         <button onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
-          style={{width:"100%",marginTop:4,padding:"14px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
+          style={{width:"100%",marginTop:4,padding:"14px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
           onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
           onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
           onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}

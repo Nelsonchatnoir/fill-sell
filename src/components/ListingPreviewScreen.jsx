@@ -156,7 +156,7 @@ function QuotaLimitModal({ onClose, lang }) {
         background:"#fff", borderRadius:"24px 24px 0 0", padding:"28px 24px 36px",
         width:"100%", maxWidth:480,
       }}>
-        <div style={{ fontWeight:900, fontSize:18, color:"#111", marginBottom:8 }}>
+        <div style={{ fontWeight:700, fontSize:18, color:"#111", marginBottom:8 }}>
           {t("quotaModalTitle")}
         </div>
         <p style={{ fontSize:13.5, color:"#6B6862", lineHeight:1.6, margin:"0 0 20px" }}>
@@ -166,7 +166,7 @@ function QuotaLimitModal({ onClose, lang }) {
           onClick={onClose}
           style={{
             width:"100%", padding:"14px", borderRadius:14, border:"none",
-            background:"#111", color:"#fff", fontWeight:800, fontSize:15,
+            background:"#111", color:"#fff", fontWeight:700, fontSize:15,
             cursor:"pointer", fontFamily:"inherit",
           }}
         >
@@ -453,7 +453,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               {locked && (
                 <span style={{
                   position:"absolute", top:-8, right:12,
-                  fontSize:9.5, fontWeight:800, color:"#fff",
+                  fontSize:9.5, fontWeight:700, color:"#fff",
                   background: o.lockedFor === "pro" ? "#7C3AED" : AMBER,
                   padding:"3px 8px", borderRadius:999,
                 }}>

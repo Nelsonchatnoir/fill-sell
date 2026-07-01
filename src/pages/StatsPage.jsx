@@ -12,7 +12,7 @@ const C = {
 function SectionTitle({ children }) {
   return (
     <div style={{marginTop:20,marginBottom:8}}>
-      <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 12px",display:"inline-block",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+      <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 12px",display:"inline-block",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>
         {children}
       </span>
     </div>
@@ -23,8 +23,8 @@ function KpiCard({ label, value, sub, color, progress }) {
   const accent = color || C.text;
   return (
     <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",borderLeft:`3px solid ${accent}`}}>
-      <div style={{fontSize:11,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
-      <div style={{fontSize:26,fontWeight:900,color:accent,letterSpacing:"-0.03em",lineHeight:1.1}}>{value}</div>
+      <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+      <div style={{fontSize:26,fontWeight:700,color:accent,letterSpacing:"-0.03em",lineHeight:1.1}}>{value}</div>
       {sub&&<div style={{fontSize:10,fontWeight:700,color:C.label,marginTop:4}}>{sub}</div>}
       {progress!=null&&(
         <div style={{marginTop:8,height:4,background:"#E5E7EB",borderRadius:99,overflow:"hidden"}}>
@@ -152,10 +152,10 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
       </button>
 
       {/* Header */}
-      <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"3px 12px",fontSize:11,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,alignSelf:"flex-start"}}>
+      <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"3px 12px",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,alignSelf:"flex-start"}}>
         {tr('statsLabel')}
       </div>
-      <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:16}}>
+      <div style={{fontSize:32,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:16}}>
         {tr('tesPerformances')}
       </div>
 
@@ -174,7 +174,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
       {n===0?(
         <div style={{background:"#fff",borderRadius:12,padding:"40px 20px",textAlign:"center",border:"1px solid rgba(0,0,0,0.06)"}}>
           <div style={{fontSize:36,marginBottom:12}}>💸</div>
-          <div style={{fontSize:16,fontWeight:800,color:C.text}}>{tr('aucuneVenteStat')}</div>
+          <div style={{fontSize:16,fontWeight:700,color:C.text}}>{tr('aucuneVenteStat')}</div>
           <div style={{fontSize:13,color:C.sub,marginTop:6}}>{tr('statsApparaitront')}</div>
         </div>
       ):(
@@ -197,16 +197,16 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
 
           {bestSale&&(
             <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",borderLeft:"3px solid #1D9E75",marginTop:8}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{tr('meilleurVente')}</div>
-              <div style={{fontWeight:800,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🏆 {bestSale.title}</div>
-              <div style={{fontSize:16,fontWeight:800,color:"#1D9E75",marginTop:4}}>+{fmt(bestSale.margin)} · {fmtp(bestSale.marginPct)}</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{tr('meilleurVente')}</div>
+              <div style={{fontWeight:700,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🏆 {bestSale.title}</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#1D9E75",marginTop:4}}>+{fmt(bestSale.margin)} · {fmtp(bestSale.marginPct)}</div>
             </div>
           )}
 
           {bestPct&&bestPct.id!==bestSale?.id&&(
             <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",marginTop:8}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{tr('plusRentable')}</div>
-              <div style={{fontWeight:800,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bestPct.title}</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{tr('plusRentable')}</div>
+              <div style={{fontWeight:700,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bestPct.title}</div>
               <div style={{fontSize:13,fontWeight:700,color:"#5DCAA5",marginTop:2}}>{fmtp(bestPct.marginPct)}</div>
             </div>
           )}
@@ -221,7 +221,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
 
           <SectionTitle>{tr('tendances')}</SectionTitle>
           <div style={{background:"#fff",borderRadius:12,padding:"16px 18px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{fontSize:13,fontWeight:800,color:C.text,marginBottom:4}}>{tr('evolutionProfit')}</div>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:4}}>{tr('evolutionProfit')}</div>
             <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>{tr('sixDerniersMois')}</div>
             <div style={{position:"relative",height:"180px",width:"100%"}}>
               <Line data={lineData} options={lineOpts}/>
@@ -236,15 +236,15 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
                   const d=new Date(s.date);
                   return(
                     <div key={s.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:12}}>
-                      <div style={{width:28,height:28,borderRadius:8,background:["#E8F5F0","#F0FFF4","#F7FEF9"][i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#1D9E75",flexShrink:0}}>
+                      <div style={{width:28,height:28,borderRadius:8,background:["#E8F5F0","#F0FFF4","#F7FEF9"][i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#1D9E75",flexShrink:0}}>
                         {i+1}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:800,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                         <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{d.getDate()} {MONTHS[d.getMonth()]} {d.getFullYear()}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
-                        <div style={{fontWeight:900,fontSize:14,color:"#1D9E75"}}>+{fmt(s.margin)}</div>
+                        <div style={{fontWeight:700,fontSize:14,color:"#1D9E75"}}>+{fmt(s.margin)}</div>
                         <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{fmtp(s.marginPct)}</div>
                       </div>
                     </div>

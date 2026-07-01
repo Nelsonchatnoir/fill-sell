@@ -10,8 +10,8 @@ import {
 const Kpi=({label,value,sub,color,icon})=>(
   <div className="kpi" style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
     {icon&&<div style={{fontSize:18,marginBottom:4}}>{icon}</div>}
-    <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
-    <div style={{fontSize:22,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
+    <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
     {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#6B7280",marginTop:4}}>{sub}</div>}
   </div>
 );
@@ -71,7 +71,7 @@ const DashboardTab = memo(function DashboardTab({
   const hasData = sales.length>0;
 
   const _f={family:"'Space Grotesk', -apple-system, sans-serif",size:11};
-  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
+  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'700'}};
   const _scales=(unit)=>({
     x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},
     y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:unit==='€'?v=>fmt(v,0):v=>v+unit}},
@@ -130,7 +130,7 @@ const DashboardTab = memo(function DashboardTab({
       {!isNative&&!isPremium&&!loading&&items.length>=18&&(
         <div onClick={()=>openUpgradeModal()} style={{background:"#FEF9E7",border:"1px solid rgba(249,162,108,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
           <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lang==='en'?`⚠️ Only ${20-items.length} item${20-items.length>1?"s":""} left on your free plan`:`⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} disponible${20-items.length>1?"s":""}`}</div>
-          <button onClick={e=>{e.stopPropagation();openUpgradeModal();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
+          <button onClick={e=>{e.stopPropagation();openUpgradeModal();}} style={{background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
         </div>
       )}
       {loading?(
@@ -148,11 +148,11 @@ const DashboardTab = memo(function DashboardTab({
         <>
           {/* Badge mois */}
           <div>
-            <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:10}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:10}}>
               <div style={{width:4,height:4,borderRadius:"50%",background:"#1D9E75",flexShrink:0}}/>
               {(lang==='en'?MONTHS_EN:MONTHS_FR)[now.getMonth()]} {now.getFullYear()}
             </div>
-            <div style={{fontSize:32,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
+            <div style={{fontSize:32,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.04em",lineHeight:1,marginBottom:18}}>
               {username?<>{lang==='en'?'Hello':'Bonjour'} <span style={{color:"#1D9E75"}}>{username}</span> 👋</>:lang==='en'?'Hello 👋':'Bonjour 👋'}
             </div>
           </div>
@@ -165,7 +165,7 @@ const DashboardTab = memo(function DashboardTab({
           >
             <div className="lbl" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
               <span>{t('profitNet')}</span>
-              <span style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</span>
+              <span style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:99,padding:"3px 8px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.85)"}}>{tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}</span>
             </div>
             <div className="amt">{fmt(totalM)}</div>
             <div className="meta">
@@ -193,7 +193,7 @@ const DashboardTab = memo(function DashboardTab({
 
           <div className="grid2">
             <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>{t('benefices')}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:2}}>{t('benefices')}</div>
               <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>
                 {selectedRange==='7j'?t('dernierNJours'):selectedRange==='1M'?t('trente'):selectedRange==='1A'?t('douze'):selectedRange==='YTD'?t('depuisJanvier'):t('sixMois')}
               </div>
@@ -202,7 +202,7 @@ const DashboardTab = memo(function DashboardTab({
               </div>
             </div>
             <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:2}}>{t('evolutionMarge')}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:2}}>{t('evolutionMarge')}</div>
               <div style={{fontSize:11,color:"#A3A9A6",marginBottom:14,fontWeight:600}}>
                 {selectedRange==='7j'?t('dernierNJours'):selectedRange==='1M'?t('trente'):selectedRange==='1A'?t('douze'):selectedRange==='YTD'?t('depuisJanvier'):t('sixMois')}
               </div>
@@ -214,16 +214,16 @@ const DashboardTab = memo(function DashboardTab({
 
           {hasData&&(
             <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:14}}>{t('dernieresventes')}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:14}}>{t('dernieresventes')}</div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {groupSales(sales).slice(0,5).map(s=>{
                   const d=new Date(s.date);const mc=!s.marginPct||s.marginPct<5?"#E53E3E":s.marginPct<20?"#F9A26C":s.marginPct<40?"#5DCAA5":"#1D9E75";
                   return(
                     <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderLeft:`3px solid ${getCatBorder(s.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:800,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
                           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
-                          {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+                          {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",marginTop:2}}>
                           <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}</span>
@@ -232,7 +232,7 @@ const DashboardTab = memo(function DashboardTab({
                         </div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontWeight:900,fontSize:16,color:mc}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                        <div style={{fontWeight:700,fontSize:16,color:mc}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
                         <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
                       </div>
                     </SwipeRow>

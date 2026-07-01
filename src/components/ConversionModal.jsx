@@ -92,7 +92,7 @@ function FeatureRow({ emoji, label, sub, children }) {
       <span style={{ flex: 'none', width: 36, height: 36, borderRadius: 11, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         {emoji}
       </span>
-      <div style={{ flex: 1, fontSize: 13.5, fontWeight: 800, color: '#1A1A1A' }}>
+      <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: '#1A1A1A' }}>
         {label}
         <div style={{ fontSize: 11, fontWeight: 600, color: '#666' }}>{sub}</div>
       </div>
@@ -111,7 +111,7 @@ function ProFeatureRow({ emoji, label, sub }) {
       <span style={{ flex: 'none', width: 36, height: 36, borderRadius: 11, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         {emoji}
       </span>
-      <div style={{ flex: 1, fontSize: 13.5, fontWeight: 800, color: '#1A1A1A' }}>
+      <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: '#1A1A1A' }}>
         {label}
         <div style={{ fontSize: 11, fontWeight: 600, color: '#666' }}>{sub}</div>
       </div>
@@ -122,12 +122,12 @@ function ProFeatureRow({ emoji, label, sub }) {
 function QuotaJump({ from, to, toNum, toSuffix }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-      <span style={{ fontSize: 14, fontWeight: 800, color: '#999', textDecoration: 'line-through' }}>{from}</span>
-      <span style={{ color: '#E8845A', fontWeight: 900 }}>→</span>
+      <span style={{ fontSize: 14, fontWeight: 700, color: '#999', textDecoration: 'line-through' }}>{from}</span>
+      <span style={{ color: '#E8845A', fontWeight: 700 }}>→</span>
       {to
-        ? <span style={{ fontSize: 16, fontWeight: 900, color: '#1D9E75', letterSpacing: '-0.3px' }}>{to}</span>
+        ? <span style={{ fontSize: 16, fontWeight: 700, color: '#1D9E75', letterSpacing: '-0.3px' }}>{to}</span>
         : <>
-            <span style={{ fontSize: 20, fontWeight: 900, color: '#1D9E75', letterSpacing: '-0.5px' }}>{toNum}</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: '#1D9E75', letterSpacing: '-0.5px' }}>{toNum}</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: '#666' }}>{toSuffix}</span>
           </>
       }
@@ -139,7 +139,7 @@ function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
   return (
     <div>
       {!compact && (
-        <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#999', marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#999', marginBottom: 12 }}>
           {l('premiumLabel', lang)}
         </div>
       )}
@@ -158,9 +158,9 @@ function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: '#999', textDecoration: 'line-through' }}>14,99€</span>
-        <span style={{ fontSize: 32, fontWeight: 900, color: '#1D9E75', letterSpacing: '-1px' }}>9,99€</span>
+        <span style={{ fontSize: 32, fontWeight: 700, color: '#1D9E75', letterSpacing: '-1px' }}>9,99€</span>
         <span style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>{l('perMonth', lang)}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 800, color: '#1A6B4A', background: '#E8F5F0', padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#1A6B4A', background: '#E8F5F0', padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
           {l('trial', lang)}
         </span>
       </div>
@@ -174,7 +174,7 @@ function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
           width: '100%', padding: 16, border: 'none', borderRadius: 14,
           background: 'linear-gradient(90deg,#1D9E75,#E8845A,#1D9E75)',
           backgroundSize: '200% 100%',
-          color: '#fff', fontFamily: 'inherit', fontSize: 16, fontWeight: 900,
+          color: '#fff', fontFamily: 'inherit', fontSize: 16, fontWeight: 700,
           letterSpacing: '-0.2px', cursor: 'pointer',
           animation: 'fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite',
         }}
@@ -192,7 +192,7 @@ function ProSection({ onUpgrade, lang, compact }) {
   return (
     <div>
       {!compact && (
-        <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#7C3AED', marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#7C3AED', marginBottom: 12 }}>
           {l('proLabel', lang)}
         </div>
       )}
@@ -209,7 +209,7 @@ function ProSection({ onUpgrade, lang, compact }) {
           width: '100%', padding: 16, border: 'none', borderRadius: 14,
           background: 'linear-gradient(90deg,#4F46E5,#7C3AED,#4F46E5)',
           backgroundSize: '200% 100%',
-          color: '#fff', fontFamily: 'inherit', fontSize: 16, fontWeight: 900,
+          color: '#fff', fontFamily: 'inherit', fontSize: 16, fontWeight: 700,
           letterSpacing: '-0.2px', cursor: 'pointer',
           animation: 'fsGlowPro 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite',
         }}
@@ -273,13 +273,13 @@ export default function ConversionModal({
             {showPremium && (
               <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 100, background: 'rgba(255,255,255,0.18)', marginBottom: 14 }}>
                 <span style={{ width: 6, height: 6, borderRadius: 99, background: '#fff', display: 'inline-block', animation: 'fsPulse 1.6s ease-in-out infinite' }} />
-                <span style={{ fontSize: 11, fontWeight: 800, color: '#fff' }}>{T.founderBadge[lang](founderSpotsLeft)}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{T.founderBadge[lang](founderSpotsLeft)}</span>
               </div>
             )}
-            <div style={{ position: 'relative', fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.02em', marginBottom: 6 }}>
+            <div style={{ position: 'relative', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.02em', marginBottom: 6 }}>
               {T.eyebrow[trig][lang]}
             </div>
-            <div style={{ position: 'relative', fontSize: 25, fontWeight: 900, lineHeight: 1.14, letterSpacing: '-0.8px', color: '#fff' }}>
+            <div style={{ position: 'relative', fontSize: 25, fontWeight: 700, lineHeight: 1.14, letterSpacing: '-0.8px', color: '#fff' }}>
               {T.hl1[trig][lang]}{' '}{T.hl2[trig][lang]}
             </div>
           </div>
@@ -298,7 +298,7 @@ export default function ConversionModal({
             {showPremium && showPro && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 16px' }}>
                 <div style={{ flex: 1, height: 1, background: '#ECEAE3' }} />
-                <span style={{ fontSize: 11, fontWeight: 800, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
                   {l('orLabel', lang)}
                 </span>
                 <div style={{ flex: 1, height: 1, background: '#ECEAE3' }} />

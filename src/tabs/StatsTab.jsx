@@ -138,7 +138,7 @@ function AvgDaysChart({filtered, items, lang}) {
 
   return (
     <div style={card}>
-      <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:14}}>
         {lang==='en'?'⏱ Avg. days to sell by category':'⏱ Délai moy. vente par catégorie'}
       </div>
       {catDays.length===0?(
@@ -158,7 +158,7 @@ function AvgDaysChart({filtered, items, lang}) {
                 <div style={{flex:1,height:8,background:'#F3F4F6',borderRadius:99,overflow:'hidden'}}>
                   <div style={{width:`${pct}%`,height:'100%',background:ts.color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
                 </div>
-                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:800,color:'#0D0D0D',textAlign:'right'}}>
+                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:700,color:'#0D0D0D',textAlign:'right'}}>
                   {avg}{lang==='en'?'d':'j'}
                 </div>
               </div>
@@ -199,7 +199,7 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
   return(<>
     {platVentes.length>0&&(
       <div style={card}>
-        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>{lang==='en'?'🏪 Sales by platform':'🏪 Ventes par plateforme'}</div>
+        <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:14}}>{lang==='en'?'🏪 Sales by platform':'🏪 Ventes par plateforme'}</div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {platVentes.map(({p,count,revenue},i)=>{
             const pct=(revenue/(platVentes[0].revenue||1))*100;
@@ -210,7 +210,7 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
                 <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
               </div>
               <div style={{width:68,flexShrink:0,textAlign:'right'}}>
-                <div style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{fmt2(revenue)}</div>
+                <div style={{fontSize:11,fontWeight:700,color:'#0D0D0D'}}>{fmt2(revenue)}</div>
                 <div style={{fontSize:10,color:'#6B7280'}}>{count} {lang==='en'?(count>1?'sales':'sale'):(count>1?'ventes':'vente')}</div>
               </div>
             </div>);
@@ -219,14 +219,14 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
         {(()=>{const best=[...platVentes].sort((a,b)=>b.avgMargin-a.avgMargin)[0];if(!best)return null;return(
           <div style={{marginTop:12,background:'#EDE9FE',borderRadius:10,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <span style={{fontSize:11,fontWeight:700,color:'#7C3AED'}}>🏆 {lang==='en'?'Best margin:':'Meilleure marge :'} {best.p}</span>
-            <span style={{fontSize:12,fontWeight:900,color:'#7C3AED'}}>{fmtP(best.avgMargin)}</span>
+            <span style={{fontSize:12,fontWeight:700,color:'#7C3AED'}}>{fmtP(best.avgMargin)}</span>
           </div>
         );})()}
       </div>
     )}
     {platStock.length>0&&(
       <div style={card}>
-        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>{lang==='en'?'📦 Stock by platform':'📦 Stock par plateforme'}</div>
+        <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:14}}>{lang==='en'?'📦 Stock by platform':'📦 Stock par plateforme'}</div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {platStock.map(({p,count,invested},i)=>{
             const pct=(invested/(platStock[0].invested||1))*100;
@@ -237,7 +237,7 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
                 <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
               </div>
               <div style={{width:68,flexShrink:0,textAlign:'right'}}>
-                <div style={{fontSize:11,fontWeight:800,color:'#0D0D0D'}}>{fmt2(invested)}</div>
+                <div style={{fontSize:11,fontWeight:700,color:'#0D0D0D'}}>{fmt2(invested)}</div>
                 <div style={{fontSize:10,color:'#6B7280'}}>{count} {lang==='en'?(count>1?'items':'item'):(count>1?'articles':'article')}</div>
               </div>
             </div>);
@@ -436,25 +436,25 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       {/* Hero KPIs */}
       <div className="kpi-hero-row">
         <div className="kpi-hero" style={{background:'linear-gradient(135deg,#0F6E56,#1D9E75)',color:'#fff'}}>
-          <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',opacity:0.7,marginBottom:4}}>{lang==='en'?'Total profit':'Profit total'}</div>
-          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',lineHeight:1}}>{filtered.length===0?'--':fmt2(totalProfit)}</div>
+          <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',opacity:0.7,marginBottom:4}}>{lang==='en'?'Total profit':'Profit total'}</div>
+          <div style={{fontSize:28,fontWeight:700,letterSpacing:'-0.03em',lineHeight:1}}>{filtered.length===0?'--':fmt2(totalProfit)}</div>
         </div>
         <div className="kpi-hero" style={{background:'#fff',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.07em',color:'#6B7280',marginBottom:4}}>{lang==='en'?'Revenue':'Revenu'}</div>
-          <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',color:'#0D0D0D',lineHeight:1}}>{filtered.length===0?'--':fmt2(totalRev)}</div>
+          <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',color:'#6B7280',marginBottom:4}}>{lang==='en'?'Revenue':'Revenu'}</div>
+          <div style={{fontSize:28,fontWeight:700,letterSpacing:'-0.03em',color:'#0D0D0D',lineHeight:1}}>{filtered.length===0?'--':fmt2(totalRev)}</div>
         </div>
       </div>
 
       {/* Spark cards */}
       <div className="spark-row">
         <div className="spark-card">
-          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Sales':'Ventes'}</div>
-          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length===0?'--':filtered.length}</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Sales':'Ventes'}</div>
+          <div style={{fontSize:22,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length===0?'--':filtered.length}</div>
           {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color="#1D9E75"/>}
         </div>
         <div className="spark-card">
-          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg margin':'Marge moy.'}</div>
-          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length===0?'--':fmtp2(avgMargin)}</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg margin':'Marge moy.'}</div>
+          <div style={{fontSize:22,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length===0?'--':fmtp2(avgMargin)}</div>
           {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color="#4ECDC4"/>}
         </div>
       </div>
@@ -462,14 +462,14 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       {/* Extra metrics row */}
       <div className="spark-row">
         <div className="spark-card">
-          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg. days to sell':'Délai moy. vente'}</div>
-          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg. days to sell':'Délai moy. vente'}</div>
+          <div style={{fontSize:22,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.03em'}}>
             {avgDays!==null?`${avgDays} ${lang==='en'?'d':'j'}`:'—'}
           </div>
         </div>
         <div className="spark-card">
-          <div style={{fontSize:10,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg. basket':'Panier moyen'}</div>
-          <div style={{fontSize:22,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length?fmt2(avgBasket):'—'}</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg. basket':'Panier moyen'}</div>
+          <div style={{fontSize:22,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.03em'}}>{filtered.length?fmt2(avgBasket):'—'}</div>
         </div>
       </div>
 
@@ -477,14 +477,14 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       <div style={{background:'#F0FAF7',borderRadius:14,padding:'16px',borderLeft:'3px solid #1D9E75',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
           <span style={{fontSize:16}}>🤖</span>
-          <span style={{fontSize:12,fontWeight:800,color:'#0D0D0D'}}>{lang==='en'?'AI Analysis':'Analyse IA'}</span>
+          <span style={{fontSize:12,fontWeight:700,color:'#0D0D0D'}}>{lang==='en'?'AI Analysis':'Analyse IA'}</span>
           {outdated&&!aiLoading?(
             <button onClick={()=>{setOutdated(false);setRefreshKey(k=>k+1);}}
-              style={{marginLeft:'auto',background:'#FFF4EE',color:'#F9A26C',border:'1px solid rgba(249,162,108,0.4)',borderRadius:99,padding:'2px 10px',fontSize:10,fontWeight:800,cursor:'pointer',fontFamily:'inherit',letterSpacing:'0.04em'}}>
+              style={{marginLeft:'auto',background:'#FFF4EE',color:'#F9A26C',border:'1px solid rgba(249,162,108,0.4)',borderRadius:99,padding:'2px 10px',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',letterSpacing:'0.04em'}}>
               {lang==='en'?'↺ Refresh':'↺ Actualiser'}
             </button>
           ):(
-            <span style={{marginLeft:'auto',background:'#1D9E75',color:'#fff',borderRadius:99,padding:'2px 9px',fontSize:10,fontWeight:800,letterSpacing:'0.04em'}}>{lang==='en'?'Predictive':'Prédictif'}</span>
+            <span style={{marginLeft:'auto',background:'#1D9E75',color:'#fff',borderRadius:99,padding:'2px 9px',fontSize:10,fontWeight:700,letterSpacing:'0.04em'}}>{lang==='en'?'Predictive':'Prédictif'}</span>
           )}
         </div>
         {aiLoading?(
@@ -496,12 +496,12 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         ):(
           filtered.length===0?(
             <div style={{textAlign:'center',padding:'8px 0'}}>
-              <div style={{fontSize:13,fontWeight:800,color:'#0D0D0D',marginBottom:6}}>{lang==='en'?'Unlock your AI analysis 🤖':'Débloque ton analyse IA 🤖'}</div>
+              <div style={{fontSize:13,fontWeight:700,color:'#0D0D0D',marginBottom:6}}>{lang==='en'?'Unlock your AI analysis 🤖':'Débloque ton analyse IA 🤖'}</div>
               <div style={{fontSize:12,color:'#6B7280',fontWeight:500,lineHeight:1.5,marginBottom:12}}>
                 {lang==='en'?'Add your first sale to see trends, predictions and personalised advice':'Ajoute ta première vente pour voir tendances, prédictions et conseils personnalisés'}
               </div>
               <button onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
-                style={{background:'transparent',border:'1px solid #1D9E75',color:'#1D9E75',borderRadius:99,padding:'7px 18px',fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+                style={{background:'transparent',border:'1px solid #1D9E75',color:'#1D9E75',borderRadius:99,padding:'7px 18px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                 + {lang==='en'?'Add an item':'Ajouter un article'}
               </button>
             </div>
@@ -548,7 +548,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
 
       {/* Evolution du profit — Chart.js line */}
       <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-        <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'📈 Profit evolution':'📈 Évolution du profit'}</div>
+        <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'📈 Profit evolution':'📈 Évolution du profit'}</div>
         <div style={{position:'relative',height:130}}>
           {filtered.length===0&&(
             <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:1,pointerEvents:'none'}}>
@@ -586,7 +586,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
                   cornerRadius:10,
                   displayColors:false,
                   titleFont:{family:"'Space Grotesk', sans-serif",size:11,weight:'700'},
-                  bodyFont:{family:"'Space Grotesk', sans-serif",size:14,weight:'800'},
+                  bodyFont:{family:"'Space Grotesk', sans-serif",size:14,weight:'700'},
                   callbacks:{
                     title:([i])=>i.label,
                     label:ctx=>`${(ctx.raw||0)>0?'+':''}${formatCurrency(ctx.raw||0,currency)}`,
@@ -621,7 +621,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       {/* Top sellers */}
       {topSellers.length>0&&(
         <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'🏆 Top sellers':'🏆 Meilleurs vendeurs'}</div>
+          <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'🏆 Top sellers':'🏆 Meilleurs vendeurs'}</div>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {topSellers.map((s,i)=>{
               const ts=getTypeStyle(s.type||'Autre');
@@ -632,8 +632,8 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
                 <div key={i} style={{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',background:'#F9FAFB',borderRadius:12,border:'1px solid rgba(0,0,0,0.05)'}}>
                   <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                     <span style={{fontSize:16,flexShrink:0}}>{medal}</span>
-                    <span style={{flex:1,fontSize:13,fontWeight:800,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
-                    <span style={{fontSize:14,fontWeight:900,color:'#1D9E75',flexShrink:0}}>{fmt2(s.margin||0)}</span>
+                    <span style={{flex:1,fontSize:13,fontWeight:700,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
+                    <span style={{fontSize:14,fontWeight:700,color:'#1D9E75',flexShrink:0}}>{fmt2(s.margin||0)}</span>
                   </div>
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                     {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{marqueLabel(s.marque,lang)}</span>}
@@ -651,7 +651,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       {/* Slow movers */}
       {slowStock.length>0&&(
         <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.06)',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-          <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'🐌 Slow movers':'🐌 Articles lents'}</div>
+          <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:12}}>{lang==='en'?'🐌 Slow movers':'🐌 Articles lents'}</div>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {slowStock.map((s,i)=>{
               const ts=getTypeStyle(s.type||'Autre');
@@ -659,8 +659,8 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
               return(
                 <div key={i} style={{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',background:'#FFFBEB',borderRadius:12,border:'1px solid rgba(249,162,108,0.2)'}}>
                   <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <span style={{flex:1,fontSize:13,fontWeight:800,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
-                    {days!==null&&<span style={{fontSize:11,fontWeight:800,color:'#F9A26C',flexShrink:0}}>{days}{lang==='en'?'d':'j'} {lang==='en'?'in stock':'en stock'}</span>}
+                    <span style={{flex:1,fontSize:13,fontWeight:700,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title}</span>
+                    {days!==null&&<span style={{fontSize:11,fontWeight:700,color:'#F9A26C',flexShrink:0}}>{days}{lang==='en'?'d':'j'} {lang==='en'?'in stock':'en stock'}</span>}
                   </div>
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                     {s.marque&&<span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>{marqueLabel(s.marque,lang)}</span>}

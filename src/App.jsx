@@ -272,7 +272,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
       <div style={{background:'#fff',borderRadius:24,padding:'20px',maxWidth:400,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',maxHeight:'88vh',display:'flex',flexDirection:'column'}}>
         <div style={{fontSize:24,textAlign:'center',marginBottom:4}}>💱</div>
-        <div style={{fontSize:18,fontWeight:900,textAlign:'center',marginBottom:3,color:'#0D0D0D',letterSpacing:'-0.02em'}}>
+        <div style={{fontSize:18,fontWeight:700,textAlign:'center',marginBottom:3,color:'#0D0D0D',letterSpacing:'-0.02em'}}>
           {lang==='en'?'Choose your currency':'Choisissez votre devise'}
         </div>
         <div style={{fontSize:11,color:'#6B7280',textAlign:'center',marginBottom:12}}>
@@ -286,12 +286,12 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             if(!items||items.length===0) return null;
             return(
               <div key={reg}>
-                <div style={{fontSize:9,fontWeight:800,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
+                <div style={{fontSize:9,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:5,marginBottom:4}}>
                   {items.map(c=>(
                     <button key={c.code} onClick={()=>setSelected(c.code)}
                       style={{padding:'7px 4px',borderRadius:9,border:selected===c.code?'2px solid #1D9E75':'1px solid rgba(0,0,0,0.09)',background:selected===c.code?'#F0FBF7':'#FAFAFA',cursor:'pointer',transition:'all 0.1s',fontFamily:'inherit',textAlign:'center',lineHeight:1.25}}>
-                      <div style={{fontSize:11,fontWeight:800,color:selected===c.code?'#1D9E75':'#111'}}>{c.code}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:selected===c.code?'#1D9E75':'#111'}}>{c.code}</div>
                       <div style={{fontSize:10,color:selected===c.code?'#1D9E75':'#6B7280'}}>{c.sym}</div>
                     </button>
                   ))}
@@ -311,7 +311,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
           />
         </div>
         <button onClick={()=>onConfirm(selected,usernameInput.trim())}
-          style={{marginTop:0,width:'100%',padding:'13px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
+          style={{marginTop:0,width:'100%',padding:'13px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
           {selected} {CURRENCY_SYMBOLS[selected]} — {lang==='en'?'Confirm':'Confirmer'}
         </button>
       </div>
@@ -326,7 +326,7 @@ function UsernameOnboardingInput({lang,onConfirm}){
         placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
         style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
       <button onClick={()=>onConfirm(val.trim())}
-        style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+        style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
         {lang==='en'?"Let's go !":"C'est parti !"}
       </button>
     </>
@@ -505,7 +505,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
     const brd=onDark?"1px solid rgba(255,255,255,0.4)":"none";
     return(
       <button onClick={onOpenModal??handleCheckout} disabled={loading}
-        style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
+        style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:700,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
@@ -535,7 +535,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
       {slotsRemaining!==null&&slotsRemaining>0&&(
         <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
       )}
-      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
+      <div style={{fontSize:11,fontWeight:700,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
         🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
       </div>
       {iapProduct&&(
@@ -597,8 +597,8 @@ const Empty=({text="Aucune donnée"})=>(
 const Kpi=({label,value,sub,color,icon})=>(
   <div className="kpi" style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
     {icon&&<div style={{fontSize:18,marginBottom:4}}>{icon}</div>}
-    <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
-    <div style={{fontSize:22,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
+    <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
     {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#6B7280",marginTop:4}}>{sub}</div>}
   </div>
 );
@@ -1108,7 +1108,7 @@ function AvgDaysChart({filtered, items, lang}) {
 
   return (
     <div style={card}>
-      <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:14}}>
         {lang==='en'?'⏱ Avg. days to sell by category':'⏱ Délai moy. vente par catégorie'}
       </div>
       {catDays.length===0?(
@@ -1128,7 +1128,7 @@ function AvgDaysChart({filtered, items, lang}) {
                 <div style={{flex:1,height:8,background:'#F3F4F6',borderRadius:99,overflow:'hidden'}}>
                   <div style={{width:`${pct}%`,height:'100%',background:ts.color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
                 </div>
-                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:800,color:'#0D0D0D',textAlign:'right'}}>
+                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:700,color:'#0D0D0D',textAlign:'right'}}>
                   {avg}{lang==='en'?'d':'j'}
                 </div>
               </div>
@@ -1250,7 +1250,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
       <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxHeight:'90vh',overflowY:'auto',animation:'slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)',WebkitOverflowScrolling:'touch'}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 20px 14px',borderBottom:'1px solid rgba(0,0,0,0.07)',position:'sticky',top:0,background:'#fff',zIndex:1}}>
-          <div style={{fontSize:18,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',fontFamily:'inherit'}}>
+          <div style={{fontSize:18,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',fontFamily:'inherit'}}>
             {lang==='en'?'Level up':'Passe au niveau supérieur'}
           </div>
           <button onClick={onClose} style={{background:'#F3F4F6',border:'none',borderRadius:99,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,cursor:'pointer',color:'#6B7280',flexShrink:0}}>✕</button>
@@ -1260,14 +1260,14 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
             {/* Free */}
             <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.1)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0}}>
-              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'#1D9E75',marginBottom:6}}>
+              <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.1em',color:'#1D9E75',marginBottom:6}}>
                 {lang==='en'?'Free':'Gratuit'}
               </div>
-              <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#0D0D0D',marginBottom:6,fontFamily:'inherit'}}>
+              <div style={{fontSize:18,fontWeight:700,letterSpacing:'-0.02em',color:'#0D0D0D',marginBottom:6,fontFamily:'inherit'}}>
                 {lang==='en'?'To get started':'Pour démarrer'}
               </div>
               <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#0D0D0D',fontFamily:'inherit'}}>0 €</span>
+                <span style={{fontSize:30,fontWeight:700,letterSpacing:'-0.04em',lineHeight:1,color:'#0D0D0D',fontFamily:'inherit'}}>0 €</span>
                 <span style={{fontSize:11,fontWeight:700,color:'#9CA3AF'}}>{lang==='en'?'/ forever':'/ toujours'}</span>
               </div>
               <div style={{fontSize:11,fontWeight:600,color:'#6B7280',marginBottom:12,lineHeight:1.4}}>
@@ -1276,7 +1276,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
               <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
                 {FREE_F.map((f,i)=>(
                   <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'#374151'}}>
-                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(29,158,117,0.12)',color:'#1D9E75',fontSize:9,fontWeight:900,marginTop:1}}>✓</span>
+                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(29,158,117,0.12)',color:'#1D9E75',fontSize:9,fontWeight:700,marginTop:1}}>✓</span>
                     {f}
                   </li>
                 ))}
@@ -1285,25 +1285,25 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
             {/* Premium/Founder */}
             <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0,position:'relative',overflow:'hidden',color:'#fff'}}>
               <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.18),transparent 55%)',borderRadius:16,pointerEvents:'none'}}/>
-              <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:800,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
+              <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:700,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
                 {isFounder?`🔥 ${lang==='fr'?'Prix Founder':'Founder Price'}`:(lang==='en'?'⭐ Most popular':'⭐ Le plus populaire')}
               </div>
-              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:24}}>Premium</div>
-              <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
+              <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:24}}>Premium</div>
+              <div style={{fontSize:18,fontWeight:700,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
                 {lang==='en'?'To go further':'Pour aller plus loin'}
               </div>
               <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'14,99 €'}</span>
+                <span style={{fontSize:30,fontWeight:700,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'14,99 €'}</span>
                 <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
               </div>
               {isFounder&&<div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.9)',marginBottom:6}}>{lang==='en'?'Price reserved for early users':'Prix réservé aux premiers utilisateurs'}</div>}
-              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:800,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
+              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
                 🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits'}
               </div>
               <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
                 {PREM_F.map((f,i)=>(
                   <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'rgba(255,255,255,0.95)'}}>
-                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(255,255,255,0.25)',color:'#fff',fontSize:9,fontWeight:900,marginTop:1}}>✓</span>
+                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(255,255,255,0.25)',color:'#fff',fontSize:9,fontWeight:700,marginTop:1}}>✓</span>
                     {i<4?<strong>{f}</strong>:f}
                   </li>
                 ))}
@@ -1313,7 +1313,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
         </div>
         {/* Footer */}
         <div style={{padding:'16px 16px',display:'flex',flexDirection:'column',gap:10}}>
-          <button onClick={onCheckout} style={{width:'100%',padding:'15px',background:isFounder?'linear-gradient(135deg,#E53E3E,#F97316)':'#1D9E75',color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit',boxShadow:isFounder?'0 4px 16px rgba(229,62,62,0.35)':'0 4px 14px rgba(29,158,117,0.3)',letterSpacing:'-0.01em'}}>
+          <button onClick={onCheckout} style={{width:'100%',padding:'15px',background:isFounder?'linear-gradient(135deg,#E53E3E,#F97316)':'#1D9E75',color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer',fontFamily:'inherit',boxShadow:isFounder?'0 4px 16px rgba(229,62,62,0.35)':'0 4px 14px rgba(29,158,117,0.3)',letterSpacing:'-0.01em'}}>
             {isFounder
               ?(lang==='en'?'✨ Become a Founder · €9.99/mo — 7 days free':'✨ Devenir Founder · 9,99€/mois — 7j gratuits')
               :(lang==='en'?'✨ Upgrade to Premium · €14.99/mo — 7 days free':'✨ Passer Premium · 14,99€/mois — 7j gratuits')
@@ -1366,10 +1366,10 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
           </div>
           {isFounder&&(
             <div style={{display:'flex',justifyContent:'center',marginBottom:10}}>
-              <span style={{background:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.5)',borderRadius:99,padding:'4px 12px',fontSize:10,fontWeight:800,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase'}}>🔥 Founder</span>
+              <span style={{background:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.5)',borderRadius:99,padding:'4px 12px',fontSize:10,fontWeight:700,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase'}}>🔥 Founder</span>
             </div>
           )}
-          <div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",fontSize:22,fontWeight:900,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
+          <div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
           <div style={{fontSize:13,color:'rgba(255,255,255,0.88)',fontWeight:600}}>{subtitle}</div>
         </div>
         <div style={{padding:'20px 20px 0',display:'flex',flexDirection:'column',gap:8}}>
@@ -1377,12 +1377,12 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
             <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(62,172,160,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
               <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
               <span style={{fontSize:13,fontWeight:700,color:'#0D0D0D',lineHeight:1.3,flex:1}}>{label}</span>
-              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#3EACA0,#2DD4BF)',color:'#fff',fontSize:10,fontWeight:900}}>✓</span>
+              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#3EACA0,#2DD4BF)',color:'#fff',fontSize:10,fontWeight:700}}>✓</span>
             </div>
           ))}
         </div>
         <div style={{padding:'20px'}}>
-          <button onClick={onClose} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#3EACA0,#E8956D)',border:'none',borderRadius:16,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",boxShadow:'0 4px 16px rgba(62,172,160,0.4)',letterSpacing:'-0.01em'}}>{cta}</button>
+          <button onClick={onClose} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#3EACA0,#E8956D)',border:'none',borderRadius:16,color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",boxShadow:'0 4px 16px rgba(62,172,160,0.4)',letterSpacing:'-0.01em'}}>{cta}</button>
         </div>
       </div>
     </div>
@@ -1765,7 +1765,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const CATS=["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"];
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12,paddingBottom:10,borderBottom:"1px solid rgba(0,0,0,0.06)"}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12,paddingBottom:10,borderBottom:"1px solid rgba(0,0,0,0.06)"}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
                     {found.length===0?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         {found.map((item,i)=>{
@@ -1892,7 +1892,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                                         await actions.fetchAll();
                                       }
                                       setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}));
-                                    }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                                    }} style={{fontSize:11,fontWeight:700,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                                       {lang==="en"?"✓ Sold":"✓ Vendu"}
                                     </button>
                                     <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
@@ -2054,7 +2054,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 return(
                   <div key={idx} className="vr-profit-card">
                     <div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginBottom:6}}>{data?.label}</div>
-                    <div style={{fontSize:32,fontWeight:900,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
+                    <div style={{fontSize:32,fontWeight:700,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
                     {aqPeriode&&<div style={{fontSize:11,color:"#D1D5DB",marginTop:4}}>{aqPeriode}</div>}
                     {aqComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{aqComment}</div>}
                   </div>
@@ -2065,13 +2065,13 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const entries=Object.entries(data.byCategory);
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>{lang==="en"?"Best by category":"Meilleur par catégorie"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>{lang==="en"?"Best by category":"Meilleur par catégorie"}</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                       {entries.map(([cat,s],i)=>(
                         <div key={i} style={{background:"#F5F6F5",borderRadius:10,padding:"10px 12px"}}>
-                          <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{cat}</div>
+                          <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{cat}</div>
                           <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title||s.titre}</div>
-                          <div style={{fontSize:13,fontWeight:800,color:"#1D9E75"}}>+{fmt(Math.round((s.margin??s.benefice??s.prix_vente-s.prix_achat)*100)/100)}</div>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>+{fmt(Math.round((s.margin??s.benefice??s.prix_vente-s.prix_achat)*100)/100)}</div>
                         </div>
                       ))}
                     </div>
@@ -2083,7 +2083,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const top=data?.items||[];
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Top</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Top</div>
                     {top.map((s,i)=>(
                       <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<top.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
                         <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{i+1}. {s.title||s.titre}</div>
@@ -2098,7 +2098,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const dormant=data?.items||[];
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Dormant":"Dormants"} ({dormant.length})</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Dormant":"Dormants"} ({dormant.length})</div>
                     {dormant.slice(0,6).map((item,i)=>{
                       const d=Math.floor((Date.now()-new Date(item.date_achat||item.created_at||item.date))/86400000);
                       return(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(dormant.length,6)-1?"1px solid rgba(0,0,0,0.04)":"none"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre}</div><span style={{background:"#FFF4EE",color:"#F9A26C",border:"1px solid #FDDCB5",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>{d}j</span></div>);
@@ -2129,7 +2129,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 })();
                 return(
                   <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
                       {adType==="bought"?"🛒":adType==="sold"?"💸":"📅"} {adHeader}
                     </div>
                     {dateItems.length===0
@@ -2210,7 +2210,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   return(
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
                       <div>
-                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{taskData?.nom||"Article"}</div>
+                        <div style={{fontWeight:700,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{taskData?.nom||"Article"}</div>
                         <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:dmDescRest||dmLoc?6:0}}>
                           <span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>
                             {lang==="en"?"Direct sale":"Vente directe"}
@@ -2224,7 +2224,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
                         <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Cost":"Achat"} —</span>
                         <span style={{color:"#D1D5DB"}}>→</span>
-                        <span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sale":"Vente"} {pvDirect>0?`${pvDirect.toFixed(2).replace(".",",")} €`:"—"}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lang==="en"?"Sale":"Vente"} {pvDirect>0?`${pvDirect.toFixed(2).replace(".",",")} €`:"—"}</span>
                       </div>
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>{
@@ -2232,7 +2232,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
+                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
                           ✓ {lang==="en"?"Add sale":"Ajouter la vente"}
                         </button>
                         <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
@@ -2253,7 +2253,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <div>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                           <span style={{fontSize:14}}>⚠️</span>
-                          <span style={{fontWeight:800,fontSize:13,color:"#92400E"}}>
+                          <span style={{fontWeight:700,fontSize:13,color:"#92400E"}}>
                             {lang==="en"?"Similar item found — not identical":"Article similaire trouvé — pas identique"}
                           </span>
                         </div>
@@ -2278,7 +2278,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           actions.confirmSellDirect(cfItem,cfPv,taskData?.frais||0,taskData?.quantite_vendue||1,taskData?.plateforme||null)
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                           ✓ {lang==="en"?"Yes, that's it":"Oui, c'est ça"}
                         </button>
                         <button onClick={()=>{
@@ -2300,10 +2300,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   return(
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:10}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
-                        <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>
                           {lang==="en"?"Which item do you mean?":"Quel article veux-tu dire ?"}
                         </div>
-                        {taskData?.prix_vente!=null&&<div style={{fontWeight:800,fontSize:14,color:"#1D9E75",flexShrink:0}}>{lang==="en"?"Sale":"Vendu"} {fmt(taskData.prix_vente)}</div>}
+                        {taskData?.prix_vente!=null&&<div style={{fontWeight:700,fontSize:14,color:"#1D9E75",flexShrink:0}}>{lang==="en"?"Sale":"Vendu"} {fmt(taskData.prix_vente)}</div>}
                       </div>
                       {taskData.candidates.map((c,ci)=>{
                         // Même normalisation String() que pour matched_id
@@ -2365,7 +2365,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <span style={{fontSize:16}}>🤔</span>
-                        <span style={{fontWeight:800,fontSize:14,color:"#92400E"}}>
+                        <span style={{fontWeight:700,fontSize:14,color:"#92400E"}}>
                           {lang==="en"?`${qva}× ${artLabel} — total or each?`:`${qva}× ${artLabel} — total ou pièce ?`}
                         </span>
                       </div>
@@ -2387,7 +2387,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }
-                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                           {lang==="en"
                             ?`✓ ${fmt(pm)} total → ${fmt(unitIfTotal)}/item`
                             :`✓ ${fmt(pm)} au total → ${fmt(unitIfTotal)}/pièce`}
@@ -2404,7 +2404,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                               .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                               .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                           }
-                        }} style={{padding:"13px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        }} style={{padding:"13px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                           {lang==="en"
                             ?`${fmt(pm)}/item → ${fmt(totalIfUnit)} total`
                             :`${fmt(pm)}/pièce → ${fmt(totalIfUnit)} au total`}
@@ -2437,9 +2437,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
                     {/* Article header */}
                     <div>
-                      <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
+                      <div style={{fontWeight:700,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
+                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>×{qv}</span>}
                         {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
                         {!found&&taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{normalizeMarque(taskData.marque)}</span>}
                         {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
@@ -2453,10 +2453,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                       <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(buyU)}</span>
                       <span style={{color:"#D1D5DB",fontWeight:400}}>→</span>
                       {pv>0
-                        ?<span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
+                        ?<span style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
                         :<span style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Price to confirm":"Prix à confirmer"}</span>
                       }
-                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:900,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)} <span style={{fontSize:11,fontWeight:600,opacity:0.8}}>({fmtp(mgpU)})</span></span>}
+                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:700,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)} <span style={{fontSize:11,fontWeight:600,opacity:0.8}}>({fmtp(mgpU)})</span></span>}
                     </div>
                     {/* Champ prix si absent */}
                     {!taskData?.prix_vente&&(
@@ -2480,7 +2480,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
                           .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                           .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
+                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
                         ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
                       </button>
                       <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
@@ -2496,7 +2496,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const _dDesc=(_dItem?.description||_dItem?.desc||"").trim();
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"18px",border:"1px solid #FCA5A5",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginBottom:10}}>
                       🗑️ {lang==="en"?"Delete":"Supprimer"}
                     </div>
                     <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:_dItem?8:14}}>
@@ -2539,7 +2539,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const {loc:confLoc,rest:confDescRest}=parseLocDesc(confDesc);
                 return(
                   <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
                     {(confMarque||(confTs&&confCat!=="Autre"))&&(
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
                         {confMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{confMarque}</span>}
@@ -2584,7 +2584,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
                     {/* En-tête lot */}
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:2}}>
                       🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
                     </div>
                     {lotItems.length>1&&(
@@ -2707,7 +2707,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const _selIds=data?.selectedIds||(moveItems.map(i=>i.id));
                 return(
                   <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:10}}>
                       📦 {lang==="en"?"Store here?":"Ranger ici ?"}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
@@ -2743,7 +2743,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                             {item.description&&<div style={{fontSize:11,color:"#6B7280",marginBottom:4,fontStyle:"italic"}}>{item.description}</div>}
                             <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                               <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
-                              <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>
+                              <span style={{color:"#1D4ED8",fontWeight:700}}>→</span>
                               <span style={{color:"#1D4ED8",fontWeight:700}}>{moveEmp}</span>
                             </div>
                           </div>
@@ -2785,19 +2785,19 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <div style={{fontSize:36,fontWeight:900,color:sc,letterSpacing:"-0.04em",lineHeight:1}}>{score}</div>
+                      <div style={{fontSize:36,fontWeight:700,color:sc,letterSpacing:"-0.04em",lineHeight:1}}>{score}</div>
                       <div>
-                        <div style={{fontSize:13,fontWeight:800,color:sc}}>{label}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:sc}}>{label}</div>
                         <div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"out of 10":"sur 10"}</div>
                       </div>
                     </div>
                     <div style={{display:"flex",gap:20,marginBottom:10}}>
                       <div>
-                        <div style={{fontSize:20,fontWeight:900,color:profitNet>=0?"#1D9E75":"#E53E3E"}}>{profitNet>0?"+":""}{fmt(profitNet)}</div>
+                        <div style={{fontSize:20,fontWeight:700,color:profitNet>=0?"#1D9E75":"#E53E3E"}}>{profitNet>0?"+":""}{fmt(profitNet)}</div>
                         <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Net profit":"Bénéfice net"}</div>
                       </div>
                       <div>
-                        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D"}}>{margePercent}%</div>
+                        <div style={{fontSize:20,fontWeight:700,color:"#0D0D0D"}}>{margePercent}%</div>
                         <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Margin":"Marge"}</div>
                       </div>
                     </div>
@@ -2835,11 +2835,11 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB",boxShadow:"0 1px 4px rgba(29,158,117,0.1)",display:"flex",flexDirection:"column",gap:10}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                       <span style={{fontSize:15}}>✅</span>
-                      <span style={{fontSize:12,fontWeight:800,color:"#0F6E56",textTransform:"uppercase",letterSpacing:"0.06em"}}>{lang==="en"?"Sale registered":"Vente enregistrée"}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"#0F6E56",textTransform:"uppercase",letterSpacing:"0.06em"}}>{lang==="en"?"Sale registered":"Vente enregistrée"}</span>
                     </div>
-                    <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D"}}>{nom||"Article"}</div>
+                    <div style={{fontWeight:700,fontSize:15,color:"#0D0D0D"}}>{nom||"Article"}</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                      {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
+                      {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>×{qv}</span>}
                       {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
                       {ts&&type&&type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {type}</span>}
                       {(taskData?.plateforme||data?.plateforme||soldItem?.plateforme)&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {taskData?.plateforme||data?.plateforme||soldItem?.plateforme}</span>}
@@ -2847,13 +2847,13 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
                       <div>
                         <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
-                        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
+                        <div style={{fontSize:20,fontWeight:700,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
                       </div>
                       {cogs>0&&<>
                         <div style={{width:1,alignSelf:"stretch",background:"#C6F0E0",borderRadius:1}}/>
                         <div style={{textAlign:"right"}}>
                           <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{lang==="en"?"Net profit":"Profit net"}</div>
-                          <div style={{fontSize:20,fontWeight:900,color:totalBenef>=0?"#1D9E75":"#EF4444"}}>{totalBenef>0?"+":""}{fmt(totalBenef)}</div>
+                          <div style={{fontSize:20,fontWeight:700,color:totalBenef>=0?"#1D9E75":"#EF4444"}}>{totalBenef>0?"+":""}{fmt(totalBenef)}</div>
                           {mgpUnit!=null&&<div style={{fontSize:11,fontWeight:700,color:totalBenef>=0?"#1D9E75":"#EF4444",opacity:0.7,marginTop:1}}>{fmtp(mgpUnit)}</div>}
                         </div>
                       </>}
@@ -2871,7 +2871,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   :(lim===1?(lang==="en"?"Best sale":"Meilleure vente"):(lang==="en"?`Top ${lim} sales`:`Top ${lim} ventes`));
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{isWorst?"📉":"🏆"} {title}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{isWorst?"📉":"🏆"} {title}</div>
                     {sItems.length===0
                       ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No sales yet":"Aucune vente"}</div>
                       :sItems.map((s,i)=>{
@@ -2893,7 +2893,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {lang==="en"?"In stock":"En stock"} ({data?.count??sbpItems.length})</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {lang==="en"?"In stock":"En stock"} ({data?.count??sbpItems.length})</div>
                     {sbpItems.length===0
                       ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items":"Aucun article"}</div>
                       :sbpItems.map((item,i)=>{
@@ -2934,8 +2934,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   :null;
                 return(
                   <div key={idx} className="vr-profit-card">
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
-                    <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{displayVal}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
+                    <div style={{fontSize:28,fontWeight:700,color:valColor,letterSpacing:"-0.03em"}}>{displayVal}</div>
                     {data?.metric==="stock_immobilise"&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{data?.count} {lang==="en"?"item(s) in stock":"article(s) en stock"}</div>}
                     {qsComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{qsComment}</div>}
                   </div>
@@ -2959,10 +2959,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const fmtP=n=>`${(Math.round((n||0)*10)/10).toFixed(1)}%`;
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>{metricLabel}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:10}}>{metricLabel}</div>
                     {highlight&&metric!=="ranking"&&(
                       <div style={{background:"#EDE9FE",borderRadius:10,padding:"10px 12px",marginBottom:metric==="by_name"?8:0}}>
-                        <div style={{fontSize:14,fontWeight:800,color:"#7C3AED"}}>🏪 {highlight.plateforme}</div>
+                        <div style={{fontSize:14,fontWeight:700,color:"#7C3AED"}}>🏪 {highlight.plateforme}</div>
                         {isStock?(
                           <div style={{fontSize:12,color:"#5B21B6",marginTop:3}}>{highlight.count} {lang==="en"?(highlight.count>1?"items":"item"):(highlight.count>1?"articles":"article")} · {fmt(highlight.invested)}</div>
                         ):(
@@ -2972,10 +2972,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     )}
                     {metric==="by_name"&&data?.found&&(
                       <div style={{background:"#F9FAFB",borderRadius:10,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Revenue":"CA"}</span><span style={{fontSize:12,fontWeight:800,color:"#0D0D0D"}}>{fmt(data.found.revenue)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Profit":"Bénéfice"}</span><span style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmt(data.found.profit)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Avg margin":"Marge moy."}</span><span style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmtP(data.found.avgMargin)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Sales":"Ventes"}</span><span style={{fontSize:12,fontWeight:800,color:"#0D0D0D"}}>{data.found.count}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Revenue":"CA"}</span><span style={{fontSize:12,fontWeight:700,color:"#0D0D0D"}}>{fmt(data.found.revenue)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Profit":"Bénéfice"}</span><span style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmt(data.found.profit)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Avg margin":"Marge moy."}</span><span style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmtP(data.found.avgMargin)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Sales":"Ventes"}</span><span style={{fontSize:12,fontWeight:700,color:"#0D0D0D"}}>{data.found.count}</span></div>
                       </div>
                     )}
                     {metric==="ranking"&&ranked&&ranked.length>0&&(
@@ -2984,7 +2984,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           <div key={p.plateforme} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",background:"#F9FAFB",borderRadius:8}}>
                             <span style={{fontSize:12,fontWeight:700,color:"#374151"}}>{medals[i]||`#${i+1}`} {p.plateforme}</span>
                             <div style={{textAlign:"right"}}>
-                              <div style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmt(p.profit)}</div>
+                              <div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmt(p.profit)}</div>
                               <div style={{fontSize:10,color:"#6B7280"}}>{p.count} {lang==="en"?(p.count>1?"sales":"sale"):(p.count>1?"ventes":"vente")}</div>
                             </div>
                           </div>
@@ -3020,7 +3020,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const totalQty=locGrouped.reduce((s,g)=>s+g.qty,0);
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
                     {locGrouped.length===0
                       ?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>)
                       :(<div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -3062,10 +3062,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const tsLoc=locType?getTypeStyle(locType):null;
                 return(
                   <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
                       📦 {lang==="en"?"Stored here":"Rangé ici"}
                     </div>
-                    <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
+                    <div style={{fontSize:15,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
                     {(locEmp||locMarque||tsLoc||locQte>1)&&(
                       <div className="vr-pills">
                         {locEmp&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {locEmp}</span>}
@@ -3090,7 +3090,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   const parts=line.split(/(\*\*[^*]+\*\*)/g);
                   return parts.map((p,i)=>
                     p.startsWith("**")&&p.endsWith("**")
-                      ?<strong key={i} style={{color:"#0D0D0D",fontWeight:800}}>{p.slice(2,-2)}</strong>
+                      ?<strong key={i} style={{color:"#0D0D0D",fontWeight:700}}>{p.slice(2,-2)}</strong>
                       :<span key={i}>{p}</span>
                   );
                 };
@@ -3100,7 +3100,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                     {/* Header */}
                     <div style={{background:"linear-gradient(135deg,#1D9E75 0%,#0F6E56 100%)",padding:"14px 16px",display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:18}}>📊</span>
-                      <span style={{fontSize:13,fontWeight:800,color:"#fff",letterSpacing:"0.04em"}}>
+                      <span style={{fontSize:13,fontWeight:700,color:"#fff",letterSpacing:"0.04em"}}>
                         {lang==="en"?"Business Analysis":"Analyse de ton business"}
                       </span>
                     </div>
@@ -3113,7 +3113,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                         if(trimmed.startsWith("##")){
                           const title=trimmed.replace(/^##\s*/,"");
                           return(
-                            <div key={li} style={{fontSize:12,fontWeight:800,color:"#1D9E75",letterSpacing:"0.05em",marginTop:li===0?0:10,marginBottom:3,textTransform:"uppercase"}}>
+                            <div key={li} style={{fontSize:12,fontWeight:700,color:"#1D9E75",letterSpacing:"0.05em",marginTop:li===0?0:10,marginBottom:3,textTransform:"uppercase"}}>
                               {title}
                             </div>
                           );
@@ -3123,7 +3123,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           const content=trimmed.replace(/^[•\-]\s*/,"");
                           return(
                             <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",paddingLeft:4}}>
-                              <span style={{color:"#1D9E75",fontWeight:800,marginTop:1,flexShrink:0}}>•</span>
+                              <span style={{color:"#1D9E75",fontWeight:700,marginTop:1,flexShrink:0}}>•</span>
                               <span style={{fontSize:13,color:"#374151",lineHeight:1.6,fontWeight:500}}>{renderInline(content)}</span>
                             </div>
                           );
@@ -3147,7 +3147,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const raw=data?.analysis||message||"";
                 return(
                   <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>{label}</div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#1D9E75",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>{label}</div>
                     <div style={{fontSize:13,color:"#0D0D0D",lineHeight:1.7,fontWeight:500,whiteSpace:"pre-wrap"}}>{raw.replace(/\*\*/g,"").replace(/\*/g,"")}</div>
                   </div>
                 );
@@ -3599,7 +3599,7 @@ export default function App({ loginOnly = false }){
   const hasData=sales.length>0;
 
   const _f={family:"'Space Grotesk', -apple-system, sans-serif",size:11};
-  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
+  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'700'}};
   const _scales=(unit)=>({
     x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},
     y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:unit==='€'?v=>fmt(v,0):v=>v+unit}},
@@ -4633,7 +4633,7 @@ export default function App({ loginOnly = false }){
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",flexDirection:"column",gap:24}}>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
         <img src="/icon_1024x1024.png" alt="FillSell" style={{width:72,height:72,borderRadius:18,objectFit:"cover",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}/>
-        <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:"-0.02em"}}>FillSell</div>
+        <div style={{fontSize:22,fontWeight:700,color:"#fff",letterSpacing:"-0.02em"}}>FillSell</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {[0,1,2].map(i=>(
@@ -5166,7 +5166,7 @@ export default function App({ loginOnly = false }){
           <span className="name">FillSell</span>
         </button>
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
-          <div style={{fontSize:13,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",lineHeight:1}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.02em",lineHeight:1}}>
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
           </div>
           <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",marginTop:2,whiteSpace:"nowrap"}}>
@@ -5177,7 +5177,7 @@ export default function App({ loginOnly = false }){
           {!isPremium&&!isNative?(
             <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
             <button onClick={()=>setShowPremiumModal(true)} className="tb-premium" style={{cursor:"pointer",border:"none",padding:0,background:"none",fontFamily:"inherit"}}>⭐ Premium</button>
           ):null}
@@ -5349,7 +5349,7 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"88vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
               <button onClick={()=>setEditItem(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -5435,7 +5435,7 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setSellModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>💰 {t('marquerVendu')}</div>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>💰 {t('marquerVendu')}</div>
               <button onClick={()=>setSellModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
             </div>
             <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
@@ -5503,7 +5503,7 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setImportModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(90vw,540px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"80vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>📥 {lang==='fr'?"Confirmer l'import":"Confirm import"}</div>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>📥 {lang==='fr'?"Confirmer l'import":"Confirm import"}</div>
               <button onClick={()=>setImportModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
             </div>
 
@@ -5623,7 +5623,7 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:384,padding:24,boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{t('parametres')}</div>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>{t('parametres')}</div>
               <button onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
             </div>
 
@@ -5752,7 +5752,7 @@ export default function App({ loginOnly = false }){
               <div style={{display:"flex",gap:6}}>
                 {['fr','en'].map(l=>(
                   <button key={l} onClick={()=>{track('change_language',{language:l});setLang(l);}}
-                    style={{padding:"5px 12px",borderRadius:99,border:"none",fontSize:12,fontWeight:800,cursor:"pointer",transition:"all 0.15s",background:lang===l?"#1D9E75":"rgba(0,0,0,0.06)",color:lang===l?"#fff":"#6B7280"}}>
+                    style={{padding:"5px 12px",borderRadius:99,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",background:lang===l?"#1D9E75":"rgba(0,0,0,0.06)",color:lang===l?"#fff":"#6B7280"}}>
                     {l.toUpperCase()}
                   </button>
                 ))}
@@ -5895,7 +5895,7 @@ export default function App({ loginOnly = false }){
             <div style={{textAlign:"center",marginBottom:20}}>
               <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:99,margin:"0 auto 20px"}}/>
               <div style={{fontSize:26,marginBottom:6}}>⭐</div>
-              <div style={{fontSize:20,fontWeight:800,color:"#0D0D0D"}}>FillSell Premium</div>
+              <div style={{fontSize:20,fontWeight:700,color:"#0D0D0D"}}>FillSell Premium</div>
               <div style={{fontSize:13,color:"#6B7280",marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
             </div>
             {/* Avantages */}
@@ -5915,7 +5915,7 @@ export default function App({ loginOnly = false }){
             </div>
             {/* VS Excel */}
             <div style={{background:"linear-gradient(135deg,rgba(29,158,117,0.07),rgba(249,162,108,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(29,158,117,0.12)"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:10}}>
                 {lang==='fr'?'💪 FillSell vs Excel ?':'💪 FillSell vs Excel?'}
               </div>
               {[
@@ -5946,7 +5946,7 @@ export default function App({ loginOnly = false }){
         <>
           <div onClick={()=>setDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
-            <div style={{fontSize:16,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>
+            <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>
               {lang==='fr'?'🗑️ Supprimer':'🗑️ Delete'}
             </div>
             {deleteConfirm.type==='soldItem'&&(
@@ -6081,7 +6081,7 @@ export default function App({ loginOnly = false }){
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:10000,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowBugReport(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"24px 20px 32px",animation:"slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <div style={{fontSize:16,fontWeight:800,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
               <button onClick={()=>setShowBugReport(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:"#6B7280",flexShrink:0}}>✕</button>
             </div>
             <textarea
@@ -6110,7 +6110,7 @@ export default function App({ loginOnly = false }){
                 }finally{setBugSending(false);}
               }}
               disabled={bugSending||!bugMessage.trim()}
-              style={{width:"100%",marginTop:12,padding:"13px",background:bugSending||!bugMessage.trim()?"#E5E7EB":"#1D9E75",color:bugSending||!bugMessage.trim()?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:bugSending||!bugMessage.trim()?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
+              style={{width:"100%",marginTop:12,padding:"13px",background:bugSending||!bugMessage.trim()?"#E5E7EB":"#1D9E75",color:bugSending||!bugMessage.trim()?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:bugSending||!bugMessage.trim()?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
             >
               {bugSending?"...":(lang==='fr'?'Envoyer →':'Send →')}
             </button>
@@ -6141,7 +6141,7 @@ export default function App({ loginOnly = false }){
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
           <div style={{background:'#fff',borderRadius:24,padding:'32px 28px',maxWidth:360,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',textAlign:'center'}}>
             <div style={{fontSize:36,marginBottom:12}}>👋</div>
-            <div style={{fontSize:20,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
+            <div style={{fontSize:20,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
               {lang==='en'?"What's your name?":"Comment tu t'appelles ?"}
             </div>
             <div style={{fontSize:13,color:'#6B7280',marginBottom:20}}>

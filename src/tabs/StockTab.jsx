@@ -127,7 +127,7 @@ const StockTab = memo(function StockTab({
                   const aqPeriode=(()=>{const p=data?.periode;if(!p||p==="all")return null;if(p==="today")return lang==="en"?"Today":"Aujourd'hui";if(p==="week")return lang==="en"?"Last 7 days":"7 derniers jours";if(p==="month")return lang==="en"?"Last 30 days":"30 derniers jours";if(p==="year")return lang==="en"?"This year":"Cette année";if(p==="custom"){const df=taskData?.date_from,dt=taskData?.date_to;const fD=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit"}):"";if(df&&dt&&df===dt)return fD(df);if(df&&dt)return`${fD(df)} – ${fD(dt)}`;return null;}return p;})();
                   return(<div key={idx} className="vr-profit-card">
                     <div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginBottom:6}}>{data?.label}</div>
-                    <div style={{fontSize:32,fontWeight:900,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
+                    <div style={{fontSize:32,fontWeight:700,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
                     {aqPeriode&&<div style={{fontSize:11,color:"#D1D5DB",marginTop:4}}>{aqPeriode}</div>}
                     {aqComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{aqComment}</div>}
                   </div>);
@@ -152,7 +152,7 @@ const StockTab = memo(function StockTab({
                   const confCat=taskData?.categorie||null;
                   const confTs=confCat?getTypeStyle(confCat):null;
                   return(<div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
                     {(confMarque||(confTs&&confCat!=="Autre"))&&(
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
                         {confMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{confMarque}</span>}
@@ -192,8 +192,8 @@ const StockTab = memo(function StockTab({
                   if(taskData?.candidates?.length>0&&!taskData?.conflict){
                     return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:10}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
-                        <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>{lang==="en"?"Which item?":"Quel article ?"}</div>
-                        {taskData?.prix_vente!=null&&<div style={{fontWeight:800,fontSize:14,color:"#1D9E75",flexShrink:0}}>{fmt(taskData.prix_vente)}</div>}
+                        <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{lang==="en"?"Which item?":"Quel article ?"}</div>
+                        {taskData?.prix_vente!=null&&<div style={{fontWeight:700,fontSize:14,color:"#1D9E75",flexShrink:0}}>{fmt(taskData.prix_vente)}</div>}
                       </div>
                       {taskData.candidates.map((c,ci)=>{
                         const cItem=items.find(i=>String(i.id)===String(c.id));
@@ -229,12 +229,12 @@ const StockTab = memo(function StockTab({
                         .catch(e=>replaceZoneResult(idx,{...r,status:"error",message:e.message}));
                     };
                     return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"#92400E"}}>🤔 {qva}× {taskData.nom||"article"} — {lang==="en"?"total or each?":"total ou pièce ?"}</div>
+                      <div style={{fontWeight:700,fontSize:14,color:"#92400E"}}>🤔 {qva}× {taskData.nom||"article"} — {lang==="en"?"total or each?":"total ou pièce ?"}</div>
                       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                        <button onClick={()=>doSell(unitIfTotal)} style={{padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        <button onClick={()=>doSell(unitIfTotal)} style={{padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                           {lang==="en"?`✓ ${fmt(pm)} total → ${fmt(unitIfTotal)}/item`:`✓ ${fmt(pm)} au total → ${fmt(unitIfTotal)}/pièce`}
                         </button>
-                        <button onClick={()=>doSell(pm)} style={{padding:"12px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        <button onClick={()=>doSell(pm)} style={{padding:"12px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                           {lang==="en"?`${fmt(pm)}/item → ${fmt(totalIfUnit)} total`:`${fmt(pm)}/pièce → ${fmt(totalIfUnit)} au total`}
                         </button>
                         <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
@@ -255,9 +255,9 @@ const StockTab = memo(function StockTab({
                   const ts=found?getTypeStyle(found.type):null;
                   return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
                     <div>
-                      <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
+                      <div style={{fontWeight:700,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
+                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>×{qv}</span>}
                         {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
                         {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
                       </div>
@@ -265,9 +265,9 @@ const StockTab = memo(function StockTab({
                     <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(buyU)}</span>
                       <span style={{color:"#D1D5DB"}}>→</span>
-                      {pv>0?<span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
+                      {pv>0?<span style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
                         :<span style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Price to confirm":"Prix à confirmer"}</span>}
-                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:900,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)}</span>}
+                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:700,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)}</span>}
                     </div>
                     {!taskData?.prix_vente&&(
                       <input type="number" value={zoneEdits[idx]?.prix_vente??""}
@@ -282,7 +282,7 @@ const StockTab = memo(function StockTab({
                           :vaActions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:taskData?.categorie||null,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null});
                         fn.then(()=>replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
                           .catch(e=>replaceZoneResult(idx,{...r,status:"error",message:e.message}));
-                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
                       </button>
                       <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
@@ -299,7 +299,7 @@ const StockTab = memo(function StockTab({
                     :items.find(i=>(i.title||"").toLowerCase().includes(dq)&&dq);
                   const dTs=dItem?getTypeStyle(dItem.type||dItem.categorie):null;
                   return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"18px",border:"1px solid #FCA5A5"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>🗑️ {lang==="en"?"Delete":"Supprimer"}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginBottom:10}}>🗑️ {lang==="en"?"Delete":"Supprimer"}</div>
                     <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:dItem?8:14}}>{dItem?dItem.title:(taskData?.nom||"?")}</div>
                     {dItem&&(
                       <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
@@ -329,7 +329,7 @@ const StockTab = memo(function StockTab({
                   const lotItems=data?.items||[];
                   const lotTotal=data?.lotTotal||0;
                   return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:8}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:8}}>
                       🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
@@ -387,7 +387,7 @@ const StockTab = memo(function StockTab({
                     </div>);
                   }
                   return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>📦 {lang==="en"?"Store here?":"Ranger ici ?"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:10}}>📦 {lang==="en"?"Store here?":"Ranger ici ?"}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       {moveItems.map((item,i)=>{
                         const _cat=item.type||item.categorie||null;
@@ -402,7 +402,7 @@ const StockTab = memo(function StockTab({
                           </div>)}
                           <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5}}>
                             <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
-                            <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>
+                            <span style={{color:"#1D4ED8",fontWeight:700}}>→</span>
                             <span style={{color:"#1D4ED8",fontWeight:700}}>{moveEmp}</span>
                           </div>
                         </div>);
@@ -461,7 +461,7 @@ const StockTab = memo(function StockTab({
                   })();
                   const totalQty=locGrouped.reduce((s,g)=>s+g.qty,0);
                   return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
                     {locGrouped.length===0
                       ?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>)
                       :(<div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -498,10 +498,10 @@ const StockTab = memo(function StockTab({
                   const locQte=data?.quantite||null;
                   const tsLoc=locType?getTypeStyle(locType):null;
                   return(<div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
                       📦 {lang==="en"?"Stored here":"Rangé ici"}
                     </div>
-                    <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
+                    <div style={{fontSize:15,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
                     {(locEmp||locMarque||tsLoc||locQte>1)&&(
                       <div className="vr-pills">
                         {locEmp&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {locEmp}</span>}
@@ -622,11 +622,11 @@ const StockTab = memo(function StockTab({
           {items.length===0?(
             <div style={{textAlign:"center",padding:"6px 0 10px",animation:"fadeIn 0.4s ease"}}>
               <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#0E7C5F,#34D399)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 12px",boxShadow:"0 4px 16px rgba(29,158,117,0.3)"}}>📦</div>
-              <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:6}}>{lang==='en'?'Add your first item':'Ajoute ton premier article'}</div>
+              <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{lang==='en'?'Add your first item':'Ajoute ton premier article'}</div>
               <div style={{fontSize:12,color:C.sub,lineHeight:1.6,maxWidth:220,margin:"0 auto"}}>{lang==='en'?'Name + buy price is enough to start tracking your profit.':'Nom + prix d\'achat suffit pour commencer à suivre tes marges.'}</div>
             </div>
           ):(
-            <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
+            <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
           )}
           <div>
             <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon="🏷️"/>
@@ -823,7 +823,7 @@ const StockTab = memo(function StockTab({
           ):(
             <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});openUpgradeModal();}}}
               style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
-              <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{t('importExcel')}</div>
+              <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>{t('importExcel')}</div>
               <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
               {!isNative&&<PremiumBanner userEmail={user?.email} compact/>}
             </div>
@@ -860,7 +860,7 @@ const StockTab = memo(function StockTab({
           {false&&<div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{t('vendus')}</div>
                 {window.innerWidth<768&&(()=>{const _b=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedSold(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedSold?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
               </div>
               <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:soldQty??sold.length})}</div>
@@ -895,7 +895,7 @@ const StockTab = memo(function StockTab({
             })()}
             {sold.length===0?(
               <div style={{position:"relative"}}>
-                <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
+                <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:700,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
                   {lang==='en'?'Preview':'Exemple'}
                 </span>
                 <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none"}}>
@@ -912,7 +912,7 @@ const StockTab = memo(function StockTab({
                           <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{t('skeletonAchat')} {fmt(sk.buy)} → {t('skeletonVente')} {fmt(sk.sell)}</div>
                         </div>
                         <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
-                          <div style={{fontWeight:900,fontSize:18,color:getMargeColor(sk.marginPct)}}>+{fmt(sk.margin)}</div>
+                          <div style={{fontWeight:700,fontSize:18,color:getMargeColor(sk.marginPct)}}>+{fmt(sk.margin)}</div>
                           <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{Math.round(sk.marginPct)}%</div>
                         </div>
                       </div>
@@ -931,7 +931,7 @@ const StockTab = memo(function StockTab({
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          {qty>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>×{qty}</span>}
+                          {qty>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,flexShrink:0}}>×{qty}</span>}
                           {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
@@ -939,7 +939,7 @@ const StockTab = memo(function StockTab({
                         <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
                       </div>
                       <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
-                        <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
+                        <div style={{fontWeight:700,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
                         <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(item.marginPct)}</div>
                       </div>
                     </SwipeRow>
@@ -959,7 +959,7 @@ const StockTab = memo(function StockTab({
           <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
                 {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
                 {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarque==="Toutes"?"#fff":"#6B7280"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
               </div>
@@ -993,7 +993,7 @@ const StockTab = memo(function StockTab({
                 <div style={{background:"#F0FDFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(13,148,136,0.15)"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
                     <div style={{minWidth:0}}>
-                      <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
                         {lang==='fr'?'APERÇU DE TON FUTUR STOCK':'PREVIEW OF YOUR FUTURE STOCK'}
                       </div>
                       <div style={{fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.3,fontFamily:"inherit"}}>
@@ -1002,11 +1002,11 @@ const StockTab = memo(function StockTab({
                     </div>
                     <div style={{display:"flex",gap:8,flexShrink:0}}>
                       <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-                        <div style={{fontSize:17,fontWeight:900,color:"#0D0D0D",lineHeight:1}}>{SKELETON_ITEMS.length}</div>
+                        <div style={{fontSize:17,fontWeight:700,color:"#0D0D0D",lineHeight:1}}>{SKELETON_ITEMS.length}</div>
                         <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'articles':'items'}</div>
                       </div>
                       <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-                        <div style={{fontSize:17,fontWeight:900,color:"#F9A26C",lineHeight:1}}>{fmt(SKELETON_ITEMS.reduce((a,s)=>a+s.buy,0))}</div>
+                        <div style={{fontSize:17,fontWeight:700,color:"#F9A26C",lineHeight:1}}>{fmt(SKELETON_ITEMS.reduce((a,s)=>a+s.buy,0))}</div>
                         <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'investi':'invested'}</div>
                       </div>
                     </div>
@@ -1024,7 +1024,7 @@ const StockTab = memo(function StockTab({
 
                 {/* 3. Liste enrichie — badge EXEMPLE conservé */}
                 <div style={{position:"relative"}}>
-                  <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
+                  <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:700,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
                     {lang==='en'?'Preview':'Exemple'}
                   </span>
                   <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.72,pointerEvents:"none",userSelect:"none"}}>
@@ -1058,7 +1058,7 @@ const StockTab = memo(function StockTab({
                 <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
                   <button
                     onClick={()=>scrollRef.current?.scrollTo({top:0,behavior:"smooth"})}
-                    style={{width:"100%",padding:"13px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
+                    style={{width:"100%",padding:"13px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
                     onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                     onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
                     onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}

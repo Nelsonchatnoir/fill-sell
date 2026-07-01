@@ -43,7 +43,7 @@ export default function ResetPassword() {
       <div style={{ background: "#fff", borderRadius: 24, padding: "36px 28px", width: "100%", maxWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,0.2)", boxSizing: "border-box" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <img src="/logo.png" style={{ height: 52, marginBottom: 12, objectFit: "contain" }} alt="FillSell" />
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#1A202C", marginBottom: 4 }}>Nouveau mot de passe</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#1A202C", marginBottom: 4 }}>Nouveau mot de passe</div>
           <div style={{ fontSize: 14, color: "#718096" }}>Choisis un nouveau mot de passe pour ton compte.</div>
         </div>
 

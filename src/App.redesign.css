@@ -143,7 +143,7 @@ body.bg-dots {
 /* Trend pill (drop-in for inline arrow indicators) */
 .trend-pill {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 800;
+  font-size: 11px; font-weight: 700;
   padding: 3px 9px;
   border-radius: 99px;
   font-variant-numeric: tabular-nums;
@@ -182,18 +182,18 @@ body.bg-dots {
   margin-bottom: 8px;
 }
 .activity-curve-head .t {
-  font-size: 12px; font-weight: 900; color: var(--text);
+  font-size: 12px; font-weight: 700; color: var(--text);
   letter-spacing: -0.01em;
 }
 .activity-curve-head .sub {
-  font-size: 10px; font-weight: 800;
+  font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.07em;
   color: var(--label);
   margin-top: 2px;
 }
 .activity-curve-head .total {
   font-family: 'Space Grotesk', sans-serif;
-  font-weight: 900;
+  font-weight: 700;
   font-size: 20px;
   letter-spacing: -0.03em;
   color: var(--teal-strong);
@@ -239,14 +239,14 @@ body.bg-dots {
   padding: 7px 10px;
   border-radius: 10px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   pointer-events: none;
   white-space: nowrap;
   box-shadow: 0 8px 20px rgba(0,0,0,0.25);
   transform: translate(-50%, -110%);
   font-variant-numeric: tabular-nums;
 }
-.ac-tooltip .v { color: #5DCAA5; font-weight: 900; }
+.ac-tooltip .v { color: #5DCAA5; font-weight: 700; }
 .ac-tooltip .d { color: rgba(255,255,255,0.6); font-weight: 700; font-size: 10px; margin-top: 2px; }
 
 @keyframes drawLine { to { stroke-dashoffset: 0; } }
@@ -263,7 +263,7 @@ body.bg-dots {
   border: 1px solid rgba(15,23,42,0.04);
 }
 .donut-card .head {
-  font-size: 12px; font-weight: 900;
+  font-size: 12px; font-weight: 700;
   color: var(--text);
   margin-bottom: 14px;
   letter-spacing: -0.01em;
@@ -295,13 +295,13 @@ body.bg-dots {
   pointer-events: none;
 }
 .donut-svg .center-stack .lbl {
-  font-size: 9px; font-weight: 800;
+  font-size: 9px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--label);
 }
 .donut-svg .center-stack .v {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 20px; font-weight: 900;
+  font-size: 20px; font-weight: 700;
   letter-spacing: -0.035em;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -323,14 +323,14 @@ body.bg-dots {
 }
 .donut-legend-row .name {
   display: flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 800;
+  font-size: 12px; font-weight: 700;
   color: var(--text);
   min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .donut-legend-row .name .emo { font-size: 13px; }
 .donut-legend-row .pct {
-  font-size: 11px; font-weight: 900;
+  font-size: 11px; font-weight: 700;
   color: var(--sub);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -421,7 +421,7 @@ body.bg-dots {
 .fab-orbit text {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   fill: #1D9E75;
@@ -444,7 +444,7 @@ body.bg-dots {
   border-radius: 12px;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
   opacity: 0;
@@ -513,7 +513,7 @@ body.bg-dots {
   border-radius: 12px;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
   box-shadow: 0 4px 16px rgba(0,0,0,0.25);
   animation: fabToastIn 0.2s ease;
@@ -566,7 +566,7 @@ body.bg-dots {
   border-radius: 14px;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: -0.2px;
   color: #fff;
   cursor: pointer;
@@ -690,7 +690,7 @@ body.bg-dots {
 .empty-hero h1 {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: -0.025em;
   color: #0D0D0D;
   margin: 0 0 8px;
@@ -706,7 +706,7 @@ body.bg-dots {
   margin: 0 auto 4px;
   max-width: 320px;
 }
-.empty-hero p b { color: #1D9E75; font-weight: 900; }
+.empty-hero p b { color: #1D9E75; font-weight: 700; }
 
 /* Voice ticker (typewriter) */
 .empty-hero .voice-ticker {
@@ -722,7 +722,7 @@ body.bg-dots {
   overflow: hidden;
 }
 .empty-hero .voice-ticker .vt-quote {
-  font-size: 14px; font-weight: 900;
+  font-size: 14px; font-weight: 700;
   color: #1D9E75; flex-shrink: 0;
 }
 .empty-hero .voice-ticker .vt-text {
@@ -743,7 +743,7 @@ body.bg-dots {
 }
 .empty-hero .voice-ticker .vt-tag {
   flex-shrink: 0;
-  font-size: 9px; font-weight: 900;
+  font-size: 9px; font-weight: 700;
   padding: 3px 8px; border-radius: 99px;
   text-transform: uppercase; letter-spacing: 0.06em;
   transition: all 0.3s ease;
@@ -775,7 +775,7 @@ body.bg-dots {
 .voice-cat .ico { font-size: 22px; line-height: 1; margin-bottom: 4px; }
 .voice-cat .lbl {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 11px; font-weight: 900; color: #0D0D0D;
+  font-size: 11px; font-weight: 700; color: #0D0D0D;
 }
 
 .empty-hero-cta-stack {
@@ -788,7 +788,7 @@ body.bg-dots {
   border-radius: 14px;
   padding: 13px 18px;
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px; font-weight: 800;
+  font-size: 13px; font-weight: 700;
   color: #0D0D0D;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
@@ -844,7 +844,7 @@ body.bg-dots {
   background-size: 200% 100% !important;
   padding: 6px 13px !important;
   font-size: 11px !important;
-  font-weight: 900 !important;
+  font-weight: 700 !important;
   letter-spacing: -0.005em;
   border-radius: 99px !important;
   box-shadow:
@@ -888,7 +888,7 @@ body.bg-dots {
   border: none;
   padding: 5px 11px;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--sub);
   border-radius: 99px;
   cursor: pointer;
@@ -965,7 +965,7 @@ body.bg-dots {
   background: linear-gradient(110deg, #0E7C5F, #3EACA0);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
-  font-weight: 900;
+  font-weight: 700;
 }
 .voice-zone .vz-button {
   display: flex; align-items: center; gap: 12px;
@@ -1003,7 +1003,7 @@ body.bg-dots {
   flex: 1; text-align: left;
 }
 .voice-zone .vz-t {
-  font-size: 13px; font-weight: 900;
+  font-size: 13px; font-weight: 700;
   color: var(--text); letter-spacing: -0.01em;
   margin-bottom: 2px;
 }
@@ -1014,7 +1014,7 @@ body.bg-dots {
 .voice-zone .vz-arrow {
   color: var(--teal-strong);
   font-size: 18px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 /* Category pills — refined with subtle shadow on active */
@@ -1063,7 +1063,7 @@ body.bg-dots {
   border-radius: 99px;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.18s var(--ease);
 }
@@ -1130,7 +1130,7 @@ body.bg-dots {
   pointer-events: none; z-index: -1;
 }
 .score-card .lbl {
-  font-size: 10px; font-weight: 800;
+  font-size: 10px; font-weight: 700;
   color: var(--sub);
   text-transform: uppercase; letter-spacing: 0.10em;
   margin-bottom: 6px;
@@ -1144,7 +1144,7 @@ body.bg-dots {
   font-variant-numeric: tabular-nums;
 }
 .score-card .currency {
-  font-size: 28px; font-weight: 900;
+  font-size: 28px; font-weight: 700;
   color: var(--teal-strong);
   letter-spacing: -0.04em;
   margin-left: 4px;
@@ -1153,14 +1153,14 @@ body.bg-dots {
   margin-top: 12px !important;
   padding: 7px 16px !important;
   font-size: 13px !important;
-  font-weight: 900 !important;
+  font-weight: 700 !important;
   letter-spacing: -0.01em;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 /* Bar block — refined progress */
 .bar-fill { box-shadow: 0 1px 3px rgba(0,0,0,0.10); }
-.bar-row .t { font-weight: 800; }
+.bar-row .t { font-weight: 700; }
 
 /* AI insight — refined gradient border */
 .ai-insight {
@@ -1195,9 +1195,9 @@ body.bg-dots {
 }
 .sale-row .amt {
   font-size: 16px !important;
-  font-weight: 900 !important;
+  font-weight: 700 !important;
 }
-.sale-row .pct { font-weight: 900 !important; }
+.sale-row .pct { font-weight: 700 !important; }
 
 /* Brand filter chip row */
 .brand-filter-row {
@@ -1215,7 +1215,7 @@ body.bg-dots {
   padding: 7px 14px;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-soft);
   cursor: pointer;
   transition: all 0.15s var(--ease);
@@ -1232,7 +1232,7 @@ body.bg-dots {
   box-shadow: 0 4px 12px rgba(29,158,117,0.30);
 }
 .brand-chip .count {
-  font-size: 10px; font-weight: 800;
+  font-size: 10px; font-weight: 700;
   margin-left: 5px;
   padding: 1px 6px;
   border-radius: 99px;
@@ -1262,13 +1262,13 @@ body.bg-dots {
 }
 .sales-kpi:last-child { border-right: none; }
 .sales-kpi .lbl {
-  font-size: 9px; font-weight: 800;
+  font-size: 9px; font-weight: 700;
   color: var(--sub);
   text-transform: uppercase; letter-spacing: 0.07em;
 }
 .sales-kpi .v {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 18px; font-weight: 900;
+  font-size: 18px; font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -1302,7 +1302,7 @@ body.bg-dots {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 /* Typewriter ticker */
@@ -1321,7 +1321,7 @@ body.bg-dots {
 
 .voice-ticker .vt-quote {
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
   color: #1D9E75;
   flex-shrink: 0;
 }
@@ -1354,7 +1354,7 @@ body.bg-dots {
 .voice-ticker .vt-tag {
   flex-shrink: 0;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   padding: 3px 8px;
   border-radius: 99px;
   text-transform: uppercase;
@@ -1382,7 +1382,7 @@ body.bg-dots {
 }
 .voice-examples-title {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 11px; font-weight: 900;
+  font-size: 11px; font-weight: 700;
   color: var(--label);
   text-transform: uppercase;
   letter-spacing: 0.10em;
@@ -1409,7 +1409,7 @@ body.bg-dots {
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
 }
 .voice-ex-row .badge.add   { background: rgba(29,158,117,0.12); color: var(--teal-strong); }
 .voice-ex-row .badge.sell  { background: rgba(217,119,6,0.14);  color: #B45309; }
@@ -1428,13 +1428,13 @@ body.bg-dots {
   content: "« ";
   color: var(--teal-strong);
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
 }
 .voice-ex-row .quote::after {
   content: " »";
   color: var(--teal-strong);
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 /* Empty state — categorized voice grid (alternative compact layout) */
@@ -1466,14 +1466,14 @@ body.bg-dots {
 .voice-cat .lbl {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--text);
   letter-spacing: -0.005em;
 }
 .voice-cat .cnt {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--sub);
   margin-top: 2px;
   text-transform: uppercase;

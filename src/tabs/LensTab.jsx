@@ -208,9 +208,9 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
 
         {/* Titre + verdict badge */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12,gap:8}}>
-          <div style={{fontWeight:800,fontSize:16,color:'#0D0D0D',flex:1,lineHeight:1.3}}>{result.titre||'Article'}</div>
+          <div style={{fontWeight:700,fontSize:16,color:'#0D0D0D',flex:1,lineHeight:1.3}}>{result.titre||'Article'}</div>
           {result.verdict&&(
-            <div style={{flexShrink:0,padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:800,background:v.bg,color:v.color,border:`1px solid ${v.border}`}}>
+            <div style={{flexShrink:0,padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700,background:v.bg,color:v.color,border:`1px solid ${v.border}`}}>
               {v.icon} {lang==='en'?v.en:v.fr}
             </div>
           )}
@@ -243,11 +243,11 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
 
         {/* 💰 Prix de vente conseillé */}
         <div style={{background:'#F8FFFE',borderRadius:12,padding:'12px 14px',marginBottom:12,border:'1px solid rgba(29,158,117,0.15)'}}>
-          <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>
             💰 {lang==='en'?'Suggested sell price':'Prix de vente conseillé'}
           </div>
           <div style={{display:'flex',alignItems:'baseline',gap:8}}>
-            <div style={{fontSize:32,fontWeight:900,color:'#1D9E75',letterSpacing:'-0.02em'}}>{formatCurrency(result.prix_vente_suggere??0,currency)}</div>
+            <div style={{fontSize:32,fontWeight:700,color:'#1D9E75',letterSpacing:'-0.02em'}}>{formatCurrency(result.prix_vente_suggere??0,currency)}</div>
             {(result.fourchette_min!=null||result.fourchette_max!=null)&&(
               <div style={{fontSize:12,color:'#9CA3AF',fontWeight:600}}>({formatCurrency(result.fourchette_min??0,currency)} – {formatCurrency(result.fourchette_max??0,currency)})</div>
             )}
@@ -268,7 +268,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
         {/* 📊 Fourchette marché (Premium) */}
         {isPremium&&result.fourchette_marche&&(
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               📊 {lang==='en'?'Market range':'Fourchette marché'}
             </div>
             <div style={{display:'flex',gap:8}}>
@@ -278,8 +278,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
                 {key:'haut', fr:'Haut',  en:'High', bg:'#F0FDF4',color:'#1D9E75',border:'#9FE1CB'},
               ].map(({key,fr,en,bg,color,border})=>(
                 <div key={key} style={{flex:1,background:bg,border:`1px solid ${border}`,borderRadius:8,padding:'8px',textAlign:'center'}}>
-                  <div style={{fontSize:9,fontWeight:800,color,textTransform:'uppercase',marginBottom:2}}>{lang==='en'?en:fr}</div>
-                  <div style={{fontSize:15,fontWeight:800,color}}>{formatCurrency(result.fourchette_marche[key],currency)}</div>
+                  <div style={{fontSize:9,fontWeight:700,color,textTransform:'uppercase',marginBottom:2}}>{lang==='en'?en:fr}</div>
+                  <div style={{fontSize:15,fontWeight:700,color}}>{formatCurrency(result.fourchette_marche[key],currency)}</div>
                 </div>
               ))}
             </div>
@@ -291,7 +291,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:12,background:'#F9FAFB',borderRadius:10,padding:'10px 12px'}}>
             <span style={{fontSize:18}}>{vi.icon}</span>
             <div>
-              <div style={{fontSize:12,fontWeight:800,color:vi.color}}>{lang==='en'?vi.en:vi.fr}</div>
+              <div style={{fontSize:12,fontWeight:700,color:vi.color}}>{lang==='en'?vi.en:vi.fr}</div>
               {result.vitesse_vente_explication&&<div style={{fontSize:12,color:'#4B5563',marginTop:2,lineHeight:1.4}}>{result.vitesse_vente_explication}</div>}
             </div>
           </div>
@@ -300,7 +300,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
         {/* 🛍️ Plateformes (Premium uniquement) */}
         {isPremium&&result.plateformes?.length>0&&(
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               🛍️ {lang==='en'?'Best platforms':'Meilleures plateformes'}
             </div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
@@ -318,13 +318,13 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
         {/* 💡 Conseils (Premium uniquement) */}
         {isPremium&&result.conseils?.length>0&&(
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               💡 {lang==='en'?'Tips to sell faster':'Conseils pour vendre mieux'}
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {result.conseils.map((c,i)=>(
                 <div key={i} style={{display:'flex',gap:8,background:'#F9FAFB',borderRadius:8,padding:'8px 12px'}}>
-                  <span style={{color:'#1D9E75',fontWeight:800,flexShrink:0}}>{i+1}.</span>
+                  <span style={{color:'#1D9E75',fontWeight:700,flexShrink:0}}>{i+1}.</span>
                   <span style={{fontSize:12,color:'#374151',lineHeight:1.45}}>{c}</span>
                 </div>
               ))}
@@ -336,8 +336,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
         {result.score!=null&&(
           <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4}}>
             <div style={{flexShrink:0}}>
-              <div style={{fontSize:9,fontWeight:800,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>DEAL SCORE</div>
-              <div style={{fontSize:24,fontWeight:900,color:sc,letterSpacing:'-0.02em',lineHeight:1}}>
+              <div style={{fontSize:9,fontWeight:700,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>DEAL SCORE</div>
+              <div style={{fontSize:24,fontWeight:700,color:sc,letterSpacing:'-0.02em',lineHeight:1}}>
                 {Number(result.score).toFixed(1)}<span style={{fontSize:11,fontWeight:600,color:'#A3A9A6'}}>/10</span>
               </div>
             </div>
@@ -364,7 +364,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
       {/* 🔒 Bloc conversion Premium (Free uniquement) */}
       {!isPremium&&(
         <div style={{background:'#F0FDF8',borderRadius:12,padding:'14px 16px',border:'1px solid rgba(29,158,117,0.2)',marginBottom:10}}>
-          <div style={{fontSize:13,fontWeight:800,color:'#0F6E56',marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:700,color:'#0F6E56',marginBottom:10}}>
             🔒 {lang==='en'?'Full analysis available in Premium':'Analyse complète disponible en Premium'}
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:7,marginBottom:12}}>
@@ -381,7 +381,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
             ))}
           </div>
           <button onClick={openUpgradeModal}
-            style={{width:'100%',padding:'14px',background:'linear-gradient(90deg,#1D9E75,#E8845A,#1D9E75)',backgroundSize:'200% 100%',color:'#fff',border:'none',borderRadius:14,fontSize:14,fontWeight:900,letterSpacing:'-0.2px',cursor:'pointer',fontFamily:'inherit',animation:'fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite'}}>
+            style={{width:'100%',padding:'14px',background:'linear-gradient(90deg,#1D9E75,#E8845A,#1D9E75)',backgroundSize:'200% 100%',color:'#fff',border:'none',borderRadius:14,fontSize:14,fontWeight:700,letterSpacing:'-0.2px',cursor:'pointer',fontFamily:'inherit',animation:'fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite'}}>
             {lang==='en'?'Upgrade to Premium →':'Passer Premium →'}
           </button>
         </div>
@@ -389,7 +389,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
 
       {result.titre&&(
         <button onClick={result.est_vendu?addLensItem:openLensEditModal} disabled={lensAdded}
-          style={{width:'100%',padding:'12px',background:lensAdded?'#E8F5F0':'linear-gradient(135deg,#1D9E75,#0F6E56)',color:lensAdded?'#1D9E75':'#fff',border:lensAdded?'1px solid #9FE1CB':'none',borderRadius:12,fontSize:14,fontWeight:800,cursor:lensAdded?'default':'pointer',fontFamily:'inherit',transition:'all 0.2s',marginBottom:6}}>
+          style={{width:'100%',padding:'12px',background:lensAdded?'#E8F5F0':'linear-gradient(135deg,#1D9E75,#0F6E56)',color:lensAdded?'#1D9E75':'#fff',border:lensAdded?'1px solid #9FE1CB':'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:lensAdded?'default':'pointer',fontFamily:'inherit',transition:'all 0.2s',marginBottom:6}}>
           {lensAdded
             ?(result.est_vendu?(lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'):(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !'))
             :(result.est_vendu?(lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'):(lang==='en'?'✏️ Edit & add to stock':'✏️ Modifier & ajouter au stock'))
@@ -507,7 +507,7 @@ const LensTab = memo(function LensTab({
       <div style={{paddingTop:4}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
           <div style={{fontSize:28,fontWeight:700,color:"#0D0D0D"}}>Lens</div>
-          <span style={{background:"#0D9488",color:"#fff",borderRadius:99,padding:"4px 10px",fontSize:11,fontWeight:800,letterSpacing:"0.03em"}}>IA</span>
+          <span style={{background:"#0D9488",color:"#fff",borderRadius:99,padding:"4px 10px",fontSize:11,fontWeight:700,letterSpacing:"0.03em"}}>IA</span>
         </div>
         <div style={{fontSize:14,color:"#6B7280",fontWeight:500,lineHeight:1.5}}>
           {lang==="en"?"The AI that analyses if it's a good deal":"L'IA qui analyse si c'est un bon deal"}
@@ -623,7 +623,7 @@ const LensTab = memo(function LensTab({
         <button
           onClick={analyzeLens}
           disabled={!lensPhotos.length||lensLoading||lensPremiumLimitReached}
-          style={{width:"100%",padding:"13px",background:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
+          style={{width:"100%",padding:"13px",background:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s",boxShadow:!lensPhotos.length||lensLoading||lensPremiumLimitReached?"none":"0 4px 14px rgba(29,158,117,0.3)"}}
         >
           {lensLoading
             ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
@@ -671,7 +671,7 @@ const LensTab = memo(function LensTab({
             {isPro&&!lensResult.error&&(
               <>
                 <button
-                  style={{width:"100%",padding:"13px",background:generatingListing?"#9CA3AF":"linear-gradient(135deg,#6366F1,#4F46E5)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:generatingListing?"not-allowed":"pointer",fontFamily:"inherit",marginTop:8,boxShadow:generatingListing?"none":"0 4px 14px rgba(99,102,241,0.3)",transition:"background 0.2s"}}
+                  style={{width:"100%",padding:"13px",background:generatingListing?"#9CA3AF":"linear-gradient(135deg,#6366F1,#4F46E5)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:generatingListing?"not-allowed":"pointer",fontFamily:"inherit",marginTop:8,boxShadow:generatingListing?"none":"0 4px 14px rgba(99,102,241,0.3)",transition:"background 0.2s"}}
                   onClick={handleCreateListing}
                   disabled={generatingListing}
                 >
@@ -692,7 +692,7 @@ const LensTab = memo(function LensTab({
         <div style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.78)",zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:"0 40px"}}>
           <style>{`@keyframes ls-spin{to{transform:rotate(360deg)}}`}</style>
           <div style={{width:48,height:48,border:"4px solid rgba(255,255,255,0.25)",borderTopColor:"#fff",borderRadius:"50%",animation:"ls-spin 0.8s linear infinite"}}/>
-          <div style={{color:"#fff",fontWeight:800,fontSize:18,textAlign:"center"}}>
+          <div style={{color:"#fff",fontWeight:700,fontSize:18,textAlign:"center"}}>
             {lang==="en"?"Generating your listing...":"Génération de ton annonce..."}
           </div>
           <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,textAlign:"center",lineHeight:1.6}}>
