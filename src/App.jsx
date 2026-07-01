@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { BarChart3, Bot, Aperture, ClipboardList, LineChart } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
@@ -4615,11 +4616,11 @@ export default function App({ loginOnly = false }){
   }
 
   const TABS_MOBILE=[
-    {icon:"📊",label:lang==='fr'?"Tableau":"Board",idx:0},
-    {icon:"🤖",label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
-    {icon:"📸",label:"Lens",idx:2},
-    {icon:"📋",label:lang==='fr'?"Ventes":"Sales",idx:3},
-    {icon:"📈",label:"Stats",idx:4},
+    {Icon:BarChart3,   label:lang==='fr'?"Tableau":"Board",idx:0},
+    {Icon:Bot,         label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
+    {Icon:Aperture,    label:"Lens",idx:2},
+    {Icon:ClipboardList,label:lang==='fr'?"Ventes":"Sales",idx:3},
+    {Icon:LineChart,   label:"Stats",idx:4},
   ];
 
   const headerStats=[
@@ -6016,14 +6017,45 @@ export default function App({ loginOnly = false }){
 
       <Toast message={toast.message} visible={toast.visible}/>
 
-      <div className="bnav">
-        {TABS_MOBILE.map(tm=>(
-          <button key={tm.idx} onClick={()=>{setTab(tm.idx);localStorage.setItem('tab',tm.idx);}} className={"bnav-item "+(tab===tm.idx?"on":"")}>
-            <span className="ic">{tm.icon}</span>
-            <span className="lbl">{tm.label}</span>
-            <span className="ind"/>
-          </button>
-        ))}
+      <div className="bnav" style={{ position:"fixed", bottom:0, left:0, right:0, justifyContent:"center", zIndex:50, paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 14px)" }}>
+        <div style={{ position:"relative", display:"flex", alignItems:"flex-end", gap:4, padding:"10px 10px 10px", borderRadius:26, background:"rgba(255,255,255,0.72)", backdropFilter:"blur(18px) saturate(1.6)", WebkitBackdropFilter:"blur(18px) saturate(1.6)", border:"1px solid #E7E3D8", boxShadow:"0 12px 32px rgba(16,32,27,0.10), 0 2px 8px rgba(16,32,27,0.05)" }}>
+          {TABS_MOBILE.map(tm=>{
+            const { Icon } = tm;
+            const isActive = tab===tm.idx;
+            const isLens = tm.idx===2;
+            const onClick = ()=>{setTab(tm.idx);localStorage.setItem('tab',tm.idx);};
+
+            if (isLens) {
+              return (
+                <button key={tm.idx} onClick={onClick} style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"center", width:60, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:"inherit" }}>
+                  <span style={{
+                    position:"absolute", top:-26, width:52, height:52, borderRadius:"50%",
+                    background:"linear-gradient(155deg,#2F9E90,#1B6E62)",
+                    boxShadow: isActive ? "0 8px 22px rgba(47,158,144,0.45), 0 0 0 5px #F6F5F1" : "0 6px 16px rgba(47,158,144,0.32), 0 0 0 5px #F6F5F1",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    transition:"transform 0.2s ease",
+                    transform: isActive ? "scale(1.04)" : "scale(1)",
+                  }}>
+                    <Icon size={22} color="#FFFFFF" strokeWidth={1.9} />
+                  </span>
+                  <span style={{ height:30 }} />
+                  <span style={{ fontSize:10, fontWeight:600, color: isActive ? "#2F9E90" : "#8A8578" }}>{tm.label}</span>
+                </button>
+              );
+            }
+
+            return (
+              <button key={tm.idx} onClick={onClick} style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:4, padding:"4px 0", width:60, background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+                <div style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", width:34, height:30 }}>
+                  {isActive && <span style={{ position:"absolute", inset:0, borderRadius:12, background:"rgba(47,158,144,0.10)" }} />}
+                  <Icon size={17} color={isActive ? "#2F9E90" : "#A6A192"} strokeWidth={isActive ? 2.1 : 1.7} />
+                </div>
+                <span style={{ fontSize:10, fontWeight:500, color: isActive ? "#2F9E90" : "#8A8578" }}>{tm.label}</span>
+                {isActive && <span style={{ position:"absolute", bottom:-3, width:3, height:3, borderRadius:"50%", background:"#2F9E90" }} />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <VoiceAssistant

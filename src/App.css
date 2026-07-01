@@ -296,56 +296,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .sale-row .amt.red { color: var(--red); }
 .sale-row .pct { font-size: 10px; font-weight: 800; color: rgba(29,158,117,0.7); text-align: right; margin-top: 2px; }
 
-/* ─── Bottom nav (bnav) ─── */
-.bnav {
-  background: rgba(255,255,255,0.94);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border-top: 0.5px solid var(--line-mid);
-  padding: 6px 4px calc(env(safe-area-inset-bottom, 0px) + 6px);
-  display: none;
-  z-index: 100;
-  box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
-  flex-shrink: 0;
-}
-.bnav-item {
-  flex: 1;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 6px 4px;
-  background: transparent; border: none; cursor: pointer;
-  position: relative;
-  transition: transform 0.15s var(--spring);
-}
-.bnav-item:active { transform: scale(0.92); }
-.bnav-item .ic {
-  font-size: 20px;
-  filter: grayscale(0.6);
-  opacity: 0.5;
-  transition: all 0.2s var(--ease);
-  line-height: 1;
-}
-.bnav-item.on .ic {
-  filter: none;
-  opacity: 1;
-  transform: translateY(-1px);
-}
-.bnav-item .lbl {
-  font-size: 9px; font-weight: 800;
-  color: var(--label);
-  letter-spacing: 0.02em;
-  transition: color 0.2s var(--ease);
-}
-.bnav-item.on .lbl { color: var(--teal-strong); }
-.bnav-item .ind {
-  position: absolute;
-  bottom: 0; left: 50%;
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: var(--teal-strong);
-  transform: translateX(-50%) scale(0);
-  transition: transform 0.25s var(--spring);
-}
-.bnav-item.on .ind { transform: translateX(-50%) scale(1); }
+/* ─── Bottom nav (bnav) — floating glass pill, mobile only; display toggle handled above and in the responsive media query ─── */
 
 /* ─── FAB Vocal ─── */
 .fab-vocal {
@@ -635,7 +586,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   .logo-mobile { display: block !important; }
   .premium-full { display: none !important; }
   .premium-short { display: inline !important; }
-  .page-pad { padding-bottom: 100px !important; }
+  .page-pad { padding-bottom: 140px !important; }
 }
 @media (max-width: 480px) {
   .grid4 { grid-template-columns: 1fr; }
