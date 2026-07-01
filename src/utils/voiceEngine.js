@@ -780,7 +780,15 @@ export async function executeVoiceTasks(tasks, context) {
               break;
             }
           }
-          const _ddk = norm([task.data?.nom, task.data?.marque, task.data?.description].filter(Boolean).join(" ") || "");
+          // Clé de dédup incluant le prix d'achat : des articles au nom/marque/description
+          // identiques mais à prix différents (ex. "une clé Facom 8€, une à 9€, une à 10€")
+          // sont des articles DISTINCTS, pas des doublons. Seul un prix identique doit
+          // matcher un doublon déjà traité dans ce même batch (cf. commit 1ddf5aa4 : garde-fou
+          // conçu pour éviter un double insert quand la Edge Function renvoie à la fois
+          // inventory_add et inventory_move pour le même article — même nom/marque/description
+          // ET même prix dans ce cas réel).
+          const _ddkBase = norm([task.data?.nom, task.data?.marque, task.data?.description].filter(Boolean).join(" ") || "");
+          const _ddk = _ddkBase ? `${_ddkBase}|pa:${parseNum(task.data?.prix_achat)}` : "";
           if (_ddk && executedResultsMap[_ddk]) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
             break;
@@ -833,8 +841,16 @@ export async function executeVoiceTasks(tasks, context) {
             if (result.status === "success") {
               const _keyFull = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
               const _keyNom = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
+              // Clé additionnelle avec prix, alimente UNIQUEMENT le garde-fou _ddk ci-dessus
+              // (self-dedup inventory_add, même formule). _keyFull/_keyNom restent inchangées
+              // et continuent de servir de clés de cross-référence pour les autres tasks du
+              // même batch (ex. inventory_sell "fromMap" ci-dessous, lot partiellement vendu)
+              // qui n'ont jamais connaissance du prix d'achat — les toucher casserait cette
+              // fonctionnalité indépendante du présent bug.
+              const _keyFullPrice = _keyFull ? `${_keyFull}|pa:${parseNum(task.data.prix_achat)}` : "";
               if (_keyFull) executedResultsMap[_keyFull] = result.data || task.data;
               if (_keyNom && !executedResultsMap[_keyNom]) executedResultsMap[_keyNom] = result.data || task.data;
+              if (_keyFullPrice) executedResultsMap[_keyFullPrice] = result.data || task.data;
               hadMutation = true;
             }
           }

@@ -1740,7 +1740,11 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const qAdded=(data?.quantite||taskData?.quantite)>1?(data?.quantite||taskData?.quantite):null;
                 const marque=normalizeMarque(data?.marque||taskData?.marque||null)||null;
                 const nom=data?.title||data?.nom||taskData?.nom;
-                const prix=data?.buy??data?.prix_achat??taskData?.prix_achat;
+                // taskData.prix_achat est propre à cette tâche et n'est jamais partagé avec
+                // une autre (contrairement à data, qui peut référencer l'objet d'un article
+                // déjà ajouté plus tôt dans le même batch en cas de doublon détecté) — on le
+                // priorise pour plus de robustesse, en gardant data en repli si absent.
+                const prix=taskData?.prix_achat??data?.buy??data?.prix_achat;
                 const desc=data?.description||taskData?.description||null;
                 return(
                   <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
