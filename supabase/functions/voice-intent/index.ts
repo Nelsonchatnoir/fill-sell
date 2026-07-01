@@ -234,8 +234,9 @@ Si l'utilisateur décrit avoir ACHETÉ ET VENDU le même article (passé compos�
   1. inventory_sell avec no_match:true, prix_achat ET prix_vente renseignés (vente directe — l'article passe directement en ventes, pas dans l'inventaire).
 INTERDIT de générer deal_score dans ce cas. INTERDIT de générer inventory_add (sauf cas lot partiellement vendu ci-dessous).
 Si plusieurs articles différents → répéter par article.
-✅ "j'ai acheté une imprimante HP 20€ et je l'ai vendue 30€" → [inventory_sell {nom:"Imprimante",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
-✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
+✅ "j'ai acheté une imprimante HP 20€ et je l'ai vendue 30€" → [inventory_sell {nom:"Imprimante",marque:"HP",categorie:"High-Tech",prix_achat:20,prix_vente:30,no_match:true}]
+✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",categorie:"Mode",prix_achat:15,prix_vente:25,no_match:true}]
+RÈGLE OBLIGATOIRE : categorie doit TOUJOURS être renseignée dans ce cas (voir "Catégories canoniques" ci-dessous), jamais omise.
 
 CAS SPÉCIAL — LOT PARTIELLEMENT VENDU (PRIORITAIRE sur la règle ci-dessus) :
 Si N articles DIFFÉRENTS sont achetés ensemble à un prix global ET que seulement M d'entre eux sont vendus dans la même phrase (M < N) :
@@ -694,8 +695,9 @@ If the user describes having BOUGHT AND SOLD the same item (past tense: "I bough
   1. inventory_sell with no_match:true, both prix_achat AND prix_vente filled (direct sale — item goes straight to sales, not inventory).
 FORBIDDEN to generate deal_score in this case. FORBIDDEN to generate inventory_add (except for the partial lot case below).
 If multiple different items → repeat per item.
-✅ "I bought an HP printer for €20 and sold it for €30" → [inventory_sell {nom:"Printer",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
-✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
+✅ "I bought an HP printer for €20 and sold it for €30" → [inventory_sell {nom:"Printer",marque:"HP",categorie:"High-Tech",prix_achat:20,prix_vente:30,no_match:true}]
+✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",categorie:"Mode",prix_achat:15,prix_vente:25,no_match:true}]
+MANDATORY RULE: categorie must ALWAYS be filled in this case (see "Canonical categories" below), never omitted.
 
 SPECIAL CASE — PARTIALLY SOLD LOT (TAKES PRIORITY over the rule above):
 If N DIFFERENT items are bought together at a global price AND only M of them are sold in the same sentence (M < N):
