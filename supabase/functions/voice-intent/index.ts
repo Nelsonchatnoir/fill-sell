@@ -1450,6 +1450,15 @@ serve(async (req) => {
       const stockJson = JSON.stringify(_stock);
 
       for (const sellTask of sellTasks) {
+        // Le no_match auto-déclaré par la 1ère extraction (Claude, sur la seule base de
+        // la formulation — ex. "que j'avais acheté" peut faire croire à tort à une vente
+        // directe façon "règle multi-articles") ne doit JAMAIS court-circuiter la tentative
+        // de matching réelle contre le stock ci-dessous. Il est effacé ici : le matching
+        // dédié (ou l'absence de stock, ou la règle "sans marque" ci-dessous) est désormais
+        // seul décisionnel. Le no_match original reste consultable dans usage_logs.raw_response
+        // à des fins d'audit — il n'est plus jamais lu pour la décision finale.
+        delete sellTask.data.no_match;
+
         // "sans marque" / "no brand" explicite → vente directe, pas de matching stock
         const noMarqueRe = _lang === "fr"
           ? /sans\s*marque|pas\s*de\s*marque|aucune\s*marque/i
