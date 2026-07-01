@@ -29,7 +29,7 @@ function _lev(a, b) {
 
 // Scoring multi-champs partagé : nom (requis), marque (+4 exact/+2 fuzzy), description (+2/mot), catégorie (+1), plateforme (+1).
 // Retourne les candidats triés par score desc, filtrés à score > 0.
-function rankItems(candidates, { nom = "", marque = "", description = "", categorie = "", plateforme = "" } = {}) {
+export function rankItems(candidates, { nom = "", marque = "", description = "", categorie = "", plateforme = "" } = {}) {
   const qNom  = norm(nom);
   const qMar  = norm(marque);
   const qDesc = norm(description);
@@ -67,6 +67,79 @@ function rankItems(candidates, { nom = "", marque = "", description = "", catego
     if (qPlat && _ip && (_ip.includes(qPlat) || qPlat.includes(_ip))) s += 1;
     return { item: i, score: s };
   }).filter(Boolean).sort((a, b) => b.score - a.score);
+}
+
+// Regroupe les tâches inventory_sell qui partagent le même prix_mentionne
+// (price_ambiguous:true, quantite_vendue:1 chacune) en un seul flow "lot à prix
+// groupé" — ex. "j'ai vendu un jean, une veste et une robe pour 30€", où
+// l'extraction produit N tâches distinctes avec le même prix_mentionne:30.
+// Ne concerne JAMAIS le cas existant "3 porte-clés pour 100€" (un seul article,
+// quantite_vendue>1, déjà géré par sa propre carte "total ou pièce") ni les
+// lots inventory_add à prix différents explicites (intent différent).
+// Un groupe de taille 1 (aucune autre tâche ne partage ce prix) n'est PAS
+// transformé : il repart tel quel dans le flux existant, comportement inchangé.
+export function groupSellLots(results, items) {
+  const buckets = new Map();
+  results.forEach((r, idx) => {
+    if (
+      r?.status === "pending_confirmation" &&
+      r?.intent === "inventory_sell" &&
+      r?.taskData?.price_ambiguous === true &&
+      r?.taskData?.quantite_vendue === 1 &&
+      parseFloat(r?.taskData?.prix_mentionne) > 0
+    ) {
+      const key = Number(r.taskData.prix_mentionne).toFixed(2);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(idx);
+    }
+  });
+
+  const replaceAt = new Map();
+  const removeIdx = new Set();
+  const stockPool = (items || []).filter(i => i.statut !== "vendu" && i.statut !== "sold");
+
+  for (const [key, idxs] of buckets) {
+    if (idxs.length < 2) continue;
+    const usedIds = new Set();
+    const lotItems = idxs.map(idx => {
+      const td = results[idx].taskData || {};
+      // Priorité au matched_id déjà déterminé par le matching serveur (voice-intent,
+      // toujours tenté avant regroupement) ; fallback sur rankItems (nom/marque/
+      // description, sans prix — le prix de vente individuel n'est pas encore connu).
+      let matchedItem = td.matched_id
+        ? stockPool.find(i => String(i.id) === String(td.matched_id) && !usedIds.has(String(i.id))) || null
+        : null;
+      if (!matchedItem) {
+        const available = stockPool.filter(i => !usedIds.has(String(i.id)));
+        const ranked = rankItems(available, { nom: td.nom, marque: td.marque, description: td.description, categorie: td.categorie, plateforme: td.plateforme });
+        matchedItem = ranked[0]?.item || null;
+      }
+      if (matchedItem) usedIds.add(String(matchedItem.id));
+      return {
+        nom: td.nom || null,
+        marque: td.marque || null,
+        description: td.description || null,
+        categorie: td.categorie || null,
+        plateforme: td.plateforme || null,
+        matchedItem,
+        // Aucun match → rien à demander à l'utilisateur, auto-résolu en "nouvel article".
+        resolution: matchedItem ? null : { source: "new" },
+      };
+    });
+    replaceAt.set(idxs[0], {
+      intent: "inventory_sell_lot",
+      status: "pending_confirmation",
+      taskData: { lotTotal: Number(key), items: lotItems },
+      data: {},
+      message: "",
+    });
+    for (let k = 1; k < idxs.length; k++) removeIdx.add(idxs[k]);
+  }
+
+  if (replaceAt.size === 0) return results;
+  return results
+    .map((r, idx) => (replaceAt.has(idx) ? replaceAt.get(idx) : r))
+    .filter((_, idx) => !removeIdx.has(idx));
 }
 
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
