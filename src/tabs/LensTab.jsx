@@ -51,8 +51,6 @@ function LensScanHome({
   return (
     <div style={{ width:'100%', maxWidth:520, margin:'0 auto' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
-        .lens-ff { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
         @keyframes lensMarqueeScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
         .lens-marquee-track { animation: lensMarqueeScroll 24s linear infinite; }
         @keyframes lensRingPulse {
@@ -66,7 +64,7 @@ function LensScanHome({
 
       <input ref={lensFileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleLensPhoto} />
 
-      <div className="lens-ff" style={{ position:'relative', overflow:'hidden', borderRadius:28, background:CANVAS, border:'1px solid #E7E3D8', boxShadow:'0 1px 4px rgba(16,32,27,0.05)' }}>
+      <div style={{ position:'relative', overflow:'hidden', borderRadius:28, background:CANVAS, border:'1px solid #E7E3D8', boxShadow:'0 1px 4px rgba(16,32,27,0.05)' }}>
         {/* ambient teal glow */}
         <div style={{ position:'absolute', pointerEvents:'none', top:'-8%', left:'50%', transform:'translateX(-50%)', width:460, height:320, background:'radial-gradient(ellipse, rgba(47,158,144,0.14) 0%, rgba(47,158,144,0) 70%)' }} />
 

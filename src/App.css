@@ -1,6 +1,6 @@
 /* FillSell — Design System v2 */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@1,800;1,900&family=Nunito:wght@400;500;600;700;800;900&display=swap');
+/* Space Grotesk (app-wide) + Plus Jakarta Sans (logo wordmark only) loaded once via index.html */
 
 /* ─── CSS Variables ─── */
 :root {
@@ -44,7 +44,7 @@ html, body {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: none;
   background: #ffffff;
-  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -90,7 +90,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   background: transparent; border: none; padding: 0; cursor: pointer; flex-shrink: 0;
 }
 .tb-logo .name {
-  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
   font-style: italic;
   font-weight: 800;
   font-size: 17px;
@@ -200,7 +200,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   margin-bottom: 6px;
 }
 .profit-hero .amt {
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 900;
   font-size: 42px;
   letter-spacing: -0.04em;
@@ -268,8 +268,8 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .chart-svg .area-line { stroke: var(--teal-strong); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .chart-svg .area-dot { fill: #fff; stroke: var(--teal-strong); stroke-width: 2.5; }
 .chart-svg .area-dot.peak { fill: var(--teal-strong); stroke: #fff; }
-.chart-svg .x-tick { font-size: 9px; font-weight: 700; fill: #999; text-anchor: middle; font-family: 'Nunito', sans-serif; }
-.chart-svg .peak-label { font-size: 10px; font-weight: 900; fill: #fff; text-anchor: middle; font-family: 'Nunito', sans-serif; }
+.chart-svg .x-tick { font-size: 9px; font-weight: 700; fill: #999; text-anchor: middle; font-family: 'Space Grotesk', sans-serif; }
+.chart-svg .peak-label { font-size: 10px; font-weight: 900; fill: #fff; text-anchor: middle; font-family: 'Space Grotesk', sans-serif; }
 .chart-svg .peak-bubble { fill: var(--teal-strong); filter: drop-shadow(0 2px 6px rgba(29,158,117,0.4)); }
 
 /* ─── Sale list ─── */
@@ -286,7 +286,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .sale-row .t { font-size: 13px; font-weight: 700; color: var(--text); }
 .sale-row .d { font-size: 11px; font-weight: 600; color: var(--label); margin-top: 2px; }
 .sale-row .amt {
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px; font-weight: 900;
   color: var(--teal-strong);
   font-variant-numeric: tabular-nums;
@@ -414,7 +414,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 
 /* Score card */
 .score-num {
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 900; font-size: 72px;
   letter-spacing: -0.06em; line-height: 0.95;
   font-variant-numeric: tabular-nums;
@@ -440,8 +440,8 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .bar-fill.red { background: var(--red); }
 
 /* ─── Stats screen headings ─── */
-.h-page { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: -0.025em; color: var(--text); margin: 4px 0 14px; }
-.h-section { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: -0.015em; color: var(--text); margin: 18px 0 10px; }
+.h-page { font-family: 'Space Grotesk', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: -0.025em; color: var(--text); margin: 4px 0 14px; }
+.h-section { font-family: 'Space Grotesk', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: -0.015em; color: var(--text); margin: 18px 0 10px; }
 
 .range-row {
   display: flex; gap: 6px; margin-bottom: 14px;
@@ -473,13 +473,13 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .kpi-hero.ghost::before { display: none; }
 .kpi-hero .lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.8; margin-bottom: 6px; position: relative; }
 .kpi-hero.ghost .lbl { color: var(--sub); opacity: 1; }
-.kpi-hero .amt { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; position: relative; }
+.kpi-hero .amt { font-family: 'Space Grotesk', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; position: relative; }
 .kpi-hero .delta { font-size: 11px; font-weight: 800; margin-top: 6px; position: relative; display: inline-flex; gap: 5px; align-items: center; }
 
 .spark-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
 .spark-card { background: #fff; border-radius: var(--r-md); padding: 12px 14px 10px; box-shadow: var(--shadow-card); }
 .spark-card .lbl { font-size: 10px; font-weight: 800; color: var(--sub); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-.spark-card .v { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: -0.03em; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+.spark-card .v { font-family: 'Space Grotesk', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: -0.03em; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
 .spark-card .trend { font-size: 10px; font-weight: 800; margin-top: 4px; }
 .spark-card .trend.up { color: var(--teal-strong); }
 .spark-card .trend.down { color: var(--red); }
@@ -490,13 +490,13 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   box-shadow: var(--shadow-soft); transition: transform 0.18s var(--ease);
 }
 .leader-row:active { transform: scale(0.98); }
-.leader-row .rank { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: -0.02em; color: var(--teal-strong); width: 36px; text-align: center; flex-shrink: 0; }
+.leader-row .rank { font-family: 'Space Grotesk', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: -0.02em; color: var(--teal-strong); width: 36px; text-align: center; flex-shrink: 0; }
 .leader-row .rank.slow { font-size: 13px; color: var(--orange); background: var(--orange-tint); border-radius: var(--r-pill); padding: 4px 8px; width: auto; }
 .leader-row .info { flex: 1; min-width: 0; }
 .leader-row .name { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .leader-row .meta { display: flex; gap: 6px; align-items: center; }
 .leader-row .trend-mini { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
-.leader-row .val { font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.leader-row .val { font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .leader-row .val.up { color: var(--teal-strong); }
 
 /* ─── Drawer ─── */

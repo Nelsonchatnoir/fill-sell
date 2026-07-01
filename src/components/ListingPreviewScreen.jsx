@@ -154,7 +154,7 @@ function QuotaLimitModal({ onClose, lang }) {
     }}>
       <div style={{
         background:"#fff", borderRadius:"24px 24px 0 0", padding:"28px 24px 36px",
-        width:"100%", maxWidth:480, fontFamily:"'Nunito',system-ui,sans-serif",
+        width:"100%", maxWidth:480,
       }}>
         <div style={{ fontWeight:900, fontSize:18, color:"#111", marginBottom:8 }}>
           {t("quotaModalTitle")}
@@ -1201,7 +1201,7 @@ export default function ListingPreviewScreen({
     <div style={{
       position:"fixed", inset:0, zIndex:300,
       background:T.canvas, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-      padding:"60px 32px 32px", fontFamily:"'Nunito',system-ui,sans-serif",
+      padding:"60px 32px 32px",
       paddingTop:"calc(env(safe-area-inset-top,0px) + 60px)", paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 32px)",
     }}>
       <style>{`@keyframes lps-popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
@@ -1232,11 +1232,10 @@ export default function ListingPreviewScreen({
     <div style={{
       position:"fixed", inset:0, zIndex:300,
       display:"flex", flexDirection:"column", width:"100%", height:"100%",
-      background:T.canvas, fontFamily:"'Nunito',system-ui,sans-serif", overflowY:"auto",
+      background:T.canvas, overflowY:"auto",
       paddingTop:"env(safe-area-inset-top,0px)",
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap');
         * { box-sizing: border-box; }
         @keyframes lps-spin-slow { to { transform: rotate(360deg); } }
       `}</style>

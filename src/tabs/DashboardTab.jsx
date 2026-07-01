@@ -70,7 +70,7 @@ const DashboardTab = memo(function DashboardTab({
   const avgM = totalR>0?(totalM/totalR)*100:0;
   const hasData = sales.length>0;
 
-  const _f={family:"'Nunito', -apple-system, sans-serif",size:11};
+  const _f={family:"'Space Grotesk', -apple-system, sans-serif",size:11};
   const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
   const _scales=(unit)=>({
     x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},

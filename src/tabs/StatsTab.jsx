@@ -585,8 +585,8 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
                   padding:10,
                   cornerRadius:10,
                   displayColors:false,
-                  titleFont:{family:"'Nunito', sans-serif",size:11,weight:'700'},
-                  bodyFont:{family:"'Nunito', sans-serif",size:14,weight:'800'},
+                  titleFont:{family:"'Space Grotesk', sans-serif",size:11,weight:'700'},
+                  bodyFont:{family:"'Space Grotesk', sans-serif",size:14,weight:'800'},
                   callbacks:{
                     title:([i])=>i.label,
                     label:ctx=>`${(ctx.raw||0)>0?'+':''}${formatCurrency(ctx.raw||0,currency)}`,
@@ -598,13 +598,13 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
                   display:true,
                   grid:{display:false},
                   border:{display:false},
-                  ticks:{color:'#A3A9A6',font:{family:"'Nunito', sans-serif",size:10},maxTicksLimit:6,maxRotation:0},
+                  ticks:{color:'#A3A9A6',font:{family:"'Space Grotesk', sans-serif",size:10},maxTicksLimit:6,maxRotation:0},
                 },
                 y:{
                   display:true,
                   grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},
                   border:{display:false},
-                  ticks:{color:'#A3A9A6',font:{family:"'Nunito', sans-serif",size:10},padding:6,callback:v=>formatCurrency(v,currency,0)},
+                  ticks:{color:'#A3A9A6',font:{family:"'Space Grotesk', sans-serif",size:10},padding:6,callback:v=>formatCurrency(v,currency,0)},
                 },
               },
             }}
