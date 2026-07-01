@@ -3380,7 +3380,6 @@ export default function App({ loginOnly = false }){
           .catch(()=>{});
       });
   },[]);
-  const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
   const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
   const [voiceLoading,setVoiceLoading]=useState(false);
@@ -3395,8 +3394,6 @@ export default function App({ loginOnly = false }){
     const t=setInterval(()=>setVoicePlaceholderIdx(i=>(i+1)%TEXTAREA_PLACEHOLDERS.length),4000);
     return()=>clearInterval(t);
   },[]);
-  const mediaRecorderRef=useRef(null);
-  const audioChunksRef=useRef([]);
   const [manualMode,setManualMode]=useState("single");
   const [lotManualTotal,setLotManualTotal]=useState("");
   const [lotManualItems,setLotManualItems]=useState([{nom:""},{nom:""}]);
@@ -3535,13 +3532,16 @@ export default function App({ loginOnly = false }){
     const [v,i,p,fc]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
+      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
       fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
-    let premiumValue=p.data?.is_premium===true;
-    console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
+    // Ne jamais utiliser is_premium seul (cf. CLAUDE.md) : is_pro/is_founder/IAP actif
+    // valent aussi statut premium, même si is_premium n'a jamais été positionné à true
+    // (ex. promotion manuelle sans passer par le flow IAP).
+    let premiumValue=!!(p.data?.is_premium||p.data?.is_pro||p.data?.is_founder||p.data?.apple_original_transaction_id||p.data?.google_purchase_token);
+    console.log('[fetchAll] premium fields from Supabase:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_founder:p.data?.is_founder,has_apple:!!p.data?.apple_original_transaction_id,has_google:!!p.data?.google_purchase_token}, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
       setUsername(p.data?.username||'');
@@ -3746,12 +3746,12 @@ export default function App({ loginOnly = false }){
 
   function resetVoiceFlow(){
     setVoiceText("");setVoiceLoading(false);setVoiceStep("");
-    setVoiceParsed(null);setVoiceError(null);setIsRecording(false);
+    setVoiceParsed(null);setVoiceError(null);
     setVoiceZoneResults([]);
   }
 
   async function callVoiceParse(text){
-    // Quota check — identique à handleVoiceToggle
+    // Quota check — vocal free 5/jour
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
       if(count>=VOICE_FREE_LIMIT){
@@ -3794,59 +3794,6 @@ export default function App({ loginOnly = false }){
       setVoiceError(e.message||"Erreur analyse");setVoiceStep("error");
     }
     setVoiceLoading(false);
-  }
-
-  async function handleVoiceToggle(){
-    if(isRecording){mediaRecorderRef.current?.stop();setIsRecording(false);return;}
-    if(!isPremium){
-      const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
-      if(count>=VOICE_FREE_LIMIT){
-        setConversionModal({open:true,trigger:'voice'});
-        return;
-      }
-      await supabase.from('profiles')
-        .update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]})
-        .eq('id',user.id);
-      supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
-      setVoiceUsedToday(count+1);
-    }
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-      setVoiceError("Microphone non disponible. Vérifiez les permissions dans Réglages > FillSell.");setVoiceStep("error");return;
-    }
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const mimeType=MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/mp4";
-      const recorder=new MediaRecorder(stream,{mimeType});
-      audioChunksRef.current=[];
-      recorder.ondataavailable=e=>{if(e.data.size>0)audioChunksRef.current.push(e.data);};
-      recorder.onstop=async()=>{
-        stream.getTracks().forEach(t=>t.stop());
-        const blob=new Blob(audioChunksRef.current,{type:mimeType});
-        setVoiceStep("transcribing");setVoiceLoading(true);
-        try{
-          const{data:{session:vtSess}}=await supabase.auth.getSession();
-          const vtToken=vtSess?.access_token;
-          if(!vtToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
-          const fd=new FormData();
-          fd.append("audio",blob,"audio."+mimeType.split("/")[1]);
-          fd.append("lang",lang);
-          const res=await fetch(`${supabaseUrl}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vtToken}`,"apikey":supabaseAnonKey},body:fd});
-          if(!res.ok)throw new Error("Transcription failed");
-          let vtJson;try{vtJson=await res.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
-          const{text,error:err}=vtJson;
-          if(err)throw new Error(err);
-          setVoiceText(text);
-          await callVoiceParse(text);
-        }catch(e){
-          setVoiceError(e.message||"Erreur transcription");setVoiceStep("error");setVoiceLoading(false);
-        }
-      };
-      mediaRecorderRef.current=recorder;
-      recorder.start();
-      setIsRecording(true);setVoiceStep("recording");
-    }catch(e){
-      setVoiceError(e.message||"Micro non disponible");setVoiceStep("error");
-    }
   }
 
   async function addItemsFromVoice(){

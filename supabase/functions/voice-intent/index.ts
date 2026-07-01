@@ -1037,21 +1037,31 @@ serve(async (req) => {
     });
   }
 
-  // ── Intent quota — reads is_premium from DB (server-side, not from client) ──
+  // ── Intent quota — reads premium status from DB (server-side, not from client) ──
   // Skip quota for internal normalize calls (e.g. inventory_move fallback re-parse)
   const isInternalNormalize = req.headers.get("x-internal-normalize") === "true";
   const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   let quotaLogId: string | null = null;
   if (!isInternalNormalize) {
-    const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
-    const isPremiumUser = profileData?.is_premium === true;
+    // Ne jamais utiliser is_premium seul : is_pro/is_founder/IAP actif valent aussi
+    // statut premium (cf. CLAUDE.md — cas des promotions manuelles sans flow IAP).
+    const { data: profileData } = await adminClient.from("profiles")
+      .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+      .eq("id", user.id).single();
+    const isPremiumUser = !!(
+      profileData?.is_premium ||
+      profileData?.is_pro ||
+      profileData?.is_founder ||
+      profileData?.apple_original_transaction_id ||
+      profileData?.google_purchase_token
+    );
     const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
       p_user_id: user.id,
       p_feature: "voice_intent",
       p_is_premium: isPremiumUser,
-      p_daily_limit_free: 20,
+      p_daily_limit_free: 5, // aligné sur VOICE_FREE_LIMIT (App.jsx) et voice-transcribe
       p_monthly_limit_free: 100,
-      p_daily_limit_premium: 20,
+      p_daily_limit_premium: null, // illimité au quotidien pour premium — seul le cap mensuel (300) s'applique
       p_monthly_limit_premium: 300,
     });
     if (quotaError) console.error("[voice-intent] check_and_log_usage error:", quotaError.message);

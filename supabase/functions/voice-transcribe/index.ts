@@ -65,17 +65,28 @@ serve(async (req) => {
     });
   }
 
-  // ── Voice quota — reads is_premium from DB (server-side, not from client) ──
+  // ── Voice quota — reads premium status from DB (server-side, not from client) ──
+  // Ne jamais utiliser is_premium seul : is_pro/is_founder/IAP actif valent aussi
+  // statut premium (cf. CLAUDE.md — cas des promotions manuelles sans flow IAP).
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
-  const isPremiumUser = profileData?.is_premium === true;
+  const { data: profileData } = await adminClient.from("profiles")
+    .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+    .eq("id", user.id).single();
+  const isPremiumUser = !!(
+    profileData?.is_premium ||
+    profileData?.is_pro ||
+    profileData?.is_founder ||
+    profileData?.apple_original_transaction_id ||
+    profileData?.google_purchase_token
+  );
   const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
     p_user_id: user.id,
     p_feature: "voice",
     p_is_premium: isPremiumUser,
-    p_daily_limit_free: 10,
-    p_monthly_limit_free: 50,
-    p_daily_limit_premium: 20,
+    p_daily_limit_free: 5, // aligné sur VOICE_FREE_LIMIT (App.jsx) et voice-intent
+    p_monthly_limit_free: 100,
+    p_daily_limit_premium: null, // illimité au quotidien pour premium — seul le cap mensuel (300) s'applique
+    p_monthly_limit_premium: 300,
   });
   if (quotaData?.allowed === false) {
     return new Response(
