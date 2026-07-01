@@ -219,6 +219,10 @@ export const translations = {
     fieldCategoryLabel:"Catégorie",
     fieldPackageFormatLabel:"Format colis",
 
+    sizeGroupGarmentLetter:"Vêtement (lettre)",
+    sizeGroupGarmentNumeric:"Vêtement (numérique)",
+    sizeGroupShoe:"Chaussures",
+
     conditionNewWithTag:"Neuf avec étiquette",
     conditionNewWithoutTag:"Neuf sans étiquette",
     conditionVeryGood:"Très bon état",
@@ -454,6 +458,10 @@ export const translations = {
     fieldMaterialLabel:"Material",
     fieldCategoryLabel:"Category",
     fieldPackageFormatLabel:"Package format",
+
+    sizeGroupGarmentLetter:"Garment (letter)",
+    sizeGroupGarmentNumeric:"Garment (numeric)",
+    sizeGroupShoe:"Shoes",
 
     conditionNewWithTag:"New with tag",
     conditionNewWithoutTag:"New without tag",

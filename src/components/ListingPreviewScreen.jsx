@@ -24,7 +24,20 @@ function getPlatformFieldsConfig(t) {
     correct:       { value:"État correct",         label:t("conditionCorrect") },
     forParts:      { value:"Pour pièces",          label:t("conditionForParts") },
   };
-  const size = ["XS","S","M","L","XL","XXL","Unique"].map(v => ({ value:v, label:v }));
+  const sizeLetterOptions  = ["XS","S","M","L","XL","XXL","Unique"].map(v => ({ value:v, label:v }));
+  const sizeNumericOptions = [];
+  for (let n = 34; n <= 52; n += 2) sizeNumericOptions.push({ value:String(n), label:String(n) });
+  const sizeShoeOptions = [];
+  for (let half = 70; half <= 92; half++) {
+    const label = `EU ${half / 2}`;
+    sizeShoeOptions.push({ value:label, label });
+  }
+  const sizeGroups = [
+    { groupLabel:t("sizeGroupGarmentLetter"),  options:sizeLetterOptions },
+    { groupLabel:t("sizeGroupGarmentNumeric"), options:sizeNumericOptions },
+    { groupLabel:t("sizeGroupShoe"),           options:sizeShoeOptions },
+  ];
+  const size = [...sizeLetterOptions, ...sizeNumericOptions, ...sizeShoeOptions];
   const packageFormat = [
     { value:"Lettre",           label:t("packageLetter") },
     { value:"Petit colis",      label:t("packageSmall") },
@@ -37,7 +50,7 @@ function getPlatformFieldsConfig(t) {
   return {
     vinted: [
       { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
-      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size },
+      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
       { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
       { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
@@ -48,7 +61,7 @@ function getPlatformFieldsConfig(t) {
     ],
     beebs: [
       { key:"etat",   label:t("fieldConditionLabel"), type:"select", options:[condition.new_, condition.veryGood, condition.good] },
-      { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size },
+      { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
     ],
     ebay: [
@@ -78,8 +91,17 @@ function findMatchingOption(raw, options) {
   if (exact) return exact.value;
   const mapped = FR_TO_EBAY_CONDITION[n];
   if (mapped && options.some(o => o.value === mapped)) return mapped;
-  const partial = options.find(o => o.value.toLowerCase().includes(n) || n.includes(o.value.toLowerCase()));
-  return partial?.value ?? "";
+  // Match the LONGEST candidate, not the first one found: with short option values
+  // like "S"/"M"/"L" (letter sizes) mixed into the same list as "EU 42" (shoe sizes),
+  // a naive substring match on e.g. "EU 42 (US 9)" would wrongly hit "S" (from "US")
+  // before ever considering "EU 42" — the longest match is always the more specific one.
+  const candidates = options.filter(o => {
+    const v = o.value.toLowerCase();
+    return n.includes(v) || v.includes(n);
+  });
+  if (!candidates.length) return "";
+  candidates.sort((a, b) => b.value.length - a.value.length);
+  return candidates[0].value;
 }
 
 function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
@@ -95,10 +117,12 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
     let lensVal = null;
     switch (field.key) {
       case "etat":
-      case "condition":   lensVal = lensResult?.etat_estime ?? null; break;
+      case "condition":   lensVal = lensResult?.etat_estime    ?? null; break;
       case "marque":
-      case "brand":       lensVal = lensResult?.marque       ?? null; break;
-      case "categorie":   lensVal = lensResult?.categorie    ?? null; break;
+      case "brand":       lensVal = lensResult?.marque         ?? null; break;
+      case "categorie":   lensVal = lensResult?.categorie      ?? null; break;
+      case "taille":
+      case "size":        lensVal = lensResult?.taille_estimee ?? null; break;
       default:            lensVal = null;
     }
     result[field.key] = lensVal
@@ -710,7 +734,13 @@ function StepGeneration({ generating, generateError, platformListings, processed
                                 style={{ width:"100%", padding:"9px 10px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box", color: val ? "#111" : "#9B9890" }}
                               >
                                 <option value="">—</option>
-                                {field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {field.groups
+                                  ? field.groups.map(g => (
+                                      <optgroup key={g.groupLabel} label={g.groupLabel}>
+                                        {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                      </optgroup>
+                                    ))
+                                  : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                             ) : (
                               <input
