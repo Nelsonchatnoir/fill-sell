@@ -1,11 +1,22 @@
 import { useState, useEffect, useRef, Fragment } from "react";
-import { Camera, Send, Check, ChevronLeft, ChevronRight, Mic, Images, Zap } from "lucide-react";
+import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 import { useTranslation } from "../i18n/useTranslation";
 
-const TEAL  = "#3EACA0";
-const PEACH = "#E8956D";
-const BG    = "#F2F2EE";
+// Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
+const T = {
+  canvas:   "#EDEAE0",
+  paper:    "#F6F5F1",
+  ink:      "#10201B",
+  teal:     "#2F9E90",
+  tealDeep: "#1B6E62",
+  mute:     "#8A8578",
+  mute2:    "#6B7A75",
+  border:   "#E7E3D8",
+  card:     "#FFFFFF",
+  chip:     "#F2F0E9",
+};
+const AMBER = "#E8956D";
 
 export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
@@ -132,15 +143,6 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   return result;
 }
 
-function getSteps(t) {
-  return [
-    { id:0, label:t("stepLabelUpload"),     Icon:Camera },
-    { id:1, label:t("stepLabelPhotos"),     Icon:Images },
-    { id:2, label:t("stepLabelGeneration"), Icon:Zap    },
-    { id:3, label:t("stepLabelPublish"),    Icon:Send   },
-  ];
-}
-
 // ── QuotaLimitModal ───────────────────────────────────────────────────────────
 
 function QuotaLimitModal({ onClose, lang }) {
@@ -210,19 +212,50 @@ function Lightbox({ url, onClose }) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Eyebrow({ n, label }) {
+function Eyebrow({ children }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-      <span style={{
-        fontSize:11, fontWeight:900, color:"#fff",
-        background:`linear-gradient(135deg,${TEAL},${PEACH})`,
-        width:20, height:20, borderRadius:6,
-        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
-      }}>{n}</span>
-      <span style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.06em" }}>
-        {label}
-      </span>
+    <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:500, textTransform:"uppercase", letterSpacing:"0.14em", color:T.mute }}>
+      {children}
+    </p>
+  );
+}
+
+function StepProgress({ step, labels }) {
+  return (
+    <div style={{ padding:"16px 20px 4px" }}>
+      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+        {labels.map((_, i) => (
+          <div key={i} style={{ height:3, flex:1, borderRadius:999, background: i <= step ? T.teal : T.border }} />
+        ))}
+      </div>
+      <div style={{ display:"flex", justifyContent:"space-between" }}>
+        {labels.map((l, i) => (
+          <span key={l} style={{ fontSize:10.5, fontWeight:500, color: i === step ? T.teal : T.mute }}>{l}</span>
+        ))}
+      </div>
     </div>
+  );
+}
+
+function PrimaryButton({ children, disabled, onClick, icon:Icon }) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width:"100%", boxSizing:"border-box", borderRadius:999, padding:"16px 0",
+        display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+        fontSize:15, fontWeight:600, border:"none", fontFamily:"inherit",
+        cursor: disabled ? "not-allowed" : "pointer",
+        background: disabled ? "#DCEEEA" : `linear-gradient(120deg,${T.teal},${T.tealDeep})`,
+        color: disabled ? "#8FB5AE" : "#FFFFFF",
+        boxShadow: disabled ? "none" : "0 10px 24px rgba(47,158,144,0.28)",
+        transition:"background 0.2s, box-shadow 0.2s",
+      }}
+    >
+      {Icon && <Icon size={16} strokeWidth={2.2} />}
+      {children}
+    </button>
   );
 }
 
@@ -236,60 +269,19 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
   return (
     <div>
-      <Eyebrow n="1" label={t("stepUploadEyebrow")} />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+      <Eyebrow>{t("stepUploadEyebrow")}</Eyebrow>
+      <h1 style={{ margin:"6px 0 8px", fontSize:24, fontWeight:600, color:T.ink }}>
         {t("stepUploadTitle")}
-      </h2>
-      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+      </h1>
+      <p style={{ margin:"0 0 20px", fontSize:13, color:T.mute2, lineHeight:1.5 }}>
         {t("stepUploadSubtitle")}
       </p>
 
       {error && (
-        <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
+        <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
           {error}
         </div>
       )}
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14 }}>
-        {Array.from({ length: MAX }).map((_, i) => {
-          const filled = i < count;
-          const url = previews[i];
-          return (
-            <div
-              key={i}
-              onClick={() => !filled && fileRef.current?.click()}
-              style={{
-                aspectRatio:"1", borderRadius:14, overflow:"hidden", position:"relative",
-                background: filled ? "#fff" : BG,
-                border: filled ? `2px solid ${TEAL}` : "2px dashed #D9D6CC",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                cursor: filled ? "default" : "pointer",
-              }}
-            >
-              {filled ? (
-                <>
-                  <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                  {removable && (
-                    <button
-                      onClick={e => { e.stopPropagation(); onRemove(i); }}
-                      style={{
-                        position:"absolute", top:4, right:4,
-                        width:20, height:20, borderRadius:"50%",
-                        background:"rgba(0,0,0,0.55)", border:"none",
-                        color:"#fff", fontSize:12, cursor:"pointer",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        padding:0, lineHeight:1,
-                      }}
-                    >×</button>
-                  )}
-                </>
-              ) : (
-                <Camera size={18} color="#9B9890" />
-              )}
-            </div>
-          );
-        })}
-      </div>
 
       <input
         ref={fileRef}
@@ -304,55 +296,57 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
         }}
       />
 
-      {count > 0 && count < MAX && removable && (
-        <button
-          onClick={() => fileRef.current?.click()}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+        {previews.map((url, i) => (
+          <div key={i} style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}` }}>
+            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+            {removable && (
+              <button
+                onClick={() => onRemove(i)}
+                style={{
+                  position:"absolute", top:6, right:6, width:20, height:20, borderRadius:"50%",
+                  background:T.paper, border:`1px solid ${T.border}`, cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", padding:0,
+                }}
+              >
+                <X size={11} color={T.ink} />
+              </button>
+            )}
+          </div>
+        ))}
+        {count < MAX && (
+          <button
+            onClick={() => fileRef.current?.click()}
+            style={{ aspectRatio:"1", borderRadius:16, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+          >
+            <Plus size={20} color={T.mute} />
+          </button>
+        )}
+      </div>
+
+      <div style={{ position:"relative" }}>
+        <input
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder={t("stepUploadNotesPlaceholder")}
           style={{
-            width:"100%", padding:"10px", borderRadius:12,
-            border:`1.5px dashed ${TEAL}`, background:"#fff",
-            color:TEAL, fontWeight:800, fontSize:13,
-            cursor:"pointer", fontFamily:"inherit", marginBottom:12,
-            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+            width:"100%", boxSizing:"border-box", borderRadius:16, padding:"14px 44px 14px 16px",
+            fontSize:14, outline:"none", background:T.chip, color:T.ink, fontFamily:"inherit",
+            border:`1px solid ${micActive ? "#EF4444" : T.border}`, transition:"border-color 0.15s",
+          }}
+        />
+        <button
+          onClick={toggleMic}
+          style={{
+            position:"absolute", right:8, top:"50%", transform:"translateY(-50%)",
+            width:32, height:32, borderRadius:"50%", border:"none",
+            background: micActive ? "rgba(239,68,68,0.12)" : T.card,
+            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+            boxShadow: micActive ? "0 0 0 3px rgba(239,68,68,0.15)" : "none",
           }}
         >
-          + {tpl("stepUploadAddMore", { n:count, max:MAX })}
+          <Mic size={14} color={micActive ? "#EF4444" : T.mute2} />
         </button>
-      )}
-
-      <div style={{ background:"#fff", borderRadius:14, padding:14, border:"1px solid #ECEAE3" }}>
-        <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
-          {t("stepUploadNotesLabel")}
-        </div>
-        <div style={{ position:"relative" }}>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder={t("stepUploadNotesPlaceholder")}
-            rows={2}
-            style={{
-              width:"100%", padding:"8px 44px 8px 12px",
-              borderRadius:10, border:`1.5px solid ${micActive ? "#EF4444" : "rgba(0,0,0,0.1)"}`,
-              fontSize:13.5, fontFamily:"inherit", resize:"none", outline:"none",
-              background:"#F9FAFB", boxSizing:"border-box", lineHeight:1.5, color:"#111",
-              transition:"border-color 0.15s",
-            }}
-          />
-          <button
-            onClick={toggleMic}
-            style={{
-              position:"absolute", right:8, bottom:8,
-              width:28, height:28, borderRadius:"50%", border:"none",
-              background: micActive ? "#EF4444" : "rgba(0,0,0,0.07)",
-              color: micActive ? "#fff" : "#6B7280",
-              cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"all 0.15s",
-              boxShadow: micActive ? "0 0 0 3px rgba(239,68,68,0.2)" : "none",
-            }}
-          >
-            {micActive ? "⏹" : <Mic size={13} />}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -388,72 +382,58 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
   return (
     <div>
-      <Eyebrow n="2" label={t("stepPhotosEyebrow")} />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+      <Eyebrow>{t("stepPhotosEyebrow")}</Eyebrow>
+      <h1 style={{ margin:"6px 0 8px", fontSize:24, fontWeight:600, color:T.ink }}>
         {t("stepPhotosTitle")}
-      </h2>
-      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+      </h1>
+      <p style={{ margin:"0 0 16px", fontSize:13, color:T.mute2, lineHeight:1.5 }}>
         {t("stepPhotosSubtitle")}
       </p>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
+      <input
+        ref={addRef}
+        type="file"
+        accept="image/*"
+        multiple
+        capture="environment"
+        style={{ display:"none" }}
+        onChange={e => {
+          const files = Array.from(e.target.files || []);
+          if (files.length) { onAddPhotos(files); e.target.value = ""; }
+        }}
+      />
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
         {photos.map((url, i) => (
           <div
             key={i}
             onClick={() => onPhotoClick(url)}
-            style={{ aspectRatio:"1", borderRadius:14, overflow:"hidden", border:`2px solid ${TEAL}`, position:"relative", cursor:"pointer" }}
+            style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer" }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
             <button
               onClick={e => { e.stopPropagation(); onRemovePhoto(i); }}
               style={{
-                position:"absolute", top:4, right:4,
-                width:20, height:20, borderRadius:"50%",
-                background:"rgba(0,0,0,0.55)", border:"none",
-                color:"#fff", fontSize:12, cursor:"pointer",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                padding:0, lineHeight:1,
+                position:"absolute", top:6, right:6, width:20, height:20, borderRadius:"50%",
+                background:T.paper, border:`1px solid ${T.border}`, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center", padding:0,
               }}
-            >×</button>
+            >
+              <X size={11} color={T.ink} />
+            </button>
           </div>
         ))}
-      </div>
-
-      {photos.length < MAX ? (
-        <>
-          <input
-            ref={addRef}
-            type="file"
-            accept="image/*"
-            multiple
-            capture="environment"
-            style={{ display:"none" }}
-            onChange={e => {
-              const files = Array.from(e.target.files || []);
-              if (files.length) { onAddPhotos(files); e.target.value = ""; }
-            }}
-          />
+        {photos.length < MAX && (
           <button
             onClick={() => addRef.current?.click()}
-            style={{
-              width:"100%", padding:"10px", borderRadius:12, marginBottom:20,
-              border:`1.5px dashed ${TEAL}`, background:"#fff",
-              color:TEAL, fontWeight:800, fontSize:13,
-              cursor:"pointer", fontFamily:"inherit",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-            }}
+            style={{ aspectRatio:"1", borderRadius:16, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
           >
-            + {tpl("stepPhotosAddPhoto", { n:photos.length, max:MAX })}
+            <Plus size={20} color={T.mute} />
           </button>
-        </>
-      ) : (
-        <div style={{ marginBottom:20 }} />
-      )}
-
-      <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
-        {t("stepPhotosStyleLabel")}
+        )}
       </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:24 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
           const locked = !!o.lockedFor;
@@ -462,9 +442,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               key={o.id}
               onClick={() => { if (locked) { onLockTap(o.id); return; } setPhotoOption(o.id); }}
               style={{
-                textAlign:"left", background:"#fff", borderRadius:14, padding:14,
-                border: active && !locked ? `2px solid ${TEAL}` : "1px solid #ECEAE3",
+                textAlign:"left", borderRadius:16, padding:16,
+                background: active && !locked ? "#E7F3F0" : T.card,
+                border: `1px solid ${active && !locked ? T.teal : T.border}`,
                 cursor:"pointer", fontFamily:"inherit", position:"relative",
+                display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
                 opacity: locked ? 0.75 : 1,
               }}
             >
@@ -472,77 +454,61 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
                 <span style={{
                   position:"absolute", top:-8, right:12,
                   fontSize:9.5, fontWeight:800, color:"#fff",
-                  background: o.lockedFor === "pro" ? "#7C3AED" : PEACH,
+                  background: o.lockedFor === "pro" ? "#7C3AED" : AMBER,
                   padding:"3px 8px", borderRadius:999,
                 }}>
                   {o.lockedFor === "pro" ? "Pro" : "Premium"}
                 </span>
               )}
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{
-                  width:18, height:18, borderRadius:"50%", flexShrink:0,
-                  border: active && !locked ? `5px solid ${TEAL}` : "2px solid #D9D6CC",
-                  transition:"border 0.15s",
-                }} />
-                <div>
-                  <div style={{ fontWeight:800, fontSize:14, color: locked ? "#9B9890" : "#111", display:"flex", alignItems:"center", gap:6 }}>
-                    {o.label}
-                    {locked && <span style={{ fontSize:12 }}>🔒</span>}
-                  </div>
-                  <div style={{ fontSize:12.5, color:"#6B6862", marginTop:2, lineHeight:1.4 }}>{o.desc}</div>
+              <div>
+                <div style={{ fontSize:14, fontWeight:600, color: locked ? T.mute : T.ink, display:"flex", alignItems:"center", gap:6 }}>
+                  {o.label}
+                  {locked && <span style={{ fontSize:12 }}>🔒</span>}
                 </div>
+                <div style={{ fontSize:12, marginTop:2, lineHeight:1.4, color:T.mute2 }}>{o.desc}</div>
               </div>
+              <div style={{
+                width:20, height:20, borderRadius:"50%", flexShrink:0,
+                background: active && !locked ? T.teal : "transparent",
+                border: active && !locked ? "none" : `1px solid ${T.mute}`,
+              }} />
             </button>
           );
         })}
       </div>
 
-      <div style={{ marginTop:20 }}>
-        <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
-          {t("stepPhotosPlatformsLabel")}
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-          {PLATFORMS_DEFAULT.map(p => {
-            const isOn = selected.has(p);
-            const color = PLATFORM_COLORS[p];
-            return (
-              <button
-                key={p}
-                onClick={() => setSelected(prev => {
-                  const s = new Set(prev);
-                  s.has(p) ? s.delete(p) : s.add(p);
-                  return s;
-                })}
-                style={{
-                  display:"flex", alignItems:"center", gap:9,
-                  padding:"11px 14px", borderRadius:12,
-                  border: isOn ? `2px solid ${color}` : "1.5px solid #E5E3DC",
-                  background: isOn ? `${color}14` : "#fff",
-                  cursor:"pointer", fontFamily:"inherit", textAlign:"left",
-                  transition:"border 0.15s, background 0.15s",
-                }}
-              >
-                <div style={{
-                  width:20, height:20, borderRadius:6, flexShrink:0,
-                  background: isOn ? color : "#E5E3DC",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  transition:"background 0.15s",
-                }}>
-                  {isOn && <Check size={12} color="#fff" strokeWidth={3} />}
-                </div>
-                <span style={{ fontSize:13.5, fontWeight:800, color: isOn ? color : "#9B9890", transition:"color 0.15s" }}>
-                  {PLATFORM_LABELS[p]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {selected.size === 0 && (
-          <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:700 }}>
-            {t("stepPhotosSelectPlatformError")}
-          </p>
-        )}
+      <Eyebrow>{t("stepPhotosPlatformsLabel")}</Eyebrow>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
+        {PLATFORMS_DEFAULT.map(p => {
+          const isOn = selected.has(p);
+          return (
+            <button
+              key={p}
+              onClick={() => setSelected(prev => {
+                const s = new Set(prev);
+                s.has(p) ? s.delete(p) : s.add(p);
+                return s;
+              })}
+              style={{
+                padding:"9px 16px", borderRadius:999,
+                background: isOn ? "#E7F3F0" : T.chip,
+                border: `1px solid ${isOn ? T.teal : T.border}`,
+                color: isOn ? T.tealDeep : T.mute2,
+                fontSize:13.5, fontWeight:600,
+                cursor:"pointer", fontFamily:"inherit",
+                transition:"border-color 0.15s, background 0.15s, color 0.15s",
+              }}
+            >
+              {PLATFORM_LABELS[p]}
+            </button>
+          );
+        })}
       </div>
+      {selected.size === 0 && (
+        <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:600 }}>
+          {t("stepPhotosSelectPlatformError")}
+        </p>
+      )}
     </div>
   );
 }
@@ -571,27 +537,18 @@ function StepGeneration({ generating, generateError, platformListings, processed
   if (generating || (!platformListings && !generateError)) {
     const msg = elapsed < 20 ? t("stepGenLoadingMsg1") : t("stepGenLoadingMsg2");
     return (
-      <div>
-        <Eyebrow n="3" label={t("stepGenEyebrow")} />
-        <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-          {t("stepGenLoadingTitle")}
-        </h2>
-        <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
+        <div style={{ position:"relative", width:80, height:80, marginBottom:24, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <span style={{ position:"absolute", inset:0, borderRadius:"50%", border:"2px solid #DCEEEA" }} />
+          <span style={{ position:"absolute", inset:0, borderRadius:"50%", border:"2px solid transparent", borderTopColor:T.teal, animation:"lps-spin-slow 1.6s linear infinite" }} />
+          <Sparkles size={28} color={T.teal} />
+        </div>
+        <h1 style={{ margin:"0 0 8px", fontSize:19, fontWeight:600, color:T.ink }}>
+          {msg}
+        </h1>
+        <p style={{ margin:0, fontSize:13, lineHeight:1.5, color:T.mute2 }}>
           {t("stepGenLoadingSubtitle")}
         </p>
-        <div style={{
-          background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
-          display:"flex", flexDirection:"column", alignItems:"center", gap:16,
-        }}>
-          <div style={{
-            width:48, height:48, borderRadius:"50%",
-            border:`4px solid ${TEAL}33`, borderTopColor:TEAL,
-            animation:"lps-spin 0.8s linear infinite",
-          }} />
-          <p style={{ margin:0, fontSize:13.5, color:"#374151", textAlign:"center", lineHeight:1.6, fontWeight:700, minHeight:44 }}>
-            {msg}
-          </p>
-        </div>
       </div>
     );
   }
@@ -600,19 +557,19 @@ function StepGeneration({ generating, generateError, platformListings, processed
   if (generateError && !platformListings) {
     return (
       <div>
-        <Eyebrow n="3" label={t("stepGenEyebrow")} />
-        <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+        <Eyebrow>{t("stepGenEyebrow")}</Eyebrow>
+        <h1 style={{ margin:"6px 0 8px", fontSize:22, fontWeight:600, color:T.ink }}>
           {t("stepGenErrorTitle")}
-        </h2>
-        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, fontSize:13, color:"#B91C1C", marginBottom:14 }}>
+        </h1>
+        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, fontSize:13, color:"#B91C1C", marginBottom:14 }}>
           {generateError}
         </div>
         <button
           onClick={onRetry}
           style={{
-            width:"100%", padding:"12px", borderRadius:12,
-            border:`1.5px solid ${TEAL}`, background:"#fff",
-            color:TEAL, fontWeight:800, fontSize:13.5,
+            width:"100%", padding:"14px 0", borderRadius:999,
+            border:`1px solid ${T.teal}`, background:"none",
+            color:T.teal, fontWeight:600, fontSize:14,
             cursor:"pointer", fontFamily:"inherit",
           }}
         >
@@ -627,25 +584,23 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
   return (
     <div>
-      <Eyebrow n="3" label={t("stepGenEyebrow")} />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+      <Eyebrow>{t("stepGenEyebrow")}</Eyebrow>
+      <h1 style={{ margin:"6px 0 4px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepGenReviewTitle")}
-      </h2>
-      <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
+      </h1>
+      <p style={{ margin:"0 0 16px", fontSize:12.5, color:T.mute2, lineHeight:1.5 }}>
         {t("stepGenReviewSubtitle")}
       </p>
 
       {processedPhotos?.length > 0 && (
         <div style={{ marginBottom:20 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
-            {t("stepGenEnhancedPhotosLabel")}
-          </div>
+          <Eyebrow>{t("stepGenEnhancedPhotosLabel")}</Eyebrow>
           <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
             {processedPhotos.map((ph, i) => (
               <div
                 key={i}
                 onClick={() => onPhotoClick(ph.url ?? ph)}
-                style={{ flexShrink:0, width:80, height:80, borderRadius:10, overflow:"hidden", border:`2px solid ${TEAL}`, cursor:"pointer" }}
+                style={{ flexShrink:0, width:80, height:80, borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}`, cursor:"pointer" }}
               >
                 <img src={ph.url ?? ph} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
               </div>
@@ -668,50 +623,55 @@ function StepGeneration({ generating, generateError, platformListings, processed
           ].filter(Boolean);
 
           return (
-            <div key={p} style={{ background:"#fff", borderRadius:16, border: isOpen ? `1.5px solid ${TEAL}` : "1px solid #ECEAE3", overflow:"hidden" }}>
+            <div key={p} style={{ background:T.card, borderRadius:18, border: `1px solid ${isOpen ? T.teal : T.border}`, overflow:"hidden" }}>
               <button
                 onClick={() => toggleCard(p)}
                 style={{
-                  width:"100%", padding:"14px 16px",
+                  width:"100%", padding:16,
                   display:"flex", alignItems:"center", justifyContent:"space-between",
                   background:"none", border:"none", cursor:"pointer", fontFamily:"inherit", textAlign:"left",
                 }}
               >
                 <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0, overflow:"hidden" }}>
                   <span style={{
-                    fontSize:10, fontWeight:900, color:"#fff",
-                    background: isOpen ? `linear-gradient(135deg,${TEAL},${PEACH})` : "#9B9890",
-                    padding:"3px 8px", borderRadius:999, flexShrink:0,
-                    transition:"background 0.15s",
+                    width:28, height:28, borderRadius:"50%", flexShrink:0,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:10, fontWeight:700, color:"#fff",
+                    background:`linear-gradient(135deg,${T.teal},${T.tealDeep})`,
                   }}>
-                    {PLATFORM_LABELS[p].toUpperCase()}
+                    {PLATFORM_LABELS[p].slice(0, 3).toUpperCase()}
                   </span>
-                  <span style={{ fontSize:13, color:"#374151", fontWeight: isOpen ? 700 : 500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {summaryParts.join(" · ")}
-                  </span>
+                  <div style={{ minWidth:0, overflow:"hidden" }}>
+                    <div style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>
+                      {PLATFORM_LABELS[p].toUpperCase()}
+                    </div>
+                    <div style={{ fontSize:12, color:T.mute2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {summaryParts.join(" · ")}
+                    </div>
+                  </div>
                 </div>
-                <span style={{ fontSize:18, color:"#9B9890", flexShrink:0, marginLeft:8, transition:"transform 0.15s", display:"inline-block", transform: isOpen ? "rotate(90deg)" : "none" }}>›</span>
+                <Pencil size={15} color={T.mute} style={{ flexShrink:0, marginLeft:8 }} />
               </button>
 
               {isOpen && (
-                <div style={{ padding:"0 16px 16px", borderTop:"1px solid #F0EDE6" }}>
+                <div style={{ padding:"0 16px 16px", borderTop:`1px solid ${T.border}` }}>
                   <div style={{ marginBottom:10, paddingTop:12 }}>
-                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{t("fieldTitleLabel")}</div>
+                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{t("fieldTitleLabel")}</div>
                     <input
                       type="text"
                       value={e.title}
                       onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } }))}
-                      style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13.5, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box" }}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13.5, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                     />
                   </div>
 
                   <div style={{ marginBottom:12 }}>
-                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{t("fieldDescriptionLabel")}</div>
+                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{t("fieldDescriptionLabel")}</div>
                     <textarea
                       value={e.description}
                       onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } }))}
                       rows={4}
-                      style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
                     />
                   </div>
 
@@ -726,12 +686,12 @@ function StepGeneration({ generating, generateError, platformListings, processed
                         }));
                         return (
                           <div key={field.key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
-                            <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{field.label}</div>
+                            <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{field.label}</div>
                             {field.type === "select" ? (
                               <select
                                 value={val}
                                 onChange={ev => onChange(ev.target.value)}
-                                style={{ width:"100%", padding:"9px 10px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box", color: val ? "#111" : "#9B9890" }}
+                                style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: val ? T.ink : T.mute }}
                               >
                                 <option value="">—</option>
                                 {field.groups
@@ -748,7 +708,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                                 value={val}
                                 onChange={ev => onChange(ev.target.value)}
                                 placeholder="—"
-                                style={{ width:"100%", padding:"9px 10px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box" }}
+                                style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                               />
                             )}
                           </div>
@@ -758,13 +718,13 @@ function StepGeneration({ generating, generateError, platformListings, processed
                   )}
 
                   <div>
-                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{t("fieldSalePriceLabel")}</div>
+                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{t("fieldSalePriceLabel")}</div>
                     <input
                       type="number"
                       value={e.price ?? ""}
                       onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], price: ev.target.value === "" ? null : Number(ev.target.value) } }))}
                       placeholder="—"
-                      style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:14, fontWeight:700, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box" }}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:14, fontWeight:700, fontFamily:"inherit", outline:"none", background:T.chip, color:T.tealDeep, boxSizing:"border-box" }}
                     />
                   </div>
                 </div>
@@ -785,63 +745,70 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
 
   return (
     <div>
-      <Eyebrow n="4" label={t("stepPublishEyebrow")} />
-      <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
+      <Eyebrow>{t("stepPublishEyebrow")}</Eyebrow>
+      <h1 style={{ margin:"6px 0 16px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepPublishTitle")}
-      </h2>
-      <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {t("stepPublishSubtitle")}
-      </p>
+      </h1>
 
       {publishError && (
-        <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
+        <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
           {publishError}
         </div>
       )}
 
-      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:24 }}>
         {chips.map(p => (
           <div
             key={p}
             style={{
               display:"inline-flex", alignItems:"center", gap:8,
-              background:"#fff", border:`1.5px solid ${TEAL}`,
-              borderRadius:12, padding:"10px 14px",
-              fontWeight:800, fontSize:14, color:"#111",
+              background:T.chip, border:`1px solid ${T.border}`,
+              borderRadius:999, padding:"6px 8px 6px 6px",
             }}
           >
-            <Check size={14} color={TEAL} strokeWidth={3} />
-            {PLATFORM_LABELS[p]}
+            <span style={{
+              width:24, height:24, borderRadius:"50%", flexShrink:0,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:9, fontWeight:700, color:"#fff",
+              background:`linear-gradient(135deg,${T.teal},${T.tealDeep})`,
+            }}>
+              {PLATFORM_LABELS[p].slice(0, 3).toUpperCase()}
+            </span>
+            <span style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>{PLATFORM_LABELS[p]}</span>
             <button
               onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(p); return s; })}
               style={{
-                background:"none", border:"none", padding:0,
-                cursor:"pointer", color:"#9B9890", fontSize:18,
-                lineHeight:1, display:"flex", alignItems:"center",
+                background:"none", border:"none", padding:2,
+                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
               }}
-            >×</button>
+            >
+              <X size={13} color={T.mute} />
+            </button>
           </div>
         ))}
       </div>
 
       {chips.length === 0 && (
-        <p style={{ fontSize:13, color:"#9B9890", textAlign:"center", marginTop:16 }}>
+        <p style={{ fontSize:13, color:T.mute, textAlign:"center", marginTop:16 }}>
           {t("stepPublishNoPlatformError")}
         </p>
       )}
 
       {chips.length > 0 && (
-        <div style={{ marginTop:20, padding:"14px 16px", background:"#fff", borderRadius:14, border:"1px solid #ECEAE3" }}>
-          <p style={{ margin:"0 0 8px", fontSize:13.5, fontWeight:800, color:"#374151" }}>
-            {t("stepPublishReadyTitle")}
-          </p>
-          <p style={{ margin:"0 0 8px", fontSize:13, color:"#6B6862", lineHeight:1.65 }}>
-            {t("stepPublishCronText1")}
-          </p>
-          <p style={{ margin:0, fontSize:12.5, color:"#9B9890", lineHeight:1.6 }}>
-            {t("stepPublishCronText2")}
-          </p>
-        </div>
+        <>
+          <div style={{ borderRadius:18, padding:16, display:"flex", gap:12, marginBottom:16, background:"#E7F3F0", border:"1px solid #BFE0D9" }}>
+            <Clock size={18} color={T.tealDeep} style={{ flexShrink:0, marginTop:1 }} />
+            <p style={{ margin:0, fontSize:12.5, lineHeight:1.6, color:T.tealDeep }}>
+              {t("stepPublishCronText1")}
+            </p>
+          </div>
+          <div style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"0 4px" }}>
+            <ImageOff size={15} color={T.mute} style={{ flexShrink:0, marginTop:1 }} />
+            <p style={{ margin:0, fontSize:11.5, lineHeight:1.6, color:T.mute }}>
+              {t("stepPublishCronText2")}
+            </p>
+          </div>
+        </>
       )}
     </div>
   );
@@ -854,7 +821,7 @@ export default function ListingPreviewScreen({
   isPremium = false, isPro = false, founderSpotsLeft = 7, onUpgrade = () => {},
 }) {
   const { t, tpl } = useTranslation(lang);
-  const STEPS = getSteps(t);
+  const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
   const platformFieldsConfig = getPlatformFieldsConfig(t);
 
   const [step, setStep]         = useState(0);
@@ -1164,7 +1131,6 @@ export default function ListingPreviewScreen({
   const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;
   const photoCount      = displayPreviews.length;
   const isLocked        = uploading || publishing || generatingPlatforms;
-  const canGoBack       = step > 0 && !(step === 1 && pickedFiles.length === 0 && photos.length > 0);
 
   const publishChips = [...selected].filter(p => platformListings?.platforms?.[p]);
 
@@ -1210,33 +1176,50 @@ export default function ListingPreviewScreen({
     if (step === 3) { handlePublish(); }
   }
 
+  // Bouton retour unique du header : retourne à l'étape précédente, ou ferme
+  // le stepper si on est à la toute première étape (Upload).
+  function handleBack() {
+    if (isLocked) return;
+    if (step === 0) { onClose(); return; }
+    setStep(s => s - 1);
+  }
+
   // ── Render : initializing ─────────────────────────────────────────────────
   if (initializing) return (
-    <div style={{ background:BG, display:"flex", alignItems:"center", justifyContent:"center", minHeight:200 }}>
+    <div style={{
+      position:"fixed", inset:0, zIndex:300,
+      background:T.canvas, display:"flex", alignItems:"center", justifyContent:"center",
+      paddingTop:"env(safe-area-inset-top,0px)", paddingBottom:"env(safe-area-inset-bottom,0px)",
+    }}>
       <style>{`@keyframes lps-spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${TEAL}33`, borderTopColor:TEAL, animation:"lps-spin 0.8s linear infinite" }} />
+      <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${T.teal}33`, borderTopColor:T.teal, animation:"lps-spin 0.8s linear infinite" }} />
     </div>
   );
 
   // ── Render : done ─────────────────────────────────────────────────────────
   if (done) return (
-    <div style={{ background:BG, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"60px 32px 32px", fontFamily:"'Nunito',system-ui,sans-serif", minHeight:"60vh" }}>
+    <div style={{
+      position:"fixed", inset:0, zIndex:300,
+      background:T.canvas, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+      padding:"60px 32px 32px", fontFamily:"'Nunito',system-ui,sans-serif",
+      paddingTop:"calc(env(safe-area-inset-top,0px) + 60px)", paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 32px)",
+    }}>
       <style>{`@keyframes lps-popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ fontSize:72, animation:"lps-popIn 0.5s ease forwards" }}>✅</div>
-      <div style={{ fontSize:22, fontWeight:900, color:"#111", textAlign:"center", marginTop:16 }}>
+      <div style={{ fontSize:22, fontWeight:600, color:T.ink, textAlign:"center", marginTop:16 }}>
         {t("doneTitle")}
       </div>
-      <div style={{ fontSize:14, color:"#6B6862", textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
+      <div style={{ fontSize:14, color:T.mute2, textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
         {t("doneSubtitle")}
       </div>
       <button
         onClick={onClose}
         style={{
-          marginTop:28, padding:"14px 40px", borderRadius:16,
-          background:`linear-gradient(135deg,${TEAL},#2DD4BF)`,
-          color:"#fff", border:"none", fontSize:15, fontWeight:800,
+          marginTop:28, padding:"14px 40px", borderRadius:999,
+          background:`linear-gradient(120deg,${T.teal},${T.tealDeep})`,
+          color:"#fff", border:"none", fontSize:15, fontWeight:600,
           cursor:"pointer", fontFamily:"inherit",
-          boxShadow:`0 8px 20px ${TEAL}55`,
+          boxShadow:"0 10px 24px rgba(47,158,144,0.28)",
         }}
       >
         {t("doneButton")}
@@ -1246,69 +1229,38 @@ export default function ListingPreviewScreen({
 
   // ── Render : stepper ──────────────────────────────────────────────────────
   return (
-    <div style={{ display:"flex", flexDirection:"column", width:"100%", background:BG, fontFamily:"'Nunito',system-ui,sans-serif" }}>
+    <div style={{
+      position:"fixed", inset:0, zIndex:300,
+      display:"flex", flexDirection:"column", width:"100%", height:"100%",
+      background:T.canvas, fontFamily:"'Nunito',system-ui,sans-serif", overflowY:"auto",
+      paddingTop:"env(safe-area-inset-top,0px)",
+    }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap');
         * { box-sizing: border-box; }
-        @keyframes lps-spin { to { transform: rotate(360deg); } }
+        @keyframes lps-spin-slow { to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* Barre de progression */}
-      <div style={{ padding:"16px 20px 6px" }}>
-        <div style={{ display:"flex", alignItems:"center" }}>
-          {STEPS.map((s, i) => {
-            const { Icon } = s;
-            const state = i < step ? "done" : i === step ? "current" : "upcoming";
-            return (
-              <Fragment key={s.id}>
-                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
-                  <div style={{
-                    width:32, height:32, borderRadius:"50%",
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    background: state === "upcoming" ? "#E5E3DC" : `linear-gradient(135deg,${TEAL},${PEACH})`,
-                    color: state === "upcoming" ? "#9B9890" : "#fff",
-                    boxShadow: state === "current" ? `0 0 0 4px ${TEAL}33` : "none",
-                    transition:"all 0.2s",
-                  }}>
-                    {state === "done"
-                      ? <Check size={14} strokeWidth={3} />
-                      : <Icon size={13} strokeWidth={2.5} />}
-                  </div>
-                  <span style={{ fontSize:9, fontWeight:800, color: state === "upcoming" ? "#9B9890" : "#111" }}>
-                    {s.label}
-                  </span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div style={{
-                    flex:1, height:2, marginBottom:16,
-                    background: i < step ? `linear-gradient(90deg,${TEAL},${PEACH})` : "#E5E3DC",
-                    borderRadius:2,
-                  }} />
-                )}
-              </Fragment>
-            );
-          })}
-        </div>
+      {/* Header : retour + progression */}
+      <div style={{ padding:"12px 20px 0" }}>
+        <button
+          onClick={handleBack}
+          disabled={isLocked}
+          style={{
+            width:36, height:36, borderRadius:"50%",
+            background:T.chip, border:"none",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            cursor: isLocked ? "not-allowed" : "pointer",
+            opacity: isLocked ? 0.5 : 1,
+          }}
+        >
+          <ChevronLeft size={18} color={T.ink} />
+        </button>
       </div>
-
-      {step >= 2 && (
-        <div style={{ textAlign:"center", paddingBottom:2 }}>
-          <button
-            onClick={onClose}
-            style={{
-              background:"none", border:"none", padding:"4px 12px",
-              fontSize:13, fontWeight:700, color:"#9B9890",
-              cursor:"pointer", fontFamily:"inherit",
-              display:"inline-flex", alignItems:"center", gap:4,
-            }}
-          >
-            ← {t("annuler")}
-          </button>
-        </div>
-      )}
+      <StepProgress step={step} labels={stepLabels} />
 
       {/* Contenu de l'étape */}
-      <div style={{ padding:"16px 20px 8px" }}>
+      <div style={{ padding:"16px 20px 8px", flex:1 }}>
         {step === 0 && (
           <StepUpload
             previews={displayPreviews}
@@ -1364,40 +1316,15 @@ export default function ListingPreviewScreen({
         )}
       </div>
 
-      {/* Footer nav */}
-      <div style={{ padding:"8px 20px 28px", display:"flex", gap:10 }}>
-        {canGoBack && (
-          <button
-            onClick={() => !isLocked && setStep(s => s - 1)}
-            disabled={isLocked}
-            style={{
-              flex:"0 0 52px", height:52, borderRadius:16,
-              background:"#fff", border:"1px solid #E5E3DC",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              cursor: isLocked ? "not-allowed" : "pointer",
-              opacity: isLocked ? 0.4 : 1, transition:"opacity 0.15s",
-            }}
-          >
-            <ChevronLeft size={20} color="#111" />
-          </button>
-        )}
-        <button
-          onClick={handleNext}
+      {/* Footer CTA */}
+      <div style={{ padding:"8px 20px", paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 28px)" }}>
+        <PrimaryButton
           disabled={ctaDisabled}
-          style={{
-            flex:1, height:52, borderRadius:16, border:"none",
-            background: ctaDisabled ? "#D9D6CC" : `linear-gradient(135deg,${TEAL},#2DD4BF)`,
-            color:"#fff", fontWeight:800, fontSize:15, fontFamily:"inherit",
-            cursor: ctaDisabled ? "not-allowed" : "pointer",
-            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-            boxShadow: ctaDisabled ? "none" : `0 8px 20px ${TEAL}55`,
-            transition:"background 0.2s, box-shadow 0.2s",
-          }}
+          onClick={handleNext}
+          icon={step === 3 && !ctaDisabled && !publishing ? Check : undefined}
         >
           {ctaLabel()}
-          {!ctaDisabled && step < 3 && !uploading && !generatingPlatforms && <ChevronRight size={18} />}
-          {!ctaDisabled && step === 3 && !publishing && <Send size={16} />}
-        </button>
+        </PrimaryButton>
       </div>
 
       {quotaModal.open && !quotaModal.isProCoins && (
