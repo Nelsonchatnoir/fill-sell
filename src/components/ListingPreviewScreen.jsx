@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { Camera, Send, Check, ChevronLeft, ChevronRight, Mic, Images, Zap } from "lucide-react";
 import ConversionModal from "./ConversionModal";
+import { useTranslation } from "../i18n/useTranslation";
 
 const TEAL  = "#3EACA0";
 const PEACH = "#E8956D";
@@ -10,30 +11,47 @@ const PLATFORM_LABELS   = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
-const PLATFORM_FIELDS_CONFIG = {
-  vinted: [
-    { key:"etat",      label:"État",      type:"select", options:["Neuf avec étiquette","Neuf sans étiquette","Très bon état","Bon état","Satisfaisant"] },
-    { key:"taille",    label:"Taille",    type:"select", options:["XS","S","M","L","XL","XXL","Unique"] },
-    { key:"marque",    label:"Marque",    type:"text" },
-    { key:"matiere",   label:"Matière",   type:"text" },
-    { key:"categorie", label:"Catégorie", type:"text" },
-  ],
-  leboncoin: [
-    { key:"etat",         label:"État",         type:"select", options:["Neuf","Très bon état","Bon état","État correct","Pour pièces"] },
-    { key:"format_colis", label:"Format colis", type:"select", options:["Lettre","Petit colis","Moyen colis","Grand colis","Très grand colis","Non défini"] },
-  ],
-  beebs: [
-    { key:"etat",   label:"État",   type:"select", options:["Neuf","Très bon état","Bon état"] },
-    { key:"taille", label:"Taille", type:"select", options:["XS","S","M","L","XL","XXL","Unique"] },
-    { key:"marque", label:"Marque", type:"text" },
-  ],
-  ebay: [
-    { key:"condition", label:"Condition", type:"select", options:["New","Like New","Very Good","Good","Acceptable"] },
-    { key:"size",      label:"Size",      type:"select", options:["XS","S","M","L","XL","XXL","One Size"] },
-    { key:"brand",     label:"Brand",     type:"text" },
-    { key:"material",  label:"Material",  type:"text" },
-  ],
-};
+// Options traduites pour l'affichage, mais `value` reste le libellé FR canonique
+// envoyé aux plateformes (Vinted/Leboncoin/Beebs restent des sites francophones).
+function getPlatformFieldsConfig(t) {
+  const condition = {
+    newWithTag:    { value:"Neuf avec étiquette", label:t("conditionNewWithTag") },
+    newWithoutTag: { value:"Neuf sans étiquette",  label:t("conditionNewWithoutTag") },
+    veryGood:      { value:"Très bon état",        label:t("conditionVeryGood") },
+    good:          { value:"Bon état",             label:t("conditionGood") },
+    satisfactory:  { value:"Satisfaisant",         label:t("conditionSatisfactory") },
+    new_:          { value:"Neuf",                 label:t("conditionNew") },
+    correct:       { value:"État correct",         label:t("conditionCorrect") },
+    forParts:      { value:"Pour pièces",          label:t("conditionForParts") },
+  };
+  const size = ["XS","S","M","L","XL","XXL","Unique"].map(v => ({ value:v, label:v }));
+  const packageFormat = ["Lettre","Petit colis","Moyen colis","Grand colis","Très grand colis","Non défini"].map(v => ({ value:v, label:v }));
+
+  return {
+    vinted: [
+      { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
+      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size },
+      { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
+      { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
+      { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
+    ],
+    leboncoin: [
+      { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.new_, condition.veryGood, condition.good, condition.correct, condition.forParts] },
+      { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormat },
+    ],
+    beebs: [
+      { key:"etat",   label:t("fieldConditionLabel"), type:"select", options:[condition.new_, condition.veryGood, condition.good] },
+      { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size },
+      { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
+    ],
+    ebay: [
+      { key:"condition", label:"Condition", type:"select", options:["New","Like New","Very Good","Good","Acceptable"].map(v => ({ value:v, label:v })) },
+      { key:"size",      label:"Size",      type:"select", options:["XS","S","M","L","XL","XXL","One Size"].map(v => ({ value:v, label:v })) },
+      { key:"brand",     label:"Brand",     type:"text" },
+      { key:"material",  label:"Material",  type:"text" },
+    ],
+  };
+}
 
 const FR_TO_EBAY_CONDITION = {
   "neuf avec étiquette": "New",
@@ -49,12 +67,12 @@ const FR_TO_EBAY_CONDITION = {
 function findMatchingOption(raw, options) {
   if (!raw || raw === "null") return "";
   const n = raw.toLowerCase().trim();
-  const exact = options.find(o => o.toLowerCase() === n);
-  if (exact) return exact;
+  const exact = options.find(o => o.value.toLowerCase() === n);
+  if (exact) return exact.value;
   const mapped = FR_TO_EBAY_CONDITION[n];
-  if (mapped && options.includes(mapped)) return mapped;
-  const partial = options.find(o => o.toLowerCase().includes(n) || n.includes(o.toLowerCase()));
-  return partial ?? "";
+  if (mapped && options.some(o => o.value === mapped)) return mapped;
+  const partial = options.find(o => o.value.toLowerCase().includes(n) || n.includes(o.value.toLowerCase()));
+  return partial?.value ?? "";
 }
 
 function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
@@ -83,17 +101,19 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   return result;
 }
 
-const STEPS = [
-  { id:0, label:"Upload",     Icon:Camera },
-  { id:1, label:"Photos",     Icon:Images },
-  { id:2, label:"Génération", Icon:Zap    },
-  { id:3, label:"Publier",    Icon:Send   },
-];
+function getSteps(t) {
+  return [
+    { id:0, label:t("stepLabelUpload"),     Icon:Camera },
+    { id:1, label:t("stepLabelPhotos"),     Icon:Images },
+    { id:2, label:t("stepLabelGeneration"), Icon:Zap    },
+    { id:3, label:t("stepLabelPublish"),    Icon:Send   },
+  ];
+}
 
 // ── QuotaLimitModal ───────────────────────────────────────────────────────────
 
 function QuotaLimitModal({ onClose, lang }) {
-  const isFr = lang !== "en";
+  const { t } = useTranslation(lang);
   return (
     <div style={{
       position:"fixed", inset:0, zIndex:10001,
@@ -104,12 +124,10 @@ function QuotaLimitModal({ onClose, lang }) {
         width:"100%", maxWidth:480, fontFamily:"'Nunito',system-ui,sans-serif",
       }}>
         <div style={{ fontWeight:900, fontSize:18, color:"#111", marginBottom:8 }}>
-          {isFr ? "Limite Pro atteinte" : "Pro limit reached"}
+          {t("quotaModalTitle")}
         </div>
         <p style={{ fontSize:13.5, color:"#6B6862", lineHeight:1.6, margin:"0 0 20px" }}>
-          {isFr
-            ? "Tu as atteint ta limite Pro. Des crédits supplémentaires arrivent bientôt."
-            : "You've reached your Pro limit. Additional credits are coming soon."}
+          {t("quotaModalText")}
         </p>
         <button
           onClick={onClose}
@@ -119,7 +137,7 @@ function QuotaLimitModal({ onClose, lang }) {
             cursor:"pointer", fontFamily:"inherit",
           }}
         >
-          {isFr ? "Fermer" : "Close"}
+          {t("quotaModalCloseButton")}
         </button>
       </div>
     </div>
@@ -180,21 +198,19 @@ function Eyebrow({ n, label }) {
 // ── Step 0 — Upload ───────────────────────────────────────────────────────────
 
 function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, micActive, toggleMic, error, lang }) {
+  const { t, tpl } = useTranslation(lang);
   const fileRef = useRef();
   const count = previews.length;
   const MAX = 5;
-  const isFr = lang !== "en";
 
   return (
     <div>
-      <Eyebrow n="1" label={isFr ? "Photos de l'article" : "Item photos"} />
+      <Eyebrow n="1" label={t("stepUploadEyebrow")} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Montre ton article" : "Show your item"}
+        {t("stepUploadTitle")}
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {isFr
-          ? "Jusqu'à 5 photos. Plus tu en ajoutes, plus l'estimation sera précise."
-          : "Up to 5 photos. More photos = better price estimate."}
+        {t("stepUploadSubtitle")}
       </p>
 
       {error && (
@@ -268,19 +284,19 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
             display:"flex", alignItems:"center", justifyContent:"center", gap:6,
           }}
         >
-          + {isFr ? `Ajouter (${count}/${MAX})` : `Add more (${count}/${MAX})`}
+          + {tpl("stepUploadAddMore", { n:count, max:MAX })}
         </button>
       )}
 
       <div style={{ background:"#fff", borderRadius:14, padding:14, border:"1px solid #ECEAE3" }}>
         <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
-          {isFr ? "Précisions (optionnel)" : "Notes (optional)"}
+          {t("stepUploadNotesLabel")}
         </div>
         <div style={{ position:"relative" }}>
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder={isFr ? "Taille M, bon état, avec boîte…" : "Size M, good condition, includes box…"}
+            placeholder={t("stepUploadNotesPlaceholder")}
             rows={2}
             style={{
               width:"100%", padding:"8px 44px 8px 12px",
@@ -314,41 +330,39 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
 function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, isPremium, isPro, onLockTap, lang }) {
-  const isFr = lang !== "en";
+  const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = 5;
 
   const retouchOptions = [
     {
       id: "ia_multi",
-      label: isFr ? "Retouche IA avancée" : "Advanced AI retouch",
-      desc: isFr ? "Lumière, netteté, plusieurs angles valorisés" : "Lighting, clarity, multiple angles enhanced",
+      label: t("retouchIaMultiLabel"),
+      desc: t("retouchIaMultiDesc"),
       lockedFor: isPro ? null : "pro",
     },
     {
       id: "ia_simple",
-      label: isFr ? "Retouche IA légère" : "Light AI retouch",
-      desc: isFr ? "Amélioration rapide de la luminosité" : "Quick brightness improvement",
+      label: t("retouchIaSimpleLabel"),
+      desc: t("retouchIaSimpleDesc"),
       lockedFor: (isPremium || isPro) ? null : "premium",
     },
     {
       id: "original",
-      label: isFr ? "Photos originales" : "Original photos",
-      desc: isFr ? "Aucune retouche" : "No retouch",
+      label: t("retouchOriginalLabel"),
+      desc: t("retouchOriginalDesc"),
       lockedFor: null,
     },
   ];
 
   return (
     <div>
-      <Eyebrow n="2" label={isFr ? "Photos & retouche" : "Photos & retouch"} />
+      <Eyebrow n="2" label={t("stepPhotosEyebrow")} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Tes photos" : "Your photos"}
+        {t("stepPhotosTitle")}
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {isFr
-          ? "Vérifie tes photos et choisis le style de retouche."
-          : "Check your photos and choose the retouch style."}
+        {t("stepPhotosSubtitle")}
       </p>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
@@ -398,7 +412,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               display:"flex", alignItems:"center", justifyContent:"center", gap:6,
             }}
           >
-            + {isFr ? `Ajouter une photo (${photos.length}/${MAX})` : `Add photo (${photos.length}/${MAX})`}
+            + {tpl("stepPhotosAddPhoto", { n:photos.length, max:MAX })}
           </button>
         </>
       ) : (
@@ -406,7 +420,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
       )}
 
       <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
-        {isFr ? "Style de retouche" : "Retouch style"}
+        {t("stepPhotosStyleLabel")}
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {retouchOptions.map(o => {
@@ -454,7 +468,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
       <div style={{ marginTop:20 }}>
         <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>
-          {isFr ? "Plateformes" : "Platforms"}
+          {t("stepPhotosPlatformsLabel")}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
           {PLATFORMS_DEFAULT.map(p => {
@@ -494,7 +508,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
         </div>
         {selected.size === 0 && (
           <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:700 }}>
-            {isFr ? "Sélectionne au moins une plateforme." : "Select at least one platform."}
+            {t("stepPhotosSelectPlatformError")}
           </p>
         )}
       </div>
@@ -505,7 +519,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, lang }) {
-  const isFr = lang !== "en";
+  const { t } = useTranslation(lang);
+  const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
   const [openCards, setOpenCards] = useState(new Set());
 
@@ -523,19 +538,15 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
   // Phase A — loading
   if (generating || (!platformListings && !generateError)) {
-    const msg = elapsed < 20
-      ? (isFr ? "Retouche des photos en cours…" : "Enhancing your photos…")
-      : (isFr ? "Génération des annonces pour chaque plateforme…" : "Generating listings for each platform…");
+    const msg = elapsed < 20 ? t("stepGenLoadingMsg1") : t("stepGenLoadingMsg2");
     return (
       <div>
-        <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
+        <Eyebrow n="3" label={t("stepGenEyebrow")} />
         <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-          {isFr ? "Génération en cours…" : "Generating…"}
+          {t("stepGenLoadingTitle")}
         </h2>
         <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-          {isFr
-            ? "Ça prend ~1-2 minutes pour les retouches IA."
-            : "AI photo enhancement takes ~1–2 minutes."}
+          {t("stepGenLoadingSubtitle")}
         </p>
         <div style={{
           background:"#fff", borderRadius:16, padding:32, border:"1px solid #ECEAE3",
@@ -558,9 +569,9 @@ function StepGeneration({ generating, generateError, platformListings, processed
   if (generateError && !platformListings) {
     return (
       <div>
-        <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
+        <Eyebrow n="3" label={t("stepGenEyebrow")} />
         <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-          {isFr ? "Erreur de génération" : "Generation error"}
+          {t("stepGenErrorTitle")}
         </h2>
         <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, fontSize:13, color:"#B91C1C", marginBottom:14 }}>
           {generateError}
@@ -574,7 +585,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
             cursor:"pointer", fontFamily:"inherit",
           }}
         >
-          {isFr ? "Réessayer" : "Retry"}
+          {t("stepGenRetryButton")}
         </button>
       </div>
     );
@@ -585,20 +596,18 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
   return (
     <div>
-      <Eyebrow n="3" label={isFr ? "Génération" : "Generation"} />
+      <Eyebrow n="3" label={t("stepGenEyebrow")} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Vérifie tes annonces" : "Review your listings"}
+        {t("stepGenReviewTitle")}
       </h2>
       <p style={{ margin:"0 0 16px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {isFr
-          ? "Clique sur une carte pour voir et éditer le détail."
-          : "Tap a card to view and edit details."}
+        {t("stepGenReviewSubtitle")}
       </p>
 
       {processedPhotos?.length > 0 && (
         <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:11, fontWeight:800, color:"#9B9890", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
-            {isFr ? "Photos retouchées" : "Enhanced photos"}
+            {t("stepGenEnhancedPhotosLabel")}
           </div>
           <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
             {processedPhotos.map((ph, i) => (
@@ -618,7 +627,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
         {platforms.map(p => {
           const e = edited[p] ?? { title:"", description:"", platform_fields:{}, price:null };
           const isOpen = openCards.has(p);
-          const fieldConfigs = PLATFORM_FIELDS_CONFIG[p] ?? [];
+          const fieldConfigs = platformFieldsConfig[p] ?? [];
           const etatField = fieldConfigs.find(f => f.key === "etat" || f.key === "condition");
           const etatVal = etatField ? (e.platform_fields?.[etatField.key] ?? "") : "";
           const summaryParts = [
@@ -656,7 +665,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
               {isOpen && (
                 <div style={{ padding:"0 16px 16px", borderTop:"1px solid #F0EDE6" }}>
                   <div style={{ marginBottom:10, paddingTop:12 }}>
-                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{isFr ? "Titre" : "Title"}</div>
+                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{t("fieldTitleLabel")}</div>
                     <input
                       type="text"
                       value={e.title}
@@ -666,7 +675,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                   </div>
 
                   <div style={{ marginBottom:12 }}>
-                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{isFr ? "Description" : "Description"}</div>
+                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{t("fieldDescriptionLabel")}</div>
                     <textarea
                       value={e.description}
                       onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } }))}
@@ -694,7 +703,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                                 style={{ width:"100%", padding:"9px 10px", borderRadius:10, border:"1px solid #ECEAE3", fontSize:13, fontFamily:"inherit", outline:"none", background:"#F9FAFB", boxSizing:"border-box", color: val ? "#111" : "#9B9890" }}
                               >
                                 <option value="">—</option>
-                                {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                                {field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                             ) : (
                               <input
@@ -712,7 +721,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                   )}
 
                   <div>
-                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{isFr ? "Prix de vente (€)" : "Sale price (€)"}</div>
+                    <div style={{ fontSize:11, color:"#9B9890", fontWeight:700, marginBottom:4 }}>{t("fieldSalePriceLabel")}</div>
                     <input
                       type="number"
                       value={e.price ?? ""}
@@ -734,19 +743,17 @@ function StepGeneration({ generating, generateError, platformListings, processed
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
 function StepPublish({ selected, setSelected, platformListings, publishError, lang }) {
-  const isFr = lang !== "en";
+  const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
 
   return (
     <div>
-      <Eyebrow n="4" label={isFr ? "Publication" : "Publication"} />
+      <Eyebrow n="4" label={t("stepPublishEyebrow")} />
       <h2 style={{ margin:"4px 0 4px", fontSize:20, fontWeight:900, color:"#111" }}>
-        {isFr ? "Confirme la publication" : "Confirm publication"}
+        {t("stepPublishTitle")}
       </h2>
       <p style={{ margin:"0 0 18px", fontSize:13.5, color:"#6B6862", lineHeight:1.5 }}>
-        {isFr
-          ? "Appuie sur × pour retirer une plateforme avant de publier."
-          : "Tap × to remove a platform before publishing."}
+        {t("stepPublishSubtitle")}
       </p>
 
       {publishError && (
@@ -782,24 +789,20 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
 
       {chips.length === 0 && (
         <p style={{ fontSize:13, color:"#9B9890", textAlign:"center", marginTop:16 }}>
-          {isFr ? "Aucune plateforme sélectionnée." : "No platform selected."}
+          {t("stepPublishNoPlatformError")}
         </p>
       )}
 
       {chips.length > 0 && (
         <div style={{ marginTop:20, padding:"14px 16px", background:"#fff", borderRadius:14, border:"1px solid #ECEAE3" }}>
           <p style={{ margin:"0 0 8px", fontSize:13.5, fontWeight:800, color:"#374151" }}>
-            {isFr ? "Tes annonces sont prêtes 🎉" : "Your listings are ready 🎉"}
+            {t("stepPublishReadyTitle")}
           </p>
           <p style={{ margin:"0 0 8px", fontSize:13, color:"#6B6862", lineHeight:1.65 }}>
-            {isFr
-              ? "L'extension FillSell dans Chrome les publie automatiquement toutes les 30 minutes. PC allumé + Chrome ouvert = publication automatique, sans rien faire."
-              : "The FillSell Chrome extension publishes them automatically every 30 minutes. PC on + Chrome open = fully automatic, no action needed."}
+            {t("stepPublishCronText1")}
           </p>
           <p style={{ margin:0, fontSize:12.5, color:"#9B9890", lineHeight:1.6 }}>
-            {isFr
-              ? "Si ton PC est éteint, tes annonces restent en attente et seront publiées dès la prochaine ouverture de Chrome."
-              : "If your PC is off, listings stay queued and will publish next time Chrome opens."}
+            {t("stepPublishCronText2")}
           </p>
         </div>
       )}
@@ -813,6 +816,10 @@ export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
   isPremium = false, isPro = false, founderSpotsLeft = 7, onUpgrade = () => {},
 }) {
+  const { t, tpl } = useTranslation(lang);
+  const STEPS = getSteps(t);
+  const platformFieldsConfig = getPlatformFieldsConfig(t);
+
   const [step, setStep]         = useState(0);
   const [initializing, setInit] = useState(true);
 
@@ -981,7 +988,7 @@ export default function ListingPreviewScreen({
         if (!upErr)
           urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
       }
-      if (!urls.length) throw new Error(lang === "en" ? "Upload failed" : "Échec de l'upload");
+      if (!urls.length) throw new Error(t("stepUploadError"));
       setPhotos(urls);
       setStep(1);
     } catch (e) {
@@ -1029,8 +1036,8 @@ export default function ListingPreviewScreen({
           ...(notes ? { notes } : {}),
         },
       });
-      if (fnErr) throw new Error(fnErr.message || (lang === "en" ? "Generation error" : "Erreur de génération"));
-      if (!data?.platforms) throw new Error(lang === "en" ? "No listings returned" : "Aucune annonce retournée");
+      if (fnErr) throw new Error(fnErr.message || t("stepGenErrorTitle"));
+      if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
       setProcessedPhotos(data.photos ?? []);
       setPrice(prev => data.price ?? prev);
@@ -1043,7 +1050,7 @@ export default function ListingPreviewScreen({
           platform_fields: mergeFieldsWithLens(
             data.platforms[p]?.platform_fields ?? {},
             initialListing,
-            PLATFORM_FIELDS_CONFIG[p] ?? []
+            platformFieldsConfig[p] ?? []
           ),
           price: data.price ?? price ?? null,
         };
@@ -1068,7 +1075,7 @@ export default function ListingPreviewScreen({
         p_is_premium: isPremium,
         p_is_pro:     isPro,
       });
-      if (quotaErr) throw new Error(quotaErr.message);
+      if (quotaErr) throw new Error(t("genericError"));
       if (quotaData?.allowed === false) {
         setPublishing(false);
         setQuotaModal({
@@ -1092,7 +1099,7 @@ export default function ListingPreviewScreen({
         platform_fields: edited[platform]?.platform_fields ?? {},
       }));
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
-      if (insErr) throw new Error(insErr.message);
+      if (insErr) throw new Error(t("genericError"));
       if (processedPhotos?.length) {
         await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", inventaireId);
       }
@@ -1126,22 +1133,22 @@ export default function ListingPreviewScreen({
 
   function ctaLabel() {
     if (step === 0) {
-      if (uploading)        return lang === "en" ? "Uploading…" : "Upload en cours…";
-      if (photoCount === 0) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
-      return `${lang === "en" ? "Continue" : "Continuer"} · ${photoCount} photo${photoCount > 1 ? "s" : ""}`;
+      if (uploading)        return t("ctaUploading");
+      if (photoCount === 0) return t("ctaAddAtLeastOnePhoto");
+      return tpl("ctaContinuePhotos", { n:photoCount });
     }
     if (step === 1) {
-      if (!photos.length) return lang === "en" ? "Add at least 1 photo" : "Ajoute au moins 1 photo";
-      return lang === "en" ? "Generate listings" : "Générer les annonces";
+      if (!photos.length) return t("ctaAddAtLeastOnePhoto");
+      return t("ctaGenerateListings");
     }
     if (step === 2) {
-      if (generatingPlatforms || !platformListings) return lang === "en" ? "Generating…" : "Génération…";
-      return lang === "en" ? "Continue to publish" : "Continuer vers la publication";
+      if (generatingPlatforms || !platformListings) return t("ctaGenerating");
+      return t("ctaContinueToPublish");
     }
     if (step === 3) {
-      if (publishing) return lang === "en" ? "Publishing…" : "Publication en cours…";
+      if (publishing) return t("ctaPublishing");
       const n = publishChips.length;
-      return `${lang === "en" ? "Publish on" : "Publier sur"} ${n} plateforme${n > 1 ? "s" : ""}`;
+      return tpl("ctaPublishOnPlatforms", { n });
     }
     return "";
   }
@@ -1180,12 +1187,10 @@ export default function ListingPreviewScreen({
       <style>{`@keyframes lps-popIn{0%{transform:scale(0.4);opacity:0}80%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ fontSize:72, animation:"lps-popIn 0.5s ease forwards" }}>✅</div>
       <div style={{ fontSize:22, fontWeight:900, color:"#111", textAlign:"center", marginTop:16 }}>
-        {lang === "en" ? "Listings sent!" : "Annonces envoyées !"}
+        {t("doneTitle")}
       </div>
       <div style={{ fontSize:14, color:"#6B6862", textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
-        {lang === "en"
-          ? "Your Chrome extension will publish them automatically when you open it."
-          : "L'extension Chrome va les publier automatiquement dès que tu l'ouvres."}
+        {t("doneSubtitle")}
       </div>
       <button
         onClick={onClose}
@@ -1197,7 +1202,7 @@ export default function ListingPreviewScreen({
           boxShadow:`0 8px 20px ${TEAL}55`,
         }}
       >
-        {lang === "en" ? "Done" : "Terminer"}
+        {t("doneButton")}
       </button>
     </div>
   );
@@ -1260,7 +1265,7 @@ export default function ListingPreviewScreen({
               display:"inline-flex", alignItems:"center", gap:4,
             }}
           >
-            ← {lang === "en" ? "Cancel" : "Annuler"}
+            ← {t("annuler")}
           </button>
         </div>
       )}
