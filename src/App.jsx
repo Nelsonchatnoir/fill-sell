@@ -17,7 +17,7 @@ import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
-import { executeVoiceTasks } from './utils/voiceEngine';
+import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
@@ -1579,7 +1579,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
             return;
           }
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
-          const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1}));
+          const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1,prix_achat:i.buy??i.prix_achat??null}));
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
           if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){if(isPremium){const msg=iErrJson?.reason==='monthly_limit'?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.'):(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');setVoiceToast(`🔒 ${msg}`);setTimeout(()=>setVoiceToast(''),5000);}else{setConversionModal({open:true,trigger:'voice'});}setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
@@ -1632,7 +1632,8 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const paRes=resolvedResults.find(r=>r.intent==="price_advice"&&r.status==="success");
           if(paRes?.taskData)setLastPriceAdviceData(paRes.taskData);
           else setLastPriceAdviceData(null);
-          setVaResults(resolvedResults);setVaStep("results");
+          const groupedResults=groupSellLots(resolvedResults,items);
+          setVaResults(groupedResults);setVaStep("results");
           const QUICK_INTENTS=new Set(["inventory_add","inventory_sell","inventory_delete","inventory_update","inventory_lot"]);
           const isQuickOnly=resolvedResults.every(r=>r.status==="success"&&QUICK_INTENTS.has(r.intent));
         }catch(e){setVaError(e.message||"Error");setVaStep("");}
@@ -1741,7 +1742,11 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 const qAdded=(data?.quantite||taskData?.quantite)>1?(data?.quantite||taskData?.quantite):null;
                 const marque=normalizeMarque(data?.marque||taskData?.marque||null)||null;
                 const nom=data?.title||data?.nom||taskData?.nom;
-                const prix=data?.buy??data?.prix_achat??taskData?.prix_achat;
+                // taskData.prix_achat est propre à cette tâche et n'est jamais partagé avec
+                // une autre (contrairement à data, qui peut référencer l'objet d'un article
+                // déjà ajouté plus tôt dans le même batch en cas de doublon détecté) — on le
+                // priorise pour plus de robustesse, en gardant data en repli si absent.
+                const prix=taskData?.prix_achat??data?.buy??data?.prix_achat;
                 const desc=data?.description||taskData?.description||null;
                 return(
                   <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
@@ -2183,12 +2188,142 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                 );
               }
 
+              // ── Vente de lot à prix groupé (plusieurs articles, un seul prix total) ──
+              if(status==="pending_confirmation"&&intent==="inventory_sell_lot"){
+                const hasEarlierPendingLot=vaResults.slice(0,idx).some(
+                  r=>(r?.intent==="inventory_sell"||r?.intent==="inventory_sell_lot")&&r?.status==="pending_confirmation"
+                );
+                if(hasEarlierPendingLot){
+                  return(
+                    <div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"10px 14px",border:"1px solid #E5E7EB",opacity:0.45}}>
+                      <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>
+                        ⏳ {lang==="en"?"Waiting for previous sale confirmation…":"En attente de la confirmation précédente…"}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const lotItems=taskData?.items||[];
+                const lotTotal=taskData?.lotTotal||0;
+                const pendingI=lotItems.findIndex(it=>it.resolution===null);
+                const lotPhase=pendingI===-1?"recap":"matching";
+
+                if(lotPhase==="matching"){
+                  const cur=lotItems[pendingI];
+                  const mi=cur?.matchedItem;
+                  const miTs=mi?getTypeStyle(mi.type):null;
+                  return(
+                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"#92400E"}}>
+                        🛍️ {lang==="en"?`Lot sale — item ${pendingI+1}/${lotItems.length}`:`Vente de lot — article ${pendingI+1}/${lotItems.length}`}
+                      </div>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{cur?.nom||"Article"}</div>
+                        {cur?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{cur.marque}</span>}
+                      </div>
+                      {mi?(
+                        <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
+                          <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{mi.title}</div>
+                          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                            {mi.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{mi.marque}</span>}
+                            {miTs&&mi.type&&mi.type!=="Autre"&&<span style={{background:miTs.bg,color:miTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${miTs.border}`}}>{miTs.emoji} {mi.type}</span>}
+                          </div>
+                          <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(mi.buy+(mi.purchaseCosts||0))}</div>
+                        </div>
+                      ):(
+                        <div style={{fontSize:12,color:"#92400E",fontStyle:"italic"}}>{lang==="en"?"No match in stock — will be created as a new item":"Aucun article correspondant en stock — sera créé comme nouvel article"}</div>
+                      )}
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>{
+                          const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"stock",item:mi}}:it);
+                          replaceResult(idx,{...result,taskData:{...taskData,items:next}});
+                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✓ {lang==="en"?"Add stock item to lot":"Ajouter cet article du stock au lot"}
+                        </button>
+                        <button onClick={()=>{
+                          const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"new"}}:it);
+                          replaceResult(idx,{...result,taskData:{...taskData,items:next}});
+                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          ➕ {lang==="en"?"Create new item":"Créer un nouvel article"}
+                        </button>
+                      </div>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"8px",background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✕ {lang==="en"?"Cancel lot":"Annuler le lot"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // lotPhase === "recap"
+                const defaultPrice=lotItems.length?Math.round((lotTotal/lotItems.length)*100)/100:0;
+                const linePrice=(i)=>{
+                  const v=vaEdits[idx]?.lotPrices?.[i];
+                  return (v!=null&&v!=="")?(parseFloat(v)||0):defaultPrice;
+                };
+                const liveTotal=lotItems.reduce((sum,_it,i)=>sum+linePrice(i),0);
+                return(
+                  <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
+                      🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""} sold`:`Lot de ${lotItems.length} article${lotItems.length>1?"s":""} vendu${lotItems.length>1?"s":""}`}{" — "}{fmt(lotTotal)}
+                    </div>
+                    <div style={{fontSize:11,color:"#6B7280",marginBottom:12}}>
+                      {lang==="en"?"Current total":"Total actuel"} : {fmt(liveTotal)}
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
+                      {lotItems.map((it,i)=>{
+                        const label=it.resolution?.source==="stock"?(it.resolution.item?.title||it.nom):it.nom;
+                        const its=it.categorie&&it.categorie!=="Autre"?getTypeStyle(it.categorie):null;
+                        return(
+                          <div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(0,0,0,0.08)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:6}}>
+                              <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{label}</div>
+                              <span style={{fontSize:10,fontWeight:700,color:it.resolution?.source==="stock"?"#1D9E75":"#7C3AED",background:it.resolution?.source==="stock"?"#E8F5F0":"#EDE9FE",borderRadius:99,padding:"2px 7px",flexShrink:0}}>
+                                {it.resolution?.source==="stock"?(lang==="en"?"from stock":"du stock"):(lang==="en"?"new":"nouveau")}
+                              </span>
+                            </div>
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+                              {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
+                              {its&&<span style={{background:its.bg,color:its.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${its.border}`}}>{its.emoji} {typeLabel(it.categorie,lang)}</span>}
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <input type="number" value={vaEdits[idx]?.lotPrices?.[i]??defaultPrice}
+                                onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],lotPrices:{...prev[idx]?.lotPrices,[i]:e.target.value}}}))}
+                                style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
+                              <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={async()=>{
+                        try{
+                          for(let i=0;i<lotItems.length;i++){
+                            const it=lotItems[i];
+                            const price=linePrice(i);
+                            if(it.resolution?.source==="stock"&&it.resolution.item){
+                              await actions.confirmSellDirect(it.resolution.item,price,0,1,it.plateforme||null);
+                            }else{
+                              await actions.addDirectSale({nom:it.nom,marque:it.marque,type:it.categorie,description:it.description,prix_vente:price,prix_achat:null,quantite_vendue:1,plateforme:it.plateforme||null});
+                            }
+                          }
+                          replaceResult(idx,{...result,status:"success",message:lang==="en"?`Lot of ${lotItems.length} items sold`:`Lot de ${lotItems.length} articles vendu`});
+                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
+                      }} style={{flex:1,padding:"13px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                        ✓ {lang==="en"?"Confirm lot":"Confirmer le lot"}
+                      </button>
+                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                    </div>
+                  </div>
+                );
+              }
+
               if(status==="pending_confirmation"&&intent==="inventory_sell"){
                 // ── BUG 1 : file FIFO — on n'affiche qu'une seule card pending à la fois ──
-                // Si un inventory_sell en attente existe avant cet index, on masque celui-ci
-                // jusqu'à ce que le précédent soit résolu (succès ou annulation).
+                // Si un inventory_sell (ou un lot inventory_sell_lot) en attente existe avant
+                // cet index, on masque celui-ci jusqu'à ce que le précédent soit résolu.
                 const hasEarlierPending=vaResults.slice(0,idx).some(
-                  r=>r?.intent==="inventory_sell"&&r?.status==="pending_confirmation"
+                  r=>(r?.intent==="inventory_sell"||r?.intent==="inventory_sell_lot")&&r?.status==="pending_confirmation"
                 );
                 if(hasEarlierPending){
                   return(
@@ -2285,6 +2420,63 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           // Non : vente directe sans associer l'article du stock
                           const dmCatCf=taskData?.categorie||taskData?.type||null;
                           actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✗ {lang==="en"?"No, direct sale":"Non, vente directe"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── Cas price_conflict : article trouvé (nom/marque/type) mais le prix d'achat
+                // dicté diffère trop de celui déjà en stock → laisser l'utilisateur trancher,
+                // sans jamais matcher en silence ni écraser le prix dicté par celui du stock.
+                if(taskData?.price_conflict&&taskData?.candidates?.length>0){
+                  const pcItem=items.find(i=>String(i.id)===String(taskData.candidates[0]?.id)&&i.statut!=="vendu");
+                  const pcPv=parseFloat(taskData?.prix_vente)||0;
+                  const pcTs=pcItem?getTypeStyle(pcItem.type):null;
+                  const pcPa=parseFloat(taskData?.prix_achat)||0;
+                  return(
+                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                          <span style={{fontSize:14}}>⚠️</span>
+                          <span style={{fontWeight:800,fontSize:13,color:"#92400E"}}>
+                            {lang==="en"?"Similar item found — purchase price differs":"Article similaire trouvé — prix d'achat différent"}
+                          </span>
+                        </div>
+                        {pcItem&&(
+                          <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
+                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{pcItem.title}</div>
+                            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                              {pcItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{pcItem.marque}</span>}
+                              {pcTs&&pcItem.type&&pcItem.type!=="Autre"&&<span style={{background:pcTs.bg,color:pcTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${pcTs.border}`}}>{pcTs.emoji} {pcItem.type}</span>}
+                            </div>
+                            <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>
+                              {lang==="en"?"Bought (in stock)":"Achat (en stock)"} {fmt(pcItem.buy+(pcItem.purchaseCosts||0))} — {lang==="en"?"just said":"prix dicté"} {fmt(pcPa)}
+                            </div>
+                          </div>
+                        )}
+                        <div style={{fontSize:12,color:"#92400E",fontWeight:700,marginTop:8}}>
+                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>{
+                          if(!pcItem){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
+                          // Oui : c'est bien l'article du stock — on garde SON prix d'achat réel
+                          actions.confirmSellDirect(pcItem,pcPv,taskData?.frais||0,taskData?.quantite_vendue||1,taskData?.plateforme||null)
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✓ {lang==="en"?"Yes, that's it":"Oui, c'est ça"}
+                        </button>
+                        <button onClick={()=>{
+                          // Non : nouvelle vente directe distincte, avec le prix d'achat dicté par l'utilisateur
+                          const dmCatPc=taskData?.categorie||taskData?.type||null;
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatPc,description:taskData?.description||null,prix_vente:taskData?.prix_vente,prix_achat:taskData?.prix_achat,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
                         }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
@@ -2426,7 +2618,12 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                   :items.find(i=>{if(i.statut==="vendu")return false;const q=(taskData?.nom||"").toLowerCase().trim();const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
                 const pv=parseFloat(sellPv)||0;
                 const sf=parseFloat(taskData?.frais)||0;
-                const buyU=found?(found.buy+(found.purchaseCosts||0)):0;
+                // Aligné sur voiceEngine.js (case inventory_sell, exécution directe) : le prix
+                // d'achat dicté par l'utilisateur prime sur celui de l'article stock matché s'il
+                // est présent. Dans l'immense majorité des ventes (aucun prix d'achat redicté),
+                // taskData.prix_achat est absent et le comportement reste identique à avant.
+                const dictatedPa=taskData?.prix_achat!=null&&taskData?.prix_achat!==""?parseFloat(taskData.prix_achat):null;
+                const buyU=dictatedPa!=null&&!isNaN(dictatedPa)?dictatedPa:(found?(found.buy+(found.purchaseCosts||0)):0);
                 const mgU=pv-buyU-sf;
                 const mgpU=pv>0?(mgU/pv)*100:0;
                 const ts=found?getTypeStyle(found.type):null;
@@ -2467,24 +2664,46 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
                           style={{flex:1,fontSize:14,fontWeight:700,border:"1.5px solid #1D9E75",borderRadius:10,padding:"10px 12px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",outline:"none"}}/>
                       </div>
                     )}
-                    {/* Boutons */}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>{
-                        if(!found){
+                    {/* Boutons — si un article stock est identifié, toujours proposer le choix
+                        explicite matcher/créer (jamais de matching silencieux). Sans match,
+                        comportement inchangé : bouton unique de confirmation. */}
+                    {found?(
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        <div style={{fontSize:12,color:"#6B7280",fontWeight:700}}>
+                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
+                        </div>
+                        <button onClick={()=>{
+                          actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)",textAlign:"left"}}>
+                          ✓ {lang==="en"?`Yes — confirm sale of ${found.title}`:`Oui — confirmer la vente de ${found.title}`}
+                        </button>
+                        <button onClick={()=>{
+                          const dmCatN=taskData?.categorie||taskData?.type||null;
+                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,prix_achat:taskData?.prix_achat,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
+                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
+                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
+                        }} style={{padding:"13px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.15)",borderRadius:12,color:"#374151",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                          ➕ {lang==="en"?"No — create a separate sale":"Non — créer une vente séparée"}
+                        </button>
+                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✕ {lang==="en"?"Cancel":"Annuler"}
+                        </button>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>{
                           const dmCatN=taskData?.categorie||taskData?.type||null;
                           actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
                             .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
                             .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                          return;
-                        }
-                        actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
-                          .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                          .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
-                        ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                    </div>
+                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
+                          ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
+                        </button>
+                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -3317,7 +3536,6 @@ export default function App({ loginOnly = false }){
           .catch(()=>{});
       });
   },[]);
-  const [isRecording,setIsRecording]=useState(false);
   const [voiceText,setVoiceText]=useState("");
   const [voicePlaceholderIdx,setVoicePlaceholderIdx]=useState(0);
   const [voiceLoading,setVoiceLoading]=useState(false);
@@ -3332,8 +3550,6 @@ export default function App({ loginOnly = false }){
     const t=setInterval(()=>setVoicePlaceholderIdx(i=>(i+1)%TEXTAREA_PLACEHOLDERS.length),4000);
     return()=>clearInterval(t);
   },[]);
-  const mediaRecorderRef=useRef(null);
-  const audioChunksRef=useRef([]);
   const [manualMode,setManualMode]=useState("single");
   const [lotManualTotal,setLotManualTotal]=useState("");
   const [lotManualItems,setLotManualItems]=useState([{nom:""},{nom:""}]);
@@ -3477,8 +3693,11 @@ export default function App({ loginOnly = false }){
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
-    let premiumValue=p.data?.is_premium===true||p.data?.is_founder===true||!!p.data?.apple_original_transaction_id||!!p.data?.google_purchase_token;
-    console.log('[fetchAll] is_premium from Supabase:', p.data?.is_premium, 'is_founder:', p.data?.is_founder, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
+    // Ne jamais utiliser is_premium seul (cf. CLAUDE.md) : is_pro/is_founder/IAP actif
+    // valent aussi statut premium, même si is_premium n'a jamais été positionné à true
+    // (ex. promotion manuelle sans passer par le flow IAP).
+    let premiumValue=!!(p.data?.is_premium||p.data?.is_pro||p.data?.is_founder||p.data?.apple_original_transaction_id||p.data?.google_purchase_token);
+    console.log('[fetchAll] premium fields from Supabase:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_founder:p.data?.is_founder,has_apple:!!p.data?.apple_original_transaction_id,has_google:!!p.data?.google_purchase_token}, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
       setIsPro(p.data?.is_pro===true);
@@ -3684,12 +3903,12 @@ export default function App({ loginOnly = false }){
 
   function resetVoiceFlow(){
     setVoiceText("");setVoiceLoading(false);setVoiceStep("");
-    setVoiceParsed(null);setVoiceError(null);setIsRecording(false);
+    setVoiceParsed(null);setVoiceError(null);
     setVoiceZoneResults([]);
   }
 
   async function callVoiceParse(text){
-    // Quota check — identique à handleVoiceToggle
+    // Quota check — vocal free 5/jour
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
       if(count>=VOICE_FREE_LIMIT){
@@ -3706,7 +3925,7 @@ export default function App({ loginOnly = false }){
       const vpToken=vpSess?.access_token;
       if(!vpToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
       // Snapshot du stock — identique au FAB vocal
-      const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1}));
+      const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1,prix_achat:i.buy??i.prix_achat??null}));
       const iRes=await fetch(`${supabaseUrl}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vpToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
@@ -3727,64 +3946,12 @@ export default function App({ loginOnly = false }){
         }
         return r;
       }));
-      setVoiceZoneResults(resolvedResults);setVoiceStep("done");
+      const groupedResults=groupSellLots(resolvedResults,items);
+      setVoiceZoneResults(groupedResults);setVoiceStep("done");
     }catch(e){
       setVoiceError(e.message||"Erreur analyse");setVoiceStep("error");
     }
     setVoiceLoading(false);
-  }
-
-  async function handleVoiceToggle(){
-    if(isRecording){mediaRecorderRef.current?.stop();setIsRecording(false);return;}
-    if(!isPremium){
-      const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
-      if(count>=VOICE_FREE_LIMIT){
-        setConversionModal({open:true,trigger:'voice'});
-        return;
-      }
-      await supabase.from('profiles')
-        .update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]})
-        .eq('id',user.id);
-      supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
-      setVoiceUsedToday(count+1);
-    }
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-      setVoiceError("Microphone non disponible. Vérifiez les permissions dans Réglages > FillSell.");setVoiceStep("error");return;
-    }
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const mimeType=MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/mp4";
-      const recorder=new MediaRecorder(stream,{mimeType});
-      audioChunksRef.current=[];
-      recorder.ondataavailable=e=>{if(e.data.size>0)audioChunksRef.current.push(e.data);};
-      recorder.onstop=async()=>{
-        stream.getTracks().forEach(t=>t.stop());
-        const blob=new Blob(audioChunksRef.current,{type:mimeType});
-        setVoiceStep("transcribing");setVoiceLoading(true);
-        try{
-          const{data:{session:vtSess}}=await supabase.auth.getSession();
-          const vtToken=vtSess?.access_token;
-          if(!vtToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
-          const fd=new FormData();
-          fd.append("audio",blob,"audio."+mimeType.split("/")[1]);
-          fd.append("lang",lang);
-          const res=await fetch(`${supabaseUrl}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vtToken}`,"apikey":supabaseAnonKey},body:fd});
-          if(!res.ok)throw new Error("Transcription failed");
-          let vtJson;try{vtJson=await res.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
-          const{text,error:err}=vtJson;
-          if(err)throw new Error(err);
-          setVoiceText(text);
-          await callVoiceParse(text);
-        }catch(e){
-          setVoiceError(e.message||"Erreur transcription");setVoiceStep("error");setVoiceLoading(false);
-        }
-      };
-      mediaRecorderRef.current=recorder;
-      recorder.start();
-      setIsRecording(true);setVoiceStep("recording");
-    }catch(e){
-      setVoiceError(e.message||"Micro non disponible");setVoiceStep("error");
-    }
   }
 
   async function addItemsFromVoice(){

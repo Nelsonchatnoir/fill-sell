@@ -44,7 +44,7 @@ Ton rôle est de comprendre l'INTENTION réelle, pas de parser le texte littéra
    pas seulement le champ marque extrait (voir règle correction marques ci-dessous).
 
 5. SENS GLOBAL — si la phrase est partiellement déformée, déduire l'intention par le contexte :
-   - Nombre + nom article + prix → inventory_lot ou inventory_add avec quantite
+   - Nombre + nom article + prix → inventory_lot (ACHAT uniquement) ou inventory_add avec quantite
    - Prix seul + nom article → intent vente (inventory_sell) ou achat (inventory_add)
    - Utiliser la connaissance du contexte revendeur (Vinted, brocante, vide-grenier).
 
@@ -83,7 +83,7 @@ Aujourd'hui = 2026-05-01, hier = 2026-04-30.
 
 Intents disponibles :
 - inventory_add       → requiresConfirmation: false
-- inventory_lot       → requiresConfirmation: true OBLIGATOIRE
+- inventory_lot       → requiresConfirmation: true OBLIGATOIRE (ACHATS uniquement, jamais pour une vente)
 - inventory_sell      → requiresConfirmation: true OBLIGATOIRE (false si achat+vente simultané, confidence ≥ 0.85)
 - inventory_search    → requiresConfirmation: false
 - inventory_delete    → requiresConfirmation: true OBLIGATOIRE
@@ -234,8 +234,9 @@ Si l'utilisateur décrit avoir ACHETÉ ET VENDU le même article (passé compos�
   1. inventory_sell avec no_match:true, prix_achat ET prix_vente renseignés (vente directe — l'article passe directement en ventes, pas dans l'inventaire).
 INTERDIT de générer deal_score dans ce cas. INTERDIT de générer inventory_add (sauf cas lot partiellement vendu ci-dessous).
 Si plusieurs articles différents → répéter par article.
-✅ "j'ai acheté une imprimante HP 20€ et je l'ai vendue 30€" → [inventory_sell {nom:"Imprimante",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
-✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
+✅ "j'ai acheté une imprimante HP 20€ et je l'ai vendue 30€" → [inventory_sell {nom:"Imprimante",marque:"HP",categorie:"High-Tech",prix_achat:20,prix_vente:30,no_match:true}]
+✅ "j'ai acheté un sac Zara 15€, vendu 25€" → [inventory_sell {nom:"Sac",marque:"Zara",categorie:"Mode",prix_achat:15,prix_vente:25,no_match:true}]
+RÈGLE OBLIGATOIRE : categorie doit TOUJOURS être renseignée dans ce cas (voir "Catégories canoniques" ci-dessous), jamais omise.
 
 CAS SPÉCIAL — LOT PARTIELLEMENT VENDU (PRIORITAIRE sur la règle ci-dessus) :
 Si N articles DIFFÉRENTS sont achetés ensemble à un prix global ET que seulement M d'entre eux sont vendus dans la même phrase (M < N) :
@@ -290,6 +291,18 @@ INTERDIT : générer inventory_lot quand des prix individuels sont mentionnés.
 
 Si tous les articles sont IDENTIQUES (même produit × N exemplaires) → inventory_add avec quantite.
 Le mot "lot" seul ne déclenche PAS inventory_lot si les articles ont des prix individuels.
+
+RÈGLE ABSOLUE — inventory_lot est RÉSERVÉ AUX ACHATS, JAMAIS AUX VENTES (CRITIQUE) :
+inventory_lot ne doit JAMAIS être généré pour une VENTE, même si le mot "lot" est prononcé.
+Un verbe de vente ("j'ai vendu", "j'ai revendu", "vendu") + plusieurs articles + un prix global
+→ TOUJOURS générer une tâche inventory_sell PAR ARTICLE (jamais inventory_lot), chacune avec :
+price_ambiguous:true, prix_mentionne:<prix total>, prix_vente:null, quantite_vendue:1, requiresConfirmation:true.
+✅ "j'ai vendu un lot de 30€ avec dedans le sac à main Zara, une robe verte Mango et une veste Carhartt en cuir" →
+   [inventory_sell {nom:"Sac à main",marque:"Zara",categorie:"Mode",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Robe",marque:"Mango",categorie:"Mode",description:"verte",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Veste",marque:"Carhartt",categorie:"Mode",description:"cuir",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true}]
+❌ "j'ai vendu un lot de 30€ avec dedans le sac Zara, la robe Mango et la veste Carhartt" → inventory_lot (FAUX — inventory_lot est réservé aux ACHATS, jamais à une vente, peu importe le mot "lot")
+INTERDIT : générer inventory_lot dès qu'un verbe de vente est présent dans la phrase, quel que soit le nombre d'articles ou la présence du mot "lot".
 
 PRIX UNITAIRE vs PRIX TOTAL (CRITIQUE) :
 Si l'utilisateur donne un prix UNITAIRE (mots-clés : "chacun", "chaque", "l'un", "la pièce",
@@ -507,7 +520,7 @@ Your role is to understand the REAL INTENTION, not to parse the text literally.
    not just the extracted brand field (see brand correction rule below).
 
 5. GLOBAL MEANING — if the phrase is partially garbled, infer intent from context:
-   - Number + item name + price → inventory_lot or inventory_add with quantite
+   - Number + item name + price → inventory_lot (PURCHASE only) or inventory_add with quantite
    - Price + item name → selling (inventory_sell) or buying (inventory_add)
    - Use knowledge of the resale context (eBay, Vinted, thrift stores, car boot sales).
 
@@ -546,7 +559,7 @@ Today = 2026-05-01, yesterday = 2026-04-30.
 
 Available intents:
 - inventory_add       → requiresConfirmation: false
-- inventory_lot       → requiresConfirmation: true MANDATORY
+- inventory_lot       → requiresConfirmation: true MANDATORY (PURCHASES only, never for a sale)
 - inventory_sell      → requiresConfirmation: true MANDATORY (false if simultaneous buy+sell, confidence ≥ 0.85)
 - inventory_search    → requiresConfirmation: false
 - inventory_delete    → requiresConfirmation: true MANDATORY
@@ -694,8 +707,9 @@ If the user describes having BOUGHT AND SOLD the same item (past tense: "I bough
   1. inventory_sell with no_match:true, both prix_achat AND prix_vente filled (direct sale — item goes straight to sales, not inventory).
 FORBIDDEN to generate deal_score in this case. FORBIDDEN to generate inventory_add (except for the partial lot case below).
 If multiple different items → repeat per item.
-✅ "I bought an HP printer for €20 and sold it for €30" → [inventory_sell {nom:"Printer",marque:"HP",prix_achat:20,prix_vente:30,no_match:true}]
-✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",prix_achat:15,prix_vente:25,no_match:true}]
+✅ "I bought an HP printer for €20 and sold it for €30" → [inventory_sell {nom:"Printer",marque:"HP",categorie:"High-Tech",prix_achat:20,prix_vente:30,no_match:true}]
+✅ "I bought a Zara bag for €15, sold for €25" → [inventory_sell {nom:"Bag",marque:"Zara",categorie:"Mode",prix_achat:15,prix_vente:25,no_match:true}]
+MANDATORY RULE: categorie must ALWAYS be filled in this case (see "Canonical categories" below), never omitted.
 
 SPECIAL CASE — PARTIALLY SOLD LOT (TAKES PRIORITY over the rule above):
 If N DIFFERENT items are bought together at a global price AND only M of them are sold in the same sentence (M < N):
@@ -750,6 +764,18 @@ FORBIDDEN: generating inventory_lot when individual prices are mentioned.
 
 If all items are IDENTICAL (same product × N units) → inventory_add with quantite.
 The word "lot" alone does NOT trigger inventory_lot if items have individual prices.
+
+ABSOLUTE RULE — inventory_lot is RESERVED FOR PURCHASES, NEVER FOR SALES (CRITICAL):
+inventory_lot must NEVER be generated for a SALE, even if the word "lot" is spoken.
+A sale verb ("I sold", "sold", "I resold") + multiple items + one global price
+→ ALWAYS generate one inventory_sell task PER ITEM (never inventory_lot), each with:
+price_ambiguous:true, prix_mentionne:<total price>, prix_vente:null, quantite_vendue:1, requiresConfirmation:true.
+✅ "I sold a €30 lot with a Zara handbag, a green Mango dress and a leather Carhartt jacket in it" →
+   [inventory_sell {nom:"Handbag",marque:"Zara",categorie:"Mode",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Dress",marque:"Mango",categorie:"Mode",description:"green",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true},
+    inventory_sell {nom:"Jacket",marque:"Carhartt",categorie:"Mode",description:"leather",price_ambiguous:true,prix_mentionne:30,prix_vente:null,quantite_vendue:1,requiresConfirmation:true}]
+❌ "I sold a €30 lot with the Zara bag, the Mango dress and the Carhartt jacket in it" → inventory_lot (WRONG — inventory_lot is reserved for PURCHASES, never a sale, regardless of the word "lot")
+FORBIDDEN: generating inventory_lot whenever a sale verb is present in the sentence, regardless of item count or the presence of the word "lot".
 
 UNIT PRICE vs TOTAL PRICE (CRITICAL):
 If the user states a UNIT price (keywords: "each", "each one", "apiece", "per item",
@@ -970,6 +996,19 @@ function normalizeInventoryAdd(d: Record<string, unknown>): Record<string, unkno
   return { ...d, nom: cleanNom, description: parts.length ? parts.join(", ") : null };
 }
 
+// Tolérance de prix pour le matching auto d'une vente sur un article déjà en stock :
+// un prix d'achat dicté qui diffère trop du prix d'achat réel de l'article stock
+// candidat indique très probablement un article DIFFÉRENT (nouvelle vente directe),
+// pas le même article. Tolérance : ±5% ou ±0,50€ (le plus grand des deux).
+// Si l'un des deux prix est absent/invalide, on ne bloque pas (comportement inchangé).
+function priceConflicts(dictatedRaw: unknown, stockPriceRaw: unknown): boolean {
+  const d = typeof dictatedRaw === "number" ? dictatedRaw : parseFloat(String(dictatedRaw ?? ""));
+  const s = typeof stockPriceRaw === "number" ? stockPriceRaw : parseFloat(String(stockPriceRaw ?? ""));
+  if (!isFinite(d) || d <= 0 || !isFinite(s) || s <= 0) return false;
+  const tolerance = Math.max(s * 0.05, 0.5);
+  return Math.abs(d - s) > tolerance;
+}
+
 async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1022,21 +1061,31 @@ serve(async (req) => {
     });
   }
 
-  // ── Intent quota — reads is_premium from DB (server-side, not from client) ──
+  // ── Intent quota — reads premium status from DB (server-side, not from client) ──
   // Skip quota for internal normalize calls (e.g. inventory_move fallback re-parse)
   const isInternalNormalize = req.headers.get("x-internal-normalize") === "true";
   const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   let quotaLogId: string | null = null;
   if (!isInternalNormalize) {
-    const { data: profileData } = await adminClient.from("profiles").select("is_premium").eq("id", user.id).single();
-    const isPremiumUser = profileData?.is_premium === true;
+    // Ne jamais utiliser is_premium seul : is_pro/is_founder/IAP actif valent aussi
+    // statut premium (cf. CLAUDE.md — cas des promotions manuelles sans flow IAP).
+    const { data: profileData } = await adminClient.from("profiles")
+      .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+      .eq("id", user.id).single();
+    const isPremiumUser = !!(
+      profileData?.is_premium ||
+      profileData?.is_pro ||
+      profileData?.is_founder ||
+      profileData?.apple_original_transaction_id ||
+      profileData?.google_purchase_token
+    );
     const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
       p_user_id: user.id,
       p_feature: "voice_intent",
       p_is_premium: isPremiumUser,
-      p_daily_limit_free: 20,
+      p_daily_limit_free: 5, // aligné sur VOICE_FREE_LIMIT (App.jsx) et voice-transcribe
       p_monthly_limit_free: 100,
-      p_daily_limit_premium: 20,
+      p_daily_limit_premium: null, // illimité au quotidien pour premium — seul le cap mensuel (300) s'applique
       p_monthly_limit_premium: 300,
     });
     if (quotaError) console.error("[voice-intent] check_and_log_usage error:", quotaError.message);
@@ -1054,7 +1103,7 @@ serve(async (req) => {
     const _lang = lang === "en" ? "en" : "fr";
 
     // Articles en stock transmis par le client pour le matching IA
-    type StockItem = { id: string; nom: string; marque: string|null; type: string|null; description: string|null; emplacement: string|null };
+    type StockItem = { id: string; nom: string; marque: string|null; type: string|null; description: string|null; emplacement: string|null; prix_achat?: number|null };
     const _stock: StockItem[] = Array.isArray(stockItems) ? stockItems : [];
 
     // Dates dynamiques — calcul complet de toutes les périodes naturelles
@@ -1425,6 +1474,15 @@ serve(async (req) => {
       const stockJson = JSON.stringify(_stock);
 
       for (const sellTask of sellTasks) {
+        // Le no_match auto-déclaré par la 1ère extraction (Claude, sur la seule base de
+        // la formulation — ex. "que j'avais acheté" peut faire croire à tort à une vente
+        // directe façon "règle multi-articles") ne doit JAMAIS court-circuiter la tentative
+        // de matching réelle contre le stock ci-dessous. Il est effacé ici : le matching
+        // dédié (ou l'absence de stock, ou la règle "sans marque" ci-dessous) est désormais
+        // seul décisionnel. Le no_match original reste consultable dans usage_logs.raw_response
+        // à des fins d'audit — il n'est plus jamais lu pour la décision finale.
+        delete sellTask.data.no_match;
+
         // "sans marque" / "no brand" explicite → vente directe, pas de matching stock
         const noMarqueRe = _lang === "fr"
           ? /sans\s*marque|pas\s*de\s*marque|aucune\s*marque/i
@@ -1467,6 +1525,25 @@ serve(async (req) => {
 
             const matchResult = JSON.parse(matchRaw);
 
+            // Arbitrage prix : le matching automatique et silencieux ne doit avoir lieu que si
+            // la similarité nom/type/marque ET le prix d'achat dicté (s'il y en a un) concordent.
+            // Si un prix d'achat a été dicté et qu'il diffère trop de celui de l'article stock
+            // candidat, on ne matche PAS silencieusement (et on ne force pas no_match non plus) :
+            // on renvoie price_conflict pour laisser l'utilisateur trancher côté frontend.
+            const _dictatedPa = (sellTask.data as any)?.prix_achat;
+            const _applyMatch = (item: any, confidence: number, matchedId: unknown) => {
+              if (item && priceConflicts(_dictatedPa, item.prix_achat)) {
+                delete sellTask.data.no_match;
+                delete sellTask.data.matched_id;
+                sellTask.data.price_conflict = true;
+                sellTask.data.candidates = [{ id: item.id, nom: item.nom, marque: item.marque, confidence }];
+              } else {
+                delete sellTask.data.no_match;
+                sellTask.data.matched_id = matchedId;
+                sellTask.data.match_confidence = confidence;
+              }
+            };
+
             if (matchResult.matched_id) {
               // Sibling check: si d'autres articles ont le même nom+marque et qu'aucune description
               // n'a été fournie par l'utilisateur, on ne peut pas distinguer → candidates
@@ -1485,15 +1562,12 @@ serve(async (req) => {
                     confidence: matchResult.confidence ?? 1,
                   }));
                 } else {
-                  delete sellTask.data.no_match;
-                  sellTask.data.matched_id = matchResult.matched_id;
-                  sellTask.data.match_confidence = matchResult.confidence ?? 1;
+                  _applyMatch(_matchedItem, matchResult.confidence ?? 1, matchResult.matched_id);
                 }
               } else {
                 // Description fournie ou item introuvable dans le stock local → faire confiance au LLM
-                delete sellTask.data.no_match;
-                sellTask.data.matched_id = matchResult.matched_id;
-                sellTask.data.match_confidence = matchResult.confidence ?? 1;
+                // (sous réserve de l'arbitrage prix ci-dessus si l'item local est trouvé)
+                _applyMatch(_matchedItem, matchResult.confidence ?? 1, matchResult.matched_id);
               }
             } else if (matchResult.conflict && Array.isArray(matchResult.candidates) && matchResult.candidates.length > 0) {
               // Conflit de type : marque correcte mais type d'article différent
@@ -1513,9 +1587,9 @@ serve(async (req) => {
               }
               if (_cands.length === 1) {
                 // Un seul candidat → promouvoir en matched_id, pas besoin de sélection
-                delete sellTask.data.no_match;
-                sellTask.data.matched_id = String(_cands[0].id);
-                sellTask.data.match_confidence = _cands[0].confidence ?? 0.8;
+                // (sous réserve de l'arbitrage prix ci-dessus)
+                const _ci = (_stock as any[]).find((s: any) => String(s.id) === String(_cands[0].id));
+                _applyMatch(_ci, _cands[0].confidence ?? 0.8, String(_cands[0].id));
               } else {
                 sellTask.data.candidates = _cands;
               }

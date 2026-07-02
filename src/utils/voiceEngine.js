@@ -29,7 +29,7 @@ function _lev(a, b) {
 
 // Scoring multi-champs partagé : nom (requis), marque (+4 exact/+2 fuzzy), description (+2/mot), catégorie (+1), plateforme (+1).
 // Retourne les candidats triés par score desc, filtrés à score > 0.
-function rankItems(candidates, { nom = "", marque = "", description = "", categorie = "", plateforme = "" } = {}) {
+export function rankItems(candidates, { nom = "", marque = "", description = "", categorie = "", plateforme = "" } = {}) {
   const qNom  = norm(nom);
   const qMar  = norm(marque);
   const qDesc = norm(description);
@@ -67,6 +67,79 @@ function rankItems(candidates, { nom = "", marque = "", description = "", catego
     if (qPlat && _ip && (_ip.includes(qPlat) || qPlat.includes(_ip))) s += 1;
     return { item: i, score: s };
   }).filter(Boolean).sort((a, b) => b.score - a.score);
+}
+
+// Regroupe les tâches inventory_sell qui partagent le même prix_mentionne
+// (price_ambiguous:true, quantite_vendue:1 chacune) en un seul flow "lot à prix
+// groupé" — ex. "j'ai vendu un jean, une veste et une robe pour 30€", où
+// l'extraction produit N tâches distinctes avec le même prix_mentionne:30.
+// Ne concerne JAMAIS le cas existant "3 porte-clés pour 100€" (un seul article,
+// quantite_vendue>1, déjà géré par sa propre carte "total ou pièce") ni les
+// lots inventory_add à prix différents explicites (intent différent).
+// Un groupe de taille 1 (aucune autre tâche ne partage ce prix) n'est PAS
+// transformé : il repart tel quel dans le flux existant, comportement inchangé.
+export function groupSellLots(results, items) {
+  const buckets = new Map();
+  results.forEach((r, idx) => {
+    if (
+      r?.status === "pending_confirmation" &&
+      r?.intent === "inventory_sell" &&
+      r?.taskData?.price_ambiguous === true &&
+      r?.taskData?.quantite_vendue === 1 &&
+      parseFloat(r?.taskData?.prix_mentionne) > 0
+    ) {
+      const key = Number(r.taskData.prix_mentionne).toFixed(2);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(idx);
+    }
+  });
+
+  const replaceAt = new Map();
+  const removeIdx = new Set();
+  const stockPool = (items || []).filter(i => i.statut !== "vendu" && i.statut !== "sold");
+
+  for (const [key, idxs] of buckets) {
+    if (idxs.length < 2) continue;
+    const usedIds = new Set();
+    const lotItems = idxs.map(idx => {
+      const td = results[idx].taskData || {};
+      // Priorité au matched_id déjà déterminé par le matching serveur (voice-intent,
+      // toujours tenté avant regroupement) ; fallback sur rankItems (nom/marque/
+      // description, sans prix — le prix de vente individuel n'est pas encore connu).
+      let matchedItem = td.matched_id
+        ? stockPool.find(i => String(i.id) === String(td.matched_id) && !usedIds.has(String(i.id))) || null
+        : null;
+      if (!matchedItem) {
+        const available = stockPool.filter(i => !usedIds.has(String(i.id)));
+        const ranked = rankItems(available, { nom: td.nom, marque: td.marque, description: td.description, categorie: td.categorie, plateforme: td.plateforme });
+        matchedItem = ranked[0]?.item || null;
+      }
+      if (matchedItem) usedIds.add(String(matchedItem.id));
+      return {
+        nom: td.nom || null,
+        marque: td.marque || null,
+        description: td.description || null,
+        categorie: td.categorie || null,
+        plateforme: td.plateforme || null,
+        matchedItem,
+        // Aucun match → rien à demander à l'utilisateur, auto-résolu en "nouvel article".
+        resolution: matchedItem ? null : { source: "new" },
+      };
+    });
+    replaceAt.set(idxs[0], {
+      intent: "inventory_sell_lot",
+      status: "pending_confirmation",
+      taskData: { lotTotal: Number(key), items: lotItems },
+      data: {},
+      message: "",
+    });
+    for (let k = 1; k < idxs.length; k++) removeIdx.add(idxs[k]);
+  }
+
+  if (replaceAt.size === 0) return results;
+  return results
+    .map((r, idx) => (replaceAt.has(idx) ? replaceAt.get(idx) : r))
+    .filter((_, idx) => !removeIdx.has(idx));
 }
 
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
@@ -780,7 +853,15 @@ export async function executeVoiceTasks(tasks, context) {
               break;
             }
           }
-          const _ddk = norm([task.data?.nom, task.data?.marque, task.data?.description].filter(Boolean).join(" ") || "");
+          // Clé de dédup incluant le prix d'achat : des articles au nom/marque/description
+          // identiques mais à prix différents (ex. "une clé Facom 8€, une à 9€, une à 10€")
+          // sont des articles DISTINCTS, pas des doublons. Seul un prix identique doit
+          // matcher un doublon déjà traité dans ce même batch (cf. commit 1ddf5aa4 : garde-fou
+          // conçu pour éviter un double insert quand la Edge Function renvoie à la fois
+          // inventory_add et inventory_move pour le même article — même nom/marque/description
+          // ET même prix dans ce cas réel).
+          const _ddkBase = norm([task.data?.nom, task.data?.marque, task.data?.description].filter(Boolean).join(" ") || "");
+          const _ddk = _ddkBase ? `${_ddkBase}|pa:${parseNum(task.data?.prix_achat)}` : "";
           if (_ddk && executedResultsMap[_ddk]) {
             result = { intent: task.intent, taskData: task.data, status: "success", data: executedResultsMap[_ddk], message: context.lang === "en" ? "Item added" : "Article ajouté" };
             break;
@@ -833,8 +914,16 @@ export async function executeVoiceTasks(tasks, context) {
             if (result.status === "success") {
               const _keyFull = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
               const _keyNom = norm([task.data.nom, task.data.marque].filter(Boolean).join(" ") || "");
+              // Clé additionnelle avec prix, alimente UNIQUEMENT le garde-fou _ddk ci-dessus
+              // (self-dedup inventory_add, même formule). _keyFull/_keyNom restent inchangées
+              // et continuent de servir de clés de cross-référence pour les autres tasks du
+              // même batch (ex. inventory_sell "fromMap" ci-dessous, lot partiellement vendu)
+              // qui n'ont jamais connaissance du prix d'achat — les toucher casserait cette
+              // fonctionnalité indépendante du présent bug.
+              const _keyFullPrice = _keyFull ? `${_keyFull}|pa:${parseNum(task.data.prix_achat)}` : "";
               if (_keyFull) executedResultsMap[_keyFull] = result.data || task.data;
               if (_keyNom && !executedResultsMap[_keyNom]) executedResultsMap[_keyNom] = result.data || task.data;
+              if (_keyFullPrice) executedResultsMap[_keyFullPrice] = result.data || task.data;
               hadMutation = true;
             }
           }
@@ -878,6 +967,20 @@ export async function executeVoiceTasks(tasks, context) {
               status: "pending_confirmation", // rendu géré côté App.jsx via taskData.no_match
               data: task.data,
               message: context.lang === "en" ? "Item not found in stock" : "Article non trouvé dans le stock",
+            };
+            break;
+          }
+          // Cas price_conflict : marque/type correspondent à un article du stock mais le prix
+          // d'achat dicté diffère trop de celui de cet article → ne JAMAIS matcher en silence ni
+          // forcer no_match. On laisse l'utilisateur trancher (rendu géré côté App.jsx). Le
+          // fallback de scoring client ci-dessous ne doit pas ré-attraper cet article.
+          if (task.data.price_conflict) {
+            result = {
+              intent: task.intent,
+              taskData: task.data,
+              status: "pending_confirmation",
+              data: task.data,
+              message: context.lang === "en" ? "Purchase price differs from the stock item" : "Prix d'achat différent de l'article en stock",
             };
             break;
           }
@@ -936,26 +1039,17 @@ export async function executeVoiceTasks(tasks, context) {
             }
 
             if (matched) {
-              // Article trouvé avec certitude → exécution directe
-              if (context.actions.confirmSellDirect) {
-                await context.actions.confirmSellDirect(
-                  matched, parseNum(task.data.prix_vente), parseNum(task.data.frais), task.data.quantite_vendue || 1, task.data.plateforme||null
-                );
-              } else {
-                await context.actions.markSold({
-                  ...matched,
-                  prix_vente: parseNum(task.data.prix_vente),
-                  frais: parseNum(task.data.frais),
-                });
-              }
-              hadMutation = true;
-              const _pa = task.data.prix_achat ?? matched.buy ?? matched.prix_achat ?? 0;
+              // Article trouvé → ne jamais matcher en silence, même ici (cas achat+vente
+              // simultané, requiresConfirmation:false). Laisser l'utilisateur choisir entre
+              // confirmer la vente de cet article ou créer une vente séparée : on renvoie
+              // pending_confirmation avec matched_id, la carte de choix côté App.jsx s'occupe
+              // du reste (cohérent avec le cas requiresConfirmation:true ci-dessous).
               result = {
                 intent: task.intent,
-                taskData: { ...task.data, prix_achat: _pa },
-                status: "success",
-                data: { ...task.data, prix_achat: _pa },
-                message: context.lang === "en" ? "Sale registered" : "Vente enregistrée",
+                taskData: { ...task.data, matched_id: matched.id },
+                status: "pending_confirmation",
+                data: task.data,
+                message: context.lang === "en" ? "Confirm sale?" : "Confirmer la vente ?",
               };
             } else if (task.data.candidates?.length > 0) {
               // Ambiguïté : l'utilisateur doit choisir parmi les candidats dans le drawer
