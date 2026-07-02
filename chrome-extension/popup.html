@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>FillSell</title>
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: #1a1a1a;
+    }
+    h1 { font-size: 16px; margin: 0 0 12px; }
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #login-btn { background: #1a1a1a; color: #fff; }
+    #logout-btn { background: #f0f0f0; color: #1a1a1a; margin-top: 8px; }
+    #poll-now-btn { background: #f0f0f0; color: #1a1a1a; margin-top: 8px; }
+    .status { margin-bottom: 12px; padding: 8px 10px; border-radius: 8px; }
+    .status.connected { background: #e8f7ee; color: #1b7a3d; }
+    .status.disconnected { background: #fdeeee; color: #b3261e; }
+    .muted { color: #777; font-size: 12px; margin-top: 10px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>FillSell Cross-post</h1>
+
+  <div id="status-disconnected" class="status disconnected hidden">
+    Non connecté
+  </div>
+  <div id="status-connected" class="status connected hidden">
+    Connecté — <span id="user-email"></span>
+  </div>
+
+  <button id="login-btn" class="hidden">Se connecter</button>
+  <button id="poll-now-btn" class="hidden">Vérifier les jobs maintenant</button>
+  <button id="logout-btn" class="hidden">Se déconnecter</button>
+
+  <p id="last-poll" class="muted"></p>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
