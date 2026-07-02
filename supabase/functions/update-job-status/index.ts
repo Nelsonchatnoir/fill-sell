@@ -13,8 +13,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Le cycle post-publication (published → sold + création de vente + annulation
 // des jobs frères) reste géré par check-listing-status — ne pas le dupliquer ici.
 //
-// Déploiement : supabase functions deploy update-job-status --no-verify-jwt
-// (le JWT est vérifié ici en code ; --no-verify-jwt évite le 401 sur le preflight OPTIONS)
+// Déploiement : supabase functions deploy update-job-status
+// verify_jwt reste à true (défaut) : la fonction reçoit toujours un JWT
+// utilisateur, contrairement aux webhooks/cron listés dans CLAUDE.md.
+// auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
+// (user.id) et alimente le client scoped user pour la RLS.
 
 const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled"];
 

@@ -57,13 +57,15 @@ l'extension).
 ## Déployer les edge functions
 
 ```bash
-supabase functions deploy get-pending-jobs --no-verify-jwt
-supabase functions deploy update-job-status --no-verify-jwt
+supabase functions deploy get-pending-jobs
+supabase functions deploy update-job-status
 ```
 
-`--no-verify-jwt` car le JWT est vérifié dans le code des fonctions (et le
-preflight OPTIONS ne porte pas de JWT). Comme pour les autres fonctions du
-projet, ne jamais redéployer sans ce flag.
+**Sans `--no-verify-jwt`** : ces deux fonctions sont toujours appelées avec un
+JWT utilisateur, la vérification plateforme (`verify_jwt: true`, défaut) est
+une couche de sécurité gratuite. La règle `--no-verify-jwt` du CLAUDE.md ne
+concerne que les webhooks/cron appelés sans JWT (Apple, Stripe, pg_net…) —
+ne pas ajouter ces deux fonctions à cette liste.
 
 ## Tester
 
@@ -102,6 +104,6 @@ chrome-extension/
 - [ ] Sélecteurs DOM réels dans `content-scripts/vinted.js` (inspecter la page de dépôt)
 - [ ] Upload des photos (fetch → File → DataTransfer sur l'input file)
 - [ ] Content scripts Leboncoin, Beebs, eBay (+ `implemented: true` dans `background.js`)
-- [ ] Déployer les 2 edge functions
+- [x] Déployer les 2 edge functions (verify_jwt: true, défaut)
 - [ ] Test auth réel + premier dry-run
 - [ ] Après 3 publications réelles validées manuellement seulement : envisager `DRY_RUN = false`

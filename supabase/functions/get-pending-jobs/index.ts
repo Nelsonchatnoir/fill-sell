@@ -6,8 +6,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // → la policy RLS "Users manage own cross_post_jobs" garantit qu'on ne retourne
 // que les jobs de l'utilisateur authentifié.
 //
-// Déploiement : supabase functions deploy get-pending-jobs --no-verify-jwt
-// (le JWT est vérifié ici en code ; --no-verify-jwt évite le 401 sur le preflight OPTIONS)
+// Déploiement : supabase functions deploy get-pending-jobs
+// verify_jwt reste à true (défaut) : la fonction reçoit toujours un JWT
+// utilisateur, contrairement aux webhooks/cron listés dans CLAUDE.md.
+// auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
+// (user.id) et alimente le client scoped user pour la RLS.
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
