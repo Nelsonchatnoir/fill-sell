@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Camera, Mic, Sparkles, Plus } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -19,9 +20,7 @@ function PlatformMarquee() {
       <div className="lens-marquee-track" style={{ display:'flex', gap:12, width:'max-content' }}>
         {list.map((p, i) => (
           <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 16px', borderRadius:999, flexShrink:0, background:'#FFFFFF', border:'1px solid #E7E3D8', boxShadow:'0 1px 2px rgba(16,32,27,0.04)' }}>
-            <span style={{ width:24, height:24, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:700, background:`linear-gradient(135deg,${TEAL},${TEAL_DEEP})`, color:'#FFFFFF' }}>
-              {PLATFORM_LABELS[p].slice(0,3).toUpperCase()}
-            </span>
+            <PlatformLogo platform={p} size={24} />
             <span style={{ fontSize:13, fontWeight:500, color:'#3A443F' }}>{PLATFORM_LABELS[p]}</span>
           </div>
         ))}
@@ -412,10 +411,9 @@ const LensTab = memo(function LensTab({
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem, openLensEditModal,
   openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
-  supabase, saveLensItemForListing,
+  supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
-  const [lensListingInvId,setLensListingInvId]=useState(null);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
@@ -440,9 +438,8 @@ const LensTab = memo(function LensTab({
     setGeneratingListing(true);
     setListingError('');
     try{
-      const inventaireId=await saveLensItemForListing();
-      if(!inventaireId)throw new Error(lang==='en'?'Could not save item.':'Impossible de sauvegarder l\'article.');
-
+      // L'ajout au stock est décidé plus tard (switch "Ajouter au stock" à l'étape
+      // Publier) : on ne crée pas la ligne inventaire ici, on upload juste les photos.
       const uploadedUrls=[];
       const ts=Date.now();
       for(let i=0;i<lensPhotos.length;i++){
@@ -456,9 +453,9 @@ const LensTab = memo(function LensTab({
       }
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
 
-      setLensListingInvId(inventaireId);
       setLensListingPhotos(uploadedUrls);
       setShowListingPreview(true);
+      onStepperOpenChange?.(true);
     }catch(e){
       setListingError(e.message||'Erreur inattendue');
     }finally{
@@ -466,21 +463,23 @@ const LensTab = memo(function LensTab({
     }
   }
 
-  if (showListingPreview && lensListingInvId) {
+  if (showListingPreview) {
     return (
       <div style={{ width:"100%" }}>
         <ListingPreviewScreen
-          inventaireId={lensListingInvId}
+          inventaireId={lensInventaireId}
           userId={user.id}
           initialPhotos={lensListingPhotos}
           initialListing={lensResult}
-          onClose={()=>{setShowListingPreview(false);setLensListingInvId(null);setLensListingPhotos([]);}}
+          onClose={()=>{setShowListingPreview(false);setLensListingPhotos([]);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
           founderSpotsLeft={slotsRemaining}
           onUpgrade={openUpgradeModal}
+          createStockItem={saveLensItemForListing}
+          alreadyInStock={!!lensInventaireId}
         />
       </div>
     );

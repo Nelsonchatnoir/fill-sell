@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff } from "lucide-react";
 import ConversionModal from "./ConversionModal";
+import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -361,13 +362,13 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
   const retouchOptions = [
     {
-      id: "ia_multi",
+      id: "ia_advanced",
       label: t("retouchIaMultiLabel"),
       desc: t("retouchIaMultiDesc"),
       lockedFor: isPro ? null : "pro",
     },
     {
-      id: "ia_simple",
+      id: "ia_light",
       label: t("retouchIaSimpleLabel"),
       desc: t("retouchIaSimpleDesc"),
       lockedFor: (isPremium || isPro) ? null : "premium",
@@ -490,7 +491,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
                 return s;
               })}
               style={{
-                padding:"9px 16px", borderRadius:999,
+                display:"flex", alignItems:"center", gap:7,
+                padding:"7px 16px 7px 8px", borderRadius:999,
                 background: isOn ? "#E7F3F0" : T.chip,
                 border: `1px solid ${isOn ? T.teal : T.border}`,
                 color: isOn ? T.tealDeep : T.mute2,
@@ -499,6 +501,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
                 transition:"border-color 0.15s, background 0.15s, color 0.15s",
               }}
             >
+              <PlatformLogo platform={p} size={22} />
               {PLATFORM_LABELS[p]}
             </button>
           );
@@ -633,14 +636,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                 }}
               >
                 <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0, overflow:"hidden" }}>
-                  <span style={{
-                    width:28, height:28, borderRadius:"50%", flexShrink:0,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:10, fontWeight:700, color:"#fff",
-                    background:`linear-gradient(135deg,${T.teal},${T.tealDeep})`,
-                  }}>
-                    {PLATFORM_LABELS[p].slice(0, 3).toUpperCase()}
-                  </span>
+                  <PlatformLogo platform={p} size={28} />
                   <div style={{ minWidth:0, overflow:"hidden" }}>
                     <div style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>
                       {PLATFORM_LABELS[p].toUpperCase()}
@@ -737,9 +733,42 @@ function StepGeneration({ generating, generateError, platformListings, processed
   );
 }
 
+// ── Toggle piste + rond (teal quand ON) ──────────────────────────────────────
+
+function StockToggle({ checked, onChange, label, hint }) {
+  return (
+    <div style={{
+      display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+      background:T.card, border:`1px solid ${T.border}`, borderRadius:16,
+      padding:14, marginBottom:20,
+    }}>
+      <div style={{ minWidth:0 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:T.ink }}>{label}</div>
+        {hint && <div style={{ fontSize:12, color:T.mute2, marginTop:2, lineHeight:1.4 }}>{hint}</div>}
+      </div>
+      <button
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        style={{
+          flexShrink:0, width:44, height:26, borderRadius:999, border:"none", padding:3,
+          background: checked ? T.teal : "#D8D2C4",
+          cursor:"pointer", position:"relative", transition:"background 0.2s",
+        }}
+      >
+        <span style={{
+          display:"block", width:20, height:20, borderRadius:"50%", background:"#FFFFFF",
+          transform: checked ? "translateX(18px)" : "translateX(0)",
+          transition:"transform 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.25)",
+        }} />
+      </button>
+    </div>
+  );
+}
+
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
 
@@ -749,6 +778,31 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
       <h1 style={{ margin:"6px 0 16px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepPublishTitle")}
       </h1>
+
+      {canToggleStock && (
+        <StockToggle
+          checked={addToStock}
+          onChange={setAddToStock}
+          label={t("stepPublishAddToStockLabel")}
+          hint={addToStock ? t("stepPublishAddToStockHintOn") : t("stepPublishAddToStockHintOff")}
+        />
+      )}
+
+      {canToggleStock && addToStock && (
+        <div style={{ marginTop:-10, marginBottom:20 }}>
+          <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
+            {t("stepPublishBuyPriceLabel")}
+          </div>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={prixAchatSaisi}
+            onChange={ev => setPrixAchatSaisi(ev.target.value)}
+            placeholder={t("stepPublishBuyPricePlaceholder")}
+            style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:14, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
+          />
+        </div>
+      )}
 
       {publishError && (
         <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
@@ -766,14 +820,7 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
               borderRadius:999, padding:"6px 8px 6px 6px",
             }}
           >
-            <span style={{
-              width:24, height:24, borderRadius:"50%", flexShrink:0,
-              display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:9, fontWeight:700, color:"#fff",
-              background:`linear-gradient(135deg,${T.teal},${T.tealDeep})`,
-            }}>
-              {PLATFORM_LABELS[p].slice(0, 3).toUpperCase()}
-            </span>
+            <PlatformLogo platform={p} size={24} />
             <span style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>{PLATFORM_LABELS[p]}</span>
             <button
               onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(p); return s; })}
@@ -819,6 +866,7 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
   isPremium = false, isPro = false, founderSpotsLeft = 7, onUpgrade = () => {},
+  createStockItem = null, alreadyInStock = false,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -826,6 +874,13 @@ export default function ListingPreviewScreen({
 
   const [step, setStep]         = useState(0);
   const [initializing, setInit] = useState(true);
+
+  // Ligne inventaire liée à cette annonce : peut ne pas encore exister si l'article
+  // n'a pas encore été ajouté au stock (switch "Ajouter au stock" à l'étape Publier).
+  const [invId, setInvId] = useState(inventaireId || null);
+  const canToggleStock = typeof createStockItem === "function" && !invId && !alreadyInStock;
+  const [addToStock, setAddToStock] = useState(true);
+  const [prixAchatSaisi, setPrixAchatSaisi] = useState("");
 
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
@@ -846,7 +901,7 @@ export default function ListingPreviewScreen({
 
   // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
-    isPro ? "ia_multi" : isPremium ? "ia_simple" : "original"
+    isPro ? "ia_advanced" : isPremium ? "ia_light" : "original"
   );
 
   // Step 2 — résultats generate-listing
@@ -869,16 +924,22 @@ export default function ListingPreviewScreen({
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase
-      .from("inventaire")
-      .select("prix_vente,prix_achat")
-      .eq("id", inventaireId)
-      .single()
-      .then(({ data }) => {
-        const dbPrice = data?.prix_vente ?? data?.prix_achat ?? null;
-        const finalPrice = initialListing?.prix_vente_suggere ?? dbPrice;
-        if (finalPrice != null) setPrice(finalPrice);
-      });
+    // Pas encore de ligne inventaire (article pas encore en stock) : le prix vient
+    // uniquement du résultat Lens, pas de lecture DB possible.
+    if (invId) {
+      supabase
+        .from("inventaire")
+        .select("prix_vente,prix_achat")
+        .eq("id", invId)
+        .single()
+        .then(({ data }) => {
+          const dbPrice = data?.prix_vente ?? data?.prix_achat ?? null;
+          const finalPrice = initialListing?.prix_vente_suggere ?? dbPrice;
+          if (finalPrice != null) setPrice(finalPrice);
+        });
+    } else if (initialListing?.prix_vente_suggere != null) {
+      setPrice(initialListing.prix_vente_suggere);
+    }
 
     if (initialPhotos.length > 0) {
       setPhotos(initialPhotos);
@@ -887,10 +948,15 @@ export default function ListingPreviewScreen({
       return;
     }
 
+    if (!invId) {
+      setInit(false);
+      return;
+    }
+
     supabase
       .from("cross_post_jobs")
       .select("photos")
-      .eq("inventaire_id", inventaireId)
+      .eq("inventaire_id", invId)
       .eq("user_id", userId)
       .not("photos", "is", null)
       .order("created_at", { ascending: false })
@@ -1030,9 +1096,19 @@ export default function ListingPreviewScreen({
     setPlatformError("");
     try {
       const platforms = [...selected];
+      // Tant que l'article n'est pas en stock (invId absent), on envoie ses infos
+      // directement plutôt qu'un inventaire_id qui n'existe pas encore.
+      const itemData = invId ? null : {
+        titre:       initialListing?.titre       || "",
+        marque:      initialListing?.marque       || null,
+        description: initialListing?.description || null,
+        type:        initialListing?.categorie    || null,
+        statut:      "stock",
+        prix_vente:  price ?? initialListing?.prix_vente_suggere ?? null,
+      };
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
-          inventaire_id: inventaireId,
+          ...(invId ? { inventaire_id: invId } : { item_data: itemData }),
           photos,
           platforms,
           photo_option: photoOption,
@@ -1090,9 +1166,19 @@ export default function ListingPreviewScreen({
         return;
       }
 
+      // Switch "Ajouter au stock" ON et article pas encore en stock : on le crée
+      // maintenant, juste avant de générer les jobs de publication, pour que
+      // cross_post_jobs.inventaire_id pointe vers la bonne ligne dès l'insert.
+      let currentInvId = invId;
+      if (addToStock && !currentInvId && createStockItem) {
+        currentInvId = await createStockItem(prixAchatSaisi);
+        if (!currentInvId) throw new Error(t("genericError"));
+        setInvId(currentInvId);
+      }
+
       const rows = [...selected].map(platform => ({
         user_id:         userId,
-        inventaire_id:   inventaireId,
+        inventaire_id:   addToStock ? currentInvId : null,
         platform,
         status:          "pending",
         photo_option:    photoOption,
@@ -1104,8 +1190,8 @@ export default function ListingPreviewScreen({
       }));
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
       if (insErr) throw new Error(t("genericError"));
-      if (processedPhotos?.length) {
-        await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", inventaireId);
+      if (addToStock && currentInvId && processedPhotos?.length) {
+        await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", currentInvId);
       }
       setDone(true);
     } catch (e) {
@@ -1116,13 +1202,13 @@ export default function ListingPreviewScreen({
 
   // ── Lock retouche ─────────────────────────────────────────────────────────
   function handleStyleLockTap(optionId) {
-    if (optionId === "ia_multi") {
+    if (optionId === "ia_advanced") {
       setQuotaModal({
         open: true, trigger: "style",
         targetTiers: isPremium ? ["pro"] : ["premium","pro"],
         isProCoins: false,
       });
-    } else if (optionId === "ia_simple") {
+    } else if (optionId === "ia_light") {
       setQuotaModal({ open: true, trigger: "style", targetTiers: ["premium","pro"], isProCoins: false });
     }
   }
@@ -1311,6 +1397,11 @@ export default function ListingPreviewScreen({
             platformListings={platformListings}
             publishError={publishError}
             lang={lang}
+            canToggleStock={canToggleStock}
+            addToStock={addToStock}
+            setAddToStock={setAddToStock}
+            prixAchatSaisi={prixAchatSaisi}
+            setPrixAchatSaisi={setPrixAchatSaisi}
           />
         )}
       </div>

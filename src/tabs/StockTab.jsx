@@ -4,6 +4,7 @@ import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen from '../components/ListingPreviewScreen';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
@@ -49,7 +50,7 @@ const StockTab = memo(function StockTab({
   importRef, listRef, scrollRef,
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock, VoiceZone,
-  slotsRemaining, openUpgradeModal,
+  slotsRemaining, openUpgradeModal, onStepperOpenChange,
 }) {
   const { t, tpl } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -1233,8 +1234,11 @@ const StockTab = memo(function StockTab({
                               </span>
                             );
                             if (published.length) return (
-                              <span style={{background:"#EEF2FF",color:"#4F46E5",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C7D2FE"}}>
-                                🌐 {published.join(" · ")}
+                              <span style={{background:"#EEF2FF",color:"#4F46E5",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C7D2FE",display:"inline-flex",alignItems:"center",gap:4}}>
+                                🌐
+                                <span style={{display:"inline-flex",alignItems:"center",gap:3}}>
+                                  {published.map(p => <PlatformLogo key={p} platform={p} size={14} />)}
+                                </span>
                               </span>
                             );
                             return null;
@@ -1246,7 +1250,7 @@ const StockTab = memo(function StockTab({
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                         {isPro&&(
-                          <button onClick={(e)=>{e.stopPropagation();setPublishItem(item);}} style={{background:"#EEF2FF",color:"#4F46E5",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                          <button onClick={(e)=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}} style={{background:"#EEF2FF",color:"#4F46E5",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                             {lang==='fr'?'Publier':'Publish'}
                           </button>
                         )}
@@ -1281,7 +1285,7 @@ const StockTab = memo(function StockTab({
           inventaireId={publishItem.id}
           userId={user.id}
           initialPhotos={[]}
-          onClose={()=>setPublishItem(null)}
+          onClose={()=>{setPublishItem(null);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
         />

@@ -1462,7 +1462,7 @@ const CAT_COLORS_MAP={
 };
 
 
-function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,setConversionModal}){
+function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,setConversionModal,hideFab=false}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const vaStreamRef=useRef(null);
@@ -1671,7 +1671,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       `}</style>
 
       {/* FAB */}
-      <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />
+      {!hideFab && <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />}
 
       {/* Voice remaining pill (free users, 1-2 left only) */}
       {!isPremium&&!isRec&&!isThink&&!isRes&&(()=>{
@@ -3439,6 +3439,7 @@ export default function App({ loginOnly = false }){
   const [isPremium,setIsPremium]=useState(false);
   const [isPro,setIsPro]=useState(false);
   const [lensInventaireId,setLensInventaireId]=useState(null);
+  const [listingStepperOpen,setListingStepperOpen]=useState(false);
   const [slotsRemaining,setSlotsRemaining]=useState(null);
   const [showUpgradeModal,setShowUpgradeModal]=useState(false);
   const [aiCache,setAiCache]=useState({});
@@ -4894,7 +4895,9 @@ export default function App({ loginOnly = false }){
   const vaActions={
     addItem:async(data)=>{
       if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
-      const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
+      // prix_achat explicitement null (et aucune estimation de lot) = prix réellement inconnu,
+      // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
+      const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);
       const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
       const _cleanDesc=(desc,nom,marque)=>{if(!desc)return null;let s=desc;const _strip=(w)=>{if(!w)return;s=s.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'gi'),'').trim();};_strip(nom);_strip(marque);s=s.replace(/\s+/g,' ').replace(/^[,\s]+|[,\s]+$/g,'').trim();return s||null;};
@@ -5261,16 +5264,18 @@ export default function App({ loginOnly = false }){
     });
   }
 
-  async function saveLensItemForListing(){
+  async function saveLensItemForListing(prixAchatSaisi){
     if(lensInventaireId)return lensInventaireId;
     if(!lensResult?.titre||lensResult.est_vendu)return null;
     try{
+      const saisi=prixAchatSaisi!=null&&prixAchatSaisi!==""?parseFloat(String(prixAchatSaisi).replace(",","."))||null:null;
       const mapped=await vaActions.addItem({
         nom:lensResult.titre||"Article",
         marque:lensResult.marque||null,
         categorie:lensResult.categorie||"Autre",
         description:lensResult.description||(lensDesc.trim()||null),
-        prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
+        // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
+        prix_achat:saisi??lensResult.prix_achat_reel??null,
         prix_vente:lensResult.prix_vente_suggere||null,
         quantite:1,
       });
@@ -5311,7 +5316,8 @@ export default function App({ loginOnly = false }){
           marque:lensResult.marque||null,
           categorie:lensResult.categorie||"Autre",
           description:lensResult.description||(lensDesc.trim()||null),
-          prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
+          // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
+          prix_achat:lensResult.prix_achat_reel??null,
           prix_vente:lensResult.prix_vente_suggere||null,
           quantite:1,
         });
@@ -5460,6 +5466,7 @@ export default function App({ loginOnly = false }){
             VoiceZone={VoiceZone}
             slotsRemaining={slotsRemaining}
             openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            onStepperOpenChange={setListingStepperOpen}
           />
         )}
 
@@ -5486,6 +5493,8 @@ export default function App({ loginOnly = false }){
             isPro={isPro}
             supabase={supabase}
             saveLensItemForListing={saveLensItemForListing}
+            lensInventaireId={lensInventaireId}
+            onStepperOpenChange={setListingStepperOpen}
           />
         )}
 
@@ -6240,6 +6249,7 @@ export default function App({ loginOnly = false }){
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
         setConversionModal={setConversionModal}
+        hideFab={listingStepperOpen}
       />
 
 

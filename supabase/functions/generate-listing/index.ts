@@ -9,7 +9,7 @@ const CORS = {
 const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   vinted: {
     lang: "fr",
-    system: `Tu es un revendeur professionnel sur Vinted. Ton: conversationnel, chaleureux, quelques emojis 🌟✨, mentionne envoi rapide. Infère taille, matière, état et marque depuis le contexte article. Si un champ ne s'applique pas (ex: taille pour un objet), utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","matiere":"...ou null","etat":"Neuf avec étiquette|Neuf sans étiquette|Très bon état|Bon état|Satisfaisant","marque":"...ou null"}}`,
+    system: `Tu es un revendeur professionnel sur Vinted. Ton: conversationnel, chaleureux, quelques emojis 🌟✨, mentionne envoi rapide. Infère taille, matière, état et marque depuis le contexte article. Si un champ ne s'applique pas (ex: taille pour un objet), utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","matiere":"...ou null","etat":"Très bon état|Bon état|Satisfaisant|Neuf avec étiquette|Neuf sans étiquette","marque":"...ou null"}}`,
   },
   leboncoin: {
     lang: "fr",
@@ -29,21 +29,33 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
-const OPENAI_IMG_PROMPT = `Enhance this clothing product photo to make it look appealing and sale-ready, while keeping the garment exactly as it is.
-
-Lighting: Apply soft, natural, warm-toned lighting — as if photographed near a bright window on a clear day. Even, flattering light with no harsh shadows or overexposed areas.
-
-Fabric: Very lightly and naturally smooth out wrinkles and creases, as if the garment had been gently steamed — subtle and realistic, never artificial, never overly perfect or plastic-looking.
-
-Color and clarity: Improve color accuracy and sharpness slightly, keeping tones true to the original.
+const OPENAI_IMG_PROMPT_LIGHT = `Lightly enhance this clothing product photo: adjust white balance and brightness slightly so the garment reads clearly, and correct any obvious color cast. Keep everything else exactly as in the original photo — pose, framing, angle, background, wrinkles, garment details.
 
 Strict constraints — do NOT change:
 - The pose, framing, angle, or camera perspective
 - The background
 - The garment's shape, cut, size, color, pattern, fabric texture, or any design detail (buttons, logos, stitching, prints, labels)
+- Do not smooth fabric or remove wrinkles
 - Do not add, remove, or invent any element
 
-The result must be the exact same garment in the exact same photo, only with improved lighting and a very light, natural pressing effect.`;
+This is a fast, subtle brightness/white-balance correction only — nothing else should visibly change.`;
+
+const OPENAI_IMG_PROMPT_ADVANCED = `Enhance this clothing product photo to make it look professional and sale-ready, while keeping the garment exactly as it is.
+
+Lighting: Apply soft, natural, warm-toned lighting — as if photographed near a bright window on a clear day. Even, flattering light with no harsh shadows or overexposed areas. Increase contrast and pop slightly for a more premium, catalog-like look.
+
+Fabric: Naturally smooth out wrinkles and creases, as if the garment had been gently steamed — realistic, never artificial or plastic-looking.
+
+Background: If the background is cluttered or messy, subtly clean and simplify it (soft blur or neutral tidy-up) without changing its general setting or color — keep it recognizable as the same location, just tidier and less distracting.
+
+Color and clarity: Improve color accuracy and sharpness noticeably, keeping tones true to the original.
+
+Strict constraints — do NOT change:
+- The pose, framing, angle, or camera perspective
+- The garment's shape, cut, size, color, pattern, fabric texture, or any design detail (buttons, logos, stitching, prints, labels)
+- Do not add, remove, or invent any element on the garment itself
+
+The result must be the exact same garment in the exact same photo, with visibly improved lighting, contrast, a cleaner background, and a light natural pressing effect.`;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -82,26 +94,37 @@ serve(async (req) => {
 
     const body = await req.json();
     const { inventaire_id, photos, platforms } = body;
-    // photo_option: "ia_multi" (6 angles), "ia_simple" (1 angle), "original" (no AI)
-    const photo_option = (body.photo_option as string) || "ia_multi";
+    // item_data: champs de l'article envoyés directement par le client quand aucune ligne
+    // inventaire n'existe encore (switch "ajouter au stock" différé/désactivé) — évite de
+    // dépendre d'une ligne DB qui n'est créée qu'à la publication, voire jamais.
+    const item_data = body.item_data && typeof body.item_data === "object" ? body.item_data : null;
+    // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
+    // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur inconnue ou legacy
+    // ("ia_multi", "ia_simple", etc.) retombe sur "ia_advanced" pour ne jamais casser un ancien appel.
+    const photo_option = (body.photo_option as string) || "ia_advanced";
     // price may be pre-fetched client-side; used as fallback if prix_vente is null in DB
     const body_price = body.price != null ? Number(body.price) : null;
 
     if (
-      !inventaire_id ||
+      (!inventaire_id && !item_data) ||
       !Array.isArray(photos) || photos.length === 0 ||
       !Array.isArray(platforms) || platforms.length === 0
     ) {
-      return json({ error: "Missing required fields: inventaire_id, photos, platforms" }, 400);
+      return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
     }
 
-    const { data: item, error: itemErr } = await adminClient
-      .from("inventaire")
-      .select("id, titre, marque, description, type, statut, prix_vente")
-      .eq("id", inventaire_id)
-      .single();
-
-    if (itemErr || !item) return json({ error: "Item not found" }, 404);
+    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null };
+    if (item_data) {
+      item = item_data;
+    } else {
+      const { data, error: itemErr } = await adminClient
+        .from("inventaire")
+        .select("id, titre, marque, description, type, statut, prix_vente")
+        .eq("id", inventaire_id)
+        .single();
+      if (itemErr || !data) return json({ error: "Item not found" }, 404);
+      item = data;
+    }
 
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
     const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
@@ -116,11 +139,13 @@ serve(async (req) => {
         url,
       }));
     } else {
-      // GPT Image 2: retouch each photo (lighting, warmth, sharpness — same angle/composition)
-      // ia_simple → first photo only; ia_multi → all provided photos
-      const photosToProcess = photo_option === "ia_simple"
-        ? (photos as string[]).slice(0, 1)
-        : (photos as string[]);
+      // GPT Image 2: retouch each photo. Two distinct tiers:
+      // - ia_light: quality "low", prompt limited to brightness/white balance — fast, subtle
+      // - ia_advanced (default): quality "high", fuller prompt with background cleanup + contrast pop
+      const isLight = photo_option === "ia_light";
+      const promptToUse = isLight ? OPENAI_IMG_PROMPT_LIGHT : OPENAI_IMG_PROMPT_ADVANCED;
+      const qualityToUse = isLight ? "low" : "high";
+      const photosToProcess = photos as string[];
       const ts = Date.now();
       const results = await Promise.allSettled(
         photosToProcess.map(async (photoUrl, idx) => {
@@ -133,10 +158,10 @@ serve(async (req) => {
 
           const form = new FormData();
           form.append("model", "gpt-image-2");
-          form.append("prompt", OPENAI_IMG_PROMPT);
+          form.append("prompt", promptToUse);
           form.append("n", "1");
           form.append("size", "1024x1024");
-          form.append("quality", "medium");
+          form.append("quality", qualityToUse);
           form.append("image[]", srcBlob, "product.jpg");
 
           const res = await fetch("https://api.openai.com/v1/images/edits", {
@@ -145,7 +170,7 @@ serve(async (req) => {
             body: form,
           });
 
-          console.log(`[gpt-image] photo ${idx} status: ${res.status}`);
+          console.log(`[gpt-image] photo ${idx} (${photo_option}) status: ${res.status}`);
 
           if (!res.ok) {
             console.error(`[gpt-image] photo ${idx} error:`, await res.text());
