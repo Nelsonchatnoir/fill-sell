@@ -6,7 +6,7 @@ export default function Toast({ message, visible }) {
       left:"50%",
       transform:`translateX(-50%) translateY(${visible?0:16}px)`,
       zIndex:500,
-      background:"#0F6E56",
+      background:"#1B6E62",
       color:"#fff",
       borderRadius:14,
       padding:"12px 20px",
