@@ -273,10 +273,10 @@ function CurrencyOnboardingModal({lang,onConfirm}){
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
       <div style={{background:'#fff',borderRadius:24,padding:'20px',maxWidth:400,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',maxHeight:'88vh',display:'flex',flexDirection:'column'}}>
         <div style={{fontSize:24,textAlign:'center',marginBottom:4}}>💱</div>
-        <div style={{fontSize:18,fontWeight:700,textAlign:'center',marginBottom:3,color:'#0D0D0D',letterSpacing:'-0.02em'}}>
+        <div style={{fontSize:18,fontWeight:700,textAlign:'center',marginBottom:3,color:UI.ink,letterSpacing:'-0.02em'}}>
           {lang==='en'?'Choose your currency':'Choisissez votre devise'}
         </div>
-        <div style={{fontSize:11,color:'#6B7280',textAlign:'center',marginBottom:12}}>
+        <div style={{fontSize:11,color:UI.mute2,textAlign:'center',marginBottom:12}}>
           {lang==='en'?'Display only — no conversion.':'Affichage uniquement, aucune conversion.'}
         </div>
         <input placeholder={lang==='en'?'Search: USD, Dollar…':'Rechercher : EUR, Euro…'} value={search} onChange={e=>setSearch(e.target.value)}
@@ -287,13 +287,13 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             if(!items||items.length===0) return null;
             return(
               <div key={reg}>
-                <div style={{fontSize:9,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
+                <div style={{fontSize:9,fontWeight:700,color:UI.mute,textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:5,marginBottom:4}}>
                   {items.map(c=>(
                     <button key={c.code} onClick={()=>setSelected(c.code)}
-                      style={{padding:'7px 4px',borderRadius:9,border:selected===c.code?'2px solid #1D9E75':'1px solid rgba(0,0,0,0.09)',background:selected===c.code?'#F0FBF7':'#FAFAFA',cursor:'pointer',transition:'all 0.1s',fontFamily:'inherit',textAlign:'center',lineHeight:1.25}}>
-                      <div style={{fontSize:11,fontWeight:700,color:selected===c.code?'#1D9E75':'#111'}}>{c.code}</div>
-                      <div style={{fontSize:10,color:selected===c.code?'#1D9E75':'#6B7280'}}>{c.sym}</div>
+                      style={{padding:'7px 4px',borderRadius:11,border:selected===c.code?`1.5px solid ${UI.teal}`:`1px solid ${UI.border}`,background:selected===c.code?'#E7F3F0':UI.chip,cursor:'pointer',transition:'all 0.1s',fontFamily:'inherit',textAlign:'center',lineHeight:1.25}}>
+                      <div style={{fontSize:11,fontWeight:700,color:selected===c.code?UI.tealDeep:UI.ink}}>{c.code}</div>
+                      <div style={{fontSize:10,color:selected===c.code?UI.tealDeep:UI.mute2}}>{c.sym}</div>
                     </button>
                   ))}
                 </div>
@@ -302,7 +302,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
           })}
         </div>
         <div style={{marginTop:12,flexShrink:0}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#6B7280',marginBottom:6}}>{lang==='en'?"What's your name? (optional)":"Comment tu t'appelles ? (optionnel)"}</div>
+          <div style={{fontSize:11,fontWeight:700,color:UI.mute2,marginBottom:6}}>{lang==='en'?"What's your name? (optional)":"Comment tu t'appelles ? (optionnel)"}</div>
           <input
             value={usernameInput}
             onChange={e=>setUsernameInput(e.target.value.slice(0,30))}
@@ -311,10 +311,9 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:10}}
           />
         </div>
-        <button onClick={()=>onConfirm(selected,usernameInput.trim())}
-          style={{marginTop:0,width:'100%',padding:'13px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
+        <PrimaryButton onClick={()=>onConfirm(selected,usernameInput.trim())} style={{flexShrink:0}}>
           {selected} {CURRENCY_SYMBOLS[selected]} — {lang==='en'?'Confirm':'Confirmer'}
-        </button>
+        </PrimaryButton>
       </div>
     </div>
   );
@@ -326,10 +325,9 @@ function UsernameOnboardingInput({lang,onConfirm}){
       <input value={val} onChange={e=>setVal(e.target.value.slice(0,30))} maxLength={30}
         placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
         style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
-      <button onClick={()=>onConfirm(val.trim())}
-        style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+      <PrimaryButton onClick={()=>onConfirm(val.trim())}>
         {lang==='en'?"Let's go !":"C'est parti !"}
-      </button>
+      </PrimaryButton>
     </>
   );
 }
@@ -5300,10 +5298,10 @@ export default function App({ loginOnly = false }){
           <span className="name">FillSell</span>
         </button>
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.02em",lineHeight:1}}>
+          <div style={{fontSize:13,fontWeight:700,color:UI.ink,letterSpacing:"-0.02em",lineHeight:1}}>
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
           </div>
-          <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",marginTop:2,whiteSpace:"nowrap"}}>
+          <div style={{fontSize:10,fontWeight:700,color:UI.mute,marginTop:2,whiteSpace:"nowrap"}}>
             {tm.count} {t('ventesMonth')}
           </div>
         </div>
@@ -5311,7 +5309,7 @@ export default function App({ loginOnly = false }){
           {!isPremium&&!isNative?(
             <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
             <button onClick={()=>setShowPremiumModal(true)} className="tb-premium" style={{cursor:"pointer",border:"none",padding:0,background:"none",fontFamily:"inherit"}}>⭐ Premium</button>
           ):null}
@@ -5330,9 +5328,9 @@ export default function App({ loginOnly = false }){
               "Stats"
             ].map((tabLabel,i)=>(
               <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
-                style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
-                onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color="#5DCAA5";}}
-                onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color="#A3A9A6";}}
+                style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?UI.teal:"transparent"}`,color:tab===i?UI.tealDeep:UI.mute,fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
+                onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color=UI.teal;}}
+                onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color=UI.mute;}}
               >{tabLabel}</button>
             ))}
           </div>
