@@ -10,63 +10,13 @@ import {
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType, normalizeMarque,
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
-  CAT_TILE_COLORS, getCatTileColor, catClass, detectObjectIcon,
+  getCatTileColor, catClass, detectObjectIcon, buildCardCss,
 } from '../utils/shared';
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
 // Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
-const STOCK_CSS = `
-.stock-v2{
-  --canvas:#EDEAE0;
-  --paper:#F6F5F1;
-  --ink:#10201B;
-  --teal:#2F9E90;
-  --teal-deep:#1B6E62;
-  --amber:#E8956D;
-  --mute:#8A8578;
-  --border:#E7E3D8;
-  font-family:'Space Grotesk',sans-serif;
-}
-.stock-v2 .row{
-  background:#fff;border-radius:16px;
-  padding:11px 12px;border:1px solid var(--border);
-  display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
-  position:relative;
-}
-.stock-v2 .row.in-swipe{padding:0;border:none;border-radius:0;background:transparent;flex:1;min-width:0;cursor:pointer;}
-.stock-v2 .edit-affordance{position:absolute;top:8px;right:8px;font-size:10px;color:var(--mute);opacity:.5;}
-.stock-v2 .row.in-swipe .edit-affordance{top:-4px;right:-6px;}
-.stock-v2 .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
-${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`.stock-v2 .${catClass(type)}{background:${color};}`).join('\n')}
-.stock-v2 .left{min-width:0;}
-.stock-v2 .title-line{display:flex;align-items:center;gap:6px;}
-.stock-v2 .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.stock-v2 .brand-dot{width:3px;height:3px;border-radius:50%;background:var(--mute);opacity:.7;flex-shrink:0;}
-.stock-v2 .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.stock-v2 .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
-.stock-v2 .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.stock-v2 .meta .hl{color:var(--ink);}
-.stock-v2 .icons{display:flex;gap:5px;margin-top:6px;}
-.stock-v2 .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;}
-.stock-v2 .ic-vinted{background:#09B584;}
-.stock-v2 .ic-leboncoin{background:#EA5B0C;}
-.stock-v2 .ic-beebs{background:#FF6B35;}
-.stock-v2 .ic-ebay{background:#0064D2;}
-.stock-v2 .ic-plateforme{background:var(--teal-deep);}
-.stock-v2 .ic-pending{background:var(--amber);}
-.stock-v2 .ic-loc{background:var(--mute);}
-.stock-v2 .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
-.stock-v2 .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
-.stock-v2 .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
-.stock-v2 .btn-stack{display:flex;flex-direction:column;gap:4px;width:78px;}
-.stock-v2 .btn-publier{font-size:11.5px;font-weight:700;color:#fff;text-align:center;background:linear-gradient(155deg,var(--teal),var(--teal-deep));padding:6px 0;border-radius:9px;border:none;cursor:pointer;font-family:inherit;}
-.stock-v2 .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 0;border-radius:9px;cursor:pointer;font-family:inherit;}
-.stock-v2 .cat-filters{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;}
-.stock-v2 .cat-filters::-webkit-scrollbar{display:none;}
-.stock-v2 .fpill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;flex-shrink:0;cursor:pointer;font-family:inherit;transition:all 0.15s;}
-.stock-v2 .fpill.active{background:var(--ink);border-color:var(--ink);color:#fff;}
-.stock-v2 .fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(16,32,27,0.10);}
-`;
+// CSS partagé avec VentesTab via buildCardCss (src/utils/shared.js).
+const STOCK_CSS = buildCardCss('stock-v2');
 
 const StockTab = memo(function StockTab({
   // Config

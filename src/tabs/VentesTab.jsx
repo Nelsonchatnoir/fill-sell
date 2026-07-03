@@ -2,9 +2,31 @@ import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import {
-  C, formatCurrency, fmtp, getMargeColor, getCatBorder,
-  getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN, parseLocDesc,
+  formatCurrency, fmtp, getMargeColor,
+  getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
+  getCatTileColor, catClass, detectObjectIcon, buildCardCss,
 } from '../utils/shared';
+
+// ── Design 2026 (Lens / navbar) — liste des ventes ──
+// Même système de cards que StockTab (buildCardCss) + stats mensuelles / profit.
+const VENTES_CSS = buildCardCss('ventes-v2') + `
+.ventes-v2 .stats-row{display:flex;gap:8px;}
+.ventes-v2 .stat-card{flex:1;background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 12px;}
+.ventes-v2 .stat-lbl{font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;}
+.ventes-v2 .stat-val{font-weight:700;font-size:16px;margin-top:2px;color:var(--ink);}
+.ventes-v2 .stat-val.pos{color:var(--teal-deep);}
+.ventes-v2 .profit{font-weight:700;font-size:15px;color:var(--teal-deep);}
+.ventes-v2 .profit.neg{color:#B0645A;}
+.ventes-v2 .sold-date{font-size:10px;color:var(--mute);margin-top:3px;}
+`;
+
+// Accord du participe "Vendu(e)" : noms féminins courants détectés dans le
+// titre (même pattern mots-clés que detectObjectIcon). Masculin par défaut.
+const FEM_RE=/\b(robe|jupe|veste|chemise|blouse|doudoune|parka|combinaison|salopette|tunique|écharpe|casquette|ceinture|montre|bague|chaussures?|baskets?|bottes?|bottines?|sandales?|espadrilles?|ballerines?|chaussettes?|pochette|sacoche|valise|poupée|peluche|figurine|guitare|trompette|flûte|batterie|enceinte|tablette|imprimante|souris|console|télé|télévision|lampe|table|chaise|armoire|commode|étagère|bibliothèque|cafetière|bouilloire|machine|friteuse|perceuse|visseuse|scie|ponceuse|meuleuse|tondeuse|trottinette|raquette|tente|planche|palette|crème|poussette|cartes?|pièces?|assiettes?|tasses?|casserole|poêle|couette|parure|lunettes?|paire)\b/i;
+const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue':'Vendu');
+
+// Badge plateforme : mapping libellé libre -> classe couleur (mêmes classes que StockTab)
+const PLATFORM_CLASS={vinted:'ic-vinted',leboncoin:'ic-leboncoin','le bon coin':'ic-leboncoin',lbc:'ic-leboncoin',ebay:'ic-ebay',beebs:'ic-beebs'};
 
 const TICKER_SALES = [
   { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       sell:42,   margin:27,  marginPct:64 },
@@ -144,34 +166,45 @@ function SalesTicker({ lang, fmt, setTab }) {
 const VentesTab = memo(function VentesTab({
   lang, currency, isPremium, isNative, user,
   sales, visibleSales, groupedSales,
-  salesForKpis, totalM,
   searchHistory, setSearchHistory,
   showAllSales, setShowAllSales,
   iapProduct, iapLoading, handleIAPPurchase, handleIAPRestore,
-  delSale, setTab,
+  delSale, setTab, setEditItem,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, slotsRemaining,
 }) {
   const { t } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
-  const [expandedSaleId, setExpandedSaleId] = useState(null);
+  const [filterType, setFilterType] = useState("Tous");
+
+  // KPI mois courant — même formule que tm (App.jsx)
+  const now=new Date();
+  const monthSales=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
+  const monthProfit=monthSales.reduce((a,s)=>a+(s.margin||0),0);
+  const monthRevenue=monthSales.reduce((a,s)=>a+(s.sell||0),0);
+  const monthMargePct=monthRevenue>0?(monthProfit/monthRevenue)*100:0;
+
+  const filteredSales=filterType==="Tous"?visibleSales:visibleSales.filter(s=>s.type===filterType);
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+    <div className="ventes-v2" style={{display:"flex",flexDirection:"column",gap:12}}>
+      <style>{VENTES_CSS}</style>
 
-      {/* ── Header stats ── */}
+      {/* ── Stats du mois ── */}
       {sales.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:4}}>
-          {[
-            {label:t('profitTotal'),value:fmt(totalM),color:totalM>=0?"#1D9E75":C.red},
-            {label:t('ventes'),value:salesForKpis.length,color:"#4ECDC4"},
-            {label:t('profitMoyen'),value:fmt(salesForKpis.length?totalM/salesForKpis.length:0),color:"#5DCAA5"},
-          ].map((s,i)=>(
-            <div key={i} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{s.label}</div>
-              <div style={{fontSize:18,fontWeight:700,color:s.color,letterSpacing:"-0.03em"}}>{s.value}</div>
-            </div>
-          ))}
+        <div className="stats-row">
+          <div className="stat-card">
+            <div className="stat-lbl">{t('ceMois')}</div>
+            <div className={`stat-val${monthProfit>=0?" pos":""}`}>{monthProfit>=0?"+":""}{fmt(monthProfit)}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-lbl">{t('ventes')}</div>
+            <div className="stat-val">{monthSales.length}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-lbl">{t('margeMoy')}</div>
+            <div className="stat-val">{fmtp(monthMargePct)}</div>
+          </div>
         </div>
       )}
 
@@ -185,6 +218,24 @@ const VentesTab = memo(function VentesTab({
         </div>
       )}
 
+      {/* ── Filtres catégorie — mêmes pills à pastille que StockTab ── */}
+      {sales.length>0&&(()=>{
+        const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||sales.some(s=>s.type===tp));
+        return presentTypes.length>1&&(
+          <div className="cat-filters">
+            {presentTypes.map(tp=>{
+              const isActive=filterType===tp;
+              return(
+                <button key={tp} className={`fpill${isActive?" active":""}`} onClick={()=>setFilterType(tp)}>
+                  <span className="fdot" style={{background:tp==="Tous"?"linear-gradient(155deg,#2F9E90,#1B6E62)":getCatTileColor(tp)}}/>
+                  {tp==="Tous"?(lang==='en'?'All':'Tous'):typeLabel(tp,lang)}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {sales.length===0?(
         <div>
           <SalesTicker lang={lang} fmt={fmt} setTab={setTab}/>
@@ -193,52 +244,37 @@ const VentesTab = memo(function VentesTab({
         </div>
       ):(
         <>
-          {visibleSales.map(s=>{
+          {filteredSales.map(s=>{
             const d=new Date(s.date);
-            const mc=getMargeColor(s.marginPct);
-            const ts=getTypeStyle(s.type);
-            const isExpanded=expandedSaleId===s.id;
-            const {loc:_loc,rest:_desc}=parseLocDesc(s.description);
-            const hasDetail=_desc||_loc||s.emplacement;
+            const sameYear=d.getFullYear()===now.getFullYear();
+            const pKey=(s.plateforme||"").toLowerCase().trim();
             return(
-              <div key={s.id}>
-                <SwipeRow onDelete={()=>delSale(s.id)} style={{borderLeft:`3px solid ${getCatBorder(s.type)}`,borderBottomLeftRadius:isExpanded?0:12,borderBottomRightRadius:isExpanded?0:12}}>
-                  <div style={{flex:1,minWidth:0,cursor:hasDetail?"pointer":undefined}} onClick={hasDetail?()=>setExpandedSaleId(isExpanded?null:s.id):undefined}>
-                    <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
-                      {(s._qty||1)>1&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>×{s._qty}</span>}
+              // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer la vente.
+              <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
+                <div className="row in-swipe" onClick={()=>setEditItem({...s,frais:0,sell:s.sell??""})}>
+                  <span className="edit-affordance">✎</span>
+                  <div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>
+                  <div className="left">
+                    <div className="title-line">
+                      <span className="title">{s.title}</span>
+                      {s.marque&&(<><span className="brand-dot"/><span className="brandname">{marqueLabel(s.marque,lang)}</span></>)}
+                      {(s._qty||1)>1&&<span className="qty-badge">×{s._qty}</span>}
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:2}}>
-                      <span style={{fontSize:11,color:"#A3A9A6"}}>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} {d.getFullYear()}</span>
-                      {s.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{marqueLabel(s.marque,lang)}</span>}
-                      {s.type&&s.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
-                      {s.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {s.plateforme}</span>}
+                    <div className="meta">
+                      {soldWord(s.title,lang)} <span className="hl">{fmt(s.sell)}</span> · {typeLabel(s.type||"Autre",lang)}
                     </div>
-                    {!isExpanded&&(_desc||_loc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{_desc}{_desc&&_loc?" · ":""}{_loc&&`📍 ${_loc}`}</div>}
-                    {!isExpanded&&s.emplacement&&<span style={{display:"inline-block",marginTop:3,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {s.emplacement}</span>}
+                    {s.plateforme&&(
+                      <div className="icons">
+                        <div className={`micon ${PLATFORM_CLASS[pKey]||'ic-plateforme'}`}>{s.plateforme}</div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                    <div style={{flex:1,textAlign:"center",display:window.innerWidth>=768?"block":"none",padding:"0 8px"}}>
-                      <div style={{fontSize:12,color:"#A3A9A6"}}>{fmt(s.buy)} → {fmt(s.sell)}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{fmt(s.sell)}</div>
-                      <div style={{fontWeight:700,fontSize:13,color:mc,marginTop:1}}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
-                      <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(s.marginPct)}</div>
-                    </div>
-                    {hasDetail&&<span onClick={e=>{e.stopPropagation();setExpandedSaleId(isExpanded?null:s.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)",flexShrink:0}}>›</span>}
+                  <div className="right">
+                    <div className={`profit${s.margin<0?" neg":""}`}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                    <div className="sold-date">{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}{sameYear?"":` ${d.getFullYear()}`}</div>
                   </div>
-                </SwipeRow>
-                {hasDetail&&(
-                  <div style={{maxHeight:isExpanded?"200px":"0",overflow:"hidden",transition:"max-height 0.25s ease"}}>
-                    <div style={{padding:"10px 14px 12px",background:"#F9FAFB",borderLeft:`3px solid ${getCatBorder(s.type)}`,borderRight:"1px solid rgba(0,0,0,0.06)",borderBottom:"1px solid rgba(0,0,0,0.06)",borderRadius:"0 0 12px 12px"}}>
-                      {_desc&&<div style={{fontSize:12,color:"#4B5563",lineHeight:1.5,marginBottom:(_loc||s.emplacement)?4:0}}>{_desc}</div>}
-                      {_loc&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:s.emplacement?4:0}}>📍 {_loc}</div>}
-                      {s.emplacement&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4}}>📦 {s.emplacement}</div>}
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              </SwipeRow>
             );
           })}
           {!showAllSales&&groupedSales.length>10&&(

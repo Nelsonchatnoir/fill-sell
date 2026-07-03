@@ -406,6 +406,65 @@ export function detectObjectIcon(titre, description, type){
   return key?CAT_DEFAULT_ICONS[key]:CAT_DEFAULT_ICONS['Autre'];
 }
 
+// ── Design 2026 (Lens / navbar) : CSS des cards de liste (maquette validée).
+// Partagé entre StockTab (.stock-v2) et VentesTab (.ventes-v2) — même tokens,
+// même structure row [tuile | infos | droite], mêmes filtres à pastilles.
+export function buildCardCss(scope){
+  const s='.'+scope;
+  return `
+${s}{
+  --canvas:#EDEAE0;
+  --paper:#F6F5F1;
+  --ink:#10201B;
+  --teal:#2F9E90;
+  --teal-deep:#1B6E62;
+  --amber:#E8956D;
+  --mute:#8A8578;
+  --border:#E7E3D8;
+  font-family:'Space Grotesk',sans-serif;
+}
+${s} .row{
+  background:#fff;border-radius:16px;
+  padding:11px 12px;border:1px solid var(--border);
+  display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+  position:relative;
+}
+${s} .row.in-swipe{padding:0;border:none;border-radius:0;background:transparent;flex:1;min-width:0;cursor:pointer;}
+${s} .edit-affordance{position:absolute;top:8px;right:8px;font-size:10px;color:var(--mute);opacity:.5;}
+${s} .row.in-swipe .edit-affordance{top:-4px;right:-6px;}
+${s} .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`${s} .${catClass(type)}{background:${color};}`).join('\n')}
+${s} .left{min-width:0;}
+${s} .title-line{display:flex;align-items:center;gap:6px;}
+${s} .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .brand-dot{width:3px;height:3px;border-radius:50%;background:var(--mute);opacity:.7;flex-shrink:0;}
+${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
+${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .meta .hl{color:var(--ink);}
+${s} .icons{display:flex;gap:5px;margin-top:6px;}
+${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;}
+${s} .ic-vinted{background:#09B584;}
+${s} .ic-leboncoin{background:#EA5B0C;}
+${s} .ic-beebs{background:#FF6B35;}
+${s} .ic-ebay{background:#0064D2;}
+${s} .ic-plateforme{background:var(--teal-deep);}
+${s} .ic-pending{background:var(--amber);}
+${s} .ic-loc{background:var(--mute);}
+${s} .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+${s} .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
+${s} .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
+${s} .btn-stack{display:flex;flex-direction:column;gap:4px;width:78px;}
+${s} .btn-publier{font-size:11.5px;font-weight:700;color:#fff;text-align:center;background:linear-gradient(155deg,var(--teal),var(--teal-deep));padding:6px 0;border-radius:9px;border:none;cursor:pointer;font-family:inherit;}
+${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 0;border-radius:9px;cursor:pointer;font-family:inherit;}
+${s} .cat-filters{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;}
+${s} .cat-filters::-webkit-scrollbar{display:none;}
+${s} .fpill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;flex-shrink:0;cursor:pointer;font-family:inherit;transition:all 0.15s;}
+${s} .fpill.active{background:var(--ink);border-color:var(--ink);color:#fff;}
+${s} .fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(16,32,27,0.10);}
+`;
+}
+
 const TYPE_LABELS_EN={'High-Tech':'High-Tech','Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 export function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 export function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}

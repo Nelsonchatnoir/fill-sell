@@ -5507,7 +5507,7 @@ export default function App({ loginOnly = false }){
             showAllSales={showAllSales} setShowAllSales={setShowAllSales}
             iapProduct={iapProduct} iapLoading={iapLoading}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
-            delSale={delSale} setTab={setTab}
+            delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             slotsRemaining={slotsRemaining}
