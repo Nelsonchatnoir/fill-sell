@@ -4,6 +4,7 @@ import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPrev
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
 import { useTranslation } from '../i18n/useTranslation';
+import { UI, Loader } from '../components/ui';
 
 const CANVAS    = '#F6F5F1';
 const INK       = '#10201B';
@@ -688,13 +689,12 @@ const LensTab = memo(function LensTab({
       </div>
 
       {generatingListing&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.78)",zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:"0 40px"}}>
-          <style>{`@keyframes ls-spin{to{transform:rotate(360deg)}}`}</style>
-          <div style={{width:48,height:48,border:"4px solid rgba(255,255,255,0.25)",borderTopColor:"#fff",borderRadius:"50%",animation:"ls-spin 0.8s linear infinite"}}/>
-          <div style={{color:"#fff",fontWeight:700,fontSize:18,textAlign:"center"}}>
+        <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,padding:"0 40px"}}>
+          <Loader size={40} thickness={3} />
+          <div style={{color:UI.ink,fontWeight:600,fontSize:17,textAlign:"center"}}>
             {lang==="en"?"Generating your listing...":"Génération de ton annonce..."}
           </div>
-          <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,textAlign:"center",lineHeight:1.6}}>
+          <div style={{color:UI.mute2,fontSize:13,textAlign:"center",lineHeight:1.6}}>
             {lang==="en"?"Uploading photos · generating listing\n~10-20 sec":"Upload photos · génération annonce\n~10-20 sec"}
           </div>
         </div>

@@ -3,6 +3,7 @@ import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, Imag
 import ConversionModal from "./ConversionModal";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
+import { Loader } from "./ui";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -541,11 +542,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
     const msg = elapsed < 20 ? t("stepGenLoadingMsg1") : t("stepGenLoadingMsg2");
     return (
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
-        <div style={{ position:"relative", width:80, height:80, marginBottom:24, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <span style={{ position:"absolute", inset:0, borderRadius:"50%", border:"2px solid #DCEEEA" }} />
-          <span style={{ position:"absolute", inset:0, borderRadius:"50%", border:"2px solid transparent", borderTopColor:T.teal, animation:"lps-spin-slow 1.6s linear infinite" }} />
-          <Sparkles size={28} color={T.teal} />
-        </div>
+        <Loader size={80} thickness={2} icon={Sparkles} iconSize={28} style={{ marginBottom:24 }} />
         <h1 style={{ margin:"0 0 8px", fontSize:19, fontWeight:600, color:T.ink }}>
           {msg}
         </h1>
@@ -1277,8 +1274,7 @@ export default function ListingPreviewScreen({
       background:T.canvas, display:"flex", alignItems:"center", justifyContent:"center",
       paddingTop:"env(safe-area-inset-top,0px)", paddingBottom:"env(safe-area-inset-bottom,0px)",
     }}>
-      <style>{`@keyframes lps-spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${T.teal}33`, borderTopColor:T.teal, animation:"lps-spin 0.8s linear infinite" }} />
+      <Loader size={36} thickness={3} />
     </div>
   );
 
@@ -1321,10 +1317,7 @@ export default function ListingPreviewScreen({
       background:T.canvas, overflowY:"auto",
       paddingTop:"env(safe-area-inset-top,0px)",
     }}>
-      <style>{`
-        * { box-sizing: border-box; }
-        @keyframes lps-spin-slow { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`* { box-sizing: border-box; }`}</style>
 
       {/* Header : retour + progression */}
       <div style={{ padding:"12px 20px 0" }}>
