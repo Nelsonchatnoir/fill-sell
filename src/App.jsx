@@ -5487,7 +5487,7 @@ export default function App({ loginOnly = false }){
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"88vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <div style={{fontSize:16,fontWeight:700,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
-              <button onClick={()=>setEditItem(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+              <IconButton onClick={()=>setEditItem(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Field label={lang==='fr'?"Nom":"Name"} value={editItem.title} set={v=>setEditItem(p=>({...p,title:v}))} placeholder="Ex: Air Max 90..." icon="🏷️"/>
@@ -5555,12 +5555,12 @@ export default function App({ loginOnly = false }){
               </div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
-              <button onClick={handleEditSave} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>
+              <PrimaryButton onClick={handleEditSave} style={{flex:1,width:"auto"}}>
                 {lang==='fr'?"💾 Enregistrer":"💾 Save"}
-              </button>
-              <button onClick={()=>setEditItem(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              </PrimaryButton>
+              <SecondaryButton onClick={()=>setEditItem(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {t('annuler')}
-              </button>
+              </SecondaryButton>
             </div>
           </div>
         </>
@@ -5573,7 +5573,7 @@ export default function App({ loginOnly = false }){
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <div style={{fontSize:16,fontWeight:700,color:C.text}}>💰 {t('marquerVendu')}</div>
-              <button onClick={()=>setSellModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+              <IconButton onClick={()=>setSellModal(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -5623,12 +5623,12 @@ export default function App({ loginOnly = false }){
               </label>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
-              <button onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,padding:"13px",background:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"#E5E7EB":`linear-gradient(135deg,${C.teal},${C.peach})`,color:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"not-allowed":"pointer",transition:"all 0.2s"}}>
+              <PrimaryButton onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,width:"auto"}}>
                 {t('confirmer')} ✓
-              </button>
-              <button onClick={()=>setSellModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              </PrimaryButton>
+              <SecondaryButton onClick={()=>setSellModal(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {t('annuler')}
-              </button>
+              </SecondaryButton>
             </div>
           </div>
         </>
@@ -5641,7 +5641,7 @@ export default function App({ loginOnly = false }){
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(90vw,540px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"80vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <div style={{fontSize:16,fontWeight:700,color:C.text}}>📥 {lang==='fr'?"Confirmer l'import":"Confirm import"}</div>
-              <button onClick={()=>setImportModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+              <IconButton onClick={()=>setImportModal(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
 
             {/* ÉTAPE 6 : Mapping détecté */}
@@ -5743,12 +5743,12 @@ export default function App({ loginOnly = false }){
             {importMsg&&<div style={{fontSize:12,color:C.red,marginBottom:12}}>{importMsg}</div>}
 
             <div style={{display:"flex",gap:10}}>
-              <button onClick={handleImportConfirm} disabled={importLoading} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:importLoading?"not-allowed":"pointer",opacity:importLoading?0.7:1,transition:"all 0.2s"}}>
+              <PrimaryButton onClick={handleImportConfirm} disabled={importLoading} style={{flex:1,width:"auto"}}>
                 {importLoading?(lang==='fr'?"Import en cours...":"Importing..."):(lang==='fr'?"Importer les données →":"Import data →")}
-              </button>
-              <button onClick={()=>setImportModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              </PrimaryButton>
+              <SecondaryButton onClick={()=>setImportModal(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {lang==='fr'?'Annuler':'Cancel'}
-              </button>
+              </SecondaryButton>
             </div>
           </div>
         </>
@@ -5761,7 +5761,7 @@ export default function App({ loginOnly = false }){
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:384,padding:24,boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
               <div style={{fontSize:16,fontWeight:700,color:C.text}}>{t('parametres')}</div>
-              <button onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
+              <IconButton onClick={()=>{setShowSettings(false);setDeleteStep(0);}} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
 
             {/* Profil */}
@@ -6220,7 +6220,7 @@ export default function App({ loginOnly = false }){
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"24px 20px 32px",animation:"slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
               <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
-              <button onClick={()=>setShowBugReport(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:"#6B7280",flexShrink:0}}>✕</button>
+              <IconButton onClick={()=>setShowBugReport(false)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <textarea
               value={bugMessage}
@@ -6228,7 +6228,7 @@ export default function App({ loginOnly = false }){
               placeholder={lang==='fr'?'Décris le problème rencontré...':'Describe the issue...'}
               style={{width:"100%",minHeight:100,borderRadius:10,border:"1px solid #E5E7EB",padding:10,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",color:"#111827"}}
             />
-            <button
+            <PrimaryButton
               onClick={async()=>{
                 if(!bugMessage.trim())return;
                 setBugSending(true);
@@ -6248,11 +6248,11 @@ export default function App({ loginOnly = false }){
                 }finally{setBugSending(false);}
               }}
               disabled={bugSending||!bugMessage.trim()}
-              style={{width:"100%",marginTop:12,padding:"13px",background:bugSending||!bugMessage.trim()?"#E5E7EB":"#1D9E75",color:bugSending||!bugMessage.trim()?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:bugSending||!bugMessage.trim()?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
+              style={{marginTop:12}}
             >
               {bugSending?"...":(lang==='fr'?'Envoyer →':'Send →')}
-            </button>
-            <button onClick={()=>setShowBugReport(false)} style={{display:"block",width:"100%",marginTop:12,background:"none",border:"none",color:"#9CA3AF",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:4}}>
+            </PrimaryButton>
+            <button onClick={()=>setShowBugReport(false)} style={{display:"block",width:"100%",marginTop:12,background:"none",border:"none",color:UI.mute,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:4}}>
               {lang==='fr'?'Annuler':'Cancel'}
             </button>
           </div>
