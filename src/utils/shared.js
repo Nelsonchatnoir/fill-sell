@@ -228,6 +228,184 @@ export function getTypeStyle(type){
 export const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 export const getCatBorder = type => getTypeStyle(type).border;
 
+// ── Design 2026 (Lens / navbar) : tuiles de catégorie ──
+// Pastels désaturés dans l'esprit canvas #EDEAE0 / paper #F6F5F1.
+// Une couleur par catégorie — deux articles de même catégorie = même tuile.
+export const CAT_TILE_COLORS = {
+  'Mode':           '#FBEAE2',
+  'Luxe':           '#F5EBD7',
+  'High-Tech':      '#E5E9F3',
+  'Maison':         '#E6EFEA',
+  'Électroménager': '#E3F0F0',
+  'Jouets':         '#FAF0D7',
+  'Livres':         '#F0E8DB',
+  'Sport':          '#E2EEF6',
+  'Auto-Moto':      '#E9E9E3',
+  'Beauté':         '#EFE6F0',
+  'Musique':        '#EAE5F2',
+  'Collection':     '#F6E9DE',
+  'Jardin':         '#E7F0E2',
+  'Bricolage':      '#F1E9DD',
+  'Multimédia':     '#E8E4EE',
+  'Autre':          '#ECEBE6',
+};
+export function getCatTileColor(type){
+  if(CAT_TILE_COLORS[type]) return CAT_TILE_COLORS[type];
+  const key=Object.keys(CAT_TILE_COLORS).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  return key?CAT_TILE_COLORS[key]:CAT_TILE_COLORS['Autre'];
+}
+// Slug CSS de la catégorie (classe .cat-mode, .cat-hightech, .cat-electromenager...)
+export const catClass = type => 'cat-'+((type||'autre').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,''));
+
+// ── Icône par type précis d'objet (même pattern que detectType : mots-clés
+// dans titre + description, du plus spécifique au plus générique — l'ordre compte).
+const OBJECT_ICON_RULES = [
+  // Désambiguïsations prioritaires (avant les règles génériques)
+  [/basket.?ball|panier.?de.?basket/i, '🏀'],
+  [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
+  [/casque.?(?:vélo|ski|snow)/i, '⛑️'],
+  [/tondeuse.?(?:à.?)?(?:barbe|cheveux)|rasoir|épilateur/i, '🪒'],
+  [/sac.?à.?dos|backpack|cartable/i, '🎒'],
+  [/batterie.?externe|powerbank|chargeur|câble|adaptateur|\bhub\b|\bdock\b/i, '🔌'],
+  [/tapis.?de.?course|vélo.?d.?appartement|rameur|elliptique/i, '🏃'],
+  [/clavier.?(?:midi|maître)|piano|synthé|synthétiseur/i, '🎹'],
+  [/voiture.?miniature|hot.?wheels|majorette/i, '🏎️'],
+  [/machine.?à.?laver|lave.?linge|sèche.?linge|lave.?vaisselle/i, '🧺'],
+  [/machine.?à.?café|cafetière|nespresso|senseo|dolce.?gusto|expresso/i, '☕'],
+  [/carte.?(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner)|booster/i, '🃏'],
+  [/maillot.?de.?bain|bikini|monokini/i, '👙'],
+  [/jeu.?de.?société|monopoly|\buno\b/i, '🎲'],
+  // Mode / Luxe
+  [/basket|sneaker|chaussure|jordan|air.?max|air.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
+  [/botte|bottine|\bboots?\b/i, '👢'],
+  [/talon|escarpin|ballerine|compensée|louboutin/i, '👠'],
+  [/sandale|tong\b|claquette|mule\b/i, '🩴'],
+  [/\bsacs?\b|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
+  [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
+  [/valise|bagage/i, '🧳'],
+  [/robe\b|jupe/i, '👗'],
+  [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono/i, '🧥'],
+  [/chemise|blouse\b|cravate|costume/i, '👔'],
+  [/t.?shirt|tee.?shirt|débardeur|polo\b|pull|sweat|hoodie|cardigan|\btop\b|tunique/i, '👕'],
+  [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
+  [/short|bermuda/i, '🩳'],
+  [/chaussette|collant/i, '🧦'],
+  [/écharpe|foulard|châle|snood/i, '🧣'],
+  [/gant(?!.?de.?boxe)|mitaine|moufle/i, '🧤'],
+  [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
+  [/lunette|solaire|sunglass/i, '🕶️'],
+  [/montre|watch|rolex|omega|swatch/i, '⌚'],
+  [/bijou|collier|bracelet|bague|boucle.?d.?oreille|pendentif|broche/i, '💍'],
+  // High-Tech
+  [/iphone|smartphone|téléphone|galaxy|\bpixel\b|xiaomi|oneplus/i, '📱'],
+  [/macbook|laptop|ordinateur.?portable|notebook|chromebook/i, '💻'],
+  [/\bpc\b|imac|ordinateur|écran|moniteur/i, '🖥️'],
+  [/tablette|ipad/i, '📱'],
+  [/écouteur|airpods?|earbud|casque|headphone/i, '🎧'],
+  [/enceinte|haut.?parleur|speaker|barre.?de.?son|soundbar/i, '🔊'],
+  [/console|playstation|\bps[2-5]\b|xbox|nintendo|switch|game.?boy|manette|jeu.?vidéo/i, '🎮'],
+  [/\btv\b|télé\b|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
+  [/appareil.?photo|caméra|camera|reflex|gopro|objectif|caméscope/i, '📷'],
+  [/drone/i, '🛸'],
+  [/imprimante|scanner/i, '🖨️'],
+  [/clavier/i, '⌨️'],
+  [/souris/i, '🖱️'],
+  // Maison
+  [/canapé|sofa|fauteuil|banquette|pouf/i, '🛋️'],
+  [/chaise|tabouret|\bbanc\b/i, '🪑'],
+  [/\blit\b|matelas|sommier|couette|drap|parure/i, '🛏️'],
+  [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande/i, '💡'],
+  [/miroir/i, '🪞'],
+  [/bougie|photophore/i, '🕯️'],
+  [/cadre|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],
+  [/plante|cache.?pot|jardinière/i, '🪴'],
+  [/vase\b/i, '🏺'],
+  [/assiette|\bbol\b|tasse|\bmug\b|verre|carafe|vaisselle/i, '🍽️'],
+  [/casserole|poêle|cocotte|marmite|ustensile/i, '🍳'],
+  // Électroménager
+  [/bouilloire|théière/i, '🫖'],
+  [/aspirateur|roomba|nettoyeur.?vapeur/i, '🧹'],
+  [/frigo|réfrigérateur|congélateur/i, '🧊'],
+  [/\bfour\b|micro.?onde/i, '♨️'],
+  [/mixeur|blender|robot.?(?:cuisine|pâtissier)|thermomix|batteur.?électrique/i, '🥣'],
+  [/grille.?pain|toaster/i, '🍞'],
+  [/friteuse|airfryer/i, '🍟'],
+  [/sèche.?cheveux|lisseur|boucleur/i, '💇'],
+  // Bricolage
+  [/perceuse|visseuse|tournevis|perforateur/i, '🪛'],
+  [/scie|tronçonneuse|élagueuse/i, '🪚'],
+  [/marteau|maillet|\bmasse\b/i, '🔨'],
+  [/échelle|escabeau/i, '🪜'],
+  [/peinture|rouleau.?peinture|pinceau/i, '🖌️'],
+  [/\bvis\b|boulon|cheville|clou\b/i, '🔩'],
+  [/mètre.?ruban|niveau.?(?:laser|à.?bulle)/i, '📏'],
+  [/clé.?(?:plate|allen|molette|mixte|dynamométrique)|pince|étau|serre.?joint/i, '🔧'],
+  // Jardin
+  [/tondeuse|débroussailleuse|scarificateur/i, '🌱'],
+  [/taille.?haie|sécateur|cisaille/i, '✂️'],
+  [/barbecue|plancha|\bbbq\b/i, '🔥'],
+  [/salon.?de.?jardin|parasol|transat/i, '⛱️'],
+  // Sport
+  [/vélo|\bvtt\b|bicyclette/i, '🚲'],
+  [/trottinette/i, '🛴'],
+  [/skate|longboard/i, '🛹'],
+  [/roller|patin/i, '⛸️'],
+  [/\bski\b|snowboard/i, '🎿'],
+  [/ballon|football/i, '⚽'],
+  [/tennis|raquette|badminton|squash/i, '🎾'],
+  [/golf/i, '⛳'],
+  [/haltère|kettlebell|musculation|fitness/i, '🏋️'],
+  [/boxe|\bmma\b/i, '🥊'],
+  [/tente|camping|sac.?de.?couchage|duvet/i, '⛺'],
+  [/pêche|moulinet|waders/i, '🎣'],
+  [/yoga|pilates/i, '🧘'],
+  // Auto-Moto
+  [/moto\b/i, '🏍️'],
+  [/scooter/i, '🛵'],
+  [/pneu|jante|\broue\b/i, '🛞'],
+  [/voiture|automobile|autoradio|pare.?choc|rétroviseur/i, '🚗'],
+  // Beauté
+  [/parfum|eau.?de.?(?:toilette|parfum)|cologne/i, '🌸'],
+  [/rouge.?à.?lèvre|gloss|lipstick|mascara|palette|fard|eyeliner|fond.?de.?teint|blush|maquillage/i, '💄'],
+  [/vernis|manucure/i, '💅'],
+  [/crème|sérum|lotion|shampooing|gel.?douche|savon|\bsoin\b/i, '🧴'],
+  // Musique
+  [/guitare|stratocaster|telecaster|les.?paul|ukulélé/i, '🎸'],
+  [/violon|violoncelle|contrebasse/i, '🎻'],
+  [/batterie(?!.{0,12}(?:voiture|moto|vélo|externe))|cymbale|caisse.?claire/i, '🥁'],
+  [/trompette|saxophone|clarinette|flûte/i, '🎺'],
+  [/vinyle|vinyl|platine|33.?tours|45.?tours/i, '💿'],
+  [/micro(?:phone)?\b/i, '🎤'],
+  // Jouets
+  [/lego|duplo|kapla|jeu.?de.?construction/i, '🧱'],
+  [/peluche|doudou/i, '🧸'],
+  [/poupée|barbie|poupon/i, '🪆'],
+  [/puzzle/i, '🧩'],
+  [/figurine|funko/i, '🦸'],
+  // Livres
+  [/manga|\bbd\b|bande.?dessinée|comics/i, '📖'],
+  [/livre|roman|encyclopédie|dictionnaire/i, '📚'],
+  [/magazine|revue\b/i, '📰'],
+  // Collection
+  [/timbre/i, '📮'],
+  [/monnaie|numismat|pièce.?de.?monnaie/i, '🪙'],
+  // Puériculture
+  [/poussette|siège.?auto|biberon|babyphone/i, '👶'],
+];
+// Icône par défaut si aucun mot-clé ne matche : celle de la catégorie.
+const CAT_DEFAULT_ICONS = {
+  'Mode':'👗','Luxe':'💎','High-Tech':'📱','Maison':'🏠','Électroménager':'⚡',
+  'Jouets':'🧸','Livres':'📚','Sport':'⚽','Auto-Moto':'🚗','Beauté':'💄',
+  'Musique':'🎵','Collection':'🏆','Multimédia':'📺','Jardin':'🌿','Bricolage':'🔧','Autre':'📦',
+};
+export function detectObjectIcon(titre, description, type){
+  const t=((titre||'')+' '+(description||'')).toLowerCase();
+  for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
+  if(CAT_DEFAULT_ICONS[type]) return CAT_DEFAULT_ICONS[type];
+  const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  return key?CAT_DEFAULT_ICONS[key]:CAT_DEFAULT_ICONS['Autre'];
+}
+
 const TYPE_LABELS_EN={'High-Tech':'High-Tech','Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 export function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 export function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}

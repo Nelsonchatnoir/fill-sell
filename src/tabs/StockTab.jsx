@@ -3,15 +3,70 @@ import { useTranslation } from '../i18n/useTranslation';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
-import ListingPreviewScreen from '../components/ListingPreviewScreen';
-import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
 import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType, normalizeMarque,
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
+  CAT_TILE_COLORS, getCatTileColor, catClass, detectObjectIcon,
 } from '../utils/shared';
+
+// ── Design 2026 (Lens / navbar) — liste des articles en stock ──
+// Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
+const STOCK_CSS = `
+.stock-v2{
+  --canvas:#EDEAE0;
+  --paper:#F6F5F1;
+  --ink:#10201B;
+  --teal:#2F9E90;
+  --teal-deep:#1B6E62;
+  --amber:#E8956D;
+  --mute:#8A8578;
+  --border:#E7E3D8;
+  font-family:'Space Grotesk',sans-serif;
+}
+.stock-v2 .row{
+  background:#fff;border-radius:16px;
+  padding:11px 12px;border:1px solid var(--border);
+  display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+  position:relative;
+}
+.stock-v2 .row.in-swipe{padding:0;border:none;border-radius:0;background:transparent;flex:1;min-width:0;cursor:pointer;}
+.stock-v2 .edit-affordance{position:absolute;top:8px;right:8px;font-size:10px;color:var(--mute);opacity:.5;}
+.stock-v2 .row.in-swipe .edit-affordance{top:-4px;right:-6px;}
+.stock-v2 .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`.stock-v2 .${catClass(type)}{background:${color};}`).join('\n')}
+.stock-v2 .left{min-width:0;}
+.stock-v2 .title-line{display:flex;align-items:center;gap:6px;}
+.stock-v2 .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-v2 .brand-dot{width:3px;height:3px;border-radius:50%;background:var(--mute);opacity:.7;flex-shrink:0;}
+.stock-v2 .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-v2 .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
+.stock-v2 .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-v2 .meta .hl{color:var(--ink);}
+.stock-v2 .icons{display:flex;gap:5px;margin-top:6px;}
+.stock-v2 .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;}
+.stock-v2 .ic-vinted{background:#09B584;}
+.stock-v2 .ic-leboncoin{background:#EA5B0C;}
+.stock-v2 .ic-beebs{background:#FF6B35;}
+.stock-v2 .ic-ebay{background:#0064D2;}
+.stock-v2 .ic-plateforme{background:var(--teal-deep);}
+.stock-v2 .ic-pending{background:var(--amber);}
+.stock-v2 .ic-loc{background:var(--mute);}
+.stock-v2 .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+.stock-v2 .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
+.stock-v2 .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
+.stock-v2 .btn-stack{display:flex;flex-direction:column;gap:4px;width:78px;}
+.stock-v2 .btn-publier{font-size:11.5px;font-weight:700;color:#fff;text-align:center;background:linear-gradient(155deg,var(--teal),var(--teal-deep));padding:6px 0;border-radius:9px;border:none;cursor:pointer;font-family:inherit;}
+.stock-v2 .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 0;border-radius:9px;cursor:pointer;font-family:inherit;}
+.stock-v2 .cat-filters{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;}
+.stock-v2 .cat-filters::-webkit-scrollbar{display:none;}
+.stock-v2 .fpill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;flex-shrink:0;cursor:pointer;font-family:inherit;transition:all 0.15s;}
+.stock-v2 .fpill.active{background:var(--ink);border-color:var(--ink);color:#fff;}
+.stock-v2 .fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(16,32,27,0.10);}
+`;
 
 const StockTab = memo(function StockTab({
   // Config
@@ -38,7 +93,7 @@ const StockTab = memo(function StockTab({
   filterType, setFilterType, filterMarque, setFilterMarque,
   filterMarqueSold, setFilterMarqueSold,
   search, setSearch, soldShowAll, setSoldShowAll,
-  showAllStock, setShowAllStock, expandedStockId, setExpandedStockId,
+  showAllStock, setShowAllStock,
   pillsExpandedSold, setPillsExpandedSold, pillsExpandedStock, setPillsExpandedStock,
   importMsg,
   // Handlers
@@ -926,7 +981,8 @@ const StockTab = memo(function StockTab({
           </>)}
         </div>
 
-        <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
+        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
+          <style>{STOCK_CSS}</style>
 
           <VoiceZone lang={lang} currency={currency}/>
 
@@ -968,14 +1024,13 @@ const StockTab = memo(function StockTab({
             // sans article en stock ne doit plus s'afficher, même si elle a des ventes passées.
             const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||stock.some(i=>i.type===tp));
             return presentTypes.length>1&&(
-              <div className="filter-row">
+              <div className="cat-filters">
                 {presentTypes.map(tp=>{
-                  const ts=tp==="Tous"?{bg:"#F0FDF4",color:"#1D9E75",border:"#6EE7B7",emoji:""}:getTypeStyle(tp);
                   const isActive=filterType===tp;
                   return(
-                    <button key={tp} onClick={()=>setFilterType(tp)}
-                      style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:`1px solid ${isActive?ts.color:ts.border}`,background:isActive?ts.color:ts.bg,color:isActive?"#fff":ts.color,whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s",fontFamily:"inherit"}}>
-                      {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${typeLabel(tp,lang)}`}
+                    <button key={tp} className={`fpill${isActive?" active":""}`} onClick={()=>setFilterType(tp)}>
+                      <span className="fdot" style={{background:tp==="Tous"?"linear-gradient(155deg,#2F9E90,#1B6E62)":getCatTileColor(tp)}}/>
+                      {tp==="Tous"?(lang==='en'?'All':'Tous'):typeLabel(tp,lang)}
                     </button>
                   );
                 })}
@@ -1083,10 +1138,10 @@ const StockTab = memo(function StockTab({
           </div>}
 
           {/* ── EN STOCK ── */}
-          <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('enStockLabel')}</div>
                 {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
                 {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarque==="Toutes"?"#fff":"#6B7280"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
               </div>
@@ -1168,19 +1223,34 @@ const StockTab = memo(function StockTab({
                       {nom:"Sac Kelly Hermès",     marque:"Hermès",  categorie:"Luxe",       buy:125, quantite:1,  description:"Authentique, sangles légèrement usées, acheté à Dépôt-vente",                emplacement:"Vitrine luxe"},
                       {nom:"Jean Levis 501",       marque:"Levis",   categorie:"Mode",       buy:15,  quantite:1,  description:"Taille 32, bleu délavé, vintage 90s, acheté à Facebook Marketplace",          emplacement:"Étagère bureau"},
                     ].map((it,i)=>{
-                      const ts=getTypeStyle(it.categorie);
                       const {loc:_loc,rest:_desc}=parseLocDesc(it.description);
                       return(
-                        <div key={i} style={{background:"#fff",borderRadius:12,padding:"10px 14px",border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${ts.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                            <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.nom}</div>
-                            {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
-                            {it.categorie&&it.categorie!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(it.categorie,lang)}</span>}
-                            {it.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{it.quantite}</span>}
+                        <div key={i} className="row">
+                          <span className="edit-affordance">✎</span>
+                          <div className={`cat-tile ${catClass(it.categorie)}`}>{detectObjectIcon(it.nom,it.description,it.categorie)}</div>
+                          <div className="left">
+                            <div className="title-line">
+                              <span className="title">{it.nom}</span>
+                              {it.marque&&(<><span className="brand-dot"/><span className="brandname">{it.marque}</span></>)}
+                              {it.quantite>1&&<span className="qty-badge">×{it.quantite}</span>}
+                            </div>
+                            <div className="meta">
+                              {(_desc||_loc)&&(<><span className="hl">{_desc||_loc}</span>{" · "}</>)}
+                              {typeLabel(it.categorie,lang)}
+                            </div>
+                            {it.emplacement&&(
+                              <div className="icons">
+                                <div className="micon ic-loc">📦 {it.emplacement}</div>
+                              </div>
+                            )}
                           </div>
-                          {(_desc||_loc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_desc}{_desc&&_loc?" · ":""}{_loc&&`📍 ${_loc}`}</div>}
-                          {it.emplacement&&<span style={{display:"inline-block",marginTop:4,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {it.emplacement}</span>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(it.buy*(it.quantite||1))}</span></div>
+                          <div className="right">
+                            <div className="price">{fmt(it.buy*(it.quantite||1))}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
+                            <div className="btn-stack">
+                              <div className="btn-publier">{lang==='fr'?'Publier':'Publish'}</div>
+                              <div className="btn-vendre">{lang==='fr'?'Vendre':'Sell'}</div>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -1210,65 +1280,53 @@ const StockTab = memo(function StockTab({
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {stockVisible.map(item=>{
-                  const ts=getTypeStyle(item.type);
-                  const isExpanded=expandedStockId===item.id;
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
+                  const invested=item.buy*(item.quantite||1)+(item.purchaseCosts||0);
+                  const jobs=jobsByInventaire[item.id]||[];
+                  const published=jobs.filter(j=>j.status==="published").map(j=>j.platform);
+                  const hasPending=jobs.some(j=>j.status==="pending");
+                  const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
-                  <div key={item.id}>
-                    <SwipeRow onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`,borderBottomLeftRadius:isExpanded?0:12,borderBottomRightRadius:isExpanded?0:12}}>
-                      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setExpandedStockId(isExpanded?null:item.id)}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
-                          {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
-                          {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
-                          {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
-                          {(() => {
-                            const jobs = jobsByInventaire[item.id];
-                            if (!jobs?.length) return null;
-                            const hasPending = jobs.some(j => j.status === "pending");
-                            const published = jobs.filter(j => j.status === "published").map(j => j.platform);
-                            if (hasPending) return (
-                              <span style={{background:"#FFFBEB",color:"#92400E",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #FCD34D"}}>
-                                ⏳ {lang === "en" ? "Posting…" : "En cours…"}
-                              </span>
-                            );
-                            if (published.length) return (
-                              <span style={{background:"#EEF2FF",color:"#4F46E5",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C7D2FE",display:"inline-flex",alignItems:"center",gap:4}}>
-                                🌐
-                                <span style={{display:"inline-flex",alignItems:"center",gap:3}}>
-                                  {published.map(p => <PlatformLogo key={p} platform={p} size={14} />)}
-                                </span>
-                              </span>
-                            );
-                            return null;
-                          })()}
+                    // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
+                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
+                      <div className="row in-swipe" onClick={openEdit}>
+                        <span className="edit-affordance">✎</span>
+                        <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
+                        <div className="left">
+                          <div className="title-line">
+                            <span className="title">{item.title}</span>
+                            {item.marque&&(<><span className="brand-dot"/><span className="brandname">{marqueLabel(item.marque,lang)}</span></>)}
+                            {(item.quantite||1)>1&&<span className="qty-badge">×{item.quantite}</span>}
+                          </div>
+                          <div className="meta">
+                            {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
+                            {typeLabel(item.type||"Autre",lang)}
+                          </div>
+                          {(published.length>0||hasPending||item.plateforme||item.emplacement)&&(
+                            <div className="icons">
+                              {published.map(p=>(<div key={p} className={`micon ic-${p}`}>{PLATFORM_LABELS[p]||p}</div>))}
+                              {hasPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
+                              {published.length===0&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
+                              {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
+                            </div>
+                          )}
                         </div>
-                        {!isExpanded&&(_itemDesc||_itemLoc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_itemDesc}{_itemDesc&&_itemLoc?" · ":""}{_itemLoc&&`📍 ${_itemLoc}`}</div>}
-                        {item.emplacement&&<span style={{display:"inline-block",marginTop:4,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {item.emplacement}</span>}
-                        <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                        {isPro&&(
-                          <button onClick={(e)=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}} style={{background:"#EEF2FF",color:"#4F46E5",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                            {lang==='fr'?'Publier':'Publish'}
-                          </button>
-                        )}
-                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendre':'Sell'}</button>
-                        <span onClick={e=>{e.stopPropagation();setExpandedStockId(isExpanded?null:item.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)"}}>›</span>
+                        <div className="right">
+                          <div className="price">{fmt(invested)}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
+                          <div className="btn-stack">
+                            {isPro&&(
+                              <button className="btn-publier" onClick={e=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}}>
+                                {lang==='fr'?'Publier':'Publish'}
+                              </button>
+                            )}
+                            <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
+                              {lang==='fr'?'Vendre':'Sell'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </SwipeRow>
-                    <div style={{maxHeight:isExpanded?"200px":"0",overflow:"hidden",transition:"max-height 0.25s ease"}}>
-                      <div style={{padding:"10px 14px 12px",background:"#F9FAFB",borderLeft:`3px solid ${getCatBorder(item.type)}`,borderRight:"1px solid rgba(0,0,0,0.06)",borderBottom:"1px solid rgba(0,0,0,0.06)",borderRadius:"0 0 12px 12px"}}>
-                        {_itemDesc&&<div style={{fontSize:12,color:"#4B5563",lineHeight:1.5,marginBottom:(_itemLoc||item.emplacement||item.date)?4:0}}>{_itemDesc}</div>}
-                        {_itemLoc&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:(item.emplacement||item.date)?4:0}}>📍 {_itemLoc}</div>}
-                        {item.emplacement&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:item.date?4:0}}>📦 {item.emplacement}</div>}
-                        {item.date&&<div style={{fontSize:11,color:"#A3A9A6"}}>{lang==='fr'?'Ajouté le':'Added'} {new Date(item.date).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>}
-                        {!_itemDesc&&!_itemLoc&&!item.emplacement&&!item.date&&<div style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==='fr'?'Aucun détail supplémentaire':'No additional details'}</div>}
-                      </div>
-                    </div>
-                  </div>
-                );})}
+                  );})}
                 {stockFiltre.length>10&&!showAllStock&&(
                   <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
                     {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
