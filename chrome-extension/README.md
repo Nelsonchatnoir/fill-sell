@@ -101,8 +101,11 @@ chrome-extension/
 
 ## Reste à faire
 
-- [ ] Sélecteurs DOM réels dans `content-scripts/vinted.js` (inspecter la page de dépôt)
-- [ ] Upload des photos (fetch → File → DataTransfer sur l'input file)
+- [x] Sélecteurs DOM réels dans `content-scripts/vinted.js` (audit DOM réel, chemin testé : Femmes > Vêtements > Robes > Midi)
+- [x] Upload des photos (fetch → File → DataTransfer sur l'input file)
+- [ ] Mapping catégorie FillSell (`platform_fields.categorie`, libellé plat type "Mode") → chemin catalogue
+      Vinted (`platform_fields.categoryPath`, tableau ordonné) — n'existe pas encore, la sélection de
+      catégorie dans `vinted.js` est câblée mais toujours no-op tant que ce mapping n'est pas construit
 - [ ] Content scripts Leboncoin, Beebs, eBay (+ `implemented: true` dans `background.js`)
 - [x] Déployer les 2 edge functions (verify_jwt: true, défaut)
 - [ ] Test auth réel + premier dry-run
