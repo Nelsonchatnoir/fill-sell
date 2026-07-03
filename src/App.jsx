@@ -6025,8 +6025,8 @@ export default function App({ loginOnly = false }){
             <div style={{textAlign:"center",marginBottom:20}}>
               <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:99,margin:"0 auto 20px"}}/>
               <div style={{fontSize:26,marginBottom:6}}>⭐</div>
-              <div style={{fontSize:20,fontWeight:700,color:"#0D0D0D"}}>FillSell Premium</div>
-              <div style={{fontSize:13,color:"#6B7280",marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
+              <div style={{fontSize:20,fontWeight:700,color:UI.ink}}>FillSell Premium</div>
+              <div style={{fontSize:13,color:UI.mute2,marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
             </div>
             {/* Avantages */}
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
@@ -6037,15 +6037,15 @@ export default function App({ loginOnly = false }){
                 {icon:"📊",fr:"Stats avancées & analyse business",en:"Advanced stats & business insights"},
                 {icon:"⚡",fr:"Support prioritaire",en:"Priority support"},
               ].map(({icon,fr,en},i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#F0FDF8",borderRadius:12,border:"1px solid rgba(29,158,117,0.15)"}}>
+                <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#E7F3F0",borderRadius:12,border:"1px solid rgba(47,158,144,0.15)"}}>
                   <span style={{fontSize:17,flexShrink:0}}>{icon}</span>
-                  <span style={{fontSize:13,fontWeight:600,color:"#0F4C3A"}}>{lang==='fr'?fr:en}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:UI.tealDeep}}>{lang==='fr'?fr:en}</span>
                 </div>
               ))}
             </div>
             {/* VS Excel */}
-            <div style={{background:"linear-gradient(135deg,rgba(29,158,117,0.07),rgba(249,162,108,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(29,158,117,0.12)"}}>
-              <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:10}}>
+            <div style={{background:"linear-gradient(135deg,rgba(47,158,144,0.07),rgba(232,149,109,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(47,158,144,0.12)"}}>
+              <div style={{fontSize:13,fontWeight:700,color:UI.ink,marginBottom:10}}>
                 {lang==='fr'?'💪 FillSell vs Excel ?':'💪 FillSell vs Excel?'}
               </div>
               {[
@@ -6061,10 +6061,7 @@ export default function App({ loginOnly = false }){
               ))}
             </div>
             {/* Fermer */}
-            <button onClick={()=>setShowPremiumModal(false)} style={{width:"100%",padding:"13px",background:"#F1F5F9",border:"none",borderRadius:14,color:"#374151",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"background 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="#E2E8F0"}
-              onMouseLeave={e=>e.currentTarget.style.background="#F1F5F9"}
-            >{lang==='fr'?'Fermer':'Close'}</button>
+            <SecondaryButton onClick={()=>setShowPremiumModal(false)}>{lang==='fr'?'Fermer':'Close'}</SecondaryButton>
           </div>
           </div>
           <style>{`@keyframes slideUpPm{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
@@ -6098,9 +6095,9 @@ export default function App({ loginOnly = false }){
                     await supabase.from('inventaire').delete().eq('id',deleteConfirm.item.id);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:"#F3F4F6",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,color:"#0D0D0D",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                  }} style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     {lang==='fr'?'📦 Supprimer l\'article uniquement':'📦 Delete item only'}
-                    <div style={{fontSize:11,fontWeight:400,color:"#6B7280",marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
+                    <div style={{fontSize:11,fontWeight:400,color:UI.mute2,marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
                   </button>
                   <button onClick={async()=>{
                     const title=deleteConfirm.item?.title?.toLowerCase().trim();
@@ -6109,13 +6106,13 @@ export default function App({ loginOnly = false }){
                     if(matchingSale)await supabase.from('ventes').delete().eq('id',matchingSale.id);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:"#FFF5F5",border:"1px solid #FCA5A5",borderRadius:12,fontSize:13,fontWeight:700,color:"#E53E3E",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     {lang==='fr'?'🗑️ Supprimer et annuler le profit':'🗑️ Delete and remove profit'}
-                    <div style={{fontSize:11,fontWeight:400,color:"#E53E3E",opacity:0.8,marginTop:2}}>{lang==='fr'?'Supprime aussi la vente associée':'Also removes the associated sale'}</div>
+                    <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>{lang==='fr'?'Supprime aussi la vente associée':'Also removes the associated sale'}</div>
                   </button>
-                  <button onClick={()=>setDeleteConfirm(null)} style={{width:"100%",padding:"10px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                  <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
                     {lang==='fr'?'Annuler':'Cancel'}
-                  </button>
+                  </SecondaryButton>
                 </div>
               </>
             )}
@@ -6132,12 +6129,12 @@ export default function App({ loginOnly = false }){
                     await supabase.from('ventes').delete().eq('id',deleteConfirm.sale.id);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
-                  }} style={{flex:1,padding:"12px",background:"#E53E3E",border:"none",borderRadius:12,fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+                  }} style={{flex:1,padding:"12px",background:UI.negative,border:"none",borderRadius:999,fontSize:13,fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
                     {lang==='fr'?'Confirmer':'Confirm'}
                   </button>
-                  <button onClick={()=>setDeleteConfirm(null)} style={{flex:1,padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                  <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{flex:1,width:"auto",padding:12}}>
                     {lang==='fr'?'Annuler':'Cancel'}
-                  </button>
+                  </SecondaryButton>
                 </div>
               </>
             )}
