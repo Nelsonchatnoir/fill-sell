@@ -23,6 +23,7 @@ import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
+import { UI, PrimaryButton, Loader, SegmentedPills } from './components/ui';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -4772,16 +4773,9 @@ export default function App({ loginOnly = false }){
   ];
 
   if(authLoading||appLoading)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",flexDirection:"column",gap:24}}>
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
-        <img src="/icon_1024x1024.png" alt="FillSell" style={{width:72,height:72,borderRadius:18,objectFit:"cover",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}/>
-        <div style={{fontSize:22,fontWeight:700,color:"#fff",letterSpacing:"-0.02em"}}>FillSell</div>
-      </div>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        {[0,1,2].map(i=>(
-          <span key={i} style={{width:8,height:8,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"inline-block",animation:`fs-dot 1.2s ease-in-out ${i*0.2}s infinite`}}/>
-        ))}
-      </div>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:UI.canvas,flexDirection:"column",gap:20}}>
+      <img src="/icon_1024x1024.png" alt="FillSell" style={{width:64,height:64,borderRadius:16,objectFit:"cover",boxShadow:"0 8px 24px rgba(16,32,27,0.12)"}}/>
+      <Loader size={32} thickness={3}/>
     </div>
   );
 
@@ -4797,47 +4791,46 @@ export default function App({ loginOnly = false }){
   };
 
   if(!authLoading&&!isSigningIn&&(!user||loginOnly))return(
-    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
-      <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,background:"none",border:"none",color:"rgba(255,255,255,0.85)",fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>←</button>
-      <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
-        <div style={{textAlign:"center",marginBottom:20}}>
-          <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="FillSell"/>
-          <div style={{fontSize:15,color:C.sub,fontWeight:500}}>{loginTexts.subtitle}</div>
+    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflow:"hidden",boxSizing:"border-box"}}>
+      <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,width:36,height:36,borderRadius:"50%",background:UI.card,border:`1px solid ${UI.border}`,color:UI.ink,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>←</button>
+      <div style={{background:UI.card,borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.10)",boxSizing:"border-box"}}>
+        <div style={{textAlign:"center",marginBottom:22}}>
+          <img src="/logo.png" style={{height:48,marginBottom:14,objectFit:"contain"}} alt="FillSell"/>
+          <div style={{fontSize:14.5,color:UI.mute2,fontWeight:500}}>{loginTexts.subtitle}</div>
         </div>
-        <div style={{display:"flex",background:"rgba(0,0,0,0.05)",borderRadius:99,padding:3,marginBottom:18}}>
-          <button onClick={()=>setAuthMode('login')} style={{flex:1,padding:"9px 12px",borderRadius:99,border:"none",fontSize:14,fontWeight:700,cursor:"pointer",background:authMode==='login'?"#3EACA0":"transparent",color:authMode==='login'?"#fff":"#6B7280",transition:"all 0.15s"}}>
-            {loginTexts.login}
-          </button>
-          <button onClick={()=>setAuthMode('signup')} style={{flex:1,padding:"9px 12px",borderRadius:99,border:"none",fontSize:14,fontWeight:700,cursor:"pointer",background:authMode==='signup'?"#3EACA0":"transparent",color:authMode==='signup'?"#fff":"#6B7280",transition:"all 0.15s"}}>
-            {loginTexts.signup}
-          </button>
+        <div style={{marginBottom:20}}>
+          <SegmentedPills
+            options={['login','signup']}
+            value={authMode}
+            onChange={setAuthMode}
+            labelFn={m=>m==='login'?loginTexts.login:loginTexts.signup}
+          />
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {isNative&&platform==='ios'&&(
-            <div style={{marginBottom:16}}>
-              <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:12,padding:"14px 16px",fontSize:16,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
-                <span style={{fontSize:20}}>&#63743;</span>
+            <div style={{marginBottom:14}}>
+              <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
+                <span style={{fontSize:19}}>&#63743;</span>
                 {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
               </button>
-              <div style={{textAlign:"center",color:"#999",fontSize:13,marginTop:12}}>
+              <div style={{textAlign:"center",color:UI.mute,fontSize:12.5,marginTop:12}}>
                 {lang==='fr'?'— ou —':'— or —'}
               </div>
             </div>
           )}
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
-            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+            style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
           {!forgotMode&&(
             <>
               <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
                 onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-                style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-              <button onClick={authMode==='login'?handleLogin:handleSignup}
-                style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
+                style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+              <PrimaryButton onClick={authMode==='login'?handleLogin:handleSignup} style={{padding:14}}>
                 {authMode==='login'?loginTexts.login:loginTexts.signup}
-              </button>
-              {loginError&&<div style={{fontSize:13,textAlign:"center",color:C.red,fontWeight:600}}>{loginError}</div>}
+              </PrimaryButton>
+              {loginError&&<div style={{fontSize:13,textAlign:"center",color:UI.negative,fontWeight:600}}>{loginError}</div>}
               <div style={{textAlign:"center"}}>
-                <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:C.teal,cursor:"pointer",textDecoration:"underline"}}>
+                <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:UI.teal,cursor:"pointer",textDecoration:"underline"}}>
                   {loginTexts.forgot}
                 </span>
               </div>
@@ -4845,17 +4838,16 @@ export default function App({ loginOnly = false }){
           )}
           {forgotMode&&(
             <>
-              <button onClick={handleForgot}
-                style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
+              <PrimaryButton onClick={handleForgot} style={{padding:14}}>
                 {loginTexts.forgotBtn}
-              </button>
+              </PrimaryButton>
               {forgotMsg&&(
-                <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?C.teal:C.red,fontWeight:600}}>
+                <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?UI.tealDeep:UI.negative,fontWeight:600}}>
                   {forgotMsg}
                 </div>
               )}
               <div style={{textAlign:"center"}}>
-                <span onClick={()=>{setForgotMode(false);setForgotMsg("");}} style={{fontSize:13,color:C.sub,cursor:"pointer"}}>
+                <span onClick={()=>{setForgotMode(false);setForgotMsg("");}} style={{fontSize:13,color:UI.mute2,cursor:"pointer"}}>
                   {loginTexts.back}
                 </span>
               </div>
