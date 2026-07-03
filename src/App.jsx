@@ -1186,18 +1186,6 @@ function VoiceTicker({ lang = 'fr', currency = 'EUR' }) {
   );
 }
 
-function VoiceZone({ lang = 'fr', currency = 'EUR' }) {
-  const { t } = useTranslation(lang);
-  return (
-    <div className="voice-zone">
-      <div className="vz-prompt">
-        {t('voiceZonePrompt')} <b>{t('voiceZoneHint')}</b>
-      </div>
-      <VoiceTicker lang={lang} currency={currency} />
-    </div>
-  );
-}
-
 function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRemaining=null }) {
   return (
     <div className="empty-hero">
@@ -1390,25 +1378,12 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
 }
 
 function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
-  const { t } = useTranslation(lang);
   if (isRes) return null;
   return (
-    <div className="fab-wrap">
-      <div className="fab-orbit" aria-hidden="true">
-        <svg viewBox="0 0 120 120">
-          <defs>
-            <path
-              id="fabOrbitPath"
-              d="M 60,60 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"
-            />
-          </defs>
-          <text>
-            <textPath href="#fabOrbitPath" startOffset="0">
-              {t('fabOrbit')}
-            </textPath>
-          </text>
-        </svg>
-      </div>
+    <div className="fab-new">
+      <span className="pulse-ring"/>
+      <span className="pulse-ring"/>
+      <span className="pulse-ring"/>
       {isThink && (
         <div className="fab-think-toast">
           {lang === 'en' ? 'Thinking' : 'Je réfléchis'}
@@ -1416,20 +1391,19 @@ function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
         </div>
       )}
       <button
-        className={"fab-vocal" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
+        className={"fab-new-btn" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
         onClick={onClick}
         disabled={isThink}
         aria-label="Parler à l'IA"
         style={{touchAction:'manipulation'}}
       >
         {isThink
-          ? <span style={{fontSize:22}}>⏳</span>
+          ? <span style={{fontSize:19}}>⏳</span>
           : isRec
             ? <span className="fab-icon-blink">🎙️</span>
             : <span>🎙️</span>
         }
       </button>
-      {!isThink&&<div className="fab-tooltip">{lang === 'en' ? 'Talk to your AI' : 'Parle à ton IA'}</div>}
     </div>
   );
 }
@@ -5464,7 +5438,6 @@ export default function App({ loginOnly = false }){
             fabTriggerRef={fabTriggerRef}
             PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
-            VoiceZone={VoiceZone}
             slotsRemaining={slotsRemaining}
             openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             onStepperOpenChange={setListingStepperOpen}

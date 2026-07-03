@@ -96,23 +96,45 @@ const STOCK_TOP_CSS = `
   padding:26px 0 18px;
   gap:14px;
 }
-.stock-top-v2 .voice-orb{
-  width:64px; height:64px;
+.stock-top-v2 .voice-orb-wrap{
+  position:relative;
+  width:72px; height:72px;
+  display:flex; align-items:center; justify-content:center;
+  margin:0 auto;
+}
+.stock-top-v2 .pulse-ring{
+  position:absolute;
+  inset:0;
   border-radius:50%;
-  background:var(--teal-deep);
+  border:1.5px solid var(--teal);
+  opacity:0;
+  animation:stvPulseRing 2.2s cubic-bezier(0.2,0.6,0.35,1) infinite;
+  pointer-events:none;
+}
+.stock-top-v2 .pulse-ring:nth-child(2){ animation-delay:0.7s; }
+.stock-top-v2 .pulse-ring:nth-child(3){ animation-delay:1.4s; }
+@keyframes stvPulseRing{
+  0%{ transform:scale(0.72); opacity:0.55; }
+  100%{ transform:scale(1.55); opacity:0; }
+}
+.stock-top-v2 .voice-orb{
+  position:relative;
+  z-index:2;
+  width:60px; height:60px;
+  border-radius:50%;
+  background:linear-gradient(155deg, var(--teal) 0%, var(--teal-deep) 100%);
   display:flex; align-items:center; justify-content:center;
   color:#fff;
-  font-size:24px;
-  box-shadow:0 10px 24px -8px rgba(27,110,98,0.55);
+  font-size:22px;
+  box-shadow:0 8px 20px -6px rgba(27,110,98,0.5), inset 0 1px 1px rgba(255,255,255,0.25);
   border:none;
   cursor:pointer;
   transition:transform 0.15s ease;
 }
 .stock-top-v2 .voice-orb:active{ transform:scale(0.94); }
-.stock-top-v2 .voice-orb.listening{ animation:stvPulse 1.4s ease-in-out infinite; }
-@keyframes stvPulse{
-  0%,100%{ box-shadow:0 10px 24px -8px rgba(27,110,98,0.55),0 0 0 0 rgba(27,110,98,0.35); }
-  50%{ box-shadow:0 10px 24px -8px rgba(27,110,98,0.55),0 0 0 10px rgba(27,110,98,0); }
+.stock-top-v2 .voice-orb.thinking{ opacity:0.85; cursor:not-allowed; }
+@media (prefers-reduced-motion: reduce){
+  .stock-top-v2 .pulse-ring{ animation:none !important; opacity:0; }
 }
 .stock-top-v2 .voice-hint{
   font-size:12.5px;
@@ -236,7 +258,7 @@ const StockTab = memo(function StockTab({
   // Refs
   importRef, listRef, scrollRef, fabTriggerRef,
   // Injected components (defined in App.jsx)
-  PremiumBanner, IAPUpgradeBlock, VoiceZone,
+  PremiumBanner, IAPUpgradeBlock,
   slotsRemaining, openUpgradeModal, onStepperOpenChange,
 }) {
   const { t, tpl } = useTranslation(lang);
@@ -887,13 +909,18 @@ const StockTab = memo(function StockTab({
                   rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
               </>):(
                 <div className="voice-state">
-                  <button type="button"
-                    className={"voice-orb"+(vaStep==="recording"?" listening":"")}
-                    onClick={()=>fabTriggerRef?.current?.()}
-                    disabled={vaStep==="thinking"}
-                  >
-                    {vaStep==="thinking"?"⏳":"🎙"}
-                  </button>
+                  <div className="voice-orb-wrap">
+                    <span className="pulse-ring"/>
+                    <span className="pulse-ring"/>
+                    <span className="pulse-ring"/>
+                    <button type="button"
+                      className={"voice-orb"+(vaStep==="thinking"?" thinking":"")}
+                      onClick={()=>fabTriggerRef?.current?.()}
+                      disabled={vaStep==="thinking"}
+                    >
+                      {vaStep==="thinking"?"⏳":"🎙"}
+                    </button>
+                  </div>
                   <div className="voice-hint">
                     {vaStep==="recording"?(lang==='fr'?"Je t'écoute…":"Listening…")
                       :vaStep==="thinking"?(lang==='fr'?"Je réfléchis…":"Thinking…")
@@ -1148,8 +1175,6 @@ const StockTab = memo(function StockTab({
 
         <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
           <style>{STOCK_CSS}</style>
-
-          <VoiceZone lang={lang} currency={currency}/>
 
           {/* ── Barre Import / Export ── */}
           {isPremium?(
