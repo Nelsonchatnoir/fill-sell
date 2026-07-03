@@ -5796,7 +5796,7 @@ export default function App({ loginOnly = false }){
                     setTimeout(()=>setToast({visible:false,message:''}),3000);
                   }}
                   disabled={settingsPseudoSaving}
-                  style={{padding:"8px 14px",borderRadius:10,border:"none",background:C.teal,color:"#fff",fontSize:13,fontWeight:700,cursor:settingsPseudoSaving?"not-allowed":"pointer",opacity:settingsPseudoSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                  style={{padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:settingsPseudoSaving?"not-allowed":"pointer",opacity:settingsPseudoSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
                 >
                   {settingsPseudoSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
                 </button>
@@ -5827,21 +5827,21 @@ export default function App({ loginOnly = false }){
                       : `Subscription cancelled. You keep premium access until${cancelPeriodEnd?` ${cancelPeriodEnd}`:" the end of the period"}.`)}
                   </div>
                 ):cancelStep===0?(
-                  <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:"1.5px solid rgba(232,149,109,0.6)",borderRadius:12,color:C.peach,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(232,149,109,0.06)"}
+                  <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:`1.5px solid ${UI.amber}99`,borderRadius:999,color:UI.amber,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}
+                    onMouseEnter={e=>e.currentTarget.style.background=`${UI.amber}0F`}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                   >
                     <span>📭</span> {t('seDesabonner')}
                   </button>
                 ):(
-                  <div style={{background:"rgba(232,149,109,0.08)",border:"1.5px solid rgba(232,149,109,0.4)",borderRadius:12,padding:"14px"}}>
-                    <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}}>{lang==='fr'?'Confirmer la résiliation ?':'Confirm cancellation?'}</div>
-                    <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>{lang==='fr'?'Tu conserveras l\'accès Premium jusqu\'à la fin de ta période en cours. Aucun remboursement au prorata.':'You will keep Premium access until the end of your current period. No prorated refund.'}</div>
+                  <div style={{background:`${UI.amber}14`,border:`1.5px solid ${UI.amber}66`,borderRadius:12,padding:"14px"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:UI.ink,marginBottom:10}}>{lang==='fr'?'Confirmer la résiliation ?':'Confirm cancellation?'}</div>
+                    <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>{lang==='fr'?'Tu conserveras l\'accès Premium jusqu\'à la fin de ta période en cours. Aucun remboursement au prorata.':'You will keep Premium access until the end of your current period. No prorated refund.'}</div>
                     <div style={{display:"flex",gap:8}}>
-                      <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:C.peach,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
+                      <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:UI.amber,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
                         {cancelLoading?"...":(lang==='fr'?'Confirmer':'Confirm')}
                       </button>
-                      <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
+                      <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
                         {lang==='fr'?'Annuler':'Cancel'}
                       </button>
                     </div>
@@ -5884,16 +5884,9 @@ export default function App({ loginOnly = false }){
             </a>
 
             {/* Langue */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:C.rowBg,borderRadius:12,marginBottom:12}}>
-              <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('langue')}</span>
-              <div style={{display:"flex",gap:6}}>
-                {['fr','en'].map(l=>(
-                  <button key={l} onClick={()=>{track('change_language',{language:l});setLang(l);}}
-                    style={{padding:"5px 12px",borderRadius:99,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",background:lang===l?"#1D9E75":"rgba(0,0,0,0.06)",color:lang===l?"#fff":"#6B7280"}}>
-                    {l.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:UI.chip,borderRadius:12,marginBottom:12}}>
+              <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('langue')}</span>
+              <SegmentedPills options={['fr','en']} value={lang} onChange={l=>{track('change_language',{language:l});setLang(l);}} labelFn={l=>l.toUpperCase()} />
             </div>
 
             {/* Devise */}
@@ -5911,62 +5904,62 @@ export default function App({ loginOnly = false }){
                   ))}
                 </select>
               </div>
-              <div style={{fontSize:11,color:"#9CA3AF",marginTop:8,lineHeight:1.4}}>
+              <div style={{fontSize:11,color:UI.mute,marginTop:8,lineHeight:1.4}}>
                 {lang==='en'?'⚠️ Changing currency does not convert your existing data.':'⚠️ Changer la devise ne convertit pas vos données existantes.'}
               </div>
             </div>
 
             {/* Déconnexion */}
-            <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${C.red}88`,borderRadius:12,color:C.red,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(229,62,62,0.06)"}
+            <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${UI.negative}88`,borderRadius:999,color:UI.negative,fontSize:14,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${UI.negative}0F`}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >{t('seDeconnecter')}</button>
 
             {/* Suppression de compte */}
-            <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid rgba(0,0,0,0.07)"}}>
+            <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${UI.border}`}}>
               {deleteStep===0&&(
                 <button onClick={()=>setDeleteStep(1)}
-                  style={{width:"100%",padding:"11px",background:"transparent",border:"none",borderRadius:12,color:"#9CA3AF",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.color=C.red}
-                  onMouseLeave={e=>e.currentTarget.style.color="#9CA3AF"}
+                  style={{width:"100%",padding:"11px",background:"transparent",border:"none",borderRadius:12,color:UI.mute,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.color=UI.negative}
+                  onMouseLeave={e=>e.currentTarget.style.color=UI.mute}
                 >
                   {lang==='fr'?'Supprimer mon compte':'Delete my account'}
                 </button>
               )}
               {deleteStep===1&&(
-                <div style={{background:C.redLight,border:`1.5px solid ${C.red}44`,borderRadius:12,padding:"14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>
+                <div style={{background:`${UI.negative}0F`,border:`1.5px solid ${UI.negative}44`,borderRadius:12,padding:"14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:UI.negative,marginBottom:6}}>
                     {lang==='fr'?'Êtes-vous sûr ?':'Are you sure?'}
                   </div>
-                  <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>
+                  <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>
                     {lang==='fr'?'Cette action est irréversible.':'This action is irreversible.'}
                   </div>
                   <div style={{display:"flex",gap:8}}>
-                    <button onClick={()=>setDeleteStep(2)} style={{flex:1,padding:"9px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    <button onClick={()=>setDeleteStep(2)} style={{flex:1,padding:"9px",background:UI.negative,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
                       {lang==='fr'?'Continuer':'Continue'}
                     </button>
-                    <button onClick={()=>setDeleteStep(0)} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                    <button onClick={()=>setDeleteStep(0)} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                       {lang==='fr'?'Annuler':'Cancel'}
                     </button>
                   </div>
                 </div>
               )}
               {deleteStep===2&&(
-                <div style={{background:C.redLight,border:`2px solid ${C.red}`,borderRadius:12,padding:"14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>
+                <div style={{background:`${UI.negative}0F`,border:`2px solid ${UI.negative}`,borderRadius:12,padding:"14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:UI.negative,marginBottom:6}}>
                     {lang==='fr'?'Confirmation finale':'Final confirmation'}
                   </div>
-                  <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>
+                  <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>
                     {lang==='fr'
                       ?'Toutes vos données seront supprimées définitivement. Cette action ne peut pas être annulée.'
                       :'All your data will be permanently deleted. This action cannot be undone.'}
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <button onClick={handleDeleteAccount} disabled={deleteLoading}
-                      style={{flex:1,padding:"9px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:deleteLoading?"not-allowed":"pointer",opacity:deleteLoading?0.7:1}}>
+                      style={{flex:1,padding:"9px",background:UI.negative,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:deleteLoading?"not-allowed":"pointer",opacity:deleteLoading?0.7:1}}>
                       {deleteLoading?"...":(lang==='fr'?'Supprimer définitivement':'Delete permanently')}
                     </button>
-                    <button onClick={()=>setDeleteStep(0)} disabled={deleteLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                    <button onClick={()=>setDeleteStep(0)} disabled={deleteLoading} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                       {lang==='fr'?'Annuler':'Cancel'}
                     </button>
                   </div>
@@ -5975,20 +5968,20 @@ export default function App({ loginOnly = false }){
             </div>
 
             {/* Réinitialisation inventaire — discrète, tout en bas */}
-            <div style={{marginTop:8,paddingTop:12,borderTop:"1px solid rgba(0,0,0,0.05)",textAlign:"center"}}>
+            <div style={{marginTop:8,paddingTop:12,borderTop:`1px solid ${UI.border}`,textAlign:"center"}}>
               {resetStep===0&&(
                 <button onClick={handleReset}
-                  style={{background:"none",border:"none",color:"#D1D5DB",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 8px",borderRadius:8,transition:"color 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.color="#9CA3AF"}
-                  onMouseLeave={e=>e.currentTarget.style.color="#D1D5DB"}
+                  style={{background:"none",border:"none",color:UI.mute,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 8px",borderRadius:8,transition:"color 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.color=UI.negative}
+                  onMouseLeave={e=>e.currentTarget.style.color=UI.mute}
                 >{lang==='fr'?'Réinitialiser l\'inventaire':'Reset inventory'}</button>
               )}
               {resetStep===1&&(
                 <div>
-                  <div style={{fontSize:12,color:"#9CA3AF",marginBottom:8}}>{lang==='fr'?'⚠️ Supprimer tout le stock et les ventes ?':'⚠️ Delete all stock and sales?'}</div>
+                  <div style={{fontSize:12,color:UI.mute,marginBottom:8}}>{lang==='fr'?'⚠️ Supprimer tout le stock et les ventes ?':'⚠️ Delete all stock and sales?'}</div>
                   <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-                    <button onClick={handleReset} style={{padding:"5px 14px",background:"none",border:"1px solid #D1D5DB",borderRadius:8,color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Confirmer':'Confirm'}</button>
-                    <button onClick={()=>setResetStep(0)} style={{padding:"5px 14px",background:"none",border:"1px solid #D1D5DB",borderRadius:8,color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Annuler':'Cancel'}</button>
+                    <button onClick={handleReset} style={{padding:"5px 14px",background:"none",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Confirmer':'Confirm'}</button>
+                    <button onClick={()=>setResetStep(0)} style={{padding:"5px 14px",background:"none",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Annuler':'Cancel'}</button>
                   </div>
                 </div>
               )}
@@ -5996,7 +5989,7 @@ export default function App({ loginOnly = false }){
 
             {/* Signaler un bug */}
             <button onClick={()=>{setShowBugReport(true);setBugMessage("");}}
-              style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:"#9CA3AF",marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
+              style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:UI.mute,marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
             >
               🐛 {lang==='fr'?'Signaler un bug':'Report a bug'}
             </button>
