@@ -85,6 +85,34 @@ export function SecondaryButton({ children, disabled, onClick, icon:Icon, style,
   );
 }
 
+// Signature "upgrade" (Premium/Pro) — dégradé teal→amber animé, volontairement
+// distinct du PrimaryButton neutre pour rester repérable comme un CTA d'upsell.
+export function PremiumButton({ children, disabled, onClick, icon:Icon, style, type='button' }) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width:'100%', boxSizing:'border-box', borderRadius:999, padding:'15px 0',
+        display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+        fontSize:15, fontWeight:600, border:'none', fontFamily:'inherit',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        background: disabled ? '#DCEEEA' : `linear-gradient(110deg, ${UI.teal} 0%, ${UI.amber} 50%, ${UI.teal} 100%)`,
+        backgroundSize:'200% 100%',
+        color: disabled ? '#8FB5AE' : '#FFFFFF',
+        boxShadow: disabled ? 'none' : '0 10px 24px -8px rgba(232,149,109,0.45)',
+        animation: disabled ? 'none' : 'ui-premium-shimmer 5s ease-in-out infinite',
+        ...style,
+      }}
+    >
+      <style>{`@keyframes ui-premium-shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}`}</style>
+      {Icon && <Icon size={16} strokeWidth={2.2} />}
+      {children}
+    </button>
+  );
+}
+
 export function IconButton({ onClick, icon:Icon, disabled, size=36, bg=UI.chip, iconColor=UI.ink, style, ...rest }) {
   return (
     <button

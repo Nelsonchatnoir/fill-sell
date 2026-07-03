@@ -634,7 +634,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .cp-autre.on { background:#6B7280; color:#fff; }
 
 /* ─── Add button primary pill ─── */
-.btn-pill-primary { background:#1D9E75; color:#fff; border:none; border-radius:12px; font-weight:700; font-size:14px; padding:14px 24px; cursor:pointer; transition:all 0.15s; font-family:inherit; box-shadow:0 4px 14px rgba(29,158,117,0.3); width:100%; }
+.btn-pill-primary { background:linear-gradient(120deg,#2F9E90,#1B6E62); color:#fff; border:none; border-radius:999px; font-weight:600; font-size:14px; padding:14px 24px; cursor:pointer; transition:all 0.15s; font-family:inherit; box-shadow:0 10px 24px -8px rgba(47,158,144,0.28); width:100%; }
 .btn-pill-primary:active { transform:scale(0.96); }
 
 /* ─── Tag row (Deal Score pills) ─── */
