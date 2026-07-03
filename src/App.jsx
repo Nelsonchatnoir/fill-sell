@@ -5410,7 +5410,7 @@ export default function App({ loginOnly = false }){
             voiceParsed={voiceParsed} setVoiceParsed={setVoiceParsed}
             voiceZoneResults={voiceZoneResults} setVoiceZoneResults={setVoiceZoneResults}
             voiceZoneOpen={voiceZoneOpen} setVoiceZoneOpen={setVoiceZoneOpen}
-            vaActions={vaActions}
+            vaActions={vaActions} vaStep={vaStep}
             voiceText={voiceText} setVoiceText={setVoiceText}
             voiceLoading={voiceLoading} voicePlaceholderIdx={voicePlaceholderIdx}
             voiceError={voiceError}
@@ -5461,6 +5461,7 @@ export default function App({ loginOnly = false }){
             importRef={importRef}
             listRef={listRef}
             scrollRef={scrollRef}
+            fabTriggerRef={fabTriggerRef}
             PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
             VoiceZone={VoiceZone}
@@ -6249,7 +6250,7 @@ export default function App({ loginOnly = false }){
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
         setConversionModal={setConversionModal}
-        hideFab={listingStepperOpen}
+        hideFab={listingStepperOpen || tab===1}
       />
 
 

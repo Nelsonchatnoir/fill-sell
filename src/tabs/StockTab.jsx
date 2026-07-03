@@ -18,6 +18,188 @@ import {
 // CSS partagé avec VentesTab via buildCardCss (src/utils/shared.js).
 const STOCK_CSS = buildCardCss('stock-v2');
 
+// ── Redesign zone de saisie IA (haut StockTab) — eyebrow + toggle Écrire/Parler ──
+const STOCK_TOP_CSS = `
+.stock-top-v2{
+  --canvas:#EDEAE0;
+  --paper:#F6F5F1;
+  --ink:#10201B;
+  --teal:#2F9E90;
+  --teal-deep:#1B6E62;
+  --amber:#E8956D;
+  --mute:#8A8578;
+  --border:#E7E3D8;
+  font-family:'Space Grotesk',sans-serif;
+}
+.stock-top-v2 .eyebrow{
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  color:var(--mute);
+}
+.stock-top-v2 .eyebrow-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:2px 4px 14px;
+}
+.stock-top-v2 .eyebrow-status{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--teal-deep);
+  white-space:nowrap;
+}
+.stock-top-v2 .status-dot{
+  width:6px; height:6px;
+  border-radius:50%;
+  background:var(--amber);
+  box-shadow:0 0 0 3px rgba(232,149,109,0.18);
+  flex-shrink:0;
+}
+.stock-top-v2 .mode-toggle{
+  display:flex;
+  background:var(--canvas);
+  border-radius:11px;
+  padding:3px;
+  margin-bottom:14px;
+}
+.stock-top-v2 .mode-btn{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:9px;
+  border-radius:9px;
+  border:none;
+  background:transparent;
+  font-family:inherit;
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--mute);
+  cursor:pointer;
+}
+.stock-top-v2 .mode-btn.active{
+  background:var(--paper);
+  color:var(--ink);
+  box-shadow:0 2px 6px -2px rgba(16,32,27,0.15);
+}
+.stock-top-v2 .voice-state{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:26px 0 18px;
+  gap:14px;
+}
+.stock-top-v2 .voice-orb{
+  width:64px; height:64px;
+  border-radius:50%;
+  background:var(--teal-deep);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff;
+  font-size:24px;
+  box-shadow:0 10px 24px -8px rgba(27,110,98,0.55);
+  border:none;
+  cursor:pointer;
+  transition:transform 0.15s ease;
+}
+.stock-top-v2 .voice-orb:active{ transform:scale(0.94); }
+.stock-top-v2 .voice-orb.listening{ animation:stvPulse 1.4s ease-in-out infinite; }
+@keyframes stvPulse{
+  0%,100%{ box-shadow:0 10px 24px -8px rgba(27,110,98,0.55),0 0 0 0 rgba(27,110,98,0.35); }
+  50%{ box-shadow:0 10px 24px -8px rgba(27,110,98,0.55),0 0 0 10px rgba(27,110,98,0); }
+}
+.stock-top-v2 .voice-hint{
+  font-size:12.5px;
+  color:var(--mute);
+  font-weight:500;
+}
+.stock-top-v2 .hint-row{
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  margin-bottom:16px;
+}
+.stock-top-v2 .hint-icon{
+  color:var(--teal);
+  font-size:13px;
+  line-height:1.5;
+  flex-shrink:0;
+}
+.stock-top-v2 .hint-text{
+  font-size:12.5px;
+  color:var(--mute);
+  line-height:1.5;
+}
+.stock-top-v2 .cta{
+  width:100%;
+  padding:14px;
+  border-radius:13px;
+  border:none;
+  font-family:inherit;
+  font-weight:700;
+  font-size:14.5px;
+  letter-spacing:-0.005em;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition:all 0.15s ease;
+  background:#D8D4C6;
+  color:#A19C8C;
+  cursor:not-allowed;
+}
+.stock-top-v2 .cta.active{
+  background:var(--teal-deep);
+  color:#fff;
+  box-shadow:0 8px 20px -8px rgba(27,110,98,0.55);
+  cursor:pointer;
+}
+.stock-top-v2 .examples-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  padding:14px 0 2px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--mute);
+  cursor:pointer;
+  background:none;
+  border:none;
+  width:100%;
+  font-family:inherit;
+}
+.stock-top-v2 .examples-toggle svg{ transition:transform 0.15s ease; }
+.stock-top-v2 .examples-panel{
+  margin-top:10px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.stock-top-v2 .example-chip{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:10px 12px;
+  border-radius:11px;
+  background:var(--canvas);
+  font-size:12.5px;
+  color:var(--ink);
+  opacity:0.85;
+  border:none;
+  font-family:inherit;
+  cursor:pointer;
+  text-align:left;
+  width:100%;
+}
+`;
+
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
@@ -27,7 +209,7 @@ const StockTab = memo(function StockTab({
   // Voice/AI state
   voiceStep, setVoiceStep, voiceParsed, setVoiceParsed,
   voiceZoneResults, setVoiceZoneResults, voiceZoneOpen, setVoiceZoneOpen,
-  vaActions,
+  vaActions, vaStep,
   voiceText, setVoiceText, voiceLoading, voicePlaceholderIdx, voiceError,
   // Manual form state
   showManualForm, setShowManualForm, manualMode, setManualMode,
@@ -52,7 +234,7 @@ const StockTab = memo(function StockTab({
   handleImportFile, handleExport, handleIAPPurchase, handleIAPRestore,
   triggerCheckout,
   // Refs
-  importRef, listRef, scrollRef,
+  importRef, listRef, scrollRef, fabTriggerRef,
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock, VoiceZone,
   slotsRemaining, openUpgradeModal, onStepperOpenChange,
@@ -63,6 +245,8 @@ const StockTab = memo(function StockTab({
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
   const [jobsByInventaire, setJobsByInventaire] = useState({});
+  const [voiceInputMode, setVoiceInputMode] = useState('write');
+  const [examplesOpen, setExamplesOpen] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -91,25 +275,20 @@ const StockTab = memo(function StockTab({
 
   return (
     <>
-      <div className="ai-zone-header" onClick={()=>setVoiceZoneOpen(v=>!v)}
-        style={{cursor:"pointer",userSelect:"none"}}>
-        <div className="ico-wrap">🤖</div>
-        <div style={{flex:1}}><div className="t">{lang==='en'?'AI Stock':'Stock IA'}</div><div className="d">{lang==='en'?'Manage your inventory with AI':'Gérez votre inventaire avec l\'IA'}</div></div>
-        <div style={{fontSize:14,color:"#94A3B8",transition:"transform 0.2s",transform:voiceZoneOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
-      </div>
-      {pendingTotal > 0 && (
-        <div style={{ background:"#FFFBEB", border:"1px solid #FCD34D", borderRadius:10,
-          padding:"10px 14px", display:"flex", alignItems:"center", gap:8,
-          fontSize:13, color:"#92400E", fontWeight:600, margin:"0 0 8px" }}>
-          <span>⏳</span>
-          <span>{lang === "en"
-            ? `${pendingTotal} listing${pendingTotal > 1 ? "s" : ""} being posted…`
-            : `${pendingTotal} annonce${pendingTotal > 1 ? "s" : ""} en cours de dépôt…`}
-          </span>
+      <style>{STOCK_TOP_CSS}</style>
+      <div className="stock-top-v2">
+        <div className="eyebrow-row">
+          <div className="eyebrow">{lang==='en'?'AI Stock':'Stock IA'}</div>
+          {pendingTotal>0&&(
+            <div className="eyebrow-status">
+              <span className="status-dot"/>
+              {lang==='en'?`${pendingTotal} being posted`:`${pendingTotal} en cours de dépôt`}
+            </div>
+          )}
         </div>
-      )}
+      </div>
       <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
-        <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Voice Capture (collapsible) ── */}
           {voiceZoneOpen&&(<>
           {voiceStep==="done"&&voiceZoneResults.length>0?(
@@ -691,42 +870,78 @@ const StockTab = memo(function StockTab({
               </button>
             </div>
           ):(
-            <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
-              {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
-              <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
-                placeholder={getRotatingExamples(currency,lang)[voicePlaceholderIdx]?.text}
-                rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
-              <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
-                {t('stockIaHint')}
+            <div style={{display:"flex",flexDirection:"column"}}>
+              <div className="mode-toggle">
+                <button type="button" className={"mode-btn"+(voiceInputMode==="write"?" active":"")} onClick={()=>setVoiceInputMode("write")}>
+                  ✎ {lang==='fr'?"Écrire":"Write"}
+                </button>
+                <button type="button" className={"mode-btn"+(voiceInputMode==="speak"?" active":"")} onClick={()=>setVoiceInputMode("speak")}>
+                  🎙 {lang==='fr'?"Parler":"Speak"}
+                </button>
               </div>
-              {!voiceText&&(()=>{
-                const FIXED_EX=lang==='fr'?[
-                  {text:"Ajoute une veste Zara taille M à 8€",icon:"➕"},
-                  {text:"J'ai vendu mes Air Max 90 à 45€",icon:"💰"},
-                  {text:"Quels sont mes articles les plus rentables ?",icon:"📊"},
-                ]:[
-                  {text:"Add a Zara jacket size M for £8",icon:"➕"},
-                  {text:"I sold my Air Max 90 for £45",icon:"💰"},
-                  {text:"What are my most profitable items?",icon:"📊"},
-                ];
-                return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:4}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>
-                    {lang==='fr'?"Exemples":"Examples"}
+
+              {voiceInputMode==="write"?(<>
+                {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4,marginBottom:8}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
+                <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
+                  placeholder={getRotatingExamples(currency,lang)[voicePlaceholderIdx]?.text}
+                  rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
+              </>):(
+                <div className="voice-state">
+                  <button type="button"
+                    className={"voice-orb"+(vaStep==="recording"?" listening":"")}
+                    onClick={()=>fabTriggerRef?.current?.()}
+                    disabled={vaStep==="thinking"}
+                  >
+                    {vaStep==="thinking"?"⏳":"🎙"}
+                  </button>
+                  <div className="voice-hint">
+                    {vaStep==="recording"?(lang==='fr'?"Je t'écoute…":"Listening…")
+                      :vaStep==="thinking"?(lang==='fr'?"Je réfléchis…":"Thinking…")
+                      :(lang==='fr'?"Appuie et parle":"Tap and speak")}
                   </div>
-                  {FIXED_EX.map((ex,i)=>(
-                    <button key={i} onClick={()=>setVoiceText(ex.text)}
-                      style={{fontSize:12,padding:"8px 12px",borderRadius:8,border:"1px solid #E5E7EB",background:"#F8FAFC",cursor:"pointer",color:"#374151",fontFamily:"inherit",lineHeight:1.4,textAlign:"left",display:"flex",gap:8,alignItems:"flex-start",width:"100%"}}>
-                      <span style={{flexShrink:0,opacity:0.7}}>{ex.icon}</span>
-                      <span>{ex.text}</span>
-                    </button>
-                  ))}
-                </div>);
+                </div>
+              )}
+
+              <div className="hint-row">
+                <span className="hint-icon">✦</span>
+                <span className="hint-text">{lang==='fr'?"Plus tu détailles, plus l'IA est précise.":"The more you detail, the more accurate the AI is."}</span>
+              </div>
+
+              {voiceInputMode==="write"&&!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:12}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:12}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
+
+              {voiceInputMode==="write"&&(
+                <button className={"cta"+((!voiceText.trim()||voiceLoading)?"":" active")} onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}>
+                  ✦ {lang==='fr'?"Analyser":"Analyze"}
+                </button>
+              )}
+
+              <div className="examples-toggle" onClick={()=>setExamplesOpen(v=>!v)}>
+                {lang==='fr'?"Voir des exemples":"See examples"}
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{transform:examplesOpen?"rotate(180deg)":"rotate(0deg)"}}>
+                  <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </div>
+              {examplesOpen&&(()=>{
+                const FIXED_EX=lang==='fr'?[
+                  {text:"Veste Zara M, 8€",icon:"➕"},
+                  {text:"Vendu mes Air Max 90, 45€",icon:"💰"},
+                  {text:"Mes articles les plus rentables ?",icon:"📊"},
+                ]:[
+                  {text:"Zara jacket M, £8",icon:"➕"},
+                  {text:"Sold my Air Max 90, £45",icon:"💰"},
+                  {text:"My most profitable items?",icon:"📊"},
+                ];
+                return(
+                  <div className="examples-panel">
+                    {FIXED_EX.map((ex,i)=>(
+                      <button key={i} type="button" className="example-chip" onClick={()=>{setVoiceText(ex.text);setVoiceInputMode("write");setExamplesOpen(false);}}>
+                        <span>{ex.icon}</span>
+                        <span>{ex.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
               })()}
-              {!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:4}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:4}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
-              <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
-                style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
-                {lang==='fr'?"✨ Analyser":"✨ Analyze"}
-              </button>
             </div>
           )}
           </>)}
