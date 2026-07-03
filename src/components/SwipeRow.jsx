@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { UI } from './ui';
 
 function SwipeRow({onDelete, onEdit, children, style}){
   const isMobile = window.innerWidth < 768;
@@ -17,15 +18,15 @@ function SwipeRow({onDelete, onEdit, children, style}){
         {children}
         {onEdit&&(
           <button className="editx" onClick={()=>onEdit()}
-            style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:4}}
-            onMouseEnter={e=>{e.currentTarget.style.background="#EBF8FF";e.currentTarget.style.color="#3B82F6";}}
-            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
+            style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:UI.mute,padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:4}}
+            onMouseEnter={e=>{e.currentTarget.style.background="#E7F3F0";e.currentTarget.style.color=UI.tealDeep;}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=UI.mute;}}
           >✏️</button>
         )}
         <button className="delx" onClick={onDelete}
-          style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:"#9CA3AF",padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:4}}
-          onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2";e.currentTarget.style.color="#E53E3E";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9CA3AF";}}
+          style={{opacity:0,background:"transparent",border:"none",cursor:"pointer",fontSize:15,color:UI.mute,padding:"4px 8px",borderRadius:6,transition:"all 0.15s",flexShrink:0,marginLeft:4}}
+          onMouseEnter={e=>{e.currentTarget.style.background=`${UI.negative}1A`;e.currentTarget.style.color=UI.negative;}}
+          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=UI.mute;}}
         >✕</button>
       </div>
     );
@@ -87,13 +88,13 @@ function SwipeRow({onDelete, onEdit, children, style}){
   }
   return(
     <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",touchAction:"pan-y",...style}}>
-      <div ref={bgRef} onClick={handleDelClick} style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:"linear-gradient(135deg,#FF6B6B,#E53E3E)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}>
+      <div ref={bgRef} onClick={handleDelClick} style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:UI.negative,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}>
         <span style={{fontSize:22}}>🗑️</span>
       </div>
       <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,touchAction:"pan-y"}}>
         {onEdit&&(
           <button onClick={e=>{e.stopPropagation();onEdit();}}
-            style={{background:"#EBF8FF",color:"#3B82F6",border:"none",borderRadius:6,padding:"5px 7px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>
+            style={{background:"#E7F3F0",color:UI.tealDeep,border:"none",borderRadius:6,padding:"5px 7px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>
             ✏️
           </button>
         )}
