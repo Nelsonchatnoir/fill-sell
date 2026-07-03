@@ -88,11 +88,11 @@ function SalesTicker({ lang, fmt, setTab }) {
         <div style={{padding:'12px 14px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease,transform 0.45s ease'}}>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:4}}>
+              <div style={{fontWeight:700,fontSize:14,color:'#10201B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:4}}>
                 {s.title}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                <span style={{background:'#E8F5F0',color:'#1D9E75',borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:'1px solid #9FE1CB'}}>
+                <span style={{background:'#E7F3F0',color:'#1B6E62',borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:'1px solid #BFE0D9'}}>
                   {marqueLabel(s.marque,lang)}
                 </span>
                 <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>
@@ -101,11 +101,11 @@ function SalesTicker({ lang, fmt, setTab }) {
               </div>
             </div>
             <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:'#0D0D0D'}}>{fmt(s.sell)}</div>
+              <div style={{fontWeight:700,fontSize:14,color:'#10201B'}}>{fmt(s.sell)}</div>
               <div style={{fontWeight:700,fontSize:13,color:mc,marginTop:1}}>+{fmt(s.margin)}</div>
             </div>
           </div>
-          <div style={{marginTop:10,height:2,background:'#F3F4F6',borderRadius:2,overflow:'hidden'}}>
+          <div style={{marginTop:10,height:2,background:'#F2F0E9',borderRadius:2,overflow:'hidden'}}>
             <div style={{height:'100%',background:ts.border,width:`${progress*100}%`}}/>
           </div>
         </div>
@@ -119,7 +119,7 @@ function SalesTicker({ lang, fmt, setTab }) {
       </div>
 
       <div style={{textAlign:'center',marginBottom:16}}>
-        <div style={{fontSize:18,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
+        <div style={{fontSize:18,fontWeight:700,color:'#10201B',letterSpacing:'-0.02em',marginBottom:6}}>
           {lang==='fr'?"Tes profits t'attendent":"Your profits are waiting"}
         </div>
         <div style={{fontSize:13,color:'#A3A9A6',fontWeight:500,lineHeight:1.5,maxWidth:240,margin:'0 auto'}}>
@@ -129,7 +129,7 @@ function SalesTicker({ lang, fmt, setTab }) {
 
       <button
         onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
-        style={{width:'100%',padding:'14px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 4px 14px rgba(15,110,86,0.3)'}}
+        style={{width:'100%',padding:'14px',background:'linear-gradient(120deg,#2F9E90,#1B6E62)',color:'#fff',border:'none',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 10px 24px -8px rgba(47,158,144,0.28)'}}
         onMouseDown={e=>e.currentTarget.style.transform='scale(0.97)'}
         onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
         onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
@@ -141,7 +141,7 @@ function SalesTicker({ lang, fmt, setTab }) {
         <div style={{fontSize:11,fontWeight:700,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
           {lang==='fr'?'AVEC FILL & SELL':'WITH FILL & SELL'}
         </div>
-        <div style={{fontSize:13,fontWeight:700,color:'#0D0D0D',textAlign:'center',marginBottom:10}}>
+        <div style={{fontSize:13,fontWeight:700,color:'#10201B',textAlign:'center',marginBottom:10}}>
           {lang==='fr'?'Ce que tu vas pouvoir suivre':'What you\'ll be able to track'}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
@@ -152,8 +152,8 @@ function SalesTicker({ lang, fmt, setTab }) {
           ].map((c,i)=>(
             <div key={i} style={{background:'#F0FDFB',border:'1px solid rgba(13,148,136,0.18)',borderRadius:12,padding:'10px 8px',textAlign:'center'}}>
               <div style={{fontSize:18,marginBottom:4}}>{c.icon}</div>
-              <div style={{fontSize:10,fontWeight:700,color:'#6B7280',marginBottom:4,lineHeight:1.2}}>{c.label}</div>
-              <div style={{fontSize:15,fontWeight:700,color:'#0F6E56',letterSpacing:'-0.02em',marginBottom:2}}>{c.value}</div>
+              <div style={{fontSize:10,fontWeight:700,color:'#6B7A75',marginBottom:4,lineHeight:1.2}}>{c.label}</div>
+              <div style={{fontSize:15,fontWeight:700,color:'#1B6E62',letterSpacing:'-0.02em',marginBottom:2}}>{c.value}</div>
               <div style={{fontSize:9,color:'#A3A9A6',fontWeight:500}}>{lang==='fr'?'sur tes ventes':'on your sales'}</div>
             </div>
           ))}
@@ -213,7 +213,7 @@ const VentesTab = memo(function VentesTab({
           <span style={{fontSize:14,flexShrink:0}}>🔍</span>
           <input value={searchHistory} onChange={e=>setSearchHistory(e.target.value)}
             placeholder={lang==='fr'?"Rechercher par nom, marque, description...":"Search by name, brand, description..."}
-            style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+            style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#10201B"}}/>
           {searchHistory&&<button onClick={()=>setSearchHistory("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
         </div>
       )}
@@ -279,7 +279,7 @@ const VentesTab = memo(function VentesTab({
           })}
           {!showAllSales&&groupedSales.length>10&&(
             <button onClick={()=>setShowAllSales(true)}
-              style={{width:"100%",padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              style={{width:"100%",padding:"12px",background:"none",border:"1px solid #2F9E90",borderRadius:999,color:"#2F9E90",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
               {lang==='fr'?`Voir plus (${groupedSales.length-10} autres)`:`Show more (${groupedSales.length-10} more)`}
             </button>
           )}
@@ -291,7 +291,7 @@ const VentesTab = memo(function VentesTab({
       {/* ── Bouton stats avancées ── */}
       {isPremium&&(
         <button onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
-          style={{width:"100%",marginTop:4,padding:"14px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
+          style={{width:"100%",marginTop:4,padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
           onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
           onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
           onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
