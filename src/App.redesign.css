@@ -481,65 +481,8 @@ body.bg-dots {
 }
 
 /* ============================================================
-   6. PREMIUM CTA — gradient animé teal → vert + essai gratuit
+   6. Topbar premium badge shimmer (ctaGradient/ctaShimmer, .tb-premium)
    ============================================================ */
-.cta-premium {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 16px 22px;
-  border: none;
-  border-radius: 14px;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-  color: #fff;
-  cursor: pointer;
-  overflow: hidden;
-  isolation: isolate;
-  background: linear-gradient(90deg, #1D9E75, #E8845A, #1D9E75);
-  background-size: 200% 100%;
-  box-shadow: 0 12px 34px rgba(45,184,154,0.45), 0 4px 12px rgba(45,184,154,0.25);
-  animation: fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite;
-  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.cta-premium::before { content: none; }
-
-.cta-premium > * { position: relative; z-index: 1; }
-
-.cta-premium:hover {
-  transform: translateY(-2px) scale(1.015);
-  box-shadow:
-    0 1px 3px rgba(14, 124, 95, 0.30),
-    0 18px 40px rgba(249, 162, 108, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-}
-
-.cta-premium:active { transform: translateY(0) scale(0.985); }
-
-.cta-premium-sub {
-  font-family: 'Space Grotesk', sans-serif;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #6B7280;
-  margin-top: 6px;
-  letter-spacing: -0.005em;
-}
-
-@keyframes fsShimmer {
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-}
-@keyframes fsGlow {
-  0%, 100% { box-shadow: 0 12px 34px rgba(45,184,154,0.45), 0 4px 12px rgba(45,184,154,0.25); }
-  50%       { box-shadow: 0 16px 46px rgba(232,132,90,0.5), 0 4px 14px rgba(45,184,154,0.3); }
-}
 @keyframes ctaGradient {
   0%, 100% { background-position: 0 0; }
   50%      { background-position: 100% 0; }
@@ -550,10 +493,6 @@ body.bg-dots {
   100% { background-position: -120% 0; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .cta-premium { animation: none; }
-  .cta-premium::before { animation: none; opacity: 0; }
-}
 
 /* ============================================================
    7. EMPTY STATE DASHBOARD — typewriter vocal
@@ -1452,8 +1391,6 @@ body.bg-dots {
   .profit-hero::after,
   .fab-new .pulse-ring,
   .fab-new-btn,
-  .cta-premium,
-  .cta-premium::before,
   .empty-hero::before,
   .empty-hero-art,
   .empty-hero-art::after,
