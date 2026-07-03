@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { PremiumButton } from './ui';
 
 const ANIM = `
 @keyframes fsPop {
@@ -8,18 +9,6 @@ const ANIM = `
 @keyframes fsPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: 0.3; transform: scale(0.6); }
-}
-@keyframes fsShimmer {
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-}
-@keyframes fsGlow {
-  0%, 100% { box-shadow: 0 12px 34px rgba(45,184,154,0.45), 0 4px 12px rgba(45,184,154,0.25); }
-  50%       { box-shadow: 0 16px 46px rgba(232,132,90,0.5), 0 4px 14px rgba(45,184,154,0.3); }
-}
-@keyframes fsGlowPro {
-  0%, 100% { box-shadow: 0 12px 34px rgba(124,58,237,0.4), 0 4px 12px rgba(79,70,229,0.25); }
-  50%       { box-shadow: 0 16px 46px rgba(124,58,237,0.55), 0 4px 14px rgba(79,70,229,0.3); }
 }
 `;
 
@@ -125,9 +114,9 @@ function QuotaJump({ from, to, toNum, toSuffix }) {
       <span style={{ fontSize: 14, fontWeight: 700, color: '#999', textDecoration: 'line-through' }}>{from}</span>
       <span style={{ color: '#E8845A', fontWeight: 700 }}>→</span>
       {to
-        ? <span style={{ fontSize: 16, fontWeight: 700, color: '#1D9E75', letterSpacing: '-0.3px' }}>{to}</span>
+        ? <span style={{ fontSize: 16, fontWeight: 700, color: '#1B6E62', letterSpacing: '-0.3px' }}>{to}</span>
         : <>
-            <span style={{ fontSize: 20, fontWeight: 700, color: '#1D9E75', letterSpacing: '-0.5px' }}>{toNum}</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: '#1B6E62', letterSpacing: '-0.5px' }}>{toNum}</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: '#666' }}>{toSuffix}</span>
           </>
       }
@@ -158,9 +147,9 @@ function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: '#999', textDecoration: 'line-through' }}>14,99€</span>
-        <span style={{ fontSize: 32, fontWeight: 700, color: '#1D9E75', letterSpacing: '-1px' }}>9,99€</span>
+        <span style={{ fontSize: 32, fontWeight: 700, color: '#1B6E62', letterSpacing: '-1px' }}>9,99€</span>
         <span style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>{l('perMonth', lang)}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#1A6B4A', background: '#E8F5F0', padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#1B6E62', background: '#E7F3F0', padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
           {l('trial', lang)}
         </span>
       </div>
@@ -168,19 +157,9 @@ function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
         {l('priceNote', lang)}
       </div>
 
-      <button
-        onClick={() => onUpgrade('premium')}
-        style={{
-          width: '100%', padding: 16, border: 'none', borderRadius: 14,
-          background: 'linear-gradient(90deg,#1D9E75,#E8845A,#1D9E75)',
-          backgroundSize: '200% 100%',
-          color: '#fff', fontFamily: 'inherit', fontSize: 16, fontWeight: 700,
-          letterSpacing: '-0.2px', cursor: 'pointer',
-          animation: 'fsGlow 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite',
-        }}
-      >
+      <PremiumButton onClick={() => onUpgrade('premium')} style={{ fontSize: 16 }}>
         {l('premiumCta', lang)}
-      </button>
+      </PremiumButton>
       <div style={{ textAlign: 'center', fontSize: 11, color: '#999', marginTop: 9 }}>
         {l('subNote', lang)}
       </div>
@@ -203,19 +182,9 @@ function ProSection({ onUpgrade, lang, compact }) {
         <ProFeatureRow emoji="✨" label={l('retoucheLabel', lang)} sub={l('retoucheSub', lang)} />
       </div>
 
-      <button
-        onClick={() => onUpgrade('pro')}
-        style={{
-          width: '100%', padding: 16, border: 'none', borderRadius: 14,
-          background: 'linear-gradient(90deg,#4F46E5,#7C3AED,#4F46E5)',
-          backgroundSize: '200% 100%',
-          color: '#fff', fontFamily: 'inherit', fontSize: 16, fontWeight: 700,
-          letterSpacing: '-0.2px', cursor: 'pointer',
-          animation: 'fsGlowPro 2.8s ease-in-out infinite, fsShimmer 4.5s linear infinite',
-        }}
-      >
+      <PremiumButton onClick={() => onUpgrade('pro')} style={{ fontSize: 16 }}>
         {l('proCta', lang)}
-      </button>
+      </PremiumButton>
     </div>
   );
 }
@@ -268,7 +237,7 @@ export default function ConversionModal({
           }}
         >
           {/* Gradient header */}
-          <div style={{ position: 'relative', padding: '22px 22px 20px', background: 'linear-gradient(135deg,#1D9E75,#2DB89A)', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ position: 'relative', padding: '22px 22px 20px', background: 'linear-gradient(135deg,#1B6E62,#2F9E90)', overflow: 'hidden', flexShrink: 0 }}>
             <div style={{ position: 'absolute', top: -40, right: -30, width: 160, height: 160, borderRadius: 99, background: 'rgba(255,255,255,0.1)', pointerEvents: 'none' }} />
             {showPremium && (
               <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 100, background: 'rgba(255,255,255,0.18)', marginBottom: 14 }}>

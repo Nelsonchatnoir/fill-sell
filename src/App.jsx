@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { BarChart3, Bot, Aperture, ClipboardList, LineChart } from 'lucide-react';
+import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
@@ -23,7 +23,7 @@ import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
-import { UI, PrimaryButton, Loader, SegmentedPills } from './components/ui';
+import { UI, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -499,9 +499,9 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   }
 
   if(compact){
-    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#1D9E75");
-    const bgHover=onDark?"rgba(255,255,255,0.3)":"#0F6E56";
-    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#1D9E75");
+    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#2F9E90");
+    const bgHover=onDark?"rgba(255,255,255,0.3)":"#1B6E62";
+    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#2F9E90");
     const col=onDark?"#fff":"#fff";
     const brd=onDark?"1px solid rgba(255,255,255,0.4)":"none";
     return(
@@ -516,7 +516,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   }
 
   return(
-    <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+    <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       {slotsRemaining!==null&&slotsRemaining>0&&(
         <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
       )}
@@ -532,15 +532,15 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 
 function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, slotsRemaining=null }) {
   return (
-    <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+    <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       {slotsRemaining!==null&&slotsRemaining>0&&(
         <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
       )}
-      <div style={{fontSize:11,fontWeight:700,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
+      <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
         🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
       </div>
       {iapProduct&&(
-        <div style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>
+        <div style={{fontSize:11,color:UI.mute,fontWeight:600}}>
           {lang==='fr'?'puis ':'then '}{iapProduct.priceString} / {lang==='fr'?'mois':'month'}
         </div>
       )}
@@ -555,7 +555,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
       <button
         onClick={onRestore}
         disabled={iapLoading}
-        style={{background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
+        style={{background:"transparent",border:"none",color:UI.mute,fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
       >
         {lang==='fr'?'Restaurer mes achats':'Restore purchases'}
       </button>
@@ -566,15 +566,10 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
 function CtaPremium({ onClick, label = "✨ Commencer l'essai gratuit →", disabled, sub }) {
   return (
     <>
-      <button
-        className="cta-premium"
-        onClick={onClick}
-        disabled={disabled}
-        style={disabled ? {opacity:0.7,cursor:"not-allowed"} : undefined}
-      >
+      <PremiumButton onClick={onClick} disabled={disabled}>
         {label}
-      </button>
-      <div className="cta-premium-sub">
+      </PremiumButton>
+      <div style={{fontSize:12,color:UI.mute,fontWeight:500,marginTop:2}}>
         {sub || "Puis 9,99 €/mois — annulable à tout moment"}
       </div>
     </>
@@ -1214,12 +1209,12 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
         ))}
       </div>
       <div className="empty-hero-cta-stack">
-        <button className="cta-premium" onClick={onTryVoice}>
+        <PrimaryButton onClick={onTryVoice}>
           🎙️ {lang==='en' ? 'Try voice AI' : 'Essayer le vocal IA'}
-        </button>
-        <button className="empty-hero-secondary" onClick={onAddManual}>
+        </PrimaryButton>
+        <SecondaryButton onClick={onAddManual}>
           ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
-        </button>
+        </SecondaryButton>
       </div>
     </div>
   );
@@ -1242,7 +1237,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
           <div style={{fontSize:18,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',fontFamily:'inherit'}}>
             {lang==='en'?'Level up':'Passe au niveau supérieur'}
           </div>
-          <button onClick={onClose} style={{background:'#F3F4F6',border:'none',borderRadius:99,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,cursor:'pointer',color:'#6B7280',flexShrink:0}}>✕</button>
+          <IconButton onClick={onClose} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
         </div>
         {/* Cards */}
         <div style={{padding:'16px 16px 0'}}>
@@ -1302,13 +1297,13 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
         </div>
         {/* Footer */}
         <div style={{padding:'16px 16px',display:'flex',flexDirection:'column',gap:10}}>
-          <button onClick={onCheckout} style={{width:'100%',padding:'15px',background:isFounder?'linear-gradient(135deg,#E53E3E,#F97316)':'#1D9E75',color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer',fontFamily:'inherit',boxShadow:isFounder?'0 4px 16px rgba(229,62,62,0.35)':'0 4px 14px rgba(29,158,117,0.3)',letterSpacing:'-0.01em'}}>
+          <PremiumButton onClick={onCheckout}>
             {isFounder
               ?(lang==='en'?'✨ Become a Founder · €9.99/mo — 7 days free':'✨ Devenir Founder · 9,99€/mois — 7j gratuits')
               :(lang==='en'?'✨ Upgrade to Premium · €14.99/mo — 7 days free':'✨ Passer Premium · 14,99€/mois — 7j gratuits')
             }
-          </button>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'#9CA3AF',fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
+          </PremiumButton>
+          <button onClick={onClose} style={{background:'none',border:'none',color:UI.mute,fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
             {lang==='en'?'Continue for free':'Continuer en gratuit'}
           </button>
         </div>
@@ -1348,7 +1343,7 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
         @keyframes crownPop{0%{transform:scale(0) rotate(-15deg)}60%{transform:scale(1.2) rotate(6deg)}100%{transform:scale(1) rotate(0deg)}}
       `}</style>
       <div onClick={e=>e.stopPropagation()} style={{background:'#F2F2EE',borderRadius:28,width:'100%',maxWidth:360,overflow:'hidden',boxShadow:'0 24px 60px rgba(0,0,0,0.25)',animation:'welcomeCardIn 0.35s cubic-bezier(0.22,1,0.36,1)'}}>
-        <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',padding:'32px 24px 28px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+        <div style={{background:'linear-gradient(135deg,#2F9E90,#E8956D)',padding:'32px 24px 28px',textAlign:'center',position:'relative',overflow:'hidden'}}>
           <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.2),transparent 55%)',pointerEvents:'none'}}/>
           <div style={{fontSize:44,lineHeight:1,marginBottom:12,display:'inline-block',animation:'crownPop 0.5s cubic-bezier(0.22,1,0.36,1) 0.2s both'}}>
             {isFounder?'👑':'⭐'}
@@ -1358,20 +1353,20 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
               <span style={{background:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.5)',borderRadius:99,padding:'4px 12px',fontSize:10,fontWeight:700,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase'}}>🔥 Founder</span>
             </div>
           )}
-          <div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
+          <div style={{fontSize:22,fontWeight:600,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
           <div style={{fontSize:13,color:'rgba(255,255,255,0.88)',fontWeight:600}}>{subtitle}</div>
         </div>
         <div style={{padding:'20px 20px 0',display:'flex',flexDirection:'column',gap:8}}>
           {PERKS.map(({icon,label},i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(62,172,160,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(47,158,144,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
               <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
-              <span style={{fontSize:13,fontWeight:700,color:'#0D0D0D',lineHeight:1.3,flex:1}}>{label}</span>
-              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#3EACA0,#2DD4BF)',color:'#fff',fontSize:10,fontWeight:700}}>✓</span>
+              <span style={{fontSize:13,fontWeight:700,color:UI.ink,lineHeight:1.3,flex:1}}>{label}</span>
+              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(120deg,#2F9E90,#1B6E62)',color:'#fff',fontSize:10,fontWeight:700}}>✓</span>
             </div>
           ))}
         </div>
-        <div style={{padding:'20px'}}>
-          <button onClick={onClose} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#3EACA0,#E8956D)',border:'none',borderRadius:16,color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",boxShadow:'0 4px 16px rgba(62,172,160,0.4)',letterSpacing:'-0.01em'}}>{cta}</button>
+        <div style={{padding:20}}>
+          <PremiumButton onClick={onClose}>{cta}</PremiumButton>
         </div>
       </div>
     </div>
