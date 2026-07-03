@@ -464,8 +464,8 @@ const StockTab = memo(function StockTab({
                     return (v!=null&&v!=="")?(parseFloat(v)||0):defaultPrice;
                   };
                   const liveTotal=lotItems.reduce((sum,_it,i)=>sum+linePrice(i),0);
-                  return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
+                  return(<div key={idx} style={{background:"#E7F3F0",borderRadius:12,padding:"14px",border:"1px solid #BFE0D9"}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#1B6E62",marginBottom:2}}>
                       🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""} sold`:`Lot de ${lotItems.length} article${lotItems.length>1?"s":""} vendu${lotItems.length>1?"s":""}`}{" — "}{fmt(lotTotal)}
                     </div>
                     <div style={{fontSize:11,color:"#6B7A75",marginBottom:12}}>
@@ -509,7 +509,7 @@ const StockTab = memo(function StockTab({
                           }
                           replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?`Lot of ${lotItems.length} items sold`:`Lot de ${lotItems.length} articles vendu`});
                         }catch(e){replaceZoneResult(idx,{...r,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"13px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                      }} style={{flex:1,padding:"13px",background:"#1B6E62",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                         ✓ {lang==="en"?"Confirm lot":"Confirmer le lot"}
                       </button>
                       <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7A75",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
@@ -659,8 +659,8 @@ const StockTab = memo(function StockTab({
                 if(status==="pending_confirmation"&&intent==="inventory_lot"){
                   const lotItems=data?.items||[];
                   const lotTotal=data?.lotTotal||0;
-                  return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:8}}>
+                  return(<div key={idx} style={{background:"#E7F3F0",borderRadius:12,padding:"14px",border:"1px solid #BFE0D9"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1B6E62",marginBottom:8}}>
                       🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
@@ -682,7 +682,7 @@ const StockTab = memo(function StockTab({
                           for(const item of lotItems){await vaActions.addItem({...item,nom:item.nom,prix_achat:item.prix_estime_lot});}
                           replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?`${lotItems.length} items added`:`${lotItems.length} articles ajoutés`});
                         }catch(e){replaceZoneResult(idx,{...r,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      }} style={{flex:1,padding:"10px",background:"#1B6E62",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         ✓ {lang==="en"?"Confirm lot":"Confirmer le lot"}
                       </button>
                       <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
@@ -717,15 +717,15 @@ const StockTab = memo(function StockTab({
                       </button>
                     </div>);
                   }
-                  return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:10}}>📦 {lang==="en"?"Store here?":"Ranger ici ?"}</div>
+                  return(<div key={idx} style={{background:"#E7F3F0",borderRadius:12,padding:"14px",border:"1px solid #BFE0D9"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1B6E62",marginBottom:10}}>📦 {lang==="en"?"Store here?":"Ranger ici ?"}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                       {moveItems.map((item,i)=>{
                         const _cat=item.type||item.categorie||null;
                         const _ts=_cat&&_cat!=="Autre"?getTypeStyle(_cat):null;
                         const prevEmp=item.emplacement||null;
                         const itemName=item.title||item.titre||item.nom||"";
-                        return(<div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid #BFDBFE"}}>
+                        return(<div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid #BFE0D9"}}>
                           <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:4}}>{itemName}</div>
                           {(item.marque||_ts)&&(<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
                             {item.marque&&<span style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #BFE0D9"}}>{item.marque}</span>}
@@ -733,8 +733,8 @@ const StockTab = memo(function StockTab({
                           </div>)}
                           <div style={{fontSize:12,color:"#6B7A75",display:"flex",alignItems:"center",gap:5}}>
                             <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
-                            <span style={{color:"#1D4ED8",fontWeight:700}}>→</span>
-                            <span style={{color:"#1D4ED8",fontWeight:700}}>{moveEmp}</span>
+                            <span style={{color:"#1B6E62",fontWeight:700}}>→</span>
+                            <span style={{color:"#1B6E62",fontWeight:700}}>{moveEmp}</span>
                           </div>
                         </div>);
                       })}
