@@ -222,6 +222,27 @@ function setNativeValue(element, value) {
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+// Confirmé par test réel : element.click() natif est bien tenté sur #brand
+// (nœud stable, isConnected) mais n'ouvre pas le panneau — contrairement à
+// #category où click() suffit. Certains composants React n'écoutent pas
+// l'event "click" haut niveau mais pointerdown/mousedown (pattern courant
+// pour les listbox/combobox afin de gérer focus et fermeture au clic
+// extérieur sans race condition). On rejoue la séquence bas niveau complète
+// qu'un vrai clic souris génère, dans l'ordre, avec des coordonnées réalistes.
+function simulateFullClick(element) {
+  const rect = element.getBoundingClientRect();
+  const clientX = rect.left + rect.width / 2;
+  const clientY = rect.top + rect.height / 2;
+  const base = { bubbles: true, cancelable: true, composed: true, view: window, clientX, clientY, button: 0 };
+
+  element.dispatchEvent(new PointerEvent("pointerdown", { ...base, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+  element.dispatchEvent(new MouseEvent("mousedown", { ...base, buttons: 1 }));
+  element.focus();
+  element.dispatchEvent(new PointerEvent("pointerup", { ...base, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+  element.dispatchEvent(new MouseEvent("mouseup", { ...base, buttons: 0 }));
+  element.dispatchEvent(new MouseEvent("click", base));
+}
+
 async function fillTextField(selector, value) {
   const el = await waitForElement(selector);
   el.focus();
@@ -263,7 +284,10 @@ async function openDropdown(triggerSelector) {
     `[vinted] 🧪 openDropdown(${triggerSelector}) — trigger trouvé:`,
     { tagName: trigger.tagName, id: trigger.id, readOnly: trigger.readOnly, isConnected: trigger.isConnected }
   );
-  trigger.click();
+  // element.click() natif confirmé insuffisant pour ce composant (nœud
+  // stable, aucune exception, panneau non ouvert) — séquence bas niveau
+  // pointerdown/mousedown/pointerup/mouseup/click à la place.
+  simulateFullClick(trigger);
   await sleep(CLICK_DELAY);
   const stillConnected = document.querySelector(triggerSelector) === trigger;
   console.log(
