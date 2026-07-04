@@ -126,6 +126,22 @@ const MODE_ADULTE = {
   // deviner un type précis.
   "💍": { Femme: ["Femmes", "Accessoires", "Bijoux", "Autres bijoux"], Homme: ["Hommes", "Accessoires", "Bijoux", "Autre"] },
 
+  // ── Beauté (GENRÉE, asymétrie de libellés confirmée par l'arbre : la
+  // branche s'appelle "Beauté" côté Femmes mais "Soins" côté Hommes, et
+  // "Soins du visage" (F) vs "Soins visage" (H) — jamais de substitution
+  // automatique, comme pour les sacs) ───────────────────────────────────────
+  "🌸": { Femme: ["Femmes", "Beauté", "Parfums"], Homme: ["Hommes", "Soins", "Parfums"] },
+  "💄": { Femme: ["Femmes", "Beauté", "Maquillage"], Homme: ["Hommes", "Soins", "Maquillage"] },
+  // Femme : feuille "Manucure" dédiée. Homme : pas d'équivalent manucure,
+  // feuille la plus proche = "Soins mains et ongles" (DÉFAUT ASSUMÉ léger).
+  "💅": { Femme: ["Femmes", "Beauté", "Manucure"], Homme: ["Hommes", "Soins", "Soins mains et ongles"] },
+  // DÉFAUT ASSUMÉ : la regex conflate visage (crème/sérum), corps (lotion/
+  // gel douche/savon) et cheveux (shampooing) — trois feuilles sœurs par
+  // genre. Visage pris comme dominant (mots-clés crème/sérum en tête, plus
+  // gros volume revente en cosmétique) ; un shampooing ou un gel douche
+  // atterrira sur la feuille visage, même parent direct.
+  "🧴": { Femme: ["Femmes", "Beauté", "Soins du visage"], Homme: ["Hommes", "Soins", "Soins visage"] },
+
   // Hors périmètre Lot 1 (pas demandés dans cette passe, faible volume ou
   // hors Mode adultes) : 🧳 valises (Homme confirmé "Bagages et valises"
   // sous Sacs et sacoches, Femme approximable par "Sacs de voyage" — à
