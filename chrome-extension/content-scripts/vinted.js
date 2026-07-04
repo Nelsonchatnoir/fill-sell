@@ -223,14 +223,20 @@ async function waitForOptionByText(optionSelector, text, timeoutMs = 5000) {
 
 async function selectSimpleOption(triggerSelector, optionSelector, optionText, { searchInputSelector } = {}) {
   await openDropdown(triggerSelector);
+  let optionTimeout = 5000;
   if (searchInputSelector) {
     const search = document.querySelector(searchInputSelector);
     if (search) {
       setNativeValue(search, optionText);
-      await sleep(400);
+      // La recherche (ex: marque) est debouncée côté Vinted puis passe par le
+      // réseau avant re-render de la liste : 400 ms ne suffisaient pas
+      // (l'option "Patagonia" existait mais n'était pas encore dans le DOM).
+      // On laisse la liste se rafraîchir puis on polle plus longtemps.
+      await sleep(1200);
+      optionTimeout = 10000;
     }
   }
-  const option = await waitForOptionByText(optionSelector, optionText);
+  const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
   option.click();
   await sleep(CLICK_DELAY);
 }
