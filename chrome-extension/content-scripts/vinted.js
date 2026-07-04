@@ -63,9 +63,14 @@ async function fillListingForm(job) {
   await selectCategory(fields.categoryPath);
 
   if (fields.marque) {
+    // Deux sections dans le menu marque avec des ids différents :
+    // "Marques populaires" (id="brand-XXX") et "Suggestions"
+    // (id="suggested-brand-XXX"). L'aria-label porte le nom exact de la
+    // marque dans les deux → on matche dessus (flag "i" : insensible à la
+    // casse), au lieu du préfixe d'id qui ratait les suggestions.
     await selectSimpleOption(
       '#brand, [data-testid="brand-select-dropdown-input"]',
-      '[role="button"][id^="brand-"]',
+      `[role="button"][aria-label="${CSS.escape(fields.marque)}" i]`,
       fields.marque,
       { searchInputSelector: "#brand-search-input" }
     );
