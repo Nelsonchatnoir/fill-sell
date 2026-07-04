@@ -283,7 +283,10 @@ const OBJECT_ICON_RULES = [
   [/\bsacs?\b|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
   [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
   [/valise|bagage/i, '🧳'],
-  [/robe\b|jupe/i, '👗'],
+  // (?:^|[^-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
+  // "wardrobe" — sinon un t-shirt dont la description dit "à avoir dans sa
+  // garde-robe" devient une robe et le mapping Vinted part sur le mauvais rayon.
+  [/(?:^|[^-\w])robe\b|jupe/i, '👗'],
   [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono/i, '🧥'],
   [/chemise|blouse\b|cravate|costume/i, '👔'],
   [/t.?shirt|tee.?shirt|débardeur|polo\b|pull|sweat|hoodie|cardigan|\btop\b|tunique/i, '👕'],
