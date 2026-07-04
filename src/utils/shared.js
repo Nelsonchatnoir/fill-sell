@@ -289,7 +289,12 @@ const OBJECT_ICON_RULES = [
   [/(?:^|[^-\w])robe\b|jupe/i, '👗'],
   [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono/i, '🧥'],
   [/chemise|blouse\b|cravate|costume/i, '👔'],
-  [/t.?shirt|tee.?shirt|débardeur|polo\b|pull|sweat|hoodie|cardigan|\btop\b|tunique/i, '👕'],
+  // Scindé de 👕 : pull/sweat/hoodie/cardigan vivent chez Vinted sous une
+  // branche "Sweats et pulls" entièrement différente de "Hauts et t-shirts"
+  // (voir vintedCategories.js) — un seul et même mot-clé ne peut plus servir
+  // de proxy fiable au chemin catalogue, d'où l'icône dédiée.
+  [/pull|sweat|hoodie|cardigan/i, '🧶'],
+  [/t.?shirt|tee.?shirt|débardeur|polo\b|\btop\b|tunique/i, '👕'],
   [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
   [/short|bermuda/i, '🩳'],
   [/chaussette|collant/i, '🧦'],

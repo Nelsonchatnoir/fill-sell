@@ -63,12 +63,14 @@ const MODE_ADULTE = {
   // côté Femme, "T-shirts" EST la feuille terminale (4 niveaux) ; côté
   // Homme, "T-shirts" a un niveau de plus (5, "T-shirts unis" — celui validé
   // par notre dry-run réel). Une substitution Femme→Homme aurait cassé côté
-  // Femme (5e niveau inexistant). DÉFAUT ASSUMÉ supplémentaire : la regex
-  // couvre aussi pull/sweat/hoodie/cardigan, qui vivent chez Vinted sous
-  // "Sweats et pulls" / "Sweats et sweats à capuche" — branche totalement
-  // différente, non atteignable ici. Bon candidat de scission en Lot 2 vu le
-  // volume probable de pulls/sweats en revente.
+  // Femme (5e niveau inexistant).
   "👕": { Femme: ["Femmes", "Vêtements", "Hauts et t-shirts", "T-shirts"], Homme: ["Hommes", "Vêtements", "Hauts et t-shirts", "T-shirts", "T-shirts unis"] },
+  // 🧶 scindé de 👕 (shared.js) : pull/sweat/hoodie/cardigan vivent sous une
+  // branche entièrement différente de "Hauts et t-shirts". Femme : "Sweats &
+  // sweats à capuche" est la feuille directe générique (niveau 3, pas de
+  // sous-niveau pour cette entrée précise). Homme : "Sweats et pulls" n'a
+  // aucun sous-niveau du tout, "Sweats" y est déjà terminal (niveau 3).
+  "🧶": { Femme: ["Femmes", "Vêtements", "Sweats et sweats à capuche", "Sweats & sweats à capuche"], Homme: ["Hommes", "Vêtements", "Sweats et pulls", "Sweats"] },
   // DÉFAUT ASSUMÉ : la regex couvre jean/pantalon/jogging/legging/chino/
   // salopette/survêtement — "Jeans" est une catégorie Vinted à part entière,
   // distincte de "Pantalons (et leggings)". Défaut choisi sur la branche
