@@ -50,14 +50,34 @@ async function fillListingForm(job) {
 
   // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
   // publiée sur Vinted — on échoue AVANT de remplir quoi que ce soit, avec un
-  // message actionnable. Les jobs générés avant le mapping (ou dont l'icône /
-  // genre est hors périmètre du Lot 1) tombent volontairement ici.
+  // message actionnable. `vintedGenreRequired` (posé par l'app à la création
+  // du job quand l'icône est un article de mode adulte) permet de distinguer
+  // la vraie cause : genre manquant/Mixte vs icône hors mapping. Vinted n'a
+  // aucun rayon Mixte (vérifié sur l'arbre complet) — pour la mode, seul un
+  // rayon Femme/Homme est publiable.
   if (!fields.categoryPath?.length) {
+    if (fields.vintedGenreRequired && (!fields.genre || fields.genre === "Mixte")) {
+      return {
+        success: false,
+        error:
+          "Genre requis pour cet article : c'est un article de mode et Vinted ne " +
+          "propose que les rayons Femmes/Hommes (pas de Mixte). Choisir Femme ou " +
+          "Homme dans les champs Vinted de l'app, puis régénérer le job.",
+      };
+    }
+    if (fields.vintedGenreRequired && fields.genre === "Enfant") {
+      return {
+        success: false,
+        error:
+          "Article de mode en genre Enfant — rayon Enfants hors périmètre du " +
+          "mapping actuel (Lot 1 = adultes). Prévu en Lot 2.",
+      };
+    }
     return {
       success: false,
       error:
         "platform_fields.categoryPath absent — article non mappé vers le catalogue Vinted " +
-        "(icône hors périmètre Lot 1, ou genre Enfant/Mixte/non renseigné). " +
+        "(icône hors périmètre du mapping, ou job antérieur au mapping). " +
         "Régénérer l'annonce depuis l'app, ou compléter src/utils/vintedCategories.js.",
     };
   }
