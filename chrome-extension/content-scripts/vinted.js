@@ -230,17 +230,27 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   await openDropdown(triggerSelector);
   let optionTimeout = 5000;
   if (searchInputSelector) {
-    const search = document.querySelector(searchInputSelector);
+    // Le champ de recherche est rendu APRÈS l'ouverture du menu : l'attendre
+    // activement. Avant : querySelector immédiat → null → toute la saisie
+    // était sautée en silence, la liste restait sur "Marques populaires" et
+    // l'option cherchée ne pouvait jamais apparaître, quel que soit le
+    // polling en aval.
+    const search = await waitForElement(searchInputSelector, 5000).catch(() => null);
     if (search) {
-      setNativeValue(search, optionText);
-      // La recherche (ex: marque) est debouncée côté Vinted puis passe par le
-      // réseau avant re-render de la liste : 400 ms ne suffisaient pas
-      // (l'option "Patagonia" existait mais n'était pas encore dans le DOM).
-      // On laisse la liste se rafraîchir puis on polle plus longtemps.
-      await sleep(1200);
+      search.focus();
+      // Frappe caractère par caractère (comme le prix) : une assignation
+      // unique n'émet qu'un seul event "input", pas toujours suffisant pour
+      // déclencher le debounce de recherche Vinted.
+      setNativeValue(search, "");
+      for (const char of optionText) {
+        setNativeValue(search, search.value + char);
+        await sleep(40);
+      }
       optionTimeout = 10000;
     }
   }
+  // waitForOptionByText re-scanne le DOM toutes les 80 ms jusqu'au timeout —
+  // c'est lui qui absorbe debounce + réseau + re-render, sans délai fixe.
   const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
   option.click();
   await sleep(CLICK_DELAY);
