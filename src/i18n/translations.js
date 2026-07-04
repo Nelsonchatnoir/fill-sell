@@ -221,6 +221,11 @@ export const translations = {
     fieldBrandLabel:"Marque",
     fieldMaterialLabel:"Matière",
     fieldCategoryLabel:"Catégorie",
+    fieldGenderLabel:"Genre",
+    genderWoman:"Femme",
+    genderMan:"Homme",
+    genderChild:"Enfant",
+    genderUnisex:"Mixte",
     fieldPackageFormatLabel:"Format colis",
 
     sizeGroupGarmentLetter:"Vêtement (lettre)",
@@ -477,6 +482,11 @@ export const translations = {
     fieldBrandLabel:"Brand",
     fieldMaterialLabel:"Material",
     fieldCategoryLabel:"Category",
+    fieldGenderLabel:"Gender",
+    genderWoman:"Women",
+    genderMan:"Men",
+    genderChild:"Kids",
+    genderUnisex:"Unisex",
     fieldPackageFormatLabel:"Package format",
 
     sizeGroupGarmentLetter:"Garment (letter)",

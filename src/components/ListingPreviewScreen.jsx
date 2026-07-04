@@ -4,6 +4,8 @@ import ConversionModal from "./ConversionModal";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
+import { detectObjectIcon } from "../utils/shared";
+import { getVintedCategoryPath } from "../utils/vintedCategories";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -60,10 +62,21 @@ function getPlatformFieldsConfig(t) {
     { value:"Non défini",       label:t("packageUndefined") },
   ];
 
+  // Genre : valeurs FR canoniques ("Femme"/"Homme"/…) — clés du mapping
+  // catégorie Vinted (src/utils/vintedCategories.js), remplies par l'IA
+  // (generate-listing) et corrigeables ici avant publication.
+  const gender = [
+    { value:"Femme",  label:t("genderWoman") },
+    { value:"Homme",  label:t("genderMan") },
+    { value:"Enfant", label:t("genderChild") },
+    { value:"Mixte",  label:t("genderUnisex") },
+  ];
+
   return {
     vinted: [
       { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
       { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
+      { key:"genre",     label:t("fieldGenderLabel"),    type:"select", options: gender },
       { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
       { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
       { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
@@ -1173,18 +1186,34 @@ export default function ListingPreviewScreen({
         setInvId(currentInvId);
       }
 
-      const rows = [...selected].map(platform => ({
-        user_id:         userId,
-        inventaire_id:   addToStock ? currentInvId : null,
-        platform,
-        status:          "pending",
-        photo_option:    photoOption,
-        title:           edited[platform]?.title           ?? "",
-        description:     edited[platform]?.description     ?? "",
-        price:           edited[platform]?.price           ?? price,
-        photos:          processedPhotos,
-        platform_fields: edited[platform]?.platform_fields ?? {},
-      }));
+      const rows = [...selected].map(platform => {
+        const pf = { ...(edited[platform]?.platform_fields ?? {}) };
+        if (platform === "vinted") {
+          // Chemin catalogue Vinted calculé à l'insert : icône objet (mêmes
+          // règles que les tuiles Stock/Ventes) + genre IA/corrigé. null →
+          // pas de categoryPath → l'extension marque le job "failed" avec un
+          // message explicite (fallback volontaire, cf. vintedCategories.js).
+          const icon = detectObjectIcon(
+            edited[platform]?.title,
+            edited[platform]?.description,
+            pf.categorie || initialListing?.categorie
+          );
+          const categoryPath = getVintedCategoryPath(icon, pf.genre);
+          if (categoryPath) pf.categoryPath = categoryPath;
+        }
+        return {
+          user_id:         userId,
+          inventaire_id:   addToStock ? currentInvId : null,
+          platform,
+          status:          "pending",
+          photo_option:    photoOption,
+          title:           edited[platform]?.title           ?? "",
+          description:     edited[platform]?.description     ?? "",
+          price:           edited[platform]?.price           ?? price,
+          photos:          processedPhotos,
+          platform_fields: pf,
+        };
+      });
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
       if (insErr) throw new Error(t("genericError"));
       if (addToStock && currentInvId && processedPhotos?.length) {
