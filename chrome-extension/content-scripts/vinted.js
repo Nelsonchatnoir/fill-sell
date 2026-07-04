@@ -164,6 +164,25 @@ function waitForElement(selector, timeoutMs = 10_000) {
   });
 }
 
+// Certains champs (ex: #brand) semblent dépendre de la catégorie tout juste
+// choisie (les IDs "suggested-brand-*" du rapport DOM varient par catégorie) :
+// React peut remonter/remplacer ce nœud juste après la fermeture du popup
+// Catégorie. waitForElement renvoie le PREMIER nœud trouvé, qui peut être sur
+// le point d'être détaché — cliquer dessus ne produit alors aucun effet
+// visible, sans lever d'exception. On vérifie que le nœud trouvé est encore
+// le même après une courte pause avant de le considérer "stable" à cliquer.
+async function waitForStableElement(selector, timeoutMs = 5000, settleMs = 200) {
+  const start = Date.now();
+  let el = await waitForElement(selector, timeoutMs);
+  while (Date.now() - start < timeoutMs) {
+    await sleep(settleMs);
+    const again = document.querySelector(selector);
+    if (again === el) return el; // même nœud avant/après la pause : stable
+    el = again || (await waitForElement(selector, timeoutMs - (Date.now() - start)));
+  }
+  return el;
+}
+
 // Attend qu'un élément disparaisse du DOM ou devienne invisible (offsetParent
 // null — couvre le cas où Vinted le laisse monté mais masqué pendant
 // l'animation de fermeture). Ne rejette jamais : au pire on attend le
@@ -232,9 +251,25 @@ async function openDropdown(triggerSelector) {
   // par l'attente dans confirmDropdownIfNeeded ; ceci est redondant mais
   // gratuit (no-op si le panneau est déjà absent).
   await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
-  const trigger = await waitForElement(triggerSelector);
+  // waitForStableElement plutôt que waitForElement brut : certains champs
+  // (ex: #brand, dont les suggestions dépendent de la catégorie tout juste
+  // choisie — vu dans le rapport DOM, ids "suggested-brand-*") peuvent être
+  // remontés par React juste après la fermeture de Catégorie. Cliquer le
+  // tout premier nœud trouvé risque de cliquer un nœud sur le point d'être
+  // détaché — aucune exception, mais aucun effet visible non plus.
+  const trigger = await waitForStableElement(triggerSelector);
+  // 🧪 DEBUG TEMPORAIRE — à retirer une fois le bug d'ouverture résolu.
+  console.log(
+    `[vinted] 🧪 openDropdown(${triggerSelector}) — trigger trouvé:`,
+    { tagName: trigger.tagName, id: trigger.id, readOnly: trigger.readOnly, isConnected: trigger.isConnected }
+  );
   trigger.click();
   await sleep(CLICK_DELAY);
+  const stillConnected = document.querySelector(triggerSelector) === trigger;
+  console.log(
+    `[vinted] 🧪 openDropdown(${triggerSelector}) — après clic: isConnected=${trigger.isConnected}, ` +
+    `toujours le même nœud dans le DOM=${stillConnected}, panneau ouvert=${Boolean(document.querySelector(DROPDOWN_PANEL_SELECTOR))}`
+  );
   return trigger;
 }
 
