@@ -7,7 +7,12 @@
 // Chemins construits à partir d'un relevé exhaustif par navigation réelle du
 // catalogue Vinted (Femmes > Vêtements/Chaussures/Sacs/Accessoires et
 // Hommes > Vêtements/Chaussures/Accessoires), sauf mention contraire en
-// commentaire. Trois niveaux de confiance à distinguer :
+// commentaire. Depuis juillet 2026, l'arbre COMPLET (extrait des props React
+// du formulaire /items/new) est archivé dans docs/vinted-catalog-tree.json
+// (+ version lisible .txt) : tout chemin de ce fichier a été validé
+// programmatiquement contre cet arbre (feuille terminale comprise) — s'y
+// référer avant d'ajouter ou corriger un chemin. Trois niveaux de confiance
+// à distinguer :
 //   - chemins directs (une seule feuille possible) : fiables tels quels
 //   - "DÉFAUT ASSUMÉ" : l'icône regroupe plusieurs mots-clés qui pointent
 //     vers des feuilles différentes chez Vinted (ex: 🧥 couvre manteau ET
@@ -38,6 +43,12 @@ const MODE_ADULTE = {
   // Chaussures à talons n'existe pas côté Hommes (confirmé, pas d'équivalent).
   "👠": { Femme: ["Femmes", "Chaussures", "Chaussures à talons"], Homme: null },
   "🩴": { Femme: ["Femmes", "Chaussures", "Sandales"], Homme: ["Hommes", "Chaussures", "Sandales"] },
+  // ⛸️ vivait en null dans HORS_MODE — l'arbre complet montre que rollers et
+  // patins sont en réalité des feuilles GENRÉES (Chaussures > Chaussures de
+  // sport), d'où la migration ici. DÉFAUT ASSUMÉ : la regex couvre roller ET
+  // patin (à glace) — "Patins à glace" est une feuille sœur, un patin à glace
+  // atterrira à tort sur rollers avec ce défaut.
+  "⛸️": { Femme: ["Femmes", "Chaussures", "Chaussures de sport", "Patins à roulettes et rollers"], Homme: ["Hommes", "Chaussures", "Chaussures de sport", "Patins à roulettes et rollers"] },
 
   // ── Vêtements ─────────────────────────────────────────────────────────────
   // DÉFAUT ASSUMÉ : la regex robe|jupe couvre deux catégories Vinted SŒURS
@@ -100,10 +111,10 @@ const MODE_ADULTE = {
   // ── Accessoires ───────────────────────────────────────────────────────────
   "🧣": { Femme: ["Femmes", "Accessoires", "Écharpes et châles"], Homme: ["Hommes", "Accessoires", "Écharpes et châles"] },
   "🧤": { Femme: ["Femmes", "Accessoires", "Gants"], Homme: ["Hommes", "Accessoires", "Gants"] },
-  // NON CONFIRMÉ côté Homme : sous-niveau "Chapeaux et casquettes" non
-  // exploré par le relevé (chevron non ouvert), structure supposée identique
-  // à Femme par analogie — à vérifier au premier dry-run sur cet item.
-  "🧢": { Femme: ["Femmes", "Accessoires", "Chapeaux & casquettes", "Casquettes"], Homme: ["Hommes", "Accessoires", "Chapeaux & casquettes", "Casquettes"] },
+  // ⚠️ Piège de libellé confirmé par l'arbre : "Chapeaux & casquettes" (avec
+  // esperluette) côté Femme, mais "Chapeaux et casquettes" (avec "et") côté
+  // Homme — l'ancien chemin Homme par analogie était cassé.
+  "🧢": { Femme: ["Femmes", "Accessoires", "Chapeaux & casquettes", "Casquettes"], Homme: ["Hommes", "Accessoires", "Chapeaux et casquettes", "Casquettes"] },
   "🕶️": { Femme: ["Femmes", "Accessoires", "Lunettes de soleil"], Homme: ["Hommes", "Accessoires", "Lunettes de soleil"] },
   "⌚": { Femme: ["Femmes", "Accessoires", "Montres"], Homme: ["Hommes", "Accessoires", "Montres"] },
   // DÉFAUT ASSUMÉ : la regex couvre collier/bracelet/bague/boucle d'oreille/
@@ -119,31 +130,36 @@ const MODE_ADULTE = {
   // Femme/Homme par construction).
 };
 
-// Catégories SANS niveau genre (racines confirmées par relevé DOM : Maison,
-// Électronique, Divertissement, Loisirs et collections, Sport — Femmes/
-// Hommes/Enfants sont les 3 seules racines genrées). Chemin unique par
+// Catégories SANS niveau genre. Racines réelles de l'arbre (juillet 2026) :
+// Femmes, Hommes, Articles de créateurs, Enfants, Maison, Électronique,
+// Livres et médias, Loisirs et collections, Sport. ⚠️ L'ancienne racine
+// "Divertissement" a été RENOMMÉE "Livres et médias" par Vinted (les 4
+// chemins 💿📖📚📰 étaient cassés jusqu'à la correction de juillet 2026) —
+// les libellés de racines peuvent bouger, revalider contre
+// docs/vinted-catalog-tree.json en cas d'échec en série. Chemin unique par
 // icône, valable quel que soit platform_fields.genre.
 //
-// null explicite = vérifié, pas de feuille exploitable (à distinguer d'un
-// simple oubli) :
+// null explicite = vérifié dans l'arbre COMPLET, pas de feuille exploitable
+// (à distinguer d'un simple oubli) :
 //   - gros électroménager / mobilier (canapé, chaise, lit, frigo, lave-linge)
 //     confirmé absent de tout l'arbre Maison — Vinted ne semble pas vendre
 //     ces formats, cohérent avec l'exclusion déjà actée de Bricolage/Auto-Moto
 //   - vélo adulte complet confirmé absent (seulement vélo enfant + pièces
 //     détachées) — un défaut vers "Vélos pour enfant" serait activement
 //     trompeur, pire qu'un fallback explicite
-//   - branches dont le relevé confirme l'EXISTENCE du niveau 2 mais qui n'ont
-//     pas été explorées jusqu'à la feuille (chevron "non détaillé" dans le
-//     rapport) : imprimante/scanner, mixeur/robot cuisine, sèche-cheveux/
-//     rasoir (Électronique > Produits de beauté, non détaillé), instruments
-//     à cordes/vent/percussions, poupée/miniatures (jouets), trottinette/
-//     skate/roller, ballon (Sports d'équipe), golf, pêche, yoga — deviner un
-//     chemin ici reproduirait exactement le bug T-shirt (niveau intermédiaire
-//     pris pour une feuille)
+//   - équipement cardio (tapis de course/rameur/elliptique/vélo
+//     d'appartement) confirmé absent de tout l'arbre Sport (même famille de
+//     gap que le gros électroménager : trop encombrant pour Vinted)
+// Les anciennes branches "non détaillées à la feuille" (imprimante, mixeur,
+// coiffure/rasage, instruments, poupées, glisse urbaine, ballons, golf,
+// pêche, yoga...) ont toutes été résolues via l'arbre complet en juillet
+// 2026 — voir chaque entrée.
 const HORS_MODE = {
   // ── Électronique ──────────────────────────────────────────────────────────
   // DÉFAUT ASSUMÉ : conflate téléphone ET tablette (même icône côté
-  // detectObjectIcon) — tablette non détaillée à la feuille dans le relevé.
+  // detectObjectIcon). Une feuille tablette existe désormais (Électronique >
+  // Tablettes, liseuses et accessoires > Tablettes) — bon candidat de
+  // scission d'icône en Lot 2, chemin déjà identifié.
   "📱": ["Électronique", "Téléphones portables et équipements de communication", "Téléphones portables"],
   "💻": ["Électronique", "Ordinateurs et accessoires", "Ordinateurs portables"],
   // DÉFAUT ASSUMÉ : conflate pc/imac (ordinateur de bureau) ET écran/moniteur
@@ -165,8 +181,17 @@ const HORS_MODE = {
   "🛸": ["Électronique", "Appareils photo et accessoires", "Drones et accessoires", "Drones-caméras"],
   "⌨️": ["Électronique", "Ordinateurs et accessoires", "Claviers et accessoires", "Claviers"],
   "🖱️": ["Électronique", "Ordinateurs et accessoires", "Souris"],
-  "🖨️": null, // imprimante/scanner : branche existe (niveau 2 nommé) mais non détaillée à la feuille
-  "🔌": null, // chargeurs/câbles/powerbank : branche non détaillée à la feuille
+  // DÉFAUT ASSUMÉ : imprimante vs scanner, deux branches sœurs ("Imprimantes
+  // et accessoires" / "Scanners et accessoires > Scanners") — pas de feuille
+  // "Imprimantes" générique, jet d'encre pris comme format grand public
+  // dominant (laser/photo/multifonctions = feuilles sœurs).
+  "🖨️": ["Électronique", "Ordinateurs et accessoires", "Imprimantes et accessoires", "Imprimantes à jet d'encre"],
+  // DÉFAUT ASSUMÉ : seule feuille générique du groupe = "Batteries externes"
+  // (mots-clés batterie externe/powerbank). Les chargeurs/câbles/hubs/docks
+  // n'existent que par appareil (chargeurs pour ordinateurs portables, docks
+  // gaming...) — un câble ou un chargeur atterrira sur Batteries externes
+  // avec ce défaut, approximation dans la même racine Électronique.
+  "🔌": ["Électronique", "Autres appareils et accessoires", "Batteries externes"],
 
   // ── Maison — décoration / arts de la table ────────────────────────────────
   "💡": ["Maison", "Décoration", "Éclairage", "Lampes"],
@@ -176,13 +201,15 @@ const HORS_MODE = {
   // ce groupe — poster/affiche/tableau (sans cadre) n'ont pas de feuille
   // confirmée séparée ("Décorations murales" non détaillé).
   "🖼️": ["Maison", "Décoration", "Encadrements"],
-  // "Pots, jardinières et accessoires" : le relevé lui-même le signale non
-  // descendu jusqu'à la feuille (niveau 3, chevron potentiel) — pas assez
-  // confirmé pour l'utiliser, contrairement aux autres entrées de ce fichier.
-  "🪴": null,
+  // Branche réelle : Extérieur et jardin (pas Décoration comme supposé par
+  // l'ancien relevé). DÉFAUT ASSUMÉ : plante/cache-pot/jardinière — "Pots de
+  // fleurs" pris comme feuille générique (jardinières murales/suspendues/
+  // balcon = feuilles sœurs plus spécifiques).
+  "🪴": ["Maison", "Extérieur et jardin", "Pots, jardinières et accessoires", "Pots de fleurs"],
   "🏺": ["Maison", "Décoration", "Vases"],
-  // DÉFAUT ASSUMÉ : assiette/bol confirmés (Vaisselle), verre/carafe/tasse
-  // non confirmés à la feuille ("Verres" listé comme chevron non détaillé).
+  // DÉFAUT ASSUMÉ : assiette/bol→Vaisselle > Assiettes (dominant) ; verre a
+  // ses propres feuilles (Arts de la table > Verres > Verres à eau/à pied),
+  // non atteintes par ce défaut — scission possible en Lot 2.
   "🍽️": ["Maison", "Arts de la table", "Vaisselle", "Assiettes"],
   // DÉFAUT ASSUMÉ : casserole/poêle confirmés (Cuisson et pâtisserie),
   // "ustensile" générique vit en réalité sous Maison > Outils de cuisine
@@ -213,37 +240,64 @@ const HORS_MODE = {
   // confirmé feuille) — l'icône ne permet pas de distinguer, on prend le cas
   // vendable par défaut.
   "♨️": ["Maison", "Petits appareils de cuisine", "Micro-ondes"],
-  "🥣": null, // mixeur/blender/robot cuisine : "Blenders, mixeurs et robots" non détaillé à la feuille
+  // DÉFAUT ASSUMÉ : chaque mot-clé de la regex a sa feuille sœur exacte sous
+  // le même parent (blender→Blenders, mixeur→Mixeurs plongeants, thermomix/
+  // robot cuisine→Robots de cuisine, robot pâtissier→Robots pâtissiers,
+  // batteur→Batteur électrique) — "Blenders" pris par défaut (1er mot-clé),
+  // conflation bénigne car tout reste sous le bon parent.
+  "🥣": ["Maison", "Petits appareils de cuisine", "Blenders, mixeurs et robots de cuisine", "Blenders"],
   "🍞": ["Maison", "Petits appareils de cuisine", "Grille-pain"],
   "🍟": ["Maison", "Petits appareils de cuisine", "Friteuses"],
-  "💇": null, // sèche-cheveux/lisseur : Électronique > Produits de beauté non détaillé
+  // Branche réelle : "Produits de beauté et de soins personnels" (racine
+  // Électronique, pas Maison malgré la section). DÉFAUT ASSUMÉ : sèche-cheveux
+  // vs lisseur/boucleur, feuilles sœurs (Lisseurs / Autres appareils de
+  // coiffure) — sèche-cheveux pris comme dominant.
+  "💇": ["Électronique", "Produits de beauté et de soins personnels", "Appareils de coiffure", "Sèche-cheveux"],
   // Gros électroménager (lave-linge/sèche-linge/lave-vaisselle) absent de
   // tout l'arbre Maison, confirmé — aucune catégorie niveau 2 correspondante.
   "🧺": null,
   "☕": ["Maison", "Petits appareils de cuisine", "Préparation du café, du thé et de l'expresso", "Machines à café"],
-  "🪒": null, // rasoir/tondeuse/épilateur : même branche non détaillée que 💇
+  // DÉFAUT ASSUMÉ : rasoir→Rasoirs électriques, tondeuse→Tondeuses,
+  // épilateur→Épilateurs électriques, toutes feuilles sœurs sous "Rasage et
+  // épilation" — rasoir pris comme dominant (1er mot-clé de la regex).
+  "🪒": ["Électronique", "Produits de beauté et de soins personnels", "Rasage et épilation", "Rasoirs électriques"],
 
   // ── Musique / Livres / Collection ─────────────────────────────────────────
   "🎸": ["Loisirs et collections", "Instruments de musique et équipement", "Guitares et basses", "Guitares électriques"],
-  "🎻": null, // violon/violoncelle/contrebasse : "Instruments à cordes" non détaillé
-  "🥁": null, // batterie/cymbale : "Batterie et percussions" non détaillé
-  "🎺": null, // trompette/saxophone/clarinette/flûte : "Instruments à vent" non détaillé
+  // DÉFAUT ASSUMÉ : violon→Violons (dominant), violoncelle→Violoncelles
+  // (feuille sœur), contrebasse→pas de feuille dédiée ("Instruments à cordes
+  // spéciaux" serait le vrai bac).
+  "🎻": ["Loisirs et collections", "Instruments de musique et équipement", "Instruments à cordes", "Violons"],
+  // DÉFAUT ASSUMÉ (fragile) : pas de feuille "batterie acoustique complète" —
+  // "Batteries électroniques" pris comme cas de revente le plus courant ;
+  // une cymbale seule (Kits de cymbales) ou une caisse claire (feuille sœur
+  // "Caisses claires") atterriront à côté.
+  "🥁": ["Loisirs et collections", "Instruments de musique et équipement", "Batterie et percussions", "Batteries", "Batteries électroniques"],
+  // DÉFAUT ASSUMÉ : la regex écartèle deux sous-branches (trompette→Cuivres,
+  // saxo/clarinette/flûte→Bois) — "Flûtes" pris par défaut (3 mots-clés sur 4
+  // sont des Bois, flûte = plus gros volume écoles) ; une trompette atterrira
+  // dans la mauvaise sous-branche.
+  "🎺": ["Loisirs et collections", "Instruments de musique et équipement", "Instruments à vent", "Bois", "Flûtes"],
   // DÉFAUT ASSUMÉ : "vinyle" (disque, Divertissement) vs "platine" (lecteur,
   // Électronique > Systèmes audio domestiques > Platines vinyle) — deux
   // racines différentes pour le même mot-clé. Disque pris comme cas
   // dominant (33/45 tours confirment l'intention "disque").
-  "💿": ["Divertissement", "Musique", "Vinyles"],
-  // Pas de feuille confirmée pour un micro autonome (studio/karaoké) — seul
-  // "Microphones d'ordinateur" est confirmé, un mauvais candidat sémantique
-  // pour un micro de musique/karaoké.
-  "🎤": null,
-  "🎹": null, // clavier midi/piano/synthé : "Claviers et synthétiseurs" non détaillé
-  "📖": ["Divertissement", "Livres", "Bandes dessinées, mangas et romans graphiques"],
+  "💿": ["Livres et médias", "Musique", "Vinyles"],
+  // Feuille réelle trouvée dans l'arbre complet : "Microphones" sous Matériel
+  // de studio et sonorisation live (l'ancien relevé ne connaissait que
+  // "Microphones d'ordinateur"). Un micro karaoké a sa propre feuille
+  // (Équipement de karaoké > Microphones karaoké), non atteinte par ce défaut.
+  "🎤": ["Loisirs et collections", "Instruments de musique et équipement", "Matériel de studio et sonorisation live", "Microphones"],
+  // DÉFAUT ASSUMÉ : piano numérique/clavier arrangeur→Claviers électroniques
+  // (dominant), synthé→Synthétiseurs, clavier maître→Contrôleurs MIDI
+  // (feuilles sœurs).
+  "🎹": ["Loisirs et collections", "Instruments de musique et équipement", "Claviers et synthétiseurs", "Claviers électroniques"],
+  "📖": ["Livres et médias", "Livres", "Bandes dessinées, mangas et romans graphiques"],
   // DÉFAUT ASSUMÉ : roman (Fiction) vs encyclopédie/dictionnaire (Non-fiction
   // serait plus juste) — feuilles sœurs confirmées, roman pris comme
   // dominant.
-  "📚": ["Divertissement", "Livres", "Fiction"],
-  "📰": ["Divertissement", "Magazines"],
+  "📚": ["Livres et médias", "Livres", "Fiction"],
+  "📰": ["Livres et médias", "Magazines"],
   "📮": ["Loisirs et collections", "Timbres", "Timbres à l'unité"],
   "🪙": ["Loisirs et collections", "Pièces de monnaie et billets", "Pièces de monnaie"],
 
@@ -251,45 +305,62 @@ const HORS_MODE = {
   // jouets, PAS sous Divertissement ni Loisirs et collections) ─────────────
   "🧱": ["Enfants", "Jeux et jouets", "Jeux de construction"],
   "🧸": ["Enfants", "Jeux et jouets", "Peluches"],
-  "🪆": null, // poupée/barbie/poupon : "Poupées, poupons et accessoires" non détaillé
-  // Règle simple pour le piège signalé : "Puzzles" n'est confirmé QUE sous
-  // Loisirs et collections (pas retrouvé dans la liste Enfants > Jeux et
-  // jouets du relevé) — un seul chemin connu, utilisé sans condition
-  // adulte/enfant plutôt que de deviner une distinction qu'on n'a pas les
-  // moyens de faire.
+  "🪆": ["Enfants", "Jeux et jouets", "Poupées, poupons et accessoires", "Poupées et poupons"],
+  // Règle TRANCHÉE par l'arbre complet (juillet 2026) : "Puzzles" n'existe
+  // qu'à UN seul endroit dans tout le catalogue — Loisirs et collections >
+  // Puzzles (feuille). Aucune entrée Puzzles sous Enfants > Jeux et jouets.
+  // Chemin unique, aucune condition adulte/enfant à faire.
   "🧩": ["Loisirs et collections", "Puzzles"],
   "🦸": ["Enfants", "Jeux et jouets", "Figurines et accessoires", "Figurines"],
   "🃏": ["Loisirs et collections", "Cartes à collectionner", "Cartes à collectionner à l'unité"],
   "🎲": ["Loisirs et collections", "Jeux de société"],
-  "🏎️": null, // voiture miniature/hot wheels : "Voitures, trains et véhicules" non détaillé
+  "🏎️": ["Enfants", "Jeux et jouets", "Voitures, trains et autres véhicules", "Voitures"],
 
   // ── Sport ─────────────────────────────────────────────────────────────────
   // Piège confirmé : pas de "vélo adulte complet" (seulement vélo enfant +
   // pièces détachées) — un défaut vers l'un ou l'autre serait trompeur pour
   // un vrai vélo adulte entier, fallback explicite volontaire.
   "🚲": null,
-  "🛴": null, // trottinette : catégorie "Skateboards et trottinettes" nommée mais pas détaillée
-  "🛹": null, // skate/longboard : même branche non détaillée
-  "⛸️": null, // roller/patin : pas de feuille confirmée pertinente
+  "🛴": ["Sport", "Skateboards et trottinettes", "Trottinettes"],
+  // DÉFAUT ASSUMÉ : skate→Skateboards (dominant), longboard→Longboards
+  // (feuille sœur).
+  "🛹": ["Sport", "Skateboards et trottinettes", "Skateboards"],
+  // ⛸️ (roller/patin) migré vers MODE_ADULTE : feuilles réelles genrées sous
+  // Femmes/Hommes > Chaussures > Chaussures de sport.
   // DÉFAUT ASSUMÉ : ski (Matériel de ski) vs snowboard (Matériel de
   // snowboard), feuilles sœurs confirmées sous Sports d'hiver.
   "🎿": ["Sport", "Sports d'hiver", "Matériel de ski", "Skis alpins"],
-  "⚽": null, // ballon/football : "Sports d'équipe" non détaillé
+  // DÉFAUT ASSUMÉ : la regex couvre "ballon" générique — un ballon de volley/
+  // rugby/hand a sa feuille sœur dédiée sous Sports d'équipe, football pris
+  // comme dominant.
+  "⚽": ["Sport", "Sports d'équipe", "Football", "Ballons de football"],
   // DÉFAUT ASSUMÉ : tennis vs badminton, feuilles sœurs confirmées sous
   // Sports de raquette.
   "🎾": ["Sport", "Sports de raquette", "Tennis", "Raquettes de tennis"],
-  "⛳": null, // golf : catégorie nommée mais non détaillée
+  // DÉFAUT ASSUMÉ : "Clubs de golf" pris comme article de revente dominant
+  // (balles/sacs/gants/chariots = feuilles sœurs directes sous Golf).
+  "⛳": ["Sport", "Golf", "Clubs de golf"],
   "🏋️": ["Sport", "Fitness, course à pied et yoga", "Musculation", "Haltères"],
-  "🥊": null, // boxe/mma : "Boxe et arts martiaux" nommé mais non détaillé
+  // DÉFAUT ASSUMÉ : "Gants de boxe et d'arts martiaux" pris comme article
+  // dominant (sacs de frappe/protections/kimonos-ceintures = feuilles sœurs).
+  "🥊": ["Sport", "Boxe et arts martiaux", "Gants de boxe et d'arts martiaux"],
   "⛺": ["Sport", "Sports de plein air", "Tentes et matériel de couchage", "Tentes"],
-  "🎣": null, // pêche/moulinet : "Pêche et chasse" chevron non détaillé
-  "🧘": null, // yoga/pilates : "Matériel de yoga et de pilates" chevron non détaillé
+  // Branche réelle : Pêche et chasse vit SOUS Sports de plein air (niveau 3,
+  // pas niveau 2 comme supposé). DÉFAUT ASSUMÉ : canne→Cannes à pêche
+  // (dominant), moulinet→Moulinets de pêche (feuille sœur).
+  "🎣": ["Sport", "Sports de plein air", "Pêche et chasse", "Cannes à pêche"],
+  // DÉFAUT ASSUMÉ : "Tapis de yoga" pris comme article dominant (briques,
+  // coussins, sangles, accessoires pilates = feuilles sœurs).
+  "🧘": ["Sport", "Fitness, course à pied et yoga", "Matériel de yoga et de pilates", "Tapis de yoga"],
   // DÉFAUT ASSUMÉ : casque vélo (Cyclisme) vs casque ski/snow (Sports
   // d'hiver) — même icône, deux feuilles confirmées dans des catégories
   // parentes différentes ; vélo pris comme cas dominant.
   "⛑️": ["Sport", "Cyclisme", "Casques de vélo"],
-  "🏀": null, // basket-ball : "Sports d'équipe" non détaillé
-  "🏃": null, // tapis de course/rameur/elliptique : équipement cardio non détaillé
+  "🏀": ["Sport", "Sports d'équipe", "Basketball", "Ballons de basket"],
+  // Confirmé absent de TOUT l'arbre Sport (aucune feuille tapis de course/
+  // rameur/elliptique/vélo d'appartement) — même gap que le gros
+  // électroménager, fallback explicite volontaire.
+  "🏃": null,
 };
 
 /**
