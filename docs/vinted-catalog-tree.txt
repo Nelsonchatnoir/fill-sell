@@ -460,16 +460,6 @@ Hommes
     Maquillage  [FEUILLE]
     Coffrets  [FEUILLE]
     Autres cosmétiques  [FEUILLE]
-Articles de créateurs
-  Articles de créateurs pour femmes
-    Sacs de créateurs  [FEUILLE]
-    Chaussures de créateurs  [FEUILLE]
-    Accessoires de créateurs  [FEUILLE]
-    Vêtements de créateurs  [FEUILLE]
-  Articles de créateurs pour hommes
-    Chaussures de créateurs  [FEUILLE]
-    Accessoires de créateurs  [FEUILLE]
-    Vêtements de créateurs  [FEUILLE]
 Enfants
   Vêtements pour filles
     Bébé filles
@@ -947,8 +937,8 @@ Maison
       Robots de cuisine  [FEUILLE]
     Micro-ondes  [FEUILLE]
     Friteuses  [FEUILLE]
-    Grils et planchas  [FEUILLE]
     Plaques de cuisson  [FEUILLE]
+    Grils et planchas  [FEUILLE]
     Extracteurs de jus  [FEUILLE]
     Distributeurs d'eau et de boissons
       Filtres et purificateurs d'eau  [FEUILLE]
@@ -1957,7 +1947,7 @@ Maison
       Unités de distribution d'énergie  [FEUILLE]
       Onduleurs  [FEUILLE]
     Autres accessoires  [FEUILLE]
-Livres et médias
+Divertissement
   Livres
     Fiction  [FEUILLE]
     Non-fiction  [FEUILLE]
@@ -2634,7 +2624,6 @@ Sport
       Autres accessoires de pêche et de chasse  [FEUILLE]
     Autres accessoires de sports de plein air  [FEUILLE]
   Sports nautiques
-    Bateaux gonflables  [FEUILLE]
     Natation
       Masques de plongée  [FEUILLE]
       Palmes  [FEUILLE]
@@ -2646,6 +2635,7 @@ Sport
       Matériel d'entraînement pour la natation  [FEUILLE]
       Bouées de nage en eau libre  [FEUILLE]
       Accessoires d'aquagym et d'aquafitness  [FEUILLE]
+    Bateaux gonflables  [FEUILLE]
     Kayaks
       Kayaks pliants  [FEUILLE]
       Kayaks gonflables  [FEUILLE]

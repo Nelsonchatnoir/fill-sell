@@ -7,12 +7,17 @@
 // Chemins construits à partir d'un relevé exhaustif par navigation réelle du
 // catalogue Vinted (Femmes > Vêtements/Chaussures/Sacs/Accessoires et
 // Hommes > Vêtements/Chaussures/Accessoires), sauf mention contraire en
-// commentaire. Depuis juillet 2026, l'arbre COMPLET (extrait des props React
-// du formulaire /items/new) est archivé dans docs/vinted-catalog-tree.json
+// commentaire. Depuis juillet 2026, l'arbre COMPLET du FORMULAIRE de vente
+// (API /api/v2/item_upload/catalogs, celle qui alimente le dropdown que
+// l'extension navigue) est archivé dans docs/vinted-catalog-tree.json
 // (+ version lisible .txt) : tout chemin de ce fichier a été validé
 // programmatiquement contre cet arbre (feuille terminale comprise) — s'y
-// référer avant d'ajouter ou corriger un chemin. Trois niveaux de confiance
-// à distinguer :
+// référer avant d'ajouter ou corriger un chemin.
+// ⚠️ PIÈGE VÉCU : Vinted expose DEUX arbres différents — celui du formulaire
+// (8 racines, "Divertissement") et celui de la navigation/navbar (9 racines,
+// "Livres et médias", "Articles de créateurs"). Seul celui du FORMULAIRE
+// fait foi ici ; un audit contre l'arbre navbar a brièvement cassé les
+// chemins 💿📖📚📰 en juillet 2026. Trois niveaux de confiance à distinguer :
 //   - chemins directs (une seule feuille possible) : fiables tels quels
 //   - "DÉFAUT ASSUMÉ" : l'icône regroupe plusieurs mots-clés qui pointent
 //     vers des feuilles différentes chez Vinted (ex: 🧥 couvre manteau ET
@@ -149,14 +154,13 @@ const MODE_ADULTE = {
   // Femme/Homme par construction).
 };
 
-// Catégories SANS niveau genre. Racines réelles de l'arbre (juillet 2026) :
-// Femmes, Hommes, Articles de créateurs, Enfants, Maison, Électronique,
-// Livres et médias, Loisirs et collections, Sport. ⚠️ L'ancienne racine
-// "Divertissement" a été RENOMMÉE "Livres et médias" par Vinted (les 4
-// chemins 💿📖📚📰 étaient cassés jusqu'à la correction de juillet 2026) —
-// les libellés de racines peuvent bouger, revalider contre
-// docs/vinted-catalog-tree.json en cas d'échec en série. Chemin unique par
-// icône, valable quel que soit platform_fields.genre.
+// Catégories SANS niveau genre. Racines réelles du FORMULAIRE (juillet
+// 2026) : Femmes, Hommes, Enfants, Maison, Électronique, Divertissement,
+// Loisirs et collections, Sport. ⚠️ La navbar affiche "Livres et médias"
+// mais le formulaire de vente dit bien "Divertissement" (deux arbres
+// distincts, cf. header) — revalider contre docs/vinted-catalog-tree.json
+// (arbre du formulaire) en cas d'échec en série. Chemin unique par icône,
+// valable quel que soit platform_fields.genre.
 //
 // null explicite = vérifié dans l'arbre COMPLET, pas de feuille exploitable
 // (à distinguer d'un simple oubli) :
@@ -301,7 +305,7 @@ const HORS_MODE = {
   // Électronique > Systèmes audio domestiques > Platines vinyle) — deux
   // racines différentes pour le même mot-clé. Disque pris comme cas
   // dominant (33/45 tours confirment l'intention "disque").
-  "💿": ["Livres et médias", "Musique", "Vinyles"],
+  "💿": ["Divertissement", "Musique", "Vinyles"],
   // Feuille réelle trouvée dans l'arbre complet : "Microphones" sous Matériel
   // de studio et sonorisation live (l'ancien relevé ne connaissait que
   // "Microphones d'ordinateur"). Un micro karaoké a sa propre feuille
@@ -311,12 +315,12 @@ const HORS_MODE = {
   // (dominant), synthé→Synthétiseurs, clavier maître→Contrôleurs MIDI
   // (feuilles sœurs).
   "🎹": ["Loisirs et collections", "Instruments de musique et équipement", "Claviers et synthétiseurs", "Claviers électroniques"],
-  "📖": ["Livres et médias", "Livres", "Bandes dessinées, mangas et romans graphiques"],
+  "📖": ["Divertissement", "Livres", "Bandes dessinées, mangas et romans graphiques"],
   // DÉFAUT ASSUMÉ : roman (Fiction) vs encyclopédie/dictionnaire (Non-fiction
   // serait plus juste) — feuilles sœurs confirmées, roman pris comme
   // dominant.
-  "📚": ["Livres et médias", "Livres", "Fiction"],
-  "📰": ["Livres et médias", "Magazines"],
+  "📚": ["Divertissement", "Livres", "Fiction"],
+  "📰": ["Divertissement", "Magazines"],
   "📮": ["Loisirs et collections", "Timbres", "Timbres à l'unité"],
   "🪙": ["Loisirs et collections", "Pièces de monnaie et billets", "Pièces de monnaie"],
 
