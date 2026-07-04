@@ -265,6 +265,11 @@ const OBJECT_ICON_RULES = [
   [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
   [/casque.?(?:vélo|ski|snow)/i, '⛑️'],
   [/tondeuse.?(?:à.?)?(?:barbe|cheveux)|rasoir|épilateur/i, '🪒'],
+  // Contexte sport : doit passer avant les règles génériques sac (👜) et
+  // lunettes (🕶️) — feuilles Vinted dédiées (Sacs de sport, genré ;
+  // Sports nautiques > Natation > Lunettes de natation).
+  [/sac.?de.?(?:sport|gym|fitness)/i, '🎽'],
+  [/lunettes?.?de.?(?:natation|piscine)/i, '🥽'],
   [/sac.?à.?dos|backpack|cartable/i, '🎒'],
   [/batterie.?externe|powerbank|chargeur|câble|adaptateur|\bhub\b|\bdock\b/i, '🔌'],
   [/tapis.?de.?course|vélo.?d.?appartement|rameur|elliptique/i, '🏃'],
@@ -278,7 +283,9 @@ const OBJECT_ICON_RULES = [
   // Mode / Luxe
   [/basket|sneaker|chaussure|jordan|air.?max|air.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
   [/botte|bottine|\bboots?\b/i, '👢'],
-  [/talon|escarpin|ballerine|compensée|louboutin/i, '👠'],
+  // \btalons?\b : "pantalon" CONTIENT "talon" — sans la boundary stricte,
+  // tout titre "Pantalon ..." partait sur Chaussures à talons (bug prod).
+  [/\btalons?\b|escarpin|ballerine|compensée|louboutin/i, '👠'],
   [/sandale|tong\b|claquette|mule\b/i, '🩴'],
   [/\bsacs?\b|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
   [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
@@ -295,8 +302,10 @@ const OBJECT_ICON_RULES = [
   // de proxy fiable au chemin catalogue, d'où l'icône dédiée.
   [/pull|sweat|hoodie|cardigan/i, '🧶'],
   [/t.?shirt|tee.?shirt|débardeur|polo\b|\btop\b|tunique/i, '👕'],
-  [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
+  // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
+  // matcherait sinon en premier).
   [/short|bermuda/i, '🩳'],
+  [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
   [/chaussette|collant/i, '🧦'],
   [/écharpe|foulard|châle|snood/i, '🧣'],
   [/gant(?!.?de.?boxe)|mitaine|moufle/i, '🧤'],
@@ -312,7 +321,9 @@ const OBJECT_ICON_RULES = [
   [/écouteur|airpods?|earbud|casque|headphone/i, '🎧'],
   [/enceinte|haut.?parleur|speaker|barre.?de.?son|soundbar/i, '🔊'],
   [/console|playstation|\bps[2-5]\b|xbox|nintendo|switch|game.?boy|manette|jeu.?vidéo/i, '🎮'],
-  [/\btv\b|télé\b|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
+  // télé(?![a-zà-ÿ]) et non télé\b : \b est ASCII-only en JS, donc "télé"
+  // suivi d'une lettre matchait quand même ("télécommande" → Téléviseurs).
+  [/\btv\b|télé(?![a-zà-ÿ])|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
   [/appareil.?photo|caméra|camera|reflex|gopro|objectif|caméscope/i, '📷'],
   [/drone/i, '🛸'],
   [/imprimante|scanner/i, '🖨️'],
@@ -358,7 +369,7 @@ const OBJECT_ICON_RULES = [
   [/trottinette/i, '🛴'],
   [/skate|longboard/i, '🛹'],
   [/roller|patin/i, '⛸️'],
-  [/\bski\b|snowboard/i, '🎿'],
+  [/\bskis?\b|snowboard/i, '🎿'],
   [/ballon|football/i, '⚽'],
   [/tennis|raquette|badminton|squash/i, '🎾'],
   [/golf/i, '⛳'],

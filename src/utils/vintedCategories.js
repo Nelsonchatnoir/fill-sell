@@ -107,6 +107,9 @@ const MODE_ADULTE = {
   "👜": { Femme: ["Femmes", "Sacs", "Sacs à main"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs à bandoulière"] },
   "👛": { Femme: ["Femmes", "Sacs", "Porte-monnaie"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Porte-monnaie"] },
   "🎒": { Femme: ["Femmes", "Sacs", "Sacs à dos"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs à dos"] },
+  // 🎽 (sac de sport/gym) : désambiguïsé de 👜 dans shared.js — feuille
+  // dédiée des deux côtés, même asymétrie structurelle que les autres sacs.
+  "🎽": { Femme: ["Femmes", "Sacs", "Sacs de sport"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs de sport"] },
 
   // ── Accessoires ───────────────────────────────────────────────────────────
   "🧣": { Femme: ["Femmes", "Accessoires", "Écharpes et châles"], Homme: ["Hommes", "Accessoires", "Écharpes et châles"] },
@@ -352,6 +355,8 @@ const HORS_MODE = {
   // DÉFAUT ASSUMÉ : "Tapis de yoga" pris comme article dominant (briques,
   // coussins, sangles, accessoires pilates = feuilles sœurs).
   "🧘": ["Sport", "Fitness, course à pied et yoga", "Matériel de yoga et de pilates", "Tapis de yoga"],
+  // 🥽 (lunettes de natation/piscine) : désambiguïsé de 🕶️ dans shared.js.
+  "🥽": ["Sport", "Sports nautiques", "Natation", "Lunettes de natation"],
   // DÉFAUT ASSUMÉ : casque vélo (Cyclisme) vs casque ski/snow (Sports
   // d'hiver) — même icône, deux feuilles confirmées dans des catégories
   // parentes différentes ; vélo pris comme cas dominant.
