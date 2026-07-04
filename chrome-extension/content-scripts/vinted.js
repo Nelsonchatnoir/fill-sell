@@ -199,6 +199,29 @@ async function openDropdown(triggerSelector) {
   return trigger;
 }
 
+// Confirmé par test réel sur Catégorie : cliquer la feuille (rond radio) ne
+// ferme PAS le popup, il faut ensuite cliquer "Fait" pour valider et fermer.
+// Comportement des autres popups à liste unique (État, Matière...) non
+// vérifié — on tente ce clic partout par prudence : no-op si le bouton
+// n'existe pas pour ce champ (ex: Marque semble se fermer seule au clic sur
+// une option, à confirmer). Recherche document-wide par texte exact : un
+// seul popup est ouvert à la fois, pas de risque de collision.
+function findButtonByExactText(text) {
+  const candidates = document.querySelectorAll('button, [role="button"]');
+  for (const el of candidates) {
+    if (el.textContent.trim() === text) return el;
+  }
+  return null;
+}
+
+async function confirmDropdownIfNeeded() {
+  const doneBtn = findButtonByExactText("Fait");
+  if (doneBtn) {
+    doneBtn.click();
+    await sleep(CLICK_DELAY);
+  }
+}
+
 // Match exact d'abord (texte entier, ou segment pour les grilles de taille
 // type "M / 38 / 10"), includes() en repli seulement. Sans ça, "Bon état"
 // sélectionne "Très bon état" (premier dans la liste) et la taille "S"
@@ -255,6 +278,7 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
     const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
     option.click();
     await sleep(CLICK_DELAY);
+    await confirmDropdownIfNeeded();
   } catch (err) {
     if (searchInputSelector) {
       // 🧪 DEBUG TEMPORAIRE — à retirer une fois le bug recherche marque résolu.
@@ -301,11 +325,13 @@ function visibleCatalogLabels(limit = 20) {
 
 // Un niveau intermédiaire porte un chevron (classe web_ui__Cell__with-chevron,
 // confirmée par inspection DOM réelle du formulaire) ; une feuille
-// sélectionnable porte un rond radio et son clic ferme le menu. La classe peut
-// être sur le bouton lui-même, un parent ou un descendant selon le rendu — on
-// teste les trois. Décision AVANT chaque clic : pas de profondeur supposée,
-// c'est le DOM réel qui dit si on descend ou si on sélectionne (certains
-// chemins ont un 5e niveau, ex: "Pour occasions" sous "Robes").
+// sélectionnable porte un rond radio. Le clic sur la feuille NE ferme PAS le
+// menu (confirmé par test réel) : il faut ensuite valider via "Fait"
+// (confirmDropdownIfNeeded). La classe chevron peut être sur le bouton
+// lui-même, un parent ou un descendant selon le rendu — on teste les trois.
+// Décision AVANT chaque clic : pas de profondeur supposée, c'est le DOM réel
+// qui dit si on descend ou si on sélectionne (certains chemins ont un 5e
+// niveau, ex: "Pour occasions" sous "Robes").
 function isChevronOption(option) {
   return Boolean(
     option.matches(".web_ui__Cell__with-chevron") ||
@@ -358,6 +384,8 @@ async function selectCategory(path) {
     option.click();
     await sleep(400);
   }
+  // Le dernier clic (feuille) ne ferme pas le menu : valider explicitement.
+  await confirmDropdownIfNeeded();
 }
 
 async function selectColors(colorNames) {
