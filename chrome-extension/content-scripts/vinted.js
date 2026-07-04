@@ -88,44 +88,66 @@ async function fillListingForm(job) {
 
   await selectCategory(fields.categoryPath);
 
+  // Dégradation propre : seule la CATÉGORIE (ci-dessus) reste bloquante —
+  // sans elle rien n'est publiable. Tous les champs à choix fermé qui
+  // suivent sautent avec un warning en cas de libellé introuvable, plutôt
+  // que de faire échouer le job entier sur un détail.
+  const warnings = [];
+
   if (fields.marque) {
     // Deux sections dans le menu marque avec des ids différents :
     // "Marques populaires" (id="brand-XXX") et "Suggestions"
     // (id="suggested-brand-XXX"). L'aria-label porte le nom exact de la
     // marque dans les deux → on matche dessus (flag "i" : insensible à la
     // casse), au lieu du préfixe d'id qui ratait les suggestions.
-    await selectSimpleOption(
-      '#brand, [data-testid="brand-select-dropdown-input"]',
-      `[role="button"][aria-label="${CSS.escape(fields.marque)}" i]`,
-      fields.marque,
-      { searchInputSelector: "#brand-search-input" }
-    );
+    try {
+      await selectSimpleOption(
+        '#brand, [data-testid="brand-select-dropdown-input"]',
+        `[role="button"][aria-label="${CSS.escape(fields.marque)}" i]`,
+        fields.marque,
+        { searchInputSelector: "#brand-search-input" }
+      );
+    } catch (e) {
+      const note = `marque: champ sauté — ${e.message}`;
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
+      await closeAnyOpenDropdown();
+    }
   }
   if (fields.taille) {
     // La grille Vinted affiche "42", pas "EU 42" (préfixe côté FillSell) —
     // on retire le préfixe, le match exact-par-segment fait le reste.
-    await selectSimpleOption(
+    await selectClosedOptionSafe(
+      "taille",
       '#size, [data-testid="category-size-single-grid-input"]',
       '[data-testid^="size-group-"]',
-      String(fields.taille).replace(/^EU\s*/i, "")
+      String(fields.taille).replace(/^EU\s*/i, ""),
+      warnings
     );
   }
   if (fields.etat) {
-    await selectSimpleOption(
+    await selectClosedOptionSafe(
+      "état",
       '#condition, [data-testid="category-condition-single-list-input"]',
       '[data-testid^="condition-"]',
-      fields.etat
+      fields.etat,
+      warnings
     );
   }
   // Pas de source de donnée aujourd'hui — no-op tant que platform_fields.colors
   // (ou équivalent) n'existe pas.
-  if (fields.colors?.length) await selectColors(fields.colors);
+  if (fields.colors?.length) await selectColors(fields.colors, warnings);
 
   if (fields.matiere) {
-    await selectSimpleOption(
+    // Liste Vinted GLOBALE (55 options identiques toutes catégories,
+    // vérifié sur Montres/T-shirts/Sacs) mais l'IA peut générer un composé
+    // ("Résine et acier inoxydable") — c'est le cas d'origine de la cascade.
+    await selectClosedOptionSafe(
+      "matière",
       '#material, [data-testid="category-material-multi-list-input"]',
       '[data-testid^="material-"]',
-      fields.matiere
+      fields.matiere,
+      warnings
     );
   }
   if (job.price != null) await fillPriceField(job.price);
@@ -140,9 +162,10 @@ async function fillListingForm(job) {
       "\nJob:", job.id,
       "\nTitre:", job.title,
       "\nPrix:", job.price,
-      "\nChamps plateforme:", fields
+      "\nChamps plateforme:", fields,
+      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
     );
-    return { success: true, dryRun: true };
+    return { success: true, dryRun: true, warnings };
   }
 
   const publishBtn = await waitForElement('[data-testid="upload-form-save-button"]');
@@ -153,7 +176,7 @@ async function fillListingForm(job) {
   //    s'en sert pour détecter la vente)
   const listingUrl = null;
 
-  return { success: true, listingUrl };
+  return { success: true, listingUrl, warnings };
 }
 
 // ── Helpers génériques ─────────────────────────────────────────────────────────
@@ -383,6 +406,91 @@ async function waitForOptionByText(optionSelector, text, timeoutMs = 5000) {
   throw new Error(`Option "${text}" introuvable pour ${optionSelector}`);
 }
 
+// ── Matching en cascade pour les champs à choix fermé (matière, état,
+// taille, couleur) : l'IA génère du texte libre qui ne colle pas toujours
+// aux options Vinted (cas réel : "Résine et acier inoxydable" alors que la
+// liste ne propose que "Acier"). Cascade, du plus sûr au plus permissif :
+//   1. exact — texte entier ou segment "/" (grilles de taille)
+//   2. option ⊂ valeur, en MOTS ENTIERS, accents ignorés — la plus longue
+//      option contenue gagne ("acier" trouvé dans "résine et acier
+//      inoxydable" ; les mots entiers évitent que "Or" matche "bORdeaux")
+//   3. composants — la valeur est éclatée sur "et"/","/"&"/"+"/"/" et
+//      chaque composant repasse par 1 puis 2 ("Résine" seul, etc.)
+// Retourne { el, label, stage } ou null — le caller décide de skipper. ──
+const normalizeFuzzy = (s) =>
+  s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+function containsAsWords(hay, needle) {
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
+}
+
+function findOptionCascade(root, optionSelector, text) {
+  const options = Array.from(root.querySelectorAll(optionSelector))
+    .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
+    .filter((o) => o.norm);
+  if (!options.length) return null;
+  const target = normalizeFuzzy(text);
+
+  // 1. exact (texte entier ou segment de grille)
+  const exact = options.find(
+    (o) => o.norm === target || o.label.split("/").some((p) => normalizeFuzzy(p) === target)
+  );
+  if (exact) return { ...exact, stage: "exact" };
+
+  const optionInTarget = (t) =>
+    options
+      .filter((o) => containsAsWords(t, o.norm))
+      .sort((a, b) => b.norm.length - a.norm.length)[0];
+
+  // 2. option contenue dans la valeur (mots entiers, option la plus longue)
+  const fuzzy = optionInTarget(target);
+  if (fuzzy) return { ...fuzzy, stage: "fuzzy" };
+
+  // 3. composant par composant ("Résine et acier inoxydable" → "résine",
+  // "acier inoxydable")
+  const components = target.split(/\s+et\s+|[,&+/]/).map((c) => c.trim()).filter(Boolean);
+  if (components.length > 1) {
+    for (const comp of components) {
+      const compExact = options.find((o) => o.norm === comp);
+      if (compExact) return { ...compExact, stage: "composant" };
+      const compFuzzy = optionInTarget(comp);
+      if (compFuzzy) return { ...compFuzzy, stage: "composant" };
+    }
+  }
+  return null;
+}
+
+async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000) {
+  const start = Date.now();
+  let lastOptions = [];
+  while (Date.now() - start < timeoutMs) {
+    const found = findOptionCascade(document, optionSelector, text);
+    if (found) return found;
+    lastOptions = Array.from(document.querySelectorAll(optionSelector))
+      .map((o) => o.textContent.trim()).filter(Boolean);
+    if (lastOptions.length) break; // options rendues mais aucun match : inutile d'attendre
+    await sleep(80);
+  }
+  throw new Error(
+    `Option "${text}" sans correspondance (même approximative) pour ${optionSelector}. ` +
+    `Options Vinted: ${JSON.stringify(lastOptions.slice(0, 60))}`
+  );
+}
+
+// Referme proprement un panneau resté ouvert après un échec de sélection —
+// sans ça, le champ suivant échouerait en cascade (openDropdown attendrait
+// la disparition d'un panneau qui ne se ferme jamais).
+async function closeAnyOpenDropdown() {
+  if (!document.querySelector(DROPDOWN_PANEL_SELECTOR)) return;
+  const done = findButtonByExactText("Fait");
+  if (done) done.click();
+  else document.body.click();
+  await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
+  await sleep(CLICK_DELAY);
+}
+
 async function selectSimpleOption(triggerSelector, optionSelector, optionText, { searchInputSelector } = {}) {
   await openDropdown(triggerSelector);
   let optionTimeout = 5000;
@@ -412,6 +520,32 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   option.click();
   await sleep(CLICK_DELAY);
   await confirmDropdownIfNeeded();
+}
+
+// Variante robuste pour les champs à choix fermé (taille, état, matière) :
+// matching en cascade ET jamais bloquante — un libellé IA sans équivalent
+// Vinted saute le champ avec un warning au lieu de faire échouer le job
+// entier (le champ restera vide, corrigeable à la main avant publication).
+async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings) {
+  try {
+    await openDropdown(triggerSelector);
+    const match = await waitForOptionCascade(optionSelector, rawText);
+    match.el.click();
+    await sleep(CLICK_DELAY);
+    await confirmDropdownIfNeeded();
+    if (match.stage !== "exact") {
+      const note = `${fieldName}: "${rawText}" → option Vinted "${match.label}" (match ${match.stage})`;
+      console.warn(`[vinted] ≈ ${note}`);
+      warnings.push(note);
+    }
+    return true;
+  } catch (e) {
+    const note = `${fieldName}: champ sauté — ${e.message}`;
+    console.warn(`[vinted] ⚠️ ${note}`);
+    warnings.push(note);
+    await closeAnyOpenDropdown();
+    return false;
+  }
 }
 
 // Catégorie : menu en cascade, panneau réécrit en place à chaque niveau (pas de
@@ -498,14 +632,31 @@ async function selectCategory(path) {
   await confirmDropdownIfNeeded();
 }
 
-async function selectColors(colorNames) {
-  // multi-sélection, 2 couleurs maximum côté Vinted
-  await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
+async function selectColors(colorNames, warnings = []) {
+  // multi-sélection, 2 couleurs maximum côté Vinted — même cascade que les
+  // autres choix fermés, et jamais bloquant (couleur ignorée si introuvable).
+  try {
+    await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
+  } catch (e) {
+    const note = `couleur: champ sauté — ${e.message}`;
+    console.warn(`[vinted] ⚠️ ${note}`);
+    warnings.push(note);
+    return;
+  }
   for (const name of colorNames.slice(0, 2)) {
-    const option = findOptionByText(document, '[data-testid^="color-"]', name);
-    if (option) {
-      option.click();
+    const match = findOptionCascade(document, '[data-testid^="color-"]', name);
+    if (match) {
+      match.el.click();
       await sleep(CLICK_DELAY);
+      if (match.stage !== "exact") {
+        const note = `couleur: "${name}" → option Vinted "${match.label}" (match ${match.stage})`;
+        console.warn(`[vinted] ≈ ${note}`);
+        warnings.push(note);
+      }
+    } else {
+      const note = `couleur: "${name}" sans correspondance, ignorée`;
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
     }
   }
   document.body.click(); // fermer le menu, pas de bouton "valider" identifié
@@ -540,4 +691,7 @@ async function uploadPhotos(photos) {
   await sleep(1500 * files.length); // laisser le temps à l'upload asynchrone Vinted
 }
 
-console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ")");
+// Marqueur de version dans le log : permet de vérifier depuis la console
+// qu'une version fraîche du script est bien injectée après un reload de
+// l'extension (le libellé change à chaque évolution notable du remplissage).
+console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", matching: cascade-v1)");
