@@ -252,50 +252,21 @@ async function fillTextField(selector, value) {
 }
 
 async function fillPriceField(value) {
-  // Prix = champ texte formaté (virgule + €), pas type="number" natif.
+  // Prix = champ texte avec formatage monétaire live (virgule + €), pas
+  // type="number" natif. Bug "NaN €" : la version précédente relisait
+  // `el.value` à chaque caractère pour concaténer — mais Vinted reformate le
+  // champ à la volée sur "input" (masque monétaire), donc `el.value` reflète
+  // sa version déjà reformatée, pas notre saisie brute ; concaténer dessus
+  // produit une chaîne invalide que le parseur de Vinted ne peut plus lire.
+  // Fix : on construit la cible nous-mêmes (jamais de lecture de `el.value`),
+  // et on l'assigne en un seul coup — alternative validée par le rapport DOM
+  // ("définir la valeur puis déclencher input/change/blur").
   const el = await waitForElement('#price, [data-testid="price-input--input"]');
   el.focus();
-  setNativeValue(el, "");
   const str = String(value).replace(".", ",");
-  for (const char of str) {
-    setNativeValue(el, el.value + char);
-    await sleep(30);
-  }
+  setNativeValue(el, str);
   el.dispatchEvent(new Event("blur", { bubbles: true }));
   await sleep(CLICK_DELAY);
-}
-
-// 🧪 DEBUG TEMPORAIRE — inspection sans React DevTools : React attache ses
-// props internes (dont les handlers onClick/onPointerDown/onMouseDown/onFocus
-// réellement branchés) directement sur le nœud DOM, sous une clé du type
-// "__reactProps$<id>" (ou "__reactEventHandlers$<id>" sur les anciennes
-// versions). Ça permet de vérifier si un handler est ne serait-ce que présent,
-// sans dépendre de l'extension React DevTools.
-function getReactProps(el) {
-  if (!el) return null;
-  const key = Object.keys(el).find(
-    (k) => k.startsWith("__reactProps$") || k.startsWith("__reactEventHandlers$")
-  );
-  return key ? el[key] : null;
-}
-
-function inspectElementState(el) {
-  if (!el) return null;
-  const style = getComputedStyle(el);
-  const props = getReactProps(el);
-  return {
-    tagName: el.tagName,
-    id: el.id || null,
-    className: el.className || null,
-    disabled: el.disabled ?? null,
-    ariaDisabled: el.getAttribute("aria-disabled"),
-    pointerEvents: style.pointerEvents,
-    hasReactProps: Boolean(props),
-    reactOnClick: props ? typeof props.onClick === "function" : null,
-    reactOnPointerDown: props ? typeof props.onPointerDown === "function" : null,
-    reactOnMouseDown: props ? typeof props.onMouseDown === "function" : null,
-    reactOnFocus: props ? typeof props.onFocus === "function" : null,
-  };
 }
 
 async function openDropdown(triggerSelector) {
@@ -305,34 +276,36 @@ async function openDropdown(triggerSelector) {
   // par l'attente dans confirmDropdownIfNeeded ; ceci est redondant mais
   // gratuit (no-op si le panneau est déjà absent).
   await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
-  // 🧪 DEBUG TEMPORAIRE — test de l'hypothèse "composant pas encore prêt" :
-  // délai fixe supplémentaire avant même de chercher le trigger, en plus du
-  // waitForElementGone déjà en place. Si ça change quoi que ce soit, la vraie
-  // cause est un temps d'activation post-fermeture-Catégorie qu'aucune de nos
-  // attentes basées sur le DOM ne capture (ex: état interne React, requête
-  // réseau des marques suggérées par catégorie).
-  await sleep(800);
-  // waitForStableElement plutôt que waitForElement brut : certains champs
-  // (ex: #brand, dont les suggestions dépendent de la catégorie tout juste
-  // choisie — vu dans le rapport DOM, ids "suggested-brand-*") peuvent être
-  // remontés par React juste après la fermeture de Catégorie. Cliquer le
-  // tout premier nœud trouvé risque de cliquer un nœud sur le point d'être
-  // détaché — aucune exception, mais aucun effet visible non plus.
+  // waitForStableElement : certains champs (ex: #brand, dont les suggestions
+  // dépendent de la catégorie tout juste choisie — ids "suggested-brand-*" du
+  // rapport DOM) peuvent être remontés par React juste après la fermeture de
+  // Catégorie. Cliquer le tout premier nœud trouvé risque de cliquer un nœud
+  // sur le point d'être détaché.
   const trigger = await waitForStableElement(triggerSelector);
-  // 🧪 DEBUG TEMPORAIRE — à retirer une fois le bug d'ouverture résolu.
-  console.log(`[vinted] 🧪 openDropdown(${triggerSelector}) — trigger:`, inspectElementState(trigger));
-  console.log(`[vinted] 🧪 openDropdown(${triggerSelector}) — parent:`, inspectElementState(trigger.parentElement));
-  // element.click() natif confirmé insuffisant pour ce composant (nœud
-  // stable, aucune exception, panneau non ouvert) — séquence bas niveau
-  // pointerdown/mousedown/pointerup/mouseup/click à la place.
-  simulateFullClick(trigger);
+  // Certains composants (confirmé sur #brand) ne sont pas immédiatement
+  // réactifs juste après la fermeture du popup précédent : le premier clic
+  // (séquence bas niveau pointerdown/mousedown/pointerup/mouseup/click) peut
+  // ne rien ouvrir alors même que le nœud est stable et sans exception. Plutôt
+  // qu'un délai fixe deviné avant le clic, on attend le résultat qui compte
+  // réellement — le panneau ouvert — et on réessaie tant qu'il ne l'est pas.
+  const opened = await clickUntilPanelOpens(trigger);
+  if (!opened) {
+    throw new Error(
+      `Le clic sur ${triggerSelector} n'a pas ouvert de panneau (${DROPDOWN_PANEL_SELECTOR}) ` +
+      `après plusieurs tentatives.`
+    );
+  }
   await sleep(CLICK_DELAY);
-  const stillConnected = document.querySelector(triggerSelector) === trigger;
-  console.log(
-    `[vinted] 🧪 openDropdown(${triggerSelector}) — après clic: isConnected=${trigger.isConnected}, ` +
-    `toujours le même nœud dans le DOM=${stillConnected}, panneau ouvert=${Boolean(document.querySelector(DROPDOWN_PANEL_SELECTOR))}`
-  );
   return trigger;
+}
+
+async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 300 } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    simulateFullClick(trigger);
+    const opened = await waitForElement(DROPDOWN_PANEL_SELECTOR, perAttemptMs).catch(() => null);
+    if (opened) return true;
+  }
+  return false;
 }
 
 // Confirmé par test réel sur Catégorie : cliquer la feuille (rond radio) ne
@@ -415,34 +388,10 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   }
   // waitForOptionByText re-scanne le DOM toutes les 80 ms jusqu'au timeout —
   // c'est lui qui absorbe debounce + réseau + re-render, sans délai fixe.
-  try {
-    const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
-    option.click();
-    await sleep(CLICK_DELAY);
-    await confirmDropdownIfNeeded();
-  } catch (err) {
-    if (searchInputSelector) {
-      // 🧪 DEBUG TEMPORAIRE — à retirer une fois le bug recherche marque résolu.
-      const searchEl = document.querySelector(searchInputSelector);
-      // Le panneau réutilisé (cf. selectCategory) borne la liste au dropdown
-      // ouvert ; à défaut on retombe sur tout le document.
-      const panel = document.querySelector(".input-dropdown__content") || document;
-      const buttons = Array.from(panel.querySelectorAll('[role="button"]')).map((el) => ({
-        text: el.textContent.trim(),
-        ariaLabel: el.getAttribute("aria-label"),
-        id: el.id || null,
-      }));
-      console.log(`[vinted] 🧪 DEBUG échec recherche "${optionText}"`);
-      console.log(
-        "[vinted] 🧪 valeur réelle de",
-        searchInputSelector,
-        ":",
-        searchEl ? JSON.stringify(searchEl.value) : "(champ introuvable dans le DOM)"
-      );
-      console.log(`[vinted] 🧪 ${buttons.length} élément(s) [role="button"] dans le panneau:`, buttons);
-    }
-    throw err;
-  }
+  const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
+  option.click();
+  await sleep(CLICK_DELAY);
+  await confirmDropdownIfNeeded();
 }
 
 // Catégorie : menu en cascade, panneau réécrit en place à chaque niveau (pas de
