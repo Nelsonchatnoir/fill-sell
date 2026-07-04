@@ -26,10 +26,12 @@ const MODE_ADULTE = {
   "👗": { Femme: ["Femmes", "Vêtements", "Robes"],              Homme: null },
   "🧥": { Femme: ["Femmes", "Vêtements", "Manteaux"],           Homme: ["Hommes", "Vêtements", "Manteaux"] },
   "👔": { Femme: ["Femmes", "Vêtements", "Chemises"],           Homme: ["Hommes", "Vêtements", "Chemises"] },
-  // "Hauts et t-shirts" est un niveau intermédiaire (confirmé au dry-run :
-  // sous-niveaux ["Chemises","T-shirts","Polos","T-shirts sans manches"]) —
-  // feuille terminale = "T-shirts". Côté Femme, même structure supposée.
-  "👕": { Femme: ["Femmes", "Vêtements", "Tops et t-shirts", "T-shirts"],   Homme: ["Hommes", "Vêtements", "Hauts et t-shirts", "T-shirts"] },
+  // Arbre confirmé aux dry-runs : "Hauts et t-shirts" → ["Chemises",
+  // "T-shirts","Polos","T-shirts sans manches"], puis "T-shirts" a encore un
+  // niveau (unis/imprimés/...). Feuille par défaut : "T-shirts unis" —
+  // approximation assumée, le mapping statique icône→chemin ne voit pas le
+  // motif de l'article. Côté Femme, même structure supposée (à confirmer).
+  "👕": { Femme: ["Femmes", "Vêtements", "Tops et t-shirts", "T-shirts", "T-shirts unis"],   Homme: ["Hommes", "Vêtements", "Hauts et t-shirts", "T-shirts", "T-shirts unis"] },
   "👖": { Femme: ["Femmes", "Vêtements", "Pantalons"],          Homme: ["Hommes", "Vêtements", "Pantalons"] },
   "🩳": { Femme: ["Femmes", "Vêtements", "Shorts"],             Homme: ["Hommes", "Vêtements", "Shorts"] },
   "👙": { Femme: ["Femmes", "Vêtements", "Maillots de bain"],   Homme: null },
