@@ -6,6 +6,12 @@
 const DRY_RUN = true;
 
 const CLICK_DELAY = 250;
+// Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
+// supposé partagé avec Marque/Taille/État/Couleur/Matière, mêmes composants
+// Vinted). waitForElementGone dessus ne bloque jamais (résout au timeout),
+// donc même si l'hypothèse est fausse pour un champ donné, au pire on perd
+// le timeout en délai, sans casser le flux.
+const DROPDOWN_PANEL_SELECTOR = ".input-dropdown__content";
 
 // ── Communication avec le background ──────────────────────────────────────────
 
@@ -158,6 +164,33 @@ function waitForElement(selector, timeoutMs = 10_000) {
   });
 }
 
+// Attend qu'un élément disparaisse du DOM ou devienne invisible (offsetParent
+// null — couvre le cas où Vinted le laisse monté mais masqué pendant
+// l'animation de fermeture). Ne rejette jamais : au pire on attend le
+// timeout puis on continue, pour ne pas bloquer indéfiniment si l'hypothèse
+// de sélecteur est fausse pour un champ donné.
+function waitForElementGone(selector, timeoutMs = 3000) {
+  const isGone = () => {
+    const el = document.querySelector(selector);
+    return !el || el.offsetParent === null;
+  };
+  return new Promise((resolve) => {
+    if (isGone()) return resolve(true);
+    const observer = new MutationObserver(() => {
+      if (isGone()) {
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      resolve(false);
+    }, timeoutMs);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+}
+
 // Assigne une valeur à un input/textarea contrôlé par React en déclenchant
 // le setter natif + les events "input"/"change", sinon le state React ne voit rien.
 function setNativeValue(element, value) {
@@ -193,6 +226,12 @@ async function fillPriceField(value) {
 }
 
 async function openDropdown(triggerSelector) {
+  // Filet de sécurité : si le panneau précédent (ex: Catégorie) n'a pas fini
+  // de se fermer, cliquer le trigger suivant tout de suite peut rater le clic
+  // ou ouvrir/refermer le mauvais panneau. Ce cas est censé être déjà réglé
+  // par l'attente dans confirmDropdownIfNeeded ; ceci est redondant mais
+  // gratuit (no-op si le panneau est déjà absent).
+  await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
   const trigger = await waitForElement(triggerSelector);
   trigger.click();
   await sleep(CLICK_DELAY);
@@ -218,6 +257,11 @@ async function confirmDropdownIfNeeded() {
   const doneBtn = findButtonByExactText("Fait");
   if (doneBtn) {
     doneBtn.click();
+    // Attente active de la fermeture réelle du panneau plutôt qu'un délai
+    // fixe : hypothèse confirmée par test réel — le clic sur #brand juste
+    // après "Fait" (250 ms fixes) tombait sur la modale Catégorie encore en
+    // train de se démonter, #brand-search-input n'apparaissait jamais.
+    await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 3000);
     await sleep(CLICK_DELAY);
   }
 }
