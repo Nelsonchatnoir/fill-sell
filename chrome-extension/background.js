@@ -157,10 +157,17 @@ async function pollAndProcessJobs() {
 
   console.log(`[background] ${jobs.length} job(s) pending`);
 
-  // Séquentiel : un onglet de publication à la fois
-  for (const job of jobs) {
-    await processJob(job, session.access_token);
+  // Séquentiel : un onglet de publication à la fois, avec une pause entre
+  // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
+  // onglets trop vite.
+  for (let i = 0; i < jobs.length; i++) {
+    await processJob(jobs[i], session.access_token);
+    if (i < jobs.length - 1) await sleep(FILLSELL_CONFIG.JOB_DELAY_MS);
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function processJob(job, accessToken) {

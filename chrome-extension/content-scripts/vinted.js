@@ -42,13 +42,25 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
 
+  // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
+  // publiée sur Vinted — on échoue AVANT de remplir quoi que ce soit, avec un
+  // message actionnable. Les jobs générés avant le mapping (ou dont l'icône /
+  // genre est hors périmètre du Lot 1) tombent volontairement ici.
+  if (!fields.categoryPath?.length) {
+    return {
+      success: false,
+      error:
+        "platform_fields.categoryPath absent — article non mappé vers le catalogue Vinted " +
+        "(icône hors périmètre Lot 1, ou genre Enfant/Mixte/non renseigné). " +
+        "Régénérer l'annonce depuis l'app, ou compléter src/utils/vintedCategories.js.",
+    };
+  }
+
   if (job.photos?.length) await uploadPhotos(job.photos);
   if (job.title) await fillTextField('#title, [data-testid="title--input"]', job.title);
   if (job.description) await fillTextField('#description, [data-testid="description--input"]', job.description);
 
-  // Pas de source de donnée aujourd'hui (voir doc ci-dessus) — no-op tant que
-  // platform_fields.categoryPath n'existe pas.
-  if (fields.categoryPath?.length) await selectCategory(fields.categoryPath);
+  await selectCategory(fields.categoryPath);
 
   if (fields.marque) {
     await selectSimpleOption(
@@ -216,10 +228,75 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
 // sous Robes) — le path fourni en amont doit correspondre à un chemin complet
 // jusqu'à une feuille terminale (option avec rond radio, pas chevron), sinon
 // Vinted reste bloqué sur un niveau intermédiaire.
+//
+// Les erreurs listent les options réellement affichées par Vinted à ce niveau :
+// c'est le retour dont on a besoin pendant les dry-runs pour corriger les
+// libellés draft de vintedCategories.js (côté app) sans naviguer à la main.
+const CATALOG_OPTION_SELECTOR = 'li.web_ui__Item__item [role="button"][id^="catalog-"]';
+
+function visibleCatalogLabels(limit = 20) {
+  return Array.from(document.querySelectorAll(CATALOG_OPTION_SELECTOR))
+    .map((o) => o.textContent.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+// Un niveau intermédiaire porte un chevron (classe web_ui__Cell__with-chevron,
+// confirmée par inspection DOM réelle du formulaire) ; une feuille
+// sélectionnable porte un rond radio et son clic ferme le menu. La classe peut
+// être sur le bouton lui-même, un parent ou un descendant selon le rendu — on
+// teste les trois. Décision AVANT chaque clic : pas de profondeur supposée,
+// c'est le DOM réel qui dit si on descend ou si on sélectionne (certains
+// chemins ont un 5e niveau, ex: "Pour occasions" sous "Robes").
+function isChevronOption(option) {
+  return Boolean(
+    option.matches(".web_ui__Cell__with-chevron") ||
+    option.closest(".web_ui__Cell__with-chevron") ||
+    option.querySelector(".web_ui__Cell__with-chevron")
+  );
+}
+
 async function selectCategory(path) {
   await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]');
-  for (const levelLabel of path) {
-    const option = await waitForOptionByText('li.web_ui__Item__item [role="button"][id^="catalog-"]', levelLabel);
+  for (let i = 0; i < path.length; i++) {
+    const levelLabel = path[i];
+    const isLast = i === path.length - 1;
+
+    let option;
+    try {
+      option = await waitForOptionByText(CATALOG_OPTION_SELECTOR, levelLabel);
+    } catch {
+      throw new Error(
+        `Catégorie: niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
+        `Options affichées par Vinted à ce niveau: ${JSON.stringify(visibleCatalogLabels())}. ` +
+        `Corriger le chemin dans vintedCategories.js avec un de ces libellés.`
+      );
+    }
+
+    const hasChevron = isChevronOption(option);
+
+    // Le chemin continue mais Vinted dit que c'est déjà une feuille :
+    // le mapping a un niveau de trop.
+    if (!isLast && !hasChevron) {
+      throw new Error(
+        `Catégorie: "${levelLabel}" est une feuille terminale mais le chemin continue avec ` +
+        `${JSON.stringify(path.slice(i + 1))}. Retirer les niveaux excédentaires dans vintedCategories.js.`
+      );
+    }
+
+    // Dernier niveau du chemin mais encore un chevron : profondeur
+    // supplémentaire dans le catalogue réel. On clique quand même pour révéler
+    // les sous-niveaux et les remonter dans l'erreur du job.
+    if (isLast && hasChevron) {
+      option.click();
+      await sleep(400);
+      throw new Error(
+        `Catégorie: le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
+        `Sous-niveaux proposés par Vinted: ${JSON.stringify(visibleCatalogLabels())}. ` +
+        `Ajouter le niveau terminal manquant dans vintedCategories.js.`
+      );
+    }
+
     option.click();
     await sleep(400);
   }
