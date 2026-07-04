@@ -251,9 +251,33 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   }
   // waitForOptionByText re-scanne le DOM toutes les 80 ms jusqu'au timeout —
   // c'est lui qui absorbe debounce + réseau + re-render, sans délai fixe.
-  const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
-  option.click();
-  await sleep(CLICK_DELAY);
+  try {
+    const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
+    option.click();
+    await sleep(CLICK_DELAY);
+  } catch (err) {
+    if (searchInputSelector) {
+      // 🧪 DEBUG TEMPORAIRE — à retirer une fois le bug recherche marque résolu.
+      const searchEl = document.querySelector(searchInputSelector);
+      // Le panneau réutilisé (cf. selectCategory) borne la liste au dropdown
+      // ouvert ; à défaut on retombe sur tout le document.
+      const panel = document.querySelector(".input-dropdown__content") || document;
+      const buttons = Array.from(panel.querySelectorAll('[role="button"]')).map((el) => ({
+        text: el.textContent.trim(),
+        ariaLabel: el.getAttribute("aria-label"),
+        id: el.id || null,
+      }));
+      console.log(`[vinted] 🧪 DEBUG échec recherche "${optionText}"`);
+      console.log(
+        "[vinted] 🧪 valeur réelle de",
+        searchInputSelector,
+        ":",
+        searchEl ? JSON.stringify(searchEl.value) : "(champ introuvable dans le DOM)"
+      );
+      console.log(`[vinted] 🧪 ${buttons.length} élément(s) [role="button"] dans le panneau:`, buttons);
+    }
+    throw err;
+  }
 }
 
 // Catégorie : menu en cascade, panneau réécrit en place à chaque niveau (pas de
