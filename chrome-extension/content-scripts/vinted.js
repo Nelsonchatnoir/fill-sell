@@ -265,6 +265,39 @@ async function fillPriceField(value) {
   await sleep(CLICK_DELAY);
 }
 
+// 🧪 DEBUG TEMPORAIRE — inspection sans React DevTools : React attache ses
+// props internes (dont les handlers onClick/onPointerDown/onMouseDown/onFocus
+// réellement branchés) directement sur le nœud DOM, sous une clé du type
+// "__reactProps$<id>" (ou "__reactEventHandlers$<id>" sur les anciennes
+// versions). Ça permet de vérifier si un handler est ne serait-ce que présent,
+// sans dépendre de l'extension React DevTools.
+function getReactProps(el) {
+  if (!el) return null;
+  const key = Object.keys(el).find(
+    (k) => k.startsWith("__reactProps$") || k.startsWith("__reactEventHandlers$")
+  );
+  return key ? el[key] : null;
+}
+
+function inspectElementState(el) {
+  if (!el) return null;
+  const style = getComputedStyle(el);
+  const props = getReactProps(el);
+  return {
+    tagName: el.tagName,
+    id: el.id || null,
+    className: el.className || null,
+    disabled: el.disabled ?? null,
+    ariaDisabled: el.getAttribute("aria-disabled"),
+    pointerEvents: style.pointerEvents,
+    hasReactProps: Boolean(props),
+    reactOnClick: props ? typeof props.onClick === "function" : null,
+    reactOnPointerDown: props ? typeof props.onPointerDown === "function" : null,
+    reactOnMouseDown: props ? typeof props.onMouseDown === "function" : null,
+    reactOnFocus: props ? typeof props.onFocus === "function" : null,
+  };
+}
+
 async function openDropdown(triggerSelector) {
   // Filet de sécurité : si le panneau précédent (ex: Catégorie) n'a pas fini
   // de se fermer, cliquer le trigger suivant tout de suite peut rater le clic
@@ -272,6 +305,13 @@ async function openDropdown(triggerSelector) {
   // par l'attente dans confirmDropdownIfNeeded ; ceci est redondant mais
   // gratuit (no-op si le panneau est déjà absent).
   await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
+  // 🧪 DEBUG TEMPORAIRE — test de l'hypothèse "composant pas encore prêt" :
+  // délai fixe supplémentaire avant même de chercher le trigger, en plus du
+  // waitForElementGone déjà en place. Si ça change quoi que ce soit, la vraie
+  // cause est un temps d'activation post-fermeture-Catégorie qu'aucune de nos
+  // attentes basées sur le DOM ne capture (ex: état interne React, requête
+  // réseau des marques suggérées par catégorie).
+  await sleep(800);
   // waitForStableElement plutôt que waitForElement brut : certains champs
   // (ex: #brand, dont les suggestions dépendent de la catégorie tout juste
   // choisie — vu dans le rapport DOM, ids "suggested-brand-*") peuvent être
@@ -280,10 +320,8 @@ async function openDropdown(triggerSelector) {
   // détaché — aucune exception, mais aucun effet visible non plus.
   const trigger = await waitForStableElement(triggerSelector);
   // 🧪 DEBUG TEMPORAIRE — à retirer une fois le bug d'ouverture résolu.
-  console.log(
-    `[vinted] 🧪 openDropdown(${triggerSelector}) — trigger trouvé:`,
-    { tagName: trigger.tagName, id: trigger.id, readOnly: trigger.readOnly, isConnected: trigger.isConnected }
-  );
+  console.log(`[vinted] 🧪 openDropdown(${triggerSelector}) — trigger:`, inspectElementState(trigger));
+  console.log(`[vinted] 🧪 openDropdown(${triggerSelector}) — parent:`, inspectElementState(trigger.parentElement));
   // element.click() natif confirmé insuffisant pour ce composant (nœud
   // stable, aucune exception, panneau non ouvert) — séquence bas niveau
   // pointerdown/mousedown/pointerup/mouseup/click à la place.
