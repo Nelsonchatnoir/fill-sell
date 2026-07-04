@@ -71,10 +71,12 @@ async function fillListingForm(job) {
     );
   }
   if (fields.taille) {
+    // La grille Vinted affiche "42", pas "EU 42" (préfixe côté FillSell) —
+    // on retire le préfixe, le match exact-par-segment fait le reste.
     await selectSimpleOption(
       '#size, [data-testid="category-size-single-grid-input"]',
       '[data-testid^="size-group-"]',
-      fields.taille
+      String(fields.taille).replace(/^EU\s*/i, "")
     );
   }
   if (fields.etat) {
@@ -192,10 +194,21 @@ async function openDropdown(triggerSelector) {
   return trigger;
 }
 
+// Match exact d'abord (texte entier, ou segment pour les grilles de taille
+// type "M / 38 / 10"), includes() en repli seulement. Sans ça, "Bon état"
+// sélectionne "Très bon état" (premier dans la liste) et la taille "S"
+// matche "XS / 34 / 6" — textes d'options confirmés par inspection DOM.
 function findOptionByText(root, optionSelector, text) {
   const options = Array.from(root.querySelectorAll(optionSelector));
   const normalize = (s) => s.trim().toLowerCase();
-  return options.find((o) => normalize(o.textContent).includes(normalize(text)));
+  const target = normalize(text);
+  const exact = options.find(
+    (o) =>
+      normalize(o.textContent) === target ||
+      o.textContent.split("/").some((part) => normalize(part) === target)
+  );
+  if (exact) return exact;
+  return options.find((o) => normalize(o.textContent).includes(target));
 }
 
 async function waitForOptionByText(optionSelector, text, timeoutMs = 5000) {
