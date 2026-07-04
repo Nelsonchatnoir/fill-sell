@@ -5,7 +5,7 @@ import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon } from "../utils/shared";
-import { getVintedCategoryPath } from "../utils/vintedCategories";
+import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -1157,6 +1157,23 @@ export default function ListingPreviewScreen({
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
+    // Blocage genre Vinted : les articles de mode adulte exigent un rayon
+    // Femmes ou Hommes (aucun rayon Mixte dans le catalogue Vinted). Quand
+    // l'IA a répondu Mixte ou rien, l'utilisateur tranche ici plutôt que de
+    // laisser partir un job condamné au fallback. Enfant passe (hors périmètre
+    // Lot 1, fallback documenté) ; les objets hors mode passent sans friction.
+    if (selected.has("vinted")) {
+      const pfV = edited.vinted?.platform_fields ?? {};
+      const iconV = detectObjectIcon(
+        edited.vinted?.title,
+        edited.vinted?.description,
+        pfV.categorie || initialListing?.categorie
+      );
+      if (vintedGenreRequired(iconV) && (!pfV.genre || pfV.genre === "Mixte")) {
+        setPublishError(t("vintedGenreRequired"));
+        return;
+      }
+    }
     setPublishing(true);
     setPublishError("");
     try {
@@ -1200,6 +1217,10 @@ export default function ListingPreviewScreen({
           );
           const categoryPath = getVintedCategoryPath(icon, pf.genre);
           if (categoryPath) pf.categoryPath = categoryPath;
+          // Flag statique lu par l'extension : permet un message d'échec
+          // précis ("genre requis") quand un job sans categoryPath vient d'un
+          // article de mode plutôt que d'une icône hors mapping.
+          if (vintedGenreRequired(icon)) pf.vintedGenreRequired = true;
         }
         return {
           user_id:         userId,

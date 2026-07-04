@@ -374,6 +374,18 @@ const HORS_MODE = {
  * @returns {string[]|null} chemin catalogue Vinted, ou null si non mappé
  *   (icône hors périmètre, genre absent, Enfant/Mixte → Lot 2)
  */
+/**
+ * true si l'icône est un article de mode adulte : son chemin Vinted dépend du
+ * genre (rayon Femmes/Hommes obligatoire, aucun rayon Mixte dans tout l'arbre
+ * — vérifié sur les 2920 nœuds). Sert au blocage UI avant publication et au
+ * flag platform_fields.vintedGenreRequired lu par l'extension.
+ * @param {string} icon — emoji retourné par detectObjectIcon
+ */
+export function vintedGenreRequired(icon) {
+  if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) return false;
+  return Object.prototype.hasOwnProperty.call(MODE_ADULTE, icon);
+}
+
 export function getVintedCategoryPath(icon, genre) {
   // HORS_MODE d'abord : ces catégories n'ont pas de niveau genre (racines
   // confirmées : Maison/Électronique/Divertissement/Loisirs et collections/
