@@ -186,16 +186,20 @@ async function processJob(job, accessToken) {
   try {
     await updateJobStatus(accessToken, job.id, "processing");
 
-    const tab = await chrome.tabs.create({ url: handler.newListingUrl, active: false });
-    await waitForTabComplete(tab.id);
+    // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
+    // neuf par job (voir getOrCreateWorkTab : DataDome a suspendu la session
+    // quand les tests accumulaient un onglet Vinted par requête).
+    const tabId = await getOrCreateWorkTab(job.platform, handler.newListingUrl);
 
-    // Le content script est déclaré dans le manifest pour ce domaine ;
+    // Le content script est déclaré dans le manifest pour ce domaine (il est
+    // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
     // on lui envoie le job et on attend le résultat du remplissage.
-    const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
+    const result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
 
     if (result?.dryRun) {
-      // Dry-run : rien n'a été publié, on ré-arme le job. L'onglet reste ouvert
-      // pour inspecter visuellement le formulaire rempli.
+      // Dry-run : rien n'a été publié, on ré-arme le job. L'onglet de travail
+      // reste ouvert (comme toujours) — le formulaire rempli y est inspectable
+      // jusqu'au job suivant, qui rechargera la page.
       console.log(`[background] Job ${job.id} : DRY_RUN, formulaire rempli sans publication — ré-armé en pending`);
       await updateJobStatus(accessToken, job.id, "pending");
     } else if (result?.success) {
@@ -203,7 +207,8 @@ async function processJob(job, accessToken) {
       await updateJobStatus(accessToken, job.id, "published", {
         listing_url: result.listingUrl ?? undefined,
       });
-      chrome.tabs.remove(tab.id).catch(() => {});
+      // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
+      // qui garde son onglet Vinted ouvert entre deux dépôts.
     } else {
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }
@@ -212,6 +217,80 @@ async function processJob(job, accessToken) {
     await updateJobStatus(accessToken, job.id, "failed", { error: String(e?.message ?? e) })
       .catch((err) => console.error("[background] update-job-status failed:", err));
   }
+}
+
+// ── Onglet de travail dédié ────────────────────────────────────────────────────
+// Un SEUL onglet par plateforme, créé par l'extension et réutilisé de job en
+// job. Historique : quand chaque job ouvrait son propre onglet, les sessions
+// de test ont accumulé jusqu'à ~30 onglets Vinted simultanés et DataDome a
+// suspendu le compte ("activité inhabituelle ou automatisée", 403 sur
+// item_upload/items). Un humain a UN onglet Vinted et poste ses annonces
+// dedans à la suite — on reproduit exactement ça.
+//
+// Identification de NOTRE onglet (et jamais celui d'un utilisateur qui
+// navigue sur Vinted à côté) :
+//   1. ID mémorisé dans chrome.storage.session (survit aux redémarrages du
+//      service worker MV3, pas à ceux du navigateur — voulu)
+//   2. repli : fragment #fillsell-worker dans l'URL, marqueur posé par nos
+//      propres navigations, retrouvable via tabs.query si le storage a été
+//      vidé alors que l'onglet vit encore
+//   3. sinon : création d'un onglet neuf (une seule fois), gardé ensuite.
+// Les onglets Vinted ouverts manuellement par l'utilisateur ne portent ni
+// l'ID ni le fragment : ils ne sont jamais adoptés, jamais navigués.
+const WORK_TAB_FRAGMENT = "#fillsell-worker";
+const workTabKey = (platform) => `fillsell_work_tab_${platform}`;
+
+async function getOrCreateWorkTab(platform, url) {
+  const key = workTabKey(platform);
+  const target = url + WORK_TAB_FRAGMENT;
+
+  // 1. Onglet mémorisé encore vivant → le réutiliser
+  const store = await chrome.storage.session.get(key);
+  if (store[key] != null) {
+    const tab = await chrome.tabs.get(store[key]).catch(() => null);
+    if (tab) {
+      await navigateWorkTab(tab.id, target);
+      return tab.id;
+    }
+  }
+
+  // 2. Storage perdu mais notre onglet marqué existe peut-être encore
+  const host = new URL(url).hostname.split(".").slice(-2).join(".");
+  const candidates = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
+  const marked = candidates.find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
+  if (marked) {
+    await chrome.storage.session.set({ [key]: marked.id });
+    await navigateWorkTab(marked.id, target);
+    return marked.id;
+  }
+
+  // 3. Aucun onglet à nous : en créer UN, mémorisé pour les jobs suivants
+  const tab = await chrome.tabs.create({ url: target, active: false });
+  await chrome.storage.session.set({ [key]: tab.id });
+  await waitForTabComplete(tab.id);
+  return tab.id;
+}
+
+// Amène l'onglet de travail sur la page de dépôt avec un formulaire VIERGE.
+// Si l'onglet est déjà sur cette URL (cas normal entre deux jobs : seul le
+// fragment ou rien n'a changé, tabs.update ne rechargerait pas la page et le
+// formulaire garderait les valeurs du job précédent), on force un reload.
+// Pas de popup "Leave site?" à craindre : les dialogs beforeunload ne
+// s'affichent que si la page a eu une interaction utilisateur réelle, ce que
+// le remplissage par events synthétiques ne crée pas.
+async function navigateWorkTab(tabId, target) {
+  const tab = await chrome.tabs.get(tabId);
+  const samePage = (tab.url || "").split("#")[0] === target.split("#")[0];
+  // Écouteur attaché AVANT de déclencher la navigation : un reload rapide
+  // pourrait sinon émettre son "complete" avant qu'on ne l'attende.
+  const loaded = waitForTabComplete(tabId);
+  if (samePage) {
+    await chrome.tabs.update(tabId, { url: target }); // (re)pose le marqueur
+    await chrome.tabs.reload(tabId);
+  } else {
+    await chrome.tabs.update(tabId, { url: target });
+  }
+  await loaded;
 }
 
 // ── Helpers onglets ────────────────────────────────────────────────────────────
