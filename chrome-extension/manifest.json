@@ -31,6 +31,11 @@
       "matches": ["https://*.vinted.fr/*", "https://*.vinted.com/*"],
       "js": ["content-scripts/vinted.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.leboncoin.fr/*"],
+      "js": ["content-scripts/leboncoin.js"],
+      "run_at": "document_idle"
     }
   ]
 }

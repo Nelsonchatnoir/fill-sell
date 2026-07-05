@@ -16,7 +16,7 @@ const PLATFORM_HANDLERS = {
     newListingUrl: "https://www.vinted.fr/items/new",
   },
   leboncoin: {
-    implemented: false,
+    implemented: true,
     newListingUrl: "https://www.leboncoin.fr/deposer-une-annonce",
   },
   beebs: {
@@ -202,6 +202,13 @@ async function processJob(job, accessToken) {
       // jusqu'au job suivant, qui rechargera la page.
       console.log(`[background] Job ${job.id} : DRY_RUN, formulaire rempli sans publication — ré-armé en pending`);
       await updateJobStatus(accessToken, job.id, "pending");
+    } else if (result?.needsUser) {
+      // Action utilisateur requise (ex: adresse Leboncoin absente des
+      // Réglages, brouillon LBC à terminer) : PENDING avec message explicite,
+      // jamais failed — le job repartira au poll suivant une fois l'action
+      // faite, et le brouillon plateforme persiste.
+      console.warn(`[background] Job ${job.id} : action utilisateur requise — ${result.error}`);
+      await updateJobStatus(accessToken, job.id, "pending", { error: result.error });
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} publié : ${result.listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
