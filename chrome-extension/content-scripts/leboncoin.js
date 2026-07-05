@@ -110,8 +110,7 @@ async function fillListingForm(job) {
 
   // ── Étape 4 : aperçu final ───────────────────────────────────────────────
   if (job.description) {
-    bodyArea.focus();
-    setNativeValue(bodyArea, job.description);
+    setFieldValue(bodyArea, job.description);
     bodyArea.blur();
     await sleep(CLICK_DELAY);
   }
@@ -120,8 +119,7 @@ async function fillListingForm(job) {
     // LBC pré-remplit un prix suggéré — on impose celui du job.
     const priceInput = await waitForElement("#price_cents", 8000).catch(() => null);
     if (priceInput) {
-      priceInput.focus();
-      setNativeValue(priceInput, String(Math.round(Number(job.price))));
+      setFieldValue(priceInput, String(Math.round(Number(job.price))));
       priceInput.dispatchEvent(new Event("blur", { bubbles: true }));
       await sleep(CLICK_DELAY);
     } else {
@@ -176,7 +174,7 @@ async function selectCategory(root, leaf) {
   // Les suggestions arrivent en asynchrone après la frappe du titre.
   await sleep(1500);
 
-  const suggestionRadio = findSuggestionRadio(leaf);
+  const suggestionRadio = findSuggestionRadio(root, leaf);
   if (suggestionRadio) {
     suggestionRadio.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await sleep(CLICK_DELAY);
@@ -222,11 +220,18 @@ async function selectCategory(root, leaf) {
   console.log(`[leboncoin] catégorie via sélecteur manuel: ${root} > ${leaf}`);
 }
 
-function findSuggestionRadio(leaf) {
-  const target = normalizeFuzzy(leaf);
+// Le libellé d'une suggestion concatène racine+feuille SANS séparateur
+// ("ModeMontres & Bijoux" — vérifié) : containsAsWords échouerait (pas de
+// frontière de mot devant la feuille). On matche donc sur le SUFFIXE (le
+// libellé se termine par la feuille) ou l'égalité racine+feuille.
+function findSuggestionRadio(root, leaf) {
+  const leafN = normalizeFuzzy(leaf);
+  const rootN = normalizeFuzzy(root);
   for (const radio of document.querySelectorAll('input[type="radio"]')) {
     const label = radio.closest("li, label, div");
-    if (label && containsAsWords(normalizeFuzzy(label.textContent), target)) return radio;
+    if (!label) continue;
+    const labelN = normalizeFuzzy(label.textContent);
+    if (labelN.endsWith(leafN) || labelN === rootN + leafN) return radio;
   }
   return null;
 }
@@ -390,17 +395,36 @@ function setNativeValue(element, value) {
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-// Frappe caractère par caractère : nécessaire pour déclencher les debounces
-// (suggestions de catégorie sur le titre, autocomplete d'adresse) — même
-// technique que la recherche marque Vinted.
+// ⚠️ Les inputs React de Leboncoin (titre, adresse) IGNORENT setNativeValue +
+// event "input" : le compteur reste à 0/200 et les suggestions/autocomplete
+// ne se déclenchent JAMAIS (vérifié en dry-run réel — contrairement à Vinted).
+// execCommand("insertText") insère comme une vraie frappe et déclenche bien
+// les handlers React ; on garde setNativeValue en repli si execCommand échoue.
 async function typeInto(input, text) {
   input.focus();
-  setNativeValue(input, "");
-  for (const char of text) {
-    setNativeValue(input, input.value + char);
-    await sleep(35);
+  // Vider une éventuelle valeur existante (sélection totale puis remplacement).
+  try {
+    input.setSelectionRange?.(0, input.value.length);
+  } catch { /* certains types d'input n'exposent pas setSelectionRange */ }
+  const ok = document.execCommand("insertText", false, text);
+  if (!ok || input.value !== text) {
+    // Repli : frappe caractère par caractère via le setter natif.
+    setNativeValue(input, "");
+    for (const char of text) {
+      setNativeValue(input, input.value + char);
+      await sleep(35);
+    }
   }
   await sleep(CLICK_DELAY);
+}
+
+// Renseigne un champ texte/textarea de l'aperçu (description, prix) de façon
+// robuste : execCommand d'abord (comme typeInto), setNativeValue en repli.
+function setFieldValue(el, value) {
+  el.focus();
+  try { el.setSelectionRange?.(0, el.value.length); } catch { /* noop */ }
+  const ok = document.execCommand("insertText", false, String(value));
+  if (!ok || el.value !== String(value)) setNativeValue(el, String(value));
 }
 
 function findButtonByExactText(text) {
