@@ -8,8 +8,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Body : { job_id: uuid, status: string, error?: string, listing_url?: string }
 //
 // Transitions gérées ici (cycle de publication) :
-//   pending → processing → published / failed / cancelled
-//   ('pending' est aussi accepté pour ré-armer un job après un dry-run)
+//   pending → processing → published / failed / cancelled / dry_run_completed
+// 'dry_run_completed' est un statut TERMINAL : un dry-run réussi n'est PLUS
+// ré-armé en pending (sinon get-pending-jobs le rejouait à chaque cron de
+// 30 min → réouverture d'onglets en boucle → suspension DataDome, incident
+// vécu). Pour re-tester, régénérer le job depuis l'app (nouveau pending).
 // Le cycle post-publication (published → sold + création de vente + annulation
 // des jobs frères) reste géré par check-listing-status — ne pas le dupliquer ici.
 //
@@ -19,7 +22,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
 // (user.id) et alimente le client scoped user pour la RLS.
 
-const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled"];
+const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed"];
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
@@ -69,6 +72,13 @@ serve(async (req) => {
 
     const patch: Record<string, unknown> = { status };
 
+    // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
+    // (ex: compteur needsUserAttempts pour borner les ré-armements). On écrase
+    // tel quel — pas de merge côté serveur, l'appelant a la version complète.
+    if (body.platform_fields && typeof body.platform_fields === "object") {
+      patch.platform_fields = body.platform_fields;
+    }
+
     if (status === "published") {
       patch.published_at = new Date().toISOString();
       patch.error = null;
@@ -78,7 +88,11 @@ serve(async (req) => {
     } else if (status === "failed") {
       patch.error = typeof body.error === "string" ? body.error.slice(0, 2000) : "Erreur inconnue";
     } else if (status === "pending") {
-      // Ré-armement (dry-run) : on nettoie l'erreur d'une éventuelle tentative précédente
+      // Ré-armement (ex: needsUser, l'utilisateur doit compléter une info) :
+      // on garde l'error explicative si fournie, sinon on nettoie.
+      patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
+    } else if (status === "dry_run_completed") {
+      // Terminal : dry-run réussi, ne repart pas dans la queue.
       patch.error = null;
     }
 

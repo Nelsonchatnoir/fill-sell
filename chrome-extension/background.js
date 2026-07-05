@@ -7,6 +7,11 @@ importScripts("config.js");
 
 const ALARM_NAME = "fillsell-poll-jobs";
 
+// Ré-armements "action utilisateur requise" (needsUser) autorisés avant de
+// basculer le job en failed : évite qu'un job attendant une info jamais
+// fournie (ex: adresse Leboncoin) ne rouvre un onglet à chaque cron sans fin.
+const MAX_NEEDS_USER_RETRIES = 2;
+
 // ── Dispatch par plateforme ────────────────────────────────────────────────────
 // `implemented: false` → le job est loggé et laissé en pending (le content
 // script n'existe pas encore). Passer à true quand le script est prêt.
@@ -197,18 +202,33 @@ async function processJob(job, accessToken) {
     const result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
 
     if (result?.dryRun) {
-      // Dry-run : rien n'a été publié, on ré-arme le job. L'onglet de travail
-      // reste ouvert (comme toujours) — le formulaire rempli y est inspectable
-      // jusqu'au job suivant, qui rechargera la page.
-      console.log(`[background] Job ${job.id} : DRY_RUN, formulaire rempli sans publication — ré-armé en pending`);
-      await updateJobStatus(accessToken, job.id, "pending");
+      // Dry-run réussi → statut TERMINAL, PAS de ré-armement en pending.
+      // Sinon le job repartait à chaque cron de 30 min (get-pending-jobs le
+      // resélectionnait), rouvrant des onglets en boucle → suspension
+      // DataDome (incident vécu). Pour re-tester, régénérer le job depuis
+      // l'app. L'onglet de travail reste ouvert pour inspection jusqu'au
+      // prochain job.
+      console.log(`[background] Job ${job.id} : DRY_RUN réussi → dry_run_completed (terminal, plus de boucle)`);
+      await updateJobStatus(accessToken, job.id, "dry_run_completed", {
+        error: result.warnings?.length ? `Dry-run OK. Warnings: ${result.warnings.join(" | ")}` : null,
+      });
     } else if (result?.needsUser) {
-      // Action utilisateur requise (ex: adresse Leboncoin absente des
-      // Réglages, brouillon LBC à terminer) : PENDING avec message explicite,
-      // jamais failed — le job repartira au poll suivant une fois l'action
-      // faite, et le brouillon plateforme persiste.
-      console.warn(`[background] Job ${job.id} : action utilisateur requise — ${result.error}`);
-      await updateJobStatus(accessToken, job.id, "pending", { error: result.error });
+      // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
+      // à terminer). Ré-armement BORNÉ : au plus MAX_NEEDS_USER_RETRIES
+      // passages en pending, sinon le job bouclerait indéfiniment (rouvrant
+      // un onglet + remplissant le formulaire à chaque cron) si l'utilisateur
+      // ne complète jamais l'info — même risque DataDome que le dry-run.
+      const attempts = (job.platform_fields?.needsUserAttempts ?? 0) + 1;
+      if (attempts >= MAX_NEEDS_USER_RETRIES) {
+        console.warn(`[background] Job ${job.id} : action utilisateur toujours requise après ${attempts} tentatives → failed (sort de la boucle) — ${result.error}`);
+        await updateJobStatus(accessToken, job.id, "failed", { error: result.error });
+      } else {
+        console.warn(`[background] Job ${job.id} : action utilisateur requise (tentative ${attempts}/${MAX_NEEDS_USER_RETRIES}) — ${result.error}`);
+        await updateJobStatus(accessToken, job.id, "pending", {
+          error: result.error,
+          platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
+        });
+      }
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} publié : ${result.listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
