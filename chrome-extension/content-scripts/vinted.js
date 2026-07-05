@@ -414,8 +414,12 @@ async function waitForOptionByText(optionSelector, text, timeoutMs = 5000) {
 //   2. option ⊂ valeur, en MOTS ENTIERS, accents ignorés — la plus longue
 //      option contenue gagne ("acier" trouvé dans "résine et acier
 //      inoxydable" ; les mots entiers évitent que "Or" matche "bORdeaux")
+//   2bis. valeur ⊂ option, en mots entiers — l'option la plus COURTE gagne
+//      ("Unique" → "Taille unique", cas réel de la grille taille des
+//      montres, qui liste des diamètres + "Taille unique"). Sans danger
+//      pour "Bon état"/"Très bon état" : l'exact passe toujours avant.
 //   3. composants — la valeur est éclatée sur "et"/","/"&"/"+"/"/" et
-//      chaque composant repasse par 1 puis 2 ("Résine" seul, etc.)
+//      chaque composant repasse par 1 puis 2/2bis ("Résine" seul, etc.)
 // Retourne { el, label, stage } ou null — le caller décide de skipper. ──
 const normalizeFuzzy = (s) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -448,6 +452,15 @@ function findOptionCascade(root, optionSelector, text) {
   const fuzzy = optionInTarget(target);
   if (fuzzy) return { ...fuzzy, stage: "fuzzy" };
 
+  // 2bis. valeur contenue dans une option (mots entiers, option la plus
+  // courte = la plus proche de la valeur) : "unique" → "Taille unique"
+  const targetInOption = (t) =>
+    options
+      .filter((o) => containsAsWords(o.norm, t))
+      .sort((a, b) => a.norm.length - b.norm.length)[0];
+  const inverse = targetInOption(target);
+  if (inverse) return { ...inverse, stage: "fuzzy-inverse" };
+
   // 3. composant par composant ("Résine et acier inoxydable" → "résine",
   // "acier inoxydable")
   const components = target.split(/\s+et\s+|[,&+/]/).map((c) => c.trim()).filter(Boolean);
@@ -455,7 +468,7 @@ function findOptionCascade(root, optionSelector, text) {
     for (const comp of components) {
       const compExact = options.find((o) => o.norm === comp);
       if (compExact) return { ...compExact, stage: "composant" };
-      const compFuzzy = optionInTarget(comp);
+      const compFuzzy = optionInTarget(comp) || targetInOption(comp);
       if (compFuzzy) return { ...compFuzzy, stage: "composant" };
     }
   }
