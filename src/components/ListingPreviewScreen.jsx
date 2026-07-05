@@ -6,6 +6,7 @@ import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
+import { getLbcCategoryPath } from "../utils/lbcCategories";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -1203,8 +1204,29 @@ export default function ListingPreviewScreen({
         setInvId(currentInvId);
       }
 
+      // Adresse de remise Leboncoin (Settings) : lue une fois par publication,
+      // injectée dans platform_fields.adresse. Absente → le job part quand
+      // même, l'extension le remettra en pending avec un message explicite
+      // (jamais de blocage dur, le brouillon LBC persiste).
+      let lbcAddress = null;
+      if (selected.has("leboncoin")) {
+        const { data: prof } = await supabase.from("profiles")
+          .select("platform_settings").eq("id", userId).maybeSingle();
+        lbcAddress = prof?.platform_settings?.leboncoin?.adresse || null;
+      }
+
       const rows = [...selected].map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
+        if (platform === "leboncoin") {
+          const icon = detectObjectIcon(
+            edited[platform]?.title,
+            edited[platform]?.description,
+            pf.categorie || initialListing?.categorie
+          );
+          const lbcPath = getLbcCategoryPath(icon);
+          if (lbcPath) pf.lbcCategoryPath = lbcPath;
+          if (lbcAddress) pf.adresse = lbcAddress;
+        }
         if (platform === "vinted") {
           // Chemin catalogue Vinted calculé à l'insert : icône objet (mêmes
           // règles que les tuiles Stock/Ventes) + genre IA/corrigé. null →

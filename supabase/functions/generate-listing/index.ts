@@ -13,7 +13,7 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
   leboncoin: {
     lang: "fr",
-    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état et le format colis depuis le contexte article. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"Neuf|Très bon état|Bon état|État correct|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini"}}`,
+    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état et le format colis depuis le contexte article. Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Leboncoin — "État neuf" et "État satisfaisant", jamais "Neuf" ni "État correct"). Pour "univers" (rayon Mode/accessoires), choisis la cible de l'article; Leboncoin accepte "Mixte". Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"État neuf|Très bon état|Bon état|État satisfaisant|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini","univers":"Femme|Homme|Enfant|Mixte|null"}}`,
   },
   beebs: {
     lang: "fr",
