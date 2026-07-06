@@ -81,6 +81,7 @@ function getPlatformFieldsConfig(t) {
       { key:"genre",     label:t("fieldGenderLabel"),    type:"select", options: gender },
       { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
       { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
+      { key:"couleur",   label:t("fieldColorLabel"),     type:"text" },
       { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
     ],
     leboncoin: [
@@ -1276,6 +1277,17 @@ export default function ListingPreviewScreen({
           // précis ("genre requis") quand un job sans categoryPath vient d'un
           // article de mode plutôt que d'une icône hors mapping.
           if (vintedGenreRequired(icon)) pf.vintedGenreRequired = true;
+          // L'extension consomme `colors` (tableau, 2 max côté Vinted).
+          // `couleur` (IA ou édité) peut être composé ("Marine et Blanc") :
+          // mêmes séparateurs que la cascade extension, la dominante d'abord.
+          if (pf.couleur) {
+            const colors = String(pf.couleur)
+              .split(/\s+et\s+|[,/&+]/i)
+              .map(s => s.trim())
+              .filter(Boolean)
+              .slice(0, 2);
+            if (colors.length) pf.colors = colors;
+          }
         }
         return {
           user_id:         userId,
