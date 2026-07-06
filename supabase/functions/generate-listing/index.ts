@@ -150,9 +150,16 @@ serve(async (req) => {
       const promptToUse = isLight ? OPENAI_IMG_PROMPT_LIGHT : OPENAI_IMG_PROMPT_ADVANCED;
       const qualityToUse = isLight ? "low" : "medium";
       const photosToProcess = photos as string[];
+      // Garde-fou coûts : 5 photos max passent en retouche GPT Image par annonce
+      // (base du prix fixe par annonce du système de pièces) ; les photos au-delà
+      // sont conservées telles quelles dans l'annonce.
+      const MAX_RETOUCHED = 5;
       const ts = Date.now();
       const results = await Promise.allSettled(
         photosToProcess.map(async (photoUrl, idx) => {
+          if (idx >= MAX_RETOUCHED) {
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
           const srcRes = await fetch(photoUrl);
           if (!srcRes.ok) {
             console.error(`[gpt-image] fetch photo ${idx} failed: ${srcRes.status}`);
