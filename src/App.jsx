@@ -5892,9 +5892,11 @@ export default function App({ loginOnly = false }){
                   onClick={async()=>{
                     setSettingsPseudoSaving(true);
                     const val=settingsPseudoInput.trim();
-                    const{error}=await supabase.from('profiles').update({username:val}).eq('id',user.id);
+                    // .select() : sans lui, un update filtré par RLS (0 ligne) ne
+                    // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
+                    const{data:upd,error}=await supabase.from('profiles').update({username:val}).eq('id',user.id).select('username');
                     setSettingsPseudoSaving(false);
-                    if(error){
+                    if(error||!upd?.length){
                       setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'});
                     }else{
                       setUsername(val);
@@ -5930,9 +5932,12 @@ export default function App({ loginOnly = false }){
                     // plateformes, ne jamais écraser les clés des autres.
                     const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
                     const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),adresse:val}};
-                    const{error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id);
+                    // .select() : sans lui, un update filtré par RLS (0 ligne) ne
+                    // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
+                    const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('platform_settings');
                     setSettingsLbcAddressSaving(false);
-                    setToast({visible:true,message:error?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
+                    const failed=error||!upd?.length;
+                    setToast({visible:true,message:failed?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
                     setTimeout(()=>setToast({visible:false,message:''}),3000);
                   }}
                   disabled={settingsLbcAddressSaving}
