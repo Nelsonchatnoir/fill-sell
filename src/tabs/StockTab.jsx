@@ -1536,6 +1536,10 @@ const StockTab = memo(function StockTab({
           onClose={()=>{setPublishItem(null);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
+          isPremium={isPremium}
+          isPro={isPro}
+          founderSpotsLeft={slotsRemaining}
+          onUpgrade={openUpgradeModal}
         />
       )}
     </>
