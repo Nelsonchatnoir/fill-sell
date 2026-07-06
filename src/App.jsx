@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X } from 'lucide-react';
+import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
@@ -3402,6 +3402,8 @@ export default function App({ loginOnly = false }){
   const [isSigningIn,setIsSigningIn]=useState(false);
   const [isSigningUp,setIsSigningUp]=useState(false);
   const [isSendingReset,setIsSendingReset]=useState(false);
+  const [showPassword,setShowPassword]=useState(false);
+  const [emailConfirm,setEmailConfirm]=useState("");
   const [loginError,setLoginError]=useState("");
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
@@ -4726,6 +4728,9 @@ export default function App({ loginOnly = false }){
     const passwordVal=passwordRef.current?.value;
     const _slt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
     if(!emailVal||!passwordVal){alert(_slt==='en'?"Fill in your email and password":"Remplis email et mot de passe");return;}
+    setLoginError("");
+    // Double vérification de l'email — bloque avant tout appel Supabase
+    if(emailVal.trim()!==emailConfirm.trim()){setLoginError(_slt==='en'?"Emails don't match":"Les emails ne correspondent pas");return;}
     setIsSigningUp(true);
     try{
       const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
@@ -4804,11 +4809,13 @@ export default function App({ loginOnly = false }){
   const loginTexts=loginLang==='en'?{
     subtitle:"Sign in to continue",login:"Sign in",signup:"Create my account",
     forgot:"Forgot your password?",forgotBtn:"Send reset link",
-    forgotMsg:"Enter your email above.",back:"← Back"
+    forgotMsg:"Enter your email above.",back:"← Back",
+    confirmEmail:"Confirm your email"
   }:{
     subtitle:"Connecte-toi pour continuer",login:"Se connecter",signup:"Créer mon compte",
     forgot:"Mot de passe oublié ?",forgotBtn:"Envoyer le lien de réinitialisation",
-    forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
+    forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour",
+    confirmEmail:"Confirme ton email"
   };
 
   if(!authLoading&&(!user||loginOnly))return(
@@ -4823,7 +4830,7 @@ export default function App({ loginOnly = false }){
           <SegmentedPills
             options={['login','signup']}
             value={authMode}
-            onChange={setAuthMode}
+            onChange={m=>{setAuthMode(m);setLoginError("");}}
             labelFn={m=>m==='login'?loginTexts.login:loginTexts.signup}
           />
         </div>
@@ -4842,11 +4849,23 @@ export default function App({ loginOnly = false }){
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
             onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+          {!forgotMode&&authMode==='signup'&&(
+            <input type="email" placeholder={loginTexts.confirmEmail} value={emailConfirm}
+              onChange={e=>setEmailConfirm(e.target.value)}
+              style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+          )}
           {!forgotMode&&(
             <>
-              <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
-                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-                style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+              <div style={{position:"relative",width:"100%"}}>
+                <input type={showPassword?"text":"password"} placeholder="Mot de passe" ref={passwordRef} defaultValue=""
+                  onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                  style={{padding:"13px 16px",paddingRight:46,borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+                <button type="button" onClick={()=>setShowPassword(s=>!s)}
+                  aria-label={showPassword?"Masquer le mot de passe":"Afficher le mot de passe"}
+                  style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",padding:4,cursor:"pointer",color:UI.mute2,display:"flex",alignItems:"center"}}>
+                  {showPassword?<EyeOff size={18}/>:<Eye size={18}/>}
+                </button>
+              </div>
               <PrimaryButton onClick={authMode==='login'?handleLogin:handleSignup} disabled={isSigningIn||isSigningUp} style={{padding:14}}>
                 {(isSigningIn||isSigningUp)?<Loader size={19} thickness={2}/>:(authMode==='login'?loginTexts.login:loginTexts.signup)}
               </PrimaryButton>
