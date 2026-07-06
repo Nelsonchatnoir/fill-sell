@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { purchaseCoins } from "../lib/iap";
 import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
+import PepiteIcon from "./PepiteIcon";
 
 // Store de packs de pièces — grille validée 2026-07-06.
 // Natif : achat consumable @capgo/native-purchases puis validation du reçu par
@@ -42,7 +43,7 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
         });
         const body = await r.json();
         if (!r.ok || body.error) throw new Error(body.error || `HTTP ${r.status}`);
-        setMsg({ ok: true, text: lang === "en" ? `+${pack.coins} coins added!` : `+${pack.coins} pièces créditées !` });
+        setMsg({ ok: true, text: lang === "en" ? `+${pack.coins} Nuggets added!` : `+${pack.coins} Pépites créditées !` });
         onPurchased?.();
       } else {
         // Web : redirection checkout Stripe, crédit par le webhook
@@ -77,13 +78,13 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
           width: "100%", maxWidth: 480,
         }}
       >
-        <div style={{ fontWeight: 700, fontSize: 18, color: "#111", marginBottom: 4 }}>
-          🪙 {lang === "en" ? "Get coins" : "Recharger des pièces"}
+        <div style={{ fontWeight: 700, fontSize: 18, color: "#111", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+          <PepiteIcon size={24} /> {lang === "en" ? "Stock up on Nuggets" : "Recharger des Pépites"}
         </div>
         <p style={{ fontSize: 12.5, color: "#6B6862", lineHeight: 1.5, margin: "0 0 16px" }}>
           {lang === "en"
-            ? "Coins pay for publishing (3 original · 12 light · 35 advanced per listing). They never expire."
-            : "Les pièces paient tes publications (3 original · 12 légère · 35 avancée par annonce). Elles n'expirent jamais."}
+            ? "Nuggets pay for publishing (3 original · 12 light · 35 advanced per listing). They never expire."
+            : "Les Pépites paient tes publications (3 original · 12 légère · 35 avancée par annonce). Elles n'expirent jamais."}
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
@@ -101,7 +102,7 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "#10201B" }}>🪙 {p.coins}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#10201B", display: "inline-flex", alignItems: "center", gap: 5 }}><PepiteIcon size={17} /> {p.coins}</span>
                 {p.bonus && (
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: TEAL_DEEP, background: "#E7F3F0", border: "1px solid #CBE5DF", padding: "2px 7px", borderRadius: 999 }}>
                     {p.bonus}

@@ -25,6 +25,7 @@ import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
 import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 import CoinStoreModal from './components/CoinStoreModal';
+import PepiteIcon from './components/PepiteIcon';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -468,11 +469,12 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
-// Libellés des mouvements du ledger de pièces (Settings)
+// Libellés des mouvements du ledger de Pépites (Settings)
 const COIN_KIND_LABELS={
-  grant_monthly:{fr:'Pièces du mois',en:'Monthly coins'},
+  grant_monthly:{fr:'Pépites du mois',en:'Monthly Nuggets'},
   purchase:{fr:'Pack acheté',en:'Pack purchased'},
   spend_publish:{fr:'Publication',en:'Publish'},
+  spend_lens:{fr:'Analyse Lens',en:'Lens scan'},
   refund:{fr:'Remboursement',en:'Refund'},
   admin:{fr:'Ajustement',en:'Adjustment'},
 };
@@ -5853,11 +5855,11 @@ export default function App({ loginOnly = false }){
               {isPremium&&<div style={{fontSize:12,color:UI.tealDeep,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
             </div>
 
-            {/* Pièces de publication */}
+            {/* Pépites de publication */}
             <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <Eyebrow>{lang==='fr'?'Mes pièces':'My coins'}</Eyebrow>
+              <Eyebrow>{lang==='fr'?'Mes Pépites':'My Nuggets'}</Eyebrow>
               <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:22,fontWeight:700,color:UI.ink}}>🪙 {(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)}</span>
+                <span style={{fontSize:22,fontWeight:700,color:UI.ink,display:"inline-flex",alignItems:"center",gap:7}}><PepiteIcon size={24} /> {(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)}</span>
                 <span style={{fontSize:11,color:UI.mute,fontWeight:600}}>
                   {lang==='fr'
                     ?`${coinWallet?.included_balance??0} incluses · ${coinWallet?.purchased_balance??0} achetées`
@@ -6156,19 +6158,19 @@ export default function App({ loginOnly = false }){
       {lensCoinsModal&&(
         <div style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
           <div style={{background:"#fff",borderRadius:"24px 24px 0 0",padding:"28px 24px 36px",width:"100%",maxWidth:480}}>
-            <div style={{fontWeight:700,fontSize:18,color:"#111",marginBottom:8}}>
-              🪙 {lang==='en'?'Not enough coins':'Pas assez de pièces'}
+            <div style={{fontWeight:700,fontSize:18,color:"#111",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+              <PepiteIcon size={22} /> {lang==='en'?'Not enough Nuggets':'Pas assez de Pépites'}
             </div>
             <p style={{fontSize:13.5,color:"#6B6862",lineHeight:1.6,margin:"0 0 20px"}}>
               {lang==='en'
-                ?`Your monthly scans are used up. An extra scan costs ${lensCoinsModal.price} coins and you have ${lensCoinsModal.balance}.`
-                :`Tes analyses du mois sont épuisées. Une analyse supplémentaire coûte ${lensCoinsModal.price} pièces et il t'en reste ${lensCoinsModal.balance}.`}
+                ?`Your monthly scans are used up. An extra scan costs ${lensCoinsModal.price} Nuggets and you have ${lensCoinsModal.balance}.`
+                :`Tes analyses du mois sont épuisées. Une analyse supplémentaire coûte ${lensCoinsModal.price} Pépites et il t'en reste ${lensCoinsModal.balance}.`}
             </p>
             <button
               onClick={()=>{setLensCoinsModal(null);setCoinStoreOpen(true);}}
               style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}
             >
-              {lang==='en'?'Get coins':'Acheter des pièces'}
+              {lang==='en'?'Get Nuggets':'Acheter des Pépites'}
             </button>
             <button
               onClick={()=>setLensCoinsModal(null)}

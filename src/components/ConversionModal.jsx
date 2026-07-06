@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { PremiumButton } from './ui';
+import PepiteIcon from './PepiteIcon';
 
 const ANIM = `
 @keyframes fsPop {
@@ -18,19 +19,19 @@ const T = {
   eyebrow: {
     lens:    { fr: '📸 Limite Lens atteinte · 3/3 aujourd\'hui', en: '📸 Lens limit reached · 3/3 today' },
     voice:   { fr: '🎙️ Limite vocale atteinte · 5/5 aujourd\'hui', en: '🎙️ Voice limit reached · 5/5 today' },
-    publish: { fr: '🪙 Plus assez de pièces pour publier', en: '🪙 Not enough coins to publish' },
+    publish: { fr: 'Plus assez de Pépites pour publier', en: 'Not enough Nuggets to publish' },
     style:   { fr: '✨ Option de retouche verrouillée', en: '✨ Photo enhancement locked' },
   },
   hl1: {
     lens:    { fr: 'Tu enchaînais les scans.', en: 'You were on a roll.' },
     voice:   { fr: 'En plein ajout vocal.', en: 'You were adding fast.' },
-    publish: { fr: 'Ton solde de pièces est à sec.', en: 'Your coin balance ran dry.' },
+    publish: { fr: 'Ta réserve de Pépites est à sec.', en: 'Your Nugget stash ran dry.' },
     style:   { fr: 'La retouche IA avancée', en: 'Advanced AI retouching' },
   },
   hl2: {
     lens:    { fr: 'Lens s\'arrête à 3/jour.', en: 'Lens stops at 3/day.' },
     voice:   { fr: 'Stop à 5 commandes/jour.', en: 'Stop at 5 commands/day.' },
-    publish: { fr: 'Les abonnements incluent des pièces chaque mois.', en: 'Subscriptions include coins every month.' },
+    publish: { fr: 'Les abonnements incluent des Pépites chaque mois.', en: 'Subscriptions include Nuggets every month.' },
     style:   { fr: 'est réservée aux abonnés supérieurs.', en: 'is for higher-tier subscribers.' },
   },
   // Premium section
@@ -52,9 +53,9 @@ const T = {
   proLabel:      { fr: 'Pro', en: 'Pro' },
   publishLabel:  { fr: 'Publication illimitée', en: 'Unlimited publishing' },
   publishSub:    { fr: 'multi-plateformes, Vinted · Leboncoin · eBay…', en: 'multi-platform, Vinted · Leboncoin · eBay…' },
-  proCoinsLabel: { fr: '800 pièces incluses chaque mois', en: '800 coins included every month' },
+  proCoinsLabel: { fr: '800 Pépites incluses chaque mois', en: '800 Nuggets included every month' },
   proCoinsSub:   { fr: '≈ 23 annonces en retouche avancée / mois', en: '≈ 23 listings with advanced retouching / mo' },
-  premCoinsLabel:{ fr: 'Pièces de publication', en: 'Publishing coins' },
+  premCoinsLabel:{ fr: 'Pépites de publication', en: 'Publishing Nuggets' },
   premCoinsSub:  { fr: '150 incluses/mois ≈ 12 annonces retouche légère', en: '150 included/mo ≈ 12 light-retouch listings' },
   proPrice:      { fr: '29,99€', en: '€29.99' },
   ficheLabel:    { fr: 'Fiches IA par plateforme', en: 'AI listings per platform' },
@@ -144,7 +145,7 @@ function PremiumSection({ onUpgrade, lang, compact }) {
         <FeatureRow emoji="📦" label={l('stockLabel', lang)} sub={l('stockSub', lang)}>
           <QuotaJump from="20" to={l('unlimited', lang)} />
         </FeatureRow>
-        <FeatureRow emoji="🪙" label={l('premCoinsLabel', lang)} sub={l('premCoinsSub', lang)}>
+        <FeatureRow emoji={<PepiteIcon size={20} />} label={l('premCoinsLabel', lang)} sub={l('premCoinsSub', lang)}>
           <QuotaJump from="0" toNum="150" toSuffix={l('perMonth', lang)} />
         </FeatureRow>
       </div>
@@ -180,7 +181,7 @@ function ProSection({ onUpgrade, lang, compact }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-        <ProFeatureRow emoji="🪙" label={l('proCoinsLabel', lang)} sub={l('proCoinsSub', lang)} />
+        <ProFeatureRow emoji={<PepiteIcon size={20} />} label={l('proCoinsLabel', lang)} sub={l('proCoinsSub', lang)} />
         <ProFeatureRow emoji="📤" label={l('publishLabel', lang)} sub={l('publishSub', lang)} />
         <ProFeatureRow emoji="🤖" label={l('ficheLabel', lang)}   sub={l('ficheSub', lang)} />
         <ProFeatureRow emoji="✨" label={l('retoucheLabel', lang)} sub={l('retoucheSub', lang)} />

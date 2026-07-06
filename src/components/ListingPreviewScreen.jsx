@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
+import PepiteIcon from "./PepiteIcon";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
@@ -173,17 +174,17 @@ function QuotaLimitModal({ onClose, onBuy, balance, price, lang }) {
         background:"#fff", borderRadius:"24px 24px 0 0", padding:"28px 24px 36px",
         width:"100%", maxWidth:480,
       }}>
-        <div style={{ fontWeight:700, fontSize:18, color:"#111", marginBottom:8 }}>
-          🪙 {lang === 'en' ? 'Not enough coins' : 'Pas assez de pièces'}
+        <div style={{ fontWeight:700, fontSize:18, color:"#111", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
+          <PepiteIcon size={22} /> {lang === 'en' ? 'Not enough Nuggets' : 'Pas assez de Pépites'}
         </div>
         <p style={{ fontSize:13.5, color:"#6B6862", lineHeight:1.6, margin:"0 0 20px" }}>
           {price != null
             ? (lang === 'en'
-                ? `This publish option costs ${price} coins and you have ${balance}. You need ${missing} more.`
-                : `Cette option de publication coûte ${price} pièces et il t'en reste ${balance}. Il t'en manque ${missing}.`)
+                ? `This publish option costs ${price} Nuggets and you have ${balance}. You need ${missing} more.`
+                : `Cette option de publication coûte ${price} Pépites et il t'en reste ${balance}. Il t'en manque ${missing}.`)
             : (lang === 'en'
-                ? `You don't have enough coins for this publication.`
-                : `Tu n'as pas assez de pièces pour cette publication.`)}
+                ? `You don't have enough Nuggets for this publication.`
+                : `Tu n'as pas assez de Pépites pour cette publication.`)}
         </p>
         <button
           onClick={onBuy}
@@ -193,7 +194,7 @@ function QuotaLimitModal({ onClose, onBuy, balance, price, lang }) {
             cursor:"pointer", fontFamily:"inherit", marginBottom:10,
           }}
         >
-          {lang === 'en' ? 'Get coins' : 'Acheter des pièces'}
+          {lang === 'en' ? 'Get Nuggets' : 'Acheter des Pépites'}
         </button>
         <button
           onClick={onClose}
@@ -484,8 +485,9 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
                     background: affordable ? "#E7F3F0" : "#F7ECEA",
                     border: `1px solid ${affordable ? "#CBE5DF" : "#EAD4CF"}`,
                     padding:"3px 9px", borderRadius:999,
+                    display:"inline-flex", alignItems:"center", gap:4,
                   }}>
-                    🪙 {price}
+                    <PepiteIcon size={13} /> {price}
                   </span>
                 )}
                 <div style={{
@@ -501,15 +503,15 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
       {/* Solde de pièces + accès au store */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
-        <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2 }}>
-          {lang === 'en' ? 'Your balance:' : 'Ton solde :'}{' '}
-          <strong style={{ color:T.ink }}>🪙 {coinBalance}</strong>
+        <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, display:"inline-flex", alignItems:"center", gap:5 }}>
+          {lang === 'en' ? 'Your Nuggets:' : 'Tes Pépites :'}{' '}
+          <strong style={{ color:T.ink, display:"inline-flex", alignItems:"center", gap:4 }}><PepiteIcon size={15} /> {coinBalance}</strong>
         </span>
         <button
           onClick={onOpenStore}
           style={{ background:"none", border:"none", color:T.tealDeep, fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline", textUnderlineOffset:3, padding:0 }}
         >
-          {lang === 'en' ? '+ Get coins' : '+ Recharger'}
+          {lang === 'en' ? '+ Get Nuggets' : '+ Recharger'}
         </button>
       </div>
 

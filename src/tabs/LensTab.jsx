@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import { Camera, Mic, Sparkles, Plus } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import PepiteIcon from '../components/PepiteIcon';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
 import { useTranslation } from '../i18n/useTranslation';
 import { UI, Loader, PrimaryButton, PremiumButton } from '../components/ui';
@@ -614,8 +615,8 @@ const LensTab = memo(function LensTab({
           <div style={{textAlign:"center",fontSize:11,marginTop:6,lineHeight:1.5,color:lensUsedToday>=LENS_FREE_LIMIT?"#C2410C":"#8A8578"}}>
             {lensUsedToday>=LENS_FREE_LIMIT
               ?(lang==="en"
-                ?<>📸 Monthly scans used · 🪙 6 coins per extra scan · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
-                :<>📸 Analyses du mois épuisées · 🪙 6 pièces l'analyse · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
+                ?<>📸 Monthly scans used · <PepiteIcon size={11} /> 6 Nuggets per extra scan · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
+                :<>📸 Analyses du mois épuisées · <PepiteIcon size={11} /> 6 Pépites l'analyse · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
               )
               :(lang==="en"
                 ?<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} scans this month · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
