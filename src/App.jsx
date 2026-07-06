@@ -467,6 +467,15 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
+// Libellés des mouvements du ledger de pièces (Settings)
+const COIN_KIND_LABELS={
+  grant_monthly:{fr:'Pièces du mois',en:'Monthly coins'},
+  purchase:{fr:'Pack acheté',en:'Pack purchased'},
+  spend_publish:{fr:'Publication',en:'Publish'},
+  refund:{fr:'Remboursement',en:'Refund'},
+  admin:{fr:'Ajustement',en:'Adjustment'},
+};
+
 function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', slotsRemaining=null, onOpenModal=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
@@ -3418,6 +3427,8 @@ export default function App({ loginOnly = false }){
   const [username,setUsername]=useState('');
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [coinWallet,setCoinWallet]=useState(null);
+  const [coinHistory,setCoinHistory]=useState([]);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
@@ -3709,6 +3720,17 @@ export default function App({ loginOnly = false }){
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
   }
+
+  // Solde + derniers mouvements de pièces, rechargés à chaque ouverture des réglages
+  useEffect(()=>{
+    if(!showSettings||!user)return;
+    (async()=>{
+      const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance').eq('user_id',user.id).maybeSingle();
+      setCoinWallet(w??{included_balance:0,purchased_balance:0});
+      const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(5);
+      setCoinHistory(h??[]);
+    })();
+  },[showSettings,user]);
 
   useEffect(()=>{
     let mounted=true;
@@ -5809,6 +5831,29 @@ export default function App({ loginOnly = false }){
               <Eyebrow>{t('monCompte')}</Eyebrow>
               <div style={{fontSize:13,fontWeight:600,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
               {isPremium&&<div style={{fontSize:12,color:UI.tealDeep,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
+            </div>
+
+            {/* Pièces de publication */}
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow>{lang==='fr'?'Mes pièces':'My coins'}</Eyebrow>
+              <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:22,fontWeight:700,color:UI.ink}}>🪙 {(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)}</span>
+                <span style={{fontSize:11,color:UI.mute,fontWeight:600}}>
+                  {lang==='fr'
+                    ?`${coinWallet?.included_balance??0} incluses · ${coinWallet?.purchased_balance??0} achetées`
+                    :`${coinWallet?.included_balance??0} included · ${coinWallet?.purchased_balance??0} purchased`}
+                </span>
+              </div>
+              {coinHistory.length>0&&(
+                <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${UI.border}`,display:"flex",flexDirection:"column",gap:5}}>
+                  {coinHistory.map((h,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:UI.mute2}}>
+                      <span>{COIN_KIND_LABELS[h.kind]?.[lang==='fr'?'fr':'en']??h.kind} · {new Date(h.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}</span>
+                      <span style={{fontWeight:700,color:h.delta>=0?UI.tealDeep:UI.negative}}>{h.delta>=0?`+${h.delta}`:h.delta}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Pseudo */}
