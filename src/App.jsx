@@ -3556,7 +3556,8 @@ export default function App({ loginOnly = false }){
     localStorage.setItem('fs_currency',code);
     if(user?.id) await supabase.rpc('set_profile_currency',{p_currency:code});
   }
-  async function triggerCheckout(){
+  // product : undefined → abonnement Premium standard ; 'pro' → abonnement Pro 29,99 €
+  async function triggerCheckout(product){
     try{
       let{data:{session}}=await supabase.auth.getSession();
       if(!session){
@@ -3569,11 +3570,11 @@ export default function App({ loginOnly = false }){
         return;
       }
       const token=session.access_token;
-      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email})});
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product==='pro'?{product:'pro'}:{})})});
       const body=await res.json();
       const{url,error}=body;
       if(error)throw new Error(error);
-      track('begin_checkout', { currency: 'EUR', value: 9.99 });
+      track('begin_checkout', { currency: 'EUR', value: product==='pro'?29.99:12.99 });
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
     }catch(e){
@@ -3582,12 +3583,15 @@ export default function App({ loginOnly = false }){
     }
   }
 
-  async function handleIAPPurchase(){
-    console.log('[IAP] handleIAPPurchase started — platform:',platform);
+  // tier : 'pro' → abonnement Pro (app.fillsell.pro.sub) ; toute autre valeur
+  // (undefined, event de clic…) → Premium standard. Comparaison stricte voulue.
+  async function handleIAPPurchase(tier){
+    const isProPurchase=tier==='pro';
+    console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isProPurchase?'pro':'premium');
     setIapLoading(true);
-    // Programme Founder fermé aux nouveaux (2026-07) : toujours le produit standard.
-    // PRODUCT_IDS.sub reste référencé dans restorePurchases pour les Founders existants.
-    const productId=PRODUCT_IDS.standard;
+    // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
+    // Il reste référencé dans restorePurchases pour les Founders existants.
+    const productId=isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
     const isFounderProduct=false;
     try{
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id);
@@ -3597,6 +3601,7 @@ export default function App({ loginOnly = false }){
         // Le webhook Google Play gère les renouvellements ; le token ici couvre le 1er achat
         const updates={is_premium:true};
         if(isFounderProduct) updates.is_founder=true;
+        if(isProPurchase) updates.is_pro=true;
         if(purchaseToken){updates.google_purchase_token=purchaseToken;updates.google_product_id=productId;}
         await supabase.from('profiles').update(updates).eq('id',user.id);
       } else {
@@ -3611,6 +3616,7 @@ export default function App({ loginOnly = false }){
         if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       }
       setIsPremium(true);
+      if(isProPurchase) setIsPro(true);
       setPremiumWelcomeIsFounder(isFounderProduct);
       setShowPremiumWelcome(true);
     }catch(e){
@@ -5428,7 +5434,7 @@ export default function App({ loginOnly = false }){
             resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
             triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             setTab={setTab}
             EmptyStateDashboard={BoundEmptyState}
           />
@@ -5502,7 +5508,7 @@ export default function App({ loginOnly = false }){
             PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
             slotsRemaining={slotsRemaining}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             onStepperOpenChange={setListingStepperOpen}
           />
         )}
@@ -5523,7 +5529,7 @@ export default function App({ loginOnly = false }){
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             slotsRemaining={slotsRemaining}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
             lensPremiumLimitReached={lensPremiumLimitReached}
@@ -5546,7 +5552,7 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
             slotsRemaining={slotsRemaining}
           />
         )}
@@ -6140,7 +6146,7 @@ export default function App({ loginOnly = false }){
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={()=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger,'isNative:',isNative);setConversionModal(m=>({...m,open:false}));trackTikTokEvent("InitiateCheckout",user?.email,9.99);isNative?handleIAPPurchase():triggerCheckout();}}
+        onUpgrade={(tier)=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger,'tier:',tier,'isNative:',isNative);setConversionModal(m=>({...m,open:false}));trackTikTokEvent("InitiateCheckout",user?.email,tier==='pro'?29.99:12.99);if(tier==='pro'){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}else{isNative?handleIAPPurchase():triggerCheckout();}}}
         trigger={conversionModal.trigger}
         founderSpotsLeft={slotsRemaining}
         lang={lang}

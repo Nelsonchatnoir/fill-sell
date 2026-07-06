@@ -1,8 +1,9 @@
 import { NativePurchases } from '@capgo/native-purchases';
 
 export const PRODUCT_IDS = {
-  sub: 'app.fillsell.premium.sub',
+  sub: 'app.fillsell.premium.sub',        // Founder (fermé aux nouveaux, gardé pour restore)
   standard: 'app.fillsell.premium.standard',
+  pro: 'app.fillsell.pro.sub',            // Pro 29,99 €/mois
 };
 
 export const initIAP = async () => {
