@@ -1178,7 +1178,9 @@ export default function ListingPreviewScreen({
     setPublishing(true);
     setPublishError("");
     try {
-      const { data: quotaData, error: quotaErr } = await supabase.rpc("check_and_log_publish", {
+      // Check en lecture seule : le quota n'est consommé (log_publish) qu'après
+      // l'insert cross_post_jobs confirmé — un échec d'insert ne brûle plus de quota.
+      const { data: quotaData, error: quotaErr } = await supabase.rpc("check_publish_quota", {
         p_user_id:    userId,
         p_is_premium: isPremium,
         p_is_pro:     isPro,
@@ -1259,6 +1261,11 @@ export default function ListingPreviewScreen({
       });
       const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
       if (insErr) throw new Error(t("genericError"));
+      // Insert confirmé : on consomme le quota maintenant. Un échec ici est
+      // non bloquant (publication déjà partie) — au pire le quota est sous-compté,
+      // jamais débité à vide.
+      const { error: logErr } = await supabase.rpc("log_publish", { p_user_id: userId });
+      if (logErr) console.error("[publish] log_publish failed:", logErr.message);
       if (addToStock && currentInvId && processedPhotos?.length) {
         await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", currentInvId);
       }
