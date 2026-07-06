@@ -18,19 +18,19 @@ const T = {
   eyebrow: {
     lens:    { fr: '📸 Limite Lens atteinte · 3/3 aujourd\'hui', en: '📸 Lens limit reached · 3/3 today' },
     voice:   { fr: '🎙️ Limite vocale atteinte · 5/5 aujourd\'hui', en: '🎙️ Voice limit reached · 5/5 today' },
-    publish: { fr: '📤 Limite de publication atteinte · 3/3 cette semaine', en: '📤 Publish limit reached · 3/3 this week' },
+    publish: { fr: '🪙 Plus assez de pièces pour publier', en: '🪙 Not enough coins to publish' },
     style:   { fr: '✨ Option de retouche verrouillée', en: '✨ Photo enhancement locked' },
   },
   hl1: {
     lens:    { fr: 'Tu enchaînais les scans.', en: 'You were on a roll.' },
     voice:   { fr: 'En plein ajout vocal.', en: 'You were adding fast.' },
-    publish: { fr: '3 publications cette semaine.', en: '3 publishes this week.' },
+    publish: { fr: 'Ton solde de pièces est à sec.', en: 'Your coin balance ran dry.' },
     style:   { fr: 'La retouche IA avancée', en: 'Advanced AI retouching' },
   },
   hl2: {
     lens:    { fr: 'Lens s\'arrête à 3/jour.', en: 'Lens stops at 3/day.' },
     voice:   { fr: 'Stop à 5 commandes/jour.', en: 'Stop at 5 commands/day.' },
-    publish: { fr: 'Publie plus en passant au niveau supérieur.', en: 'Upgrade to publish more.' },
+    publish: { fr: 'Les abonnements incluent des pièces chaque mois.', en: 'Subscriptions include coins every month.' },
     style:   { fr: 'est réservée aux abonnés supérieurs.', en: 'is for higher-tier subscribers.' },
   },
   // Premium section
@@ -51,12 +51,17 @@ const T = {
   // Pro section
   proLabel:      { fr: 'Pro', en: 'Pro' },
   publishLabel:  { fr: 'Publication illimitée', en: 'Unlimited publishing' },
-  publishSub:    { fr: 'multi-plateformes, sans quota hebdomadaire', en: 'multi-platform, no weekly quota' },
+  publishSub:    { fr: 'multi-plateformes, Vinted · Leboncoin · eBay…', en: 'multi-platform, Vinted · Leboncoin · eBay…' },
+  proCoinsLabel: { fr: '800 pièces incluses chaque mois', en: '800 coins included every month' },
+  proCoinsSub:   { fr: '≈ 23 annonces en retouche avancée / mois', en: '≈ 23 listings with advanced retouching / mo' },
+  premCoinsLabel:{ fr: 'Pièces de publication', en: 'Publishing coins' },
+  premCoinsSub:  { fr: '150 incluses/mois ≈ 12 annonces retouche légère', en: '150 included/mo ≈ 12 light-retouch listings' },
+  proPrice:      { fr: '29,99€', en: '€29.99' },
   ficheLabel:    { fr: 'Fiches IA par plateforme', en: 'AI listings per platform' },
   ficheSub:      { fr: 'titres & descriptions adaptés à chaque site', en: 'tailored titles & descriptions per site' },
   retoucheLabel: { fr: 'Retouche IA avancée', en: 'Advanced AI retouching' },
   retoucheSub:   { fr: 'fond nettoyé, lumière corrigée, angles optimisés', en: 'clean background, corrected light, optimised angles' },
-  proCta:        { fr: 'Découvrir Pro', en: 'Discover Pro' },
+  proCta:        { fr: 'Passer Pro · 29,99€/mois', en: 'Go Pro · €29.99/mo' },
   // Divider
   orLabel:       { fr: 'ou passer directement à Pro', en: 'or jump straight to Pro' },
   // Dismiss
@@ -139,6 +144,9 @@ function PremiumSection({ onUpgrade, lang, compact }) {
         <FeatureRow emoji="📦" label={l('stockLabel', lang)} sub={l('stockSub', lang)}>
           <QuotaJump from="20" to={l('unlimited', lang)} />
         </FeatureRow>
+        <FeatureRow emoji="🪙" label={l('premCoinsLabel', lang)} sub={l('premCoinsSub', lang)}>
+          <QuotaJump from="0" toNum="150" toSuffix={l('perMonth', lang)} />
+        </FeatureRow>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -172,9 +180,15 @@ function ProSection({ onUpgrade, lang, compact }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        <ProFeatureRow emoji="🪙" label={l('proCoinsLabel', lang)} sub={l('proCoinsSub', lang)} />
         <ProFeatureRow emoji="📤" label={l('publishLabel', lang)} sub={l('publishSub', lang)} />
         <ProFeatureRow emoji="🤖" label={l('ficheLabel', lang)}   sub={l('ficheSub', lang)} />
         <ProFeatureRow emoji="✨" label={l('retoucheLabel', lang)} sub={l('retoucheSub', lang)} />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 32, fontWeight: 700, color: '#7C3AED', letterSpacing: '-1px' }}>{l('proPrice', lang)}</span>
+        <span style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>{l('perMonth', lang)}</span>
       </div>
 
       <PremiumButton onClick={() => onUpgrade('pro')} style={{ fontSize: 16 }}>
