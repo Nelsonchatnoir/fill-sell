@@ -257,7 +257,7 @@ export const translations = {
     lensAnalyzeCta:"Analyser avec l'IA",
     lensAnalyzing:"Analyse en cours…",
     lensMarqueeCaption:"Publie sur tes plateformes préférées",
-    lensQuotaFree:"{used}/{limit} analyses · visuel uniquement",
+    lensQuotaFree:"{used}/{limit} analyses ce mois-ci",
     lensQuotaFreeLimitReached:"Limite atteinte",
     lensQuotaPremiumLimitReached:"Limite mensuelle atteinte",
   },
@@ -519,7 +519,7 @@ export const translations = {
     lensAnalyzeCta:"Analyze with AI",
     lensAnalyzing:"Analyzing…",
     lensMarqueeCaption:"Publish on your favorite platforms",
-    lensQuotaFree:"{used}/{limit} scans · visual analysis only",
+    lensQuotaFree:"{used}/{limit} scans this month",
     lensQuotaFreeLimitReached:"Limit reached",
     lensQuotaPremiumLimitReached:"Monthly limit reached",
   }

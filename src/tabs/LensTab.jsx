@@ -183,7 +183,9 @@ const VITESSE_INFO = {
   lent:  { icon:'🐢', fr:'Vente lente',   en:'Slow sale',    color:'#DC2626' },
 };
 
-function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAdded, addLensItem, openLensEditModal, onReset, openUpgradeModal }) {
+// Qualité d'analyse unifiée (2026-07) : plus de gating par tier — chaque bloc
+// s'affiche si le champ est présent dans la réponse, identique pour tous.
+function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset }) {
   if (result.error) {
     return (
       <>
@@ -234,13 +236,6 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           )}
         </div>
 
-        {/* Description IA courte (Free uniquement) */}
-        {!isPremium&&result.description&&(
-          <div style={{fontSize:12,color:'#374151',lineHeight:1.55,marginBottom:12,padding:'8px 12px',background:'#F9FAFB',borderRadius:8,borderLeft:'2px solid #D1FAE5'}}>
-            {result.description}
-          </div>
-        )}
-
         {/* 💰 Prix de vente conseillé */}
         <div style={{background:'#F8FFFE',borderRadius:12,padding:'12px 14px',marginBottom:12,border:'1px solid rgba(29,158,117,0.15)'}}>
           <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>
@@ -265,8 +260,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           )}
         </div>
 
-        {/* 📊 Fourchette marché (Premium) */}
-        {isPremium&&result.fourchette_marche&&(
+        {/* 📊 Fourchette marché */}
+        {result.fourchette_marche&&(
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               📊 {lang==='en'?'Market range':'Fourchette marché'}
@@ -286,8 +281,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           </div>
         )}
 
-        {/* ⚡ Vitesse de vente (Premium) */}
-        {isPremium&&vi&&(
+        {/* ⚡ Vitesse de vente */}
+        {vi&&(
           <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:12,background:'#F9FAFB',borderRadius:10,padding:'10px 12px'}}>
             <span style={{fontSize:18}}>{vi.icon}</span>
             <div>
@@ -297,8 +292,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           </div>
         )}
 
-        {/* 🛍️ Plateformes (Premium uniquement) */}
-        {isPremium&&result.plateformes?.length>0&&(
+        {/* 🛍️ Plateformes */}
+        {result.plateformes?.length>0&&(
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               🛍️ {lang==='en'?'Best platforms':'Meilleures plateformes'}
@@ -315,8 +310,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           </div>
         )}
 
-        {/* 💡 Conseils (Premium uniquement) */}
-        {isPremium&&result.conseils?.length>0&&(
+        {/* 💡 Conseils */}
+        {result.conseils?.length>0&&(
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               💡 {lang==='en'?'Tips to sell faster':'Conseils pour vendre mieux'}
@@ -350,41 +345,16 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, isPremium, lensAd
           </div>
         )}
 
-        {/* Notes source (Premium uniquement) */}
-        {isPremium&&result.notes&&(
+        {/* Notes source */}
+        {result.notes&&(
           <div style={{fontSize:11,color:'#8A8578',marginTop:8,fontStyle:'italic'}}>{result.notes}</div>
         )}
 
-        {/* Description (Premium uniquement) */}
-        {isPremium&&result.description&&(
+        {/* Description */}
+        {result.description&&(
           <div style={{fontSize:13,color:'#374151',lineHeight:1.6,marginTop:8}}>{result.description}</div>
         )}
       </div>
-
-      {/* 🔒 Bloc conversion Premium (Free uniquement) */}
-      {!isPremium&&(
-        <div style={{background:'#F0FDF8',borderRadius:12,padding:'14px 16px',border:'1px solid rgba(29,158,117,0.2)',marginBottom:10}}>
-          <div style={{fontSize:13,fontWeight:700,color:'#1B6E62',marginBottom:10}}>
-            🔒 {lang==='en'?'Full analysis available in Premium':'Analyse complète disponible en Premium'}
-          </div>
-          <div style={{display:'flex',flexDirection:'column',gap:7,marginBottom:12}}>
-            {[
-              {icon:'📊', fr:'Fourchette marché précise (bas / moyen / haut)', en:'Precise market range (low / mid / high)'},
-              {icon:'⚡', fr:'Vitesse de vente estimée', en:'Estimated time to sell'},
-              {icon:'🛍️', fr:'Meilleures plateformes recommandées', en:'Best platforms recommended'},
-              {icon:'💡', fr:'Conseils personnalisés pour vendre plus vite', en:'Personalised tips to sell faster'},
-            ].map(({icon,fr,en},i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontSize:14}}>{icon}</span>
-                <span style={{fontSize:12,color:'#374151',fontWeight:500}}>{lang==='en'?en:fr}</span>
-              </div>
-            ))}
-          </div>
-          <PremiumButton onClick={openUpgradeModal}>
-            {lang==='en'?'Upgrade to Premium →':'Passer Premium →'}
-          </PremiumButton>
-        </div>
-      )}
 
       {result.titre&&(
         lensAdded ? (
@@ -638,17 +608,18 @@ const LensTab = memo(function LensTab({
           </div>
         )}
 
-        {/* Bandeau free : compteur + analyse estimée */}
+        {/* Bandeau free : compteur mensuel — même analyse complète que Premium,
+            seul le nombre inclus diffère ; au-delà, 6 pièces par analyse */}
         {!isPremium&&(
           <div style={{textAlign:"center",fontSize:11,marginTop:6,lineHeight:1.5,color:lensUsedToday>=LENS_FREE_LIMIT?"#C2410C":"#8A8578"}}>
             {lensUsedToday>=LENS_FREE_LIMIT
               ?(lang==="en"
-                ?<>📸 Limit reached · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for live market prices →</button></>
-                :<>📸 Limite atteinte · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium →</button></>
+                ?<>📸 Monthly scans used · 🪙 6 coins per extra scan · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
+                :<>📸 Analyses du mois épuisées · 🪙 6 pièces l'analyse · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
               )
               :(lang==="en"
-                ?<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} · Visual analysis only · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for live market prices →</button></>
-                :<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} · Analyse visuelle uniquement · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium →</button></>
+                ?<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} scans this month · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
+                :<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} analyses ce mois-ci · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
               )
             }
           </div>

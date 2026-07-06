@@ -24,6 +24,7 @@ import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
 import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
+import CoinStoreModal from './components/CoinStoreModal';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -3434,6 +3435,10 @@ export default function App({ loginOnly = false }){
   const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'lens'});
+  // Dépassement du quota Lens payé en pièces : {price,balance} quand le serveur
+  // répond insufficient_coins, null sinon. coinStoreOpen ouvre le store de packs.
+  const [lensCoinsModal,setLensCoinsModal]=useState(null);
+  const [coinStoreOpen,setCoinStoreOpen]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin.adresse) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
@@ -3496,7 +3501,9 @@ export default function App({ loginOnly = false }){
   const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
   const [lensUsedToday,setLensUsedToday]=useState(0);
   const [voiceUsedToday,setVoiceUsedToday]=useState(0);
-  const LENS_FREE_LIMIT=3;
+  // Quota Lens Free : 5 analyses par MOIS (le plafond journalier a été retiré,
+  // cf. lens-analysis). Le compteur affiché est mensuel.
+  const LENS_FREE_LIMIT=5;
   useEffect(()=>{
     const _id=setInterval(()=>{
       setLensPlaceholderFade(false);
@@ -3708,14 +3715,15 @@ export default function App({ loginOnly = false }){
     setLoading(false);
     setAppLoading(false);
     // Quota Lens : usage_logs est LA source de vérité (comptée côté serveur par
-    // check_and_log_usage dans lens-analysis, jour = minuit UTC). Le client ne
-    // fait que refléter ce compteur pour l'affichage — plus aucun comptage
-    // parallèle via profiles.lens_count_today.
-    const lensDayStart=new Date();lensDayStart.setUTCHours(0,0,0,0);
+    // check_and_log_usage). Le quota inclus étant désormais MENSUEL (free 5,
+    // premium 120, pro 250), le compteur affiché l'est aussi — borne = début de
+    // mois UTC, comme date_trunc('month') côté serveur. (Le nom lensUsedToday
+    // est historique : il contient le compteur du MOIS.)
+    const lensMonthStart=new Date();lensMonthStart.setUTCDate(1);lensMonthStart.setUTCHours(0,0,0,0);
     const{count:lensCount}=await supabase.from('usage_logs')
       .select('id',{count:'exact',head:true})
       .eq('user_id',uid).eq('feature','lens')
-      .gte('created_at',lensDayStart.toISOString());
+      .gte('created_at',lensMonthStart.toISOString());
     setLensUsedToday(lensCount||0);
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
@@ -5246,6 +5254,12 @@ export default function App({ loginOnly = false }){
       });
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
+        // Quota mensuel épuisé ET pas assez de pièces pour l'analyse hors quota
+        if(errBody.error==='insufficient_coins'){
+          setLensCoinsModal({price:errBody.price??6,balance:errBody.balance??0});
+          return;
+        }
+        // quota_exceeded ne subsiste que pour le frein journalier Premium (10/j)
         if(errBody.error==='quota_exceeded'){
           if(isPremium){
             setLensPremiumLimitReached(true);
@@ -6130,6 +6144,40 @@ export default function App({ loginOnly = false }){
         trigger={conversionModal.trigger}
         founderSpotsLeft={slotsRemaining}
         lang={lang}
+      />
+
+      {/* ── LENS HORS QUOTA : PAS ASSEZ DE PIÈCES ── */}
+      {lensCoinsModal&&(
+        <div style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:"24px 24px 0 0",padding:"28px 24px 36px",width:"100%",maxWidth:480}}>
+            <div style={{fontWeight:700,fontSize:18,color:"#111",marginBottom:8}}>
+              🪙 {lang==='en'?'Not enough coins':'Pas assez de pièces'}
+            </div>
+            <p style={{fontSize:13.5,color:"#6B6862",lineHeight:1.6,margin:"0 0 20px"}}>
+              {lang==='en'
+                ?`Your monthly scans are used up. An extra scan costs ${lensCoinsModal.price} coins and you have ${lensCoinsModal.balance}.`
+                :`Tes analyses du mois sont épuisées. Une analyse supplémentaire coûte ${lensCoinsModal.price} pièces et il t'en reste ${lensCoinsModal.balance}.`}
+            </p>
+            <button
+              onClick={()=>{setLensCoinsModal(null);setCoinStoreOpen(true);}}
+              style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}
+            >
+              {lang==='en'?'Get coins':'Acheter des pièces'}
+            </button>
+            <button
+              onClick={()=>setLensCoinsModal(null)}
+              style={{width:"100%",padding:"12px",borderRadius:14,border:"none",background:"none",color:"#6B6862",fontWeight:600,fontSize:13.5,cursor:"pointer",fontFamily:"inherit"}}
+            >
+              {lang==='en'?'Later':'Plus tard'}
+            </button>
+          </div>
+        </div>
+      )}
+      <CoinStoreModal
+        open={coinStoreOpen}
+        onClose={()=>setCoinStoreOpen(false)}
+        lang={lang}
+        supabase={supabase}
       />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
