@@ -9,6 +9,15 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
+// Packs de pièces (grille 2026-07-06) — price IDs Stripe à créer dans le
+// dashboard puis renseigner dans les secrets edge functions.
+const COIN_PACKS: Record<string, { envKey: string; coins: number }> = {
+  coins_100:  { envKey: "STRIPE_PRICE_COINS_100",  coins: 100 },
+  coins_220:  { envKey: "STRIPE_PRICE_COINS_220",  coins: 220 },
+  coins_460:  { envKey: "STRIPE_PRICE_COINS_460",  coins: 460 },
+  coins_1150: { envKey: "STRIPE_PRICE_COINS_1150", coins: 1150 },
+};
+
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -41,7 +50,9 @@ serve(async (req) => {
   }
 
   try {
-    const { email } = await req.json();
+    // product : undefined → abonnement Premium standard (comportement historique) ;
+    // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
+    const { email, product } = await req.json();
 
     if (email && authUser.email && email !== authUser.email) {
       return new Response(JSON.stringify({ error: "Email mismatch" }), {
@@ -58,6 +69,39 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // ── Packs de pièces : paiement one-shot (commission ~3% vs 30% stores) ──
+    // Le crédit est fait par stripe-webhook (checkout.session.completed,
+    // metadata.purchase_type = "coins") via credit_purchased_coins, idempotent
+    // sur stripe:<session.id>.
+    if (typeof product === "string" && COIN_PACKS[product]) {
+      const pack = COIN_PACKS[product];
+      const packPriceId = Deno.env.get(pack.envKey);
+      if (!packPriceId) {
+        return new Response(JSON.stringify({ error: "pack_price_not_configured", pack: product }), {
+          status: 500, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      const { data: packProfile } = await supabase
+        .from("profiles")
+        .select("stripe_customer_id")
+        .eq("email", verifiedEmail)
+        .single();
+      const packSession = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [{ price: packPriceId, quantity: 1 }],
+        success_url: "https://fillsell.app/success",
+        cancel_url: "https://fillsell.app/cancel",
+        ...(packProfile?.stripe_customer_id
+          ? { customer: packProfile.stripe_customer_id }
+          : { customer_email: verifiedEmail || undefined }),
+        metadata: { purchase_type: "coins", coin_pack: product, coins: String(pack.coins), user_id: authUser.id },
+      });
+      return new Response(JSON.stringify({ url: packSession.url }), {
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
     const priceId = Deno.env.get("STRIPE_PRICE_STANDARD")!;
     const planType = "standard";
 

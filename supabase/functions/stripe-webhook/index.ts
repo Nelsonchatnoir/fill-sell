@@ -40,6 +40,33 @@ serve(async (req) => {
     const customerId = session.customer as string;
     const planType = session.metadata?.plan_type ?? "standard";
 
+    // ── Pack de pièces (mode payment) : créditer et sortir — pas un abonnement ──
+    // Idempotent : ref stripe:<session.id>, un event rejoué ne crédite pas deux fois.
+    if (session.metadata?.purchase_type === "coins") {
+      const coins = parseInt(session.metadata?.coins ?? "0", 10);
+      const packUserId = session.metadata?.user_id;
+      if (packUserId && coins > 0) {
+        const { data: credit, error: creditErr } = await supabase.rpc("credit_purchased_coins", {
+          p_user_id: packUserId,
+          p_amount: coins,
+          p_ref: `stripe:${session.id}`,
+          p_metadata: { pack: session.metadata?.coin_pack ?? null, amount_total: session.amount_total },
+        });
+        if (creditErr) console.error("[webhook] credit coins failed:", creditErr.message);
+        else console.log(`[webhook] coins pack → user=${packUserId} coins=${coins}`, JSON.stringify(credit));
+      } else {
+        console.error("[webhook] coins session without user_id/coins metadata:", session.id);
+      }
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "Purchase", value: (session.amount_total ?? 0) / 100, currency: "EUR" }),
+      }).catch(() => {});
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (!email) {
       return new Response("No email found", { status: 400 });
     }
