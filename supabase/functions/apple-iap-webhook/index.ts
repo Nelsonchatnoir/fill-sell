@@ -7,9 +7,11 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
 const PREMIUM_PRODUCT_IDS = [
   "app.fillsell.premium.sub",
   "app.fillsell.premium.standard",
+  PRO_PRODUCT_ID,
 ];
 
 const PREMIUM_ON  = ["SUBSCRIBED", "DID_RENEW", "RESUBSCRIBE"];
@@ -168,6 +170,7 @@ serve(async (req) => {
         const upd: Record<string, unknown> = { is_premium: true };
         if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
         if (renewalProductId === "app.fillsell.premium.sub") upd.is_founder = true;
+        if (renewalProductId === PRO_PRODUCT_ID) upd.is_pro = true;
         const { error } = await supabaseAdmin.from("profiles").update(upd).eq("id", renewalToken);
         if (error) {
           console.error("[apple-iap-webhook] DB error:", error.message);
@@ -249,6 +252,8 @@ serve(async (req) => {
     const update: Record<string, unknown> = { is_premium: isPremium };
     if (originalTransactionId) update.apple_original_transaction_id = originalTransactionId;
     if (isPremium && productId === "app.fillsell.premium.sub") update.is_founder = true;
+    // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
+    if (productId === PRO_PRODUCT_ID) update.is_pro = isPremium;
 
     const { error } = await supabaseAdmin
       .from("profiles")
@@ -261,6 +266,16 @@ serve(async (req) => {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // Pièces incluses au 1er achat et à chaque renouvellement (idempotent par mois)
+    if (isPremium) {
+      const grantTier = productId === PRO_PRODUCT_ID ? "pro" : "premium";
+      const { error: grantErr } = await supabaseAdmin.rpc("grant_monthly_coins", {
+        p_user_id: appAccountToken,
+        p_tier: grantTier,
+      });
+      if (grantErr) console.error("[apple-iap-webhook] grant_monthly_coins:", grantErr.message);
     }
 
     console.log(

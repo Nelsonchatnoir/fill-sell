@@ -86,6 +86,9 @@ serve(async (req) => {
       if (planType === "founder") {
         profileUpdate.is_founder = true;
       }
+      if (planType === "pro") {
+        profileUpdate.is_pro = true;
+      }
 
       await supabase
         .from("profiles")
@@ -96,6 +99,14 @@ serve(async (req) => {
       if (planType === "founder") {
         await supabase.rpc("increment_founder_slots");
       }
+
+      // Pièces incluses créditées dès l'activation (idempotent par mois calendaire)
+      const grantTier = planType === "pro" ? "pro" : "premium";
+      const { error: grantErr } = await supabase.rpc("grant_monthly_coins", {
+        p_user_id: users[0].id,
+        p_tier: grantTier,
+      });
+      if (grantErr) console.error("[webhook] grant_monthly_coins:", grantErr.message);
     }
 
     await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
@@ -103,6 +114,28 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event: "Purchase", value: 9.99, currency: "EUR" }),
     }).catch(() => {});
+  }
+
+  // Renouvellements d'abonnement : re-crédit mensuel des pièces incluses
+  // (idempotent par mois). ⚠️ Nécessite d'activer l'événement invoice.paid
+  // sur l'endpoint webhook dans le dashboard Stripe.
+  if (event.type === "invoice.paid") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const customerId = invoice.customer as string;
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id, is_pro")
+      .eq("stripe_customer_id", customerId)
+      .limit(1);
+    if (profs && profs.length > 0) {
+      const tier = profs[0].is_pro ? "pro" : "premium";
+      const { error: grantErr } = await supabase.rpc("grant_monthly_coins", {
+        p_user_id: profs[0].id,
+        p_tier: tier,
+      });
+      if (grantErr) console.error("[webhook] invoice.paid grant:", grantErr.message);
+      else console.log(`[webhook] invoice.paid grant → user=${profs[0].id} tier=${tier}`);
+    }
   }
 
   if (event.type === "customer.subscription.deleted") {
@@ -113,7 +146,7 @@ serve(async (req) => {
 
     await supabase
       .from("profiles")
-      .update({ is_premium: false, subscription_cancel_at_period_end: false })
+      .update({ is_premium: false, is_pro: false, subscription_cancel_at_period_end: false })
       .eq("stripe_customer_id", customerId);
   }
 
@@ -128,7 +161,7 @@ serve(async (req) => {
     if (status === "unpaid" || status === "incomplete_expired") {
       await supabase
         .from("profiles")
-        .update({ is_premium: false, subscription_cancel_at_period_end: false })
+        .update({ is_premium: false, is_pro: false, subscription_cancel_at_period_end: false })
         .eq("stripe_customer_id", customerId);
     } else {
       await supabase

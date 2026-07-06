@@ -51,6 +51,7 @@ serve(async (req) => {
 
   try {
     // product : undefined → abonnement Premium standard (comportement historique) ;
+    // "pro" → abonnement Pro 29,99 €/mois ;
     // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
     const { email, product } = await req.json();
 
@@ -102,8 +103,14 @@ serve(async (req) => {
       });
     }
 
-    const priceId = Deno.env.get("STRIPE_PRICE_STANDARD")!;
-    const planType = "standard";
+    // ── Abonnements : standard 12,99 € ou Pro 29,99 € ──
+    // Pas d'essai gratuit sur Pro : les 800 pièces mensuelles sont créditées dès
+    // le paiement (un trial serait arbitrable : s'abonner, brûler les pièces, annuler).
+    const isProPlan = product === "pro";
+    const priceId = isProPlan
+      ? Deno.env.get("STRIPE_PRICE_PRO")!
+      : Deno.env.get("STRIPE_PRICE_STANDARD")!;
+    const planType = isProPlan ? "pro" : "standard";
 
     // Réutilise le customer Stripe existant pour bloquer un 2ème trial
     const { data: profile } = await supabase
@@ -125,7 +132,7 @@ serve(async (req) => {
           }
         : {
             customer_email: verifiedEmail || undefined,
-            subscription_data: { trial_period_days: 7, metadata: { plan_type: planType } },
+            subscription_data: { ...(isProPlan ? {} : { trial_period_days: 7 }), metadata: { plan_type: planType } },
           }
       ),
       metadata: { plan_type: planType },
