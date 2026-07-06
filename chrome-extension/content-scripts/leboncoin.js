@@ -135,7 +135,7 @@ async function fillListingForm(job) {
     await fillCriterionSafe("état", 'label[for="condition"]', fields.etat, warnings);
   }
   if (fields.univers || fields.genre) {
-    await fillCriterionSafe("univers", 'label[for$="_univers"]', fields.univers || fields.genre, warnings, { skipIfPrefilled: true });
+    await fillUnivers(fields.univers || fields.genre, warnings);
   }
   if (fields.marque) {
     await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true });
@@ -150,7 +150,28 @@ async function fillListingForm(job) {
   continueBtn.click();
 
   // L'interstitiel peut durer plusieurs secondes : on attend l'aperçu.
-  const bodyArea = await waitForElement("textarea#body, #body", 25000);
+  let bodyArea;
+  try {
+    bodyArea = await waitForElement("textarea#body, #body", 25000);
+  } catch {
+    // Le wizard n'a pas avancé : un critère obligatoire a probablement été
+    // refusé ("Veuillez choisir un univers de vêtement" — cas réel du
+    // 2026-07-06, masqué jusqu'ici par un "Élément introuvable: #body"
+    // opaque). On remonte les messages de validation visibles ET les
+    // warnings accumulés : l'erreur du job sert de relevé correctif.
+    const validationMsgs = [...new Set(
+      [...document.querySelectorAll('[role="alert"], [aria-live="assertive"], [aria-live="polite"], [class*="error" i]')]
+        .map((el) => el.textContent.trim())
+        .filter((t) => t && t.length <= 200)
+    )].slice(0, 5);
+    throw new Error(
+      "Le wizard n'est pas passé à l'aperçu après Continuer" +
+      (validationMsgs.length
+        ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
+        : " (aucun message de validation visible)") +
+      `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`
+    );
+  }
 
   // ── Étape 4 : aperçu final ───────────────────────────────────────────────
   if (job.description) {
@@ -335,6 +356,63 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     await sleep(CLICK_DELAY);
     return false;
   }
+}
+
+// ── Univers (critère OBLIGATOIRE du rayon Mode) ──────────────────────────────
+// "Veuillez choisir un univers de vêtement" bloque le passage à l'aperçu :
+// contrairement aux autres critères, un échec ici ne doit JAMAIS être
+// silencieux (cas réel du 2026-07-06 : univers="Mixte" bien présent dans le
+// job, non appliqué, zéro trace). Le combobox label[for$="_univers"] vient
+// du relevé Montres & Bijoux (accessories_univers) ; sur d'autres catégories
+// (Vêtements) le contrôle peut être rendu autrement (radios/pills) — d'où le
+// fallback : conteneur titré "Univers" → clic sur l'option via la cascade.
+async function fillUnivers(rawValue, warnings) {
+  // 1. Combobox classique (relevé Montres & Bijoux)
+  if (findCriterionInput('label[for$="_univers"]')) {
+    await fillCriterionSafe("univers", 'label[for$="_univers"]', rawValue, warnings, { skipIfPrefilled: true });
+    return;
+  }
+
+  // 2. Contrôle non-combobox : libellé "Univers" puis options cliquables
+  // autour (radios, pills, boutons). On remonte de quelques parents depuis
+  // le libellé jusqu'à trouver un conteneur qui porte les options.
+  const title = [...document.querySelectorAll("legend, label, span, p, h2, h3, h4")]
+    .find((el) => normalizeFuzzy(el.textContent) === "univers"
+      || /^univers( de |[\s:*])/.test(normalizeFuzzy(el.textContent)));
+  if (title) {
+    let scope = title.parentElement;
+    for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
+      // Pré-rempli par LBC depuis le titre → on ne touche pas (même règle
+      // que skipIfPrefilled sur le combobox).
+      if (scope.querySelector('input:checked, [aria-checked="true"], [aria-selected="true"]')) {
+        console.log("[leboncoin] univers: déjà pré-sélectionné par LBC, conservé");
+        return;
+      }
+      const match = findOptionCascade(
+        scope,
+        'input[type="radio"], [role="radio"], [role="option"], button, label, li',
+        rawValue
+      );
+      if (match) {
+        realClick(match.el);
+        await sleep(CLICK_DELAY);
+        if (match.stage !== "exact") {
+          const note = `univers: "${rawValue}" → option LBC "${match.label}" (match ${match.stage})`;
+          console.warn(`[leboncoin] ≈ ${note}`);
+          warnings.push(note);
+        }
+        return;
+      }
+    }
+  }
+
+  // 3. Introuvable : warning EXPLICITE — si le critère était réellement
+  // absent de la catégorie, le Continuer passera et le warning restera
+  // anodin ; s'il était obligatoire, l'échec du Continuer remontera ce
+  // warning dans l'erreur du job (relevé correctif).
+  const note = `univers: contrôle introuvable sur cette catégorie — valeur "${rawValue}" non appliquée`;
+  console.warn(`[leboncoin] ⚠️ ${note}`);
+  warnings.push(note);
 }
 
 // ── Adresse (autocomplete type Google Places) ───────────────────────────────
@@ -621,4 +699,4 @@ async function uploadPhotos(input, photos) {
   await sleep(1500 * files.length);
 }
 
-console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v3: login-check + état vierge + adresse validée + brouillon → onglet temporaire)");
+console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v4: univers radios/pills + erreurs de validation remontées)");

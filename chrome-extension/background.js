@@ -224,21 +224,8 @@ async function processJob(job, accessToken) {
       });
     } else if (result?.needsUser) {
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
-      // à terminer). Ré-armement BORNÉ : au plus MAX_NEEDS_USER_RETRIES
-      // passages en pending, sinon le job bouclerait indéfiniment (rouvrant
-      // un onglet + remplissant le formulaire à chaque cron) si l'utilisateur
-      // ne complète jamais l'info — même risque DataDome que le dry-run.
-      const attempts = (job.platform_fields?.needsUserAttempts ?? 0) + 1;
-      if (attempts >= MAX_NEEDS_USER_RETRIES) {
-        console.warn(`[background] Job ${job.id} : action utilisateur toujours requise après ${attempts} tentatives → failed (sort de la boucle) — ${result.error}`);
-        await updateJobStatus(accessToken, job.id, "failed", { error: result.error });
-      } else {
-        console.warn(`[background] Job ${job.id} : action utilisateur requise (tentative ${attempts}/${MAX_NEEDS_USER_RETRIES}) — ${result.error}`);
-        await updateJobStatus(accessToken, job.id, "pending", {
-          error: result.error,
-          platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
-        });
-      }
+      // à terminer, connexion). Ré-armement BORNÉ (voir rearmBounded).
+      await rearmBounded(accessToken, job, result.error);
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} publié : ${result.listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
@@ -250,9 +237,39 @@ async function processJob(job, accessToken) {
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }
   } catch (e) {
+    const msg = String(e?.message ?? e);
+    // Canal de message coupé en plein remplissage (navigation/reload de
+    // l'onglet, rechargement de l'extension pendant un test) : transitoire,
+    // pas un verdict sur le job — ré-armement borné plutôt que failed sec
+    // (cas réel du 2026-07-06 : "message channel closed before a response").
+    if (/message channel closed|Receiving end does not exist/i.test(msg)) {
+      console.warn(`[background] Job ${job.id} : canal coupé pendant le remplissage (transitoire) — ${msg}`);
+      await rearmBounded(accessToken, job, `Remplissage interrompu (onglet navigué/rechargé) : ${msg}`)
+        .catch((err) => console.error("[background] update-job-status failed:", err));
+      return;
+    }
     console.error(`[background] Job ${job.id} en échec:`, e);
-    await updateJobStatus(accessToken, job.id, "failed", { error: String(e?.message ?? e) })
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg })
       .catch((err) => console.error("[background] update-job-status failed:", err));
+  }
+}
+
+// Ré-armement BORNÉ d'un job en pending : au plus MAX_NEEDS_USER_RETRIES
+// passages, sinon le job bouclerait indéfiniment (rouvrant un onglet +
+// remplissant le formulaire à chaque cron) si la cause ne disparaît jamais —
+// même risque DataDome que le dry-run en boucle. Compteur porté par
+// platform_fields.needsUserAttempts (partagé needsUser / erreurs transitoires).
+async function rearmBounded(accessToken, job, errorMsg) {
+  const attempts = (job.platform_fields?.needsUserAttempts ?? 0) + 1;
+  if (attempts >= MAX_NEEDS_USER_RETRIES) {
+    console.warn(`[background] Job ${job.id} : cause toujours présente après ${attempts} tentatives → failed (sort de la boucle) — ${errorMsg}`);
+    await updateJobStatus(accessToken, job.id, "failed", { error: errorMsg });
+  } else {
+    console.warn(`[background] Job ${job.id} : ré-armement (tentative ${attempts}/${MAX_NEEDS_USER_RETRIES}) — ${errorMsg}`);
+    await updateJobStatus(accessToken, job.id, "pending", {
+      error: errorMsg,
+      platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
+    });
   }
 }
 
@@ -345,13 +362,16 @@ async function getOrCreateWorkTab(platform, url) {
   const key = workTabKey(platform);
   const target = url + WORK_TAB_FRAGMENT;
 
-  // 1. Onglet mémorisé encore vivant → le réutiliser
+  // 1. Onglet mémorisé encore vivant → le réutiliser. navigateWorkTab peut
+  // retourner un AUTRE id (discard/remplacement anti-beforeunload) : on
+  // re-mémorise systématiquement l'id effectif.
   const store = await chrome.storage.session.get(key);
   if (store[key] != null) {
     const tab = await chrome.tabs.get(store[key]).catch(() => null);
     if (tab) {
-      await navigateWorkTab(tab.id, target);
-      return tab.id;
+      const effectiveId = await navigateWorkTab(tab.id, target);
+      await chrome.storage.session.set({ [key]: effectiveId });
+      return effectiveId;
     }
   }
 
@@ -360,9 +380,9 @@ async function getOrCreateWorkTab(platform, url) {
   const candidates = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
   const marked = candidates.find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
   if (marked) {
-    await chrome.storage.session.set({ [key]: marked.id });
-    await navigateWorkTab(marked.id, target);
-    return marked.id;
+    const effectiveId = await navigateWorkTab(marked.id, target);
+    await chrome.storage.session.set({ [key]: effectiveId });
+    return effectiveId;
   }
 
   // 3. Aucun onglet à nous : en créer UN, mémorisé pour les jobs suivants
@@ -373,25 +393,49 @@ async function getOrCreateWorkTab(platform, url) {
 }
 
 // Amène l'onglet de travail sur la page de dépôt avec un formulaire VIERGE.
-// Si l'onglet est déjà sur cette URL (cas normal entre deux jobs : seul le
-// fragment ou rien n'a changé, tabs.update ne rechargerait pas la page et le
-// formulaire garderait les valeurs du job précédent), on force un reload.
-// Pas de popup "Leave site?" à craindre : les dialogs beforeunload ne
-// s'affichent que si la page a eu une interaction utilisateur réelle, ce que
-// le remplissage par events synthétiques ne crée pas.
+// Retourne l'ID de l'onglet à utiliser (peut différer de tabId : discard ou
+// remplacement — le caller met à jour son stockage).
+//
+// beforeunload : l'hypothèse d'origine ("le remplissage synthétique n'arme
+// pas la popup") était fausse en pratique — le dry-run laisse le formulaire
+// REMPLI pour inspection, l'utilisateur interagit avec l'onglet (activation
+// utilisateur réelle), et la navigation suivante déclenche la popup native
+// "Actualiser le site ?" qu'aucune API ne peut cliquer (cas réel Vinted du
+// 2026-07-06, préexistant aux fixes du jour : cette navigation date de la
+// création de l'onglet de travail). Parade en deux temps :
+//   1. onglet non actif (cas normal, il est créé active:false) :
+//      chrome.tabs.discard décharge la page SANS exécuter les handlers
+//      beforeunload, et la navigation repart d'une page morte — aucun
+//      dialogue possible. NB: discard peut réattribuer un nouvel ID.
+//   2. onglet actif (l'utilisateur le regarde, discard refusé par Chrome) :
+//      on le REMPLACE — création du nouvel onglet de travail (inactif) puis
+//      fermeture de l'ancien via tabs.remove, qui ne déclenche pas la popup
+//      beforeunload. Toujours UN SEUL onglet persistant à l'arrivée, un seul
+//      chargement de page de dépôt par job — jamais de blocage manuel.
 async function navigateWorkTab(tabId, target) {
   const tab = await chrome.tabs.get(tabId);
-  const samePage = (tab.url || "").split("#")[0] === target.split("#")[0];
-  // Écouteur attaché AVANT de déclencher la navigation : un reload rapide
-  // pourrait sinon émettre son "complete" avant qu'on ne l'attende.
-  const loaded = waitForTabComplete(tabId);
-  if (samePage) {
-    await chrome.tabs.update(tabId, { url: target }); // (re)pose le marqueur
-    await chrome.tabs.reload(tabId);
-  } else {
-    await chrome.tabs.update(tabId, { url: target });
+
+  if (!tab.active) {
+    let effectiveId = tabId;
+    try {
+      const discarded = await chrome.tabs.discard(tabId);
+      if (discarded?.id != null) effectiveId = discarded.id;
+    } catch {
+      // Déjà déchargé ou discard indisponible : on navigue quand même —
+      // une page déjà déchargée n'a aucun beforeunload armé.
+    }
+    // Écouteur attaché AVANT de déclencher la navigation : un chargement
+    // rapide pourrait sinon émettre son "complete" avant qu'on ne l'attende.
+    const loaded = waitForTabComplete(effectiveId);
+    await chrome.tabs.update(effectiveId, { url: target });
+    await loaded;
+    return effectiveId;
   }
-  await loaded;
+
+  const fresh = await chrome.tabs.create({ url: target, active: false });
+  await waitForTabComplete(fresh.id);
+  await chrome.tabs.remove(tabId).catch(() => {});
+  return fresh.id;
 }
 
 // ── Helpers onglets ────────────────────────────────────────────────────────────
