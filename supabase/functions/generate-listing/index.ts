@@ -90,7 +90,6 @@ serve(async (req) => {
       || profile?.apple_original_transaction_id != null
       || profile?.google_purchase_token != null
       || profile?.is_pro === true;
-    if (!isPremium) return json({ error: "Premium or Pro plan required" }, 403);
 
     const body = await req.json();
     const { inventaire_id, photos, platforms } = body;
@@ -113,6 +112,22 @@ serve(async (req) => {
       !Array.isArray(platforms) || platforms.length === 0
     ) {
       return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
+    }
+
+    // Free : plus de 403 sec — autorisé si le wallet couvre le prix de l'option
+    // demandée (système de pièces). Simple CHECK ici : le débit réel a lieu à la
+    // publication via spend_coins_and_publish. 402 + prix/solde pour piloter l'UI.
+    // Premium/Pro passent sans check (leur quota est géré à la publication).
+    if (!isPremium) {
+      const [{ data: wallet }, { data: priceRow }] = await Promise.all([
+        adminClient.from("coin_wallets").select("included_balance, purchased_balance").eq("user_id", user.id).maybeSingle(),
+        adminClient.from("coin_config").select("value").eq("key", `price_${photo_option}`).single(),
+      ]);
+      const balance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
+      const price = priceRow?.value ?? null;
+      if (price == null || balance < price) {
+        return json({ error: "insufficient_coins", price, balance }, 402);
+      }
     }
 
     let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null };
