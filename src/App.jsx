@@ -23,7 +23,7 @@ import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
-import { UI, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
+import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -5803,29 +5803,29 @@ export default function App({ loginOnly = false }){
       {/* ── SETTINGS DRAWER ── */}
       {showSettings&&(
         <>
-          <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:384,padding:24,boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(16,32,27,0.45)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:UI.card,borderRadius:24,width:"100%",maxWidth:384,padding:24,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.18)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
-              <div style={{fontSize:16,fontWeight:700,color:C.text}}>{t('parametres')}</div>
+              <div style={{fontSize:16,fontWeight:700,color:UI.ink}}>{t('parametres')}</div>
               <IconButton onClick={()=>{setShowSettings(false);setDeleteStep(0);}} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
 
             {/* Profil */}
-            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{t('monCompte')}</div>
-              <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
-              {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow>{t('monCompte')}</Eyebrow>
+              <div style={{fontSize:13,fontWeight:600,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
+              {isPremium&&<div style={{fontSize:12,color:UI.tealDeep,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
             </div>
 
             {/* Pseudo */}
-            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>{lang==='fr'?'Mon pseudo':'My username'}</div>
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Mon pseudo':'My username'}</Eyebrow>
               <div style={{display:"flex",gap:8}}>
                 <input
                   value={settingsPseudoInput}
                   onChange={e=>setSettingsPseudoInput(e.target.value.slice(0,30))}
                   placeholder={lang==='fr'?'Prénom ou pseudo…':'First name or nickname…'}
-                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:600,color:C.text,background:"#fff",outline:"none",fontFamily:"inherit"}}
+                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0}}
                 />
                 <button
                   onClick={async()=>{
@@ -5852,14 +5852,14 @@ export default function App({ loginOnly = false }){
             {/* Adresse de remise Leboncoin — requise par le wizard LBC à chaque
                 dépôt (non pré-remplie depuis le compte LBC, vérifié) ; l'extension
                 la tape dans l'autocomplete et choisit la 1re suggestion. */}
-            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>{lang==='fr'?'Adresse de remise Leboncoin':'Leboncoin pickup address'}</div>
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Adresse de remise Leboncoin':'Leboncoin pickup address'}</Eyebrow>
               <div style={{display:"flex",gap:8}}>
                 <input
                   value={settingsLbcAddressInput}
                   onChange={e=>setSettingsLbcAddressInput(e.target.value.slice(0,120))}
                   placeholder={lang==='fr'?'Ex : 12 rue de la Paix, Lyon':'e.g. 12 rue de la Paix, Lyon'}
-                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:600,color:C.text,background:"#fff",outline:"none",fontFamily:"inherit"}}
+                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0}}
                 />
                 <button
                   onClick={async()=>{
@@ -5890,20 +5890,20 @@ export default function App({ loginOnly = false }){
               <div style={{marginBottom:12}}>
                 {platform==='ios'?(
                   /* iOS IAP : géré par Apple */
-                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
+                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.6}}>
                     ⭐ {lang==='fr'
                       ? 'Pour gérer votre abonnement, allez dans Réglages → Apple ID → Abonnements.'
                       : 'To manage your subscription, go to Settings → Apple ID → Subscriptions.'}
                   </div>
                 ):platform==='android'?(
                   /* Android IAP : géré par Google Play */
-                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
+                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.6}}>
                     ⭐ {lang==='fr'
-                      ? <span>Pour gérer votre abonnement, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:"#276749",textDecoration:"underline"}}>ouvrez vos abonnements Google Play</a>.</span>
-                      : <span>To manage your subscription, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:"#276749",textDecoration:"underline"}}>open your Google Play subscriptions</a>.</span>}
+                      ? <span>Pour gérer votre abonnement, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:UI.tealDeep,textDecoration:"underline"}}>ouvrez vos abonnements Google Play</a>.</span>
+                      : <span>To manage your subscription, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:UI.tealDeep,textDecoration:"underline"}}>open your Google Play subscriptions</a>.</span>}
                   </div>
                 ):(cancelAtPeriodEnd||cancelMsg)?(
-                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.5}}>
+                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.5}}>
                     ✅ {cancelMsg||(lang==='fr'
                       ? `Abonnement annulé. Tu gardes l'accès premium jusqu'au${cancelPeriodEnd?` ${cancelPeriodEnd}`:" la fin de la période"}.`
                       : `Subscription cancelled. You keep premium access until${cancelPeriodEnd?` ${cancelPeriodEnd}`:" the end of the period"}.`)}
@@ -5935,8 +5935,8 @@ export default function App({ loginOnly = false }){
             {/* Restaurer les achats — iOS non-premium uniquement */}
             {isNative&&!isPremium&&(
               <button onClick={handleIAPRestore} disabled={iapLoading}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"transparent",border:"none",color:C.text,fontSize:"inherit",fontFamily:"inherit",cursor:iapLoading?"not-allowed":"pointer",transition:"background 0.15s",marginBottom:2,textAlign:"left",opacity:iapLoading?0.6:1}}
-                onMouseEnter={e=>{if(!iapLoading)e.currentTarget.style.background=C.rowBg;}}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"transparent",border:"none",color:UI.ink,fontSize:"inherit",fontFamily:"inherit",cursor:iapLoading?"not-allowed":"pointer",transition:"background 0.15s",marginBottom:2,textAlign:"left",opacity:iapLoading?0.6:1}}
+                onMouseEnter={e=>{if(!iapLoading)e.currentTarget.style.background=UI.chip;}}
                 onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
               >
                 <span style={{fontSize:18,flexShrink:0}}>🔄</span>
@@ -5945,20 +5945,20 @@ export default function App({ loginOnly = false }){
             )}
 
             {/* Support */}
-            <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=C.rowBg}
+            <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >
               <span style={{fontSize:18,flexShrink:0}}>💬</span>
               <div>
                 <div style={{fontSize:14,fontWeight:600}}>{t('support')}</div>
-                <div style={{fontSize:12,color:C.sub}}>support@fillsell.app</div>
+                <div style={{fontSize:12,color:UI.mute2}}>support@fillsell.app</div>
               </div>
             </a>
 
             {/* Mentions légales */}
-            <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=C.rowBg}
+            <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >
               <span style={{fontSize:18,flexShrink:0}}>📄</span>
@@ -5966,17 +5966,17 @@ export default function App({ loginOnly = false }){
             </a>
 
             {/* Langue */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:UI.chip,borderRadius:12,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,marginBottom:12}}>
               <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('langue')}</span>
               <SegmentedPills options={['fr','en']} value={lang} onChange={l=>{track('change_language',{language:l});setLang(l);}} labelFn={l=>l.toUpperCase()} />
             </div>
 
             {/* Devise */}
-            <div style={{background:C.rowBg,borderRadius:12,marginBottom:12,padding:"14px 16px"}}>
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,marginBottom:12,padding:"14px 16px"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('devise')}</span>
+                <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('devise')}</span>
                 <select value={currency} onChange={e=>saveCurrency(e.target.value)}
-                  style={{padding:"6px 10px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:700,color:C.text,background:"#fff",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+                  style={{padding:"6px 10px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:700,color:UI.ink,background:UI.card,cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
                   {['Europe','America','Africa','Asia/Pacific'].map(reg=>(
                     <optgroup key={reg} label={reg==='America'&&lang!=='en'?'Amériques':reg==='Africa'&&lang!=='en'?'Afrique':reg==='Asia/Pacific'?lang==='en'?'Asia & Pacific':'Asie & Pacifique':reg}>
                       {CURRENCIES_LIST.filter(c=>c.reg===reg).map(c=>(
