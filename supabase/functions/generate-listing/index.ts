@@ -141,10 +141,12 @@ serve(async (req) => {
     } else {
       // GPT Image 2: retouch each photo. Two distinct tiers:
       // - ia_light: quality "low", prompt limited to brightness/white balance — fast, subtle
-      // - ia_advanced (default): quality "high", fuller prompt with background cleanup + contrast pop
+      // - ia_advanced (default): quality "medium", fuller prompt with background cleanup + contrast pop.
+      //   "medium" et non "high" : high ne répond jamais avant la limite wall-clock des Edge
+      //   Functions (~400s, vérifié le 2026-07-06) et retombait silencieusement sur la photo originale.
       const isLight = photo_option === "ia_light";
       const promptToUse = isLight ? OPENAI_IMG_PROMPT_LIGHT : OPENAI_IMG_PROMPT_ADVANCED;
-      const qualityToUse = isLight ? "low" : "high";
+      const qualityToUse = isLight ? "low" : "medium";
       const photosToProcess = photos as string[];
       const ts = Date.now();
       const results = await Promise.allSettled(
