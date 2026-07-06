@@ -47,6 +47,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 async function fillListingForm(job) {
   console.log("[vinted] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
+  // Session : le background vient de naviguer l'onglet de travail sur
+  // /items/new. Si Vinted a redirigé ailleurs (login, vérification) ou
+  // affiche un formulaire d'authentification, on s'arrête AVANT tout
+  // remplissage : needsUser (ré-armement borné côté background, jamais de
+  // retry immédiat), aucune interaction sur une page de connexion.
+  if (!location.pathname.startsWith("/items/new") || document.querySelector('input[type="password"]')) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Connexion Vinted requise : se connecter sur vinted.fr dans Chrome " +
+        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+    };
+  }
+
   const fields = job.platform_fields || {};
 
   // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
@@ -708,4 +723,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension (le libellé change à chaque évolution notable du remplissage).
-console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", matching: cascade-v1)");
+console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", matching: cascade-v1 + login-check)");

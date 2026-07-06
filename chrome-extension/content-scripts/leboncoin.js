@@ -35,9 +35,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 //      (autocomplete type Google Places, PAS pré-remplie depuis le compte
 //      LBC — vérifié) — puis Continuer final = engagement de publication.
 //
-// platform_fields attendus : { etat, format_colis, univers?, lbcCategoryPath
-//   ([racine, feuille], posé par l'app via lbcCategories.js), adresse?
-//   (Réglages FillSell), marque?, matiere? }
+// platform_fields attendus : { etat, format_colis, univers (fourni depuis
+//   2026-07 par l'app : IA + défaut "Mixte" sur le rayon Mode — LBC a un
+//   rayon Mixte, cf. form-survey), lbcCategoryPath ([racine, feuille], posé
+//   par l'app via lbcCategories.js), adresse? (Réglages FillSell), marque?,
+//   matiere? }
 //
 // Politique A+C : adresse absente ou introuvable dans l'autocomplete →
 // { success:false, needsUser:true } : le background remet le job en PENDING
@@ -49,6 +51,25 @@ async function fillListingForm(job) {
   const fields = job.platform_fields || {};
   const warnings = [];
 
+  // Session : le background vient de naviguer l'onglet de travail sur
+  // /deposer-une-annonce (même règle que Vinted : un seul onglet persistant,
+  // une navigation par job). Si Leboncoin a redirigé (auth.leboncoin.fr,
+  // /connexion…) ou affiche un formulaire d'authentification, on s'arrête
+  // AVANT tout remplissage : needsUser (ré-armement borné côté background,
+  // jamais de retry immédiat), aucune interaction sur une page de connexion.
+  const onDepositPage =
+    /(^|\.)leboncoin\.fr$/.test(location.hostname) &&
+    location.pathname.startsWith("/deposer-une-annonce");
+  if (!onDepositPage || document.querySelector('input[type="password"]')) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
+        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+    };
+  }
+
   if (!fields.lbcCategoryPath?.length) {
     return {
       success: false,
@@ -59,12 +80,29 @@ async function fillListingForm(job) {
     };
   }
 
-  // Reprise de brouillon : si le wizard ne présente pas l'étape titre, un
-  // brouillon précédent a été restauré à un stade avancé. On ne le détruit
-  // JAMAIS (ce peut être un brouillon manuel de l'utilisateur) — message
-  // explicite et job repassé en pending.
-  const subjectInput = await waitForElement('input[name="subject"]', 8000).catch(() => null);
-  if (!subjectInput) {
+  // État vierge requis. L'ancien test (présence du seul input titre) laissait
+  // passer un brouillon restauré à l'APERÇU : #subject y existe aussi (relevé
+  // form-survey), le job repartait alors en plein milieu du wizard et mourait
+  // plus loin sur "Catégorie: ni suggestion ni sélecteur manuel trouvés"
+  // (cas réel du 2026-07-06). Les marqueurs d'un stade avancé — #body,
+  // #price_cents, critère condition — sont absents de l'étape titre : leur
+  // présence signe un brouillon repris. On ne détruit JAMAIS un brouillon
+  // (ce peut être un brouillon manuel de l'utilisateur) — needsUser.
+  const draftMarker = () =>
+    document.querySelector('textarea#body, #body, #price_cents, label[for="condition"]');
+  let entryState = await waitFor(() => {
+    if (draftMarker()) return "draft";
+    if (document.querySelector('input[name="subject"]')) return "step1";
+    return null;
+  }, 8000);
+  if (entryState === "step1") {
+    // L'aperçu restauré peut rendre #subject avant #body : petit délai de
+    // stabilisation puis re-vérification des marqueurs avant de taper quoi
+    // que ce soit dans le titre.
+    await sleep(800);
+    if (draftMarker()) entryState = "draft";
+  }
+  if (entryState !== "step1") {
     return {
       success: false,
       needsUser: true,
@@ -73,6 +111,7 @@ async function fillListingForm(job) {
         "de zéro). Le publier ou le supprimer sur leboncoin.fr, puis relancer.",
     };
   }
+  const subjectInput = document.querySelector('input[name="subject"]');
 
   // ── Étape 1 : titre → catégorie ──────────────────────────────────────────
   await typeInto(subjectInput, job.title);
@@ -321,13 +360,46 @@ async function fillAddress(adresse, warnings) {
 
   input.scrollIntoView({ block: "center" });
   await typeInto(input, adresse);
-  // Attente des suggestions de l'autocomplete, puis 1re suggestion.
-  const suggestion = await waitFor(() => {
-    const opts = [...document.querySelectorAll('[role="option"], [role="listbox"] li')]
-      .filter((o) => o.textContent.trim());
-    return opts[0] || null;
+
+  // Leboncoin n'accepte une adresse que CHOISIE dans le dropdown de
+  // l'autocomplete (type Google Places) : un texte collé, même correct
+  // visuellement, laisse le champ invalide (cas réel du 2026-07-06,
+  // "sans suggestion" alors que le texte était bien inséré). D'où :
+  // détection LARGE des suggestions (listbox lié à l'input via
+  // aria-controls/aria-owns d'abord, sélecteurs génériques ensuite),
+  // choix de la 1re suggestion PERTINENTE (partage de tokens avec
+  // l'adresse saisie), clic à séquence pointer complète, puis contrôle
+  // que le champ est réellement validé avant de continuer.
+  const findSuggestions = () => {
+    const scopes = [];
+    const ownedId = input.getAttribute("aria-controls") || input.getAttribute("aria-owns");
+    if (ownedId) {
+      const owned = document.getElementById(ownedId);
+      if (owned) scopes.push(owned);
+    }
+    scopes.push(...document.querySelectorAll('[role="listbox"]'));
+    let cands = scopes.flatMap((s) => [...s.querySelectorAll('[role="option"], li')]);
+    if (!cands.length) {
+      cands = [...document.querySelectorAll(
+        '[role="option"], [class*="suggestion" i] li, ul[class*="autocomplete" i] li, [data-testid*="suggestion" i]'
+      )];
+    }
+    // Visibles et non vides uniquement (offsetParent null = caché).
+    return cands.filter((el) => el.offsetParent !== null && el.textContent.trim());
+  };
+
+  const tokens = normalizeFuzzy(adresse).split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 || /^\d+$/.test(t));
+  const relevance = (el) => {
+    const n = normalizeFuzzy(el.textContent);
+    return tokens.reduce((score, t) => score + (n.includes(t) ? 1 : 0), 0);
+  };
+
+  const candidates = await waitFor(() => {
+    const c = findSuggestions();
+    return c.length ? c : null;
   }, 8000);
-  if (!suggestion) {
+  if (!candidates) {
     return {
       ok: false,
       error:
@@ -336,15 +408,63 @@ async function fillAddress(adresse, warnings) {
         "Le brouillon Leboncoin est conservé.",
     };
   }
+  const suggestion = [...candidates].sort((a, b) => relevance(b) - relevance(a))[0];
+  if (!suggestion || relevance(suggestion) === 0) {
+    // Des propositions existent mais aucune ne recoupe l'adresse : ne jamais
+    // forcer la suite avec une adresse non validée. La liste sert de relevé
+    // correctif pour ajuster l'adresse dans les Réglages.
+    return {
+      ok: false,
+      error:
+        `Adresse "${adresse}" : aucune suggestion pertinente dans l'autocomplete Leboncoin. ` +
+        `Propositions affichées: ${JSON.stringify(candidates.map((c) => c.textContent.trim()).slice(0, 5))}. ` +
+        "Corriger l'adresse dans les Réglages FillSell. Le brouillon Leboncoin est conservé.",
+    };
+  }
+
   const chosen = suggestion.textContent.trim();
-  suggestion.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  realClick(suggestion);
   await sleep(CLICK_DELAY);
+
+  // Validation post-sélection : le dropdown doit se fermer et le champ ne
+  // doit porter aucun marqueur d'erreur — sinon la sélection n'a pas été
+  // prise par React et l'aperçu partirait avec une adresse invalide.
+  const dropdownClosed = await waitFor(() => (findSuggestions().length === 0 ? true : null), 4000);
+  const errorNode = (() => {
+    let scope = input;
+    for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
+      const err = scope.querySelector?.('[role="alert"], [aria-live="assertive"], [class*="error" i]');
+      if (err && err.textContent.trim()) return err;
+    }
+    return null;
+  })();
+  if (!dropdownClosed || input.getAttribute("aria-invalid") === "true" || errorNode) {
+    return {
+      ok: false,
+      error:
+        `Adresse non validée par Leboncoin après sélection de "${chosen}"` +
+        (errorNode ? ` — message affiché: "${errorNode.textContent.trim().slice(0, 120)}"` : "") +
+        ". Vérifier l'adresse dans les Réglages FillSell. Le brouillon Leboncoin est conservé.",
+    };
+  }
+
   if (normalizeFuzzy(chosen) !== normalizeFuzzy(adresse)) {
     const note = `adresse: "${adresse}" → suggestion LBC "${chosen}"`;
     console.log(`[leboncoin] ≈ ${note}`);
     warnings.push(note);
   }
   return { ok: true };
+}
+
+// Clic "réel" : certains composants React de Leboncoin ignorent un
+// MouseEvent click isolé (même famille de composants que l'autocomplete) —
+// on rejoue la séquence complète pointerdown → mousedown → pointerup →
+// mouseup → click, comme une vraie interaction.
+function realClick(el) {
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    const Ctor = type.startsWith("pointer") ? PointerEvent : MouseEvent;
+    el.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, view: window }));
+  }
 }
 
 // ── Helpers génériques (repris de vinted.js — candidats à un shared-fill.js
@@ -496,4 +616,4 @@ async function uploadPhotos(input, photos) {
   await sleep(1500 * files.length);
 }
 
-console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v1)");
+console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v2: login-check + état vierge + adresse validée)");
