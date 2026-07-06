@@ -3400,6 +3400,8 @@ export default function App({ loginOnly = false }){
   const emailRef=useRef(null);
   const passwordRef=useRef(null);
   const [isSigningIn,setIsSigningIn]=useState(false);
+  const [isSigningUp,setIsSigningUp]=useState(false);
+  const [isSendingReset,setIsSendingReset]=useState(false);
   const [loginError,setLoginError]=useState("");
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
@@ -4667,6 +4669,8 @@ export default function App({ loginOnly = false }){
       if (data?.session) {
         const u = data.session.user;
         setUser(u);
+        // Splash pendant le chargement des données — évite le flash d'app vide
+        setAppLoading(true);
         await fetchAll(u.id);
         navigate('/app');
       }
@@ -4687,6 +4691,7 @@ export default function App({ loginOnly = false }){
   };
 
   async function handleLogin(){
+    if(isSigningIn||isSigningUp)return;
     setLoginError("");
     if(!emailRef.current?.value||!passwordRef.current?.value){setLoginError("Remplis email et mot de passe");return;}
     setIsSigningIn(true);
@@ -4694,30 +4699,46 @@ export default function App({ loginOnly = false }){
       const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
       if(error){setLoginError(error.message);return;}
       track('login', { method: 'email' });
+      // Splash jusqu'à la fin de fetchAll (lancé par SIGNED_IN) — évite le flash d'app vide
+      setAppLoading(true);
       navigate("/app");
     }catch(e){setLoginError(e.message);}finally{setIsSigningIn(false);}
   }
 
   async function handleForgot(){
+    if(isSendingReset)return;
     const _lt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
-    if(!email){setForgotMsg(_lt==='en'?"Enter your email above.":"Saisis ton email ci-dessus.");return;}
+    // Ref en priorité (valeur réelle du champ, couvre l'autofill), state en secours
+    const emailVal=(emailRef.current?.value||email).trim();
+    if(!emailVal){setForgotMsg(_lt==='en'?"Enter your email above.":"Saisis ton email ci-dessus.");return;}
     setForgotMsg("");
-    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://fillsell.app/reset-password"});
-    if(error){setForgotMsg(_lt==='en'?`Error: ${error.message}`:`Erreur : ${error.message}`);return;}
-    setForgotMsg(_lt==='en'?"📧 Email sent! Check your inbox.":"📧 Email envoyé ! Vérifie ta boîte mail.");
+    setIsSendingReset(true);
+    try{
+      const{error}=await supabase.auth.resetPasswordForEmail(emailVal,{redirectTo:"https://fillsell.app/reset-password"});
+      if(error){setForgotMsg(_lt==='en'?`Error: ${error.message}`:`Erreur : ${error.message}`);return;}
+      setForgotMsg(_lt==='en'?"📧 Email sent! Check your inbox.":"📧 Email envoyé ! Vérifie ta boîte mail.");
+    }catch(e){setForgotMsg(_lt==='en'?`Error: ${e.message}`:`Erreur : ${e.message}`);}finally{setIsSendingReset(false);}
   }
 
   async function handleSignup(){
+    if(isSigningIn||isSigningUp)return;
     const emailVal=emailRef.current?.value;
     const passwordVal=passwordRef.current?.value;
     const _slt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
     if(!emailVal||!passwordVal){alert(_slt==='en'?"Fill in your email and password":"Remplis email et mot de passe");return;}
-    const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
-    if(error){alert(error.message);return;}
-    track('sign_up', { method: 'email' });
-    trackTikTokEvent("CompleteRegistration", emailVal);
-    if(data?.session) navigate("/app");
-    else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
+    setIsSigningUp(true);
+    try{
+      const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
+      if(error){alert(error.message);return;}
+      track('sign_up', { method: 'email' });
+      trackTikTokEvent("CompleteRegistration", emailVal);
+      if(data?.session){
+        // Splash jusqu'à la fin de fetchAll — évite le flash d'app vide
+        setAppLoading(true);
+        navigate("/app");
+      }
+      else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
+    }catch(e){alert(e.message);}finally{setIsSigningUp(false);}
   }
 
   async function handleLogout(){
@@ -4790,7 +4811,7 @@ export default function App({ loginOnly = false }){
     forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
   };
 
-  if(!authLoading&&!isSigningIn&&(!user||loginOnly))return(
+  if(!authLoading&&(!user||loginOnly))return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflow:"hidden",boxSizing:"border-box"}}>
       <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,width:36,height:36,borderRadius:"50%",background:UI.card,border:`1px solid ${UI.border}`,color:UI.ink,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>←</button>
       <div style={{background:UI.card,borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.10)",boxSizing:"border-box"}}>
@@ -4819,14 +4840,15 @@ export default function App({ loginOnly = false }){
             </div>
           )}
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
+            onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
           {!forgotMode&&(
             <>
               <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
                 onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                 style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
-              <PrimaryButton onClick={authMode==='login'?handleLogin:handleSignup} style={{padding:14}}>
-                {authMode==='login'?loginTexts.login:loginTexts.signup}
+              <PrimaryButton onClick={authMode==='login'?handleLogin:handleSignup} disabled={isSigningIn||isSigningUp} style={{padding:14}}>
+                {(isSigningIn||isSigningUp)?<Loader size={19} thickness={2}/>:(authMode==='login'?loginTexts.login:loginTexts.signup)}
               </PrimaryButton>
               {loginError&&<div style={{fontSize:13,textAlign:"center",color:UI.negative,fontWeight:600}}>{loginError}</div>}
               <div style={{textAlign:"center"}}>
@@ -4838,8 +4860,8 @@ export default function App({ loginOnly = false }){
           )}
           {forgotMode&&(
             <>
-              <PrimaryButton onClick={handleForgot} style={{padding:14}}>
-                {loginTexts.forgotBtn}
+              <PrimaryButton onClick={handleForgot} disabled={isSendingReset} style={{padding:14}}>
+                {isSendingReset?<Loader size={19} thickness={2}/>:loginTexts.forgotBtn}
               </PrimaryButton>
               {forgotMsg&&(
                 <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?UI.tealDeep:UI.negative,fontWeight:600}}>
