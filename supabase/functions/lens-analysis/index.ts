@@ -41,39 +41,19 @@ function getPlatforms(countryCode: string | null, lang: string): string {
   return "Vinted, eBay, Leboncoin, Facebook Marketplace";
 }
 
-function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number, isPremium: boolean): string {
+// Qualité unifiée (2026-07) : un seul prompt — l'ex-analyse Premium avec
+// web_search — pour TOUS les tiers. La différenciation se fait uniquement sur
+// le quota mensuel inclus (free=5, premium=120, pro=250) + pièces au-delà.
+function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
   const multiNote = photoCount > 1
     ? (lang === "en"
         ? ` You have ${photoCount} photos of the same item — cross-reference them.`
         : ` Tu as ${photoCount} photos du même article — croise-les.`)
     : "";
 
-  const freeSchema = `{"titre":string,"marque":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"confiance":"basse"|"moyenne"|"haute","plateformes":string[],"verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null}`;
-  const premiumSchema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null}`;
-  const schema = isPremium ? premiumSchema : freeSchema;
+  const schema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"Luxe"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null}`;
 
   if (lang === "en") {
-    if (!isPremium) {
-      return `You are an expert in secondhand resale (${platforms}).${multiNote}
-Analyze the item visually and return ONLY valid JSON (no markdown, no explanation):
-${schema}
-${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
-
-PROCESS:
-1. BRAND & DESCRIPTION: Identify the brand from visible logos, labels or style cues. If uncertain, marque=null. Write a description of 1–2 sentences max identifying the item (brand, type, visible condition, notable features).
-2. PRICE: Estimate resale price range based on your training knowledge. confiance="moyenne" if uncertain, "basse" if very uncertain. Note in notes that prices are estimates.
-3. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
-4. PURCHASE PRICE EXTRACTION: Read the field labelled "User note:" in the message. If the user mentions a price they paid — in any form ("bought for 20", "paid €15", "cost me 8 euros", "acheté 50e", etc.) — extract the numeric value and set prix_achat_reel to that number. If no price is mentioned, set prix_achat_reel to null.
-5. SALE DETECTION: Read the "User note:" field. If the user says they already sold this item — in any form ("sold for 80€", "sold it for X", "I sold it", "vendu 80€", "je l'ai vendu", etc.) — set est_vendu: true and prix_vente_reel to the numeric sale amount. Otherwise set est_vendu: false and prix_vente_reel: null.
-6. RULES:
-   MARGIN CALCULATION (strict priority):
-   - If prix_achat_reel is not null: margin = prix_vente_suggere − prix_achat_reel. This is the ONLY basis for verdict and score.
-   - If prix_achat_reel is null: margin = prix_vente_suggere − prix_achat_suggere.
-   VERDICT (margin-only, no exceptions): verdict="excellent" if margin>40% of prix_vente_suggere, "bon" if>20%, "moyen" if>0%, "eviter" if margin≤0.
-   CRITICAL: if prix_achat_reel is known and margin is negative or zero → verdict MUST be "eviter". Strong brand and high demand are secondary factors — they NEVER override a negative real margin.
-   SCORE (0–10, reflects real profitability): negative margin → 0–3; margin 0–20% → 4–5; margin 20–40% → 6–7; margin >40% → 8–10. Adjust ±1 for demand/ease, but NEVER above 4 if real margin is negative.
-   prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: one actionable selling tip.`;
-    }
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
 ${schema}
@@ -96,27 +76,6 @@ MANDATORY PROCESS — follow in order:
    SCORE (0–10, reflects real profitability): negative margin → 0–3; margin 0–20% → 4–5; margin 20–40% → 6–7; margin >40% → 8–10. Adjust ±1 for demand/ease, but NEVER above 4 if real margin is negative.
    confiance="haute" if brand confirmed + prices found, "moyenne" if partial, "basse" if uncertain.
    prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: price source + one actionable tip.`;
-  }
-  if (!isPremium) {
-    return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
-Analyse l'article visuellement et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
-${schema}
-${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
-
-PROCESSUS :
-1. MARQUE ET DESCRIPTION : Identifie la marque à partir des logos, étiquettes ou indices visuels. Si incertain, marque=null. Rédige une description de 1 à 2 phrases max identifiant l'article (marque, type, état visible, caractéristiques notables).
-2. PRIX : Estime la fourchette de prix de revente d'après ta connaissance du type d'article et de la marque. confiance="moyenne" si incertain, "basse" si très incertain. Préciser dans notes que les prix sont estimés.
-3. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
-4. EXTRACTION PRIX D'ACHAT : Lis le champ "Note de l'utilisateur :" dans le message. S'il mentionne un prix payé — sous n'importe quelle forme ("acheté 50e", "payé 12€", "coûte 30 euros", "j'ai mis 8€", "bought for 20", etc.) — extrais la valeur numérique et mets-la dans prix_achat_reel. Si aucun prix mentionné, prix_achat_reel = null.
-5. DÉTECTION VENTE : Lis le champ "Note de l'utilisateur :" dans le message. Si l'utilisateur mentionne avoir déjà vendu l'article — sous n'importe quelle forme ("vendu 80€", "je l'ai vendu", "sold for X", "vendu pour X", etc.) — mets est_vendu: true et prix_vente_reel au montant numérique. Sinon est_vendu: false et prix_vente_reel: null.
-6. RÈGLES :
-   CALCUL DE MARGE (priorité stricte) :
-   - Si prix_achat_reel n'est pas null : marge = prix_vente_suggere − prix_achat_reel. C'est l'UNIQUE base pour le verdict et le score.
-   - Si prix_achat_reel est null : marge = prix_vente_suggere − prix_achat_suggere.
-   VERDICT (basé uniquement sur la marge, sans exception) : verdict="excellent" si marge>40% du prix_vente_suggere, "bon" si>20%, "moyen" si>0%, "eviter" si marge≤0.
-   CRITIQUE : si prix_achat_reel est connu et que la marge est négative ou nulle → verdict DOIT être "eviter". La marque forte et la demande sont des facteurs secondaires — ils ne peuvent JAMAIS contredire une marge réelle négative.
-   SCORE (0 à 10, reflète la rentabilité réelle) : marge négative → 0-3 ; marge 0-20% → 4-5 ; marge 20-40% → 6-7 ; marge >40% → 8-10. Ajuster ±1 selon demande/facilité, jamais au-dessus de 4 si marge réelle négative.
-   prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : un conseil concret pour vendre plus vite.`;
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
@@ -214,33 +173,75 @@ serve(async (req) => {
     });
   }
 
-  // ── Quota via usage_logs (lens: 3j+15m gratuit, 5j+60m premium) ──────────
+  // ── Quota mensuel inclus par tier + dépassement payé en pièces ────────────
+  // free = 5/mois strict (plus de plafond journalier) · premium = 120/mois
+  // (+10/jour conservé) · pro = 250/mois (pas de plafond journalier).
+  // Les overrides par compte (lens_daily_override / lens_monthly_override)
+  // restent prioritaires sur les valeurs du tier, comme avant.
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: profile } = await adminClient
     .from("profiles")
     .select("is_founder, apple_original_transaction_id, google_purchase_token, is_pro, lens_daily_override, lens_monthly_override")
     .eq("id", user.id)
     .single();
+  const isPro = profile?.is_pro === true;
   const isPremium = profile?.is_founder === true
     || profile?.apple_original_transaction_id != null
     || profile?.google_purchase_token != null
-    || profile?.is_pro === true;
+    || isPro;
   const dailyOverride: number | null = profile?.lens_daily_override ?? null;
   const monthlyOverride: number | null = profile?.lens_monthly_override ?? null;
+  const dailyLimit   = dailyOverride   ?? (isPro ? null : isPremium ? 10 : null);
+  const monthlyLimit = monthlyOverride ?? (isPro ? 250 : isPremium ? 120 : 5);
+  // Astuce : on passe toujours les limites du tier dans les slots "premium" du
+  // RPC (p_is_premium=true) — NULL = pas de plafond, le RPC gère déjà ça.
   const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
     p_user_id: user.id,
     p_feature: "lens",
-    p_is_premium: isPremium,
-    p_daily_limit_free: dailyOverride ?? 3,
-    p_monthly_limit_free: monthlyOverride ?? 15,
-    p_daily_limit_premium: dailyOverride ?? 10,
-    p_monthly_limit_premium: monthlyOverride ?? 120,
+    p_is_premium: true,
+    p_daily_limit_free: null,
+    p_monthly_limit_free: null,
+    p_daily_limit_premium: dailyLimit,
+    p_monthly_limit_premium: monthlyLimit,
   });
+
+  // Pièces débitées pour cette analyse (0 = dans le quota inclus) — sert au
+  // remboursement best-effort si l'analyse échoue après débit.
+  let paidWithCoins = 0;
+
   if (quotaData?.allowed === false) {
-    return new Response(
-      JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
-      { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
-    );
+    if (quotaData.reason === "daily_limit") {
+      // Frein journalier (Premium 10/j) : comportement historique conservé
+      return new Response(
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    // Quota mensuel épuisé (tous tiers) : l'analyse passe en pièces.
+    // spend_coins_for_lens débite ET journalise l'usage atomiquement.
+    const { data: spend, error: spendErr } = await adminClient.rpc("spend_coins_for_lens", {
+      p_user_id: user.id,
+    });
+    if (spendErr || !spend) {
+      console.error("[lens-analysis] spend_coins_for_lens:", spendErr?.message);
+      return new Response(
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    if (spend.allowed === false) {
+      if (spend.reason === "insufficient_coins") {
+        return new Response(
+          JSON.stringify({ error: "insufficient_coins", price: spend.price, balance: spend.balance }),
+          { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    paidWithCoins = spend.price ?? 0;
   }
 
   try {
@@ -264,7 +265,7 @@ serve(async (req) => {
     const countryCode = userCountry?.code ?? null;
     const countryName = userCountry?.name ?? null;
     const platforms = getPlatforms(countryCode, _lang);
-    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length, isPremium);
+    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length);
 
     const textParts: string[] = [];
     if (description) textParts.push(_lang === "en" ? `User note: ${description}` : `Note de l'utilisateur : ${description}`);
@@ -284,44 +285,40 @@ serve(async (req) => {
 
     const basePayload = {
       model: "claude-haiku-4-5-20251001",
-      max_tokens: isPremium ? 1200 : 800,
+      max_tokens: 1200,
       temperature: 0,
       system: systemPrompt,
     };
 
+    // Analyse unifiée : web_search pour tout le monde (prix marché en direct),
+    // avec repli sur l'analyse vision seule si l'outil échoue.
     let data: any;
-    if (isPremium) {
-      // Premium : web_search activé pour des prix en temps réel
-      try {
-        const wsMessages: any[] = [...initialMessages];
+    try {
+      const wsMessages: any[] = [...initialMessages];
+      data = await callClaude(apiKey, {
+        ...basePayload,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: wsMessages,
+      }, "web-search-2025-03-05");
+
+      for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
+        wsMessages.push({ role: "assistant", content: data.content });
+        const toolResults = (data.content as any[])
+          .filter((b: any) => b.type === "tool_use")
+          .map((b: any) => ({
+            type: "tool_result",
+            tool_use_id: b.id,
+            content: b.content ?? [],
+          }));
+        if (!toolResults.length) break;
+        wsMessages.push({ role: "user", content: toolResults });
         data = await callClaude(apiKey, {
           ...basePayload,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
           messages: wsMessages,
         }, "web-search-2025-03-05");
-
-        for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
-          wsMessages.push({ role: "assistant", content: data.content });
-          const toolResults = (data.content as any[])
-            .filter((b: any) => b.type === "tool_use")
-            .map((b: any) => ({
-              type: "tool_result",
-              tool_use_id: b.id,
-              content: b.content ?? [],
-            }));
-          if (!toolResults.length) break;
-          wsMessages.push({ role: "user", content: toolResults });
-          data = await callClaude(apiKey, {
-            ...basePayload,
-            tools: [{ type: "web_search_20250305", name: "web_search" }],
-            messages: wsMessages,
-          }, "web-search-2025-03-05");
-        }
-      } catch {
-        data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
       }
-    } else {
-      // Gratuit : analyse vision directe sans web_search
+    } catch {
       data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
     }
 
@@ -353,6 +350,17 @@ serve(async (req) => {
     });
   } catch (err: any) {
     console.error("[lens-analysis] Error:", err);
+    // Analyse hors quota payée en pièces mais jamais livrée : remboursement
+    // best-effort (crédité en solde "acheté", cf. refund_coins).
+    if (paidWithCoins > 0) {
+      await adminClient.rpc("refund_coins", {
+        p_user_id: user.id,
+        p_amount: paidWithCoins,
+        p_metadata: { source: "lens_overflow_failed" },
+      }).then(({ error }) => {
+        if (error) console.error("[lens-analysis] refund_coins:", error.message);
+      });
+    }
     if (err?.isAiUnavailable) {
       return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
         status: 503, headers: { "Content-Type": "application/json", ...CORS },
