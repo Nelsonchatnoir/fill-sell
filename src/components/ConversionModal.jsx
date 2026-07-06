@@ -33,12 +33,8 @@ const T = {
     publish: { fr: 'Publie plus en passant au niveau supérieur.', en: 'Upgrade to publish more.' },
     style:   { fr: 'est réservée aux abonnés supérieurs.', en: 'is for higher-tier subscribers.' },
   },
-  founderBadge: {
-    fr: (n) => `🔥 Plus que ${n} places Founder`,
-    en: (n) => `🔥 Only ${n} Founder spots left`,
-  },
   // Premium section
-  premiumLabel:  { fr: 'Founder · Premium', en: 'Founder · Premium' },
+  premiumLabel:  { fr: 'Premium', en: 'Premium' },
   voiceLabel:    { fr: 'IA vocale', en: 'Voice AI' },
   voiceSub:      { fr: 'ajoute à la voix, sans compter', en: 'add by voice, no cap' },
   lensLabel:     { fr: 'Lens Pro', en: 'Lens Pro' },
@@ -49,7 +45,7 @@ const T = {
   lensNew:       { fr: ['10', '/j'], en: ['10', '/day'] },
   perMonth:      { fr: '/mois', en: '/mo' },
   trial:         { fr: '7 jours gratuits', en: '7-day free trial' },
-  priceNote:     { fr: 'soit 0,33€/jour · prix réservé aux premiers utilisateurs', en: 'i.e. €0.33/day · early adopter price' },
+  priceNote:     { fr: 'soit 0,43€/jour', en: 'i.e. €0.43/day' },
   premiumCta:    { fr: 'Débloquer maintenant', en: 'Unlock now' },
   subNote:       { fr: 'Sans engagement · Résiliable en 1 clic', en: 'No commitment · Cancel anytime' },
   // Pro section
@@ -124,7 +120,7 @@ function QuotaJump({ from, to, toNum, toSuffix }) {
   );
 }
 
-function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
+function PremiumSection({ onUpgrade, lang, compact }) {
   return (
     <div>
       {!compact && (
@@ -146,8 +142,7 @@ function PremiumSection({ onUpgrade, founderSpotsLeft, lang, compact }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontSize: 16, fontWeight: 700, color: '#999', textDecoration: 'line-through' }}>14,99€</span>
-        <span style={{ fontSize: 32, fontWeight: 700, color: '#1B6E62', letterSpacing: '-1px' }}>9,99€</span>
+        <span style={{ fontSize: 32, fontWeight: 700, color: '#1B6E62', letterSpacing: '-1px' }}>12,99€</span>
         <span style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>{l('perMonth', lang)}</span>
         <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#1B6E62', background: '#E7F3F0', padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
           {l('trial', lang)}
@@ -239,12 +234,6 @@ export default function ConversionModal({
           {/* Gradient header */}
           <div style={{ position: 'relative', padding: '22px 22px 20px', background: 'linear-gradient(135deg,#1B6E62,#2F9E90)', overflow: 'hidden', flexShrink: 0 }}>
             <div style={{ position: 'absolute', top: -40, right: -30, width: 160, height: 160, borderRadius: 99, background: 'rgba(255,255,255,0.1)', pointerEvents: 'none' }} />
-            {showPremium && (
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 100, background: 'rgba(255,255,255,0.18)', marginBottom: 14 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 99, background: '#fff', display: 'inline-block', animation: 'fsPulse 1.6s ease-in-out infinite' }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{T.founderBadge[lang](founderSpotsLeft)}</span>
-              </div>
-            )}
             <div style={{ position: 'relative', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.02em', marginBottom: 6 }}>
               {T.eyebrow[trig][lang]}
             </div>
@@ -258,7 +247,6 @@ export default function ConversionModal({
             {showPremium && (
               <PremiumSection
                 onUpgrade={onUpgrade}
-                founderSpotsLeft={founderSpotsLeft}
                 lang={lang}
                 compact={showPremium && showPro}
               />

@@ -508,19 +508,16 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">🔥 7j</span><span className="premium-full">{slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'🔥 7j gratuits →':'🔥 7 days free →'):(lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →')}</span></>}
+        {loading ? "..." : <><span className="premium-short">🔥 7j</span><span className="premium-full">{lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →'}</span></>}
       </button>
     );
   }
 
   return(
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      {slotsRemaining!==null&&slotsRemaining>0&&(
-        <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
-      )}
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois — 7j gratuits':'✨ Become a Founder · €9.99/mo — 7 days free'):(lang==='fr'?'✨ Passer Premium · 14,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €14.99/mo — 7 days free'))}
+        label={loading ? tb('redirection') : (lang==='fr'?'✨ Passer Premium · 12,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €12.99/mo — 7 days free')}
         disabled={loading}
         sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
@@ -531,9 +528,6 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
 function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, slotsRemaining=null }) {
   return (
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      {slotsRemaining!==null&&slotsRemaining>0&&(
-        <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
-      )}
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
         🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
       </div>
@@ -548,7 +542,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
         disabled={iapLoading}
         sub={iapProduct
           ?(lang==='fr'?`puis ${iapProduct.priceString}/mois · Sans engagement.`:`then ${iapProduct.priceString}/month · No commitment.`)
-          :(lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.')}
+          :(lang==='fr'?'puis 12,99€/mois · Sans engagement.':'then €12.99/month · No commitment.')}
       />
       <button
         onClick={onRestore}
@@ -1219,7 +1213,6 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
 }
 
 function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
-  const isFounder = slotsRemaining !== null && slotsRemaining > 0;
   const FREE_F  = lang==='en'
     ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only']
     : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement'];
@@ -1268,18 +1261,17 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
             <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0,position:'relative',overflow:'hidden',color:'#fff'}}>
               <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.18),transparent 55%)',borderRadius:16,pointerEvents:'none'}}/>
               <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:700,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
-                {isFounder?`🔥 ${lang==='fr'?'Prix Founder':'Founder Price'}`:(lang==='en'?'⭐ Most popular':'⭐ Le plus populaire')}
+                {lang==='en'?'⭐ Most popular':'⭐ Le plus populaire'}
               </div>
               <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:24}}>Premium</div>
               <div style={{fontSize:18,fontWeight:700,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
                 {lang==='en'?'To go further':'Pour aller plus loin'}
               </div>
               <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:700,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'14,99 €'}</span>
+                <span style={{fontSize:30,fontWeight:700,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>12,99 €</span>
                 <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
               </div>
-              {isFounder&&<div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.9)',marginBottom:6}}>{lang==='en'?'Price reserved for early users':'Prix réservé aux premiers utilisateurs'}</div>}
-              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
+              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',marginBottom:10,alignSelf:'flex-start'}}>
                 🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits'}
               </div>
               <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
@@ -1296,10 +1288,7 @@ function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
         {/* Footer */}
         <div style={{padding:'16px 16px',display:'flex',flexDirection:'column',gap:10}}>
           <PremiumButton onClick={onCheckout}>
-            {isFounder
-              ?(lang==='en'?'✨ Become a Founder · €9.99/mo — 7 days free':'✨ Devenir Founder · 9,99€/mois — 7j gratuits')
-              :(lang==='en'?'✨ Upgrade to Premium · €14.99/mo — 7 days free':'✨ Passer Premium · 14,99€/mois — 7j gratuits')
-            }
+            {lang==='en'?'✨ Upgrade to Premium · €12.99/mo — 7 days free':'✨ Passer Premium · 12,99€/mois — 7j gratuits'}
           </PremiumButton>
           <button onClick={onClose} style={{background:'none',border:'none',color:UI.mute,fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
             {lang==='en'?'Continue for free':'Continuer en gratuit'}
@@ -3576,10 +3565,12 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleIAPPurchase(){
-    console.log('[IAP] handleIAPPurchase started — slotsRemaining:',slotsRemaining,'platform:',platform);
+    console.log('[IAP] handleIAPPurchase started — platform:',platform);
     setIapLoading(true);
-    const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
-    const isFounderProduct=productId===PRODUCT_IDS.sub;
+    // Programme Founder fermé aux nouveaux (2026-07) : toujours le produit standard.
+    // PRODUCT_IDS.sub reste référencé dans restorePurchases pour les Founders existants.
+    const productId=PRODUCT_IDS.standard;
+    const isFounderProduct=false;
     try{
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id);
       if(cancelled) return;

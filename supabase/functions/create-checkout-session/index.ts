@@ -50,23 +50,16 @@ serve(async (req) => {
     }
     const verifiedEmail = authUser.email ?? email;
 
-    // Determine plan type based on founder slots availability
+    // Programme Founder fermé aux nouveaux (2026-07) : plus de lecture de
+    // founder_config, tout nouveau checkout part sur le plan standard.
+    // Les renouvellements des Founders existants passent par stripe-webhook,
+    // qui reste inchangé.
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: config } = await supabase
-      .from("founder_config")
-      .select("slots_total, slots_used")
-      .eq("id", 1)
-      .single();
-
-    const slotsRemaining = config ? config.slots_total - config.slots_used : 0;
-    const isFounderSlot = slotsRemaining > 0;
-    const priceId = isFounderSlot
-      ? Deno.env.get("STRIPE_PRICE_FOUNDER")!
-      : Deno.env.get("STRIPE_PRICE_STANDARD")!;
-    const planType = isFounderSlot ? "founder" : "standard";
+    const priceId = Deno.env.get("STRIPE_PRICE_STANDARD")!;
+    const planType = "standard";
 
     // Réutilise le customer Stripe existant pour bloquer un 2ème trial
     const { data: profile } = await supabase
