@@ -49,6 +49,24 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
   }
 };
 
+// Achat d'un pack de pièces (produit CONSUMABLE, productType 'inapp').
+// Retourne le reçu iOS ou le purchaseToken Android à faire valider par
+// l'edge function validate-coin-purchase (qui crédite le wallet).
+export const purchaseCoins = async (productId, appAccountToken = undefined) => {
+  try {
+    const purchaseOptions = { productIdentifier: productId, productType: 'inapp' };
+    if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
+    console.log('[IAP] purchaseCoins options:', JSON.stringify(purchaseOptions));
+    const result = await NativePurchases.purchaseProduct(purchaseOptions);
+    console.log('[IAP] purchaseCoins result:', JSON.stringify(result));
+    return { receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
+  } catch (e) {
+    console.error('[IAP] purchaseCoins error — code:', e?.code, 'message:', e?.message);
+    if (e?.code === 'USER_CANCELLED') return { receipt: null, purchaseToken: null, cancelled: true };
+    throw e;
+  }
+};
+
 export const restorePurchases = async (source) => {
   try {
     await NativePurchases.restorePurchases();

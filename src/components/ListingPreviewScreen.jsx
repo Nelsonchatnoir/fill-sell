@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff } from "lucide-react";
 import ConversionModal from "./ConversionModal";
+import CoinStoreModal from "./CoinStoreModal";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
@@ -21,7 +22,6 @@ const T = {
   card:     "#FFFFFF",
   chip:     "#F2F0E9",
 };
-const AMBER = "#E8956D";
 
 export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
@@ -161,8 +161,9 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
 
 // ── QuotaLimitModal ───────────────────────────────────────────────────────────
 
-function QuotaLimitModal({ onClose, lang }) {
-  const { t } = useTranslation(lang);
+// Modal "pas assez de pièces" — affiche le manque et ouvre le store de packs.
+function QuotaLimitModal({ onClose, onBuy, balance, price, lang }) {
+  const missing = price != null ? Math.max(0, price - balance) : null;
   return (
     <div style={{
       position:"fixed", inset:0, zIndex:10001,
@@ -173,20 +174,36 @@ function QuotaLimitModal({ onClose, lang }) {
         width:"100%", maxWidth:480,
       }}>
         <div style={{ fontWeight:700, fontSize:18, color:"#111", marginBottom:8 }}>
-          {t("quotaModalTitle")}
+          🪙 {lang === 'en' ? 'Not enough coins' : 'Pas assez de pièces'}
         </div>
         <p style={{ fontSize:13.5, color:"#6B6862", lineHeight:1.6, margin:"0 0 20px" }}>
-          {t("quotaModalText")}
+          {price != null
+            ? (lang === 'en'
+                ? `This publish option costs ${price} coins and you have ${balance}. You need ${missing} more.`
+                : `Cette option de publication coûte ${price} pièces et il t'en reste ${balance}. Il t'en manque ${missing}.`)
+            : (lang === 'en'
+                ? `You don't have enough coins for this publication.`
+                : `Tu n'as pas assez de pièces pour cette publication.`)}
         </p>
+        <button
+          onClick={onBuy}
+          style={{
+            width:"100%", padding:"14px", borderRadius:14, border:"none",
+            background:`linear-gradient(120deg,${T.teal},${T.tealDeep})`, color:"#fff", fontWeight:700, fontSize:15,
+            cursor:"pointer", fontFamily:"inherit", marginBottom:10,
+          }}
+        >
+          {lang === 'en' ? 'Get coins' : 'Acheter des pièces'}
+        </button>
         <button
           onClick={onClose}
           style={{
-            width:"100%", padding:"14px", borderRadius:14, border:"none",
-            background:"#111", color:"#fff", fontWeight:700, fontSize:15,
+            width:"100%", padding:"12px", borderRadius:14, border:"none",
+            background:"none", color:"#6B6862", fontWeight:600, fontSize:13.5,
             cursor:"pointer", fontFamily:"inherit",
           }}
         >
-          {t("quotaModalCloseButton")}
+          {lang === 'en' ? 'Later' : 'Plus tard'}
         </button>
       </div>
     </div>
@@ -370,30 +387,17 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, isPremium, isPro, onLockTap, lang }) {
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, coinPrices, coinBalance, onOpenStore, lang }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = 5;
 
+  // Système de pièces : plus de verrou par tier — chaque option affiche son
+  // prix en pièces (coin_config), identique pour tous. Le solde fait la loi.
   const retouchOptions = [
-    {
-      id: "ia_advanced",
-      label: t("retouchIaMultiLabel"),
-      desc: t("retouchIaMultiDesc"),
-      lockedFor: isPro ? null : "pro",
-    },
-    {
-      id: "ia_light",
-      label: t("retouchIaSimpleLabel"),
-      desc: t("retouchIaSimpleDesc"),
-      lockedFor: (isPremium || isPro) ? null : "premium",
-    },
-    {
-      id: "original",
-      label: t("retouchOriginalLabel"),
-      desc: t("retouchOriginalDesc"),
-      lockedFor: null,
-    },
+    { id: "ia_advanced", label: t("retouchIaMultiLabel"),  desc: t("retouchIaMultiDesc") },
+    { id: "ia_light",    label: t("retouchIaSimpleLabel"), desc: t("retouchIaSimpleDesc") },
+    { id: "original",    label: t("retouchOriginalLabel"), desc: t("retouchOriginalDesc") },
   ];
 
   return (
@@ -449,48 +453,64 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
         )}
       </div>
 
-      <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:24 }}>
+      <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:12 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
-          const locked = !!o.lockedFor;
+          const price = coinPrices?.[o.id] ?? null;
+          const affordable = price == null || coinBalance >= price;
           return (
             <button
               key={o.id}
-              onClick={() => { if (locked) { onLockTap(o.id); return; } setPhotoOption(o.id); }}
+              onClick={() => setPhotoOption(o.id)}
               style={{
                 textAlign:"left", borderRadius:16, padding:16,
-                background: active && !locked ? "#E7F3F0" : T.card,
-                border: `1px solid ${active && !locked ? T.teal : T.border}`,
+                background: active ? "#E7F3F0" : T.card,
+                border: `1px solid ${active ? T.teal : T.border}`,
                 cursor:"pointer", fontFamily:"inherit", position:"relative",
                 display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
-                opacity: locked ? 0.75 : 1,
               }}
             >
-              {locked && (
-                <span style={{
-                  position:"absolute", top:-8, right:12,
-                  fontSize:9.5, fontWeight:700, color:"#fff",
-                  background: o.lockedFor === "pro" ? "#7C3AED" : AMBER,
-                  padding:"3px 8px", borderRadius:999,
-                }}>
-                  {o.lockedFor === "pro" ? "Pro" : "Premium"}
-                </span>
-              )}
               <div>
-                <div style={{ fontSize:14, fontWeight:600, color: locked ? T.mute : T.ink, display:"flex", alignItems:"center", gap:6 }}>
+                <div style={{ fontSize:14, fontWeight:600, color:T.ink, display:"flex", alignItems:"center", gap:6 }}>
                   {o.label}
-                  {locked && <span style={{ fontSize:12 }}>🔒</span>}
                 </div>
                 <div style={{ fontSize:12, marginTop:2, lineHeight:1.4, color:T.mute2 }}>{o.desc}</div>
               </div>
-              <div style={{
-                width:20, height:20, borderRadius:"50%", flexShrink:0,
-                background: active && !locked ? T.teal : "transparent",
-                border: active && !locked ? "none" : `1px solid ${T.mute}`,
-              }} />
+              <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+                {price != null && (
+                  <span style={{
+                    fontSize:12, fontWeight:700, whiteSpace:"nowrap",
+                    color: affordable ? T.tealDeep : "#B0645A",
+                    background: affordable ? "#E7F3F0" : "#F7ECEA",
+                    border: `1px solid ${affordable ? "#CBE5DF" : "#EAD4CF"}`,
+                    padding:"3px 9px", borderRadius:999,
+                  }}>
+                    🪙 {price}
+                  </span>
+                )}
+                <div style={{
+                  width:20, height:20, borderRadius:"50%", flexShrink:0,
+                  background: active ? T.teal : "transparent",
+                  border: active ? "none" : `1px solid ${T.mute}`,
+                }} />
+              </div>
             </button>
           );
         })}
+      </div>
+
+      {/* Solde de pièces + accès au store */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
+        <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2 }}>
+          {lang === 'en' ? 'Your balance:' : 'Ton solde :'}{' '}
+          <strong style={{ color:T.ink }}>🪙 {coinBalance}</strong>
+        </span>
+        <button
+          onClick={onOpenStore}
+          style={{ background:"none", border:"none", color:T.tealDeep, fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline", textUnderlineOffset:3, padding:0 }}
+        >
+          {lang === 'en' ? '+ Get coins' : '+ Recharger'}
+        </button>
       </div>
 
       <Eyebrow>{t("stepPhotosPlatformsLabel")}</Eyebrow>
@@ -933,6 +953,33 @@ export default function ListingPreviewScreen({
     open: false, trigger: "lens", targetTiers: ["premium"], isProCoins: false,
   });
 
+  // ── Pièces : solde (coin_wallets) + grille de prix (coin_config) ──────────
+  // Lecture seule côté client — tout débit passe par spend_coins_and_publish.
+  const [wallet, setWallet]         = useState(null);
+  const [coinPrices, setCoinPrices] = useState(null);
+  const [storeOpen, setStoreOpen]   = useState(false);
+  const coinBalance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
+  const coinPriceFor = (opt) => coinPrices?.[opt] ?? null;
+
+  async function refreshWallet() {
+    const { data: w } = await supabase
+      .from("coin_wallets")
+      .select("included_balance, purchased_balance")
+      .eq("user_id", userId)
+      .maybeSingle();
+    setWallet(w ?? { included_balance: 0, purchased_balance: 0 });
+  }
+
+  useEffect(() => {
+    refreshWallet();
+    supabase.from("coin_config").select("key, value").then(({ data }) => {
+      const p = {};
+      for (const row of data ?? []) if (row.key.startsWith("price_")) p[row.key.slice(6)] = row.value;
+      setCoinPrices(p);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     // Pas encore de ligne inventaire (article pas encore en stock) : le prix vient
@@ -1178,24 +1225,6 @@ export default function ListingPreviewScreen({
     setPublishing(true);
     setPublishError("");
     try {
-      // Check en lecture seule : le quota n'est consommé (log_publish) qu'après
-      // l'insert cross_post_jobs confirmé — un échec d'insert ne brûle plus de quota.
-      const { data: quotaData, error: quotaErr } = await supabase.rpc("check_publish_quota", {
-        p_user_id:    userId,
-        p_is_premium: isPremium,
-        p_is_pro:     isPro,
-      });
-      if (quotaErr) throw new Error(t("genericError"));
-      if (quotaData?.allowed === false) {
-        setPublishing(false);
-        setQuotaModal({
-          open: true, trigger: "publish",
-          targetTiers: quotaData.reason === "tier_free" ? ["premium","pro"] : ["pro"],
-          isProCoins: false,
-        });
-        return;
-      }
-
       // Switch "Ajouter au stock" ON et article pas encore en stock : on le crée
       // maintenant, juste avant de générer les jobs de publication, pour que
       // cross_post_jobs.inventaire_id pointe vers la bonne ligne dès l'insert.
@@ -1259,13 +1288,24 @@ export default function ListingPreviewScreen({
           platform_fields: pf,
         };
       });
-      const { error: insErr } = await supabase.from("cross_post_jobs").insert(rows);
-      if (insErr) throw new Error(t("genericError"));
-      // Insert confirmé : on consomme le quota maintenant. Un échec ici est
-      // non bloquant (publication déjà partie) — au pire le quota est sous-compté,
-      // jamais débité à vide.
-      const { error: logErr } = await supabase.rpc("log_publish", { p_user_id: userId });
-      if (logErr) console.error("[publish] log_publish failed:", logErr.message);
+      // Débit des pièces + insertion des jobs en UNE transaction serveur :
+      // prix et user imposés côté serveur (coin_config + auth.uid()), insert
+      // raté = zéro pièce débitée. Remplace check_publish_quota + insert +
+      // log_publish pour les clients pièces.
+      const { data: pubRes, error: pubErr } = await supabase.rpc("spend_coins_and_publish", {
+        p_photo_option: photoOption,
+        p_jobs: rows,
+      });
+      if (pubErr) throw new Error(t("genericError"));
+      if (pubRes?.allowed === false) {
+        setPublishing(false);
+        if (pubRes.reason === "insufficient_coins") {
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], isProCoins: true });
+          return;
+        }
+        throw new Error(t("genericError"));
+      }
+      setWallet({ included_balance: pubRes.included_after, purchased_balance: pubRes.purchased_after });
       if (addToStock && currentInvId && processedPhotos?.length) {
         await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", currentInvId);
       }
@@ -1273,19 +1313,6 @@ export default function ListingPreviewScreen({
     } catch (e) {
       setPublishError(e.message);
       setPublishing(false);
-    }
-  }
-
-  // ── Lock retouche ─────────────────────────────────────────────────────────
-  function handleStyleLockTap(optionId) {
-    if (optionId === "ia_advanced") {
-      setQuotaModal({
-        open: true, trigger: "style",
-        targetTiers: isPremium ? ["pro"] : ["premium","pro"],
-        isProCoins: false,
-      });
-    } else if (optionId === "ia_light") {
-      setQuotaModal({ open: true, trigger: "style", targetTiers: ["premium","pro"], isProCoins: false });
     }
   }
 
@@ -1327,8 +1354,12 @@ export default function ListingPreviewScreen({
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
     if (step === 1) {
-      if (!isPremium && !isPro) {
-        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], isProCoins: false });
+      // Pièces : blocage doux si le solde ne couvre pas l'option choisie —
+      // remplace l'ancien blocage dur Free. Le débit réel a lieu à Publier,
+      // ici on évite juste de lancer une génération qu'on ne pourra pas payer.
+      const price = coinPriceFor(photoOption);
+      if (price != null && coinBalance < price) {
+        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], isProCoins: true });
         return;
       }
       setStep(2);
@@ -1442,9 +1473,9 @@ export default function ListingPreviewScreen({
             setPhotoOption={setPhotoOption}
             selected={selected}
             setSelected={setSelected}
-            isPremium={isPremium}
-            isPro={isPro}
-            onLockTap={handleStyleLockTap}
+            coinPrices={coinPrices}
+            coinBalance={coinBalance}
+            onOpenStore={() => setStoreOpen(true)}
             lang={lang}
           />
         )}
@@ -1503,9 +1534,20 @@ export default function ListingPreviewScreen({
       {quotaModal.open && quotaModal.isProCoins && (
         <QuotaLimitModal
           onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
+          onBuy={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
+          balance={coinBalance}
+          price={coinPriceFor(photoOption)}
           lang={lang}
         />
       )}
+
+      <CoinStoreModal
+        open={storeOpen}
+        onClose={() => setStoreOpen(false)}
+        lang={lang}
+        supabase={supabase}
+        onPurchased={refreshWallet}
+      />
 
       <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
