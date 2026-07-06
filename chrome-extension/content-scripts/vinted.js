@@ -39,8 +39,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
  *       jamais déclenchée par les jobs actuels — elle est câblée en attente
  *       d'un futur `platform_fields.categoryPath` (tableau de labels dans l'ordre
  *       du chemin Vinted, ex: ["Femmes","Vêtements","Robes","Midi"]) sans rien
- *       inventer côté mapping. Même chose pour `colors` et `packageSize` :
- *       aucune donnée réelle ne les fournit aujourd'hui, câblés en best-effort.
+ *       inventer côté mapping. `colors` (tableau, 2 max, dominante d'abord) est
+ *       fourni depuis 2026-07 par l'app (couleur IA → split → colors) ; seul
+ *       `packageSize` reste sans source de donnée, câblé en best-effort.
  * @returns {Promise<{success: boolean, dryRun?: boolean, listingUrl?: string, error?: string}>}
  */
 async function fillListingForm(job) {
@@ -134,8 +135,8 @@ async function fillListingForm(job) {
       warnings
     );
   }
-  // Pas de source de donnée aujourd'hui — no-op tant que platform_fields.colors
-  // (ou équivalent) n'existe pas.
+  // platform_fields.colors : posé par l'app à l'insert (couleur IA de la liste
+  // fermée Vinted, éditable, splittée en tableau). Absent sur les jobs anciens.
   if (fields.colors?.length) await selectColors(fields.colors, warnings);
 
   if (fields.matiere) {
