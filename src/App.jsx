@@ -3705,8 +3705,16 @@ export default function App({ loginOnly = false }){
     if(!fc.error&&fc.data) setSlotsRemaining(Math.max(0,20-fc.data.slots_used));
     setLoading(false);
     setAppLoading(false);
-    const lensCount=await checkAndResetDaily(supabase,uid,'lens_count_today','lens_count_date');
-    setLensUsedToday(lensCount);
+    // Quota Lens : usage_logs est LA source de vérité (comptée côté serveur par
+    // check_and_log_usage dans lens-analysis, jour = minuit UTC). Le client ne
+    // fait que refléter ce compteur pour l'affichage — plus aucun comptage
+    // parallèle via profiles.lens_count_today.
+    const lensDayStart=new Date();lensDayStart.setUTCHours(0,0,0,0);
+    const{count:lensCount}=await supabase.from('usage_logs')
+      .select('id',{count:'exact',head:true})
+      .eq('user_id',uid).eq('feature','lens')
+      .gte('created_at',lensDayStart.toISOString());
+    setLensUsedToday(lensCount||0);
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
   }
@@ -5185,17 +5193,10 @@ export default function App({ loginOnly = false }){
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
-    if(!isPremium){
-      const count=await checkAndResetDaily(supabase,user.id,'lens_count_today','lens_count_date');
-      if(count>=LENS_FREE_LIMIT){
-        setConversionModal({open:true,trigger:'lens'});
-        return;
-      }
-      await supabase.from('profiles')
-        .update({lens_count_today:count+1,lens_count_date:new Date().toISOString().split('T')[0]})
-        .eq('id',user.id);
-      setLensUsedToday(count+1);
-    }
+    // Quota : plus de pré-check ni d'incrément client (profiles.lens_count_today).
+    // Le serveur (lens-analysis → check_and_log_usage sur usage_logs) est l'unique
+    // autorité : son 429 quota_exceeded est géré plus bas, et le compteur affiché
+    // est resynchronisé après chaque succès.
     setLensLoading(true);setLensResult(null);setLensAdded(false);setLensInventaireId(null);
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
@@ -5245,6 +5246,8 @@ export default function App({ loginOnly = false }){
       const result=await r.json();
       if(result.error)throw new Error(result.error);
       setLensResult(result);
+      // Miroir du log serveur qui vient d'être écrit dans usage_logs
+      setLensUsedToday(prev=>prev+1);
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
