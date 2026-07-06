@@ -87,6 +87,11 @@ function getPlatformFieldsConfig(t) {
     leboncoin: [
       { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.new_, condition.veryGood, condition.good, condition.correct, condition.forParts] },
       { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormat },
+      // Univers (rayon Mode LBC) : mêmes libellés que le genre Vinted, mapping
+      // 1:1 vérifié (docs/leboncoin-form-survey.md) — LBC a un rayon Mixte.
+      // Sans cette entrée, mergeFieldsWithLens jetait l'univers généré par
+      // l'IA (aucune clé hors config ne survit) → champ obligatoire vide.
+      { key:"univers",      label:t("fieldUniversLabel"),       type:"select", options: gender },
     ],
     beebs: [
       { key:"etat",   label:t("fieldConditionLabel"), type:"select", options:[condition.new_, condition.veryGood, condition.good] },
@@ -1260,6 +1265,10 @@ export default function ListingPreviewScreen({
           const lbcPath = getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
+          // Univers obligatoire sur le rayon Mode LBC ("Veuillez choisir un
+          // univers de vêtement"). Contrairement à Vinted, LBC a un rayon
+          // Mixte → filet sans friction quand l'IA n'a pas tranché.
+          if (!pf.univers && lbcPath?.[0] === "Mode") pf.univers = "Mixte";
         }
         if (platform === "vinted") {
           // Chemin catalogue Vinted calculé à l'insert : icône objet (mêmes
