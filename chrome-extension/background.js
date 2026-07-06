@@ -162,6 +162,9 @@ async function pollAndProcessJobs() {
 
   console.log(`[background] ${jobs.length} job(s) pending`);
 
+  // Nouveau cycle : ré-arme le droit à UN onglet temporaire (cf. retryInTempTab).
+  tempTabUsedThisPoll = false;
+
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
   // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
   // onglets trop vite.
@@ -199,7 +202,14 @@ async function processJob(job, accessToken) {
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
     // on lui envoie le job et on attend le résultat du remplissage.
-    const result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+    let result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+
+    // Brouillon LBC bloquant sur l'onglet persistant : tentative unique dans
+    // un onglet temporaire dédié à CE job (voir retryInTempTab — exception
+    // bornée, l'onglet persistant et son brouillon ne sont jamais touchés).
+    if (result?.draftBlocked) {
+      result = await retryInTempTab(job, handler, result);
+    }
 
     if (result?.dryRun) {
       // Dry-run réussi → statut TERMINAL, PAS de ré-armement en pending.
@@ -243,6 +253,70 @@ async function processJob(job, accessToken) {
     console.error(`[background] Job ${job.id} en échec:`, e);
     await updateJobStatus(accessToken, job.id, "failed", { error: String(e?.message ?? e) })
       .catch((err) => console.error("[background] update-job-status failed:", err));
+  }
+}
+
+// ── Exception brouillon Leboncoin : onglet temporaire par job ──────────────────
+// Cas fréquent en pratique : chaque dry-run LBC laisse NOTRE propre brouillon
+// à l'aperçu (on remplit le wizard sans jamais publier), donc tout job LBC
+// suivant trouve l'onglet persistant bloqué — et un utilisateur peut aussi
+// avoir son propre brouillon manuel en cours. Plutôt qu'un needsUser
+// systématique, on traite CE job dans un onglet temporaire : si le brouillon
+// vit dans l'état de l'onglet (sessionStorage), l'onglet neuf repart de zéro.
+//
+// EXCEPTION bornée, pas une stratégie (règles anti-DataDome permanentes,
+// l'onglet persistant getOrCreateWorkTab reste la norme) :
+//   - au plus UN onglet temporaire par cycle de poll (jamais en rafale sur
+//     plusieurs jobs : les suivants repartent en needsUser → prochain cron),
+//   - jamais à moins de JOB_DELAY_MS du précédent (même délai que les autres
+//     opérations sensibles, persisté en storage.session pour survivre aux
+//     redémarrages du service worker),
+//   - l'onglet temporaire est TOUJOURS fermé une fois le job terminé
+//     (dry-run, publication ou erreur) — rien ne traîne à côté du persistant,
+//   - le brouillon de l'onglet persistant n'est jamais touché,
+//   - si le brouillon réapparaît dans l'onglet neuf (brouillon de compte,
+//     pas d'onglet), on rend la main : un autre onglet n'y changerait rien.
+let tempTabUsedThisPoll = false;
+const TEMP_TAB_LAST_KEY = "fillsell_temp_tab_last_at";
+
+async function retryInTempTab(job, handler, originalResult) {
+  if (tempTabUsedThisPoll) {
+    console.log(`[background] Job ${job.id} : brouillon bloquant, mais l'onglet temporaire de ce cycle a déjà servi → needsUser (prochain cron)`);
+    return originalResult;
+  }
+  const store = await chrome.storage.session.get(TEMP_TAB_LAST_KEY);
+  if (Date.now() - (store[TEMP_TAB_LAST_KEY] ?? 0) < FILLSELL_CONFIG.JOB_DELAY_MS) {
+    console.log(`[background] Job ${job.id} : dernier onglet temporaire trop récent → needsUser (prochain cron)`);
+    return originalResult;
+  }
+  tempTabUsedThisPoll = true;
+  await chrome.storage.session.set({ [TEMP_TAB_LAST_KEY]: Date.now() });
+
+  console.log(`[background] Job ${job.id} : brouillon sur l'onglet persistant → onglet temporaire dédié`);
+  let tab = null;
+  try {
+    // Fragment distinct de #fillsell-worker : cet onglet ne sera jamais
+    // adopté comme onglet de travail persistant.
+    tab = await chrome.tabs.create({ url: handler.newListingUrl + "#fillsell-temp", active: false });
+    await waitForTabComplete(tab.id);
+    const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
+    if (result?.draftBlocked) {
+      return {
+        ...result,
+        error:
+          (result.error || "") +
+          " Le brouillon persiste même dans un onglet neuf : c'est un brouillon " +
+          "de compte, le publier ou le supprimer sur leboncoin.fr.",
+      };
+    }
+    return result;
+  } catch (e) {
+    console.error(`[background] Onglet temporaire job ${job.id}:`, e);
+    return originalResult;
+  } finally {
+    // Fermeture SYSTÉMATIQUE (dry-run compris — contrairement à l'onglet
+    // persistant qui reste ouvert pour inspection).
+    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
 

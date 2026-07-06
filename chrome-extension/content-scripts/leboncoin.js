@@ -103,9 +103,14 @@ async function fillListingForm(job) {
     if (draftMarker()) entryState = "draft";
   }
   if (entryState !== "step1") {
+    // draftBlocked : le background tente UNE fois ce job dans un onglet
+    // temporaire (si le brouillon vit dans l'état de l'onglet — sessionStorage
+    // — un onglet neuf repart de zéro). S'il est resté bloquant même là
+    // (brouillon de compte), on retombe sur le needsUser classique.
     return {
       success: false,
       needsUser: true,
+      draftBlocked: true,
       error:
         "Un brouillon Leboncoin est déjà en cours sur ce compte (le wizard ne repart pas " +
         "de zéro). Le publier ou le supprimer sur leboncoin.fr, puis relancer.",
@@ -616,4 +621,4 @@ async function uploadPhotos(input, photos) {
   await sleep(1500 * files.length);
 }
 
-console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v2: login-check + état vierge + adresse validée)");
+console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v3: login-check + état vierge + adresse validée + brouillon → onglet temporaire)");
