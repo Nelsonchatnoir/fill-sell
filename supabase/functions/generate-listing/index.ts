@@ -99,9 +99,11 @@ serve(async (req) => {
     // dépendre d'une ligne DB qui n'est créée qu'à la publication, voire jamais.
     const item_data = body.item_data && typeof body.item_data === "object" ? body.item_data : null;
     // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
-    // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur inconnue ou legacy
-    // ("ia_multi", "ia_simple", etc.) retombe sur "ia_advanced" pour ne jamais casser un ancien appel.
-    const photo_option = (body.photo_option as string) || "ia_advanced";
+    // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur absente, inconnue
+    // ou legacy ("ia", "ia_multi", "ia_simple", …) retombe sur "original" : jamais de retouche
+    // GPT Image payante par défaut — un ancien client obtient ses photos telles quelles.
+    const rawPhotoOption = typeof body.photo_option === "string" ? body.photo_option : "";
+    const photo_option = rawPhotoOption === "ia_advanced" || rawPhotoOption === "ia_light" ? rawPhotoOption : "original";
     // price may be pre-fetched client-side; used as fallback if prix_vente is null in DB
     const body_price = body.price != null ? Number(body.price) : null;
 
