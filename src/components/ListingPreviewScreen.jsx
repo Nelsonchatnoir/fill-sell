@@ -166,57 +166,6 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   return result;
 }
 
-// ── QuotaLimitModal ───────────────────────────────────────────────────────────
-
-// Modal "pas assez de pièces" — affiche le manque et ouvre le store de packs.
-function QuotaLimitModal({ onClose, onBuy, balance, price, lang }) {
-  const missing = price != null ? Math.max(0, price - balance) : null;
-  return (
-    <div style={{
-      position:"fixed", inset:0, zIndex:10001,
-      background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"flex-end", justifyContent:"center",
-    }}>
-      <div style={{
-        background:"#fff", borderRadius:"24px 24px 0 0", padding:"28px 24px 36px",
-        width:"100%", maxWidth:480,
-      }}>
-        <div style={{ fontWeight:700, fontSize:18, color:"#111", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
-          <PepiteIcon size={22} /> {lang === 'en' ? 'Not enough Nuggets' : 'Pas assez de Pépites'}
-        </div>
-        <p style={{ fontSize:13.5, color:"#6B6862", lineHeight:1.6, margin:"0 0 20px" }}>
-          {price != null
-            ? (lang === 'en'
-                ? `This publish option costs ${price} Nuggets and you have ${balance}. You need ${missing} more.`
-                : `Cette option de publication coûte ${price} Pépites et il t'en reste ${balance}. Il t'en manque ${missing}.`)
-            : (lang === 'en'
-                ? `You don't have enough Nuggets for this publication.`
-                : `Tu n'as pas assez de Pépites pour cette publication.`)}
-        </p>
-        <button
-          onClick={onBuy}
-          style={{
-            width:"100%", padding:"14px", borderRadius:14, border:"none",
-            background:`linear-gradient(120deg,${T.teal},${T.tealDeep})`, color:"#fff", fontWeight:700, fontSize:15,
-            cursor:"pointer", fontFamily:"inherit", marginBottom:10,
-          }}
-        >
-          {lang === 'en' ? 'Get Nuggets' : 'Acheter des Pépites'}
-        </button>
-        <button
-          onClick={onClose}
-          style={{
-            width:"100%", padding:"12px", borderRadius:14, border:"none",
-            background:"none", color:"#6B6862", fontWeight:600, fontSize:13.5,
-            cursor:"pointer", fontFamily:"inherit",
-          }}
-        >
-          {lang === 'en' ? 'Later' : 'Plus tard'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ url, onClose }) {
@@ -904,7 +853,7 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
 
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
-  isPremium = false, isPro = false, founderSpotsLeft = 7, onUpgrade = () => {},
+  isPremium = false, isPro = false, onUpgrade = () => {},
   createStockItem = null, alreadyInStock = false,
 }) {
   const { t, tpl } = useTranslation(lang);
@@ -956,9 +905,9 @@ export default function ListingPreviewScreen({
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
 
-  // Modal quota / tier
+  // Modale de conversion (solde de Pépites insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
-    open: false, trigger: "lens", targetTiers: ["premium"], isProCoins: false,
+    open: false, trigger: "publish", targetTiers: ["premium","pro"],
   });
 
   // ── Pièces : solde (coin_wallets) + grille de prix (coin_config) ──────────
@@ -1323,7 +1272,7 @@ export default function ListingPreviewScreen({
       if (pubRes?.allowed === false) {
         setPublishing(false);
         if (pubRes.reason === "insufficient_coins") {
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], isProCoins: true });
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
           return;
         }
         throw new Error(t("genericError"));
@@ -1382,7 +1331,7 @@ export default function ListingPreviewScreen({
       // ici on évite juste de lancer une génération qu'on ne pourra pas payer.
       const price = coinPriceFor(photoOption);
       if (price != null && coinBalance < price) {
-        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], isProCoins: true });
+        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
         return;
       }
       setStep(2);
@@ -1543,24 +1492,19 @@ export default function ListingPreviewScreen({
         </PrimaryButton>
       </div>
 
-      {quotaModal.open && !quotaModal.isProCoins && (
+      {quotaModal.open && (
         <ConversionModal
           isOpen={true}
           onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
-          onUpgrade={tier => { onUpgrade(tier); setQuotaModal(m => ({ ...m, open: false })); }}
+          onUpgrade={tier => { setQuotaModal(m => ({ ...m, open: false })); onUpgrade(tier); }}
           trigger={quotaModal.trigger}
           targetTiers={quotaModal.targetTiers}
-          founderSpotsLeft={founderSpotsLeft}
           lang={lang}
-        />
-      )}
-      {quotaModal.open && quotaModal.isProCoins && (
-        <QuotaLimitModal
-          onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
-          onBuy={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
-          balance={coinBalance}
-          price={coinPriceFor(photoOption)}
-          lang={lang}
+          isPremium={isPremium}
+          isPro={isPro}
+          coinBalance={coinBalance}
+          coinPrice={coinPriceFor(photoOption)}
+          onUseCoins={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
         />
       )}
 

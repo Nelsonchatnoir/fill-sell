@@ -504,7 +504,6 @@ export default function LandingPage() {
   const [lang, setLang] = useState(getBrowserLang);
   const [scrolled, setScrolled] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
-  const [slotsRemaining, setSlotsRemaining] = useState(null);
 
   const vpTextRef = useRef(null);
   const vpStackRef = useRef(null);
@@ -516,25 +515,6 @@ export default function LandingPage() {
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
   useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
-
-  useEffect(() => {
-    const FC_KEY = 'fs_founder_config';
-    const FC_TTL = 5 * 60 * 1000;
-    try {
-      const c = JSON.parse(localStorage.getItem(FC_KEY) || 'null');
-      if (c && Date.now() - c.ts < FC_TTL) {
-        if (c.data) setSlotsRemaining(Math.max(0, 20 - c.data.slots_used));
-        return;
-      }
-    } catch {}
-    supabase.from('founder_config').select('slots_total,slots_used').eq('id', 1).maybeSingle()
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setSlotsRemaining(Math.max(0, 20 - data.slots_used));
-          try { localStorage.setItem(FC_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
-        }
-      });
-  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);

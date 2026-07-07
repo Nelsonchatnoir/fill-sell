@@ -384,7 +384,7 @@ const LensTab = memo(function LensTab({
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem, openLensEditModal,
-  openUpgradeModal, slotsRemaining, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
+  openUpgradeModal, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
@@ -450,7 +450,6 @@ const LensTab = memo(function LensTab({
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
-          founderSpotsLeft={slotsRemaining}
           onUpgrade={openUpgradeModal}
           createStockItem={saveLensItemForListing}
           alreadyInStock={!!lensInventaireId}

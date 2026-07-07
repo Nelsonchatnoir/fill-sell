@@ -479,7 +479,7 @@ const COIN_KIND_LABELS={
   admin:{fr:'Ajustement',en:'Adjustment'},
 };
 
-function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', slotsRemaining=null, onOpenModal=null }){
+function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', onOpenModal=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
   const { t: tb } = useTranslation(lang);
@@ -537,7 +537,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   );
 }
 
-function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, slotsRemaining=null }) {
+function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
   return (
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
@@ -1186,7 +1186,7 @@ function VoiceTicker({ lang = 'fr', currency = 'EUR' }) {
   );
 }
 
-function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRemaining=null }) {
+function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium }) {
   return (
     <div className="empty-hero">
       <div className="empty-hero-art">🎙️</div>
@@ -1219,93 +1219,6 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRe
         <SecondaryButton onClick={onAddManual}>
           ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
         </SecondaryButton>
-      </div>
-    </div>
-  );
-}
-
-function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
-  const FREE_F  = lang==='en'
-    ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only']
-    : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement'];
-  const PREM_F = lang==='en'
-    ? ['Unlimited stock','🎙️ AI voice · Unlimited','📸 Lens Pro · 10/day · live market price','Advanced AI-powered stats','Import / Export Excel','Priority support']
-    : ['Stock illimité','🎙️ IA vocale · Illimité','📸 Lens Pro · 10/jour · prix marché en direct','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:10000,display:'flex',alignItems:'flex-end'}} onClick={onClose}>
-      <style>{`@keyframes slideUpModal{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
-      <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxHeight:'90vh',overflowY:'auto',animation:'slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)',WebkitOverflowScrolling:'touch'}}>
-        {/* Header */}
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 20px 14px',borderBottom:'1px solid rgba(0,0,0,0.07)',position:'sticky',top:0,background:'#fff',zIndex:1}}>
-          <div style={{fontSize:18,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',fontFamily:'inherit'}}>
-            {lang==='en'?'Level up':'Passe au niveau supérieur'}
-          </div>
-          <IconButton onClick={onClose} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
-        </div>
-        {/* Cards */}
-        <div style={{padding:'16px 16px 0'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            {/* Free */}
-            <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.1)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0}}>
-              <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.1em',color:'#1D9E75',marginBottom:6}}>
-                {lang==='en'?'Free':'Gratuit'}
-              </div>
-              <div style={{fontSize:18,fontWeight:700,letterSpacing:'-0.02em',color:'#0D0D0D',marginBottom:6,fontFamily:'inherit'}}>
-                {lang==='en'?'To get started':'Pour démarrer'}
-              </div>
-              <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:700,letterSpacing:'-0.04em',lineHeight:1,color:'#0D0D0D',fontFamily:'inherit'}}>0 €</span>
-                <span style={{fontSize:11,fontWeight:700,color:'#9CA3AF'}}>{lang==='en'?'/ forever':'/ toujours'}</span>
-              </div>
-              <div style={{fontSize:11,fontWeight:600,color:'#6B7280',marginBottom:12,lineHeight:1.4}}>
-                {lang==='en'?'Everything to track your first sales.':'Tout pour suivre tes premières ventes.'}
-              </div>
-              <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
-                {FREE_F.map((f,i)=>(
-                  <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'#374151'}}>
-                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(29,158,117,0.12)',color:'#1D9E75',fontSize:9,fontWeight:700,marginTop:1}}>✓</span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            {/* Premium/Founder */}
-            <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0,position:'relative',overflow:'hidden',color:'#fff'}}>
-              <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.18),transparent 55%)',borderRadius:16,pointerEvents:'none'}}/>
-              <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:700,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
-                {lang==='en'?'⭐ Most popular':'⭐ Le plus populaire'}
-              </div>
-              <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:24}}>Premium</div>
-              <div style={{fontSize:18,fontWeight:700,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
-                {lang==='en'?'To go further':'Pour aller plus loin'}
-              </div>
-              <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:700,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>12,99 €</span>
-                <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
-              </div>
-              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',marginBottom:10,alignSelf:'flex-start'}}>
-                🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits'}
-              </div>
-              <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
-                {PREM_F.map((f,i)=>(
-                  <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'rgba(255,255,255,0.95)'}}>
-                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(255,255,255,0.25)',color:'#fff',fontSize:9,fontWeight:700,marginTop:1}}>✓</span>
-                    {i<4?<strong>{f}</strong>:f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-        {/* Footer */}
-        <div style={{padding:'16px 16px',display:'flex',flexDirection:'column',gap:10}}>
-          <PremiumButton onClick={onCheckout}>
-            {lang==='en'?'✨ Upgrade to Premium · €12.99/mo — 7 days free':'✨ Passer Premium · 12,99€/mois — 7j gratuits'}
-          </PremiumButton>
-          <button onClick={onClose} style={{background:'none',border:'none',color:UI.mute,fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
-            {lang==='en'?'Continue for free':'Continuer en gratuit'}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -3413,8 +3326,6 @@ export default function App({ loginOnly = false }){
   const [isPro,setIsPro]=useState(false);
   const [lensInventaireId,setLensInventaireId]=useState(null);
   const [listingStepperOpen,setListingStepperOpen]=useState(false);
-  const [slotsRemaining,setSlotsRemaining]=useState(null);
-  const [showUpgradeModal,setShowUpgradeModal]=useState(false);
   const [aiCache,setAiCache]=useState({});
   const [iapProduct,setIapProduct]=useState(null);
   const [iapLoading,setIapLoading]=useState(false);
@@ -3436,10 +3347,7 @@ export default function App({ loginOnly = false }){
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
-  const [conversionModal,setConversionModal]=useState({open:false,trigger:'lens'});
-  // Dépassement du quota Lens payé en pièces : {price,balance} quand le serveur
-  // répond insufficient_coins, null sinon. coinStoreOpen ouvre le store de packs.
-  const [lensCoinsModal,setLensCoinsModal]=useState(null);
+  const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
   const [coinStoreOpen,setCoinStoreOpen]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin.adresse) :
@@ -3640,7 +3548,7 @@ export default function App({ loginOnly = false }){
 
   async function handleIAPRestore(){
     setIapLoading(true);
-    const isFounderProduct=slotsRemaining>0;
+    const isFounderProduct=false; // tier Founder supprimé (2026-07)
     try{
       const {isPremium,receipt,purchaseToken,productId}=await restorePurchases('button');
       if(isPremium){
@@ -3675,17 +3583,28 @@ export default function App({ loginOnly = false }){
     }finally{setIapLoading(false);}
   }
 
+  // Checkout direct d'un tier ('premium'|'pro') : log + tracking + IAP/Stripe.
+  function startTierCheckout(tier){
+    const pro=tier==='pro';
+    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
+    trackTikTokEvent("InitiateCheckout",user?.email,pro?29.99:12.99);
+    if(pro){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}
+    else{isNative?handleIAPPurchase():triggerCheckout();}
+  }
+  // Ex-UpgradeModal, fusionnée dans ConversionModal : un tier explicite part
+  // directement en checkout, sans tier on ouvre la modale de conversion.
+  function openUpgradeModal(tier,trigger='generic'){
+    if(tier==='pro'||tier==='premium'){startTierCheckout(tier);return;}
+    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});
+    setConversionModal({open:true,trigger});
+  }
+
   async function fetchAll(uid){
     setLoading(true);
-    const FC_KEY='fs_founder_config';const FC_TTL=5*60*1000;
-    let fcPromise;
-    try{const c=JSON.parse(localStorage.getItem(FC_KEY)||'null');if(c&&Date.now()-c.ts<FC_TTL)fcPromise=Promise.resolve({data:c.data,error:null});}catch{}
-    if(!fcPromise)fcPromise=supabase.from('founder_config').select('slots_total,slots_used').eq('id',1).single().then(r=>{if(!r.error&&r.data)try{localStorage.setItem(FC_KEY,JSON.stringify({ts:Date.now(),data:r.data}));}catch{}return r;});
-    const [v,i,p,fc]=await Promise.all([
+    const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings').eq('id',uid).maybeSingle(),
-      fcPromise,
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -3719,7 +3638,6 @@ export default function App({ loginOnly = false }){
         setShowUsernameOnboarding(true);
       }
     }
-    if(!fc.error&&fc.data) setSlotsRemaining(Math.max(0,20-fc.data.slots_used));
     setLoading(false);
     setAppLoading(false);
     // Quota Lens : usage_logs est LA source de vérité (comptée côté serveur par
@@ -3884,8 +3802,7 @@ export default function App({ loginOnly = false }){
   const avgM=totalR>0?(totalM/totalR)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
-  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>;return C;},[slotsRemaining]);
-  const BoundEmptyState=useMemo(()=>{const C=(props)=><EmptyStateDashboard {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
+  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal()}/>;return C;},[user]);
   function searchMatch(item,query){
     if(!query.trim())return true;
     const q=query.toLowerCase().trim();
@@ -3978,7 +3895,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:avSess}}=await supabase.auth.getSession();
     const avToken=avSess?.access_token;
     for(const item of voiceParsed.items){
-      if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
+      if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const qty=Math.max(1,item.quantite||1);
       const isVente=voiceParsed.action==='vente';
       const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
@@ -4045,7 +3962,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:ntSess}}=await supabase.auth.getSession();
     const ntToken=ntSess?.access_token;
     for(const item of lotDistributed.items){
-      if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
+      if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
@@ -4066,7 +3983,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);return;}
+    if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
@@ -4938,7 +4855,7 @@ export default function App({ loginOnly = false }){
 
   const vaActions={
     addItem:async(data)=>{
-      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
+      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
       // prix_achat explicitement null (et aucune estimation de lot) = prix réellement inconnu,
       // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
       const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);
@@ -5264,7 +5181,7 @@ export default function App({ loginOnly = false }){
         const errBody=await r.json().catch(()=>({}));
         // Quota mensuel épuisé ET pas assez de pièces pour l'analyse hors quota
         if(errBody.error==='insufficient_coins'){
-          setLensCoinsModal({price:errBody.price??6,balance:errBody.balance??0});
+          setConversionModal({open:true,trigger:'lens',coinPrice:errBody.price??9,coinBalance:errBody.balance??0});
           return;
         }
         // quota_exceeded ne subsiste que pour le frein journalier Premium (10/j)
@@ -5393,9 +5310,9 @@ export default function App({ loginOnly = false }){
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>
+            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" onOpenModal={()=>openUpgradeModal()}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>openUpgradeModal()} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
             <button onClick={()=>setShowPremiumModal(true)} className="tb-premium" style={{cursor:"pointer",border:"none",padding:0,background:"none",fontFamily:"inherit"}}>⭐ Premium</button>
           ):null}
@@ -5436,9 +5353,9 @@ export default function App({ loginOnly = false }){
             resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
             triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
-            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={openUpgradeModal}
             setTab={setTab}
-            EmptyStateDashboard={BoundEmptyState}
+            EmptyStateDashboard={EmptyStateDashboard}
           />
         )}
 
@@ -5509,8 +5426,7 @@ export default function App({ loginOnly = false }){
             fabTriggerRef={fabTriggerRef}
             PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
-            slotsRemaining={slotsRemaining}
-            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={openUpgradeModal}
             onStepperOpenChange={setListingStepperOpen}
           />
         )}
@@ -5531,8 +5447,7 @@ export default function App({ loginOnly = false }){
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
-            slotsRemaining={slotsRemaining}
+            openUpgradeModal={openUpgradeModal}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
             lensPremiumLimitReached={lensPremiumLimitReached}
             isPro={isPro}
@@ -5554,8 +5469,7 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={(tier)=>{if(tier==='pro'){if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'pro_cta_click'}).then(()=>{});isNative?handleIAPPurchase('pro'):triggerCheckout('pro');return;}setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
-            slotsRemaining={slotsRemaining}
+            openUpgradeModal={openUpgradeModal}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
@@ -6149,43 +6063,21 @@ export default function App({ loginOnly = false }){
         </>
       )}
 
-      {/* ── CONVERSION MODAL (limit reached for Lens / Voice) ── */}
+      {/* ── CONVERSION MODAL (fusion ex-UpgradeModal : vocal, Lens, publish, stock, générique) ── */}
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={(tier)=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger,'tier:',tier,'isNative:',isNative);setConversionModal(m=>({...m,open:false}));trackTikTokEvent("InitiateCheckout",user?.email,tier==='pro'?29.99:12.99);if(tier==='pro'){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}else{isNative?handleIAPPurchase():triggerCheckout();}}}
+        onUpgrade={(tier)=>{setConversionModal(m=>({...m,open:false}));startTierCheckout(tier);}}
         trigger={conversionModal.trigger}
-        founderSpotsLeft={slotsRemaining}
         lang={lang}
+        isPremium={isPremium}
+        isPro={isPro}
+        itemCount={items.filter(i=>i.statut!=='vendu').length}
+        coinBalance={conversionModal.coinBalance??(coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null)}
+        coinPrice={conversionModal.coinPrice??null}
+        onUseCoins={conversionModal.coinPrice!=null?()=>{setConversionModal(m=>({...m,open:false}));setCoinStoreOpen(true);}:null}
       />
 
-      {/* ── LENS HORS QUOTA : PAS ASSEZ DE PIÈCES ── */}
-      {lensCoinsModal&&(
-        <div style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-          <div style={{background:"#fff",borderRadius:"24px 24px 0 0",padding:"28px 24px 36px",width:"100%",maxWidth:480}}>
-            <div style={{fontWeight:700,fontSize:18,color:"#111",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
-              <PepiteIcon size={22} /> {lang==='en'?'Not enough Nuggets':'Pas assez de Pépites'}
-            </div>
-            <p style={{fontSize:13.5,color:"#6B6862",lineHeight:1.6,margin:"0 0 20px"}}>
-              {lang==='en'
-                ?`Your monthly scans are used up. An extra scan costs ${lensCoinsModal.price} Nuggets and you have ${lensCoinsModal.balance}.`
-                :`Tes analyses du mois sont épuisées. Une analyse supplémentaire coûte ${lensCoinsModal.price} Pépites et il t'en reste ${lensCoinsModal.balance}.`}
-            </p>
-            <button
-              onClick={()=>{setLensCoinsModal(null);setCoinStoreOpen(true);}}
-              style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}
-            >
-              {lang==='en'?'Get Nuggets':'Acheter des Pépites'}
-            </button>
-            <button
-              onClick={()=>setLensCoinsModal(null)}
-              style={{width:"100%",padding:"12px",borderRadius:14,border:"none",background:"none",color:"#6B6862",fontWeight:600,fontSize:13.5,cursor:"pointer",fontFamily:"inherit"}}
-            >
-              {lang==='en'?'Later':'Plus tard'}
-            </button>
-          </div>
-        </div>
-      )}
       <CoinStoreModal
         open={coinStoreOpen}
         onClose={()=>setCoinStoreOpen(false)}
@@ -6431,14 +6323,6 @@ export default function App({ loginOnly = false }){
         </div>
       )}
 
-      {showUpgradeModal&&(
-        <UpgradeModal
-          lang={lang}
-          slotsRemaining={slotsRemaining}
-          onClose={()=>setShowUpgradeModal(false)}
-          onCheckout={()=>{setShowUpgradeModal(false);trackTikTokEvent("InitiateCheckout",user?.email,9.99);isNative?handleIAPPurchase():triggerCheckout();}}
-        />
-      )}
       {showCurrencyOnboarding&&(
         <CurrencyOnboardingModal lang={lang} onConfirm={async(code,uname)=>{
           await saveCurrency(code);

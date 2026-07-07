@@ -259,7 +259,7 @@ const StockTab = memo(function StockTab({
   importRef, listRef, scrollRef, fabTriggerRef,
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock,
-  slotsRemaining, openUpgradeModal, onStepperOpenChange,
+  openUpgradeModal, onStepperOpenChange,
 }) {
   const { t, tpl } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -1093,7 +1093,7 @@ const StockTab = memo(function StockTab({
             </div>
           )}
           {!isPremium&&items.length>=20&&!isNative
-            ? <PremiumBanner userEmail={user?.email} slotsRemaining={slotsRemaining} onOpenModal={openUpgradeModal}/>
+            ? <PremiumBanner userEmail={user?.email} onOpenModal={openUpgradeModal}/>
             : !isPremium&&items.length>=20&&isNative
             ? null
             : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
@@ -1101,7 +1101,7 @@ const StockTab = memo(function StockTab({
               </button>
           }
           {isNative&&!isPremium&&items.length>=20&&(
-            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>
+            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore}/>
           )}
           {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
             <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
@@ -1538,7 +1538,6 @@ const StockTab = memo(function StockTab({
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
-          founderSpotsLeft={slotsRemaining}
           onUpgrade={openUpgradeModal}
         />
       )}
