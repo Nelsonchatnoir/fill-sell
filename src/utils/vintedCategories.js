@@ -150,8 +150,9 @@ const MODE_ADULTE = {
   // Hors périmètre Lot 1 (pas demandés dans cette passe, faible volume ou
   // hors Mode adultes) : 🧳 valises (Homme confirmé "Bagages et valises"
   // sous Sacs et sacoches, Femme approximable par "Sacs de voyage" — à
-  // ajouter si besoin), 👶 puériculture (Enfant uniquement, hors périmètre
-  // Femme/Homme par construction).
+  // ajouter si besoin). La puériculture (👶💺🍼📟, non genrée, racine
+  // Enfants) est mappée côté HORS_MODE depuis la scission de l'icône 👶
+  // en juillet 2026.
 };
 
 // Catégories SANS niveau genre. Racines réelles du FORMULAIRE (juillet
@@ -335,6 +336,15 @@ const HORS_MODE = {
   // Chemin unique, aucune condition adulte/enfant à faire.
   "🧩": ["Loisirs et collections", "Puzzles"],
   "🦸": ["Enfants", "Jeux et jouets", "Figurines et accessoires", "Figurines"],
+
+  // ── Puériculture (racine Enfants, non genrée — même famille de piège que
+  // les jouets). Scission de l'ancienne icône 👶 unique (juillet 2026) :
+  // poussette/siège auto/biberon/babyphone ont chacun leur icône et leur
+  // feuille EXACTE dans l'arbre — plus aucun défaut inter-branches ─────────
+  "👶": ["Enfants", "Poussettes, porte-bébé et sièges auto", "Poussettes et landaus"],
+  "💺": ["Enfants", "Poussettes, porte-bébé et sièges auto", "Sièges auto"],
+  "🍼": ["Enfants", "Allaitement et alimentation", "Alimentation au biberon", "Biberons"],
+  "📟": ["Enfants", "Sommeil et literie", "Babyphones"],
   "🃏": ["Loisirs et collections", "Cartes à collectionner", "Cartes à collectionner à l'unité"],
   "🎲": ["Loisirs et collections", "Jeux de société"],
   "🏎️": ["Enfants", "Jeux et jouets", "Voitures, trains et autres véhicules", "Voitures"],

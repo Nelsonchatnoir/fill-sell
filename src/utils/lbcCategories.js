@@ -85,7 +85,11 @@ const LBC_CATEGORIES = {
   "🥽": ["Loisirs", "Sport & Plein air"],
 
   // ── Famille / Véhicules ───────────────────────────────────────────────────
-  "👶": ["Famille", "Équipement bébé"],
+  // Scission 👶 (juillet 2026) : les 4 icônes puériculture tombent sur la
+  // même feuille LBC — la granularité fine se joue dans les critères
+  // dynamiques de la feuille, pas dans l'arbre (comme les vêtements).
+  "👶": ["Famille", "Équipement bébé"], "💺": ["Famille", "Équipement bébé"],
+  "🍼": ["Famille", "Équipement bébé"], "📟": ["Famille", "Équipement bébé"],
   "🛞": ["Véhicules", "Équipement auto"], "🪖": ["Véhicules", "Équipement moto"],
   // Véhicules immatriculés complets : hors périmètre v1 (le dépôt LBC exige
   // plaque/carte grise, flux spécifique) — fallback explicite volontaire.

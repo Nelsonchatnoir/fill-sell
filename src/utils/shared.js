@@ -408,8 +408,16 @@ const OBJECT_ICON_RULES = [
   // Collection
   [/timbre/i, '📮'],
   [/monnaie|numismat|pièce.?de.?monnaie/i, '🪙'],
-  // Puériculture
-  [/poussette|siège.?auto|biberon|babyphone/i, '👶'],
+  // Puériculture — scindée en 4 icônes (juillet 2026) : l'ancienne 👶 unique
+  // conflatait poussette/siège auto/biberon/babyphone, quatre branches
+  // catalogue différentes sur les 3 plateformes (un babyphone partait en
+  // "Poussettes"). ⚠️ Conflations puériculture RESTANTES, hors de ces regex :
+  // "transat" (bébé) part sur ⛱️ salon de jardin, "chaise haute" sur 🪑
+  // chaise, "lit parapluie" sur 🛏️ lit — à scinder si le volume le justifie.
+  [/poussette|landaus?\b/i, '👶'],
+  [/siège.?auto/i, '💺'],
+  [/biberon/i, '🍼'],
+  [/babyphone|baby.?phone|écoute.?bébé/i, '📟'],
 ];
 // Icône par défaut si aucun mot-clé ne matche : celle de la catégorie.
 const CAT_DEFAULT_ICONS = {
