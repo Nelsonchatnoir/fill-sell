@@ -82,11 +82,14 @@ serve(async (req) => {
 
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+      .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
       .eq("id", user.id)
       .single();
 
-    const isPremium = profile?.is_founder === true
+    // Ne jamais utiliser is_premium seul, mais ne jamais l'omettre non plus :
+    // un Premium standard Stripe (web) n'a ni token Apple/Google ni is_founder.
+    const isPremium = profile?.is_premium === true
+      || profile?.is_founder === true
       || profile?.apple_original_transaction_id != null
       || profile?.google_purchase_token != null
       || profile?.is_pro === true;

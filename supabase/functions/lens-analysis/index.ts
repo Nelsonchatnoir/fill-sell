@@ -181,11 +181,14 @@ serve(async (req) => {
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: profile } = await adminClient
     .from("profiles")
-    .select("is_founder, apple_original_transaction_id, google_purchase_token, is_pro, lens_daily_override, lens_monthly_override")
+    .select("is_premium, is_founder, apple_original_transaction_id, google_purchase_token, is_pro, lens_daily_override, lens_monthly_override")
     .eq("id", user.id)
     .single();
   const isPro = profile?.is_pro === true;
-  const isPremium = profile?.is_founder === true
+  // Ne jamais utiliser is_premium seul, mais ne jamais l'omettre non plus :
+  // un Premium standard Stripe (web) n'a ni token Apple/Google ni is_founder.
+  const isPremium = profile?.is_premium === true
+    || profile?.is_founder === true
     || profile?.apple_original_transaction_id != null
     || profile?.google_purchase_token != null
     || isPro;
