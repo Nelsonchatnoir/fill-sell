@@ -1224,7 +1224,7 @@ function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium }) {
   );
 }
 
-function PremiumWelcomeModal({ lang, isFounder, onClose }) {
+function PremiumWelcomeModal({ lang, onClose }) {
   const PERKS = lang === 'en'
     ? [
         { icon: '🎙️', label: 'AI Voice — Unlimited' },
@@ -1240,9 +1240,7 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
         { icon: '📊', label: 'Stats avancées analysées par IA' },
         { icon: '📤', label: 'Import / Export Excel' },
       ];
-  const title = isFounder
-    ? (lang === 'en' ? 'Welcome, Founder!' : 'Bienvenue, Founder !')
-    : (lang === 'en' ? 'Welcome to FillSell Premium' : 'Bienvenue dans FillSell Premium');
+  const title = lang === 'en' ? 'Welcome to FillSell Premium' : 'Bienvenue dans FillSell Premium';
   const subtitle = lang === 'en'
     ? 'Your benefits are active right now'
     : 'Tes avantages sont actifs dès maintenant';
@@ -1258,13 +1256,8 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
         <div style={{background:'linear-gradient(135deg,#2F9E90,#E8956D)',padding:'32px 24px 28px',textAlign:'center',position:'relative',overflow:'hidden'}}>
           <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.2),transparent 55%)',pointerEvents:'none'}}/>
           <div style={{fontSize:44,lineHeight:1,marginBottom:12,display:'inline-block',animation:'crownPop 0.5s cubic-bezier(0.22,1,0.36,1) 0.2s both'}}>
-            {isFounder?'👑':'⭐'}
+            ⭐
           </div>
-          {isFounder&&(
-            <div style={{display:'flex',justifyContent:'center',marginBottom:10}}>
-              <span style={{background:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.5)',borderRadius:99,padding:'4px 12px',fontSize:10,fontWeight:700,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase'}}>🔥 Founder</span>
-            </div>
-          )}
           <div style={{fontSize:22,fontWeight:600,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
           <div style={{fontSize:13,color:'rgba(255,255,255,0.88)',fontWeight:600}}>{subtitle}</div>
         </div>
@@ -3345,7 +3338,6 @@ export default function App({ loginOnly = false }){
   const [coinHistory,setCoinHistory]=useState([]);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
-  const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
   const [coinStoreOpen,setCoinStoreOpen]=useState(false);
@@ -3502,7 +3494,6 @@ export default function App({ loginOnly = false }){
     // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
     // Il reste référencé dans restorePurchases pour les Founders existants.
     const productId=isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
-    const isFounderProduct=false;
     try{
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id);
       if(cancelled) return;
@@ -3510,7 +3501,6 @@ export default function App({ loginOnly = false }){
         // Android : succès Play Billing côté client → écriture directe + sauvegarde du token
         // Le webhook Google Play gère les renouvellements ; le token ici couvre le 1er achat
         const updates={is_premium:true};
-        if(isFounderProduct) updates.is_founder=true;
         if(isProPurchase) updates.is_pro=true;
         if(purchaseToken){updates.google_purchase_token=purchaseToken;updates.google_product_id=productId;}
         await supabase.from('profiles').update(updates).eq('id',user.id);
@@ -3523,11 +3513,9 @@ export default function App({ loginOnly = false }){
           if(data?.is_premium){confirmed=true;break;}
         }
         if(!confirmed) throw new Error('Premium not confirmed by server');
-        if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       }
       setIsPremium(true);
       if(isProPurchase) setIsPro(true);
-      setPremiumWelcomeIsFounder(isFounderProduct);
       setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
@@ -3535,8 +3523,7 @@ export default function App({ loginOnly = false }){
         const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
         if(data?.is_premium){
           setIsPremium(true);
-          setPremiumWelcomeIsFounder(isFounderProduct);
-          setShowPremiumWelcome(true);
+              setShowPremiumWelcome(true);
           return;
         }
       }catch{}
@@ -3548,7 +3535,6 @@ export default function App({ loginOnly = false }){
 
   async function handleIAPRestore(){
     setIapLoading(true);
-    const isFounderProduct=false; // tier Founder supprimé (2026-07)
     try{
       const {isPremium,receipt,purchaseToken,productId}=await restorePurchases('button');
       if(isPremium){
@@ -3561,8 +3547,7 @@ export default function App({ loginOnly = false }){
           await supabase.from('profiles').update(updates).eq('id',user.id);
         }
         setIsPremium(true);
-        setPremiumWelcomeIsFounder(isFounderProduct);
-        setShowPremiumWelcome(true);
+          setShowPremiumWelcome(true);
       }else{
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -3573,8 +3558,7 @@ export default function App({ loginOnly = false }){
         const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
         if(data?.is_premium){
           setIsPremium(true);
-          setPremiumWelcomeIsFounder(isFounderProduct);
-          setShowPremiumWelcome(true);
+              setShowPremiumWelcome(true);
           return;
         }
       }catch{}
@@ -6087,7 +6071,7 @@ export default function App({ loginOnly = false }){
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
-        <PremiumWelcomeModal lang={lang} isFounder={premiumWelcomeIsFounder} onClose={()=>setShowPremiumWelcome(false)}/>
+        <PremiumWelcomeModal lang={lang} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
       {/* ── PREMIUM ADVANTAGES MODAL ── */}

@@ -31,10 +31,12 @@ Ne pas utiliser de query param ni de header `Authorization` dans pg_net — seul
 
 ## Premium detection
 
-Ne jamais utiliser `is_premium` seul. Toujours vérifier :
+Ne jamais utiliser `is_premium` seul, mais ne jamais l'omettre non plus (un Premium standard Stripe web n'a ni token Apple/Google ni `is_founder`). Expression complète, identique partout (App.jsx, voice-transcribe, voice-intent, lens-analysis, generate-listing) :
 ```sql
-apple_original_transaction_id IS NOT NULL OR google_purchase_token IS NOT NULL OR is_founder = true
+is_premium = true OR is_pro = true OR is_founder = true
+  OR apple_original_transaction_id IS NOT NULL OR google_purchase_token IS NOT NULL
 ```
+`is_founder` n'est plus un tier : c'est un marqueur de prix legacy (9,99 €/mois grandfathered) pour les ~100 anciens comptes Founder, désormais des Premium comme les autres.
 
 ## apple-iap-webhook
 
