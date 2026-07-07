@@ -104,7 +104,7 @@ serve(async (req) => {
     }
 
     // ── Abonnements : standard 12,99 € ou Pro 29,99 € ──
-    // Pas d'essai gratuit sur Pro : les 800 pièces mensuelles sont créditées dès
+    // Pas d'essai gratuit sur Pro : les 600 pièces mensuelles sont créditées dès
     // le paiement (un trial serait arbitrable : s'abonner, brûler les pièces, annuler).
     const isProPlan = product === "pro";
     const priceId = isProPlan
