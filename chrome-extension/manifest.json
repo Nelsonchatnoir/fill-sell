@@ -41,6 +41,11 @@
       "matches": ["https://*.ebay.fr/*"],
       "js": ["content-scripts/ebay.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.beebs.app/*"],
+      "js": ["content-scripts/beebs.js"],
+      "run_at": "document_idle"
     }
   ]
 }

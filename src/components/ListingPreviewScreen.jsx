@@ -10,6 +10,7 @@ import { detectObjectIcon } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
+import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -94,9 +95,15 @@ function getPlatformFieldsConfig(t) {
       // l'IA (aucune clé hors config ne survit) → champ obligatoire vide.
       { key:"univers",      label:t("fieldUniversLabel"),       type:"select", options: gender },
     ],
+    // genre indispensable : c'est lui qui résout le rayon Mode Beebs
+    // (Femme/Homme/Fille/Garçon/Bébé, cf. beebsCategories.js) — sans ce champ
+    // dans la config, mergeFieldsWithLens jette le genre généré par l'IA et
+    // getBeebsCategoryPath ne résout jamais rien pour les articles de mode
+    // (même piège que celui documenté pour l'univers Leboncoin ci-dessus).
     beebs: [
       { key:"etat",   label:t("fieldConditionLabel"), type:"select", options:[condition.new_, condition.veryGood, condition.good] },
       { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
+      { key:"genre",  label:t("fieldGenderLabel"),    type:"select", options: gender },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
     ],
     // eBay.fr est francophone : clés et valeurs FR canoniques, alignées sur
@@ -1203,12 +1210,17 @@ export default function ListingPreviewScreen({
         setInvId(currentInvId);
       }
 
-      // Adresse de remise Leboncoin (Settings) : lue une fois par publication,
-      // injectée dans platform_fields.adresse. Absente → le job part quand
-      // même, l'extension le remettra en pending avec un message explicite
-      // (jamais de blocage dur, le brouillon LBC persiste).
+      // Adresse de remise (Settings) : lue une fois par publication, injectée
+      // dans platform_fields.adresse. Absente → le job part quand même,
+      // l'extension le remettra en pending avec un message explicite (jamais
+      // de blocage dur, le brouillon LBC persiste). Beebs exige aussi une
+      // adresse (autocomplete Google Places, relevé en session réelle
+      // 2026-07-08, cf. content-scripts/beebs.js) mais n'a pas de réglage
+      // dédié dans l'app — on réutilise la même adresse d'expédition que
+      // Leboncoin plutôt que dupliquer un champ Settings pour une seule
+      // valeur physique identique.
       let lbcAddress = null;
-      if (selected.has("leboncoin")) {
+      if (selected.has("leboncoin") || selected.has("beebs")) {
         const { data: prof } = await supabase.from("profiles")
           .select("platform_settings").eq("id", userId).maybeSingle();
         lbcAddress = prof?.platform_settings?.leboncoin?.adresse || null;
@@ -1287,6 +1299,25 @@ export default function ListingPreviewScreen({
               .slice(0, 2);
             if (colors.length) pf.colors = colors;
           }
+        }
+        if (platform === "beebs") {
+          // Même contrat que Vinted/eBay : chemin catalogue calculé à
+          // l'insert depuis l'icône objet + genre. beebsCategories.js gère
+          // déjà lui-même le cas Enfant/Mixte/vide → null (genre Beebs a 5
+          // valeurs Femme/Homme/Fille/Garçon/Bébé, pas de résolution
+          // automatique depuis Enfant pour l'instant, cf. commentaire de
+          // tête du fichier) — pas de blocage dur ici, comme eBay : le flag
+          // beebsGenreRequired est posé pour que l'extension retourne un
+          // needsUser explicite plutôt qu'un échec silencieux.
+          const icon = detectObjectIcon(
+            edited[platform]?.title,
+            edited[platform]?.description,
+            pf.categorie || initialListing?.categorie
+          );
+          const categoryPath = getBeebsCategoryPath(icon, pf.genre);
+          if (categoryPath) pf.beebsCategoryPath = categoryPath;
+          if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
+          if (lbcAddress) pf.adresse = lbcAddress;
         }
         return {
           user_id:         userId,

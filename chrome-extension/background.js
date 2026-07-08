@@ -25,8 +25,11 @@ const PLATFORM_HANDLERS = {
     newListingUrl: "https://www.leboncoin.fr/deposer-une-annonce",
   },
   beebs: {
-    implemented: false,
-    newListingUrl: "https://www.beebs.app", // TODO: URL exacte du formulaire de dépôt
+    implemented: true,
+    // URL directe confirmée en session réelle (2026-07-08, connecté) : ouvre
+    // le formulaire "Mettre un article en vente" vierge, sans redirection de
+    // login tant qu'une session est active (cf. content-scripts/beebs.js).
+    newListingUrl: "https://www.beebs.app/fr/listing",
   },
   ebay: {
     implemented: true,
