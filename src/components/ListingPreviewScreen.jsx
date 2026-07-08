@@ -9,6 +9,7 @@ import { Loader } from "./ui";
 import { detectObjectIcon } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath } from "../utils/lbcCategories";
+import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -98,11 +99,21 @@ function getPlatformFieldsConfig(t) {
       { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
     ],
+    // eBay.fr est francophone : clés et valeurs FR canoniques, alignées sur
+    // les autres plateformes ET sur ce que consomme l'extension (etat, taille,
+    // genre, marque, matiere, couleur). L'ancienne config anglophone
+    // (condition/size/brand/material) datait d'avant le mapping catégories —
+    // ses clés n'étaient lues par personne. Genre indispensable : c'est lui
+    // qui choisit le rayon eBay (Femme/Homme/Enfant passent tels quels,
+    // "Enfant : unisexe" est un rayon réel ; Mixte n'a pas de rayon → blocage
+    // doux à la publication comme Vinted).
     ebay: [
-      { key:"condition", label:"Condition", type:"select", options:["New","Like New","Very Good","Good","Acceptable"].map(v => ({ value:v, label:v })) },
-      { key:"size",      label:"Size",      type:"select", options:["XS","S","M","L","XL","XXL","One Size"].map(v => ({ value:v, label:v })) },
-      { key:"brand",     label:"Brand",     type:"text" },
-      { key:"material",  label:"Material",  type:"text" },
+      { key:"etat",    label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
+      { key:"taille",  label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
+      { key:"genre",   label:t("fieldGenderLabel"),    type:"select", options: gender },
+      { key:"marque",  label:t("fieldBrandLabel"),     type:"text" },
+      { key:"matiere", label:t("fieldMaterialLabel"),  type:"text" },
+      { key:"couleur", label:t("fieldColorLabel"),     type:"text" },
     ],
   };
 }
@@ -1239,6 +1250,36 @@ export default function ListingPreviewScreen({
           // `couleur` (IA ou édité) peut être composé ("Marine et Blanc") :
           // mêmes séparateurs que la cascade extension, la dominante d'abord.
           if (pf.couleur) {
+            const colors = String(pf.couleur)
+              .split(/\s+et\s+|[,/&+]/i)
+              .map(s => s.trim())
+              .filter(Boolean)
+              .slice(0, 2);
+            if (colors.length) pf.colors = colors;
+          }
+        }
+        if (platform === "ebay") {
+          // Catégorie eBay posée à l'insert : categoryPath (libellés, pour
+          // les messages d'erreur et la vérification post-navigation) ET
+          // categoryId numérique (c'est LUI que l'extension met dans l'URL
+          // /sl/list — le path ne sert jamais à naviguer). Genre : les
+          // valeurs du stepper (Femme/Homme/Enfant) passent TELLES QUELLES
+          // — eBay a un vrai rayon "Enfant : unisexe" (contrairement à
+          // Vinted/Beebs) ; seul Mixte reste sans rayon (sauf 🌸 parfums).
+          const icon = detectObjectIcon(
+            edited[platform]?.title,
+            edited[platform]?.description,
+            pf.categorie || initialListing?.categorie
+          );
+          const categoryPath = getEbayCategoryPath(icon, pf.genre);
+          const categoryId = getEbayCategoryId(icon, pf.genre);
+          if (categoryPath) pf.ebayCategoryPath = categoryPath;
+          if (categoryId) pf.ebayCategoryId = categoryId;
+          if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
+          // Couleur : l'extension consomme colors[0] (les specifics eBay
+          // Couleur sont mono-valeur) — même split que Vinted, dominante
+          // d'abord.
+          if (pf.couleur && !pf.colors) {
             const colors = String(pf.couleur)
               .split(/\s+et\s+|[,/&+]/i)
               .map(s => s.trim())
