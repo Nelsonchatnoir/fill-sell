@@ -11,15 +11,20 @@ const CLICK_DELAY = 250;
 
 // ── Communication avec le background ────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type !== "FILL_LISTING") return;
+// typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
+// dry-run piloté (hors extension), où chrome.runtime n'existe pas — même
+// pattern que ebay.js/beebs.js.
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== "FILL_LISTING") return;
 
-  fillListingForm(msg.job)
-    .then((result) => sendResponse(result))
-    .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+    fillListingForm(msg.job)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
 
-  return true; // réponse asynchrone
-});
+    return true; // réponse asynchrone
+  });
+}
 
 // ── Remplissage du wizard ────────────────────────────────────────────────────
 //
@@ -132,10 +137,25 @@ async function fillListingForm(job) {
   // Leboncoin a déjà pré-rempli depuis le titre (il est souvent plus précis
   // que nos données — ex. Type="Montre quartz" déduit de "Casio A158").
   if (fields.etat) {
-    await fillCriterionSafe("état", 'label[for="condition"]', fields.etat, warnings);
+    // Le critère état s'appelle "condition" sur certaines catégories (relevé
+    // Montres & Bijoux) mais "clothing_condition" sur le rayon Vêtements
+    // (relevé campagne 2026-07-08) — même pattern suffixe que _brand/_material.
+    await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
   }
   if (fields.univers || fields.genre) {
     await fillUnivers(fields.univers || fields.genre, warnings);
+  }
+  if (fields.taille) {
+    // Pointure OBLIGATOIRE sur Mode>Chaussures ("Veuillez choisir une
+    // pointure" bloque l'aperçu — relevé campagne 2026-07-08, for="shoe_size").
+    // Sur Vêtements le critère taille s'appelle "clothing_st" (relevé) et
+    // n'est pas obligatoire. Préfixe EU retiré comme sur Vinted/eBay.
+    await fillCriterionSafe(
+      "taille",
+      'label[for$="_size"], label[for="clothing_st"]',
+      String(fields.taille).replace(/^EU\s*/i, ""),
+      warnings
+    );
   }
   if (fields.marque) {
     await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true });
@@ -367,9 +387,13 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
 // (Vêtements) le contrôle peut être rendu autrement (radios/pills) — d'où le
 // fallback : conteneur titré "Univers" → clic sur l'option via la cascade.
 async function fillUnivers(rawValue, warnings) {
-  // 1. Combobox classique (relevé Montres & Bijoux)
-  if (findCriterionInput('label[for$="_univers"]')) {
-    await fillCriterionSafe("univers", 'label[for$="_univers"]', rawValue, warnings, { skipIfPrefilled: true });
+  // 1. Combobox classique. Suffixes relevés : "_univers" (Montres & Bijoux),
+  // "_universe" (anglais — Équipement bébé, campagne 2026-07-08 ; ses valeurs
+  // sont FONCTIONNELLES : Alimentation/Mobilité/Sécurité/Sommeil..., pas un
+  // genre — un rawValue genre n'y matchera pas, warning propre attendu tant
+  // que l'app ne fournit pas de mapping dédié).
+  if (findCriterionInput('label[for$="_univers"], label[for$="_universe"]')) {
+    await fillCriterionSafe("univers", 'label[for$="_univers"], label[for$="_universe"]', rawValue, warnings, { skipIfPrefilled: true });
     return;
   }
 
@@ -553,8 +577,51 @@ function realClick(el) {
 // ── Helpers génériques (repris de vinted.js — candidats à un shared-fill.js
 // commun quand les deux handlers seront stabilisés) ─────────────────────────
 
+// ── Timers non throttlés (fix campagne de test 2026-07-08) ──────────────────
+// L'onglet de travail est TOUJOURS en arrière-plan en production (créé
+// active:false par le background) : Chrome clampe alors les setTimeout de la
+// page à 1/s, puis 1/min après 5 min cachée (intensive throttling) — un
+// remplissage passait à >10 min, au-delà des 120 s de sendMessageToTab côté
+// background (échec systématique constaté). Les timers des dedicated workers
+// ne subissent pas ce clamp : le délai court dans le worker, la page ne fait
+// que recevoir le postMessage. Un setTimeout page reste armé en parallèle
+// (premier arrivé gagne) : filet si le CSP de la plateforme bloque les blob
+// workers — on retombe alors sur la lenteur d'origine, jamais sur un blocage.
+const __timerWorker = (() => {
+  try {
+    const blob = new Blob(["onmessage=e=>setTimeout(()=>postMessage(e.data.id),e.data.ms)"], { type: "application/javascript" });
+    const w = new Worker(URL.createObjectURL(blob));
+    w.onerror = () => {};
+    return w;
+  } catch {
+    return null;
+  }
+})();
+const __timerCallbacks = new Map();
+let __timerSeq = 0;
+if (__timerWorker) {
+  __timerWorker.onmessage = (e) => {
+    const cb = __timerCallbacks.get(e.data);
+    __timerCallbacks.delete(e.data);
+    cb?.();
+  };
+}
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    let done = false;
+    const id = __timerWorker ? ++__timerSeq : null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (id != null) __timerCallbacks.delete(id);
+      resolve();
+    };
+    if (id != null) {
+      __timerCallbacks.set(id, finish);
+      __timerWorker.postMessage({ id, ms });
+    }
+    setTimeout(finish, ms);
+  });
 }
 
 function waitForElement(selector, timeoutMs = 10_000) {

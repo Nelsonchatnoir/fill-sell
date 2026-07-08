@@ -88,6 +88,12 @@ function getPlatformFieldsConfig(t) {
     ],
     leboncoin: [
       { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.new_, condition.veryGood, condition.good, condition.correct, condition.forParts] },
+      // Taille indispensable pour les chaussures : la Pointure est un critère
+      // OBLIGATOIRE du rayon Mode>Chaussures LBC ("Veuillez choisir une
+      // pointure" bloque l'aperçu — relevé campagne 2026-07-08). Sans cette
+      // entrée, mergeFieldsWithLens jette la taille générée par l'IA (même
+      // piège que l'univers, documenté plus bas).
+      { key:"taille",       label:t("fieldSizeLabel"),          type:"select", options: size, groups: sizeGroups },
       { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormat },
       // Univers (rayon Mode LBC) : mêmes libellés que le genre Vinted, mapping
       // 1:1 vérifié (docs/leboncoin-form-survey.md) — LBC a un rayon Mixte.

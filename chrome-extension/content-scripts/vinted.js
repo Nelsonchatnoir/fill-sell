@@ -15,15 +15,20 @@ const DROPDOWN_PANEL_SELECTOR = ".input-dropdown__content";
 
 // ── Communication avec le background ──────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type !== "FILL_LISTING") return;
+// typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
+// dry-run piloté (hors extension), où chrome.runtime n'existe pas — même
+// pattern que ebay.js/beebs.js.
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== "FILL_LISTING") return;
 
-  fillListingForm(msg.job)
-    .then((result) => sendResponse(result))
-    .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+    fillListingForm(msg.job)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
 
-  return true; // réponse asynchrone
-});
+    return true; // réponse asynchrone
+  });
+}
 
 // ── Remplissage du formulaire ──────────────────────────────────────────────────
 
@@ -197,8 +202,51 @@ async function fillListingForm(job) {
 
 // ── Helpers génériques ─────────────────────────────────────────────────────────
 
+// ── Timers non throttlés (fix campagne de test 2026-07-08) ──────────────────
+// L'onglet de travail est TOUJOURS en arrière-plan en production (créé
+// active:false par le background) : Chrome clampe alors les setTimeout de la
+// page à 1/s, puis 1/min après 5 min cachée (intensive throttling) — un
+// remplissage passait à >10 min, au-delà des 120 s de sendMessageToTab côté
+// background (échec systématique constaté). Les timers des dedicated workers
+// ne subissent pas ce clamp : le délai court dans le worker, la page ne fait
+// que recevoir le postMessage. Un setTimeout page reste armé en parallèle
+// (premier arrivé gagne) : filet si le CSP de la plateforme bloque les blob
+// workers — on retombe alors sur la lenteur d'origine, jamais sur un blocage.
+const __timerWorker = (() => {
+  try {
+    const blob = new Blob(["onmessage=e=>setTimeout(()=>postMessage(e.data.id),e.data.ms)"], { type: "application/javascript" });
+    const w = new Worker(URL.createObjectURL(blob));
+    w.onerror = () => {};
+    return w;
+  } catch {
+    return null;
+  }
+})();
+const __timerCallbacks = new Map();
+let __timerSeq = 0;
+if (__timerWorker) {
+  __timerWorker.onmessage = (e) => {
+    const cb = __timerCallbacks.get(e.data);
+    __timerCallbacks.delete(e.data);
+    cb?.();
+  };
+}
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    let done = false;
+    const id = __timerWorker ? ++__timerSeq : null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (id != null) __timerCallbacks.delete(id);
+      resolve();
+    };
+    if (id != null) {
+      __timerCallbacks.set(id, finish);
+      __timerWorker.postMessage({ id, ms });
+    }
+    setTimeout(finish, ms);
+  });
 }
 
 // Attend qu'un élément apparaisse dans le DOM (pages SPA à rendu différé).

@@ -192,10 +192,14 @@ async function fillListingForm(job) {
   // ── Prix : basculer Enchères → Achat immédiat puis poser le prix ─────────
   if (job.price != null) {
     await ensureAchatImmediat(warnings);
+    // 20 s (et pas 8) : la section PRIX se re-rend après la bascule Achat
+    // immédiat ET après le calcul du prix suggéré (priceAutoFillPref) — cas
+    // réel campagne 2026-07-08 : le champ est apparu après le timeout de 8 s,
+    // le prix suggéré eBay (5,28 €) restait en place au lieu du prix du job.
     const priceInput = await waitFor(() => {
       const el = document.querySelector('input[name="price"]');
       return el && el.offsetParent !== null ? el : null;
-    }, 8000);
+    }, 20000);
     if (priceInput) {
       priceInput.focus();
       setNativeValue(priceInput, String(job.price).replace(".", ","));
@@ -464,8 +468,51 @@ async function dismissLightboxes() {
 // ── Helpers génériques (repris de vinted.js/leboncoin.js — candidats à un
 // shared-fill.js commun quand les trois handlers seront stabilisés) ──────────
 
+// ── Timers non throttlés (fix campagne de test 2026-07-08) ──────────────────
+// L'onglet de travail est TOUJOURS en arrière-plan en production (créé
+// active:false par le background) : Chrome clampe alors les setTimeout de la
+// page à 1/s, puis 1/min après 5 min cachée (intensive throttling) — un
+// remplissage passait à >10 min, au-delà des 120 s de sendMessageToTab côté
+// background (échec systématique constaté). Les timers des dedicated workers
+// ne subissent pas ce clamp : le délai court dans le worker, la page ne fait
+// que recevoir le postMessage. Un setTimeout page reste armé en parallèle
+// (premier arrivé gagne) : filet si le CSP de la plateforme bloque les blob
+// workers — on retombe alors sur la lenteur d'origine, jamais sur un blocage.
+const __timerWorker = (() => {
+  try {
+    const blob = new Blob(["onmessage=e=>setTimeout(()=>postMessage(e.data.id),e.data.ms)"], { type: "application/javascript" });
+    const w = new Worker(URL.createObjectURL(blob));
+    w.onerror = () => {};
+    return w;
+  } catch {
+    return null;
+  }
+})();
+const __timerCallbacks = new Map();
+let __timerSeq = 0;
+if (__timerWorker) {
+  __timerWorker.onmessage = (e) => {
+    const cb = __timerCallbacks.get(e.data);
+    __timerCallbacks.delete(e.data);
+    cb?.();
+  };
+}
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    let done = false;
+    const id = __timerWorker ? ++__timerSeq : null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (id != null) __timerCallbacks.delete(id);
+      resolve();
+    };
+    if (id != null) {
+      __timerCallbacks.set(id, finish);
+      __timerWorker.postMessage({ id, ms });
+    }
+    setTimeout(finish, ms);
+  });
 }
 
 async function waitFor(fn, timeoutMs = 5000) {
