@@ -14,6 +14,29 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// Liste récursivement tous les fichiers d'un préfixe (les entrées sans id sont
+// des dossiers — ex: {user_id}/raw/, {user_id}/enhanced/).
+async function listUserFiles(bucket: string, prefix: string, depth = 0): Promise<string[]> {
+  if (depth > 5) return [];
+  const { data: entries, error } = await supabaseAdmin.storage
+    .from(bucket)
+    .list(prefix, { limit: 1000 });
+  if (error) {
+    console.error(`[delete-account] Erreur list storage "${prefix}":`, error.message);
+    return [];
+  }
+  const paths: string[] = [];
+  for (const entry of entries ?? []) {
+    const fullPath = `${prefix}/${entry.name}`;
+    if (entry.id) {
+      paths.push(fullPath);
+    } else {
+      paths.push(...await listUserFiles(bucket, fullPath, depth + 1));
+    }
+  }
+  return paths;
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -76,13 +99,41 @@ serve(async (req) => {
       }
     }
 
-    // 4. Suppression des données utilisateur (FK constraints)
+    // 4. Suppression des tables dépendantes
+    // cross_post_jobs : ne laisser aucun job qu'un client (extension Chrome)
+    // pourrait encore tenter de traiter après la suppression du compte.
     console.log("[delete-account] Suppression données userId:", userId);
-    await supabaseAdmin.from('inventaire').delete().eq('user_id', userId);
+    await supabaseAdmin.from('cross_post_jobs').delete().eq('user_id', userId);
+    await supabaseAdmin.from('usage_logs').delete().eq('user_id', userId);
+    await supabaseAdmin.from('email_logs').delete().eq('user_id', userId);
+
+    // 5. Suppression des fichiers Storage listing-photos (non bloquant)
+    // Arborescence : {user_id}/raw/... et {user_id}/enhanced/... → listing récursif
+    try {
+      const paths = await listUserFiles("listing-photos", userId);
+      if (paths.length > 0) {
+        const { error: rmErr } = await supabaseAdmin.storage.from("listing-photos").remove(paths);
+        if (rmErr) {
+          console.error("[delete-account] Erreur suppression storage (non bloquant):", rmErr.message);
+        } else {
+          console.log(`[delete-account] Storage: ${paths.length} fichier(s) supprimé(s) dans listing-photos`);
+        }
+      } else {
+        console.log("[delete-account] Storage: aucun fichier dans listing-photos");
+      }
+    } catch (storageErr: unknown) {
+      const msg = storageErr instanceof Error ? storageErr.message : String(storageErr);
+      console.error("[delete-account] Erreur storage (non bloquant):", msg);
+    }
+
+    // 6. inventaire / ventes / profiles
+    // ventes AVANT inventaire : ventes.inventaire_id → inventaire(id) sans cascade,
+    // supprimer inventaire en premier échouerait si une vente y est liée.
     await supabaseAdmin.from('ventes').delete().eq('user_id', userId);
+    await supabaseAdmin.from('inventaire').delete().eq('user_id', userId);
     await supabaseAdmin.from('profiles').delete().eq('id', userId);
 
-    // 5. Suppression auth user
+    // 7. Suppression auth user
     console.log("[delete-account] Tentative suppression auth userId:", userId);
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
