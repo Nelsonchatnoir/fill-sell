@@ -36,6 +36,11 @@
       "matches": ["https://*.leboncoin.fr/*"],
       "js": ["content-scripts/leboncoin.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.ebay.fr/*"],
+      "js": ["content-scripts/ebay.js"],
+      "run_at": "document_idle"
     }
   ]
 }

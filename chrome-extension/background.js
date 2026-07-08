@@ -29,8 +29,22 @@ const PLATFORM_HANDLERS = {
     newListingUrl: "https://www.beebs.app", // TODO: URL exacte du formulaire de dépôt
   },
   ebay: {
-    implemented: false,
-    newListingUrl: "https://www.ebay.fr/sl/sell",
+    implemented: true,
+    // eBay n'a pas de wizard à piloter : l'URL directe /sl/list avec le
+    // categoryId (posé par l'app via ebayCategories.js) + titre + conditionId
+    // ouvre le formulaire final pré-rempli (relevé en session réelle
+    // 2026-07-07). D'où une URL PAR JOB — newListingUrl est une fonction,
+    // résolue dans processJob. conditionId : famille seulement (neuf → 1000,
+    // sinon 3000 = Occasion / Occasion - Très bon état selon la catégorie) ;
+    // la granularité fine des états vêtements viendra dans un lot ultérieur.
+    newListingUrl: (job) => {
+      const fields = job.platform_fields ?? {};
+      const params = new URLSearchParams({ mode: "AddItem" });
+      if (fields.ebayCategoryId) params.set("categoryId", String(fields.ebayCategoryId));
+      if (job.title) params.set("title", String(job.title).slice(0, 80));
+      params.set("condition", /neuf/i.test(fields.etat ?? "") ? "1000" : "3000");
+      return `https://www.ebay.fr/sl/list?${params}`;
+    },
   },
 };
 
@@ -197,7 +211,12 @@ async function processJob(job, accessToken) {
     // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
     // neuf par job (voir getOrCreateWorkTab : DataDome a suspendu la session
     // quand les tests accumulaient un onglet Vinted par requête).
-    const tabId = await getOrCreateWorkTab(job.platform, handler.newListingUrl);
+    // newListingUrl peut être une fonction (eBay : URL par job, construite
+    // avec le categoryId du mapping) ou une chaîne fixe (Vinted, LBC).
+    const listingUrl = typeof handler.newListingUrl === "function"
+      ? handler.newListingUrl(job)
+      : handler.newListingUrl;
+    const tabId = await getOrCreateWorkTab(job.platform, listingUrl);
 
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
@@ -313,8 +332,12 @@ async function retryInTempTab(job, handler, originalResult) {
   let tab = null;
   try {
     // Fragment distinct de #fillsell-worker : cet onglet ne sera jamais
-    // adopté comme onglet de travail persistant.
-    tab = await chrome.tabs.create({ url: handler.newListingUrl + "#fillsell-temp", active: false });
+    // adopté comme onglet de travail persistant. (typeof : newListingUrl
+    // peut être une fonction — cf. eBay — même si seul LBC pose draftBlocked.)
+    const tempUrl = typeof handler.newListingUrl === "function"
+      ? handler.newListingUrl(job)
+      : handler.newListingUrl;
+    tab = await chrome.tabs.create({ url: tempUrl + "#fillsell-temp", active: false });
     await waitForTabComplete(tab.id);
     const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
     if (result?.draftBlocked) {
