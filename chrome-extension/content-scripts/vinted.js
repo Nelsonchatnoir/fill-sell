@@ -5,7 +5,6 @@
 // bouton publier n'est JAMAIS cliqué — le résultat est loggé en console.
 const DRY_RUN = true;
 
-const CLICK_DELAY = 250;
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
 // supposé partagé avec Marque/Taille/État/Couleur/Matière, mêmes composants
 // Vinted). waitForElementGone dessus ne bloque jamais (résout au timeout),
@@ -249,6 +248,72 @@ function sleep(ms) {
   });
 }
 
+// ── Timing humain (fix blocage anti-bot 2026-07-09) ─────────────────────────
+// Un blocage "Accès temporairement restreint" ("vous surfez et cliquez à une
+// vitesse surhumaine") a été déclenché sur Leboncoin par un remplissage
+// instantané. Deux signaux de bot évidents, présents sur les 4 handlers :
+//   - valeur posée en UNE fois (setter natif + event "input"), aucune séquence
+//     clavier — un champ de 60 caractères se remplissait en 0 ms ;
+//   - rythme mécanique : exactement CLICK_DELAY (250 ms) entre chaque action.
+// On remplace donc les délais fixes par des tirages aléatoires (humanPause) et
+// la pose de valeur en bloc par une frappe caractère par caractère (typeHuman)
+// encadrée de keydown/keypress/keyup.
+//
+// ⚠️ Tous les délais passent par sleep() — donc par le timer Web Worker non
+// clampé ci-dessus. Le timing humain reste ainsi valide dans un onglet caché,
+// où setTimeout serait bridé à 1/s (et où 200 caractères à 165 ms coûteraient
+// 200 s au lieu de 33 s). Ne JAMAIS remplacer ces sleep() par des setTimeout.
+const HUMAN_CHAR_MIN = 80, HUMAN_CHAR_MAX = 250;
+const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
+// Au-delà de ce seuil (description générée : plusieurs centaines de
+// caractères), la frappe caractère par caractère coûterait des minutes et
+// ferait exploser le budget de sendMessageToTab. On insère alors par blocs
+// espacés d'une pause humaine — ce que fait de toute façon un vendeur qui
+// colle un texte puis le relit, et qui reste très loin du "tout en une fois".
+const HUMAN_TYPE_MAX_CHARS = 120;
+const HUMAN_CHUNK_CHARS = 40;
+
+const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
+const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => sleep(randInt(min, max));
+
+// Événements clavier synthétiques : ils n'insèrent aucun texte (c'est
+// setNativeValue/execCommand qui le fait) mais ils donnent aux écouteurs de la
+// page la séquence qu'une vraie frappe produit. Untrusted (isTrusted=false),
+// comme tous nos events — on ne cherche pas à tromper une détection qui
+// inspecte isTrusted, seulement à ne plus émettre un profil de frappe absurde.
+function dispatchKey(el, type, char) {
+  el.dispatchEvent(new KeyboardEvent(type, {
+    key: char, bubbles: true, cancelable: true, composed: true,
+  }));
+}
+
+// Frappe humaine dans un input/textarea React. ⚠️ Ne PAS utiliser sur un champ
+// à masque de saisie (prix Vinted) : la concaténation sur el.value relit une
+// valeur déjà reformatée par la page (bug "NaN €", cf. fillPriceField).
+async function typeHuman(el, text) {
+  el.focus();
+  setNativeValue(el, "");
+  const str = String(text);
+
+  if (str.length <= HUMAN_TYPE_MAX_CHARS) {
+    for (const char of str) {
+      dispatchKey(el, "keydown", char);
+      dispatchKey(el, "keypress", char);
+      setNativeValue(el, el.value + char);
+      dispatchKey(el, "keyup", char);
+      await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+    }
+    return;
+  }
+  for (let i = 0; i < str.length; i += HUMAN_CHUNK_CHARS) {
+    const chunk = str.slice(i, i + HUMAN_CHUNK_CHARS);
+    dispatchKey(el, "keydown", chunk[0]);
+    setNativeValue(el, el.value + chunk);
+    dispatchKey(el, "keyup", chunk[chunk.length - 1]);
+    await humanPause();
+  }
+}
+
 // Attend qu'un élément apparaisse dans le DOM (pages SPA à rendu différé).
 function waitForElement(selector, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
@@ -352,10 +417,9 @@ function simulateFullClick(element) {
 
 async function fillTextField(selector, value) {
   const el = await waitForElement(selector);
-  el.focus();
-  setNativeValue(el, value);
+  await typeHuman(el, value);
   el.blur();
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 async function fillPriceField(value) {
@@ -368,12 +432,19 @@ async function fillPriceField(value) {
   // Fix : on construit la cible nous-mêmes (jamais de lecture de `el.value`),
   // et on l'assigne en un seul coup — alternative validée par le rapport DOM
   // ("définir la valeur puis déclencher input/change/blur").
+  //
+  // ⚠️ EXCEPTION VOLONTAIRE au timing humain (2026-07-09) : typeHuman
+  // concatène sur el.value, ce qui ré-introduirait exactement le bug "NaN €"
+  // décrit ci-dessus sur ce champ masqué. Un prix fait 2 à 4 caractères — la
+  // pose en un coup n'est pas le signal de vitesse qui a déclenché le blocage
+  // (c'étaient le titre et la description). On encadre de pauses humaines.
   const el = await waitForElement('#price, [data-testid="price-input--input"]');
+  await humanPause();
   el.focus();
   const str = String(value).replace(".", ",");
   setNativeValue(el, str);
   el.dispatchEvent(new Event("blur", { bubbles: true }));
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 async function openDropdown(triggerSelector) {
@@ -402,7 +473,7 @@ async function openDropdown(triggerSelector) {
       `après plusieurs tentatives.`
     );
   }
-  await sleep(CLICK_DELAY);
+  await humanPause();
   return trigger;
 }
 
@@ -439,7 +510,7 @@ async function confirmDropdownIfNeeded() {
     // après "Fait" (250 ms fixes) tombait sur la modale Catégorie encore en
     // train de se démonter, #brand-search-input n'apparaissait jamais.
     await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 3000);
-    await sleep(CLICK_DELAY);
+    await humanPause();
   }
 }
 
@@ -565,7 +636,7 @@ async function closeAnyOpenDropdown() {
   if (done) done.click();
   else document.body.click();
   await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 async function selectSimpleOption(triggerSelector, optionSelector, optionText, { searchInputSelector } = {}) {
@@ -579,23 +650,20 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
     // polling en aval.
     const search = await waitForElement(searchInputSelector, 5000).catch(() => null);
     if (search) {
-      search.focus();
-      // Frappe caractère par caractère (comme le prix) : une assignation
-      // unique n'émet qu'un seul event "input", pas toujours suffisant pour
-      // déclencher le debounce de recherche Vinted.
-      setNativeValue(search, "");
-      for (const char of optionText) {
-        setNativeValue(search, search.value + char);
-        await sleep(40);
-      }
+      // Frappe caractère par caractère : une assignation unique n'émet qu'un
+      // seul event "input", pas toujours suffisant pour déclencher le debounce
+      // de recherche Vinted. Depuis 2026-07-09 le rythme est humain (typeHuman,
+      // 80–250 ms/caractère + keydown/keyup) au lieu des 40 ms fixes.
+      await typeHuman(search, optionText);
       optionTimeout = 10000;
     }
   }
   // waitForOptionByText re-scanne le DOM toutes les 80 ms jusqu'au timeout —
   // c'est lui qui absorbe debounce + réseau + re-render, sans délai fixe.
   const option = await waitForOptionByText(optionSelector, optionText, optionTimeout);
+  await humanPause(); // temps de "lecture" de la liste avant le clic
   option.click();
-  await sleep(CLICK_DELAY);
+  await humanPause();
   await confirmDropdownIfNeeded();
 }
 
@@ -607,8 +675,9 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
   try {
     await openDropdown(triggerSelector);
     const match = await waitForOptionCascade(optionSelector, rawText);
+    await humanPause(); // temps de "lecture" de la liste avant le clic
     match.el.click();
-    await sleep(CLICK_DELAY);
+    await humanPause();
     await confirmDropdownIfNeeded();
     if (match.stage !== "exact") {
       const note = `${fieldName}: "${rawText}" → option Vinted "${match.label}" (match ${match.stage})`;
@@ -702,6 +771,7 @@ async function selectCategory(path) {
       );
     }
 
+    await humanPause();
     option.click();
     await sleep(400);
   }
@@ -723,8 +793,9 @@ async function selectColors(colorNames, warnings = []) {
   for (const name of colorNames.slice(0, 2)) {
     const match = findOptionCascade(document, '[data-testid^="color-"]', name);
     if (match) {
+      await humanPause();
       match.el.click();
-      await sleep(CLICK_DELAY);
+      await humanPause();
       if (match.stage !== "exact") {
         const note = `couleur: "${name}" → option Vinted "${match.label}" (match ${match.stage})`;
         console.warn(`[vinted] ≈ ${note}`);
@@ -737,7 +808,7 @@ async function selectColors(colorNames, warnings = []) {
     }
   }
   document.body.click(); // fermer le menu, pas de bouton "valider" identifié
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 async function selectPackageSize(size = "Petit") {
@@ -746,7 +817,7 @@ async function selectPackageSize(size = "Petit") {
   const n = map[size] || 1;
   const radio = await waitForElement(`[data-testid="package_type_selector_${n}--input"]`);
   radio.click();
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 // job.photos: [{ url, type }] — pas des File prêts, on fetch chaque url puis
@@ -764,6 +835,7 @@ async function uploadPhotos(photos) {
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   input.files = dataTransfer.files;
+  await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await sleep(1500 * files.length); // laisser le temps à l'upload asynchrone Vinted
 }
@@ -771,4 +843,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension (le libellé change à chaque évolution notable du remplissage).
-console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", matching: cascade-v1 + login-check)");
+console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", matching: cascade-v1 + login-check + timing humain)");

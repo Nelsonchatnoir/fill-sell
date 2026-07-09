@@ -7,8 +7,6 @@
 // confirme l'exactitude des informations » — n'est JAMAIS cliqué.
 const DRY_RUN = true;
 
-const CLICK_DELAY = 250;
-
 // ── Communication avec le background ────────────────────────────────────────
 
 // typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
@@ -42,9 +40,11 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 //
 // platform_fields attendus : { etat, format_colis, univers (fourni depuis
 //   2026-07 par l'app : IA + défaut "Mixte" sur le rayon Mode — LBC a un
-//   rayon Mixte, cf. form-survey), lbcCategoryPath ([racine, feuille], posé
-//   par l'app via lbcCategories.js), adresse? (Réglages FillSell), marque?,
-//   matiere? }
+//   rayon Mixte, cf. form-survey ; valeur FONCTIONNELLE — "Alimentation"… —
+//   sur Famille>Équipement bébé, posée par getLbcBabyEquipment),
+//   lbcCategoryPath ([racine, feuille], posé par l'app via lbcCategories.js),
+//   lbcProduit? (critère Produit* d'Équipement bébé, même origine),
+//   adresse? (Réglages FillSell), marque?, matiere? }
 //
 // Politique A+C : adresse absente ou introuvable dans l'autocomplete →
 // { success:false, needsUser:true } : le background remet le job en PENDING
@@ -145,6 +145,23 @@ async function fillListingForm(job) {
   if (fields.univers || fields.genre) {
     await fillUnivers(fields.univers || fields.genre, warnings);
   }
+  if (fields.lbcProduit) {
+    // Produit* (Équipement bébé, label for="baby_equipment_type") : critère
+    // OBLIGATOIRE dont les options dépendent de l'univers — d'où le passage
+    // APRÈS fillUnivers. Le combobox peut n'être (ré)injecté qu'une fois
+    // l'univers posé : attente courte, puis saisie non bloquante (un échec
+    // remonte en warning et le Continuer raté le transforme en relevé
+    // correctif listant les options réelles). Critère introuvable → warning
+    // EXPLICITE, jamais silencieux (même leçon que l'univers, 2026-07-06).
+    const produitLabel = await waitFor(() => document.querySelector('label[for$="_type"]'), 5000);
+    if (produitLabel) {
+      await fillCriterionSafe("produit", 'label[for$="_type"]', fields.lbcProduit, warnings, { skipIfPrefilled: true });
+    } else {
+      const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+    }
+  }
   if (fields.taille) {
     // Pointure OBLIGATOIRE sur Mode>Chaussures ("Veuillez choisir une
     // pointure" bloque l'aperçu — relevé campagne 2026-07-08, for="shoe_size").
@@ -195,18 +212,27 @@ async function fillListingForm(job) {
 
   // ── Étape 4 : aperçu final ───────────────────────────────────────────────
   if (job.description) {
-    setFieldValue(bodyArea, job.description);
+    // typeInto (et non setFieldValue) : la description est le plus long champ
+    // du wizard, c'est celui dont l'apparition instantanée se voyait le plus.
+    // Insérée par blocs à rythme humain (cf. HUMAN_TYPE_MAX_CHARS).
+    await typeInto(bodyArea, job.description);
     bodyArea.blur();
-    await sleep(CLICK_DELAY);
+    await humanPause();
   }
 
   if (job.price != null) {
     // LBC pré-remplit un prix suggéré — on impose celui du job.
     const priceInput = await waitForElement("#price_cents", 8000).catch(() => null);
     if (priceInput) {
+      // Pose en un coup (setFieldValue, pas typeInto) : champ à format
+      // monétaire pré-rempli par LBC, la frappe caractère par caractère
+      // risquerait un reformatage à la volée (bug "NaN €" vécu côté Vinted).
+      // 2 à 4 caractères : ce n'est pas le signal de vitesse à l'origine du
+      // blocage. Encadré de pauses humaines.
+      await humanPause();
       setFieldValue(priceInput, String(Math.round(Number(job.price))));
       priceInput.dispatchEvent(new Event("blur", { bubbles: true }));
-      await sleep(CLICK_DELAY);
+      await humanPause();
     } else {
       const note = "prix: champ #price_cents introuvable, prix suggéré LBC conservé";
       console.warn(`[leboncoin] ⚠️ ${note}`);
@@ -261,8 +287,9 @@ async function selectCategory(root, leaf) {
 
   const suggestionRadio = findSuggestionRadio(root, leaf);
   if (suggestionRadio) {
+    await humanPause(); // temps de "lecture" des suggestions avant le clic
     suggestionRadio.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await sleep(CLICK_DELAY);
+    await humanPause();
     console.log(`[leboncoin] catégorie via suggestion: ${root} > ${leaf}`);
     return;
   }
@@ -271,6 +298,7 @@ async function selectCategory(root, leaf) {
   const trigger = [...document.querySelectorAll('input[role="combobox"], button')]
     .find((e) => /choisissez/i.test(e.value || e.textContent || ""));
   if (!trigger) throw new Error("Catégorie: ni suggestion ni sélecteur manuel trouvés.");
+  await humanPause();
   trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await sleep(800);
 
@@ -285,6 +313,7 @@ async function selectCategory(root, leaf) {
       JSON.stringify([...leftUl.children].map((li) => li.textContent.trim()))
     );
   }
+  await humanPause(); // temps de "lecture" des racines avant le clic
   (rootLi.querySelector("button, a") || rootLi).dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await sleep(600);
 
@@ -300,8 +329,9 @@ async function selectCategory(root, leaf) {
     );
   }
   const leafLi = [...rightUl.children].find((c) => c.textContent.trim() === leaf);
+  await humanPause(); // temps de "lecture" des feuilles avant le clic
   (leafLi.querySelector("button, a") || leafLi).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await sleep(CLICK_DELAY);
+  await humanPause();
   console.log(`[leboncoin] catégorie via sélecteur manuel: ${root} > ${leaf}`);
 }
 
@@ -349,6 +379,7 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       console.log(`[leboncoin] ${fieldName}: déjà pré-rempli par LBC ("${input.value}"), conservé`);
       return true;
     }
+    await humanPause();
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await sleep(700);
     const menu = document.getElementById(input.getAttribute("aria-controls"));
@@ -360,8 +391,9 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 30);
       throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
     }
+    await humanPause(); // temps de "lecture" de la liste avant le clic
     match.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await sleep(CLICK_DELAY);
+    await humanPause();
     if (match.stage !== "exact") {
       const note = `${fieldName}: "${rawValue}" → option LBC "${match.label}" (match ${match.stage})`;
       console.warn(`[leboncoin] ≈ ${note}`);
@@ -373,7 +405,7 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     console.warn(`[leboncoin] ⚠️ ${note}`);
     warnings.push(note);
     document.body.click(); // referme un éventuel menu resté ouvert
-    await sleep(CLICK_DELAY);
+    await humanPause();
     return false;
   }
 }
@@ -390,8 +422,9 @@ async function fillUnivers(rawValue, warnings) {
   // 1. Combobox classique. Suffixes relevés : "_univers" (Montres & Bijoux),
   // "_universe" (anglais — Équipement bébé, campagne 2026-07-08 ; ses valeurs
   // sont FONCTIONNELLES : Alimentation/Mobilité/Sécurité/Sommeil..., pas un
-  // genre — un rawValue genre n'y matchera pas, warning propre attendu tant
-  // que l'app ne fournit pas de mapping dédié).
+  // genre — l'app fournit la valeur fonctionnelle via getLbcBabyEquipment
+  // pour les icônes mappées, 🍼 pour l'instant ; les autres icônes bébé
+  // gardent un rawValue genre qui n'y matchera pas, warning propre attendu).
   if (findCriterionInput('label[for$="_univers"], label[for$="_universe"]')) {
     await fillCriterionSafe("univers", 'label[for$="_univers"], label[for$="_universe"]', rawValue, warnings, { skipIfPrefilled: true });
     return;
@@ -418,8 +451,9 @@ async function fillUnivers(rawValue, warnings) {
         rawValue
       );
       if (match) {
+        await humanPause(); // temps de "lecture" des options avant le clic
         realClick(match.el);
-        await sleep(CLICK_DELAY);
+        await humanPause();
         if (match.stage !== "exact") {
           const note = `univers: "${rawValue}" → option LBC "${match.label}" (match ${match.stage})`;
           console.warn(`[leboncoin] ≈ ${note}`);
@@ -452,17 +486,42 @@ async function fillAddress(adresse, warnings) {
     warnings.push(note);
     return { ok: true };
   }
-  if (input.value.trim()) {
-    console.log(`[leboncoin] adresse: déjà remplie ("${input.value}"), conservée`);
-    return { ok: true };
-  }
+  // ⚠️ ORDRE DES GARDES (corrigé 2026-07-09). Avant, "champ déjà rempli" était
+  // testé AVANT "adresse absente" et retournait ok:true : une valeur laissée
+  // par un brouillon LBC restauré (adresse d'un run de test précédent) était
+  // conservée EN SILENCE et partait dans l'aperçu. Une fausse adresse posée
+  // sans le moindre warning est le pire cas possible — on ne fait plus jamais
+  // confiance à une valeur pré-remplie qu'on n'a pas nous-mêmes vérifiée.
+  const prefilled = input.value.trim();
   if (!adresse) {
     return {
       ok: false,
-      error:
-        "Adresse requise pour Leboncoin : renseigner « Adresse de remise Leboncoin » " +
-        "dans les Réglages FillSell, puis relancer. Le brouillon Leboncoin est conservé.",
+      error: prefilled
+        ? `Le champ adresse de Leboncoin contient déjà "${prefilled}" (brouillon restauré ?), ` +
+          "et aucune « Adresse de remise Leboncoin » n'est renseignée dans les Réglages " +
+          "FillSell : impossible de vérifier que c'est la bonne adresse. La renseigner dans " +
+          "les Réglages, puis relancer. Le brouillon Leboncoin est conservé."
+        : "Adresse requise pour Leboncoin : renseigner « Adresse de remise Leboncoin » " +
+          "dans les Réglages FillSell, puis relancer. Le brouillon Leboncoin est conservé.",
     };
+  }
+
+  // Tokens significatifs de l'adresse des Réglages (mots ≥ 3 lettres + nombres).
+  const tokens = normalizeFuzzy(adresse).split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 || /^\d+$/.test(t));
+  const missingTokens = (text) => {
+    const n = normalizeFuzzy(text);
+    return tokens.filter((t) => !n.includes(t));
+  };
+
+  if (prefilled) {
+    if (!missingTokens(prefilled).length) {
+      console.log(`[leboncoin] adresse: déjà remplie et conforme aux Réglages ("${prefilled}"), conservée`);
+      return { ok: true };
+    }
+    const note = `adresse: champ pré-rempli ("${prefilled}") ≠ adresse des Réglages — réécriture`;
+    console.warn(`[leboncoin] ⚠️ ${note}`);
+    warnings.push(note);
   }
 
   input.scrollIntoView({ block: "center" });
@@ -495,17 +554,42 @@ async function fillAddress(adresse, warnings) {
     return cands.filter((el) => el.offsetParent !== null && el.textContent.trim());
   };
 
-  const tokens = normalizeFuzzy(adresse).split(/[^a-z0-9]+/)
-    .filter((t) => t.length >= 3 || /^\d+$/.test(t));
-  const relevance = (el) => {
-    const n = normalizeFuzzy(el.textContent);
-    return tokens.reduce((score, t) => score + (n.includes(t) ? 1 : 0), 0);
+  // ⚠️ BUG RÉEL DU 2026-07-09 — "10 Rue de Rivoli, Paris (75004) Marais" posé à
+  // la place de l'adresse de l'utilisateur. Deux défauts cumulés, tous deux
+  // corrigés ici :
+  //
+  // 1. LISTE LUE TROP TÔT. Depuis la frappe humaine (80–250 ms/caractère), la
+  //    saisie d'une adresse dure plusieurs SECONDES et Leboncoin propose des
+  //    suggestions pour chaque PRÉFIXE tapé. L'ancien `waitFor(première liste
+  //    non vide)` retournait donc la liste du préfixe ("10 rue de " →
+  //    "10 Rue de Rivoli…"), jamais celle de l'adresse complète. On attend
+  //    maintenant que la liste se STABILISE (deux relevés identiques espacés
+  //    de settleMs) : c'est le signal que le debounce a fini sur le texte final.
+  // 2. SEUIL DE PERTINENCE ABSURDE. L'ancien test acceptait toute suggestion
+  //    partageant AU MOINS UN token : "10 Rue de Rivoli, Paris" partage "10",
+  //    "rue" et "paris" avec "10 rue de la Paix, Paris" et gagnait. On exige
+  //    désormais que TOUS les tokens de l'adresse des Réglages soient présents
+  //    dans la suggestion. Sinon → needsUser (jamais d'adresse approximative).
+  const suggestionsSignature = (els) => els.map((e) => e.textContent.trim()).join("|");
+  const waitForStableSuggestions = async (timeoutMs = 12000, settleMs = 700) => {
+    const start = Date.now();
+    let lastSig = null;
+    let lastChangeAt = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const cur = findSuggestions();
+      const sig = suggestionsSignature(cur);
+      if (sig && sig === lastSig && Date.now() - lastChangeAt >= settleMs) return cur;
+      if (sig !== lastSig) {
+        lastSig = sig;
+        lastChangeAt = Date.now();
+      }
+      await sleep(150);
+    }
+    const last = findSuggestions();
+    return last.length ? last : null;
   };
 
-  const candidates = await waitFor(() => {
-    const c = findSuggestions();
-    return c.length ? c : null;
-  }, 8000);
+  const candidates = await waitForStableSuggestions();
   if (!candidates) {
     return {
       ok: false,
@@ -515,23 +599,32 @@ async function fillAddress(adresse, warnings) {
         "Le brouillon Leboncoin est conservé.",
     };
   }
-  const suggestion = [...candidates].sort((a, b) => relevance(b) - relevance(a))[0];
-  if (!suggestion || relevance(suggestion) === 0) {
-    // Des propositions existent mais aucune ne recoupe l'adresse : ne jamais
-    // forcer la suite avec une adresse non validée. La liste sert de relevé
+
+  // Meilleure suggestion = celle à qui il manque le moins de tokens ; on
+  // n'accepte QUE la couverture totale.
+  const suggestion = [...candidates]
+    .sort((a, b) => missingTokens(a.textContent).length - missingTokens(b.textContent).length)[0];
+  const missing = suggestion ? missingTokens(suggestion.textContent) : tokens;
+  if (!suggestion || missing.length) {
+    // Des propositions existent mais aucune ne couvre l'adresse : ne jamais
+    // forcer la suite avec une adresse approximative. La liste sert de relevé
     // correctif pour ajuster l'adresse dans les Réglages.
     return {
       ok: false,
       error:
-        `Adresse "${adresse}" : aucune suggestion pertinente dans l'autocomplete Leboncoin. ` +
-        `Propositions affichées: ${JSON.stringify(candidates.map((c) => c.textContent.trim()).slice(0, 5))}. ` +
-        "Corriger l'adresse dans les Réglages FillSell. Le brouillon Leboncoin est conservé.",
+        `Adresse "${adresse}" : aucune suggestion Leboncoin ne la couvre entièrement ` +
+        `(la meilleure, "${suggestion ? suggestion.textContent.trim() : "—"}", ne contient pas ` +
+        `${JSON.stringify(missing)}). Propositions affichées: ` +
+        `${JSON.stringify(candidates.map((c) => c.textContent.trim()).slice(0, 5))}. ` +
+        "Corriger l'adresse dans les Réglages FillSell (format : numéro rue, ville). " +
+        "Le brouillon Leboncoin est conservé.",
     };
   }
 
   const chosen = suggestion.textContent.trim();
+  await humanPause(); // temps de "lecture" des suggestions avant le clic
   realClick(suggestion);
-  await sleep(CLICK_DELAY);
+  await humanPause();
 
   // Validation post-sélection : le dropdown doit se fermer et le champ ne
   // doit porter aucun marqueur d'erreur — sinon la sélection n'a pas été
@@ -624,6 +717,43 @@ function sleep(ms) {
   });
 }
 
+// ── Timing humain (fix blocage anti-bot 2026-07-09) ─────────────────────────
+// C'est CE handler qui a déclenché "Accès temporairement restreint" ("vous
+// surfez et cliquez à une vitesse surhumaine") sur Leboncoin. Deux signaux de
+// bot évidents, présents sur les 4 handlers :
+//   - valeur posée en UNE fois : execCommand("insertText") recevait le TEXTE
+//     ENTIER, donc un titre de 60 caractères apparaissait en 0 ms, sans une
+//     seule frappe clavier ;
+//   - rythme mécanique : exactement CLICK_DELAY (250 ms) entre chaque action.
+// On remplace donc les délais fixes par des tirages aléatoires (humanPause) et
+// la pose de valeur en bloc par une frappe caractère par caractère (typeInto)
+// encadrée de keydown/keypress/keyup.
+//
+// ⚠️ Tous les délais passent par sleep() — donc par le timer Web Worker non
+// clampé ci-dessus. Le timing humain reste ainsi valide dans un onglet caché,
+// où setTimeout serait bridé à 1/s (et où 60 caractères à 165 ms coûteraient
+// 60 s au lieu de 10 s). Ne JAMAIS remplacer ces sleep() par des setTimeout.
+const HUMAN_CHAR_MIN = 80, HUMAN_CHAR_MAX = 250;
+const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
+// Au-delà de ce seuil (description : plusieurs centaines de caractères), la
+// frappe caractère par caractère coûterait des minutes et ferait exploser le
+// budget de sendMessageToTab. On insère alors par blocs espacés d'une pause
+// humaine — ce que fait de toute façon un vendeur qui colle un texte.
+const HUMAN_TYPE_MAX_CHARS = 120;
+const HUMAN_CHUNK_CHARS = 40;
+
+const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
+const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => sleep(randInt(min, max));
+
+// Événements clavier synthétiques : ils n'insèrent aucun texte (c'est
+// execCommand qui le fait) mais ils donnent aux écouteurs de la page la
+// séquence qu'une vraie frappe produit.
+function dispatchKey(el, type, char) {
+  el.dispatchEvent(new KeyboardEvent(type, {
+    key: char, bubbles: true, cancelable: true, composed: true,
+  }));
+}
+
 function waitForElement(selector, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(selector);
@@ -670,22 +800,47 @@ function setNativeValue(element, value) {
 // ne se déclenchent JAMAIS (vérifié en dry-run réel — contrairement à Vinted).
 // execCommand("insertText") insère comme une vraie frappe et déclenche bien
 // les handlers React ; on garde setNativeValue en repli si execCommand échoue.
+// Depuis 2026-07-09 : frappe caractère par caractère à rythme humain
+// (80–250 ms) encadrée de keydown/keypress/keyup, au lieu d'un insertText du
+// texte entier. Le premier insertText remplace la sélection totale (donc vide
+// la valeur existante), les suivants s'insèrent au curseur.
 async function typeInto(input, text) {
   input.focus();
   // Vider une éventuelle valeur existante (sélection totale puis remplacement).
   try {
     input.setSelectionRange?.(0, input.value.length);
   } catch { /* certains types d'input n'exposent pas setSelectionRange */ }
-  const ok = document.execCommand("insertText", false, text);
-  if (!ok || input.value !== text) {
-    // Repli : frappe caractère par caractère via le setter natif.
+
+  const str = String(text);
+  const pieces = str.length <= HUMAN_TYPE_MAX_CHARS
+    ? [...str]
+    : (str.match(new RegExp(`[\\s\\S]{1,${HUMAN_CHUNK_CHARS}}`, "g")) ?? []);
+
+  let ok = true;
+  for (const piece of pieces) {
+    dispatchKey(input, "keydown", piece[0]);
+    if (piece.length === 1) dispatchKey(input, "keypress", piece);
+    ok = document.execCommand("insertText", false, piece) && ok;
+    dispatchKey(input, "keyup", piece[piece.length - 1]);
+    if (!ok) break;
+    await (piece.length === 1
+      ? sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX))
+      : humanPause());
+  }
+
+  if (!ok || input.value !== str) {
+    // Repli : frappe caractère par caractère via le setter natif — ⚠️ les
+    // inputs React de LBC IGNORENT setNativeValue (compteur figé, autocomplete
+    // muet), ce repli n'est là que si execCommand devient indisponible.
     setNativeValue(input, "");
-    for (const char of text) {
+    for (const char of str) {
+      dispatchKey(input, "keydown", char);
       setNativeValue(input, input.value + char);
-      await sleep(35);
+      dispatchKey(input, "keyup", char);
+      await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
     }
   }
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 // Renseigne un champ texte/textarea de l'aperçu (description, prix) de façon
@@ -747,6 +902,24 @@ function findOptionCascade(root, optionSelector, text) {
       if (compFuzzy) return { ...compFuzzy, stage: "composant" };
     }
   }
+
+  // Filet singulier/pluriel : "Biberon" ↔ option "Biberons" — aucun stage
+  // précédent ne les rapproche (containsAsWords exige une frontière de mot,
+  // or le "s" du pluriel colle au mot). Comparaison après retrait du "s"
+  // final de chaque mot (normalizeFuzzy a déjà réduit à [a-z0-9]). Ce stage
+  // ne s'exécute que là où la cascade échouait déjà (aucun impact sur les
+  // matchs existants) — ajouté pour Équipement bébé (Produit*, 2026-07-09).
+  const singularize = (s) => s.replace(/([a-z]{2,})s\b/g, "$1");
+  const targetSing = singularize(target);
+  if (targetSing) {
+    const singExact = options.find((o) => singularize(o.norm) === targetSing);
+    if (singExact) return { ...singExact, stage: "singulier-pluriel" };
+    const singFuzzy = options
+      .filter((o) => containsAsWords(singularize(o.norm), targetSing)
+        || containsAsWords(targetSing, singularize(o.norm)))
+      .sort((a, b) => a.norm.length - b.norm.length)[0];
+    if (singFuzzy) return { ...singFuzzy, stage: "singulier-pluriel" };
+  }
   return null;
 }
 
@@ -762,8 +935,9 @@ async function uploadPhotos(input, photos) {
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   input.files = dataTransfer.files;
+  await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await sleep(1500 * files.length);
 }
 
-console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v4: univers radios/pills + erreurs de validation remontées)");
+console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v6: Équipement bébé + timing humain (frappe 80–250 ms, actions 300–900 ms))");

@@ -61,8 +61,6 @@
 //     déduit du seul marqueur "(facultatif)" affiché à côté du libellé.
 const DRY_RUN = true;
 
-const CLICK_DELAY = 250;
-
 // ── Communication avec le background ────────────────────────────────────────
 
 // typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
@@ -118,9 +116,10 @@ async function fillListingForm(job) {
         success: false,
         error:
           "Genre requis pour cet article : Beebs range la Mode en 5 rayons " +
-          "(Femme/Homme/Fille/Garçon/Bébé). Choisir un genre dans les champs " +
-          "Beebs de l'app (Enfant/Mixte/vide ne sont pas encore résolus " +
-          "automatiquement), puis régénérer le job.",
+          "(Femme/Homme/Fille/Garçon/Bébé) et n'a ni rayon « Enfant » générique " +
+          "ni rayon « Mixte » (vérifié sur l'arbre complet). Choisir Fille, Garçon " +
+          "ou Bébé dans le champ Genre des champs Beebs de l'app, puis régénérer " +
+          "le job. Un article réellement unisexe n'est pas publiable sur Beebs.",
       };
     }
     return {
@@ -163,7 +162,7 @@ async function fillListingForm(job) {
   if (fields.etat) await selectDropdownValue("État", fields.etat, warnings);
   if (fields.matiere) await selectDropdownValue("Matière", fields.matiere, warnings);
 
-  if (job.price != null) await fillTextField("#price", String(job.price));
+  if (job.price != null) await fillPriceField("#price", job.price);
 
   // Adresse de remise (politique A+C, même contrat que Leboncoin) : absente
   // ou introuvable dans l'autocomplete → needsUser, jamais failed.
@@ -248,6 +247,67 @@ function sleep(ms) {
   });
 }
 
+// ── Timing humain (fix blocage anti-bot 2026-07-09) ─────────────────────────
+// Un blocage "Accès temporairement restreint" ("vous surfez et cliquez à une
+// vitesse surhumaine") a été déclenché sur Leboncoin par un remplissage
+// instantané. Deux signaux de bot évidents, présents sur les 4 handlers :
+//   - valeur posée en UNE fois (setter natif + event "input"), aucune séquence
+//     clavier — un champ de 60 caractères se remplissait en 0 ms ;
+//   - rythme mécanique : exactement CLICK_DELAY (250 ms) entre chaque action.
+// On remplace donc les délais fixes par des tirages aléatoires (humanPause) et
+// la pose de valeur en bloc par une frappe caractère par caractère (typeHuman)
+// encadrée de keydown/keypress/keyup.
+//
+// ⚠️ Tous les délais passent par sleep() — donc par le timer Web Worker non
+// clampé ci-dessus. Le timing humain reste ainsi valide dans un onglet caché,
+// où setTimeout serait bridé à 1/s. Ne JAMAIS remplacer ces sleep() par des
+// setTimeout (c'est aussi pourquoi les boucles de polling plus bas ont été
+// converties de setTimeout à sleep).
+const HUMAN_CHAR_MIN = 80, HUMAN_CHAR_MAX = 250;
+const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
+// Au-delà de ce seuil (description générée : plusieurs centaines de
+// caractères), la frappe caractère par caractère coûterait des minutes et
+// ferait exploser le budget de sendMessageToTab. On insère alors par blocs
+// espacés d'une pause humaine.
+const HUMAN_TYPE_MAX_CHARS = 120;
+const HUMAN_CHUNK_CHARS = 40;
+
+const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
+const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => sleep(randInt(min, max));
+
+// Événements clavier synthétiques : ils n'insèrent aucun texte (c'est
+// setNativeValue qui le fait) mais ils donnent aux écouteurs de la page la
+// séquence qu'une vraie frappe produit.
+function dispatchKey(el, type, char) {
+  el.dispatchEvent(new KeyboardEvent(type, {
+    key: char, bubbles: true, cancelable: true, composed: true,
+  }));
+}
+
+async function typeHuman(el, text) {
+  el.focus();
+  setNativeValue(el, "");
+  const str = String(text);
+
+  if (str.length <= HUMAN_TYPE_MAX_CHARS) {
+    for (const char of str) {
+      dispatchKey(el, "keydown", char);
+      dispatchKey(el, "keypress", char);
+      setNativeValue(el, el.value + char);
+      dispatchKey(el, "keyup", char);
+      await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+    }
+    return;
+  }
+  for (let i = 0; i < str.length; i += HUMAN_CHUNK_CHARS) {
+    const chunk = str.slice(i, i + HUMAN_CHUNK_CHARS);
+    dispatchKey(el, "keydown", chunk[0]);
+    setNativeValue(el, el.value + chunk);
+    dispatchKey(el, "keyup", chunk[chunk.length - 1]);
+    await humanPause();
+  }
+}
+
 function waitForElement(selector, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(selector);
@@ -285,10 +345,24 @@ function setNativeValue(element, value) {
 
 async function fillTextField(selector, value) {
   const el = await waitForElement(selector);
-  el.focus();
-  setNativeValue(el, value);
+  await typeHuman(el, value);
   el.blur();
-  await sleep(CLICK_DELAY);
+  await humanPause();
+}
+
+// ⚠️ EXCEPTION VOLONTAIRE au timing humain (2026-07-09) : typeHuman concatène
+// sur el.value. Sur un champ à masque monétaire, relire une valeur déjà
+// reformatée par la page produit une chaîne invalide (bug "NaN €" vécu sur le
+// prix Vinted). Le comportement du champ prix Beebs n'a jamais été relevé : on
+// garde la pose en un coup, qui n'est de toute façon pas le signal de vitesse
+// à l'origine du blocage (2 à 4 caractères), encadrée de pauses humaines.
+async function fillPriceField(selector, value) {
+  const el = await waitForElement(selector);
+  await humanPause();
+  el.focus();
+  setNativeValue(el, String(value));
+  el.blur();
+  await humanPause();
 }
 
 // ── Champs dynamiques (Marque/Couleur/Pointure/Taille/État/Matière) ─────────
@@ -375,34 +449,29 @@ function findOptionCascade(optionSelector, text) {
   return null;
 }
 
-function waitForValueCascade(text, timeoutMs = 4000) {
+// Polling via sleep() (timer Web Worker) et non setTimeout : dans l'onglet de
+// travail caché, un setTimeout(80) est clampé à 1 s et ce timeout de 4 s
+// n'accordait en pratique que 4 tentatives (corrigé 2026-07-09, même famille
+// que le fix des timers du 2026-07-08).
+async function waitForValueCascade(text, timeoutMs = 4000) {
   const start = Date.now();
-  return new Promise((resolve) => {
-    const tick = () => {
-      const found = findOptionCascade('button[class*="__valueButton"]', text);
-      if (found) return resolve(found);
-      if (Date.now() - start > timeoutMs) return resolve(null);
-      setTimeout(tick, 80);
-    };
-    tick();
-  });
+  while (Date.now() - start < timeoutMs) {
+    const found = findOptionCascade('button[class*="__valueButton"]', text);
+    if (found) return found;
+    await sleep(80);
+  }
+  return null;
 }
 
 async function selectDropdownValue(labelText, rawText, warnings) {
   const trigger = findFieldTrigger(labelText);
   if (!trigger) return; // champ non affiché pour cette catégorie : rien à signaler
+  await humanPause();
   trigger.click();
-  await sleep(CLICK_DELAY);
+  await humanPause();
 
   const search = document.querySelector('input[class*="__searchBarInput"]');
-  if (search) {
-    search.focus();
-    setNativeValue(search, "");
-    for (const char of String(rawText)) {
-      setNativeValue(search, search.value + char);
-      await sleep(40);
-    }
-  }
+  if (search) await typeHuman(search, String(rawText));
 
   const match = await waitForValueCascade(rawText);
   if (!match) {
@@ -410,11 +479,12 @@ async function selectDropdownValue(labelText, rawText, warnings) {
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
     document.body.click(); // referme le panneau sans rien choisir
-    await sleep(CLICK_DELAY);
+    await humanPause();
     return;
   }
+  await humanPause(); // temps de "lecture" de la liste avant le clic
   match.el.click();
-  await sleep(CLICK_DELAY);
+  await humanPause();
   if (match.stage !== "exact") {
     const note = `${labelText}: "${rawText}" → option Beebs "${match.label}" (match ${match.stage})`;
     console.warn(`[beebs] ≈ ${note}`);
@@ -454,8 +524,9 @@ async function waitForCategoryOption(text, timeoutMs = 5000) {
 async function selectCategory(path) {
   const trigger = findFieldTrigger("Catégorie");
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
+  await humanPause();
   trigger.click();
-  await sleep(CLICK_DELAY);
+  await humanPause();
 
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
@@ -470,6 +541,7 @@ async function selectCategory(path) {
       );
     }
 
+    await humanPause(); // temps de "lecture" du niveau avant le clic
     option.click();
 
     if (isLast && !isLeaf) {
@@ -511,8 +583,7 @@ async function fillAddress(adresse, warnings) {
     };
   }
 
-  input.focus();
-  setNativeValue(input, adresse);
+  await typeHuman(input, adresse);
 
   // Boutons suggestions rendus après un court debounce réseau (Google Places).
   const suggestion = await waitForAddressSuggestion(adresse);
@@ -525,8 +596,9 @@ async function fillAddress(adresse, warnings) {
     };
   }
   const chosen = suggestion.el.textContent.trim();
+  await humanPause(); // temps de "lecture" des suggestions avant le clic
   suggestion.el.click();
-  await sleep(CLICK_DELAY);
+  await humanPause();
 
   if (normalizeFuzzy(chosen) !== normalizeFuzzy(adresse)) {
     const note = `adresse: "${adresse}" → suggestion Beebs "${chosen}"`;
@@ -545,26 +617,26 @@ async function fillAddress(adresse, warnings) {
 // `active:false`), Chrome throttle les timers et le debounce réseau de
 // l'autocomplete Google Places peut dépasser 4s de temps réel avant que la
 // suggestion n'apparaisse.
-function waitForAddressSuggestion(adresse, timeoutMs = 8000) {
+async function waitForAddressSuggestion(adresse, timeoutMs = 8000) {
   const tokens = normalizeFuzzy(adresse).split(/[^a-z0-9]+/).filter((t) => t.length >= 3 || /^\d+$/.test(t));
   const relevance = (el) => {
     const n = normalizeFuzzy(el.textContent);
     return tokens.reduce((sum, t) => sum + (n.includes(t) ? 1 : 0), 0);
   };
   const start = Date.now();
-  return new Promise((resolve) => {
-    const tick = () => {
-      const candidates = Array.from(document.querySelectorAll('button'))
-        .filter((b) => b.offsetParent !== null && tokens.some((t) => normalizeFuzzy(b.textContent).includes(t)));
-      if (candidates.length) {
-        const best = candidates.sort((a, b) => relevance(b) - relevance(a))[0];
-        if (relevance(best) > 0) return resolve({ el: best });
-      }
-      if (Date.now() - start > timeoutMs) return resolve(null);
-      setTimeout(tick, 100);
-    };
-    tick();
-  });
+  // Polling via sleep() (timer Web Worker) et non setTimeout : voir
+  // waitForValueCascade. C'est aussi ce qui rend le timeout de 8 s réellement
+  // égal à 8 s de temps réel dans un onglet caché.
+  while (Date.now() - start < timeoutMs) {
+    const candidates = Array.from(document.querySelectorAll('button'))
+      .filter((b) => b.offsetParent !== null && tokens.some((t) => normalizeFuzzy(b.textContent).includes(t)));
+    if (candidates.length) {
+      const best = candidates.sort((a, b) => relevance(b) - relevance(a))[0];
+      if (relevance(best) > 0) return { el: best };
+    }
+    await sleep(100);
+  }
+  return null;
 }
 
 // ── Photos ────────────────────────────────────────────────────────────────────
@@ -583,6 +655,7 @@ async function uploadPhotos(photos) {
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   input.files = dataTransfer.files;
+  await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await sleep(1500 * files.length); // laisser le temps à l'upload asynchrone Beebs
 }
@@ -590,4 +663,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension.
-console.log("[beebs] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v1 : cascade catégorie + champs dynamiques + adresse autocomplete)");
+console.log("[beebs] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v2 : cascade catégorie + champs dynamiques + adresse autocomplete + timing humain)");

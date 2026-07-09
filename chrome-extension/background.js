@@ -5,6 +5,21 @@
 
 importScripts("config.js");
 
+// Marqueur de version du service worker. Motif (2026-07-09) : un second
+// worktree (fill-and-sell-chrome-extension, branche feat/chrome-extension) a
+// été chargé par erreur comme extension unpacked pendant des heures — beebs y
+// est encore `implemented: false` et eBay n'y a pas d'entryUrl. Les symptômes
+// ("Handler beebs pas encore implémenté", eBay qui s'ouvre direct sur /sl/list)
+// contredisaient le code du dépôt principal sans qu'on puisse le voir.
+// Ce log, imprimé au démarrage du SW, dit quelle COPIE tourne réellement :
+// vérifier `version` et `build` avant de diagnostiquer quoi que ce soit.
+const FILLSELL_BUILD =
+  "merge-v2 (beebs implémenté, entrée eBay par la home, timing humain, " +
+  "pré-check catégorie avant navigation, adresse LBC vérifiée)";
+console.log(
+  `[background] FillSell service worker v${chrome.runtime.getManifest().version} — build: ${FILLSELL_BUILD}`
+);
+
 const ALARM_NAME = "fillsell-poll-jobs";
 
 // Ré-armements "action utilisateur requise" (needsUser) autorisés avant de
@@ -33,6 +48,13 @@ const PLATFORM_HANDLERS = {
   },
   ebay: {
     implemented: true,
+    // Point d'entrée : la home, PAS l'URL de dépôt (changement 2026-07-09).
+    // Ouvrir un onglet neuf directement sur /sl/list?mode=AddItem... est un
+    // marqueur d'automatisation net : aucun humain n'arrive sur le formulaire
+    // de vente sans referrer, sans avoir chargé une seule page du site. On
+    // passe donc par ebay.fr → clic réel sur "Vendre" → navigation interne
+    // vers l'URL de dépôt (voir ebayNavigateToSellForm).
+    entryUrl: "https://www.ebay.fr/",
     // eBay n'a pas de wizard à piloter : l'URL directe /sl/list avec le
     // categoryId (posé par l'app via ebayCategories.js) + titre + conditionId
     // ouvre le formulaire final pré-rempli (relevé en session réelle
@@ -42,14 +64,67 @@ const PLATFORM_HANDLERS = {
     // la granularité fine des états vêtements viendra dans un lot ultérieur.
     newListingUrl: (job) => {
       const fields = job.platform_fields ?? {};
+      // Garde dure : sans categoryId, /sl/list ouvre l'outil de mise en vente
+      // sans catégorie et eBay affiche SA PROPRE page d'erreur
+      // (reason=pageLoadListing:Error:MISSING_CATEGORY_PRODUCT_ITEM_ID).
+      // precheckJob() attrape déjà ce cas avant toute navigation ; ce throw
+      // garantit qu'aucun autre chemin ne peut construire une URL invalide.
+      if (!fields.ebayCategoryId) {
+        throw new Error("URL eBay impossible à construire : platform_fields.ebayCategoryId absent.");
+      }
       const params = new URLSearchParams({ mode: "AddItem" });
-      if (fields.ebayCategoryId) params.set("categoryId", String(fields.ebayCategoryId));
+      params.set("categoryId", String(fields.ebayCategoryId));
       if (job.title) params.set("title", String(job.title).slice(0, 80));
       params.set("condition", /neuf/i.test(fields.etat ?? "") ? "1000" : "3000");
       return `https://www.ebay.fr/sl/list?${params}`;
     },
   },
 };
+
+// ── Pré-check : un job non mappé n'ouvre AUCUN onglet ──────────────────────────
+// Bug du 2026-07-09 : processJob naviguait l'onglet de travail AVANT d'envoyer
+// FILL_LISTING, donc avant que le content script ne puisse refuser le job. Pour
+// un article de mode dont le genre ne résout aucun rayon, l'app ne pose pas de
+// categoryId → l'URL eBay partait sans `categoryId` → l'utilisateur voyait la
+// page d'erreur d'eBay ("L'outil de mise en vente ne fonctionne pas pour le
+// moment", MISSING_CATEGORY_PRODUCT_ITEM_ID) pendant que la console affichait,
+// pour LE MÊME job, le "Genre requis" du content script. Un job sans catégorie
+// résolue ne doit provoquer ni onglet, ni navigation, ni page d'erreur.
+//
+// Les gardes équivalentes des content scripts sont CONSERVÉES (défense en
+// profondeur : elles portent les messages détaillés et couvrent l'injection
+// manuelle d'un job en dry-run piloté).
+const CATEGORY_FIELD = {
+  vinted: "categoryPath",
+  leboncoin: "lbcCategoryPath",
+  beebs: "beebsCategoryPath",
+  ebay: "ebayCategoryId",
+};
+
+function precheckJob(job) {
+  const key = CATEGORY_FIELD[job.platform];
+  if (!key) return null;
+  const fields = job.platform_fields ?? {};
+  const value = fields[key];
+  const resolved = Array.isArray(value) ? value.length > 0 : Boolean(value);
+  if (resolved) return null;
+
+  const genreRequired =
+    fields.vintedGenreRequired || fields.ebayGenreRequired || fields.beebsGenreRequired;
+  if (genreRequired) {
+    return (
+      `Catégorie ${job.platform} non résolue pour cet article de mode (genre = ` +
+      `${JSON.stringify(fields.genre ?? null)}). Choisir un genre correspondant à un rayon ` +
+      `réel de la plateforme dans les champs ${job.platform} de l'app, puis régénérer le job. ` +
+      "Aucun onglet n'a été ouvert."
+    );
+  }
+  return (
+    `platform_fields.${key} absent — article non mappé vers le catalogue ${job.platform} ` +
+    "(icône hors périmètre du mapping, ou job antérieur au mapping). Régénérer l'annonce " +
+    "depuis l'app, ou compléter le mapping côté src/utils/. Aucun onglet n'a été ouvert."
+  );
+}
 
 // ── Alarme 30 min ──────────────────────────────────────────────────────────────
 
@@ -187,13 +262,20 @@ async function pollAndProcessJobs() {
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
     await processJob(jobs[i], session.access_token);
-    if (i < jobs.length - 1) await sleep(FILLSELL_CONFIG.JOB_DELAY_MS);
+    if (i < jobs.length - 1) await sleep(jobDelayMs());
   }
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
+
+// Plancher + jitter : deux ouvertures d'onglet ne doivent jamais être
+// espacées d'exactement la même durée (cf. FILLSELL_CONFIG).
+const jobDelayMs = () =>
+  FILLSELL_CONFIG.JOB_DELAY_MS + randInt(0, FILLSELL_CONFIG.JOB_DELAY_JITTER_MS);
 
 async function processJob(job, accessToken) {
   const handler = PLATFORM_HANDLERS[job.platform];
@@ -209,6 +291,15 @@ async function processJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform}`);
 
   try {
+    // AVANT tout : catégorie résolue ? Sinon échec sec, sans ouvrir d'onglet
+    // ni naviguer (voir precheckJob).
+    const blocker = precheckJob(job);
+    if (blocker) {
+      console.warn(`[background] Job ${job.id} refusé avant navigation — ${blocker}`);
+      await updateJobStatus(accessToken, job.id, "failed", { error: blocker });
+      return;
+    }
+
     await updateJobStatus(accessToken, job.id, "processing");
 
     // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
@@ -219,7 +310,12 @@ async function processJob(job, accessToken) {
     const listingUrl = typeof handler.newListingUrl === "function"
       ? handler.newListingUrl(job)
       : handler.newListingUrl;
-    const tabId = await getOrCreateWorkTab(job.platform, listingUrl);
+
+    // entryUrl (eBay) : l'onglet de travail atterrit d'abord sur la home du
+    // site, puis rejoint le formulaire par une navigation interne — jamais
+    // d'ouverture d'onglet directement sur l'URL de dépôt.
+    const tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
+    if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
@@ -363,6 +459,41 @@ async function retryInTempTab(job, handler, originalResult) {
   }
 }
 
+// ── Entrée par la home puis navigation interne (eBay) ──────────────────────────
+// Un onglet qui s'ouvre froid sur /sl/list?mode=AddItem (aucun referrer, aucune
+// page du site chargée avant) est un signal d'automatisation. On reproduit le
+// trajet d'un vendeur : la home est déjà chargée (getOrCreateWorkTab), on la
+// "lit" quelques secondes, on demande au content script de cliquer réellement
+// le lien "Vendre", puis on rejoint l'URL de dépôt par une navigation interne.
+//
+// Jamais bloquant : le lien "Vendre" introuvable, un content script muet ou
+// une navigation ratée n'échouent PAS le job — on retombe sur la navigation
+// directe vers l'URL de dépôt (comportement d'avant le 2026-07-09), le
+// remplissage lui-même est identique dans les deux cas.
+async function navigateHomeToForm(tabId, listingUrl) {
+  await sleep(randInt(1500, 4000)); // temps de "lecture" de la home
+
+  try {
+    const res = await sendMessageToTab(tabId, { type: "GO_TO_SELL" }, 15_000);
+    if (res?.clicked) {
+      // Le content script répond AVANT de cliquer (la navigation détruit le
+      // canal de message) : on attend ici le chargement de la page de vente.
+      await waitForTabComplete(tabId).catch(() => {});
+      await sleep(randInt(1200, 3000));
+    } else {
+      console.warn(`[background] Entrée par la home : clic "Vendre" non effectué (${res?.reason ?? "sans raison"}) — navigation directe`);
+    }
+  } catch (e) {
+    console.warn("[background] Entrée par la home : content script injoignable —", String(e?.message ?? e));
+  }
+
+  // Navigation interne vers le formulaire (depuis une page du site, avec
+  // referrer) plutôt qu'une ouverture d'onglet froide.
+  const loaded = waitForTabComplete(tabId);
+  await chrome.tabs.update(tabId, { url: listingUrl + WORK_TAB_FRAGMENT });
+  await loaded;
+}
+
 // ── Onglet de travail dédié ────────────────────────────────────────────────────
 // Un SEUL onglet par plateforme, créé par l'extension et réutilisé de job en
 // job. Historique : quand chaque job ouvrait son propre onglet, les sessions
@@ -438,6 +569,13 @@ async function getOrCreateWorkTab(platform, url) {
 //      fermeture de l'ancien via tabs.remove, qui ne déclenche pas la popup
 //      beforeunload. Toujours UN SEUL onglet persistant à l'arrivée, un seul
 //      chargement de page de dépôt par job — jamais de blocage manuel.
+//   3. la navigation ne "prend" pas (cas Beebs du 2026-07-09) : quand un
+//      dialogue beforeunload est DÉJÀ ouvert sur l'onglet ("Quitter le site ?"
+//      laissé par un test précédent), chrome.tabs.discard échoue et
+//      chrome.tabs.update ne navigue pas — waitForTabComplete expirait au bout
+//      de 30 s, le job partait en failed et AUCUN onglet ne s'ouvrait. On
+//      remplace alors l'onglet (même parade que le cas 2 : tabs.remove ne
+//      déclenche pas beforeunload), au lieu de laisser mourir le job.
 async function navigateWorkTab(tabId, target) {
   const tab = await chrome.tabs.get(tabId);
 
@@ -450,17 +588,32 @@ async function navigateWorkTab(tabId, target) {
       // Déjà déchargé ou discard indisponible : on navigue quand même —
       // une page déjà déchargée n'a aucun beforeunload armé.
     }
-    // Écouteur attaché AVANT de déclencher la navigation : un chargement
-    // rapide pourrait sinon émettre son "complete" avant qu'on ne l'attende.
-    const loaded = waitForTabComplete(effectiveId);
-    await chrome.tabs.update(effectiveId, { url: target });
-    await loaded;
-    return effectiveId;
+    try {
+      // Écouteur attaché AVANT de déclencher la navigation : un chargement
+      // rapide pourrait sinon émettre son "complete" avant qu'on ne l'attende.
+      const loaded = waitForTabComplete(effectiveId);
+      await chrome.tabs.update(effectiveId, { url: target });
+      await loaded;
+      return effectiveId;
+    } catch (e) {
+      console.warn(
+        `[background] Onglet de travail ${effectiveId} bloqué (dialogue beforeunload resté ouvert ?) : ` +
+        `${String(e?.message ?? e)} — remplacement par un onglet neuf`
+      );
+      return replaceWorkTab(effectiveId, target);
+    }
   }
 
+  return replaceWorkTab(tabId, target);
+}
+
+// Crée le nouvel onglet de travail (inactif) PUIS ferme l'ancien : tabs.remove
+// ne déclenche jamais la popup beforeunload, contrairement à une navigation.
+// Toujours UN SEUL onglet persistant à l'arrivée.
+async function replaceWorkTab(oldTabId, target) {
   const fresh = await chrome.tabs.create({ url: target, active: false });
   await waitForTabComplete(fresh.id);
-  await chrome.tabs.remove(tabId).catch(() => {});
+  await chrome.tabs.remove(oldTabId).catch(() => {});
   return fresh.id;
 }
 
@@ -485,7 +638,13 @@ function waitForTabComplete(tabId, timeoutMs = 30_000) {
   });
 }
 
-function sendMessageToTab(tabId, message, timeoutMs = 120_000) {
+// 300 s (et non 120 s) depuis le passage au timing humain du 2026-07-09 : la
+// frappe caractère par caractère (80–250 ms) et les pauses aléatoires entre
+// actions (300–900 ms) allongent volontairement un remplissage complet à
+// ~1–2 min de temps RÉEL. Le timer Web Worker des content scripts garantit que
+// ce temps n'est plus dilaté par le throttling des onglets cachés (fix
+// 2026-07-08) — mais il reste supérieur à l'ancien budget de 120 s.
+function sendMessageToTab(tabId, message, timeoutMs = 300_000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error("Timeout: pas de réponse du content script")),

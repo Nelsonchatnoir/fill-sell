@@ -105,3 +105,29 @@ const LBC_CATEGORIES = {
 export function getLbcCategoryPath(icon) {
   return LBC_CATEGORIES[icon] ?? null;
 }
+
+// ── Critères obligatoires de Famille > Équipement bébé ──────────────────────
+// (relevé campagne dry-run 2026-07-08) La feuille exige DEUX critères
+// FONCTIONNELS bloquants à l'aperçu, indéductibles du genre :
+//   - Univers* (label for="baby_equipment_universe") : Alimentation | Mobilité
+//     | Sécurité | Sommeil | Hygiène et Santé | Autres — ce n'est PAS l'univers
+//     Femme/Homme/Enfant/Mixte du rayon Mode.
+//   - Produit* (label for="baby_equipment_type") : options dépendantes de
+//     l'univers choisi, non relevées exhaustivement — le handler matche en
+//     tolérant le singulier/pluriel et, à défaut, l'erreur du job liste les
+//     options réelles (relevé correctif, même méthode que Vinted).
+// 👶 (poussette), 💺 (siège auto), 📟 (babyphone) restent à mapper après
+// relevé de leurs univers/produits exacts — en attendant ils gardent le
+// comportement antérieur (échec avec message correctif).
+const LBC_BABY_EQUIPMENT = {
+  "🍼": { univers: "Alimentation", produit: "Biberon" },
+};
+
+/**
+ * @param {string} icon — emoji retourné par detectObjectIcon
+ * @returns {{univers: string, produit: string}|null} critères fonctionnels
+ *   Équipement bébé Leboncoin, ou null si l'icône n'en relève pas
+ */
+export function getLbcBabyEquipment(icon) {
+  return LBC_BABY_EQUIPMENT[icon] ?? null;
+}

@@ -8,7 +8,12 @@ const FILLSELL_CONFIG = {
   // Pause entre deux jobs traités dans une même session de poll — évite
   // d'enchaîner les onglets de dépôt trop vite (Vinted a planté avec une
   // erreur générique quand plusieurs jobs s'enchaînaient sans délai).
+  // Plancher fixe (sert aussi de garde-fou au throttle de retryInTempTab) +
+  // jitter aléatoire tiré à chaque job : un intervalle TOUJOURS identique
+  // entre deux ouvertures d'onglet est un marqueur d'automatisation à lui
+  // seul (blocage LBC "vitesse surhumaine" du 2026-07-09).
   JOB_DELAY_MS: 8000,
+  JOB_DELAY_JITTER_MS: 12000,
   STORAGE_KEYS: {
     SESSION: "fillsell_session",
     LAST_POLL: "fillsell_last_poll",

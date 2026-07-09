@@ -36,7 +36,6 @@
 //     rempli).
 const DRY_RUN = true;
 
-const CLICK_DELAY = 250;
 const SPECIFICS_MENU_SELECTOR = ".se-filter-menu-button__menu-container";
 
 // ── Communication avec le background ────────────────────────────────────────
@@ -45,6 +44,10 @@ const SPECIFICS_MENU_SELECTOR = ".se-filter-menu-button__menu-container";
 // dry-run piloté (hors extension), où chrome.runtime n'existe pas.
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "GO_TO_SELL") {
+      sendResponse(goToSellFromHome());
+      return false; // réponse synchrone : la navigation détruirait le canal
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -53,6 +56,33 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     return true; // réponse asynchrone
   });
+}
+
+// ── Entrée par la home : clic réel sur "Vendre" ──────────────────────────────
+// Le background dépose l'onglet de travail sur ebay.fr (et non plus directement
+// sur /sl/list, cf. background.js) puis appelle ce handler. On rend la main
+// TOUT DE SUITE — le clic déclenche une navigation qui détruirait le canal de
+// message avant la réponse — et on clique juste après, à distance humaine.
+//
+// Jamais bloquant : lien introuvable ou page de connexion → { clicked:false },
+// le background enchaîne sur la navigation directe vers l'URL de dépôt.
+function goToSellFromHome() {
+  if (/(^|\.)signin\.ebay\./.test(location.hostname) || document.querySelector('input[type="password"]')) {
+    return { clicked: false, reason: "page de connexion eBay" };
+  }
+  const link = [...document.querySelectorAll("a")].find((a) => {
+    const href = a.getAttribute("href") || "";
+    return /\/sl\/sell|\/sl\/list|sell\.ebay\./.test(href)
+      || a.textContent.trim().toLowerCase() === "vendre";
+  });
+  if (!link) return { clicked: false, reason: 'lien "Vendre" introuvable sur la home' };
+
+  humanPause(600, 1500).then(() => {
+    link.scrollIntoView({ block: "center" });
+    realClick(link);
+    console.log('[ebay] entrée par la home : clic réel sur "Vendre" →', link.getAttribute("href"));
+  });
+  return { clicked: true };
 }
 
 // ── Remplissage du formulaire ────────────────────────────────────────────────
@@ -92,13 +122,36 @@ async function fillListingForm(job) {
   // message actionnable au cas où (job antérieur au mapping, icône hors
   // périmètre). Même distinction de cause que Vinted via ebayGenreRequired.
   if (!fields.ebayCategoryId) {
-    if (fields.ebayGenreRequired && (!fields.genre || fields.genre === "Mixte")) {
+    if (fields.ebayGenreRequired && !fields.genre) {
+      // Distingué de "Mixte" depuis le 2026-07-09 : les deux cas partageaient
+      // le même message, impossible de savoir lequel s'était produit sur un
+      // job réel (et donc si c'était un rejet légitime ou une donnée manquante).
       return {
         success: false,
         error:
-          "Genre requis pour cet article : c'est un article de mode et eBay n'a pas " +
-          "de rayon Mixte (Femme/Homme/Fille/Garçon/Bébé/Enfant unisexe). Choisir un " +
-          "genre dans l'app, puis régénérer le job.",
+          "Genre absent pour cet article de mode : eBay range la mode en rayons " +
+          "(Femme/Homme/Fille/Garçon/Bébé/Enfant unisexe) et aucun genre n'a été " +
+          "renseigné. Choisir un genre dans les champs eBay de l'app, puis régénérer " +
+          "le job.",
+      };
+    }
+    if (fields.ebayGenreRequired && fields.genre === "Mixte") {
+      return {
+        success: false,
+        error:
+          "Genre « Mixte » : eBay n'a pas de rayon mixte en mode (seuls les parfums " +
+          "ont une feuille « Parfums mixtes »). Choisir Femme, Homme, Fille, Garçon, " +
+          "Bébé ou Enfant unisexe dans les champs eBay de l'app, puis régénérer le job.",
+      };
+    }
+    if (fields.ebayGenreRequired) {
+      return {
+        success: false,
+        error:
+          `Genre « ${fields.genre} » sans rayon eBay pour cette catégorie d'article ` +
+          "(certaines feuilles n'existent pas en unisexe enfant : robe, écharpe, gants, " +
+          "casquette, lunettes, porte-monnaie). Choisir Fille, Garçon ou Bébé dans les " +
+          "champs eBay de l'app, puis régénérer le job.",
       };
     }
     return {
@@ -201,10 +254,15 @@ async function fillListingForm(job) {
       return el && el.offsetParent !== null ? el : null;
     }, 20000);
     if (priceInput) {
+      // Pose en un coup (pas typeInto) : champ à format monétaire, la frappe
+      // caractère par caractère risquerait le reformatage à la volée (bug
+      // "NaN €" vécu sur le prix Vinted). 2 à 4 caractères : ce n'est pas le
+      // signal de vitesse à l'origine du blocage. Encadré de pauses humaines.
+      await humanPause();
       priceInput.focus();
       setNativeValue(priceInput, String(job.price).replace(".", ","));
       priceInput.dispatchEvent(new Event("blur", { bubbles: true }));
-      await sleep(CLICK_DELAY);
+      await humanPause();
     } else {
       warnings.push("prix: input[name=price] introuvable après bascule Achat immédiat — prix suggéré eBay conservé");
     }
@@ -304,7 +362,7 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
       .find((b) => normalizeFuzzy(b.textContent) === normalizeFuzzy(String(rawValue)));
     if (chip) {
       realClick(chip);
-      await sleep(CLICK_DELAY);
+      await humanPause();
       console.log(`[ebay] ${found.label}: chip "Fréquemment sélectionnées" cliquée ("${chip.textContent.trim()}")`);
       return true;
     }
@@ -323,7 +381,7 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
         );
       }
       realClick(match.el);
-      await sleep(CLICK_DELAY);
+      await humanPause();
       if (match.stage !== "exact") {
         const note = `${fieldName}: "${rawValue}" → toggle eBay "${match.label}" (match ${match.stage})`;
         console.warn(`[ebay] ≈ ${note}`);
@@ -345,11 +403,16 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
 
     const search = menu.querySelector("input.textbox__control, input[type='text']");
     if (search) {
+      // Frappe humaine (80–250 ms/caractère + keydown/keyup) au lieu des
+      // 40 ms fixes d'avant le 2026-07-09.
       search.focus();
       setNativeValue(search, "");
       for (const char of String(rawValue)) {
+        dispatchKey(search, "keydown", char);
+        dispatchKey(search, "keypress", char);
         setNativeValue(search, search.value + char);
-        await sleep(40);
+        dispatchKey(search, "keyup", char);
+        await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
       }
       await sleep(700); // debounce du filtre
     }
@@ -370,12 +433,13 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
       throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
     }
 
+    await humanPause(); // temps de "lecture" de la liste avant le clic
     realClick(match.el);
-    await sleep(CLICK_DELAY);
+    await humanPause();
     // menuitemradio se ferme seul ; menuitemcheckbox (multi) reste ouvert.
     if (document.querySelector(SPECIFICS_MENU_SELECTOR)?.offsetParent) {
       document.body.click();
-      await sleep(CLICK_DELAY);
+      await humanPause();
     }
     if (match.stage !== "exact") {
       const note = `${fieldName}: "${rawValue}" → option eBay "${match.label}" (match ${match.stage})`;
@@ -388,7 +452,7 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     console.warn(`[ebay] ⚠️ ${note}`);
     warnings.push(note);
     document.body.click(); // referme un éventuel menu resté ouvert
-    await sleep(CLICK_DELAY);
+    await humanPause();
     return false;
   }
 }
@@ -442,7 +506,7 @@ async function fillDescription(text, warnings) {
       .join("<br>");
     target.dispatchEvent(new Event("input", { bubbles: true }));
     doc.body.dispatchEvent(new Event("input", { bubbles: true }));
-    await sleep(CLICK_DELAY);
+    await humanPause();
   } catch (e) {
     warnings.push(`description: RTE inaccessible (${e.message}) — description non remplie`);
   }
@@ -515,6 +579,35 @@ function sleep(ms) {
   });
 }
 
+// ── Timing humain (fix blocage anti-bot 2026-07-09) ─────────────────────────
+// Un blocage "Accès temporairement restreint" ("vous surfez et cliquez à une
+// vitesse surhumaine") a été déclenché sur Leboncoin par un remplissage
+// instantané. Deux signaux de bot évidents, présents sur les 4 handlers :
+//   - valeur posée en UNE fois (execCommand du texte entier / setter natif),
+//     aucune séquence clavier — un champ de 60 caractères en 0 ms ;
+//   - rythme mécanique : exactement CLICK_DELAY (250 ms) entre chaque action.
+// On remplace donc les délais fixes par des tirages aléatoires (humanPause) et
+// la pose de valeur en bloc par une frappe caractère par caractère (typeInto)
+// encadrée de keydown/keypress/keyup.
+//
+// ⚠️ Tous les délais passent par sleep() — donc par le timer Web Worker non
+// clampé ci-dessus. Le timing humain reste ainsi valide dans un onglet caché,
+// où setTimeout serait bridé à 1/s. Ne JAMAIS remplacer ces sleep() par des
+// setTimeout.
+const HUMAN_CHAR_MIN = 80, HUMAN_CHAR_MAX = 250;
+const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
+const HUMAN_TYPE_MAX_CHARS = 120;
+const HUMAN_CHUNK_CHARS = 40;
+
+const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
+const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => sleep(randInt(min, max));
+
+function dispatchKey(el, type, char) {
+  el.dispatchEvent(new KeyboardEvent(type, {
+    key: char, bubbles: true, cancelable: true, composed: true,
+  }));
+}
+
 async function waitFor(fn, timeoutMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -536,20 +629,44 @@ function setNativeValue(element, value) {
 }
 
 // Frappe "réelle" (pattern LBC) : execCommand d'abord, setter natif en repli.
+// Depuis 2026-07-09 : caractère par caractère à rythme humain (80–250 ms),
+// encadré de keydown/keypress/keyup. La sélection initiale est remplacée par le
+// premier insertText, les suivants s'insèrent au curseur. Au-delà de
+// HUMAN_TYPE_MAX_CHARS on insère par blocs espacés d'une pause humaine.
 async function typeInto(input, text) {
   input.focus();
   try {
     input.setSelectionRange?.(0, input.value.length);
   } catch { /* certains types d'input n'exposent pas setSelectionRange */ }
-  const ok = document.execCommand("insertText", false, text);
-  if (!ok || input.value !== text) {
+
+  const str = String(text);
+  const pieces = str.length <= HUMAN_TYPE_MAX_CHARS
+    ? [...str]
+    : (str.match(new RegExp(`[\\s\\S]{1,${HUMAN_CHUNK_CHARS}}`, "g")) ?? []);
+
+  let ok = true;
+  for (const piece of pieces) {
+    dispatchKey(input, "keydown", piece[0]);
+    if (piece.length === 1) dispatchKey(input, "keypress", piece);
+    ok = document.execCommand("insertText", false, piece) && ok;
+    dispatchKey(input, "keyup", piece[piece.length - 1]);
+    if (!ok) break;
+    await (piece.length === 1
+      ? sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX))
+      : humanPause());
+  }
+
+  if (!ok || input.value !== str) {
+    // Repli : setter natif, au même rythme humain.
     setNativeValue(input, "");
-    for (const char of text) {
+    for (const char of str) {
+      dispatchKey(input, "keydown", char);
       setNativeValue(input, input.value + char);
-      await sleep(35);
+      dispatchKey(input, "keyup", char);
+      await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
     }
   }
-  await sleep(CLICK_DELAY);
+  await humanPause();
 }
 
 // Séquence pointer complète (les composants eBay écoutent pointerdown/up,
@@ -623,8 +740,9 @@ async function uploadPhotos(photos) {
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   input.files = dataTransfer.files;
+  await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await sleep(1500 * files.length);
 }
 
-console.log("[ebay] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", direct-list-v2: URL categoryId + specifics expand-button/chips)");
+console.log("[ebay] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v3: entrée par la home + specifics expand-button/chips + timing humain)");

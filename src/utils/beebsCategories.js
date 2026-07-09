@@ -26,10 +26,17 @@
 // bébé) : pas de regex déguisement côté detectObjectIcon — backlog T3.
 //
 // Genre : getBeebsCategoryPath prend DIRECTEMENT les 5 valeurs Beebs
-// (Femme/Homme/Fille/Garçon/Bébé). Pas de résolution automatique depuis
-// "Enfant" (platform_fields.genre) : Enfant/Mixte/vide → null (catégorie non
-// résolue), même pattern que Mixte sur Vinted. Un champ stepper dédié
-// désambiguïsera Enfant → Fille/Garçon/Bébé plus tard.
+// (Femme/Homme/Fille/Garçon/Bébé). Il n'existe dans l'arbre NI rayon "Enfant"
+// générique NI rayon "Mixte" (re-vérifié le 2026-07-09 sur
+// docs/beebs-categories-raw.txt : les seuls niveaux 2 sous "Mode" sont ces 5).
+//
+// "Enfant" est donc INDÉCIDABLE (Fille ? Garçon ? Bébé ?) et ne sera jamais
+// résolu automatiquement — le résoudre par défaut publierait l'article dans le
+// mauvais rayon. "Mixte" n'a aucun équivalent : rejet légitime, même contrat
+// que Mixte sur Vinted. Depuis le 2026-07-09 le stepper Beebs de l'app propose
+// directement les 5 rayons réels (platformFieldsConfig.beebs → beebsGender),
+// pour que l'utilisateur puisse trancher : avant, l'app réclamait un genre
+// qu'elle ne permettait pas de choisir.
 //
 // ⚠️ Les 5 arborescences DIVERGENT structurellement et lexicalement — jamais
 // de substitution automatique entre genres. Pièges de libellés confirmés :
@@ -418,9 +425,9 @@ export function beebsGenreRequired(icon) {
 /**
  * @param {string} icon  — emoji retourné par detectObjectIcon
  * @param {string} genre — valeur Beebs DIRECTE : "Femme" | "Homme" | "Fille"
- *   | "Garçon" | "Bébé". Pas de résolution automatique depuis les valeurs
- *   platform_fields.genre ("Enfant"/"Mixte"/"" → null) — un champ stepper
- *   dédié désambiguïsera Enfant → Fille/Garçon/Bébé plus tard.
+ *   | "Garçon" | "Bébé" (les 5 rayons réels, désormais proposés tels quels
+ *   par le stepper Beebs). "Enfant"/"Mixte"/"" → null : indécidable ou sans
+ *   rayon Beebs correspondant, jamais résolu par défaut.
  * @returns {string[]|null} chemin catalogue Beebs, ou null si non mappé
  *   (icône hors périmètre Mode, genre absent ou non-Beebs)
  */

@@ -228,6 +228,11 @@ export const translations = {
     genderMan:"Homme",
     genderChild:"Enfant",
     genderUnisex:"Mixte",
+    // Rayons enfants réels de Beebs (Fille/Garçon/Bébé) — Beebs n'a pas de
+    // rayon "Enfant" générique, cf. beebsCategories.js.
+    genderGirl:"Fille",
+    genderBoy:"Garçon",
+    genderBaby:"Bébé",
     vintedGenreRequired:"Vinted range cet article en rayon Femme ou Homme (pas de rayon Mixte). Choisis le genre dans les champs Vinted avant de publier.",
     fieldPackageFormatLabel:"Format colis",
 
@@ -492,6 +497,9 @@ export const translations = {
     genderMan:"Men",
     genderChild:"Kids",
     genderUnisex:"Unisex",
+    genderGirl:"Girl",
+    genderBoy:"Boy",
+    genderBaby:"Baby",
     vintedGenreRequired:"Vinted lists this item under Women or Men (there is no Unisex section). Pick a gender in the Vinted fields before publishing.",
     fieldPackageFormatLabel:"Package format",
 

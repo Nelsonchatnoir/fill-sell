@@ -8,7 +8,7 @@ import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
-import { getLbcCategoryPath } from "../utils/lbcCategories";
+import { getLbcCategoryPath, getLbcBabyEquipment } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 
@@ -76,6 +76,39 @@ function getPlatformFieldsConfig(t) {
     { value:"Mixte",  label:t("genderUnisex") },
   ];
 
+  // Beebs range la Mode en 5 rayons RÉELS — Femme | Homme | Fille | Garçon |
+  // Bébé (crawl du sélecteur, docs/beebs-categories-raw.txt : aucune entrée
+  // "Enfant" ni "Mixte" dans tout l'arbre). L'ancienne config servait les 4
+  // valeurs génériques ci-dessus : un article de mode enfant était donc
+  // IMPOSSIBLE à publier sur Beebs — getBeebsCategoryPath ne résolvait rien
+  // pour "Enfant", et le message d'erreur demandait de "choisir un genre"
+  // alors que l'app n'en proposait aucun de valide (bug du 2026-07-09).
+  // "Mixte" reste volontairement absent : Beebs n'a pas de rayon unisexe.
+  const beebsGender = [
+    { value:"Femme",  label:t("genderWoman") },
+    { value:"Homme",  label:t("genderMan") },
+    { value:"Fille",  label:t("genderGirl") },
+    { value:"Garçon", label:t("genderBoy") },
+    { value:"Bébé",   label:t("genderBaby") },
+  ];
+
+  // eBay a SEPT rayons exploitables : les 5 genrés + "Enfant : unisexe" (rayon
+  // réel, d'où la clé Enfant) + "Parfums mixtes" (seul usage de Mixte, icône
+  // 🌸). Le stepper n'offrait que Femme/Homme/Enfant/Mixte : six icônes
+  // laissaient alors un TROU atteignable — 👗 👛 🧣 🧤 🧢 🕶️ en genre "Enfant"
+  // ne résolvent aucun rayon unisexe, alors que Fille/Garçon/Bébé en ont un
+  // (vérifié le 2026-07-09 sur ebayCategories.js). Les exposer ferme ces trous
+  // et affine les feuilles partout ailleurs.
+  const ebayGender = [
+    { value:"Femme",  label:t("genderWoman") },
+    { value:"Homme",  label:t("genderMan") },
+    { value:"Fille",  label:t("genderGirl") },
+    { value:"Garçon", label:t("genderBoy") },
+    { value:"Bébé",   label:t("genderBaby") },
+    { value:"Enfant", label:t("genderChild") },
+    { value:"Mixte",  label:t("genderUnisex") },
+  ];
+
   return {
     vinted: [
       { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
@@ -109,7 +142,7 @@ function getPlatformFieldsConfig(t) {
     beebs: [
       { key:"etat",   label:t("fieldConditionLabel"), type:"select", options:[condition.new_, condition.veryGood, condition.good] },
       { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
-      { key:"genre",  label:t("fieldGenderLabel"),    type:"select", options: gender },
+      { key:"genre",  label:t("fieldGenderLabel"),    type:"select", options: beebsGender },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
     ],
     // eBay.fr est francophone : clés et valeurs FR canoniques, alignées sur
@@ -123,7 +156,7 @@ function getPlatformFieldsConfig(t) {
     ebay: [
       { key:"etat",    label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
       { key:"taille",  label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
-      { key:"genre",   label:t("fieldGenderLabel"),    type:"select", options: gender },
+      { key:"genre",   label:t("fieldGenderLabel"),    type:"select", options: ebayGender },
       { key:"marque",  label:t("fieldBrandLabel"),     type:"text" },
       { key:"matiere", label:t("fieldMaterialLabel"),  type:"text" },
       { key:"couleur", label:t("fieldColorLabel"),     type:"text" },
@@ -1243,6 +1276,16 @@ export default function ListingPreviewScreen({
           const lbcPath = getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
+          // Famille > Équipement bébé : Univers* est FONCTIONNEL
+          // (Alimentation/Mobilité/…) et Produit* en dépend — deux critères
+          // bloquants indéductibles du genre (relevé campagne 2026-07-08).
+          // On écrase l'univers genre (IA/stepper) par la valeur mappée
+          // depuis l'icône, et on pose le Produit attendu par l'extension.
+          const babyEquip = getLbcBabyEquipment(icon);
+          if (babyEquip) {
+            pf.univers = babyEquip.univers;
+            pf.lbcProduit = babyEquip.produit;
+          }
           // Univers obligatoire sur le rayon Mode LBC ("Veuillez choisir un
           // univers de vêtement"). Contrairement à Vinted, LBC a un rayon
           // Mixte → filet sans friction quand l'IA n'a pas tranché.
