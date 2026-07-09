@@ -1,3 +1,14 @@
+# Catalogue Beebs — sélecteur de catégorie du formulaire de vente
+#
+# Relevé COMPLET du 9 juillet 2026 (session connectée, beebs.app/fr/listing).
+# Méthode : lecture directe de l état React du composant sélecteur (l arbre
+# entier y est déjà chargé) — AUCUNE requête réseau supplémentaire, aucun
+# clic de navigation par branche. Remplace le relevé partiel du 8 juillet
+# dont la racine Maison était tronquée après "Cuisine".
+#
+# 5 racines, 688 nœuds. Indentation 2 espaces = 1 niveau. Une ligne sans
+# enfant est une feuille sélectionnable.
+
 - Jeux, jouets et loisirs
   - Cartes, figurines et collectibles
     - Figurines de collection
@@ -562,7 +573,7 @@
     - Parcs bébé
     - Tapis et matelas de parc
     - Tours de parc
-    - Tapis d'éveil
+    - Tapis d’éveil
     - Arches
     - Bascules
     - Chariots de marche
@@ -620,13 +631,13 @@
       - Accessoires porte-bébés
     - Echarpes de portage
   - Sécurité
-    - Barrières d'escalier et de porte
+    - Barrières d’escalier et de porte
     - Barrières de lit
     - Cache-prises
-    - Protections d'angle
+    - Protections d’angle
     - Bloque-portes et placards
     - Sécurité extérieure
-- Maison (PARTIEL — crawl interrompu ici, branche mobilier/déco/cuisine, faible priorité pour FillSell)
+- Maison
   - Cartables et fournitures scolaires
     - Cartables
     - Lots de fournitures scolaires
@@ -648,3 +659,41 @@
     - Vaisselle et art de la table
     - Ustensiles de cuisine
     - Poêles, casseroles et plats
+  - Linge de maison
+    - Linge de lit
+      - Parures de lit
+      - Draps
+      - Housses de couette
+      - Drap-housses
+    - Linge de bain
+    - Linge de table
+    - Autres linges de maison
+  - Meubles
+    - Mobilier de maison
+    - Meubles de rangement
+    - Accessoires de salle de bain
+  - Literie
+    - Couettes
+    - Oreillers
+    - Surmatelas
+  - Décoration
+    - Luminaires
+    - Coussins
+    - Tableaux
+    - Tapis et paillassons
+    - Cadres et affiches
+    - Porte-manteaux et cintres
+    - Décorations murales
+    - Décorations d'anniversaire
+    - Décorations de fêtes
+    - Décorations de naissance et baby shower
+    - Autres décorations
+  - Jardin et bricolage
+    - Mobilier de jardin
+    - Outils de jardin
+    - Perceuses et visseuses
+    - Outillage à main
+    - Quincaillerie
+  - Valises et bagages
+    - Valises (enfant)
+    - Valises (adulte)

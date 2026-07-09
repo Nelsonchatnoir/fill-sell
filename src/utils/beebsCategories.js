@@ -496,18 +496,71 @@ const HORS_MODE = {
   // (relevé Mode complet) — null confirmé, pas un trou de crawl.
   "🗝️": null,
 
-  // NON_CRAWLÉ — TODO : la racine "Maison" du relevé est PARTIELLE (crawl
-  // interrompu après Cartables/Petit électroménager/Cuisine — marqué dans
-  // docs/beebs-categories-raw.txt) et le sélecteur du formulaire (connecté)
-  // n'a pas été re-crawlé depuis. Familles SANS clé ici tant qu'une preuve
-  // de crawl n'existe pas (ne JAMAIS coder un chemin plausible) :
-  //   textiles maison (🪟🪶🟫📜🛌), horloges (🕰️), Noël (🎄), animaux (🐕),
-  //   électroménager entretien (🧼🌀🌡️🧺🧊), bricolage/jardin (🪛🪚🔨🪜🖌️📏🔧✂️⛱️),
-  //   high-tech adulte (📱💻🖥️🎧🔊📺📷📲📇⏱️📡🛸⌨️🖱️🖨️🔌),
-  //   sport adulte (🎿⚽🎾⛳🏋️🥊⛺🎣🧘🐴🎱🤿🏄), musique (🎸🎻🥁🎺🎹🎤🎼🧵💿),
-  //   collection (📮🪙📰). Beebs étant une marketplace famille/enfant, une
-  //   partie n'existe probablement pas — mais "probablement" n'est pas une
-  //   preuve : à trancher par crawl du formulaire.
+  // ── Racine Maison COMPLÈTE (re-crawl du 2026-07-09, session connectée :
+  // lecture de l'état React du sélecteur, arbre entier — l'ancien relevé
+  // s'arrêtait à "Cuisine"). Les 6 branches N2 qui manquaient sont ici ─────
+  // Linge de maison. DÉFAUT ASSUMÉ 🛌 : housse de couette dominante
+  // (Parures/Draps/Drap-housses = feuilles sœurs).
+  "🛌": ["Maison", "Linge de maison", "Linge de lit", "Housses de couette"],
+  "📜": ["Maison", "Linge de maison", "Linge de table"],
+  // Meubles : "Mobilier de maison" est le bac générique (Meubles de rangement
+  // et Accessoires de salle de bain = sœurs). Contrairement à Vinted, Beebs
+  // vend bien le mobilier adulte.
+  "🛋️": ["Maison", "Meubles", "Mobilier de maison"],
+  "🪑": ["Maison", "Meubles", "Mobilier de maison"],
+  // 🛏️ (lit/matelas MEUBLE) : "Mobilier de maison" ; la literie textile a sa
+  // propre icône 🛌 ci-dessus, et Literie > Couettes/Oreillers/Surmatelas est
+  // une branche distincte (couette seule → 🛌 via la regex housse/parure).
+  "🛏️": ["Maison", "Meubles", "Mobilier de maison"],
+  // Décoration.
+  "💡": ["Maison", "Décoration", "Luminaires"],
+  "🪶": ["Maison", "Décoration", "Coussins"],
+  "🟫": ["Maison", "Décoration", "Tapis et paillassons"],
+  // DÉFAUT ASSUMÉ : cadre/affiche/poster → "Cadres et affiches" ; "Tableaux"
+  // (peinture) est la feuille sœur, non atteinte par ce défaut.
+  "🖼️": ["Maison", "Décoration", "Cadres et affiches"],
+  // DÉFAUT ASSUMÉ : "Décorations de fêtes" (Décorations d'anniversaire et de
+  // naissance = sœurs) — pas de feuille Noël dédiée.
+  "🎄": ["Maison", "Décoration", "Décorations de fêtes"],
+  // Jardin et bricolage (5 feuilles, aucune sous-branche).
+  "🪛": ["Maison", "Jardin et bricolage", "Perceuses et visseuses"],
+  // DÉFAUT ASSUMÉ : marteau/clé/pince → "Outillage à main" (bac unique).
+  "🔨": ["Maison", "Jardin et bricolage", "Outillage à main"],
+  "🔧": ["Maison", "Jardin et bricolage", "Outillage à main"],
+  "🔩": ["Maison", "Jardin et bricolage", "Quincaillerie"],
+  "⛱️": ["Maison", "Jardin et bricolage", "Mobilier de jardin"],
+  // DÉFAUT ASSUMÉ : taille-haie/sécateur/tondeuse → "Outils de jardin" (bac
+  // unique, aucune feuille par outil).
+  "✂️": ["Maison", "Jardin et bricolage", "Outils de jardin"],
+  "🌱": ["Maison", "Jardin et bricolage", "Outils de jardin"],
+  // Valises : feuille adulte dédiée (l'icône ne distingue pas l'âge).
+  "🧳": ["Maison", "Valises et bagages", "Valises (adulte)"],
+
+  // ── Absences CONFIRMÉES par le crawl complet du 2026-07-09 (5 racines,
+  // 688 nœuds parcourus) — plus des "NON_CRAWLÉ" : Beebs est une marketplace
+  // famille/enfant et n'a réellement aucune de ces branches ─────────────────
+  // Petit électroménager = Cuiseurs/Mixeurs/Yaourtières/Machines à café/
+  // Appareils de cuisson uniquement : ni bouilloire, ni aspirateur, ni gros
+  // électroménager, ni entretien du linge, ni soins électriques.
+  "🫖": null, "🧹": null, "🧊": null, "♨️": null, "🍞": null, "🍟": null,
+  "🧺": null, "🧼": null, "🌀": null, "🌡️": null, "💇": null, "🪒": null,
+  // Déco : ni miroir, ni bougie, ni vase, ni horloge (11 feuilles relevées).
+  "🪞": null, "🕯️": null, "🏺": null, "🕰️": null, "🪟": null, "🪴": null,
+  // Bricolage : ni scie, ni échelle, ni peinture, ni mesure (5 feuilles).
+  "🪚": null, "🪜": null, "🖌️": null, "📏": null, "🔥": null,
+  // Aucune racine High-Tech adulte, Sport adulte, Musique, Collection,
+  // Animaux, Auto-Moto dans tout l'arbre (5 racines : Jeux/Mode/Hygiène/
+  // Puériculture/Maison).
+  "📱": null, "📲": null, "📇": null, "💻": null, "🖥️": null, "⌨️": null,
+  "🖱️": null, "🖨️": null, "🎧": null, "🔊": null, "📡": null, "📺": null,
+  "📷": null, "🛸": null, "🔌": null, "⏱️": null,
+  "🎿": null, "⚽": null, "🎾": null, "⛳": null, "🏋️": null, "🥊": null,
+  "⛺": null, "🎣": null, "🧘": null, "🥽": null, "🏀": null, "🏃": null,
+  "🐴": null, "🎱": null, "🤿": null, "🏄": null, "🎽": null,
+  "🎸": null, "🎻": null, "🥁": null, "🎺": null, "🎹": null, "🎤": null,
+  "🎼": null, "🧵": null, "💽": null,
+  "📮": null, "🪙": null, "📰": null, "🐕": null,
+  "🏍️": null, "🛵": null, "🛞": null, "🚗": null, "🪖": null,
 };
 
 /**
