@@ -55,6 +55,14 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
   const warnings = [];
+  // Champs OBLIGATOIRES (au sens du code existant, pas d'une liste inventée)
+  // qu'on n'a pas su remplir. Deux seulement sont documentés comme bloquants
+  // par des dry-runs réels : l'univers du rayon Mode ("Veuillez choisir un
+  // univers de vêtement") et le Produit* d'Équipement bébé. Ils remontent au
+  // background pour qu'un job ne se déclare jamais réussi en les laissant
+  // vides (cf. BUG 2 du 2026-07-09). Les autres critères LBC sont
+  // explicitement non bloquants (cf. commentaire de fillCriterionSafe).
+  const unfilledRequired = [];
 
   // Session : le background vient de naviguer l'onglet de travail sur
   // /deposer-une-annonce (même règle que Vinted : un seul onglet persistant,
@@ -143,7 +151,8 @@ async function fillListingForm(job) {
     await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
   }
   if (fields.univers || fields.genre) {
-    await fillUnivers(fields.univers || fields.genre, warnings);
+    const ok = await fillUnivers(fields.univers || fields.genre, warnings);
+    if (!ok) unfilledRequired.push("univers");
   }
   if (fields.lbcProduit) {
     // Produit* (Équipement bébé, label for="baby_equipment_type") : critère
@@ -155,11 +164,13 @@ async function fillListingForm(job) {
     // EXPLICITE, jamais silencieux (même leçon que l'univers, 2026-07-06).
     const produitLabel = await waitFor(() => document.querySelector('label[for$="_type"]'), 5000);
     if (produitLabel) {
-      await fillCriterionSafe("produit", 'label[for$="_type"]', fields.lbcProduit, warnings, { skipIfPrefilled: true });
+      const ok = await fillCriterionSafe("produit", 'label[for$="_type"]', fields.lbcProduit, warnings, { skipIfPrefilled: true });
+      if (!ok) unfilledRequired.push("produit");
     } else {
       const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
       console.warn(`[leboncoin] ⚠️ ${note}`);
       warnings.push(note);
+      unfilledRequired.push("produit");
     }
   }
   if (fields.taille) {
@@ -249,6 +260,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error: addressResult.error,
       warnings,
+      unfilledRequired,
     };
   }
 
@@ -260,9 +272,10 @@ async function fillListingForm(job) {
       "\nTitre:", job.title,
       "\nPrix:", job.price,
       "\nChamps plateforme:", fields,
-      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
+      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning.",
+      unfilledRequired.length ? `\n⚠️ Champs OBLIGATOIRES non remplis: ${unfilledRequired.join(", ")}` : ""
     );
-    return { success: true, dryRun: true, warnings };
+    return { success: true, dryRun: true, warnings, unfilledRequired };
   }
 
   // Publication LIVE : le flux post-aperçu (Continuer final → options de
@@ -419,6 +432,9 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
 // du relevé Montres & Bijoux (accessories_univers) ; sur d'autres catégories
 // (Vêtements) le contrôle peut être rendu autrement (radios/pills) — d'où le
 // fallback : conteneur titré "Univers" → clic sur l'option via la cascade.
+// @returns {Promise<boolean>} true si l'univers a bien été posé (ou était déjà
+//   pré-rempli par LBC), false sinon — l'appelant l'inscrit alors dans
+//   unfilledRequired.
 async function fillUnivers(rawValue, warnings) {
   // 1. Combobox classique. Suffixes relevés : "_univers" (Montres & Bijoux),
   // "_universe" (anglais — Équipement bébé, campagne 2026-07-08 ; ses valeurs
@@ -427,8 +443,7 @@ async function fillUnivers(rawValue, warnings) {
   // pour les icônes mappées, 🍼 pour l'instant ; les autres icônes bébé
   // gardent un rawValue genre qui n'y matchera pas, warning propre attendu).
   if (findCriterionInput('label[for$="_univers"], label[for$="_universe"]')) {
-    await fillCriterionSafe("univers", 'label[for$="_univers"], label[for$="_universe"]', rawValue, warnings, { skipIfPrefilled: true });
-    return;
+    return await fillCriterionSafe("univers", 'label[for$="_univers"], label[for$="_universe"]', rawValue, warnings, { skipIfPrefilled: true });
   }
 
   // 2. Contrôle non-combobox : libellé "Univers" puis options cliquables
@@ -444,7 +459,7 @@ async function fillUnivers(rawValue, warnings) {
       // que skipIfPrefilled sur le combobox).
       if (scope.querySelector('input:checked, [aria-checked="true"], [aria-selected="true"]')) {
         console.log("[leboncoin] univers: déjà pré-sélectionné par LBC, conservé");
-        return;
+        return true;
       }
       const match = findOptionCascade(
         scope,
@@ -460,7 +475,7 @@ async function fillUnivers(rawValue, warnings) {
           console.warn(`[leboncoin] ≈ ${note}`);
           warnings.push(note);
         }
-        return;
+        return true;
       }
     }
   }
@@ -472,6 +487,7 @@ async function fillUnivers(rawValue, warnings) {
   const note = `univers: contrôle introuvable sur cette catégorie — valeur "${rawValue}" non appliquée`;
   console.warn(`[leboncoin] ⚠️ ${note}`);
   warnings.push(note);
+  return false;
 }
 
 // ── Adresse (autocomplete type Google Places) ───────────────────────────────

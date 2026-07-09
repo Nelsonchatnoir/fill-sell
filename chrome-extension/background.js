@@ -337,9 +337,7 @@ async function processJob(job, accessToken) {
       // l'app. L'onglet de travail reste ouvert pour inspection jusqu'au
       // prochain job.
       console.log(`[background] Job ${job.id} : DRY_RUN réussi → dry_run_completed (terminal, plus de boucle)`);
-      await updateJobStatus(accessToken, job.id, "dry_run_completed", {
-        error: result.warnings?.length ? `Dry-run OK. Warnings: ${result.warnings.join(" | ")}` : null,
-      });
+      await updateJobStatus(accessToken, job.id, "dry_run_completed", completionExtras(job, result));
     } else if (result?.needsUser) {
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
       // à terminer, connexion). Ré-armement BORNÉ (voir rearmBounded).
@@ -347,6 +345,7 @@ async function processJob(job, accessToken) {
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} publié : ${result.listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
+        ...completionExtras(job, result),
         listing_url: result.listingUrl ?? undefined,
       });
       // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
@@ -370,6 +369,44 @@ async function processJob(job, accessToken) {
     await updateJobStatus(accessToken, job.id, "failed", { error: msg })
       .catch((err) => console.error("[background] update-job-status failed:", err));
   }
+}
+
+// ── Incomplétude visible depuis la DB (fix du 2026-07-09) ─────────────────────
+// Un job ne doit JAMAIS se déclarer réussi en silence alors qu'un champ que le
+// handler considère OBLIGATOIRE est resté vide. C'était le cas : un dry-run
+// Beebs Figurines remontait dry_run_completed / error:null pendant qu'Âge et
+// Matière affichaient "Sélectionner une valeur" en rouge sur la page — seule
+// une inspection visuelle pouvait le voir.
+//
+// Le statut reste inchangé (dry_run_completed / published : le remplissage a
+// bien eu lieu), mais :
+//   - `error` porte un préfixe explicite, cherchable en base ;
+//   - `platform_fields.unfilled_required_fields` porte la liste brute, pour
+//     filtrer/agréger sans parser du texte.
+// Les handlers ne remontent ici que des champs déjà marqués obligatoires dans
+// leur propre code (Beebs : libellé sans "(facultatif)" ; Leboncoin : univers
+// et Produit*). Vinted et eBay renvoient toujours une liste vide — leur seul
+// champ requis, le genre, est bloqué en amont par precheckJob.
+const UNFILLED_PREFIX = "COMPLÉTÉ AVEC CHAMPS MANQUANTS";
+
+function completionExtras(job, result) {
+  const unfilled = result.unfilledRequired ?? [];
+  const warnings = result.warnings ?? [];
+  const parts = [];
+  if (unfilled.length) parts.push(`${UNFILLED_PREFIX} : ${unfilled.join(", ")}`);
+  if (warnings.length) parts.push(`Warnings: ${warnings.join(" | ")}`);
+
+  const extras = { error: parts.length ? parts.join(". ") : null };
+  if (unfilled.length) {
+    console.warn(`[background] Job ${job.id} : ${UNFILLED_PREFIX} : ${unfilled.join(", ")}`);
+    // Fusion, jamais d'écrasement : platform_fields porte aussi le mapping
+    // catégorie et needsUserAttempts.
+    extras.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      unfilled_required_fields: unfilled,
+    };
+  }
+  return extras;
 }
 
 // Ré-armement BORNÉ d'un job en pending : au plus MAX_NEEDS_USER_RETRIES

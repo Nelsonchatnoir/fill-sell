@@ -282,7 +282,15 @@ async function fillListingForm(job) {
       "\nChamps plateforme:", fields,
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
     );
-    return { success: true, dryRun: true, warnings };
+    // unfilledRequired systématiquement VIDE sur eBay, même raison que Vinted :
+    // le seul champ marqué obligatoire dans le code est le genre
+    // (ebayGenreRequired), traité par precheckJob avant navigation. Les item
+    // specifics sont TOUS documentés non bloquants ici (warning si introuvable)
+    // — le référentiel des aspects réellement obligatoires par catégorie est en
+    // cours de constitution via l'API Taxonomy (table ebay_item_aspects), et
+    // c'est LUI qui pourra un jour alimenter cette liste. Rien n'est deviné
+    // d'ici là.
+    return { success: true, dryRun: true, warnings, unfilledRequired: [] };
   }
 
   // Publication LIVE : le clic "Mettre en vente avec les frais affichés"

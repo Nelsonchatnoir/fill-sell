@@ -195,7 +195,14 @@ async function fillListingForm(job) {
       "\nChamps plateforme:", fields,
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
     );
-    return { success: true, dryRun: true, warnings };
+    // unfilledRequired systématiquement VIDE sur Vinted, et c'est un constat,
+    // pas un oubli : le seul champ marqué obligatoire dans le code est le
+    // genre (vintedGenreRequired), et il est contrôlé par precheckJob AVANT
+    // toute navigation — un job sans genre n'atteint jamais ce handler. Aucun
+    // des champs remplis ici (état, taille, marque, matière, couleurs,
+    // packageSize) n'est marqué requis où que ce soit. On expose quand même la
+    // clé pour que les 4 handlers aient le même contrat côté background.
+    return { success: true, dryRun: true, warnings, unfilledRequired: [] };
   }
 
   const publishBtn = await waitForElement('[data-testid="upload-form-save-button"]');

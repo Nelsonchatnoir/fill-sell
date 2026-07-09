@@ -145,44 +145,48 @@ async function fillListingForm(job) {
   // avec un warning en cas de libellé introuvable, et sont silencieusement
   // ignorés s'ils ne sont pas affichés pour la catégorie choisie.
   const warnings = [];
+  // Champs OBLIGATOIRES (affichés sans "(facultatif)") qu'on n'a pas su
+  // remplir : remontés au background, qui refuse de laisser passer un job
+  // pour "réussi" sans le dire (cf. BUG 2 du 2026-07-09).
+  const unfilledRequired = [];
+
+  // Les champs dynamiques sont injectés APRÈS le choix de la catégorie : sans
+  // cette attente, findField ne trouve aucun libellé et TOUS les champs sont
+  // sautés en silence (cause probable du dry-run Figurines du 2026-07-09, où
+  // le job est remonté dry_run_completed / error:null alors qu'Âge et Matière
+  // étaient vides à l'écran). On attend qu'au moins un attribut apparaisse.
+  await waitFor(() => document.querySelector('button[class*="__selectButton"]')
+    && document.querySelectorAll('div[class*="__label"]').length > 2, 8000);
 
   // Couleur : même normalisation que Vinted/eBay (colors[] posé par l'app,
   // sinon split de couleur libre) — Beebs n'affiche qu'un choix simple, on
   // ne prend que la dominante.
   const colorValue = fields.colors?.[0] || fields.couleur;
-  if (colorValue) await selectDropdownValue("Couleur", colorValue, warnings);
+  if (colorValue) await selectDropdownValue("Couleur", colorValue, warnings, unfilledRequired);
 
-  if (fields.marque) await selectDropdownValue("Marque", fields.marque, warnings);
+  if (fields.marque) await selectDropdownValue("Marque", fields.marque, warnings, unfilledRequired);
 
   // Pointure (chaussures) et Taille (autre Mode) sont deux libellés distincts
   // selon la catégorie — jamais les deux en même temps, on tente les deux et
   // le champ absent est ignoré silencieusement par selectDropdownValue.
   if (fields.taille) {
-    await selectDropdownValue("Pointure", String(fields.taille).replace(/^EU\s*/i, ""), warnings);
-    await selectDropdownValue("Taille", fields.taille, warnings);
+    await selectDropdownValue("Pointure", String(fields.taille).replace(/^EU\s*/i, ""), warnings, unfilledRequired);
+    await selectDropdownValue("Taille", fields.taille, warnings, unfilledRequired);
   }
 
-  if (fields.etat) await selectDropdownValue("État", fields.etat, warnings);
-  if (fields.matiere) await selectDropdownValue("Matière", fields.matiere, warnings);
+  if (fields.etat) await selectDropdownValue("État", fields.etat, warnings, unfilledRequired);
+  if (fields.matiere) await selectDropdownValue("Matière", fields.matiere, warnings, unfilledRequired);
 
-  // ⚠️ Âge — À TESTER EN PRIORITÉ AU PROCHAIN DRY-RUN (2026-07-09).
-  // Champ observé sur la catégorie « Figurines » lors du dry-run du 08/07,
-  // mais JAMAIS rempli en conditions réelles : ni son libellé exact ("Âge" ?
-  // "Age" ? "Tranche d'âge" ?), ni ses options n'ont été relevés. Les trois
-  // autres champs de cette passe ne font que brancher une donnée dans un
-  // chemin déjà éprouvé ; celui-ci est le seul dont le succès n'est pas
-  // acquis. Deux filets, cohérents avec le reste du handler :
-  //   - libellé introuvable → findFieldTrigger renvoie null → saut silencieux
-  //     (comportement normal d'un champ absent de la catégorie) ;
-  //   - libellé trouvé mais valeur sans correspondance → warning listant les
-  //     options RÉELLES (cf. selectDropdownValue), qui sert de relevé
-  //     correctif pour figer la valeur attendue au prochain passage.
-  // On tente les deux orthographes plausibles du libellé, comme on le fait
-  // déjà pour Pointure/Taille : celle qui n'existe pas est ignorée sans bruit.
-  if (fields.age) {
-    await selectDropdownValue("Âge", fields.age, warnings);
-    await selectDropdownValue("Age", fields.age, warnings);
-  }
+  // Âge : libellé RELEVÉ sur la vraie page (2026-07-09, catégorie Figurines) —
+  // "Âge" avec accent, une seule orthographe (l'ancienne double tentative
+  // "Âge"/"Age" est retirée). Options relevées, toutes des TRANCHES :
+  //   0-6 mois | 6-12 mois | 12-24 mois | 2 ans - 3 ans | 3 ans - 4 ans |
+  //   4 ans - 6 ans | 6 ans - 8 ans | 8 ans - 12 ans | 12 ans - 16 ans |
+  //   16 ans et +
+  // C'est pourquoi le prompt Beebs impose désormais cette liste fermée : la
+  // valeur libre "10 ans et plus" produite le 2026-07-09 ne matchait aucun
+  // étage de la cascade, et le champ (obligatoire ici) restait vide.
+  if (fields.age) await selectDropdownValue("Âge", fields.age, warnings, unfilledRequired);
 
   if (job.price != null) await fillPriceField("#price", job.price);
 
@@ -195,6 +199,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error: addressResult.error,
       warnings,
+      unfilledRequired,
     };
   }
 
@@ -205,9 +210,10 @@ async function fillListingForm(job) {
       "\nTitre:", job.title,
       "\nPrix:", job.price,
       "\nChamps plateforme:", fields,
-      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
+      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning.",
+      unfilledRequired.length ? `\n⚠️ Champs OBLIGATOIRES non remplis: ${unfilledRequired.join(", ")}` : ""
     );
-    return { success: true, dryRun: true, warnings };
+    return { success: true, dryRun: true, warnings, unfilledRequired };
   }
 
   const publishBtn = document.querySelector('button[type="submit"]');
@@ -217,7 +223,7 @@ async function fillListingForm(job) {
   //   (comme Vinted — non nécessaire tant que DRY_RUN reste true)
   const listingUrl = null;
 
-  return { success: true, listingUrl, warnings };
+  return { success: true, listingUrl, warnings, unfilledRequired };
 }
 
 // ── Helpers génériques ───────────────────────────────────────────────────────
@@ -393,7 +399,14 @@ async function fillPriceField(selector, value) {
 // pour la catégorie couramment choisie n'est pas une erreur : on retourne
 // simplement sans rien faire, aucun warning.
 
-function findFieldTrigger(labelText) {
+// Retourne { trigger, required } ou null si le champ n'est pas affiché pour la
+// catégorie courante.
+//
+// `required` : Beebs ne pose AUCUN attribut aria/disabled — le seul marqueur
+// est le suffixe "(facultatif)" dans le libellé (relevé, cf. en-tête). Un
+// champ affiché SANS ce suffixe est donc obligatoire : c'est ce qui alimente
+// unfilledRequired quand on n'arrive pas à le remplir.
+function findField(labelText) {
   // Le suffixe "(facultatif)" vit dans un span[class*="__optionalAttribute"]
   // enfant (ex: Couleur) — ne PAS filtrer sur children.length === 0, ça
   // exclurait justement les champs facultatifs (bug réel trouvé en dry-run :
@@ -404,7 +417,7 @@ function findFieldTrigger(labelText) {
     const text = l.textContent.trim();
     if (text === labelText || text.startsWith(`${labelText} `) || text.startsWith(`${labelText}(`)) {
       const btn = l.parentElement?.querySelector('button[class*="__selectButton"]');
-      if (btn) return btn;
+      if (btn) return { trigger: btn, required: !/\(facultatif\)/i.test(text) };
     }
   }
   return null;
@@ -436,8 +449,14 @@ function optionLabel(el) {
   return (span ?? el).textContent.trim();
 }
 
-function findOptionCascade(optionSelector, text) {
-  const options = Array.from(document.querySelectorAll(optionSelector))
+// ⚠️ `els` est la liste des options DU PANNEAU OUVERT, pas un querySelectorAll
+// global (cf. openPanelOptions) : les panneaux Beebs sont rendus dans un
+// portail hors du wrapper du champ, et plusieurs peuvent rester ouverts en
+// même temps — chercher globalement faisait matcher la valeur d'un champ sur
+// les options d'un autre (relevé du 2026-07-09 : 16 boutons visibles à la
+// fois, 10 d'Âge + 6 de Matière).
+function findOptionCascade(els, text) {
+  const options = Array.from(els)
     .map((el) => {
       const label = optionLabel(el);
       return { el, label, norm: normalizeFuzzy(label) };
@@ -471,53 +490,125 @@ function findOptionCascade(optionSelector, text) {
   return null;
 }
 
-// Polling via sleep() (timer Web Worker) et non setTimeout : dans l'onglet de
-// travail caché, un setTimeout(80) est clampé à 1 s et ce timeout de 4 s
-// n'accordait en pratique que 4 tentatives (corrigé 2026-07-09, même famille
-// que le fix des timers du 2026-07-08).
-async function waitForValueCascade(text, timeoutMs = 4000) {
+// (waitForValueCascade supprimé le 2026-07-09 : il cherchait dans TOUS les
+// panneaux ouverts. L'attente des options vit désormais dans openPanelOptions,
+// qui n'expose que celles du panneau qu'il vient d'ouvrir. Polling toujours
+// via sleep() — timer Web Worker non clampé dans l'onglet caché.)
+
+// Polling générique d'une condition (retourne null au timeout, ne rejette
+// pas) — même contrat que leboncoin.js.
+async function waitFor(fn, timeoutMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const found = findOptionCascade('button[class*="__valueButton"]', text);
-    if (found) return found;
-    await sleep(80);
+    const v = fn();
+    if (v) return v;
+    await sleep(120);
   }
   return null;
 }
 
-async function selectDropdownValue(labelText, rawText, warnings) {
-  const trigger = findFieldTrigger(labelText);
-  if (!trigger) return; // champ non affiché pour cette catégorie : rien à signaler
+const VALUE_OPTION_SELECTOR = 'button[class*="__valueButton"]';
+const allValueOptions = () => Array.from(document.querySelectorAll(VALUE_OPTION_SELECTOR));
+
+// Ouvre le panneau du champ et retourne UNIQUEMENT ses options.
+//
+// Le panneau n'est pas un descendant du bouton (portail) : impossible de le
+// scoper par le DOM. On procède donc par DIFFÉRENTIEL — les options présentes
+// avant le clic ne sont pas les nôtres, les nouvelles le sont.
+async function openPanelOptions(trigger, rawText, timeoutMs = 4000) {
+  const before = new Set(allValueOptions());
   await humanPause();
-  trigger.click();
+  trigger.click(); // ⚠️ BASCULE : re-cliquer ferme le panneau (cf. closePanel)
   await humanPause();
 
+  // La barre de recherche n'existe que sur les listes longues (Marque). Les
+  // listes courtes (Âge : 10 options, Matière : 6) n'en ont pas — relevé.
   const search = document.querySelector('input[class*="__searchBarInput"]');
   if (search) await typeHuman(search, String(rawText));
 
-  const match = await waitForValueCascade(rawText);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const fresh = allValueOptions().filter((el) => !before.has(el));
+    if (fresh.length) return fresh;
+    await sleep(80);
+  }
+  return [];
+}
+
+// document.body.click() NE FERME PAS le panneau (vérifié le 2026-07-09 : les
+// options restaient dans le DOM et polluaient le champ suivant). Escape non
+// plus. Le seul geste qui ferme est un second clic sur le déclencheur.
+async function closePanel(trigger) {
+  trigger.click();
+  await humanPause();
+}
+
+/**
+ * @param {string[]} unfilledRequired — accumulateur : reçoit le libellé du
+ *   champ si celui-ci est OBLIGATOIRE (pas de "(facultatif)") et qu'on n'a pas
+ *   réussi à lui donner une valeur. Un job ne doit jamais se déclarer réussi
+ *   en laissant un champ obligatoire vide (cf. background.js).
+ */
+async function selectDropdownValue(labelText, rawText, warnings, unfilledRequired = []) {
+  const field = findField(labelText);
+  if (!field) return; // champ non affiché pour cette catégorie : rien à signaler
+  const { trigger, required } = field;
+
+  const options = await openPanelOptions(trigger, rawText);
+  if (!options.length) {
+    const note = `${labelText}: panneau d'options resté vide, champ laissé vide`;
+    console.warn(`[beebs] ⚠️ ${note}`);
+    warnings.push(note);
+    if (required) unfilledRequired.push(labelText);
+    await closePanel(trigger);
+    return;
+  }
+
+  let match = findOptionCascade(options, rawText);
+
+  // Repli "Autre" : la liste des matières est PAR CATÉGORIE et ne contient pas
+  // toutes les matières du monde (Figurines : Plastique | Bois | Caoutchouc |
+  // Tissu | Carton | Autre — "Résine" n'y est pas, cas réel du 2026-07-09).
+  // Quand Beebs offre lui-même un bac générique, l'utiliser vaut mieux que
+  // laisser vide un champ obligatoire. On ne l'invente pas : on ne le prend
+  // que s'il figure dans les options relevées à l'écran.
+  let usedFallback = false;
+  if (!match) {
+    const autre = options.find((el) => normalizeFuzzy(optionLabel(el)) === "autre");
+    if (autre) {
+      match = { el: autre, label: optionLabel(autre), stage: "repli-autre" };
+      usedFallback = true;
+    }
+  }
+
   if (!match) {
     // Le warning porte les options RÉELLEMENT affichées : c'est ce relevé qui
     // permet de corriger la valeur envoyée (même méthode que leboncoin.js et
-    // vinted.js). Indispensable pour un champ jamais rempli comme "Âge".
-    const available = Array.from(document.querySelectorAll('button[class*="__valueButton"]'))
-      .map((o) => o.querySelector('span[class*="__value"]')?.textContent.trim() || o.textContent.trim())
-      .filter(Boolean)
-      .slice(0, 20);
+    // vinted.js).
+    const available = options.map(optionLabel).filter(Boolean).slice(0, 20);
     const note =
       `${labelText}: "${rawText}" sans correspondance (même approximative) dans la liste Beebs, ` +
       `champ laissé vide. Options affichées: ${JSON.stringify(available)}`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
-    document.body.click(); // referme le panneau sans rien choisir
-    await humanPause();
+    if (required) unfilledRequired.push(labelText);
+    await closePanel(trigger);
     return;
   }
+
   await humanPause(); // temps de "lecture" de la liste avant le clic
   match.el.click();
   await humanPause();
+
+  // Sélectionner une option ferme le panneau (relevé) ; si ce n'était pas le
+  // cas, la fermeture par bascule ci-dessous éviterait de polluer le champ
+  // suivant. On ne la déclenche que si des options traînent encore.
+  if (allValueOptions().length) await closePanel(trigger);
+
   if (match.stage !== "exact") {
-    const note = `${labelText}: "${rawText}" → option Beebs "${match.label}" (match ${match.stage})`;
+    const note = usedFallback
+      ? `${labelText}: "${rawText}" absent de la liste Beebs → repli sur l'option générique "Autre"`
+      : `${labelText}: "${rawText}" → option Beebs "${match.label}" (match ${match.stage})`;
     console.warn(`[beebs] ≈ ${note}`);
     warnings.push(note);
   }
@@ -553,7 +644,7 @@ async function waitForCategoryOption(text, timeoutMs = 5000) {
 }
 
 async function selectCategory(path) {
-  const trigger = findFieldTrigger("Catégorie");
+  const trigger = findField("Catégorie")?.trigger;
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
   await humanPause();
   trigger.click();
