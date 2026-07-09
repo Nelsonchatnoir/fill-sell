@@ -13,11 +13,36 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
   leboncoin: {
     lang: "fr",
-    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état et le format colis depuis le contexte article. Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Leboncoin — "État neuf" et "État satisfaisant", jamais "Neuf" ni "État correct"). Pour "univers" (rayon Mode/accessoires), choisis la cible de l'article: pour TOUT article de mode (vêtement, chaussure, accessoire, montre, sac, bijou), réponds TOUJOURS une valeur — jamais null — en tranchant Femme/Homme/Enfant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle), et "Mixte" (rayon accepté par Leboncoin) seulement si aucun signal n'existe. null est réservé aux objets hors mode. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"État neuf|Très bon état|Bon état|État satisfaisant|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini","univers":"Femme|Homme|Enfant|Mixte|null"}}`,
+    // "marque" et "matiere" ajoutés le 2026-07-09 : le handler leboncoin.js les
+    // remplit depuis toujours (label[for$="_brand"] / [for$="_material"]) mais
+    // NI ce prompt NI la config du stepper LBC ne les produisaient — donc
+    // mergeFieldsWithLens les jetait, et les deux critères restaient vides.
+    // Non bloquant jusqu'ici uniquement parce que Leboncoin les pré-remplit
+    // parfois depuis le titre (observé sur Casio et iPhone) : un titre moins
+    // explicite ne bénéficie pas de ce filet.
+    // ⚠️ "matiere" reste en TEXTE LIBRE, sans liste fermée : contrairement à
+    // Vinted (liste globale), la liste des matières Leboncoin est PAR
+    // CATÉGORIE (19 options sur Montres & Bijoux, cf.
+    // docs/leboncoin-form-survey.md) et n'a jamais été relevée ailleurs. Le
+    // handler rapproche la valeur par cascade fuzzy et remonte un warning si
+    // rien ne matche — on ne fige pas une liste qu'on n'a pas crawlée.
+    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état, le format colis, la marque et la matière depuis le contexte article. Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Leboncoin — "État neuf" et "État satisfaisant", jamais "Neuf" ni "État correct"). Pour "univers" (rayon Mode/accessoires), choisis la cible de l'article: pour TOUT article de mode (vêtement, chaussure, accessoire, montre, sac, bijou), réponds TOUJOURS une valeur — jamais null — en tranchant Femme/Homme/Enfant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle), et "Mixte" (rayon accepté par Leboncoin) seulement si aucun signal n'existe. null est réservé aux objets hors mode. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Pour "matiere", donne la matière DOMINANTE de l'article en un seul mot courant (ex: "Acier", "Cuir", "Coton", "Plastique", "Bois") — jamais de valeur composée ("Résine et acier" est invalide, choisis la dominante) ; null si la matière ne s'applique pas ou n'est pas déductible. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"État neuf|Très bon état|Bon état|État satisfaisant|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini","univers":"Femme|Homme|Enfant|Mixte|null","marque":"...ou null","matiere":"...ou null"}}`,
   },
   beebs: {
     lang: "fr",
-    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état et marque depuis le contexte. Pour "genre" (rayon Beebs, il résout la catégorie): pour TOUT article de mode (vêtement, chaussure, accessoire), réponds TOUJOURS une valeur en tranchant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle): "Femme" ou "Homme" pour un article adulte, "Fille", "Garçon" ou "Bébé" pour un article enfant. Beebs n'a NI rayon Enfant NI rayon Mixte: ne réponds jamais ces valeurs — pour un article enfant unisexe choisis "Bébé" si taille < 3 ans, sinon tranche Fille/Garçon au moindre signal, et null en dernier recours. null aussi pour les objets hors mode. Si un champ ne s'applique pas, utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","etat":"Neuf|Très bon état|Bon état","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|null"}}`,
+    // "matiere" et "couleur" ajoutés le 2026-07-09 : beebs.js les remplit depuis
+    // toujours (selectDropdownValue "Matière" / "Couleur") mais rien ne les
+    // produisait. Le dry-run réel sur « Figurines » montre "Matière" affichée
+    // SANS le suffixe "(facultatif)" — seul marqueur d'obligation côté Beebs :
+    // le champ est donc potentiellement bloquant sur cette catégorie.
+    // "age" ajouté aussi (observé sur « Figurines ») : JAMAIS rempli en
+    // conditions réelles, valeurs de la liste Beebs jamais relevées — on
+    // demande une tranche d'âge en texte libre et le handler la rapproche par
+    // cascade, en listant les options réelles dans son warning si rien ne
+    // matche. À vérifier au prochain dry-run (cf. beebs.js).
+    // Aucune liste fermée pour matiere/couleur : les listes Beebs n'ont pas été
+    // crawlées, le handler matche en fuzzy.
+    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état, marque, matière et couleur depuis le contexte. Pour "genre" (rayon Beebs, il résout la catégorie): pour TOUT article de mode (vêtement, chaussure, accessoire), réponds TOUJOURS une valeur en tranchant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle): "Femme" ou "Homme" pour un article adulte, "Fille", "Garçon" ou "Bébé" pour un article enfant. Beebs n'a NI rayon Enfant NI rayon Mixte: ne réponds jamais ces valeurs — pour un article enfant unisexe choisis "Bébé" si taille < 3 ans, sinon tranche Fille/Garçon au moindre signal, et null en dernier recours. null aussi pour les objets hors mode. Pour "matiere", donne la matière DOMINANTE en un seul mot courant (ex: "Plastique", "Coton", "Bois", "Métal"), jamais de valeur composée; null si non déductible. Pour "couleur", donne la couleur DOMINANTE en un seul mot courant (ex: "Noir", "Rouge"), jamais deux couleurs; null si non déductible. Pour "age" (tranche d'âge recommandée, utile sur les jouets et les figurines), donne une tranche courte du type "3-6 ans", "6-9 ans", "10 ans et plus", ou "0-3 ans" pour la petite enfance; null si l'article n'a pas d'âge cible (vêtement adulte, accessoire, objet du quotidien). Si un champ ne s'applique pas, utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","etat":"Neuf|Très bon état|Bon état","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|null","matiere":"...ou null","couleur":"...ou null","age":"...ou null"}}`,
   },
   ebay: {
     lang: "en",

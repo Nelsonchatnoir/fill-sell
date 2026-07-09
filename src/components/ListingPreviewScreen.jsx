@@ -134,6 +134,12 @@ function getPlatformFieldsConfig(t) {
       // Sans cette entrée, mergeFieldsWithLens jetait l'univers généré par
       // l'IA (aucune clé hors config ne survit) → champ obligatoire vide.
       { key:"univers",      label:t("fieldUniversLabel"),       type:"select", options: gender },
+      // marque + matiere (2026-07-09) : consommés par leboncoin.js
+      // (label[for$="_brand"] / [for$="_material"]) mais absents d'ici, donc
+      // jetés par mergeFieldsWithLens et TOUJOURS vides. Texte libre : la
+      // liste des matières LBC est par catégorie et n'a pas été crawlée.
+      { key:"marque",       label:t("fieldBrandLabel"),         type:"text" },
+      { key:"matiere",      label:t("fieldMaterialLabel"),      type:"text" },
     ],
     // genre indispensable : c'est lui qui résout le rayon Mode Beebs
     // (Femme/Homme/Fille/Garçon/Bébé, cf. beebsCategories.js) — sans ce champ
@@ -145,6 +151,16 @@ function getPlatformFieldsConfig(t) {
       { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"genre",  label:t("fieldGenderLabel"),    type:"select", options: beebsGender },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
+      // matiere + couleur (2026-07-09) : consommés par beebs.js depuis
+      // toujours, jamais produits → toujours vides. "Matière" apparaît SANS
+      // "(facultatif)" sur « Figurines » (dry-run réel), donc potentiellement
+      // bloquant. Texte libre : listes Beebs non crawlées, match fuzzy côté
+      // handler.
+      { key:"matiere", label:t("fieldMaterialLabel"), type:"text" },
+      { key:"couleur", label:t("fieldColorLabel"),    type:"text" },
+      // age (2026-07-09) : champ observé sur « Figurines », jamais rempli en
+      // conditions réelles — à valider au prochain dry-run.
+      { key:"age",     label:t("fieldAgeLabel"),      type:"text" },
     ],
     // eBay.fr est francophone : clés et valeurs FR canoniques, alignées sur
     // les autres plateformes ET sur ce que consomme l'extension (etat, taille,

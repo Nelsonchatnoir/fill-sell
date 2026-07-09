@@ -172,8 +172,18 @@ async function fillListingForm(job) {
   }
   if (job.price != null) await fillPriceField(job.price);
 
-  // Pas de source de donnée aujourd'hui — Vinted garde son défaut ("Petit")
-  // tant que platform_fields.packageSize n'existe pas.
+  // packageSize : TOUJOURS absent, et c'est un choix, pas un oubli.
+  // Re-vérifié le 2026-07-09 : aucune source de donnée fiable n'existe dans le
+  // projet — ni poids ni dimensions nulle part (lens-analysis extrait titre,
+  // marque, matiere, taille_estimee, etat_estime, prix… mais jamais de poids ;
+  // la table inventaire n'en a pas de colonne ; aucun prompt ne l'infère).
+  // Le seul candidat serait platform_fields.format_colis, mais c'est une
+  // inférence IA faite pour le vocabulaire de LEBONCOIN (Lettre | Petit colis |
+  // … | Non défini), pas pour celui de Vinted (Petit | Moyen | Grand) : le
+  // transposer serait une heuristique inter-plateformes de plus, posée sur une
+  // devinette. On préfère le défaut de Vinted ("Petit", pré-coché), qui est au
+  // moins le cas majoritaire d'un vêtement. À rebrancher le jour où un poids
+  // réel est saisi ou estimé.
   if (fields.packageSize) await selectPackageSize(fields.packageSize);
 
   if (DRY_RUN) {

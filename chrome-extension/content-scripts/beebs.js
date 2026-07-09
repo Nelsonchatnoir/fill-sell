@@ -85,7 +85,10 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
  *   { id, platform, title, description, price, photos, platform_fields }
  *   platform_fields (beebs, posés par l'app via beebsCategories.js) :
  *     { beebsCategoryPath, beebsGenreRequired?, genre?, etat?, marque?,
- *       taille?, couleur?, colors?, matiere?, adresse? }
+ *       taille?, couleur?, colors?, matiere?, age?, adresse? }
+ *   matiere/couleur/age : produits depuis le 2026-07-09 seulement (prompt
+ *   Beebs + stepper) — un job antérieur les aura vides, sans conséquence
+ *   (chaque champ est sauté silencieusement s'il est absent).
  */
 async function fillListingForm(job) {
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
@@ -161,6 +164,25 @@ async function fillListingForm(job) {
 
   if (fields.etat) await selectDropdownValue("État", fields.etat, warnings);
   if (fields.matiere) await selectDropdownValue("Matière", fields.matiere, warnings);
+
+  // ⚠️ Âge — À TESTER EN PRIORITÉ AU PROCHAIN DRY-RUN (2026-07-09).
+  // Champ observé sur la catégorie « Figurines » lors du dry-run du 08/07,
+  // mais JAMAIS rempli en conditions réelles : ni son libellé exact ("Âge" ?
+  // "Age" ? "Tranche d'âge" ?), ni ses options n'ont été relevés. Les trois
+  // autres champs de cette passe ne font que brancher une donnée dans un
+  // chemin déjà éprouvé ; celui-ci est le seul dont le succès n'est pas
+  // acquis. Deux filets, cohérents avec le reste du handler :
+  //   - libellé introuvable → findFieldTrigger renvoie null → saut silencieux
+  //     (comportement normal d'un champ absent de la catégorie) ;
+  //   - libellé trouvé mais valeur sans correspondance → warning listant les
+  //     options RÉELLES (cf. selectDropdownValue), qui sert de relevé
+  //     correctif pour figer la valeur attendue au prochain passage.
+  // On tente les deux orthographes plausibles du libellé, comme on le fait
+  // déjà pour Pointure/Taille : celle qui n'existe pas est ignorée sans bruit.
+  if (fields.age) {
+    await selectDropdownValue("Âge", fields.age, warnings);
+    await selectDropdownValue("Age", fields.age, warnings);
+  }
 
   if (job.price != null) await fillPriceField("#price", job.price);
 
@@ -475,7 +497,16 @@ async function selectDropdownValue(labelText, rawText, warnings) {
 
   const match = await waitForValueCascade(rawText);
   if (!match) {
-    const note = `${labelText}: "${rawText}" sans correspondance (même approximative) dans la liste Beebs, champ laissé vide`;
+    // Le warning porte les options RÉELLEMENT affichées : c'est ce relevé qui
+    // permet de corriger la valeur envoyée (même méthode que leboncoin.js et
+    // vinted.js). Indispensable pour un champ jamais rempli comme "Âge".
+    const available = Array.from(document.querySelectorAll('button[class*="__valueButton"]'))
+      .map((o) => o.querySelector('span[class*="__value"]')?.textContent.trim() || o.textContent.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    const note =
+      `${labelText}: "${rawText}" sans correspondance (même approximative) dans la liste Beebs, ` +
+      `champ laissé vide. Options affichées: ${JSON.stringify(available)}`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
     document.body.click(); // referme le panneau sans rien choisir
@@ -663,4 +694,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension.
-console.log("[beebs] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v2 : cascade catégorie + champs dynamiques + adresse autocomplete + timing humain)");
+console.log("[beebs] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v3 : + matière/couleur branchées, champ Âge (À TESTER), warnings avec options réelles)");
