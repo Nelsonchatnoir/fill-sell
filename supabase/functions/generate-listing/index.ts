@@ -110,6 +110,54 @@ serve(async (req) => {
     // inventaire n'existe encore (switch "ajouter au stock" différé/désactivé) — évite de
     // dépendre d'une ligne DB qui n'est créée qu'à la publication, voire jamais.
     const item_data = body.item_data && typeof body.item_data === "object" ? body.item_data : null;
+
+    // ── Mode ciblé "resolve_genre" (2026-07-09) ───────────────────────────────
+    // Relance UNIQUEMENT le champ genre avec une instruction stricte. Appelé
+    // par ListingPreviewScreen à la publication quand la génération complète a
+    // laissé genre vide/"Mixte" sur une catégorie qui exige un rayon genré :
+    // le call complet n'est pas déterministe (même article → 4× "Homme" puis
+    // 1× "Mixte", vérifié en DB le 2026-07-09) et la publication ne doit plus
+    // jamais être bloquée pour ça. Pas de check pièces : micro-appel de
+    // secours au sein d'un flux de publication déjà débité par
+    // spend_coins_and_publish. Réponse : { genre: "Femme"|"Homme"|"Fille"|
+    // "Garçon"|"Bébé"|null } — null si contexte vide ou IA indisponible, le
+    // client applique alors son propre défaut.
+    if (body.resolve_genre === true) {
+      const it = item_data ?? {};
+      const ctx = [
+        it.marque && `Marque: ${it.marque}`,
+        it.titre && `Article: ${it.titre}`,
+        it.type && `Type: ${it.type}`,
+        it.description && `Description: ${it.description}`,
+      ].filter(Boolean).join("\n");
+      if (!ctx) return json({ genre: null });
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 50,
+            system: `Tu détermines le rayon (genre cible) d'un article pour un site de revente de mode. Réponds UNIQUEMENT du JSON valide: {"genre":"..."} avec une de ces valeurs EXACTES: Femme, Homme, Fille, Garçon, Bébé. JAMAIS Mixte, JAMAIS Enfant, JAMAIS null — tranche TOUJOURS sur le signal le plus probable, même faible (coupe, taille, style, couleurs, rayon habituel de la marque ou du modèle — ex: une Casio F-91W se vend rayon Homme). Article adulte ou indéterminé → Femme ou Homme. Article manifestement enfant → Fille, Garçon ou Bébé.`,
+            messages: [{ role: "user", content: `Quel rayon pour cet article ?\n${ctx}` }],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text: string = data.content?.[0]?.text ?? "";
+          const m = text.match(/"genre"\s*:\s*"(Femme|Homme|Fille|Garçon|Bébé)"/);
+          return json({ genre: m ? m[1] : null });
+        }
+        console.error("[generate-listing] resolve_genre:", await res.text());
+      } catch (e) {
+        console.error("[generate-listing] resolve_genre exception:", e);
+      }
+      return json({ genre: null });
+    }
     // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
     // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur absente, inconnue
     // ou legacy ("ia", "ia_multi", "ia_simple", …) retombe sur "original" : jamais de retouche

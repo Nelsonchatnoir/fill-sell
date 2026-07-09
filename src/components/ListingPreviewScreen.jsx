@@ -1245,23 +1245,6 @@ export default function ListingPreviewScreen({
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
-    // Blocage genre Vinted : les articles de mode adulte exigent un rayon
-    // Femmes ou Hommes (aucun rayon Mixte dans le catalogue Vinted). Quand
-    // l'IA a répondu Mixte ou rien, l'utilisateur tranche ici plutôt que de
-    // laisser partir un job condamné au fallback. Enfant passe (hors périmètre
-    // Lot 1, fallback documenté) ; les objets hors mode passent sans friction.
-    if (selected.has("vinted")) {
-      const pfV = edited.vinted?.platform_fields ?? {};
-      const iconV = detectObjectIcon(
-        edited.vinted?.title,
-        edited.vinted?.description,
-        pfV.categorie || initialListing?.categorie
-      );
-      if (vintedGenreRequired(iconV) && (!pfV.genre || pfV.genre === "Mixte")) {
-        setPublishError(t("vintedGenreRequired"));
-        return;
-      }
-    }
     setPublishing(true);
     setPublishError("");
     try {
@@ -1289,6 +1272,72 @@ export default function ListingPreviewScreen({
         const { data: prof } = await supabase.from("profiles")
           .select("platform_settings").eq("id", userId).maybeSingle();
         lbcAddress = prof?.platform_settings?.leboncoin?.adresse || null;
+      }
+
+      // ── Auto-résolution du genre (2026-07-09) — remplace le blocage dur ──
+      // generate-listing n'est pas déterministe : sur le même article, 4
+      // générations consécutives ont donné genre="Homme" puis une "Mixte"
+      // (Patagonia P-6, vérifié en DB). L'ancien bandeau rouge
+      // t("vintedGenreRequired") bloquait alors TOUTE la publication
+      // multi-plateforme jusqu'à correction manuelle — à l'opposé de la
+      // "publication automatique sans rien faire" promise au même écran.
+      // Même famille de blocage côté Beebs : son arbre Mode est genré jusqu'aux
+      // ACCESSOIRES (Montres vit sous Mode>Femme/Homme>Accessoires — vérifié),
+      // donc une montre sans genre partait en failed à 100 % au pré-check de
+      // l'extension (cas réel Casio du 2026-07-09), alors qu'eBay range déjà
+      // ⌚/💍 hors rayons genrés. On tranche donc AUTOMATIQUEMENT, sans jamais
+      // bloquer : genre déjà résolu sur une autre plateforme du même run
+      // d'abord (cohérence, zéro appel), sinon relance IA ciblée du seul champ
+      // genre (mode resolve_genre de generate-listing, prompt strict — jamais
+      // Mixte), sinon défaut "Femme" (plus gros rayon Vinted/Beebs). Un genre
+      // explicite (Femme/Homme/Enfant/…) n'est JAMAIS écrasé — seuls
+      // vide/"Mixte" le sont, et l'utilisateur peut corriger dans les champs
+      // plateforme avant de publier s'il n'est pas d'accord.
+      const iconFor = (platform) => {
+        const pf = edited[platform]?.platform_fields ?? {};
+        return detectObjectIcon(
+          edited[platform]?.title,
+          edited[platform]?.description,
+          pf.categorie || initialListing?.categorie
+        );
+      };
+      const genreUnresolved = (platform) => {
+        if (!selected.has(platform)) return false;
+        const g = edited[platform]?.platform_fields?.genre ?? "";
+        if (g && g !== "Mixte") return false; // choix explicite respecté
+        const icon = iconFor(platform);
+        if (platform === "vinted") return vintedGenreRequired(icon);
+        // 🌸 + Mixte résout un vrai rayon eBay (Parfums mixtes) : pas touché.
+        if (platform === "ebay") return ebayGenreRequired(icon) && !getEbayCategoryId(icon, g);
+        if (platform === "beebs") return beebsGenreRequired(icon);
+        return false;
+      };
+      let autoGenre = null;
+      if (["vinted", "ebay", "beebs"].some(genreUnresolved)) {
+        autoGenre = [
+          edited.vinted?.platform_fields?.genre,
+          edited.ebay?.platform_fields?.genre,
+          edited.beebs?.platform_fields?.genre,
+          edited.leboncoin?.platform_fields?.univers,
+        ].find(g => g && g !== "Mixte" && g !== "Enfant") ?? null;
+        if (!autoGenre) {
+          const refP = ["vinted", "ebay", "beebs", "leboncoin"].find(p => edited[p]);
+          try {
+            const { data: gRes } = await supabase.functions.invoke("generate-listing", {
+              body: {
+                resolve_genre: true,
+                item_data: {
+                  titre:       edited[refP]?.title       || initialListing?.titre       || "",
+                  marque:      initialListing?.marque      || null,
+                  description: edited[refP]?.description || initialListing?.description || null,
+                  type:        initialListing?.categorie   || null,
+                },
+              },
+            });
+            if (["Femme", "Homme", "Fille", "Garçon", "Bébé"].includes(gRes?.genre)) autoGenre = gRes.genre;
+          } catch { /* IA indisponible : défaut ci-dessous */ }
+        }
+        if (!autoGenre) autoGenre = "Femme";
       }
 
       const rows = [...selected].map(platform => {
@@ -1327,6 +1376,10 @@ export default function ListingPreviewScreen({
             edited[platform]?.description,
             pf.categorie || initialListing?.categorie
           );
+          // Genre vide/Mixte sur une catégorie qui l'exige → genre auto-résolu
+          // (cf. bloc autoGenre) : le job part avec un rayon réel au lieu
+          // d'être condamné au fallback.
+          if (autoGenre && vintedGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
           const categoryPath = getVintedCategoryPath(icon, pf.genre);
           if (categoryPath) pf.categoryPath = categoryPath;
           // Flag statique lu par l'extension : permet un message d'échec
@@ -1358,6 +1411,10 @@ export default function ListingPreviewScreen({
             edited[platform]?.description,
             pf.categorie || initialListing?.categorie
           );
+          // Même auto-résolution que Vinted — sauf si le genre actuel résout
+          // déjà un rayon (🌸+Mixte = Parfums mixtes, rayon réel).
+          if (autoGenre && ebayGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")
+              && !getEbayCategoryId(icon, pf.genre)) pf.genre = autoGenre;
           const categoryPath = getEbayCategoryPath(icon, pf.genre);
           const categoryId = getEbayCategoryId(icon, pf.genre);
           if (categoryPath) pf.ebayCategoryPath = categoryPath;
@@ -1389,6 +1446,11 @@ export default function ListingPreviewScreen({
             edited[platform]?.description,
             pf.categorie || initialListing?.categorie
           );
+          // Même auto-résolution que Vinted/eBay. Indispensable ici : l'arbre
+          // Mode Beebs est genré jusqu'aux accessoires (montres, bijoux,
+          // sacs…) — sans genre, AUCUNE montre ne pouvait jamais partir
+          // (pré-check extension → failed à 100 %, cas réel Casio 2026-07-09).
+          if (autoGenre && beebsGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
           const categoryPath = getBeebsCategoryPath(icon, pf.genre);
           if (categoryPath) pf.beebsCategoryPath = categoryPath;
           if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
