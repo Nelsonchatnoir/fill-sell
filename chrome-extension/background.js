@@ -15,7 +15,7 @@ importScripts("config.js");
 // vérifier `version` et `build` avant de diagnostiquer quoi que ce soit.
 const FILLSELL_BUILD =
   "merge-v2 (beebs implémenté, entrée eBay par la home, timing humain, " +
-  "pré-check catégorie avant navigation, adresse LBC vérifiée)";
+  "pré-check catégorie avant navigation, adresse LBC validée par la valeur de l'input)";
 console.log(
   `[background] FillSell service worker v${chrome.runtime.getManifest().version} — build: ${FILLSELL_BUILD}`
 );

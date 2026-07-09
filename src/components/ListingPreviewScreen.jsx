@@ -1207,6 +1207,32 @@ export default function ListingPreviewScreen({
           price: data.price ?? price ?? null,
         };
       }
+      // Genre eBay/Beebs : dérivé de la même source que les autres plateformes
+      // quand l'IA ne l'a pas fourni. Les prompts eBay/Beebs d'avant le
+      // 2026-07-09 ne renvoyaient pas de genre (eBay renvoyait même des clés
+      // anglaises que mergeFieldsWithLens jetait) → genre toujours "" et
+      // ebayGenreRequired/beebsGenreRequired bloquaient systématiquement la
+      // résolution de catégorie alors que l'univers Leboncoin, lui, était bien
+      // rempli pour le même article. Les prompts sont corrigés (generate-listing)
+      // ET ce filet transpose le genre depuis Vinted/LBC du même run de
+      // génération — mêmes libellés Femme/Homme/Enfant/Mixte. Mapping par
+      // plateforme : eBay a un rayon "Enfant : unisexe" et un usage Mixte
+      // (parfums) → toute valeur passe telle quelle ; Beebs n'a NI Enfant NI
+      // Mixte (rayons Fille/Garçon/Bébé) → seuls les libellés transposables
+      // passent, sinon le champ reste vide et l'utilisateur tranche au stepper.
+      const genreSource =
+        initialEdited.vinted?.platform_fields?.genre ||
+        initialEdited.leboncoin?.platform_fields?.univers || "";
+      const GENRE_TRANSPOSABLE = {
+        ebay:  ["Femme", "Homme", "Fille", "Garçon", "Bébé", "Enfant", "Mixte"],
+        beebs: ["Femme", "Homme", "Fille", "Garçon", "Bébé"],
+      };
+      for (const [p, allowed] of Object.entries(GENRE_TRANSPOSABLE)) {
+        if (initialEdited[p] && !initialEdited[p].platform_fields.genre && allowed.includes(genreSource)) {
+          initialEdited[p].platform_fields.genre = genreSource;
+        }
+      }
+
       setEdited(initialEdited);
       setPlatformListings(data);
     } catch (e) {

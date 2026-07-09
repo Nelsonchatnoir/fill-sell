@@ -198,8 +198,9 @@ async function fillListingForm(job) {
     // warnings accumulés : l'erreur du job sert de relevé correctif.
     const validationMsgs = [...new Set(
       [...document.querySelectorAll('[role="alert"], [aria-live="assertive"], [aria-live="polite"], [class*="error" i]')]
+        .filter(isHumanMessageNode)
         .map((el) => el.textContent.trim())
-        .filter((t) => t && t.length <= 200)
+        .filter((t) => t.length <= 200)
     )].slice(0, 5);
     throw new Error(
       "Le wizard n'est pas passé à l'aperçu après Continuer" +
@@ -525,6 +526,11 @@ async function fillAddress(adresse, warnings) {
   }
 
   input.scrollIntoView({ block: "center" });
+  // La valeur BRUTE des Réglages est tapée telle quelle — jamais de
+  // transformation de casse ni de ponctuation : l'autocomplete LBC (type
+  // Google Places) matche très bien "7 allée du saut du loup 91160 saulx les
+  // chartreux" en minuscules, et tout reformatage "d'affichage" ajouterait
+  // des virgules/parenthèses que le géocodeur peut ne pas comprendre.
   await typeInto(input, adresse);
 
   // Leboncoin n'accepte une adresse que CHOISIE dans le dropdown de
@@ -626,24 +632,46 @@ async function fillAddress(adresse, warnings) {
   realClick(suggestion);
   await humanPause();
 
-  // Validation post-sélection : le dropdown doit se fermer et le champ ne
-  // doit porter aucun marqueur d'erreur — sinon la sélection n'a pas été
-  // prise par React et l'aperçu partirait avec une adresse invalide.
-  const dropdownClosed = await waitFor(() => (findSuggestions().length === 0 ? true : null), 4000);
-  const errorNode = (() => {
-    let scope = input;
-    for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
-      const err = scope.querySelector?.('[role="alert"], [aria-live="assertive"], [class*="error" i]');
-      if (err && err.textContent.trim()) return err;
-    }
-    return null;
-  })();
-  if (!dropdownClosed || input.getAttribute("aria-invalid") === "true" || errorNode) {
+  // ⚠️ FAUX NÉGATIF DU 2026-07-09 — le job échouait en « Adresse non validée
+  // par Leboncoin après sélection de "7 Allée du Saut du Loup,
+  // Saulx-les-Chartreux (91160)" — message affiché: "localisationLocation" »
+  // alors que l'adresse BRUTE des Réglages avait bien été tapée telle quelle
+  // et la bonne suggestion cliquée (le libellé cité est celui de la
+  // suggestion LBC, pas une adresse que nous aurions reformatée). Deux leçons :
+  //   1. le signal FIABLE d'une sélection prise est la VALEUR DE L'INPUT
+  //      (React y reporte la suggestion choisie) — pas la fermeture du
+  //      dropdown, pas aria-invalid, pas un nœud d'erreur ;
+  //   2. "localisationLocation" est une clé i18n BRUTE de Leboncoin, portée
+  //      en permanence par un nœud [class*="error"]/aria-live du champ même
+  //      sans erreur affichée : scraper ces nœuds sans filtre de visibilité
+  //      ni de texte humain fabrique de fausses erreurs (cf. isHumanMessageNode).
+  const selectionTaken = () =>
+    input.value.trim() && !missingTokens(input.value).length ? true : null;
+
+  let taken = await waitFor(selectionTaken, 5000);
+  if (!taken) {
+    // Le clic n'a pas été pris par le composant React (famille de composants
+    // déjà capricieuse au clic, cf. realClick) : repli clavier — ArrowDown
+    // surligne la première suggestion, Enter la valide. Notre candidate à
+    // couverture totale est en tête de liste dans le cas nominal ; si LBC en
+    // valide une autre, le contrôle de couverture ci-dessous la rejettera.
+    input.focus();
+    dispatchKey(input, "keydown", "ArrowDown");
+    dispatchKey(input, "keyup", "ArrowDown");
+    await humanPause();
+    dispatchKey(input, "keydown", "Enter");
+    dispatchKey(input, "keyup", "Enter");
+    taken = await waitFor(selectionTaken, 4000);
+  }
+
+  if (!taken) {
+    const visibleError = findVisibleFieldError(input);
     return {
       ok: false,
       error:
-        `Adresse non validée par Leboncoin après sélection de "${chosen}"` +
-        (errorNode ? ` — message affiché: "${errorNode.textContent.trim().slice(0, 120)}"` : "") +
+        `Adresse des Réglages tapée telle quelle ("${adresse}") et suggestion Leboncoin ` +
+        `"${chosen}" sélectionnée, mais Leboncoin n'a pas reporté la sélection dans le champ` +
+        (visibleError ? ` — message affiché: "${visibleError.slice(0, 120)}"` : "") +
         ". Vérifier l'adresse dans les Réglages FillSell. Le brouillon Leboncoin est conservé.",
     };
   }
@@ -654,6 +682,31 @@ async function fillAddress(adresse, warnings) {
     warnings.push(note);
   }
   return { ok: true };
+}
+
+// Nœud de message réellement destiné à l'utilisateur : visible (les régions
+// d'erreur/aria-live de LBC restent en permanence dans le DOM, parfois avec
+// une clé i18n brute — "localisationLocation", cas réel du 2026-07-09) et au
+// texte humain (une clé brute est un identifiant sans le moindre espace).
+// getClientRects (et non offsetParent, null aussi sur position:fixed) pour la
+// visibilité.
+function isHumanMessageNode(el) {
+  const txt = (el.textContent || "").trim();
+  return Boolean(txt) && /\s/.test(txt) && el.getClientRects().length > 0;
+}
+
+// Message d'erreur RÉEL d'un champ : remonte 4 parents depuis l'input et ne
+// retient que les nœuds d'erreur visibles au texte humain (cf.
+// isHumanMessageNode — jamais une clé i18n brute).
+function findVisibleFieldError(input) {
+  let scope = input;
+  for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
+    const nodes = scope.querySelectorAll?.('[role="alert"], [aria-live="assertive"], [class*="error" i]') ?? [];
+    for (const el of nodes) {
+      if (isHumanMessageNode(el)) return el.textContent.trim();
+    }
+  }
+  return null;
 }
 
 // Clic "réel" : certains composants React de Leboncoin ignorent un
@@ -940,4 +993,4 @@ async function uploadPhotos(input, photos) {
   await sleep(1500 * files.length);
 }
 
-console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v6: Équipement bébé + timing humain (frappe 80–250 ms, actions 300–900 ms))");
+console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v7: sélection d'adresse validée par la valeur de l'input + filtrage des clés i18n brutes de LBC)");

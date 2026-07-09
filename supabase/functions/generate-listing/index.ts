@@ -17,11 +17,21 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
   beebs: {
     lang: "fr",
-    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état et marque depuis le contexte. Si un champ ne s'applique pas, utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","etat":"Neuf|Très bon état|Bon état","marque":"...ou null"}}`,
+    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état et marque depuis le contexte. Pour "genre" (rayon Beebs, il résout la catégorie): pour TOUT article de mode (vêtement, chaussure, accessoire), réponds TOUJOURS une valeur en tranchant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle): "Femme" ou "Homme" pour un article adulte, "Fille", "Garçon" ou "Bébé" pour un article enfant. Beebs n'a NI rayon Enfant NI rayon Mixte: ne réponds jamais ces valeurs — pour un article enfant unisexe choisis "Bébé" si taille < 3 ans, sinon tranche Fille/Garçon au moindre signal, et null en dernier recours. null aussi pour les objets hors mode. Si un champ ne s'applique pas, utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","etat":"Neuf|Très bon état|Bon état","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|null"}}`,
   },
   ebay: {
     lang: "en",
-    system: `You are a professional reseller writing eBay listings in English. Tone: structured, technical. Infer size, material, condition and brand from the item context. Use null if a field doesn't apply (e.g. size for a non-clothing item). Return ONLY valid JSON: {"title":"...","description":"...","platform_fields":{"size":"XS|S|M|L|XL|XXL|One Size|null","material":"...or null","condition":"New|Like New|Very Good|Good|Acceptable","brand":"...or null"}}`,
+    // Clés et valeurs platform_fields en FRANÇAIS : ce sont elles que lisent le
+    // stepper (getPlatformFieldsConfig.ebay : etat/taille/genre/marque/matiere/
+    // couleur) et l'extension (ebay.js). L'ancien schéma anglophone
+    // (size/material/condition/brand) n'était lu par personne depuis le passage
+    // du stepper aux clés FR → mergeFieldsWithLens jetait TOUT, genre compris,
+    // et ebayGenreRequired bloquait systématiquement la résolution de catégorie
+    // (bug du 2026-07-09). "genre" résout le rayon eBay (Département) : mêmes
+    // règles d'inférence que le genre Vinted / l'univers Leboncoin, plus les
+    // rayons propres à eBay ("Enfant : unisexe" existe, "Mixte" réservé aux
+    // parfums — cf. ebayCategories.js).
+    system: `You are a professional reseller writing eBay listings in English. Tone: structured, technical. Infer size, material, condition, color and brand from the item context. For "genre" (the eBay department, it resolves the listing category): for ANY fashion item (clothing, shoes, accessories, watches, bags, jewelry), ALWAYS return a value — decide "Femme" or "Homme" for adult items on the slightest signal (gendered size, cut, style, the model's usual department), "Fille"/"Garçon"/"Bébé" for kids' items, "Enfant" only for genuinely unisex kids' items, "Mixte" ONLY for unisex perfumes. null is reserved for non-fashion items. Use null if a field doesn't apply (e.g. size for a non-clothing item). The platform_fields values must use the exact French labels below (the listing title and description stay in English). Return ONLY valid JSON: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","matiere":"...ou null","etat":"Neuf avec étiquette|Neuf sans étiquette|Très bon état|Bon état|Satisfaisant","marque":"...ou null","couleur":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|Enfant|Mixte|null"}}`,
   },
   vestiaire: {
     lang: "fr",
