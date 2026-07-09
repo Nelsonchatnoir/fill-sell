@@ -720,17 +720,34 @@ const HORS_MODE = {
   // DÉFAUT ASSUMÉ (une banane mode y sera approximée, feuille littérale).
   "👝": { path: ["Sports, vacances", "Camping, randonnée", "Sacs de randonnée", "Sacs bananes"], id: 181380 },
 
+  // ── Ajouts 2026-07-09 (re-crawl ciblé du prelist, SANS compte connecté —
+  // lève les 6 derniers NON_CRAWLÉ ; ids vérifiés contre le relevé) ─────────
+  // DÉFAUT ASSUMÉ : "DVD, Blu-ray" est la feuille commune aux deux formats ;
+  // "Cassettes vidéo" [309] et "Laserdiscs" [381] sont des sœurs, non
+  // atteintes par ce défaut (la regex 📀 les couvre pourtant).
+  "📀": { path: ["DVD, cinéma", "DVD, Blu-ray"], id: 617 },
+  // DÉFAUT ASSUMÉ (double) : Chiens pris avant Chats (branches jumelles,
+  // même choix que Vinted), et la feuille combine gamelles ET distributeurs.
+  "🐕": { path: ["Animalerie", "Chiens", "Gamelles, distributeurs"], id: 177789 },
+  "🧵": { path: ["Loisirs créatifs", "Couture", "Machines à coudre, surjeteuses"], id: 3118 },
+  // DÉFAUT ASSUMÉ : la regex 🎄 couvre sapin/guirlande/boule/crèche — chacun
+  // a sa feuille sœur exacte (Sapins de Noël [117414], Couronnes et
+  // guirlandes [117419], Santons, crèches [156862]) ; "Décorations de sapin"
+  // pris comme dominant (le plus gros volume de revente).
+  "🎄": { path: ["Maison", "Fêtes, occasions spéciales", "Décorations de Noël, sapins", "Décorations de sapin de Noël"], id: 166725 },
+  // "Autres" est le bac générique de la branche Equitation : l'icône 🐴 est
+  // elle-même générique (équitation/cravache/licol/étriers/tapis de selle) et
+  // chaque objet a sa feuille sœur dédiée — un défaut vers "Cravaches" y
+  // enverrait toutes les bombes et selles.
+  "🐴": { path: ["Sports, vacances", "Equitation", "Autres"], id: 1048 },
+  // "Jeux de café" = pub games (billard, baby-foot, fléchettes, flipper) :
+  // couvre la regex 🎱 sauf pétanque, qui a sa propre feuille [115195].
+  "🎱": { path: ["Jouets et jeux", "Jeux de café"], id: 92101 },
+
   // ── Non mappé assumé (cf. en-tête) ────────────────────────────────────────
   // Piste "Sports, vacances > Vacances" [3252] NON CRAWLÉE — à re-crawler
   // avant d'activer, pas de pari.
   "🧳": null,
-  // NON_CRAWLÉ — TODO (branches réelles d'eBay.fr absentes du relevé actuel,
-  // à crawler avant de mapper — ne JAMAIS deviner un id) :
-  //   📀 Films et DVD (racine non crawlée)     🐕 Animalerie (racine non crawlée)
-  //   🎄 Maison > Fêtes, occasions spéciales [16086] (branche non détaillée)
-  //   🧵 machines à coudre (aucun hit)          🐴 équitation (aucun hit)
-  //   🎱 billard (aucun hit — Pétanque [115195] existe mais n'est pas le cas
-  //      dominant de l'icône, pas de défaut trompeur)
 };
 
 /**
