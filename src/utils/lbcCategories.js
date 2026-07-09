@@ -96,6 +96,37 @@ const LBC_CATEGORIES = {
   "🚗": null, "🏍️": null, "🛵": null,
   // Beauté : aucun rayon Leboncoin (vérifié dans l'arbre) — fallback explicite.
   "🌸": null, "💄": null, "💅": null, "🧴": null,
+
+  // ── Ajouts 2026-07-09 (mission mapping complet) — mêmes feuilles plates
+  // que leurs familles (relevé docs/leboncoin-form-survey.md, 13 racines) ───
+  "🥿": ["Mode", "Chaussures"],
+  "👝": ["Mode", "Accessoires & Bagagerie"], "🪢": ["Mode", "Accessoires & Bagagerie"],
+  "🎀": ["Mode", "Accessoires & Bagagerie"], "☂️": ["Mode", "Accessoires & Bagagerie"],
+  "🗝️": ["Mode", "Accessoires & Bagagerie"],
+  "🩲": ["Mode", "Vêtements"], "🥼": ["Mode", "Vêtements"], "🤵": ["Mode", "Vêtements"],
+  "📲": ["Électronique", "Tablettes & Liseuses"], "📇": ["Électronique", "Tablettes & Liseuses"],
+  "⏱️": ["Électronique", "Téléphones & Objets connectés"],
+  // DÉFAUT ASSUMÉ : enceinte connectée rangée en objets connectés (l'audio
+  // classique vit sous Photo, audio & vidéo, cf. 🔊).
+  "📡": ["Électronique", "Téléphones & Objets connectés"],
+  "🪟": ["Maison & Jardin", "Linge de maison"], "🪶": ["Maison & Jardin", "Linge de maison"],
+  "📜": ["Maison & Jardin", "Linge de maison"], "🛌": ["Maison & Jardin", "Linge de maison"],
+  // DÉFAUT ASSUMÉ : tapis rangé en Décoration (pas de feuille tapis dédiée).
+  "🟫": ["Maison & Jardin", "Décoration"],
+  "🕰️": ["Maison & Jardin", "Décoration"], "🎄": ["Maison & Jardin", "Décoration"],
+  "🖋️": ["Maison & Jardin", "Papeterie & Fournitures scolaires"],
+  "🧼": ["Maison & Jardin", "Électroménager"], "🌀": ["Maison & Jardin", "Électroménager"],
+  "🌡️": ["Maison & Jardin", "Électroménager"],
+  // Machine à coudre : appareil → Électroménager (les fournitures de couture
+  // iraient en Loisirs > Loisirs créatifs).
+  "🧵": ["Maison & Jardin", "Électroménager"],
+  "📀": ["Loisirs", "DVD - Films"], "💽": ["Loisirs", "CD - Musique"],
+  "🎼": ["Loisirs", "Instruments de musique"],
+  "🚁": ["Loisirs", "Jeux & Jouets"], "🎭": ["Loisirs", "Jeux & Jouets"],
+  "🐴": ["Loisirs", "Sport & Plein air"], "🎱": ["Loisirs", "Sport & Plein air"],
+  "🤿": ["Loisirs", "Sport & Plein air"], "🏄": ["Loisirs", "Sport & Plein air"],
+  "🚼": ["Famille", "Mobilier enfant"],
+  "🐕": ["Animaux", "Accessoires animaux"],
 };
 
 /**
@@ -104,6 +135,16 @@ const LBC_CATEGORIES = {
  */
 export function getLbcCategoryPath(icon) {
   return LBC_CATEGORIES[icon] ?? null;
+}
+
+/**
+ * Statut de support Leboncoin — dérivé de LBC_CATEGORIES (même contrat que
+ * vintedCategoryStatus) : "supported" | "unavailable" (null explicite —
+ * véhicules immatriculés, Beauté) | "unmapped".
+ */
+export function lbcCategoryStatus(icon) {
+  if (!Object.prototype.hasOwnProperty.call(LBC_CATEGORIES, icon)) return "unmapped";
+  return LBC_CATEGORIES[icon] ? "supported" : "unavailable";
 }
 
 // ── Critères obligatoires de Famille > Équipement bébé ──────────────────────

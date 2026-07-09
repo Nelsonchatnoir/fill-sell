@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
@@ -11,6 +11,7 @@ import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCateg
 import { getLbcCategoryPath, getLbcBabyEquipment } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
+import { getPlatformSupport } from "../utils/platformCompat";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -400,7 +401,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, coinPrices, coinBalance, onOpenStore, lang }) {
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = 5;
@@ -531,10 +532,20 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
       <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
         {PLATFORMS_DEFAULT.map(p => {
           const isOn = selected.has(p);
+          // Compat catégorie × plateforme (src/utils/platformCompat.js,
+          // dérivée des 4 mappings) : une plateforme qui ne peut pas vendre
+          // cette catégorie est GRISÉE (désactivée, non cliquable), avec le
+          // motif affiché sous la rangée — pas juste décochée.
+          const support = platformSupport?.[p] ?? "supported";
+          const disabled = support !== "supported";
           return (
             <button
               key={p}
-              onClick={() => setSelected(prev => {
+              disabled={disabled}
+              title={disabled
+                ? t(support === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])
+                : undefined}
+              onClick={() => !disabled && setSelected(prev => {
                 const s = new Set(prev);
                 s.has(p) ? s.delete(p) : s.add(p);
                 return s;
@@ -542,11 +553,13 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               style={{
                 display:"flex", alignItems:"center", gap:7,
                 padding:"7px 16px 7px 8px", borderRadius:999,
-                background: isOn ? "#E7F3F0" : T.chip,
-                border: `1px solid ${isOn ? T.teal : T.border}`,
-                color: isOn ? T.tealDeep : T.mute2,
+                background: disabled ? "#F1F1EE" : isOn ? "#E7F3F0" : T.chip,
+                border: `1px solid ${disabled ? T.border : isOn ? T.teal : T.border}`,
+                color: disabled ? "#B4B9B6" : isOn ? T.tealDeep : T.mute2,
                 fontSize:13.5, fontWeight:600,
-                cursor:"pointer", fontFamily:"inherit",
+                cursor: disabled ? "not-allowed" : "pointer", fontFamily:"inherit",
+                opacity: disabled ? 0.6 : 1,
+                filter: disabled ? "grayscale(1)" : "none",
                 transition:"border-color 0.15s, background 0.15s, color 0.15s",
               }}
             >
@@ -556,6 +569,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
           );
         })}
       </div>
+      {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
+        <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+          {t(platformSupport[p] === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])}
+        </p>
+      ))}
       {selected.size === 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:600 }}>
           {t("stepPhotosSelectPlatformError")}
@@ -961,6 +979,26 @@ export default function ListingPreviewScreen({
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
+
+  // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
+  // platformCompat.js) : calculée dès que l'article est connu, elle GRISE les
+  // checkboxes des plateformes qui ne peuvent pas vendre cette catégorie
+  // (StepPhotos) et les retire de la sélection — un job qui échouerait au
+  // pré-check de l'extension ne doit jamais pouvoir partir.
+  const platformSupport = useMemo(() => {
+    const icon = detectObjectIcon(
+      initialListing?.titre,
+      initialListing?.description,
+      initialListing?.categorie
+    );
+    return getPlatformSupport(icon);
+  }, [initialListing]);
+  useEffect(() => {
+    setSelected(prev => {
+      const next = new Set([...prev].filter(p => platformSupport[p] === "supported"));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [platformSupport]);
 
   // Modale de conversion (solde de Pépites insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -1657,6 +1695,7 @@ export default function ListingPreviewScreen({
             coinPrices={coinPrices}
             coinBalance={coinBalance}
             onOpenStore={() => setStoreOpen(true)}
+            platformSupport={platformSupport}
             lang={lang}
           />
         )}

@@ -313,6 +313,76 @@ const MODE = {
     Enfant: null,
   },
 
+  // ── Ajouts 2026-07-09 (mission mapping complet) — feuilles + ids relevés
+  // dans docs/ebay-categories-raw.txt (API browse du prelist) ───────────────
+  // Chaussons : feuilles adultes uniquement (aucune feuille enfant/bébé dans
+  // le relevé complet — confirmé, pas un trou de crawl).
+  "🥿": {
+    Femme: { path: [...F, "Femme : chaussures", "Chaussons"], id: 11632 },
+    Homme: { path: [...H, "Homme : chaussures", "Chaussons"], id: 11505 },
+    Fille: null, Garçon: null, Bébé: null, Enfant: null,
+  },
+  // ⚠️ Libellés divergents par genre : "Ceintures, boucles de ceinture" chez
+  // Fille/Garçon, "Ceintures" ailleurs.
+  "🪢": {
+    Femme: { path: [...F, "Femme : accessoires", "Ceintures"], id: 3003 },
+    Homme: { path: [...H, "Homme : accessoires", "Ceintures"], id: 2993 },
+    Fille: { path: [...FI, "Fille : accessoires", "Ceintures, boucles de ceinture"], id: 57918 },
+    Garçon: { path: [...GA, "Garçon : accessoires", "Ceintures, boucles de ceinture"], id: 57883 },
+    Bébé: { path: [...BB, "Bébé : accessoires", "Ceintures"], id: 176966 },
+    Enfant: null,
+  },
+  // eBay a des cravates FEMME (contrairement à Vinted) ; Homme = feuille
+  // combinée "Cravates, noeuds papillon et foulards" ; pas de feuille Fille.
+  "🎀": {
+    Femme: { path: [...F, "Femme : accessoires", "Cravates"], id: 151486 },
+    Homme: { path: [...H, "Homme : accessoires", "Cravates, noeuds papillon et foulards"], id: 15662 },
+    Fille: null,
+    Garçon: { path: [...GA, "Garçon : accessoires", "Cravates"], id: 57886 },
+    Bébé: { path: [...BB, "Bébé : accessoires", "Cravates"], id: 176968 },
+    Enfant: null,
+  },
+  "☂️": {
+    Femme: { path: [...F, "Femme : accessoires", "Parapluies"], id: 105569 },
+    Homme: { path: [...H, "Homme : accessoires", "Parapluies"], id: 90634 },
+    Fille: { path: [...FI, "Fille : accessoires", "Parapluies"], id: 122341 },
+    Garçon: { path: [...GA, "Garçon : accessoires", "Parapluies"], id: 175525 },
+    Bébé: null, Enfant: null,
+  },
+  "🗝️": {
+    Femme: { path: [...F, "Femme : accessoires", "Porte-clés"], id: 45237 },
+    Homme: { path: [...H, "Homme : accessoires", "Porte-clés"], id: 52373 },
+    Fille: { path: [...FI, "Fille : accessoires", "Porte-clés"], id: 175527 },
+    Garçon: { path: [...GA, "Garçon : accessoires", "Porte-clés"], id: 175524 },
+    Bébé: null, Enfant: null,
+  },
+  // Lingerie/nuit : DÉFAUT ASSUMÉ pyjama (la branche Femme "Lingerie, nuit"
+  // a 15 feuilles sœurs — Culottes/Soutiens-gorge/Bodys… non atteintes).
+  "🩲": {
+    Femme: { path: [...F, "Femme : vêtements", "Lingerie, nuit", "Pyjamas, nuisettes"], id: 63855 },
+    Homme: { path: [...H, "Homme : vêtements", "Pyjamas"], id: 11510 },
+    Fille: { path: [...FI, "Vêtements fille (2-16 ans)", "Pyjamas"], id: 99735 },
+    Garçon: { path: [...GA, "Vêtements garçon (2-16 ans)", "Pyjamas"], id: 84544 },
+    Bébé: { path: [...BB, "Bébé : vêtements", "Pyjamas"], id: 260026 },
+    Enfant: { path: [...E, "Enfant : unisexe", "Vêtements enfant unisexe (2-16 ans)", "Pyjamas"], id: 175656 },
+  },
+  // Blazer/costume : eBay n'a PAS de feuille Blazers dédiée (0 hit dans le
+  // relevé complet) — les deux icônes retombent sur les feuilles Costumes
+  // de chaque genre (DÉFAUT ASSUMÉ documenté).
+  "🥼": {
+    Femme: { path: [...F, "Femme : vêtements", "Costumes, tailleurs"], id: 63865 },
+    Homme: { path: [...H, "Homme : vêtements", "Costumes"], id: 3001 },
+    Fille: null, Garçon: null, Bébé: null, Enfant: null,
+  },
+  "🤵": {
+    Femme: { path: [...F, "Femme : vêtements", "Costumes, tailleurs"], id: 63865 },
+    Homme: { path: [...H, "Homme : vêtements", "Costumes"], id: 3001 },
+    Fille: null,
+    Garçon: { path: [...GA, "Vêtements garçon (2-16 ans)", "Costumes"], id: 99754 },
+    Bébé: { path: [...BB, "Bébé : vêtements", "Costumes"], id: 260028 },
+    Enfant: null,
+  },
+
   // ── Parfums (racine Beauté, genrée UNIQUEMENT pour les parfums) ───────────
   // Seule icône avec une clé Mixte : eBay a une vraie feuille
   // "Parfums mixtes". Fille/Garçon/Enfant → "Parfums pour enfant".
@@ -614,10 +684,53 @@ const HORS_MODE = {
   // ⚠️ Piège de libellé : le babyphone s'appelle "Moniteurs de surveillance".
   "📟": { path: ["Bébé, puériculture", "Équipement de sécurité", "Moniteurs de surveillance"], id: 20435 },
 
+  // ── Ajouts 2026-07-09 (mission mapping complet) — feuilles + ids relevés
+  // dans docs/ebay-categories-raw.txt ───────────────────────────────────────
+  // eBay fusionne tablettes ET liseuses dans une seule feuille [171485] —
+  // les deux icônes y pointent (contrairement à Vinted qui les sépare).
+  "📲": { path: ["Informatique, réseaux", "Tablettes, liseuses"], id: 171485 },
+  "📇": { path: ["Informatique, réseaux", "Tablettes, liseuses"], id: 171485 },
+  "⏱️": { path: ["Téléphonie, mobilité", "Montres connectées"], id: 178893 },
+  // DÉFAUT ASSUMÉ : pas de feuille "enceinte connectée" dédiée — rangée avec
+  // les enceintes Hi-Fi (une Alexa/Google Home y sera approximée).
+  "📡": { path: ["Image, son", "Hi-Fi, son, matériel audio", "Enceintes, caissons de basses"], id: 14990 },
+  "🪟": { path: ["Maison", "Rideaux et accessoires pour fenêtre"], id: 63514 },
+  "🪶": { path: ["Maison", "Décoration d'intérieur", "Coussins, galettes de sièges"], id: 20563 },
+  "🟫": { path: ["Maison", "Tapis et moquettes"], id: 20571 },
+  "📜": { path: ["Maison", "Cuisine, arts de la table", "Linge de cuisine", "Nappes"], id: 20663 },
+  "🛌": { path: ["Maison", "Literie, linge de lit", "Parures de lit, housses de couette"], id: 37644 },
+  // DÉFAUT ASSUMÉ : murales dominant — "Réveils et radios-réveils" [79643]
+  // est une feuille sœur réelle (contrairement à Vinted où réveil n'existe
+  // pas), scission possible si le volume le justifie.
+  "🕰️": { path: ["Maison", "Horloges", "Horloges murales"], id: 20561 },
+  "🖋️": { path: ["Bijoux, montres", "Stylos"], id: 7278 },
+  "💽": { path: ["Musique, CD, vinyles", "CD"], id: 176984 },
+  "🎼": { path: ["Instruments de musique", "Instruments à vent (Bois)", "Traditionnels, du monde", "Harmonicas"], id: 47078 },
+  "🧼": { path: ["Électroménager", "Nettoyage, repassage", "Fers à repasser, centrales"], id: 43513 },
+  "🌀": { path: ["Électroménager", "Chauffage, clim, ventilation", "Qualité air intérieur, ventilateurs", "Ventilateurs"], id: 20612 },
+  "🌡️": { path: ["Électroménager", "Chauffage, clim, ventilation", "Climatiseurs et radiateurs", "Chauffage d'appoint"], id: 20613 },
+  "🚁": { path: ["Jouets et jeux", "Modélisme RC, jouets RC", "Jouets télécommandés"], id: 84912 },
+  "🎭": { path: ["Jouets et jeux", "Déguisements, masques"], id: 128961 },
+  "🚼": { path: ["Bébé, puériculture", "Lits, équipements d'intérieur", "Lits, matelas, berceaux"], id: 93391 },
+  // Sports nautiques : feuille terminale générique unique [121048] — plongée
+  // et glisse (paddle/kayak/kitesurf) y retombent toutes deux.
+  "🤿": { path: ["Sports, vacances", "Sports nautiques, plongée"], id: 121048 },
+  "🏄": { path: ["Sports, vacances", "Sports nautiques, plongée"], id: 121048 },
+  // Sac banane : la seule feuille du relevé vit sous Camping, randonnée —
+  // DÉFAUT ASSUMÉ (une banane mode y sera approximée, feuille littérale).
+  "👝": { path: ["Sports, vacances", "Camping, randonnée", "Sacs de randonnée", "Sacs bananes"], id: 181380 },
+
   // ── Non mappé assumé (cf. en-tête) ────────────────────────────────────────
   // Piste "Sports, vacances > Vacances" [3252] NON CRAWLÉE — à re-crawler
   // avant d'activer, pas de pari.
   "🧳": null,
+  // NON_CRAWLÉ — TODO (branches réelles d'eBay.fr absentes du relevé actuel,
+  // à crawler avant de mapper — ne JAMAIS deviner un id) :
+  //   📀 Films et DVD (racine non crawlée)     🐕 Animalerie (racine non crawlée)
+  //   🎄 Maison > Fêtes, occasions spéciales [16086] (branche non détaillée)
+  //   🧵 machines à coudre (aucun hit)          🐴 équitation (aucun hit)
+  //   🎱 billard (aucun hit — Pétanque [115195] existe mais n'est pas le cas
+  //      dominant de l'icône, pas de défaut trompeur)
 };
 
 /**
@@ -629,6 +742,20 @@ const HORS_MODE = {
 export function ebayGenreRequired(icon) {
   if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) return false;
   return Object.prototype.hasOwnProperty.call(MODE, icon);
+}
+
+/**
+ * Statut de support eBay — dérivé des tables (même contrat que
+ * vintedCategoryStatus) : "supported" | "unavailable" (null explicite) |
+ * "unmapped" (dont les NON_CRAWLÉ listés en fin de HORS_MODE).
+ */
+export function ebayCategoryStatus(icon) {
+  if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) {
+    return HORS_MODE[icon] ? "supported" : "unavailable";
+  }
+  const entry = MODE[icon];
+  if (!entry) return "unmapped";
+  return Object.values(entry).some(Boolean) ? "supported" : "unavailable";
 }
 
 function resolve(icon, genre) {

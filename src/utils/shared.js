@@ -280,6 +280,24 @@ const OBJECT_ICON_RULES = [
   [/carte.?(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner)|booster/i, '🃏'],
   [/maillot.?de.?bain|bikini|monokini/i, '👙'],
   [/jeu.?de.?société|monopoly|\buno\b/i, '🎲'],
+  // ── Désambiguïsations ajoutées le 2026-07-09 (mission mapping complet) —
+  // chacune doit gagner sur une règle générique plus bas (indiquée) ─────────
+  [/télécommandé|voiture.?rc\b/i, '🚁'],                                        // avant 🚗 voiture
+  [/déguisement|panoplie\b|costume.?de.?(?:pirate|princesse|sorci|clown|halloween|super.?héros)/i, '🎭'], // avant 🤵/👔 costume
+  [/montre.?connectée|smart.?watch|apple.?watch|galaxy.?watch|garmin|fitbit|amazfit/i, '⏱️'],  // avant ⌚ montre
+  [/enceinte.?connectée|google.?home|amazon.?echo|\balexa\b|homepod|assistant.?vocal/i, '📡'], // avant 🔊 enceinte
+  [/liseuse|kindle|\bkobo\b/i, '📇'],                                           // avant 📚 livre
+  [/collier.?(?:pour.?)?(?:chien|chat)|gamelle|croquettes?\b|litière|griffoir|arbre.?à.?chat|laisse\b/i, '🐕'], // avant 💍 collier
+  [/chausson|pantoufle|charentaise/i, '🥿'],                                    // avant 👟 chaussure
+  [/sac.?banane|banane.?(?:eastpak|nike|adidas)|fanny.?pack|bum.?bag/i, '👝'],  // avant 👜 sac
+  [/housse.?de.?couette|parure.?de.?lit|taie.?d.?oreiller|drap.?housse|\bdraps?\b/i, '🛌'],    // avant 🛏️ lit (scission literie/meuble)
+  [/lit.?à.?barreaux|berceau|cododo|table.?à.?langer|réducteur.?de.?lit|\btoise\b/i, '🚼'],    // avant 🛏️ lit et 🪑 chaise
+  [/fer.?à.?repasser|défroisseur|centrale.?vapeur|table.?à.?repasser/i, '🧼'],
+  [/machine.?à.?coudre|surjeteuse/i, '🧵'],
+  [/plongée|\btuba\b|\bpalmes\b/i, '🤿'],                                       // avant 🕶️/👟 (masque, palmes)
+  [/paddle|kayak|wakeboard|kitesurf|skimboard|ski.?nautique/i, '🏄'],           // avant 🎿 ski
+  [/équitation|équestre|cravache|licol|tapis.?de.?selle|étriers?\b/i, '🐴'],
+  [/billard|snooker|pétanque|fléchette|bowling|frisbee/i, '🎱'],
   // Mode / Luxe
   [/basket|sneaker|chaussure|jordan|air.?max|air.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
   [/botte|bottine|\bboots?\b/i, '👢'],
@@ -294,18 +312,28 @@ const OBJECT_ICON_RULES = [
   // "wardrobe" — sinon un t-shirt dont la description dit "à avoir dans sa
   // garde-robe" devient une robe et le mapping Vinted part sur le mauvais rayon.
   [/(?:^|[^-\w])robe\b|jupe/i, '👗'],
-  [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono/i, '🧥'],
-  [/chemise|blouse\b|cravate|costume/i, '👔'],
+  // 🥼/🤵/🎀 scindés de 🧥/👔 (2026-07-09) : blazer/tailleur, costume et
+  // cravate ont chacun leur branche Vinted dédiée (Blazers et tailleurs,
+  // Costumes et blazers, Accessoires > Cravates et nœuds papillons) — le
+  // T4 "Pantalon de costume → Chemises" venait de "costume" logé dans 👔.
+  [/blazer|tailleur\b/i, '🥼'],
+  [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|polaire\b/i, '🧥'],
+  [/cravate|n[œo]e?ud.?papillon/i, '🎀'],
+  [/costume|smoking\b/i, '🤵'],
+  [/chemise|blouse\b/i, '👔'],
   // Scindé de 👕 : pull/sweat/hoodie/cardigan vivent chez Vinted sous une
   // branche "Sweats et pulls" entièrement différente de "Hauts et t-shirts"
   // (voir vintedCategories.js) — un seul et même mot-clé ne peut plus servir
   // de proxy fiable au chemin catalogue, d'où l'icône dédiée.
-  [/pull|sweat|hoodie|cardigan/i, '🧶'],
-  [/t.?shirt|tee.?shirt|débardeur|polo\b|\btop\b|tunique/i, '👕'],
+  [/pull|sweat|hoodie|cardigan|gilet(?!.{0,4}(?:de.?costume|jaune|de.?sécurité))/i, '🧶'],
+  [/t.?shirt|tee.?shirt|débardeur|polo\b|\btop\b|tunique|\bbodys?\b/i, '👕'],
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/short|bermuda/i, '🩳'],
   [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
+  // Lingerie/nuit (2026-07-09) : branche Vinted dédiée des deux côtés
+  // (Lingerie et pyjamas / Sous-vêtements et chaussettes) — backlog T3.
+  [/lingerie|soutien.?gorge|nuisette|pyjama|peignoir|tenue.?de.?nuit|caleçon|\bboxers?\b|\bslips?\b|culotte(?!.{0,10}cheval)/i, '🩲'],
   [/chaussette|collant/i, '🧦'],
   [/écharpe|foulard|châle|snood/i, '🧣'],
   [/gant(?!.?de.?boxe)|mitaine|moufle/i, '🧤'],
@@ -313,11 +341,17 @@ const OBJECT_ICON_RULES = [
   [/lunette|solaire|sunglass/i, '🕶️'],
   [/montre|watch|rolex|omega|swatch/i, '⌚'],
   [/bijou|collier|bracelet|bague|boucle.?d.?oreille|pendentif|broche/i, '💍'],
+  // Accessoires ajoutés le 2026-07-09 (backlog T3) — feuilles Vinted réelles.
+  [/ceinture(?!.{0,10}(?:lombaire|à.?outils|de.?sécurité))/i, '🪢'],
+  [/parapluie|ombrelle/i, '☂️'],
+  [/porte.?cl[ée]s?\b/i, '🗝️'],
   // High-Tech
   [/iphone|smartphone|téléphone|galaxy|\bpixel\b|xiaomi|oneplus/i, '📱'],
   [/macbook|laptop|ordinateur.?portable|notebook|chromebook/i, '💻'],
   [/\bpc\b|imac|ordinateur|écran|moniteur/i, '🖥️'],
-  [/tablette|ipad/i, '📱'],
+  // 📲 scindé de 📱 (2026-07-09, T4) : feuille dédiée Électronique >
+  // Tablettes, liseuses et accessoires > Tablettes.
+  [/tablette(?!.{0,4}de.?chocolat)|ipad|galaxy.?tab/i, '📲'],
   [/écouteur|airpods?|earbud|casque|headphone/i, '🎧'],
   [/enceinte|haut.?parleur|speaker|barre.?de.?son|soundbar/i, '🔊'],
   [/console|playstation|\bps[2-5]\b|xbox|nintendo|switch|game.?boy|manette|jeu.?vidéo/i, '🎮'],
@@ -333,7 +367,7 @@ const OBJECT_ICON_RULES = [
   [/canapé|sofa|fauteuil|banquette|pouf/i, '🛋️'],
   [/chaise|tabouret|\bbanc\b/i, '🪑'],
   [/\blit\b|matelas|sommier|couette|drap|parure/i, '🛏️'],
-  [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande/i, '💡'],
+  [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
   [/miroir/i, '🪞'],
   [/bougie|photophore/i, '🕯️'],
   [/cadre|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],
@@ -341,6 +375,16 @@ const OBJECT_ICON_RULES = [
   [/vase\b/i, '🏺'],
   [/assiette|\bbol\b|tasse|\bmug\b|verre|carafe|vaisselle/i, '🍽️'],
   [/casserole|poêle|cocotte|marmite|ustensile/i, '🍳'],
+  // Maison — textiles/déco/papeterie/animaux/fêtes (2026-07-09, backlog T3) :
+  // toutes ces branches existent réellement (Maison > Textiles/Décoration/
+  // Fournitures de bureau/Animaux/Célébrations et fêtes — arbre archivé).
+  [/rideau|voilage|\bstores?\b/i, '🪟'],
+  [/coussin(?!.{0,14}(?:allaitement|grossesse))|plaid\b|jeté.?de.?(?:lit|canapé)/i, '🪶'],
+  [/\btapis\b(?!.?(?:de.?)?(?:course|yoga|souris|selle|sol|éveil|bain|jeu))/i, '🟫'],
+  [/nappe\b|napperon|linge.?de.?table/i, '📜'],
+  [/horloge|pendule\b|réveil/i, '🕰️'],
+  [/no[eë]l|guirlande.?de.?sapin|boule.?de.?sapin|crèche\b/i, '🎄'],
+  [/stylo|papeterie|carnet|bloc.?notes?|surligneur|crayon(?!.{0,12}(?:lèvres|yeux|sourcils))|calculatrice|agenda\b|trousse(?!.{0,4}(?:de.?toilette|à.?maquillage))/i, '🖋️'],
   // Électroménager
   [/bouilloire|théière/i, '🫖'],
   [/aspirateur|roomba|nettoyeur.?vapeur/i, '🧹'],
@@ -350,6 +394,10 @@ const OBJECT_ICON_RULES = [
   [/grille.?pain|toaster/i, '🍞'],
   [/friteuse|airfryer/i, '🍟'],
   [/sèche.?cheveux|lisseur|boucleur/i, '💇'],
+  // Climatisation / chauffage d'appoint (2026-07-09) : feuilles réelles sous
+  // Maison > Entretien de la maison > Chauffage, climatisation et ventilation.
+  [/ventilateur|climatiseur|purificateur.?d.?air|humidificateur|déshumidificateur/i, '🌀'],
+  [/radiateur|chauffage.?d.?appoint|convecteur|bain.?d.?huile/i, '🌡️'],
   // Bricolage
   [/perceuse|visseuse|tournevis|perforateur/i, '🪛'],
   [/scie|tronçonneuse|élagueuse/i, '🪚'],
@@ -394,13 +442,21 @@ const OBJECT_ICON_RULES = [
   [/batterie(?!.{0,12}(?:voiture|moto|vélo|externe))|cymbale|caisse.?claire/i, '🥁'],
   [/trompette|saxophone|clarinette|flûte/i, '🎺'],
   [/vinyle|vinyl|platine|33.?tours|45.?tours/i, '💿'],
+  // Médias physiques (2026-07-09, backlog T3) : Divertissement > Vidéo (DVD/
+  // Blu-ray/VHS) et > Musique (CD/Cassettes audio) — 📀 AVANT 💽 pour que
+  // "cassette vidéo" parte en Vidéo, "cassette" seule = audio par défaut.
+  [/\bdvd\b|blu.?ray|\bvhs\b|cassette.?vidéo|laserdisc/i, '📀'],
+  [/\bcd\b|\bk7\b|cassette|minidisc/i, '💽'],
+  [/harmonica/i, '🎼'],
   [/micro(?:phone)?\b/i, '🎤'],
   // Jouets
   [/lego|duplo|kapla|jeu.?de.?construction/i, '🧱'],
   [/peluche|doudou/i, '🧸'],
   [/poupée|barbie|poupon/i, '🪆'],
   [/puzzle/i, '🧩'],
-  [/figurine|funko/i, '🦸'],
+  // playmobil : aucune feuille Vinted dédiée (0 hit dans l'arbre, vérifié
+  // 2026-07-09) — rangé avec les figurines ("Sets de jeux" = feuille sœur).
+  [/figurine|funko|playmobil/i, '🦸'],
   // Livres
   [/manga|\bbd\b|bande.?dessinée|comics/i, '📖'],
   [/livre|roman|encyclopédie|dictionnaire/i, '📚'],

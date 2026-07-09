@@ -328,6 +328,73 @@ const MODE = {
     Garçon: ["Mode", "Garçon", "Accessoires (garçon)", "Bijoux (garçon)"],
     Bébé: null,
   },
+
+  // ── Ajouts 2026-07-09 (mission mapping complet) — feuilles relevées dans
+  // docs/beebs-categories-raw.txt (sélecteur du formulaire, crawl réel) ─────
+  // Chaussons : 4 genres, pas de feuille Bébé (confirmé par le relevé Mode
+  // complet).
+  "🥿": {
+    Femme: ["Mode", "Femme", "Chaussures (femme)", "Chaussons (femme)"],
+    Homme: ["Mode", "Homme", "Chaussures (homme)", "Chaussons (homme)"],
+    Fille: ["Mode", "Fille", "Chaussures (fille)", "Chaussons (fille)"],
+    Garçon: ["Mode", "Garçon", "Chaussures (garçon)", "Chaussons (garçon)"],
+    Bébé: null,
+  },
+  // Sac banane : feuille Femme uniquement (confirmé).
+  "👝": {
+    Femme: ["Mode", "Femme", "Accessoires (femme)", "Sacs à main et pochettes (femme)", "Sacs banane (femme)"],
+    Homme: null, Fille: null, Garçon: null, Bébé: null,
+  },
+  "🪢": {
+    Femme: ["Mode", "Femme", "Accessoires (femme)", "Ceintures (femme)"],
+    Homme: ["Mode", "Homme", "Accessoires (homme)", "Ceintures (homme)"],
+    Fille: null, Garçon: null, Bébé: null,
+  },
+  // ⚠️ "noeuds" SANS ligature chez Beebs (libellé exact du relevé).
+  "🎀": {
+    Femme: null,
+    Homme: ["Mode", "Homme", "Accessoires (homme)", "Cravates et noeuds papillon (homme)"],
+    Fille: null, Garçon: null, Bébé: null,
+  },
+  // Parapluies : feuille SANS suffixe de genre (seul cas du rayon Accessoires,
+  // libellé exact "Parapluies" des deux côtés — relevé).
+  "☂️": {
+    Femme: ["Mode", "Femme", "Accessoires (femme)", "Parapluies"],
+    Homme: ["Mode", "Homme", "Accessoires (homme)", "Parapluies"],
+    Fille: null, Garçon: null, Bébé: null,
+  },
+  // Pyjamas : niveau différent selon le genre (branche "Nuit et pyjamas"
+  // chez Femme/Homme/Bébé, feuille directe chez Fille/Garçon — relevé).
+  "🩲": {
+    Femme: ["Mode", "Femme", "Nuit et pyjamas (femme)", "Pyjamas (femme)"],
+    Homme: ["Mode", "Homme", "Nuit et pyjamas (homme)", "Pyjamas (homme)"],
+    Fille: ["Mode", "Fille", "Pyjamas (fille)"],
+    Garçon: ["Mode", "Garçon", "Pyjamas (garçon)"],
+    Bébé: ["Mode", "Bébé", "Nuit et pyjamas (bébé)", "Pyjamas (bébé)"],
+  },
+  // ⚠️ Homme : la feuille blazer s'appelle "Vestes et blazers (homme)" (pas
+  // "Blazers") — libellé exact du relevé.
+  "🥼": {
+    Femme: ["Mode", "Femme", "Vêtements (femme)", "Blazers et tailleurs (femme)", "Blazers (femme)"],
+    Homme: ["Mode", "Homme", "Vêtements (homme)", "Costumes et blazers (homme)", "Vestes et blazers (homme)"],
+    Fille: null, Garçon: null, Bébé: null,
+  },
+  // Costume : branche Homme uniquement (pas d'équivalent femme au relevé —
+  // les tailleurs femme vivent sous Blazers et tailleurs, cf. 🥼).
+  "🤵": {
+    Femme: null,
+    Homme: ["Mode", "Homme", "Vêtements (homme)", "Costumes et blazers (homme)", "Ensembles de costume (homme)"],
+    Fille: null, Garçon: null, Bébé: null,
+  },
+  // Déguisements : GENRÉ chez Beebs mais hors branche Mode (vit sous Jeux,
+  // jouets et loisirs — seule branche genrée hors Mode, cf. en-tête).
+  "🎭": {
+    Femme: ["Jeux, jouets et loisirs", "Déguisements", "Déguisements (femme)"],
+    Homme: ["Jeux, jouets et loisirs", "Déguisements", "Déguisements (homme)"],
+    Fille: ["Jeux, jouets et loisirs", "Déguisements", "Déguisements (fille)"],
+    Garçon: ["Jeux, jouets et loisirs", "Déguisements", "Déguisements (garçon)"],
+    Bébé: ["Jeux, jouets et loisirs", "Déguisements", "Déguisements (bébé)"],
+  },
 };
 
 // Icônes dont la catégorie Beebs vit HORS de la branche Mode. Branches NON
@@ -409,6 +476,38 @@ const HORS_MODE = {
   "💺": ["Puériculture", "Sièges auto", "Sièges auto"],
   "🍼": ["Puériculture", "Repas", "Biberons", "Biberons"],
   "📟": ["Puériculture", "Chambre et nuit", "Babyphones", "Babyphones"],
+
+  // ── Ajouts 2026-07-09 (mission mapping complet) — feuilles du relevé ─────
+  "🚁": ["Jeux, jouets et loisirs", "Véhicules", "Véhicules télécommandés"],
+  "📀": ["Jeux, jouets et loisirs", "Multimédia", "DVD"],
+  "💽": ["Jeux, jouets et loisirs", "Multimédia", "CD"],
+  // DÉFAUT ASSUMÉ : Lits bébé dominant (Lits enfant/Berceaux/Co-dodos/Lits
+  // parapluie = feuilles sœurs sous Lits et berceaux).
+  "🚼": ["Puériculture", "Chambre et nuit", "Lits et berceaux", "Lits bébé"],
+  // ⚠️ "Ecriture" SANS accent (libellé exact du relevé).
+  "🖋️": ["Maison", "Cartables et fournitures scolaires", "Ecriture et correction"],
+  "☕": ["Maison", "Petit électroménager", "Machines à café"],
+  // DÉFAUT ASSUMÉ : la regex 🥣 couvre blender/robot — seule feuille
+  // "Mixeurs" au relevé (Cuiseurs/Yaourtières = sœurs).
+  "🥣": ["Maison", "Petit électroménager", "Mixeurs"],
+  "🍳": ["Maison", "Cuisine", "Poêles, casseroles et plats"],
+  "🍽️": ["Maison", "Cuisine", "Vaisselle et art de la table"],
+  // Porte-clés : AUCUNE feuille dans le rayon Accessoires d'aucun genre
+  // (relevé Mode complet) — null confirmé, pas un trou de crawl.
+  "🗝️": null,
+
+  // NON_CRAWLÉ — TODO : la racine "Maison" du relevé est PARTIELLE (crawl
+  // interrompu après Cartables/Petit électroménager/Cuisine — marqué dans
+  // docs/beebs-categories-raw.txt) et le sélecteur du formulaire (connecté)
+  // n'a pas été re-crawlé depuis. Familles SANS clé ici tant qu'une preuve
+  // de crawl n'existe pas (ne JAMAIS coder un chemin plausible) :
+  //   textiles maison (🪟🪶🟫📜🛌), horloges (🕰️), Noël (🎄), animaux (🐕),
+  //   électroménager entretien (🧼🌀🌡️🧺🧊), bricolage/jardin (🪛🪚🔨🪜🖌️📏🔧✂️⛱️),
+  //   high-tech adulte (📱💻🖥️🎧🔊📺📷📲📇⏱️📡🛸⌨️🖱️🖨️🔌),
+  //   sport adulte (🎿⚽🎾⛳🏋️🥊⛺🎣🧘🐴🎱🤿🏄), musique (🎸🎻🥁🎺🎹🎤🎼🧵💿),
+  //   collection (📮🪙📰). Beebs étant une marketplace famille/enfant, une
+  //   partie n'existe probablement pas — mais "probablement" n'est pas une
+  //   preuve : à trancher par crawl du formulaire.
 };
 
 /**
@@ -431,6 +530,21 @@ export function beebsGenreRequired(icon) {
  * @returns {string[]|null} chemin catalogue Beebs, ou null si non mappé
  *   (icône hors périmètre Mode, genre absent ou non-Beebs)
  */
+/**
+ * Statut de support Beebs — dérivé des tables (même contrat que
+ * vintedCategoryStatus). ⚠️ "unmapped" est fréquent ici : le crawl Beebs est
+ * PARTIEL (racine Maison interrompue, cf. NON_CRAWLÉ en fin de HORS_MODE) —
+ * ne pas le confondre avec une absence confirmée.
+ */
+export function beebsCategoryStatus(icon) {
+  if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) {
+    return HORS_MODE[icon] ? "supported" : "unavailable";
+  }
+  const entry = MODE[icon];
+  if (!entry) return "unmapped";
+  return Object.values(entry).some(Boolean) ? "supported" : "unavailable";
+}
+
 export function getBeebsCategoryPath(icon, genre) {
   // HORS_MODE d'abord : branches non genrées et hors périmètre — null
   // documenté, quel que soit le genre.
