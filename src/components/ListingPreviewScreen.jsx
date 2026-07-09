@@ -44,6 +44,18 @@ function getPlatformFieldsConfig(t) {
     correct:       { value:"État correct",         label:t("conditionCorrect") },
     forParts:      { value:"Pour pièces",          label:t("conditionForParts") },
   };
+  // Beebs écrit ses états AVEC une virgule et n'a pas de "Satisfaisant" : son
+  // plus bas niveau est "État moyen" (relevés concordants du 2026-07-08 sur le
+  // rayon Mode et du 2026-07-09 sur Figurines). `value` doit être le libellé
+  // EXACT de la plateforme — la cascade fuzzy du handler n'est qu'un filet,
+  // pas une excuse pour envoyer un libellé qui n'existe pas.
+  const beebsCondition = [
+    { value:"Neuf, avec étiquette",  label:t("conditionNewWithTag") },
+    { value:"Neuf, sans étiquette",  label:t("conditionNewWithoutTag") },
+    { value:"Très bon état",         label:t("conditionVeryGood") },
+    { value:"Bon état",              label:t("conditionGood") },
+    { value:"État moyen",            label:t("conditionAverage") },
+  ];
   const sizeLetterOptions  = ["XS","S","M","L","XL","XXL","Unique"].map(v => ({ value:v, label:v }));
   const sizeNumericOptions = [];
   for (let n = 34; n <= 52; n += 2) sizeNumericOptions.push({ value:String(n), label:String(n) });
@@ -147,7 +159,7 @@ function getPlatformFieldsConfig(t) {
     // getBeebsCategoryPath ne résout jamais rien pour les articles de mode
     // (même piège que celui documenté pour l'univers Leboncoin ci-dessus).
     beebs: [
-      { key:"etat",   label:t("fieldConditionLabel"), type:"select", options:[condition.new_, condition.veryGood, condition.good] },
+      { key:"etat",   label:t("fieldConditionLabel"), type:"select", options: beebsCondition },
       { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"genre",  label:t("fieldGenderLabel"),    type:"select", options: beebsGender },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },

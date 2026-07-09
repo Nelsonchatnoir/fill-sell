@@ -250,6 +250,7 @@ export const translations = {
     conditionSatisfactory:"Satisfaisant",
     conditionNew:"Neuf",
     conditionCorrect:"État correct",
+    conditionAverage:"État moyen",
     conditionForParts:"Pour pièces",
 
     packageLetter:"Lettre",
@@ -520,6 +521,7 @@ export const translations = {
     conditionSatisfactory:"Satisfactory",
     conditionNew:"New",
     conditionCorrect:"Fair condition",
+    conditionAverage:"Average condition",
     conditionForParts:"For parts",
 
     packageLetter:"Letter",
