@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Camera, Mic, Sparkles, Plus } from 'lucide-react';
+import { Camera, Mic, Sparkles, Plus, HelpCircle, X } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
@@ -41,6 +41,7 @@ function LensScanHome({
   lensUsedToday, LENS_FREE_LIMIT,
 }) {
   const { t, tpl } = useTranslation(lang);
+  const [showLensHelp, setShowLensHelp] = useState(false);
   const maxPhotos = isPro ? 8 : 5;
   const photoCount = lensPhotos.length;
 
@@ -134,14 +135,26 @@ function LensScanHome({
             </button>
           </div>
 
-          <button
-            onClick={analyzeLens}
-            disabled={analyzeDisabled}
-            style={{ width:'100%', boxSizing:'border-box', marginTop:12, borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: analyzeDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
-          >
-            <Sparkles size={16} strokeWidth={2.2} />
-            {lensLoading ? t('lensAnalyzing') : t('lensAnalyzeCta')}
-          </button>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:12 }}>
+            <button
+              onClick={analyzeLens}
+              disabled={analyzeDisabled}
+              style={{ flex:1, boxSizing:'border-box', borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: analyzeDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
+            >
+              <Sparkles size={16} strokeWidth={2.2} />
+              {lensLoading ? t('lensAnalyzing') : t('lensAnalyzeCta')}
+            </button>
+            {/* Notice « ? » — explique le fonctionnement (photo → scan IA → fiche) */}
+            <button
+              type="button"
+              onClick={() => setShowLensHelp(true)}
+              aria-label={lang === 'en' ? 'How does the scan work?' : 'Comment fonctionne le scan ?'}
+              title={lang === 'en' ? 'How does it work?' : 'Comment ça marche ?'}
+              style={{ flexShrink:0, width:52, height:52, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background:'#FFFFFF', border:`1px solid #E7E3D8`, cursor:'pointer', boxShadow:'0 1px 4px rgba(16,32,27,0.05)' }}
+            >
+              <HelpCircle size={20} color={TEAL_DEEP} strokeWidth={2} />
+            </button>
+          </div>
 
           {isPremium && lensPremiumLimitReached && (
             <div style={{ textAlign:'center', fontSize:11.5, marginTop:10, color:'#A6A192' }}>
@@ -163,6 +176,70 @@ function LensScanHome({
           <PlatformMarquee />
         </div>
       </div>
+
+      {/* ── Notice « Comment ça marche ? » ── */}
+      {showLensHelp && (
+        <div
+          onClick={() => setShowLensHelp(false)}
+          style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width:'100%', maxWidth:400, background:UI.paper, border:`1px solid ${UI.border}`, borderRadius:24, padding:'24px 22px 22px', boxShadow:'0 24px 60px rgba(16,32,27,0.28)', fontFamily:'inherit' }}
+          >
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:16 }}>
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ display:'flex', alignItems:'center', justifyContent:'center', width:34, height:34, borderRadius:12, background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})` }}>
+                    <Sparkles size={17} color="#FFFFFF" strokeWidth={2.2} />
+                  </span>
+                  <h2 style={{ margin:0, fontSize:19, fontWeight:600, letterSpacing:'-0.01em', color:INK }}>
+                    {lang === 'en' ? 'How the scan works' : 'Comment marche le scan'}
+                  </h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLensHelp(false)}
+                aria-label={lang === 'en' ? 'Close' : 'Fermer'}
+                style={{ flexShrink:0, width:34, height:34, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background:'#FFFFFF', border:`1px solid ${UI.border}`, cursor:'pointer' }}
+              >
+                <X size={16} color={MUTE} strokeWidth={2.2} />
+              </button>
+            </div>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {[
+                { n:'1', emoji:'📸', fr:['Prends une photo', 'Photographie l’article (ou ajoute plusieurs clichés) directement depuis l’appareil ou la galerie.'], en:['Take a photo', 'Snap the item (or add several shots) straight from your camera or gallery.'] },
+                { n:'2', emoji:'✨', fr:['Le scan IA analyse', 'L’IA reconnaît l’article, estime sa valeur et évalue si c’est un bon deal.'], en:['The AI scan runs', 'The AI recognises the item, estimates its value and rates whether it’s a good deal.'] },
+                { n:'3', emoji:'📋', fr:['Ta fiche est générée', 'Titre, description et prix prêts à publier sur Vinted, eBay, Leboncoin…'], en:['Your listing is generated', 'Title, description and price ready to post on Vinted, eBay, Leboncoin…'] },
+              ].map(step => (
+                <div key={step.n} style={{ display:'flex', gap:12, alignItems:'flex-start', background:UI.card, border:`1px solid ${UI.border}`, borderRadius:16, padding:'14px 14px' }}>
+                  <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:UI.chip, fontSize:20 }}>
+                    {step.emoji}
+                  </span>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:600, color:INK, marginBottom:2 }}>
+                      {lang === 'en' ? step.en[0] : step.fr[0]}
+                    </div>
+                    <div style={{ fontSize:12.5, lineHeight:1.45, color:MUTE }}>
+                      {lang === 'en' ? step.en[1] : step.fr[1]}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLensHelp(false)}
+              style={{ width:'100%', boxSizing:'border-box', marginTop:18, borderRadius:999, padding:'13px 0', fontSize:14, fontWeight:600, border:'none', cursor:'pointer', fontFamily:'inherit', background:`linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color:'#FFFFFF', boxShadow:'0 10px 24px rgba(47,158,144,0.28)' }}
+            >
+              {lang === 'en' ? 'Got it' : 'J’ai compris'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
