@@ -429,7 +429,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang }) {
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = 5;
@@ -440,6 +440,16 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
     { id: "ia_advanced", label: t("retouchIaMultiLabel"),  desc: t("retouchIaMultiDesc") },
     { id: "ia_light",    label: t("retouchIaSimpleLabel"), desc: t("retouchIaSimpleDesc") },
     { id: "original",    label: t("retouchOriginalLabel"), desc: t("retouchOriginalDesc") },
+  ];
+
+  // Choix de fond — avancé uniquement. `swatch` = aperçu de la vignette (les IDs
+  // correspondent 1:1 aux clés BACKGROUND_OPTIONS de generate-listing).
+  const backgroundOptions = [
+    { id: "original", label: lang === "fr" ? "Aucun"        : "None",         swatch: null },
+    { id: "white",    label: lang === "fr" ? "Blanc studio" : "Studio white", swatch: "#FFFFFF" },
+    { id: "grey",     label: lang === "fr" ? "Gris neutre"  : "Neutral grey", swatch: "radial-gradient(circle at 50% 38%, #ECECEC, #CBCBCB)" },
+    { id: "beige",    label: lang === "fr" ? "Beige lin"    : "Linen beige",  swatch: "#E7DECF" },
+    { id: "wood",     label: lang === "fr" ? "Bois clair"   : "Light wood",   swatch: "linear-gradient(105deg,#E8D3B2,#D9BF96 46%,#E4CCA7)" },
   ];
 
   return (
@@ -541,6 +551,55 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
           );
         })}
       </div>
+
+      {/* Choix de fond — retouche avancée uniquement (valeur ajoutée de l'avancé) */}
+      {photoOption === "ia_advanced" && (
+        <div style={{ marginBottom:20 }}>
+          <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.14em", textTransform:"uppercase", color:T.mute, marginBottom:10 }}>
+            {lang === "fr" ? "Fond" : "Background"}
+          </div>
+          <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:2 }}>
+            {backgroundOptions.map(b => {
+              const active = background === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => setBackground(b.id)}
+                  style={{ flexShrink:0, width:66, background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:"inherit" }}
+                >
+                  <div style={{
+                    width:66, height:66, borderRadius:14, boxSizing:"border-box",
+                    border:`2px solid ${active ? T.teal : T.border}`,
+                    background: b.id === "original" ? T.chip : b.swatch,
+                    boxShadow: active ? "0 0 0 3px rgba(47,158,144,0.16)" : "none",
+                    overflow:"hidden", position:"relative",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    transition:"border-color 0.15s, box-shadow 0.15s",
+                  }}>
+                    {b.id === "original" && (photos[0]
+                      ? <img src={photos[0]} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                      : <ImageOff size={18} color={T.mute} />
+                    )}
+                    {active && (
+                      <span style={{ position:"absolute", top:4, right:4, width:16, height:16, borderRadius:"50%", background:T.teal, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <Check size={10} color="#FFFFFF" strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:10.5, fontWeight:600, color: active ? T.tealDeep : T.mute2, marginTop:5, lineHeight:1.2, textAlign:"center" }}>
+                    {b.label}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <p style={{ fontSize:11.5, color:T.mute, marginTop:8, lineHeight:1.4 }}>
+            {lang === "fr"
+              ? "L'objet reste strictement identique — seul le fond change."
+              : "The item stays strictly identical — only the background changes."}
+          </p>
+        </div>
+      )}
 
       {/* Solde de pièces + accès au store */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
@@ -994,6 +1053,9 @@ export default function ListingPreviewScreen({
   const [photoOption, setPhotoOption] = useState(() =>
     isPro ? "ia_advanced" : isPremium ? "ia_light" : "original"
   );
+  // Choix de fond — ia_advanced uniquement (voir StepPhotos). "original" = fond
+  // d'origine conservé. Envoyé à generate-listing via le paramètre `background`.
+  const [background, setBackground] = useState("original");
 
   // Step 2 — résultats generate-listing
   const [generatingPlatforms, setGeneratingPlatforms] = useState(false);
@@ -1250,6 +1312,9 @@ export default function ListingPreviewScreen({
           photos,
           platforms,
           photo_option: photoOption,
+          // Fond pris en compte uniquement en ia_advanced (le backend l'ignore
+          // sinon, mais on n'envoie même pas une valeur trompeuse hors avancé).
+          background: photoOption === "ia_advanced" ? background : "original",
           price,
           ...(notes ? { notes } : {}),
         },
@@ -1718,6 +1783,8 @@ export default function ListingPreviewScreen({
             onPhotoClick={setLightboxUrl}
             photoOption={photoOption}
             setPhotoOption={setPhotoOption}
+            background={background}
+            setBackground={setBackground}
             selected={selected}
             setSelected={setSelected}
             coinPrices={coinPrices}

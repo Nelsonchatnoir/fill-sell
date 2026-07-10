@@ -193,6 +193,31 @@ function retouchProfileFor(item: { titre?: string; description?: string; type?: 
   };
 }
 
+// ── Choix de fond (ia_advanced uniquement) ─────────────────────────────────────
+// Flow "option A" : le fond est choisi AVANT génération, une seule image est
+// produite (un seul appel GPT Image 2, qualité "medium" — jamais de multi-pass
+// ni de "high" qui timeout). "original" (défaut) = aucun remplacement de fond
+// (comportement historique conservé). Étendre = ajouter une entrée ici.
+const BACKGROUND_OPTIONS: Record<string, string> = {
+  white: `New background: a clean, seamless pure-white professional studio backdrop with soft, even, diffused lighting.`,
+  grey:  `New background: a smooth neutral light-grey studio gradient, slightly lighter directly behind the product and gently darker toward the edges, understated and premium, with soft diffused lighting.`,
+  beige: `New background: a calm, warm beige linen-textured backdrop, softly lit with warm natural light for a refined, cared-for feel.`,
+  wood:  `New background: a pale natural light-wood surface with subtle clean grain, lifestyle feel, lit with soft warm daylight.`,
+};
+
+// Clause d'intégrité objet — préfixée à CHAQUE prompt de fond. Approche
+// prompt-only (pas de masque/segmentation) : /images/edits accepte bien un
+// `mask`, mais le CONSTRUIRE exige une étape de détourage de l'objet (appel
+// segmentation ou 2e passe) — exclue par la contrainte "un seul appel, coût
+// inchangé". La clause ci-dessous porte donc SEULE la garantie que seul le fond
+// change ; elle prime sur la ligne "fond conservé" de REALISM_RULES (qu'on
+// n'ajoute pas dans cette passe : on remplace justement le fond), et elle couvre
+// déjà l'intégralité des garanties objet de REALISM_RULES (défauts/taches/usure
+// jamais gommés, couleurs et matière fidèles, rien ajouté/embelli). Elle prime
+// aussi sur l'assouplissement des plis de la famille vetements : dans cette
+// passe on ne retouche pas le vêtement, le gain de valeur vient du fond propre.
+const BG_INTEGRITY_CLAUSE = `Replace ONLY the background of this product photo. The product itself must remain strictly identical to the original: do not redraw, reshape, resize, recolor, clean, repair or beautify it. Preserve exactly its shape, contours, proportions, colors, material and texture, patterns, logos, text, stitching, and every existing defect, stain, scratch, mark or sign of wear. Keep the product in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow beneath the product so it sits believably on the new surface, avoiding any cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -290,6 +315,11 @@ serve(async (req) => {
     // GPT Image payante par défaut — un ancien client obtient ses photos telles quelles.
     const rawPhotoOption = typeof body.photo_option === "string" ? body.photo_option : "";
     const photo_option = rawPhotoOption === "ia_advanced" || rawPhotoOption === "ia_light" ? rawPhotoOption : "original";
+    // background: choix de fond, uniquement pris en compte en ia_advanced (voir
+    // BACKGROUND_OPTIONS). Toute valeur absente/inconnue → "original" (aucun
+    // remplacement de fond, comportement historique).
+    const rawBackground = typeof body.background === "string" ? body.background : "";
+    const background = Object.prototype.hasOwnProperty.call(BACKGROUND_OPTIONS, rawBackground) ? rawBackground : "original";
     // price may be pre-fetched client-side; used as fallback if prix_vente is null in DB
     const body_price = body.price != null ? Number(body.price) : null;
 
@@ -353,10 +383,21 @@ serve(async (req) => {
       // via detectObjectIcon sur titre/description/type — mêmes règles que
       // l'app). ia_light : prompt générique (luminosité/blancs seulement).
       const retouch = retouchProfileFor(item);
-      if (!isLight) {
+      // Fond : uniquement en ia_advanced, valeur connue et != original. Quand un
+      // fond est appliqué, on n'envoie PAS le prompt famille (retouche objet) —
+      // seulement la clause d'intégrité + le fond choisi : l'objet reste intact,
+      // le gain de valeur vient du fond propre. Un SEUL appel image, comme avant.
+      const bgSuffix = !isLight && background !== "original" ? BACKGROUND_OPTIONS[background] : null;
+      let promptToUse: string;
+      if (isLight) {
+        promptToUse = OPENAI_IMG_PROMPT_LIGHT;
+      } else if (bgSuffix) {
+        promptToUse = `${BG_INTEGRITY_CLAUSE} ${bgSuffix}`;
+        console.log(`[gpt-image] fond appliqué: ${background} (famille ${retouch.family}, icône ${retouch.icon})`);
+      } else {
+        promptToUse = retouch.prompt;
         console.log(`[gpt-image] famille de retouche: ${retouch.family} (icône ${retouch.icon})`);
       }
-      const promptToUse = isLight ? OPENAI_IMG_PROMPT_LIGHT : retouch.prompt;
       const qualityToUse = isLight ? "low" : "medium";
       const photosToProcess = photos as string[];
       // Garde-fou coûts : 5 photos max passent en retouche GPT Image par annonce
