@@ -5963,6 +5963,20 @@ export default function App({ loginOnly = false }){
               </div>
             </a>
 
+            {/* Extension Chrome — desktop uniquement (pas de sens sur l'app native) */}
+            {!isNative&&(
+              <a href="/extension" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
+                onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              >
+                <span style={{fontSize:18,flexShrink:0}}>🧩</span>
+                <div>
+                  <div style={{fontSize:14,fontWeight:600}}>{lang==='fr'?'Extension Chrome':'Chrome extension'}</div>
+                  <div style={{fontSize:12,color:UI.mute2}}>{lang==='fr'?'Publier depuis ton navigateur':'Publish from your browser'}</div>
+                </div>
+              </a>
+            )}
+
             {/* Mentions légales */}
             <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
               onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
