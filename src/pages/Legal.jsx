@@ -118,6 +118,47 @@ const privacyTexts = {
   },
 };
 
+// Détail technique des droits de l'extension Chrome, aligné 1:1 sur
+// chrome-extension/manifest.json (permissions + host_permissions). Toute
+// modification du manifest doit être répercutée ici pour la soumission Web Store.
+const extensionPermissions = [
+  // permissions (API Chrome)
+  { key: 'storage', scope: 'permissions',
+    fr: "Stocke localement le jeton de session FillSell et les réglages de l'extension (chrome.storage.local). Rien n'est transmis à des tiers.",
+    en: "Stores the FillSell session token and the extension settings locally (chrome.storage.local). Nothing is shared with third parties." },
+  { key: 'alarms', scope: 'permissions',
+    fr: "Planifie une vérification périodique (~30 min) des annonces à publier, sans garder d'onglet ouvert en continu.",
+    en: "Schedules a periodic check (~30 min) for listings to publish, without keeping a tab open continuously." },
+  { key: 'scripting', scope: 'permissions',
+    fr: "Injecte le script de remplissage du formulaire sur la page de dépôt de la plateforme concernée, au moment de la publication.",
+    en: "Injects the form-filling script onto the marketplace's listing page at publish time." },
+  // host_permissions (accès par domaine)
+  { key: 'https://*.vinted.fr/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt d'annonce Vinted (domaine français).",
+    en: "Fill the Vinted listing form (French domain)." },
+  { key: 'https://*.vinted.com/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt d'annonce Vinted (domaine international .com).",
+    en: "Fill the Vinted listing form (international .com domain)." },
+  { key: 'https://*.leboncoin.fr/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt d'annonce Leboncoin.",
+    en: "Fill the Leboncoin listing form." },
+  { key: 'https://*.ebay.fr/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt d'annonce eBay (domaine français).",
+    en: "Fill the eBay listing form (French domain)." },
+  { key: 'https://*.ebay.com/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt d'annonce eBay (domaine international .com).",
+    en: "Fill the eBay listing form (international .com domain)." },
+  { key: 'https://*.beebs.app/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt d'annonce Beebs.",
+    en: "Fill the Beebs listing form." },
+  { key: 'https://fillsell.app/*', scope: 'host_permissions',
+    fr: "Lire la session d'authentification FillSell pour rattacher l'extension au compte de l'utilisateur.",
+    en: "Read the FillSell authentication session to link the extension to the user's account." },
+  { key: 'https://tojihnuawsoohlolangc.supabase.co/*', scope: 'host_permissions',
+    fr: "Appeler le backend FillSell (Supabase) pour récupérer les annonces à publier et remonter leur statut.",
+    en: "Call the FillSell backend (Supabase) to fetch the listings to publish and report their status." },
+];
+
 export default function Legal() {
   const nav = useNavigate();
   const [lang] = useState(() => localStorage.getItem('fs_lang') || 'fr');
@@ -152,7 +193,7 @@ export default function Legal() {
             {en ? 'Legal Notice & T&C' : 'Mentions légales & CGU'}
           </h1>
           <p style={{ fontSize: 13, color: C.label }}>
-            {en ? 'Last updated: April 2026' : 'Dernière mise à jour : avril 2026'}
+            {en ? 'Last updated: July 2026' : 'Dernière mise à jour : juillet 2026'}
           </p>
         </div>
 
@@ -427,6 +468,38 @@ export default function Legal() {
             <li>{en ? 'The only sensitive item in transit is your FillSell session token (Supabase), kept locally in the browser and used only to authenticate calls to the FillSell backend.' : "La seule donnée sensible en transit est votre jeton de session FillSell (Supabase), conservé localement dans le navigateur et utilisé uniquement pour authentifier les appels au backend FillSell."}</li>
             <li>{en ? 'No data is sold or shared with third parties; the extension contains no tracking or advertising SDK.' : "Aucune donnée n'est vendue ni partagée avec des tiers ; l'extension ne contient aucun SDK de tracking ou de publicité."}</li>
           </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.3 Technical breakdown of permissions (Chrome Web Store)' : '8.3 Détail technique des permissions (Chrome Web Store)'}</span></p>
+          <p className="legal-p">
+            {en
+              ? <>Every key declared in the extension's <span className="legal-strong">manifest.json</span> is listed below with its exact justification:</>
+              : <>Chaque clé déclarée dans le <span className="legal-strong">manifest.json</span> de l'extension est listée ci-dessous avec sa justification exacte :</>}
+          </p>
+          <div style={{ overflowX: 'auto', margin: '8px 0 4px', border: `1px solid ${C.border}`, borderRadius: 12 }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520, fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', fontWeight: 800, color: C.text, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{en ? 'Key' : 'Clé'}</th>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', fontWeight: 800, color: C.text, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{en ? 'Section' : 'Section'}</th>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', fontWeight: 800, color: C.text, borderBottom: `1px solid ${C.border}` }}>{en ? 'Justification' : 'Justification'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extensionPermissions.map((row, i) => (
+                  <tr key={row.key} style={{ background: i % 2 ? '#FCFDFE' : '#fff' }}>
+                    <td style={{ padding: '9px 12px', color: C.text, borderBottom: `1px solid ${C.border}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{row.key}</td>
+                    <td style={{ padding: '9px 12px', color: C.sub, borderBottom: `1px solid ${C.border}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, whiteSpace: 'nowrap' }}>{row.scope}</td>
+                    <td style={{ padding: '9px 12px', color: C.sub, borderBottom: `1px solid ${C.border}`, lineHeight: 1.5 }}>{en ? row.en : row.fr}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="legal-p" style={{ fontStyle: 'italic', color: C.label, fontSize: 12.5, marginTop: 8 }}>
+            {en
+              ? 'The extension declares no other permission (no « tabs », « cookies », « history » or « <all_urls> » access).'
+              : "L'extension ne déclare aucune autre permission (pas d'accès « tabs », « cookies », « history » ni « <all_urls> »)."}
+          </p>
 
           <p className="legal-p" style={{ marginTop: 12 }}>
             {en
