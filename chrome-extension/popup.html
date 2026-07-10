@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <title>FillSell</title>
   <style>
+    /* Space Grotesk bundlée en local (woff2 variable, subset latin) — CSP MV3,
+       aucun chargement externe. Source : Google Fonts (OFL). */
+    @font-face {
+      font-family: "Space Grotesk";
+      font-style: normal;
+      font-weight: 300 700;
+      font-display: swap;
+      src: url("assets/space-grotesk.woff2") format("woff2");
+    }
+
     /* ── Design tokens FillSell (identiques à src/components/ui.jsx) ── */
     :root {
       --canvas: #EDEAE0;
@@ -55,10 +65,8 @@
     }
     .brand-logo {
       width: 32px; height: 32px; border-radius: 9px;
-      flex-shrink: 0; object-fit: cover;
+      flex-shrink: 0; object-fit: cover; display: block;
       background: var(--card); border: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 15px; color: var(--teal-deep);
     }
     .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
     .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
@@ -152,9 +160,8 @@
 
     .plogo {
       width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
-      object-fit: contain; background: var(--card); border: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: var(--ink-50);
+      object-fit: cover; display: block;
+      background: var(--card); border: 1px solid var(--line);
     }
     .pname { font-size: 13.5px; font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
     .pstate { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
@@ -245,7 +252,7 @@
 <body>
   <!-- Header -->
   <div class="header">
-    <div id="brand-logo" class="brand-logo">F</div>
+    <img id="brand-logo" class="brand-logo" src="assets/fillsell-logo.png" alt="FillSell" />
     <div class="brand-text">
       <span class="brand-name">FillSell</span>
       <span class="brand-sub">Cross-post</span>

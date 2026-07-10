@@ -179,10 +179,18 @@ function escapeHtml(s) {
   ));
 }
 
-// Logo plateforme — placeholder au commit 1 (initiale), remplacé par le vrai
-// asset au commit suivant.
+// Logo plateforme — assets bundlés en local (chrome-extension/assets/) :
+// Vinted/eBay = tracé de marque sur socle blanc (SVG), Beebs/Leboncoin =
+// icône d'app officielle (PNG). Réutilise les mêmes visuels que l'app.
+const PLATFORM_LOGO = {
+  vinted: "assets/vinted.svg",
+  ebay: "assets/ebay.svg",
+  leboncoin: "assets/leboncoin.png",
+  beebs: "assets/beebs.png",
+};
 function platformLogo(p) {
-  return `<span class="plogo" data-platform="${p.key}">${p.name[0]}</span>`;
+  const src = PLATFORM_LOGO[p.key];
+  return `<img class="plogo" src="${src}" alt="${p.name}" />`;
 }
 
 // État d'une ligne plateforme, dérivé de : supporté ? job présent ? statut de
