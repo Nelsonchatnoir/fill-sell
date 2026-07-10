@@ -3342,11 +3342,15 @@ export default function App({ loginOnly = false }){
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
   const [coinStoreOpen,setCoinStoreOpen]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
-  // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin.adresse) :
+  // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
   // le bien ?", non pré-rempli depuis le compte LBC — vérifié), saisie une fois
-  // ici puis injectée dans platform_fields.adresse des jobs leboncoin.
-  const [settingsLbcAddressInput,setSettingsLbcAddressInput]=useState('');
+  // ici. Stockée en 3 champs structurés (rue / code_postal / ville) et recomposée
+  // en une string unique `adresse` (espaces, sans virgule — cf. fillAddress dans
+  // content-scripts/leboncoin.js) injectée dans platform_fields.adresse des jobs.
+  const [settingsLbcRue,setSettingsLbcRue]=useState('');
+  const [settingsLbcCp,setSettingsLbcCp]=useState('');
+  const [settingsLbcVille,setSettingsLbcVille]=useState('');
   const [settingsLbcAddressSaving,setSettingsLbcAddressSaving]=useState(false);
   const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
@@ -3601,7 +3605,9 @@ export default function App({ loginOnly = false }){
       setIsPremium(premiumValue);
       setIsPro(p.data?.is_pro===true);
       setUsername(p.data?.username||'');
-      setSettingsLbcAddressInput(p.data?.platform_settings?.leboncoin?.adresse||'');
+      setSettingsLbcRue(p.data?.platform_settings?.leboncoin?.rue||'');
+      setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
+      setSettingsLbcVille(p.data?.platform_settings?.leboncoin?.ville||'');
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
       const confirmed=!!localStorage.getItem('fs_currency_confirmed');
@@ -5812,24 +5818,59 @@ export default function App({ loginOnly = false }){
 
             {/* Adresse de remise Leboncoin — requise par le wizard LBC à chaque
                 dépôt (non pré-remplie depuis le compte LBC, vérifié) ; l'extension
-                la tape dans l'autocomplete et choisit la 1re suggestion. */}
+                la tape dans l'autocomplete et choisit la 1re suggestion. Saisie en
+                3 champs (rue / code postal / ville), recomposée en string unique
+                à l'enregistrement. */}
+            {(()=>{
+              const cpValid=/^\d{5}$/.test(settingsLbcCp.trim());
+              const cpTouched=settingsLbcCp.trim().length>0;
+              const cpError=cpTouched&&!cpValid;
+              const inputStyle=(err)=>({width:"100%",boxSizing:"border-box",padding:"8px 12px",borderRadius:10,border:`1px solid ${err?UI.negative:UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0});
+              return (
             <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
               <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Adresse de remise Leboncoin':'Leboncoin pickup address'}</Eyebrow>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <input
-                  value={settingsLbcAddressInput}
-                  onChange={e=>setSettingsLbcAddressInput(e.target.value.slice(0,120))}
-                  placeholder={lang==='fr'?'Ex : 12 rue de la Paix, Lyon':'e.g. 12 rue de la Paix, Lyon'}
-                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0}}
+                  value={settingsLbcRue}
+                  onChange={e=>setSettingsLbcRue(e.target.value.slice(0,120))}
+                  placeholder={lang==='fr'?'Rue — ex : 12 rue de la Paix':'Street — e.g. 12 rue de la Paix'}
+                  style={inputStyle(false)}
                 />
+                <div style={{display:"flex",gap:8}}>
+                  <input
+                    value={settingsLbcCp}
+                    onChange={e=>setSettingsLbcCp(e.target.value.replace(/\D/g,'').slice(0,5))}
+                    inputMode="numeric"
+                    placeholder={lang==='fr'?'Code postal':'Postal code'}
+                    style={{...inputStyle(cpError),flex:"0 0 110px"}}
+                  />
+                  <input
+                    value={settingsLbcVille}
+                    onChange={e=>setSettingsLbcVille(e.target.value.slice(0,80))}
+                    placeholder={lang==='fr'?'Ville':'City'}
+                    style={{...inputStyle(false),flex:1}}
+                  />
+                </div>
+                {cpError&&(
+                  <div style={{fontSize:11,color:UI.negative,fontWeight:600}}>
+                    {lang==='fr'?'Le code postal doit contenir 5 chiffres.':'Postal code must be 5 digits.'}
+                  </div>
+                )}
                 <button
                   onClick={async()=>{
                     setSettingsLbcAddressSaving(true);
-                    const val=settingsLbcAddressInput.trim();
+                    const rue=settingsLbcRue.trim();
+                    const cp=settingsLbcCp.trim();
+                    const ville=settingsLbcVille.trim();
+                    // String unique attendue par le handler (content-scripts/leboncoin.js) :
+                    // jointure par espaces, sans virgule — l'autocomplete LBC (type
+                    // Google Places) matche mieux "12 rue de la paix 69001 lyon" que la
+                    // même chaîne ponctuée (cf. commentaire fillAddress).
+                    const adresse=[rue,cp,ville].filter(Boolean).join(' ');
                     // Lecture-fusion-écriture : platform_settings est partagé entre
                     // plateformes, ne jamais écraser les clés des autres.
                     const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
-                    const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),adresse:val}};
+                    const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),rue,code_postal:cp,ville,adresse}};
                     // .select() : sans lui, un update filtré par RLS (0 ligne) ne
                     // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
                     const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('platform_settings');
@@ -5838,8 +5879,8 @@ export default function App({ loginOnly = false }){
                     setToast({visible:true,message:failed?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
                     setTimeout(()=>setToast({visible:false,message:''}),3000);
                   }}
-                  disabled={settingsLbcAddressSaving}
-                  style={{padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:settingsLbcAddressSaving?"not-allowed":"pointer",opacity:settingsLbcAddressSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                  disabled={settingsLbcAddressSaving||cpError}
+                  style={{alignSelf:"flex-start",padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:(settingsLbcAddressSaving||cpError)?"not-allowed":"pointer",opacity:(settingsLbcAddressSaving||cpError)?0.6:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
                 >
                   {settingsLbcAddressSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
                 </button>
@@ -5848,6 +5889,8 @@ export default function App({ loginOnly = false }){
                 {lang==='fr'?'Utilisée pour le champ « adresse du bien » lors de la publication automatique sur Leboncoin. Jamais affichée sur l\'annonce.':'Used for the "item address" field when auto-publishing on Leboncoin. Never shown on the listing.'}
               </div>
             </div>
+              );
+            })()}
 
             {/* Désabonnement — visible uniquement si premium */}
             {isPremium&&(
