@@ -442,14 +442,17 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
     { id: "original",    label: t("retouchOriginalLabel"), desc: t("retouchOriginalDesc") },
   ];
 
-  // Choix de fond — avancé uniquement. `swatch` = aperçu de la vignette (les IDs
-  // correspondent 1:1 aux clés BACKGROUND_OPTIONS de generate-listing).
+  // Choix de fond — avancé uniquement. `swatch` = aperçu de la vignette : chaque
+  // valeur PRÉVISUALISE la vraie matière du fond (dégradés/textures CSS, aucun
+  // asset externe). Les IDs correspondent 1:1 aux clés BACKGROUND_OPTIONS de
+  // generate-listing (blanc = cyclorama, gris = microciment, beige = lin tissé,
+  // bois = chêne clair veiné).
   const backgroundOptions = [
     { id: "original", label: lang === "fr" ? "Aucun"        : "None",         swatch: null },
-    { id: "white",    label: lang === "fr" ? "Blanc studio" : "Studio white", swatch: "#FFFFFF" },
-    { id: "grey",     label: lang === "fr" ? "Gris neutre"  : "Neutral grey", swatch: "radial-gradient(circle at 50% 38%, #ECECEC, #CBCBCB)" },
-    { id: "beige",    label: lang === "fr" ? "Beige lin"    : "Linen beige",  swatch: "#E7DECF" },
-    { id: "wood",     label: lang === "fr" ? "Bois clair"   : "Light wood",   swatch: "linear-gradient(105deg,#E8D3B2,#D9BF96 46%,#E4CCA7)" },
+    { id: "white",    label: lang === "fr" ? "Blanc studio" : "Studio white", swatch: "radial-gradient(120% 95% at 50% 12%, #FFFFFF 55%, #E9E9E9 100%)" },
+    { id: "grey",     label: lang === "fr" ? "Gris béton"   : "Concrete grey", swatch: "radial-gradient(circle at 28% 22%, rgba(255,255,255,0.45), rgba(255,255,255,0) 42%), radial-gradient(circle at 72% 76%, rgba(0,0,0,0.08), rgba(0,0,0,0) 46%), linear-gradient(135deg,#D3D3D0,#C0C0BD)" },
+    { id: "beige",    label: lang === "fr" ? "Beige lin"    : "Linen beige",  swatch: "repeating-linear-gradient(0deg, rgba(120,100,70,0.10) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(120,100,70,0.10) 0 1px, transparent 1px 3px), linear-gradient(0deg,#E7DECF,#EEE6D7)" },
+    { id: "wood",     label: lang === "fr" ? "Bois clair"   : "Light wood",   swatch: "repeating-linear-gradient(92deg, rgba(120,85,45,0.00) 0 20px, rgba(120,85,45,0.26) 20px 21px), repeating-linear-gradient(92deg, rgba(120,85,45,0.08) 0 2px, transparent 2px 6px), linear-gradient(100deg,#EAD6B4,#DDC39A)" },
   ];
 
   return (
@@ -595,8 +598,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
           </div>
           <p style={{ fontSize:11.5, color:T.mute, marginTop:8, lineHeight:1.4 }}>
             {lang === "fr"
-              ? "L'objet reste strictement identique — seul le fond change."
-              : "The item stays strictly identical — only the background changes."}
+              ? "Objet fidèle (logo, couleurs, défauts) — seul le fond change. Sur un vêtement, les faux plis sont légèrement défroissés."
+              : "Item kept faithful (logo, colors, flaws) — only the background changes. On a garment, storage creases are lightly smoothed."}
           </p>
         </div>
       )}

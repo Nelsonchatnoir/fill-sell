@@ -199,24 +199,27 @@ function retouchProfileFor(item: { titre?: string; description?: string; type?: 
 // ni de "high" qui timeout). "original" (défaut) = aucun remplacement de fond
 // (comportement historique conservé). Étendre = ajouter une entrée ici.
 const BACKGROUND_OPTIONS: Record<string, string> = {
-  white: `New background: a clean, seamless pure-white professional studio backdrop with soft, even, diffused lighting.`,
-  grey:  `New background: a smooth neutral light-grey studio gradient, slightly lighter directly behind the product and gently darker toward the edges, understated and premium, with soft diffused lighting.`,
-  beige: `New background: a calm, warm beige linen-textured backdrop, softly lit with warm natural light for a refined, cared-for feel.`,
-  wood:  `New background: a pale natural light-wood surface with subtle clean grain, lifestyle feel, lit with soft warm daylight.`,
+  white: `New background: a premium seamless white studio sweep (cyclorama), bright and clean, with a subtle soft gradient from pure white behind the product to a very light grey toward the edges, professional e-commerce lighting.`,
+  grey:  `New background: a polished microcement / smooth concrete surface in soft neutral grey, with subtle natural texture and gentle tonal variation, modern industrial-chic feel, soft directional studio light. Understated and premium, not busy.`,
+  beige: `New background: a warm natural linen fabric backdrop with a soft visible woven texture, warmly and evenly lit, refined and tactile.`,
+  wood:  `New background: a pale natural light-oak wood surface with clean visible grain (planks / parquet), warm daylight, calm lifestyle feel.`,
 };
 
-// Clause d'intégrité objet — préfixée à CHAQUE prompt de fond. Approche
-// prompt-only (pas de masque/segmentation) : /images/edits accepte bien un
-// `mask`, mais le CONSTRUIRE exige une étape de détourage de l'objet (appel
-// segmentation ou 2e passe) — exclue par la contrainte "un seul appel, coût
-// inchangé". La clause ci-dessous porte donc SEULE la garantie que seul le fond
-// change ; elle prime sur la ligne "fond conservé" de REALISM_RULES (qu'on
-// n'ajoute pas dans cette passe : on remplace justement le fond), et elle couvre
-// déjà l'intégralité des garanties objet de REALISM_RULES (défauts/taches/usure
-// jamais gommés, couleurs et matière fidèles, rien ajouté/embelli). Elle prime
-// aussi sur l'assouplissement des plis de la famille vetements : dans cette
-// passe on ne retouche pas le vêtement, le gain de valeur vient du fond propre.
+// Clause d'intégrité objet — préfixée à CHAQUE prompt de fond (remplace l'intro
+// famille dans cette passe). Approche prompt-only (pas de masque/segmentation) :
+// /images/edits accepte bien un `mask`, mais le CONSTRUIRE exige une étape de
+// détourage de l'objet (appel segmentation ou 2e passe) — exclue par la
+// contrainte "un seul appel, coût inchangé". La clause porte donc SEULE la
+// garantie que seul le fond (et, pour un vêtement, les faux plis) change.
+//
+// DEUX variantes selon la famille détectée :
+//   - vetements → CLAUSE VÊTEMENT : autorise un défroissage LÉGER des faux plis
+//     de stockage/pliage (rendu "catalogue pro"), stricte sur tout le reste
+//     (couleurs, matière, motifs, logos, défauts, forme, cadrage).
+//   - toute autre famille → CLAUSE STRICTE : objet 100 % intact (inchangée).
 const BG_INTEGRITY_CLAUSE = `Replace ONLY the background of this product photo. The product itself must remain strictly identical to the original: do not redraw, reshape, resize, recolor, clean, repair or beautify it. Preserve exactly its shape, contours, proportions, colors, material and texture, patterns, logos, text, stitching, and every existing defect, stain, scratch, mark or sign of wear. Keep the product in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow beneath the product so it sits believably on the new surface, avoiding any cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
+
+const BG_INTEGRITY_CLAUSE_CLOTHING = `Replace the background of this clothing photo and present the garment as prepared for sale. You MAY lightly soften pronounced storage or folding creases (sharp crease lines from being stored folded or crumpled) so the garment looks cared-for and neatly arranged, but always preserve the fabric's natural drape and normal micro-folds: never press it perfectly flat, never make it look ironed or shrink-wrapped. Apart from softening those storage creases, the garment must remain strictly identical to the original: do not reshape, resize, recolor, repair or embellish it; preserve exactly its colors, material and texture, all patterns, prints, logos, text and stitching, and every existing defect, stain, hole or sign of wear. Keep the garment in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow so it sits believably on the new surface, with no cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -384,15 +387,17 @@ serve(async (req) => {
       // l'app). ia_light : prompt générique (luminosité/blancs seulement).
       const retouch = retouchProfileFor(item);
       // Fond : uniquement en ia_advanced, valeur connue et != original. Quand un
-      // fond est appliqué, on n'envoie PAS le prompt famille (retouche objet) —
-      // seulement la clause d'intégrité + le fond choisi : l'objet reste intact,
-      // le gain de valeur vient du fond propre. Un SEUL appel image, comme avant.
+      // fond est appliqué, on n'envoie PAS l'intro famille — mais la clause
+      // d'intégrité (VÊTEMENT pour la famille vetements, autorisant un léger
+      // défroissage ; STRICTE sinon, objet 100 % intact) + le fond choisi.
+      // Un SEUL appel image, comme avant.
       const bgSuffix = !isLight && background !== "original" ? BACKGROUND_OPTIONS[background] : null;
       let promptToUse: string;
       if (isLight) {
         promptToUse = OPENAI_IMG_PROMPT_LIGHT;
       } else if (bgSuffix) {
-        promptToUse = `${BG_INTEGRITY_CLAUSE} ${bgSuffix}`;
+        const bgClause = retouch.family === "vetements" ? BG_INTEGRITY_CLAUSE_CLOTHING : BG_INTEGRITY_CLAUSE;
+        promptToUse = `${bgClause} ${bgSuffix}`;
         console.log(`[gpt-image] fond appliqué: ${background} (famille ${retouch.family}, icône ${retouch.icon})`);
       } else {
         promptToUse = retouch.prompt;
