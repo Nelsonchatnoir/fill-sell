@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Détection de catégorie de l'app (≈120 règles regex + défauts par catégorie) :
+// UNIQUE source de vérité, importée telle quelle — jamais dupliquée ici.
+// shared.js est un module pur (aucun import, aucune API navigateur), le
+// bundler du CLI Supabase l'embarque au deploy comme n'importe quel import
+// relatif. Même signature que côté app : detectObjectIcon(titre, description, type).
+import { detectObjectIcon } from "../../../src/utils/shared.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -70,33 +76,114 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
-const OPENAI_IMG_PROMPT_LIGHT = `Lightly enhance this clothing product photo: adjust white balance and brightness slightly so the garment reads clearly, and correct any obvious color cast. Keep everything else exactly as in the original photo — pose, framing, angle, background, wrinkles, garment details.
+// ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
+// Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
+// uniquement — les codes photo par catégorie n'entrent pas en jeu à ce niveau).
+// Formulé "item" et non "garment" : il s'applique à toutes les catégories.
+const OPENAI_IMG_PROMPT_LIGHT = `Lightly enhance this product photo: adjust white balance and brightness slightly so the item reads clearly, and correct any obvious color cast. Keep everything else exactly as in the original photo — pose, framing, angle, background, and every detail of the item.
 
 Strict constraints — do NOT change:
 - The pose, framing, angle, or camera perspective
 - The background
-- The garment's shape, cut, size, color, pattern, fabric texture, or any design detail (buttons, logos, stitching, prints, labels)
-- Do not smooth fabric or remove wrinkles
+- The item's shape, size, color, pattern, material texture, or any detail (logos, stitching, prints, labels, signs of wear)
+- Do not smooth, iron, or flatten anything; do not remove wrinkles, creases, or defects
 - Do not add, remove, or invent any element
 
 This is a fast, subtle brightness/white-balance correction only — nothing else should visibly change.`;
 
-const OPENAI_IMG_PROMPT_ADVANCED = `Enhance this clothing product photo to make it look professional and sale-ready, while keeping the garment exactly as it is.
+// Règle de réalisme commune à TOUTES les familles du niveau "ia_advanced".
+// La photo doit montrer le VRAI article : améliorer la présentation (lumière,
+// netteté, fond, fidélité couleurs), jamais l'objet lui-même. Un article
+// "parfait" qui ne ressemble pas à ce que l'acheteur reçoit = litige et
+// non-conformité aux règles des plateformes.
+const REALISM_RULES = `Strict realism constraints — non-negotiable:
+- The result must show the exact same item, exactly as it is: same shape, proportions, colors, pattern, material texture, and every detail (logos, stitching, prints, labels, hardware).
+- Never remove or hide defects, stains, scratches, pilling, or signs of wear — the buyer must see the item's true condition.
+- Never artificially smooth, iron, flatten, or "perfect" the item. Natural folds, light creases, and the real drape of the material must stay visible — a real, slightly lived-in look is correct and expected.
+- Keep colors strictly faithful to the original photo — no saturation or tone shift that changes the perceived color.
+- Do not add, remove, or invent any element on or around the item.
+- Do not change the pose, framing, angle, or camera perspective.
+Only the PRESENTATION may improve: lighting, sharpness, white balance, and a cleaner, less distracting background (kept recognizable as the same location).`;
 
-Lighting: Apply soft, natural, warm-toned lighting — as if photographed near a bright window on a clear day. Even, flattering light with no harsh shadows or overexposed areas. Increase contrast and pop slightly for a more premium, catalog-like look.
+// Familles de retouche "ia_advanced" : un prompt spécialisé par famille de
+// produit, mappé depuis l'icône retournée par detectObjectIcon (les mêmes
+// icônes que les tuiles Stock/Ventes et le mapping catalogue des plateformes).
+// Chaque prompt = intro spécialisée (codes photo de la famille) + REALISM_RULES.
+// Pour ajuster une famille : modifier son intro ; pour déplacer une catégorie :
+// déplacer son icône d'une liste à l'autre. Icône absente de toute liste →
+// famille "default".
+const RETOUCH_FAMILIES: Array<{ family: string; icons: string[]; intro: string }> = [
+  {
+    family: "vetements",
+    icons: ["👗","🥼","🧥","🎀","🤵","👔","🧶","👕","🩳","👖","🩲","🧦","👙","🧣","🧤","🧢","🎭"],
+    intro: `Enhance this clothing product photo for a resale listing. Apply soft, natural, window-like lighting (even, no harsh shadows), improve sharpness and color accuracy, and tidy a cluttered background so the garment stands out. Present it as a real second-hand garment photographed with care — laid flat or on its hanger as in the original photo — preserving the fabric's natural drape and the light, normal folds any real garment has.`,
+  },
+  {
+    family: "chaussures",
+    icons: ["👟","👢","👠","🩴","🥿"],
+    intro: `Enhance this footwear product photo for a resale listing. Apply clean, even lighting that reveals the shoe's materials and stitching, improve sharpness, and neutralize a distracting background so the pair reads clearly (keep the original angle — do not recompose into a different view). Leather grain, fabric texture, and creasing from normal wear must stay exactly as they are.`,
+  },
+  {
+    family: "sacs",
+    icons: ["👜","👛","🧳","🎒","👝","🎽"],
+    intro: `Enhance this bag / leather-goods product photo for a resale listing. Apply soft, even lighting that shows the material's true grain and the hardware, improve sharpness, and clean up a distracting background. The bag's actual shape and structure as photographed must be preserved — do not inflate, restuff, or straighten it, and keep handles, straps, and hardware exactly as they are.`,
+  },
+  {
+    family: "accessoires",
+    icons: ["⌚","💍","🕶️","🪢","☂️","🗝️","💎"],
+    intro: `Enhance this accessory / jewelry product photo for a resale listing. Favor crisp, sharp detail on the item (dial, stones, engravings, textures), with clean neutral lighting and a quieter background so the small item reads clearly. Reflections may be softened slightly but scratches and real wear must remain visible.`,
+  },
+  {
+    family: "hightech",
+    icons: ["📱","💻","🖥️","📲","🎧","🔊","🎮","📺","📷","🛸","🖨️","⌨️","🖱️","🔌","📡","📇","⏱️","🎤","📟"],
+    intro: `Enhance this electronics product photo for a resale listing. Apply clean, neutral, even lighting (no color cast on screens or plastics), improve sharpness, and simplify a cluttered background toward a tidy, uncluttered look. Screen content, stickers, port wear, and surface scratches must remain exactly as photographed.`,
+  },
+  {
+    family: "maison",
+    icons: ["🛋️","🪑","🛏️","🛌","💡","🪞","🕯️","🖼️","🪴","🏺","🍽️","🍳","🪟","🪶","🟫","📜","🕰️","🎄","🖋️","☕","🫖","🧹","🧊","♨️","🥣","🍞","🍟","💇","🌀","🌡️","🧺","🧼","🪒","🪛","🪚","🔨","🪜","🖌️","🔩","📏","🔧","🌱","✂️","🔥","⛱️","🧵","🐕","🏠","⚡","🌿"],
+    intro: `Enhance this home / furniture / appliance product photo for a resale listing. Apply warm, natural interior lighting, improve sharpness and color accuracy, and tidy the surroundings so the item is the clear subject (keep the room recognizable — just cleaner and less distracting). Wood grain, upholstery texture, and marks from normal use must remain exactly as they are.`,
+  },
+  {
+    family: "livres_medias",
+    icons: ["📚","📖","📰","💿","📀","💽","🃏","📮","🪙","🏆"],
+    intro: `Enhance this book / media / collectible product photo for a resale listing. Present the cover or item flat and legible: even, glare-free lighting, strong sharpness on titles and artwork, faithful colors, and a clean background. Edge wear, creases, and aging must remain exactly as photographed — condition is what the buyer is judging.`,
+  },
+  {
+    family: "enfants_jouets",
+    icons: ["🧸","🪆","🧩","🧱","🦸","🎲","🏎️","👶","💺","🍼","🚼","🚁"],
+    intro: `Enhance this toy / baby-gear product photo for a resale listing. Apply bright, friendly, even lighting with accurate colors, improve sharpness, and clean up a cluttered background so the item stands out. Play wear, faded prints, and used-condition details must remain exactly as they are.`,
+  },
+  {
+    family: "sport",
+    icons: ["🚲","🛴","🛹","⛸️","🎿","⚽","🏀","🎾","⛳","🏋️","🥊","⛺","🎣","🧘","🏃","🤿","🏄","🐴","🎱","🥽","🪖","⛑️","🏍️","🛵","🛞","🚗"],
+    intro: `Enhance this sports / outdoor equipment product photo for a resale listing. Apply clear, even lighting that shows the equipment's condition honestly, improve sharpness and color accuracy, and reduce background clutter so the item reads at a glance. Scuffs, dirt traces, and wear from normal use must remain exactly as photographed.`,
+  },
+  {
+    family: "beaute",
+    icons: ["🌸","💄","💅","🧴"],
+    intro: `Enhance this beauty / cosmetics product photo for a resale listing. Favor a clean, bright presentation: neutral even lighting, crisp label legibility, faithful packaging colors, and an uncluttered background. The fill level, seals, and label condition must remain exactly as photographed — never make a used product look new.`,
+  },
+];
 
-Fabric: Naturally smooth out wrinkles and creases, as if the garment had been gently steamed — realistic, never artificial or plastic-looking.
+// Prompt de repli : toute icône hors familles (instruments 🎸🎻🥁…, 📦 Autre, …).
+const RETOUCH_DEFAULT_INTRO = `Enhance this product photo for a resale listing. Apply soft, natural, even lighting, improve sharpness, white balance, and color accuracy, and tidy a cluttered background so the item is the clear subject.`;
 
-Background: If the background is cluttered or messy, subtly clean and simplify it (soft blur or neutral tidy-up) without changing its general setting or color — keep it recognizable as the same location, just tidier and less distracting.
+const ICON_TO_RETOUCH = new Map<string, { family: string; prompt: string }>();
+for (const f of RETOUCH_FAMILIES) {
+  const prompt = `${f.intro}\n\n${REALISM_RULES}`;
+  for (const icon of f.icons) ICON_TO_RETOUCH.set(icon, { family: f.family, prompt });
+}
 
-Color and clarity: Improve color accuracy and sharpness noticeably, keeping tones true to the original.
-
-Strict constraints — do NOT change:
-- The pose, framing, angle, or camera perspective
-- The garment's shape, cut, size, color, pattern, fabric texture, or any design detail (buttons, logos, stitching, prints, labels)
-- Do not add, remove, or invent any element on the garment itself
-
-The result must be the exact same garment in the exact same photo, with visibly improved lighting, contrast, a cleaner background, and a light natural pressing effect.`;
+function retouchProfileFor(item: { titre?: string; description?: string; type?: string }) {
+  const icon = detectObjectIcon(item.titre ?? "", item.description ?? "", item.type ?? "");
+  return {
+    icon,
+    ...(ICON_TO_RETOUCH.get(icon) ?? {
+      family: "default",
+      prompt: `${RETOUCH_DEFAULT_INTRO}\n\n${REALISM_RULES}`,
+    }),
+  };
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -254,7 +341,14 @@ serve(async (req) => {
       //   "medium" et non "high" : high ne répond jamais avant la limite wall-clock des Edge
       //   Functions (~400s, vérifié le 2026-07-06) et retombait silencieusement sur la photo originale.
       const isLight = photo_option === "ia_light";
-      const promptToUse = isLight ? OPENAI_IMG_PROMPT_LIGHT : OPENAI_IMG_PROMPT_ADVANCED;
+      // ia_advanced : prompt spécialisé selon la famille de produit (détectée
+      // via detectObjectIcon sur titre/description/type — mêmes règles que
+      // l'app). ia_light : prompt générique (luminosité/blancs seulement).
+      const retouch = retouchProfileFor(item);
+      if (!isLight) {
+        console.log(`[gpt-image] famille de retouche: ${retouch.family} (icône ${retouch.icon})`);
+      }
+      const promptToUse = isLight ? OPENAI_IMG_PROMPT_LIGHT : retouch.prompt;
       const qualityToUse = isLight ? "low" : "medium";
       const photosToProcess = photos as string[];
       // Garde-fou coûts : 5 photos max passent en retouche GPT Image par annonce
