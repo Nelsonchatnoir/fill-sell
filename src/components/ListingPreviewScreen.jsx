@@ -435,11 +435,30 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
   const MAX = 5;
 
   // Système de pièces : plus de verrou par tier — chaque option affiche son
-  // prix en pièces (coin_config), identique pour tous. Le solde fait la loi.
+  // prix en pièces (coin_config via coinPrices, jamais hardcodé). Libellés et
+  // descriptions différencient clairement les 3 niveaux.
   const retouchOptions = [
-    { id: "ia_advanced", label: t("retouchIaMultiLabel"),  desc: t("retouchIaMultiDesc") },
-    { id: "ia_light",    label: t("retouchIaSimpleLabel"), desc: t("retouchIaSimpleDesc") },
-    { id: "original",    label: t("retouchOriginalLabel"), desc: t("retouchOriginalDesc") },
+    {
+      id: "ia_advanced",
+      label: lang === "fr" ? "Retouche avancée" : "Advanced editing",
+      desc: lang === "fr"
+        ? "Rendu professionnel adapté à la catégorie, choix d'un fond pro (studio, béton, lin, parquet) et léger défroissage naturel des vêtements. L'objet reste fidèle : logo, couleurs et défauts sont conservés."
+        : "Professional, category-aware result, choice of a pro background (studio, concrete, linen, parquet) and light natural de-wrinkling for clothing. The item stays true: logo, colors and flaws are preserved.",
+    },
+    {
+      id: "ia_light",
+      label: lang === "fr" ? "Retouche légère" : "Light editing",
+      desc: lang === "fr"
+        ? "Améliore la lumière, la netteté et les couleurs de vos photos. Le fond et l'objet restent tels quels."
+        : "Improves lighting, sharpness and colors. Background and item stay as-is.",
+    },
+    {
+      id: "original",
+      label: lang === "fr" ? "Photos d'origine" : "Original photos",
+      desc: lang === "fr"
+        ? "Vos photos telles quelles, sans aucune retouche."
+        : "Your photos as-is, no editing.",
+    },
   ];
 
   // Choix de fond — avancé uniquement. `swatch` = aperçu de la vignette : chaque
@@ -533,16 +552,26 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                 {price != null && (
-                  <span style={{
-                    fontSize:12, fontWeight:700, whiteSpace:"nowrap",
-                    color: affordable ? T.tealDeep : "#B0645A",
-                    background: affordable ? "#E7F3F0" : "#F7ECEA",
-                    border: `1px solid ${affordable ? "#CBE5DF" : "#EAD4CF"}`,
-                    padding:"3px 9px", borderRadius:999,
-                    display:"inline-flex", alignItems:"center", gap:4,
-                  }}>
-                    <PepiteIcon size={13} /> {price}
-                  </span>
+                  price === 0 ? (
+                    <span style={{
+                      fontSize:12, fontWeight:700, whiteSpace:"nowrap",
+                      color:T.tealDeep, background:"#E7F3F0",
+                      border:"1px solid #CBE5DF", padding:"3px 9px", borderRadius:999,
+                    }}>
+                      {lang === "fr" ? "Gratuit" : "Free"}
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize:12, fontWeight:700, whiteSpace:"nowrap",
+                      color: affordable ? T.tealDeep : "#B0645A",
+                      background: affordable ? "#E7F3F0" : "#F7ECEA",
+                      border: `1px solid ${affordable ? "#CBE5DF" : "#EAD4CF"}`,
+                      padding:"3px 9px", borderRadius:999,
+                      display:"inline-flex", alignItems:"center", gap:4,
+                    }}>
+                      <PepiteIcon size={13} /> {price}
+                    </span>
+                  )
                 )}
                 <div style={{
                   width:20, height:20, borderRadius:"50%", flexShrink:0,
