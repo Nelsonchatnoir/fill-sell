@@ -3,8 +3,13 @@ import { useState } from "react";
 import { UI } from "../components/ui";
 
 // Page d'accès à l'extension Chrome de cross-post. L'extension n'est PAS encore
-// publiée sur le Chrome Web Store : on documente donc uniquement l'installation
-// en mode développeur (charger le dossier `chrome-extension/` non empaqueté).
+// publiée sur le Chrome Web Store, on propose donc le téléchargement direct du
+// zip (généré au build depuis chrome-extension/, cf.
+// scripts/vite-plugin-zip-extension.mjs, servi statiquement en
+// /fillsell-extension.zip) puis l'installation en mode développeur. Le dépôt
+// GitHub (privé) n'est jamais exposé.
+const EXTENSION_ZIP_URL = "/fillsell-extension.zip";
+
 export default function ExtensionPage() {
   const nav = useNavigate();
   const [lang] = useState(() => localStorage.getItem("fs_lang") || "fr");
@@ -12,17 +17,17 @@ export default function ExtensionPage() {
 
   const steps = en
     ? [
-        ["Get the extension folder", "Download or clone the FillSell repository, then locate the chrome-extension/ folder inside it."],
+        ["Download & unzip", "Download the .zip above, then unzip it. You'll get a folder named fillsell-extension/."],
         ["Open the extensions page", "In Chrome, go to chrome://extensions (paste it in the address bar)."],
         ["Enable Developer mode", "Toggle Developer mode on, top-right of the page."],
-        ["Load unpacked", "Click « Load unpacked » and select the chrome-extension/ folder."],
+        ["Load unpacked", "Click « Load unpacked » and select the unzipped fillsell-extension/ folder."],
         ["Sign in", "Click the extension icon → « Sign in » → log in on fillsell.app. The extension picks up your session automatically."],
       ]
     : [
-        ["Récupère le dossier de l'extension", "Télécharge ou clone le dépôt FillSell, puis repère le dossier chrome-extension/ à l'intérieur."],
+        ["Télécharge & dézippe", "Télécharge le fichier .zip ci-dessus, puis dézippe-le. Tu obtiens un dossier nommé fillsell-extension/."],
         ["Ouvre la page des extensions", "Dans Chrome, va sur chrome://extensions (colle l'adresse dans la barre d'URL)."],
         ["Active le mode développeur", "Active le « Mode développeur » en haut à droite de la page."],
-        ["Charge l'extension non empaquetée", "Clique sur « Charger l'extension non empaquetée » et sélectionne le dossier chrome-extension/."],
+        ["Charge l'extension non empaquetée", "Clique sur « Charger l'extension non empaquetée » et sélectionne le dossier fillsell-extension/ dézippé."],
         ["Connecte-toi", "Clique sur l'icône de l'extension → « Se connecter » → connecte-toi sur fillsell.app. L'extension récupère ta session automatiquement."],
       ];
 
@@ -51,11 +56,21 @@ export default function ExtensionPage() {
         </p>
 
         {/* Bandeau : pas encore sur le Web Store */}
-        <div style={{ background: `${UI.amber}18`, border: `1px solid ${UI.amber}66`, borderRadius: 14, padding: "12px 14px", marginBottom: 20, fontSize: 13, lineHeight: 1.5, color: "#8A5A3C" }}>
+        <div style={{ background: `${UI.amber}18`, border: `1px solid ${UI.amber}66`, borderRadius: 14, padding: "12px 14px", marginBottom: 16, fontSize: 13, lineHeight: 1.5, color: "#8A5A3C" }}>
           ⏳ {en
-            ? "Not on the Chrome Web Store yet. For now, install it manually in developer mode — it only takes a minute."
-            : "Pas encore disponible sur le Chrome Web Store. Pour l'instant, installe-la manuellement en mode développeur — ça prend une minute."}
+            ? "Not on the Chrome Web Store yet. For now, download it below and install it in developer mode — it only takes a minute."
+            : "Pas encore disponible sur le Chrome Web Store. Pour l'instant, télécharge-la ci-dessous et installe-la en mode développeur — ça prend une minute."}
         </div>
+
+        {/* Téléchargement direct du zip (généré au build, servi statiquement) */}
+        <a
+          href={EXTENSION_ZIP_URL}
+          download
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", boxSizing: "border-box", padding: "15px 0", borderRadius: 999, marginBottom: 22, textDecoration: "none", fontSize: 15, fontWeight: 700, color: "#FFFFFF", background: `linear-gradient(120deg,${UI.teal},${UI.tealDeep})`, boxShadow: "0 10px 24px rgba(47,158,144,0.28)" }}
+        >
+          <span style={{ fontSize: 18 }}>⬇️</span>
+          {en ? "Download the extension (.zip)" : "Télécharger l'extension (.zip)"}
+        </a>
 
         {/* Étapes */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
