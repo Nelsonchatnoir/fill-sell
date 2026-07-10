@@ -404,6 +404,37 @@ export default function Legal() {
           <p className="legal-p" style={{ fontStyle: "italic", color: "#94A3B8", fontSize: 12.5 }}>{p.compliance}</p>
         </Section>
 
+        {/* 8. Extension Chrome */}
+        <Section icon="🧩" title={en ? '8. Chrome Extension (cross-post)' : '8. Extension Chrome (cross-post)'}>
+          <p className="legal-p">
+            {en
+              ? <>FillSell offers an optional <span className="legal-strong">Chrome extension</span> that auto-fills the listings you generate in FillSell onto the marketplaces where you sell (Vinted, Leboncoin, eBay, Beebs). Installing and using it is entirely optional. It is not yet published on the Chrome Web Store and is installed manually in developer mode.</>
+              : <>FillSell propose une <span className="legal-strong">extension Chrome</span> optionnelle qui pré-remplit automatiquement les annonces générées dans FillSell sur les plateformes de vente (Vinted, Leboncoin, eBay, Beebs). Son installation et son utilisation sont entièrement facultatives. Elle n'est pas encore publiée sur le Chrome Web Store et s'installe manuellement en mode développeur.</>}
+          </p>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.1 Access requested and purpose' : '8.1 Accès demandés et finalités'}</span></p>
+          <ul className="legal-ul">
+            <li><span className="legal-strong">Vinted, Leboncoin, eBay, Beebs :</span> {en ? 'the extension reads and fills the listing forms on these sites only, to publish on your behalf. It runs solely on these pages and does not read your general browsing.' : "l'extension lit et remplit les formulaires de dépôt d'annonce sur ces sites uniquement, afin de publier à votre place. Elle n'agit que sur ces pages et ne lit pas votre navigation générale."}</li>
+            <li><span className="legal-strong">fillsell.app :</span> {en ? 'reads your FillSell session so the extension can act on your account.' : "lit votre session FillSell pour que l'extension puisse agir sur votre compte."}</li>
+            <li><span className="legal-strong">Supabase :</span> {en ? 'communicates with the FillSell backend to fetch the listings to publish and report their status.' : "communique avec le backend FillSell pour récupérer les annonces à publier et remonter leur statut."}</li>
+            <li><span className="legal-strong">{en ? 'Local storage & scheduling:' : 'Stockage local & planification :'}</span> {en ? 'the extension stores your FillSell session and its settings locally in the browser, and periodically checks for new listings to publish.' : "l'extension stocke localement votre session FillSell et ses réglages dans le navigateur, et vérifie périodiquement s'il y a de nouvelles annonces à publier."}</li>
+          </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.2 Data handling' : '8.2 Traitement des données'}</span></p>
+          <ul className="legal-ul">
+            <li>{en ? 'The extension collects no additional personal data beyond what is already processed by the FillSell service.' : "L'extension ne collecte aucune donnée personnelle supplémentaire au-delà de ce qui est déjà traité par le service FillSell."}</li>
+            <li>{en ? 'Your marketplace credentials (Vinted, Leboncoin…) are never read or stored: the extension acts within the session you have already opened in your browser.' : "Vos identifiants des plateformes (Vinted, Leboncoin…) ne sont jamais lus ni stockés : l'extension agit dans la session que vous avez déjà ouverte dans votre navigateur."}</li>
+            <li>{en ? 'The only sensitive item in transit is your FillSell session token (Supabase), kept locally in the browser and used only to authenticate calls to the FillSell backend.' : "La seule donnée sensible en transit est votre jeton de session FillSell (Supabase), conservé localement dans le navigateur et utilisé uniquement pour authentifier les appels au backend FillSell."}</li>
+            <li>{en ? 'No data is sold or shared with third parties; the extension contains no tracking or advertising SDK.' : "Aucune donnée n'est vendue ni partagée avec des tiers ; l'extension ne contient aucun SDK de tracking ou de publicité."}</li>
+          </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}>
+            {en
+              ? <>You can remove the extension at any time from <span className="legal-strong">chrome://extensions</span>; this immediately stops all access described above. The rights set out in section 4 (GDPR) apply identically, at <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>.</>
+              : <>Vous pouvez retirer l'extension à tout moment depuis <span className="legal-strong">chrome://extensions</span> ; cela interrompt immédiatement tous les accès décrits ci-dessus. Les droits prévus à la section 4 (RGPD) s'appliquent à l'identique, à <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>.</>}
+          </p>
+        </Section>
+
         {/* Contact */}
         <div style={{ textAlign: "center", padding: "12px 0 8px" }}>
           <p style={{ fontSize: 13, color: C.label }}>
