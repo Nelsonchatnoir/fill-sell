@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:legal-permissions": "node scripts/check-legal-permissions.mjs",
+    "prebuild": "node scripts/check-legal-permissions.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
