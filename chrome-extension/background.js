@@ -155,7 +155,67 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     pollAndProcessJobs();
     sendResponse({ ok: true });
   }
+  // Publication ciblée depuis le popup : publie UNIQUEMENT les jobs demandés
+  // (plateformes cochées de l'annonce affichée), en réutilisant processJob.
+  // Le poll automatique (POLL_NOW) reste inchangé.
+  if (msg?.type === "PUBLISH_NOW") {
+    publishSelected(Array.isArray(msg.jobIds) ? msg.jobIds : []).then(
+      (r) => sendResponse(r),
+      (e) => sendResponse({ ok: false, reason: "error", error: String(e?.message ?? e) })
+    );
+    return true; // réponse asynchrone
+  }
 });
+
+// Événement de progression poussé vers le popup (ignoré s'il est fermé).
+function emitProgress(payload) {
+  chrome.runtime.sendMessage({ type: "FILLSELL_PROGRESS", ...payload }).catch(() => {});
+}
+
+// Orchestration de la publication ciblée. Réutilise getValidSession (refresh),
+// get-pending-jobs et processJob — aucune mécanique de remplissage réécrite.
+async function publishSelected(jobIds) {
+  const session = await getValidSession();
+  if (!session) return { ok: false, reason: "no_session" };
+
+  let jobs;
+  try {
+    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token));
+  } catch (e) {
+    return { ok: false, reason: "fetch_failed", error: String(e?.message ?? e) };
+  }
+
+  const byId = new Map((jobs || []).map((j) => [String(j.id), j]));
+  const targets = jobIds.map((id) => byId.get(String(id))).filter(Boolean);
+  if (!targets.length) return { ok: false, reason: "no_matching_jobs" };
+
+  // Même garde anti-rafale qu'un cycle de poll (cf. retryInTempTab).
+  tempTabUsedThisPoll = false;
+
+  const results = [];
+  for (let i = 0; i < targets.length; i++) {
+    const job = targets[i];
+    emitProgress({ jobId: job.id, platform: job.platform, phase: "processing" });
+    let outcome;
+    try {
+      outcome = await processJob(job, session.access_token);
+    } catch (e) {
+      outcome = { status: "failed", error: String(e?.message ?? e) };
+    }
+    outcome = outcome || { status: "unknown" };
+    emitProgress({
+      jobId: job.id,
+      platform: job.platform,
+      phase: outcome.status,
+      error: outcome.error,
+      listingUrl: outcome.listingUrl,
+    });
+    results.push({ jobId: job.id, platform: job.platform, ...outcome });
+    // Pause + jitter entre deux jobs, comme le poll.
+    if (i < targets.length - 1) await sleep(jobDelayMs());
+  }
+  return { ok: true, results };
+}
 
 // ── Session ────────────────────────────────────────────────────────────────────
 
@@ -281,11 +341,11 @@ async function processJob(job, accessToken) {
   const handler = PLATFORM_HANDLERS[job.platform];
   if (!handler) {
     console.warn(`[background] Plateforme inconnue "${job.platform}", job ${job.id} laissé en pending`);
-    return;
+    return { status: "skipped", error: `Plateforme inconnue "${job.platform}"` };
   }
   if (!handler.implemented) {
     console.log(`[background] Handler ${job.platform} pas encore implémenté, job ${job.id} laissé en pending`);
-    return;
+    return { status: "skipped", error: `Handler ${job.platform} pas encore implémenté` };
   }
 
   console.log(`[background] Job ${job.id} → ${job.platform}`);
@@ -297,7 +357,7 @@ async function processJob(job, accessToken) {
     if (blocker) {
       console.warn(`[background] Job ${job.id} refusé avant navigation — ${blocker}`);
       await updateJobStatus(accessToken, job.id, "failed", { error: blocker });
-      return;
+      return { status: "failed", error: blocker };
     }
 
     await updateJobStatus(accessToken, job.id, "processing");
@@ -338,10 +398,12 @@ async function processJob(job, accessToken) {
       // prochain job.
       console.log(`[background] Job ${job.id} : DRY_RUN réussi → dry_run_completed (terminal, plus de boucle)`);
       await updateJobStatus(accessToken, job.id, "dry_run_completed", completionExtras(job, result));
+      return { status: "dry_run_completed", unfilled: result.unfilledRequired ?? [] };
     } else if (result?.needsUser) {
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
       // à terminer, connexion). Ré-armement BORNÉ (voir rearmBounded).
       await rearmBounded(accessToken, job, result.error);
+      return { status: "needsUser", error: result.error };
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} publié : ${result.listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
@@ -350,6 +412,7 @@ async function processJob(job, accessToken) {
       });
       // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
       // qui garde son onglet Vinted ouvert entre deux dépôts.
+      return { status: "published", listingUrl: result.listingUrl ?? null };
     } else {
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }
@@ -363,11 +426,12 @@ async function processJob(job, accessToken) {
       console.warn(`[background] Job ${job.id} : canal coupé pendant le remplissage (transitoire) — ${msg}`);
       await rearmBounded(accessToken, job, `Remplissage interrompu (onglet navigué/rechargé) : ${msg}`)
         .catch((err) => console.error("[background] update-job-status failed:", err));
-      return;
+      return { status: "retry", error: msg };
     }
     console.error(`[background] Job ${job.id} en échec:`, e);
     await updateJobStatus(accessToken, job.id, "failed", { error: msg })
       .catch((err) => console.error("[background] update-job-status failed:", err));
+    return { status: "failed", error: msg };
   }
 }
 

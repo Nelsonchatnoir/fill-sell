@@ -311,18 +311,82 @@ els.flow.addEventListener("keydown", (e) => {
 });
 
 // ── Publication ──────────────────────────────────────────────────────────────
-// Commit 1 (intérim) : déclenche le poll existant du background. Le ciblage par
-// plateforme sélectionnée + les états de progression par ligne arrivent au
-// commit "logique publication".
+// Envoie au background la liste des jobs des plateformes cochées ; les états
+// par ligne (en cours / publié / erreur / se connecter) arrivent en direct via
+// les événements FILLSELL_PROGRESS. La mécanique de remplissage (processJob,
+// onglet de travail unique, statuts) n'est jamais réécrite ici.
+const CONN_RE = /(se\s*)?connect|connexion|identifi|login|sign[-\s]?in|non connect|session (expir|invalide)/i;
+const isConnErr = (msg) => CONN_RE.test(String(msg || ""));
+const shortErr = (msg) => {
+  const s = String(msg || "Échec").replace(/\s+/g, " ").trim();
+  return s.length > 42 ? s.slice(0, 41) + "…" : s;
+};
+
+function selectedJobIds() {
+  const ids = [];
+  for (const key of state.selected) {
+    const job = state.annonce?.byPlatform[key];
+    if (job) ids.push(job.id);
+  }
+  return ids;
+}
+
 els.cta.addEventListener("click", () => {
-  if (state.cta === true || els.cta.disabled) return;
-  chrome.runtime.sendMessage({ type: "POLL_NOW" });
-  window.close();
+  if (els.cta.disabled || state.publishing) return;
+  const jobIds = selectedJobIds();
+  if (!jobIds.length) return;
+
+  state.publishing = true;
+  for (const key of state.selected) state.status[key] = { phase: "busy" };
+  render();
+
+  chrome.runtime.sendMessage({ type: "PUBLISH_NOW", jobIds }, (res) => {
+    state.publishing = false;
+    if (chrome.runtime.lastError || !res?.ok) {
+      // Échec global (session FillSell invalide, ou aucun job trouvé) : bascule
+      // les lignes concernées, sans écraser un état live déjà reçu.
+      const reason = res?.reason;
+      for (const key of state.selected) {
+        if (state.status[key]?.phase === "busy") {
+          state.status[key] = reason === "no_session"
+            ? { phase: "connect" }
+            : { phase: "err", msg: reason === "no_matching_jobs" ? "Déjà traité" : "Échec" };
+        }
+      }
+    }
+    render();
+  });
+});
+
+// États live par plateforme, poussés par le background pendant la publication.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== "FILLSELL_PROGRESS") return;
+  const key = msg.platform;
+  if (!PLATFORMS.some((p) => p.key === key)) return;
+  switch (msg.phase) {
+    case "processing":         state.status[key] = { phase: "busy" }; break;
+    case "published":          state.status[key] = { phase: "done", msg: "Publié" }; break;
+    case "dry_run_completed":  state.status[key] = { phase: "done", msg: "Prêt (test)" }; break;
+    case "needsUser":
+      state.status[key] = isConnErr(msg.error)
+        ? { phase: "connect" }
+        : { phase: "err", msg: shortErr(msg.error) };
+      break;
+    case "failed":
+    case "retry":
+      state.status[key] = isConnErr(msg.error)
+        ? { phase: "connect" }
+        : { phase: "err", msg: shortErr(msg.error) };
+      break;
+    default: break;
+  }
+  renderFlow();
 });
 
 // Re-render si le background met à jour la session pendant que le popup est ouvert.
+// Pendant une publication, on ne recharge pas (ça écraserait les états live).
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && (changes[SESSION] || changes[LAST_POLL])) load();
+  if (area === "local" && (changes[SESSION] || changes[LAST_POLL]) && !state.publishing) load();
 });
 
 load();
