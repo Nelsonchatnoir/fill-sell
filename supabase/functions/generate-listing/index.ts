@@ -116,7 +116,15 @@ const RETOUCH_FAMILIES: Array<{ family: string; icons: string[]; intro: string }
   {
     family: "vetements",
     icons: ["👗","🥼","🧥","🎀","🤵","👔","🧶","👕","🩳","👖","🩲","🧦","👙","🧣","🧤","🧢","🎭"],
-    intro: `Enhance this clothing product photo for a resale listing. Apply soft, natural, window-like lighting (even, no harsh shadows), improve sharpness and color accuracy, and tidy a cluttered background so the garment stands out. Present it as a real second-hand garment photographed with care — laid flat or on its hanger as in the original photo — preserving the fabric's natural drape and the light, normal folds any real garment has.`,
+    // Curseur tissu (2026-07-10) : le 1er recalibrage anti-"repassage vapeur"
+    // laissait les faux plis de stockage (vêtement resté plié en boule) — trop
+    // loin dans l'autre sens. Cible = "présenté pour la vente" : faux plis de
+    // pliage atténués (SEULE exception, explicitement scellée, à la règle
+    // anti-lissage de REALISM_RULES ci-dessous), tombé naturel et micro-plis
+    // de la matière conservés, jamais de surface parfaitement lisse.
+    intro: `Enhance this clothing product photo for a resale listing. Apply soft, natural, window-like lighting (even, no harsh shadows), improve sharpness and color accuracy, and tidy a cluttered background so the garment stands out.
+
+Fabric presentation — aim for "prepared for sale", the way a careful seller would lightly steam and neatly arrange a garment before shooting it: soften the pronounced storage and folding creases (sharp crease lines left by a garment stored folded or crumpled), so it looks cared-for and presentable. This softening of storage creases is the ONLY exception to the no-smoothing rule below. Always preserve the fabric's natural drape and the normal micro-folds of the material: never press it flat, never produce a perfectly smooth, flat, wrinkle-free surface — real fabric always keeps a slight relief, and a fully ironed-looking result reads as fake. The target is "clean and presentable", never "brand-new in shrink-wrap".`,
   },
   {
     family: "chaussures",
