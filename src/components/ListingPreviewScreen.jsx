@@ -1632,6 +1632,96 @@ export default function ListingPreviewScreen({
           platform_fields: pf,
         };
       });
+      // ── Aspects obligatoires eBay (2026-07-11, Phase 2 du référentiel) ──
+      // ebay_item_aspects (peuplée depuis l'API Taxonomy, 237 catégories,
+      // lecture ouverte à authenticated) : lecture directe client, pas
+      // d'edge function. Le job eBay embarque les NOMS d'aspects
+      // required=true de sa catégorie ; l'extension compare ce qu'elle a
+      // réellement rempli contre cette liste (unfilledRequired du DRY_RUN).
+      // Catégorie absente de la table (trous de mapping — non-feuilles
+      // 20571/63514/121048 — ou id futur non re-fetché) → champ non posé,
+      // comportement identique à avant : DRY_RUN non bloquant.
+      const ebayRow = rows.find(r => r.platform === "ebay");
+      // Objets complets {name, allowedValues, mode} gardés en LOCAL pour la
+      // garde ci-dessous — jamais sur le job : la liste Marque fait ~19 000
+      // entrées (relevé 15687), le payload d'insert n'a pas à la porter.
+      let ebayRequiredFull = null;
+      if (ebayRow?.platform_fields?.ebayCategoryId && !ebayRow.platform_fields.ebayRequiredAspects) {
+        try {
+          const { data: aspRow } = await supabase
+            .from("ebay_item_aspects")
+            .select("aspects, required_count")
+            .eq("category_id", String(ebayRow.platform_fields.ebayCategoryId))
+            .limit(1)
+            .maybeSingle();
+          const required = (aspRow?.aspects ?? [])
+            .filter(a => a?.required === true && a?.name);
+          if (required.length) {
+            ebayRow.platform_fields.ebayRequiredAspects = required.map(a => a.name);
+            ebayRequiredFull = required;
+          }
+        } catch { /* best-effort : table indisponible → enrichissement absent, jamais bloquant */ }
+      }
+      // Job régénéré portant déjà les noms (sans allowedValues re-lues) :
+      // la garde retombe sur la seule vérification de présence, comme avant
+      // ce patch — jamais moins stricte qu'avant.
+      if (!ebayRequiredFull && ebayRow?.platform_fields?.ebayRequiredAspects) {
+        ebayRequiredFull = ebayRow.platform_fields.ebayRequiredAspects.map(name => ({ name, allowedValues: [] }));
+      }
+      // ── Garde pré-publication eBay (2026-07-11, décision produit) ──────
+      // Un aspect OBLIGATOIRE de la catégorie qui correspond à un de nos 4
+      // champs connus et qui est vide → interruption AVANT le débit/insert
+      // (le throw aboutit au bandeau rouge publishError de StepPublish) : ni
+      // blocage silencieux, ni valeur devinée — l'utilisateur complète le
+      // champ dans l'app puis relance. Cas réel déclencheur : taille=""
+      // avec "Taille" required sur la catégorie, dry-run "réussi" sans
+      // avertissement visible. Les obligatoires SANS mapping (Type, Longueur
+      // des manches...) ne bloquent pas : ils restent sur le canal
+      // unfilledRequired de l'extension (constat informatif). Uniquement
+      // eBay — les règles Vinted/LBC/Beebs sont gérées ailleurs.
+      if (ebayRow && ebayRequiredFull) {
+        const pfE = ebayRow.platform_fields;
+        // Valeurs telles que l'EXTENSION les enverra (mêmes transformations
+        // que ebay.js : strip "EU " sur la taille, colors[0] prioritaire).
+        const knownAspects = [
+          { labels: ["Marque"], value: () => pfE.marque },
+          { labels: ["Taille", "Pointure EU", "Pointure"], value: () => String(pfE.taille ?? "").replace(/^EU\s*/i, "") },
+          { labels: ["Couleur"], value: () => pfE.colors?.[0] || pfE.couleur },
+          { labels: ["Matière", "Matériau", "Matériaux"], value: () => pfE.matiere },
+        ];
+        // Même normalisation que normalizeFuzzy de ebay.js — la garde doit
+        // accepter exactement ce que l'extension rapprochera au remplissage.
+        const normFuzzy = s => String(s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        // Manquant = champ vide, OU valeur hors du référentiel quand l'aspect
+        // est un vrai choix fermé (patch 2026-07-11 : job dd9ac7a3,
+        // couleur="Black" — non-vide mais absente des 17 valeurs FR de la
+        // liste Couleur → aurait échoué en silence sur la vraie page eBay).
+        //
+        // « Vrai choix fermé » = liste allowedValues ≤ 200 entrées, OU
+        // mode="SELECTION_ONLY" quel que soit le volume. Le seuil sépare les
+        // ensembles fermés réels des listes de référence/typeahead — chiffres
+        // relevés sur la catégorie 15687 : Couleur 17, Taille 55 (choix
+        // fermés à valider) vs Marque 19 037 (FREE_TEXT, aide à la saisie :
+        // eBay accepte une marque hors liste en saisie libre, et l'extension
+        // sait la taper — bloquer "MaMarqueDeNiche123" ici refuserait une
+        // publication qu'eBay aurait acceptée). FREE_TEXT + liste > 200 ou
+        // liste vide → la présence suffit, comme avant ce patch.
+        const CLOSED_LIST_MAX = 200;
+        const missing = ebayRequiredFull.filter(aspect => {
+          const known = knownAspects.find(k => k.labels.includes(aspect.name));
+          if (!known) return false; // pas de mapping → canal unfilledRequired de l'extension
+          const val = String(known.value() ?? "").trim();
+          if (!val) return true;
+          const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
+          const closedList = allowed.length &&
+            (allowed.length <= CLOSED_LIST_MAX || aspect.mode === "SELECTION_ONLY");
+          if (!closedList) return false;
+          return !allowed.some(v => normFuzzy(v) === normFuzzy(val));
+        }).map(a => a.name);
+        if (missing.length) {
+          throw new Error(tpl("stepPublishEbayRequiredMissing", { fields: missing.join(", ") }));
+        }
+      }
       // Débit des pièces + insertion des jobs en UNE transaction serveur :
       // prix et user imposés côté serveur (coin_config + auth.uid()), insert
       // raté = zéro pièce débitée. Remplace check_publish_quota + insert +
