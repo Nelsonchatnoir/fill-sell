@@ -48,6 +48,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       sendResponse(goToSellFromHome());
       return false; // réponse synchrone : la navigation détruirait le canal
     }
+    if (msg?.type === "DELETE_LISTING") {
+      deleteListing(msg.job)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -66,6 +72,104 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 //
 // Jamais bloquant : lien introuvable ou page de connexion → { clicked:false },
 // le background enchaîne sur la navigation directe vers l'URL de dépôt.
+// ── Fin d'annonce (Phase B, 2026-07-11) ─────────────────────────────────────
+// eBay ne "supprime" pas : on TERMINE l'annonce ("Terminer l'annonce") depuis
+// le Hub vendeur (/sh/lst/active — page vérifiée en session réelle 2026-07-11,
+// mais VIDE à ce moment-là : la ligne d'annonce et son menu d'actions n'ont
+// jamais été observés, cascades défensives à valider au premier dry-run avec
+// une annonce en cours).
+// ⚠️ DELETE_DRY_RUN reste à true tant que 3 fins d'annonces réelles n'ont pas
+// été validées manuellement.
+const DELETE_DRY_RUN = true;
+
+async function deleteListing(job) {
+  const trace = [];
+  const t = (line) => { trace.push(line); console.log(`[ebay][delete] ${line}`); };
+
+  if (!/\/sh\/lst/.test(location.pathname)) {
+    return { success: false, error: `Page inattendue pour une fin d'annonce eBay : ${location.href}`, trace };
+  }
+  t(`Hub vendeur ok : ${location.pathname}`);
+  await humanPause(1200, 2500);
+
+  const idMatch = String(job.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i);
+  const itemId = idMatch?.[1] ?? idMatch?.[2] ?? null;
+
+  let anchor = itemId ? document.querySelector(`a[href*="${itemId}"]`) : null;
+  if (anchor) t(`annonce trouvée par itemId ${itemId}`);
+  if (!anchor && job.title) {
+    anchor = Array.from(document.querySelectorAll("a"))
+      .find((a) => a.textContent.trim() === job.title.trim()) ?? null;
+    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
+  }
+  if (!anchor) {
+    t(`annonce INTROUVABLE dans le Hub vendeur (itemId=${itemId ?? "?"}, titre="${job.title ?? "?"}")`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Annonce introuvable dans le Hub vendeur", trace };
+  }
+
+  const row = anchor.closest("tr") ?? anchor.closest('[class*="grid-row"], [class*="listing-row"], li');
+  t(`ligne englobante : <${row?.tagName?.toLowerCase() ?? "?"}>`);
+
+  // Menu d'actions de la ligne (dropdown) : l'ouvrir n'est pas destructif.
+  let control = findEbayEnd(row ?? document);
+  if (!control) {
+    const menuBtn = Array.from(row?.querySelectorAll("button") ?? []).find((b) => {
+      const label = ((b.getAttribute("aria-label") || "") + " " + b.textContent).toLowerCase();
+      return b.getAttribute("aria-haspopup") === "true" || /actions|options|menu/.test(label);
+    });
+    if (menuBtn) {
+      t(`menu d'actions ouvert : "${(menuBtn.getAttribute("aria-label") || menuBtn.textContent).trim()}"`);
+      realClick(menuBtn);
+      await humanPause(700, 1400);
+      control = findEbayEnd(document); // menus eBay montés en portal
+    }
+  }
+
+  if (!control) {
+    const visible = Array.from((row ?? document).querySelectorAll("button, a"))
+      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 20);
+    t(`"Terminer l'annonce" INTROUVABLE — actions visibles : ${visible.join(" | ") || "(aucune)"}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Action 'Terminer l'annonce' introuvable", trace };
+  }
+  t(`contrôle localisé : "${control.textContent.trim()}"`);
+
+  if (DELETE_DRY_RUN) {
+    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    return { success: true, dryRun: true, found: true, trace };
+  }
+
+  // ── LIVE (après validation manuelle) ───────────────────────────────────
+  realClick(control);
+  await humanPause(1000, 2000);
+  // Dialogue de motif ("L'objet n'est plus à vendre"…) puis bouton final.
+  const reason = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"], .lightbox-dialog');
+    if (!dialog) return null;
+    return Array.from(dialog.querySelectorAll('input[type="radio"], label'))
+      .find((el) => /plus à vendre|n'est plus disponible|vendu/i.test(el.textContent || "")) ?? null;
+  }, 8000);
+  if (reason) { t(`motif choisi : "${(reason.textContent || "").trim()}"`); realClick(reason); await humanPause(500, 1100); }
+  const confirmBtn = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"], .lightbox-dialog');
+    if (!dialog) return null;
+    return Array.from(dialog.querySelectorAll("button"))
+      .find((b) => /terminer|envoyer|confirmer|end listing/i.test(b.textContent)) ?? null;
+  }, 8000);
+  if (!confirmBtn) return { success: false, error: "Confirmation de fin d'annonce introuvable", trace };
+  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+  realClick(confirmBtn);
+  await sleep(3000);
+  return { success: true, trace };
+}
+
+function findEbayEnd(root) {
+  if (!root) return null;
+  return Array.from(root.querySelectorAll("button, a, [role='menuitem'], [role='option']"))
+    .find((el) => /terminer l['’]annonce|end listing/i.test(el.textContent.trim())) ?? null;
+}
+
 function goToSellFromHome() {
   if (/(^|\.)signin\.ebay\./.test(location.hostname) || document.querySelector('input[type="password"]')) {
     return { clicked: false, reason: "page de connexion eBay" };

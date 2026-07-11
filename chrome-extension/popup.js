@@ -100,7 +100,12 @@ async function fetchPendingJobs(accessToken) {
   });
   if (!res.ok) throw new Error(`get-pending-jobs → HTTP ${res.status}`);
   const data = await res.json().catch(() => ({}));
-  return Array.isArray(data.jobs) ? data.jobs : [];
+  // Les jobs action='delete' (retrait cross-plateforme, 2026-07-11) passent
+  // par la même file mais ne sont PAS des annonces à publier : ils
+  // n'apparaissent pas dans le popup et ne sont jamais ciblés par
+  // PUBLISH_NOW — le poll de fond les exécute seul.
+  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  return jobs.filter((j) => j.action !== "delete");
 }
 
 // ── Chargement ───────────────────────────────────────────────────────────────

@@ -68,6 +68,12 @@ const DRY_RUN = true;
 // pattern que ebay.js.
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "DELETE_LISTING") {
+      deleteListing(msg.job)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -90,6 +96,98 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
  *   Beebs + stepper) — un job antérieur les aura vides, sans conséquence
  *   (chaque champ est sauté silencieusement s'il est absent).
  */
+// ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
+// Page "Mes annonces" : /fr/account/my-adverts — RELEVÉE en session réelle le
+// 2026-07-11 (onglets "En Ligne" / "En Vérification", champ Rechercher,
+// case "Tout sélectionner"). La page était VIDE ce jour-là : la carte
+// d'annonce et son contrôle de suppression n'ont jamais été observés —
+// cascades défensives à valider au premier dry-run avec une annonce en ligne.
+// ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas
+// été validées manuellement.
+const DELETE_DRY_RUN = true;
+
+async function deleteListing(job) {
+  const trace = [];
+  const t = (line) => { trace.push(line); console.log(`[beebs][delete] ${line}`); };
+
+  if (!/my-adverts/.test(location.pathname)) {
+    return { success: false, error: `Page inattendue pour une suppression Beebs : ${location.href}`, trace };
+  }
+  t(`page Mes annonces ok : ${location.pathname}`);
+  await humanPause(1000, 2200);
+
+  // Repère l'annonce par son titre (le champ Rechercher observé filtrerait
+  // aussi, mais un match direct suffit tant que la liste tient sur une page).
+  let anchor = null;
+  if (job.title) {
+    anchor = Array.from(document.querySelectorAll("a, h2, h3, p, span"))
+      .find((el) => el.textContent.trim() === job.title.trim()) ?? null;
+    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
+  }
+  if (!anchor && job.listing_url) {
+    const slug = String(job.listing_url).split("/").filter(Boolean).pop();
+    if (slug) anchor = document.querySelector(`a[href*="${slug}"]`);
+    if (anchor) t(`annonce trouvée par slug d'URL : ${slug}`);
+  }
+  if (!anchor) {
+    t(`annonce INTROUVABLE dans Mes annonces (titre="${job.title ?? "?"}")`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Annonce introuvable dans Mes annonces Beebs", trace };
+  }
+
+  const card = anchor.closest("article, li") ?? anchor.closest("div");
+  t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}>`);
+
+  let control = findBeebsDelete(card);
+  if (!control) {
+    const menuBtn = Array.from(card?.querySelectorAll("button") ?? []).find((b) => {
+      const label = ((b.getAttribute("aria-label") || "") + " " + b.textContent).toLowerCase();
+      return /options|menu|plus|gérer|actions/.test(label) || b.textContent.trim() === "…";
+    });
+    if (menuBtn) {
+      t(`menu de carte ouvert : "${(menuBtn.getAttribute("aria-label") || menuBtn.textContent).trim()}"`);
+      menuBtn.click();
+      await humanPause(600, 1200);
+      control = findBeebsDelete(document);
+    }
+  }
+
+  if (!control) {
+    const visible = Array.from(card?.querySelectorAll("button, a") ?? [])
+      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 20);
+    t(`contrôle Supprimer INTROUVABLE — actions visibles sur la carte : ${visible.join(" | ") || "(aucune)"}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Contrôle de suppression introuvable", trace };
+  }
+  t(`contrôle Supprimer localisé : "${control.textContent.trim()}"`);
+
+  if (DELETE_DRY_RUN) {
+    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    return { success: true, dryRun: true, found: true, trace };
+  }
+
+  // ── LIVE (après validation manuelle) ───────────────────────────────────
+  control.click();
+  await humanPause(800, 1600);
+  const confirmBtn = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"], [class*="modal" i]');
+    if (!dialog) return null;
+    return Array.from(dialog.querySelectorAll("button"))
+      .find((b) => /supprimer|confirmer|oui/i.test(b.textContent)) ?? null;
+  }, 6000);
+  if (!confirmBtn) return { success: false, error: "Confirmation de suppression introuvable", trace };
+  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+  confirmBtn.click();
+  await sleep(3000);
+  return { success: true, trace };
+}
+
+function findBeebsDelete(root) {
+  if (!root) return null;
+  return Array.from(root.querySelectorAll("button, a, [role='menuitem']"))
+    .find((el) => /^supprimer/i.test(el.textContent.trim())) ?? null;
+}
+
 async function fillListingForm(job) {
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 

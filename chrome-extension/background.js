@@ -378,6 +378,14 @@ async function pollAndProcessJobs() {
     await processJob(jobs[i], session.access_token);
     if (i < jobs.length - 1) await sleep(jobDelayMs());
   }
+
+  // Détection de vente (Phase A2, 2026-07-11) : après les jobs du cycle, on
+  // vérifie une tranche des annonces published — depuis le NAVIGATEUR du
+  // vendeur (cookies + IP + UA réels via fetch credentials:'include'), là où
+  // le scraping serveur de l'ancienne check-listing-status se faisait bloquer.
+  await checkPublishedListings(session).catch((e) =>
+    console.error("[background] checkPublishedListings:", e)
+  );
 }
 
 function sleep(ms) {
@@ -401,6 +409,10 @@ async function processJob(job, accessToken) {
     console.log(`[background] Handler ${job.platform} pas encore implémenté, job ${job.id} laissé en pending`);
     return { status: "skipped", error: `Handler ${job.platform} pas encore implémenté` };
   }
+
+  // Jobs de SUPPRESSION (Phase B, 2026-07-11) : même file, pipeline dédié —
+  // pas de pré-check catégorie ni de formulaire de dépôt à ouvrir.
+  if (job.action === "delete") return processDeleteJob(job, accessToken);
 
   console.log(`[background] Job ${job.id} → ${job.platform}`);
 
@@ -460,15 +472,25 @@ async function processJob(job, accessToken) {
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
     } else if (result?.success) {
-      console.log(`[background] Job ${job.id} publié : ${result.listingUrl ?? "(URL non récupérée)"}`);
+      // A1 (2026-07-11) : l'URL de l'annonce créée est capturée CÔTÉ
+      // BACKGROUND, pas par le content script — la redirection post-submit
+      // peut détruire son contexte JS avant qu'il ait pu répondre (raison du
+      // TODO historique de vinted.js). L'onglet, lui, survit : on surveille
+      // son URL puis, en repli, les liens de la page de confirmation.
+      // null si rien ne matche (non bloquant, comportement d'avant) — mais
+      // sans listing_url, ni détection de vente ni retrait ciblé ne
+      // fonctionneront pour ce job.
+      let listingUrl = result.listingUrl ?? null;
+      if (!listingUrl) listingUrl = await captureListingUrl(tabId, job.platform);
+      console.log(`[background] Job ${job.id} publié : ${listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
         ...completionExtras(job, result),
-        listing_url: result.listingUrl ?? undefined,
+        listing_url: listingUrl ?? undefined,
       });
       await recordRecentResult(job, "published");
       // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
       // qui garde son onglet Vinted ouvert entre deux dépôts.
-      return { status: "published", listingUrl: result.listingUrl ?? null };
+      return { status: "published", listingUrl };
     } else {
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }
@@ -793,6 +815,288 @@ function waitForTabComplete(tabId, timeoutMs = 30_000) {
     }
     chrome.tabs.onUpdated.addListener(onUpdated);
   });
+}
+
+// ── A1 : capture de l'URL de l'annonce créée (publication LIVE) ────────────────
+// Après le clic "publier" du content script, la plateforme redirige l'onglet
+// de travail vers l'annonce créée (ou une page de confirmation qui pointe
+// vers elle). On surveille l'URL de l'onglet, puis en repli on cherche un
+// lien correspondant dans la page. Patterns par plateforme :
+//   vinted    /items/{id}[-slug]      (redirection directe post-submit)
+//   leboncoin /ad/{categorie}/{id}    (page de confirmation avec lien
+//                                      "Voir mon annonce")
+//   ebay      /itm/{id} ou itemId=…   (page de félicitations post-frais)
+//   beebs     à confirmer au premier LIVE (pattern produit supposé)
+// ⚠️ Formats déduits des URLs publiques connues, PAS encore observés sur une
+// vraie redirection post-submit (aucune publication LIVE n'a encore eu lieu,
+// DRY_RUN partout) — à valider pendant les 3 publications réelles de rodage.
+const LISTING_URL_PATTERNS = {
+  vinted: /https:\/\/www\.vinted\.(?:fr|com)\/items\/\d+[^#\s"']*/i,
+  leboncoin: /https:\/\/www\.leboncoin\.fr\/ad\/[^#\s"']+\/\d+[^#\s"']*/i,
+  ebay: /https:\/\/www\.ebay\.(?:fr|com)\/itm\/[^#\s"']*\d{9,}[^#\s"']*/i,
+  beebs: /https:\/\/www\.beebs\.app\/[^#\s"']*(?:produit|product|annonce|item)[^#\s"']+/i,
+};
+
+async function captureListingUrl(tabId, platform, timeoutMs = 25_000) {
+  const pattern = LISTING_URL_PATTERNS[platform];
+  if (!pattern) return null;
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return null;
+    const m = (tab.url || "").match(pattern);
+    if (m) return m[0].replace(WORK_TAB_FRAGMENT, "");
+    await sleep(1000);
+  }
+
+  // Repli : page de confirmation sans redirection ("Voir mon annonce",
+  // félicitations eBay…) — un lien de la page matche le pattern.
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (patternSource) => {
+        const re = new RegExp(patternSource, "i");
+        for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+          const m = a.href.match(re);
+          if (m) return m[0];
+        }
+        return null;
+      },
+      args: [pattern.source],
+    });
+    if (res?.result) return res.result;
+  } catch (e) {
+    console.warn(`[background] captureListingUrl(${platform}) repli lien :`, String(e?.message ?? e));
+  }
+  console.warn(`[background] captureListingUrl(${platform}) : aucune URL capturée — listing_url restera vide`);
+  return null;
+}
+
+// ── A2 : détection de vente sur les annonces published ─────────────────────────
+// Détecteurs HTML portés TELS QUELS de check-listing-status v4 (qui ne les
+// exécutera plus jamais : v5 = orchestrateur DB pur). Différence : le fetch
+// part du navigateur du vendeur — cookies de session, IP résidentielle et
+// User-Agent réels (le SW ne peut pas forger l'UA, tant mieux).
+// Cadence : au plus SALE_CHECK_MAX_PER_CYCLE annonces par cycle de poll
+// (30 min), chacune au plus toutes les SALE_CHECK_MIN_INTERVAL_MS, avec une
+// pause jitter entre deux fetches — un humain qui re-regarde ses annonces,
+// pas une rafale.
+const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h par annonce
+const SALE_CHECK_MAX_PER_CYCLE = 8;
+
+function detectLeboncoinSold(html) {
+  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/);
+  if (m) {
+    try {
+      const data = JSON.parse(m[1]);
+      const pp = data?.props?.pageProps;
+      const isActive = pp?.adDetail?.isActive ?? pp?.ad?.isActive;
+      if (isActive === false) return "sold";
+      if (isActive === true) return "active";
+      const st = String(pp?.adDetail?.adStatus ?? pp?.ad?.status ?? "");
+      if (/INACTIVE|DELETED|SOLD/i.test(st)) return "sold";
+      if (/^ACTIVE$/i.test(st)) return "active";
+    } catch { /* fall through */ }
+  }
+  if (
+    html.includes("Cette annonce n’est plus disponible") ||
+    html.includes("a été supprimée") ||
+    html.includes('"isActive":false') ||
+    html.includes('"adStatus":"INACTIVE"') ||
+    html.includes('"adStatus":"DELETED"')
+  ) return "sold";
+  return "active";
+}
+
+function detectVintedSold(html, finalUrl) {
+  if (/\/not-found|\/404/.test(finalUrl)) return "sold";
+  if (
+    html.includes('"can_buy":false') ||
+    html.includes('"status":"sold"') ||
+    html.includes('"is_hidden":true') ||
+    html.includes('"sold":true') ||
+    html.includes("item-not-available") ||
+    html.includes("n’est plus disponible") ||
+    html.includes("is no longer available")
+  ) return "sold";
+  return "active";
+}
+
+function detectEbaySold(html, finalUrl) {
+  if (!/\/itm\//.test(finalUrl)) return "sold";
+  if (
+    html.includes("This listing was ended") ||
+    html.includes("Cette annonce a pris fin") ||
+    html.includes('"listingStatus":"Completed"') ||
+    html.includes('"listingStatus":"Ended"')
+  ) return "sold";
+  return "active";
+}
+
+function detectBeebsSold(html) {
+  if (
+    html.includes('"sold":true') ||
+    html.includes('"is_sold":true') ||
+    html.includes("n’est plus disponible")
+  ) return "sold";
+  return "active";
+}
+
+async function checkListingSold(url, platform) {
+  try {
+    const res = await fetch(url, { credentials: "include", redirect: "follow" });
+    if (res.status === 404 || res.status === 410) return "sold";
+    if (!res.ok) return "unknown"; // bot-shield ou erreur serveur : ne pas conclure
+    const html = await res.text();
+    const finalUrl = res.url;
+    switch (platform) {
+      case "leboncoin": return detectLeboncoinSold(html);
+      case "vinted":    return detectVintedSold(html, finalUrl);
+      case "ebay":      return detectEbaySold(html, finalUrl);
+      case "beebs":     return detectBeebsSold(html);
+      default:          return "unknown";
+    }
+  } catch (e) {
+    console.warn(`[background] checkListingSold(${url}):`, String(e?.message ?? e));
+    return "unknown";
+  }
+}
+
+// PostgREST direct (RLS user via JWT) : lecture des published à vérifier et
+// tampon last_checked_at — pas de nouvelle edge function pour si peu.
+async function restRequest(path, accessToken, init = {}) {
+  const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
+      Prefer: "return=minimal",
+      ...(init.headers ?? {}),
+    },
+  });
+  if (!res.ok) throw new Error(`REST ${path} → HTTP ${res.status}`);
+  return init.method && init.method !== "GET" ? null : res.json();
+}
+
+async function checkPublishedListings(session) {
+  let jobs;
+  try {
+    jobs = await restRequest(
+      "cross_post_jobs" +
+        "?select=id,platform,listing_url,last_checked_at" +
+        "&status=eq.published&action=eq.publish&listing_url=not.is.null" +
+        "&order=last_checked_at.asc.nullsfirst&limit=30",
+      session.access_token
+    );
+  } catch (e) {
+    console.error("[background] Lecture des jobs published:", String(e?.message ?? e));
+    return;
+  }
+
+  const now = Date.now();
+  const due = (jobs ?? [])
+    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > SALE_CHECK_MIN_INTERVAL_MS)
+    .slice(0, SALE_CHECK_MAX_PER_CYCLE);
+  if (!due.length) return;
+
+  console.log(`[background] Détection de vente : ${due.length} annonce(s) à vérifier`);
+  for (let i = 0; i < due.length; i++) {
+    const job = due[i];
+    const detected = await checkListingSold(job.listing_url, job.platform);
+    console.log(`[background] ${job.platform} ${job.id} → ${detected}`);
+
+    await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+      method: "PATCH",
+      body: JSON.stringify({ last_checked_at: new Date().toISOString() }),
+    }).catch((e) => console.warn("[background] last_checked_at:", String(e?.message ?? e)));
+
+    if (detected === "sold") {
+      // Orchestration serveur (vente, inventaire, frères, email) —
+      // check-listing-status v5. Idempotente : une re-détection est sans effet.
+      try {
+        const r = await callEdgeFunction("check-listing-status", session.access_token, { job_id: job.id });
+        console.log(`[background] Vente orchestrée pour ${job.id}:`, JSON.stringify(r?.sale ?? r));
+      } catch (e) {
+        console.error(`[background] Orchestration vente ${job.id}:`, String(e?.message ?? e));
+      }
+    }
+
+    if (i < due.length - 1) await sleep(randInt(1500, 4000));
+  }
+}
+
+// ── Phase B : exécution d'un job de SUPPRESSION (action='delete') ──────────────
+// Armé UNIQUEMENT par le bandeau semi-auto de l'app (jamais automatique).
+// Cible par plateforme : la page où vit le contrôle de suppression —
+//   vinted → la page de l'annonce elle-même ; leboncoin → Mes annonces ;
+//   ebay → Hub vendeur (annonces en cours) ; beebs → Mes annonces
+//   (/fr/account/my-adverts, relevé en session réelle 2026-07-11).
+// Le content script (DELETE_LISTING) fait le reste, en DELETE_DRY_RUN par
+// défaut : il LOCALISE le contrôle de suppression sans jamais le cliquer et
+// remonte une trace détaillée (platform_fields.delete_dry_run_trace) qui sert
+// de relevé de sélecteurs pour la bascule en live.
+const DELETE_TARGETS = {
+  vinted: (job) => job.listing_url,
+  leboncoin: () => "https://www.leboncoin.fr/compte/part/mes-annonces",
+  ebay: () => "https://www.ebay.fr/sh/lst/active",
+  beebs: () => "https://www.beebs.app/fr/account/my-adverts",
+};
+
+async function processDeleteJob(job, accessToken) {
+  console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
+
+  if (!job.listing_url) {
+    const msg = "Job delete sans listing_url : impossible de cibler l'annonce à retirer.";
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg });
+    return { status: "failed", error: msg };
+  }
+
+  try {
+    await updateJobStatus(accessToken, job.id, "processing");
+
+    const target = DELETE_TARGETS[job.platform]?.(job);
+    if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
+
+    // Même onglet de travail persistant que la publication (anti-DataDome).
+    const tabId = await getOrCreateWorkTab(job.platform, target);
+    const result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
+
+    if (result?.dryRun) {
+      const trace = result.trace ?? [];
+      console.log(`[background] Job ${job.id} : DELETE dry-run terminé —\n  ${trace.join("\n  ")}`);
+      await updateJobStatus(accessToken, job.id, "dry_run_completed", {
+        error: null,
+        platform_fields: { ...(job.platform_fields ?? {}), delete_dry_run_trace: trace },
+      });
+      await recordRecentResult(job, "dry_run_completed");
+      return { status: "dry_run_completed", trace };
+    } else if (result?.needsUser) {
+      await rearmBounded(accessToken, job, result.error);
+      return { status: "needsUser", error: result.error };
+    } else if (result?.success) {
+      console.log(`[background] Job ${job.id} : annonce ${job.platform} supprimée`);
+      await updateJobStatus(accessToken, job.id, "deleted", {
+        platform_fields: { ...(job.platform_fields ?? {}), delete_trace: result.trace ?? [] },
+      });
+      await recordRecentResult(job, "deleted");
+      return { status: "deleted" };
+    } else {
+      throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
+    }
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    if (/message channel closed|Receiving end does not exist/i.test(msg)) {
+      await rearmBounded(accessToken, job, `Suppression interrompue (onglet navigué/rechargé) : ${msg}`)
+        .catch((err) => console.error("[background] update-job-status failed:", err));
+      return { status: "retry", error: msg };
+    }
+    console.error(`[background] Job ${job.id} (delete) en échec:`, e);
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg })
+      .catch((err) => console.error("[background] update-job-status failed:", err));
+    return { status: "failed", error: msg };
+  }
 }
 
 // 300 s (et non 120 s) depuis le passage au timing humain du 2026-07-09 : la

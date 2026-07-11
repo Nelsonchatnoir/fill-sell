@@ -19,6 +19,12 @@ const DROPDOWN_PANEL_SELECTOR = ".input-dropdown__content";
 // pattern que ebay.js/beebs.js.
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "DELETE_LISTING") {
+      deleteListing(msg.job)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -27,6 +33,102 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     return true; // réponse asynchrone
   });
+}
+
+// ── Suppression d'annonce (Phase B, 2026-07-11) ────────────────────────────────
+// ⚠️ DELETE_DRY_RUN doit rester à true tant que 3 suppressions réelles n'ont
+// pas été validées manuellement (même règle que DRY_RUN pour la publication).
+// En dry-run : LOCALISE le contrôle de suppression sans JAMAIS le cliquer, et
+// remonte une trace pas-à-pas (relevé de sélecteurs pour la bascule live —
+// les sélecteurs ci-dessous sont des cascades défensives PAS ENCORE observées
+// sur une vraie page : aucune annonce live n'existait au moment du dev, cf.
+// session du 2026-07-11).
+const DELETE_DRY_RUN = true;
+
+async function deleteListing(job) {
+  const trace = [];
+  const t = (line) => { trace.push(line); console.log(`[vinted][delete] ${line}`); };
+
+  // Le background a navigué l'onglet de travail sur listing_url : on doit
+  // être sur la page de l'annonce (côté propriétaire).
+  if (!/\/items\/\d+/.test(location.pathname)) {
+    return { success: false, error: `Page inattendue pour une suppression Vinted : ${location.href}`, trace };
+  }
+  t(`page annonce ok : ${location.pathname}`);
+  await humanPause(800, 1800);
+
+  // Cascade de localisation du contrôle "Supprimer" (annonce dont on est
+  // vendeur) : testid explicite → bouton/lien au texte exact → entrée d'un
+  // menu "plus d'options" ouvert au préalable (ouvrir un menu n'est pas
+  // destructif, cliquer "Supprimer" le serait — jamais fait en dry-run).
+  let control = document.querySelector('[data-testid*="delete"]');
+  if (control) t(`contrôle trouvé par testid : ${control.getAttribute("data-testid")}`);
+
+  if (!control) {
+    control = findDeleteByText();
+    if (control) t(`contrôle trouvé par texte : "${control.textContent.trim()}"`);
+  }
+
+  if (!control) {
+    // Menu "..." / "Plus d'options" éventuel sur la page annonce vendeur.
+    const menuBtn = Array.from(document.querySelectorAll("button")).find((b) => {
+      const label = (b.getAttribute("aria-label") || "").toLowerCase();
+      return /options|plus d|more/.test(label);
+    });
+    if (menuBtn) {
+      t(`menu candidat ouvert : aria-label="${menuBtn.getAttribute("aria-label")}"`);
+      simulateFullClick(menuBtn);
+      await humanPause(600, 1200);
+      control = document.querySelector('[data-testid*="delete"]') || findDeleteByText();
+      if (control) t(`contrôle trouvé dans le menu : "${control.textContent.trim()}"`);
+    }
+  }
+
+  if (!control) {
+    const visible = Array.from(document.querySelectorAll("button, a"))
+      .map((b) => b.textContent.trim()).filter((s) => s && s.length < 40).slice(0, 25);
+    t(`contrôle Supprimer INTROUVABLE — libellés visibles : ${visible.join(" | ")}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Contrôle de suppression introuvable sur la page annonce", trace };
+  }
+
+  if (DELETE_DRY_RUN) {
+    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    return { success: true, dryRun: true, found: true, trace };
+  }
+
+  // ── LIVE (après validation manuelle) ─────────────────────────────────────
+  simulateFullClick(control);
+  await humanPause(800, 1600);
+  // Modale de confirmation attendue : bouton "Supprimer" dans un dialog.
+  const confirmBtn = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"], .ReactModal__Content');
+    if (!dialog) return null;
+    return Array.from(dialog.querySelectorAll("button"))
+      .find((b) => /supprimer|delete/i.test(b.textContent)) ?? null;
+  }, 6000);
+  if (!confirmBtn) return { success: false, error: "Modale de confirmation introuvable après le clic Supprimer", trace };
+  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+  simulateFullClick(confirmBtn);
+  await sleep(3000);
+  return { success: true, trace };
+}
+
+function findDeleteByText() {
+  return Array.from(document.querySelectorAll("button, a, [role='button'], [role='menuitem']"))
+    .find((el) => /^supprimer( l['’]annonce)?$/i.test(el.textContent.trim())) ?? null;
+}
+
+// waitFor local à la suppression (vinted.js n'avait que waitForElement, à
+// sélecteur fixe — ici la condition est composée).
+async function waitFor(fn, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = fn();
+    if (value) return value;
+    await sleep(150);
+  }
+  return null;
 }
 
 // ── Remplissage du formulaire ──────────────────────────────────────────────────
@@ -208,9 +310,10 @@ async function fillListingForm(job) {
   const publishBtn = await waitForElement('[data-testid="upload-form-save-button"]');
   publishBtn.click();
 
-  // TODO: attendre la redirection vers l'annonce créée et récupérer son URL
-  //   (elle part dans listing_url via update-job-status, puis check-listing-status
-  //    s'en sert pour détecter la vente)
+  // listingUrl : capturé CÔTÉ BACKGROUND (captureListingUrl, 2026-07-11) —
+  // la redirection post-submit peut détruire ce contexte avant sendResponse,
+  // le background surveille l'URL de l'onglet à notre place. On répond
+  // immédiatement après le clic.
   const listingUrl = null;
 
   return { success: true, listingUrl, warnings };

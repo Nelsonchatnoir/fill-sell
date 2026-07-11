@@ -14,6 +14,12 @@ const DRY_RUN = true;
 // pattern que ebay.js/beebs.js.
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "DELETE_LISTING") {
+      deleteListing(msg.job)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -22,6 +28,113 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     return true; // réponse asynchrone
   });
+}
+
+// ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
+// ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas été
+// validées manuellement. Dry-run = LOCALISER le contrôle "Supprimer" de
+// l'annonce ciblée dans "Mes annonces" sans jamais le cliquer, trace détaillée
+// en retour (cascades défensives, pas encore observées sur la vraie page —
+// aucune annonce live n'existait au moment du dev, session du 2026-07-11).
+const DELETE_DRY_RUN = true;
+
+async function deleteListing(job) {
+  const trace = [];
+  const t = (line) => { trace.push(line); console.log(`[leboncoin][delete] ${line}`); };
+
+  if (!/mes-annonces/.test(location.pathname)) {
+    return { success: false, error: `Page inattendue pour une suppression LBC : ${location.href}`, trace };
+  }
+  t(`page Mes annonces ok : ${location.pathname}`);
+  await humanPause(1000, 2200);
+
+  // Ciblage de l'annonce : id numérique extrait de listing_url
+  // (…/ad/<categorie>/<id>), sinon repli par titre exact.
+  const idMatch = String(job.listing_url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
+  const adId = idMatch?.[1] ?? null;
+  let anchor = null;
+  if (adId) {
+    anchor = document.querySelector(`a[href*="${adId}"]`);
+    t(adId ? `id annonce ${adId} → lien ${anchor ? "trouvé" : "introuvable"}` : "");
+  }
+  if (!anchor && job.title) {
+    anchor = Array.from(document.querySelectorAll("a, h2, h3, p, span"))
+      .find((el) => el.textContent.trim() === job.title.trim()) ?? null;
+    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
+  }
+  if (!anchor) {
+    t(`annonce INTROUVABLE dans Mes annonces (id=${adId ?? "?"}, titre="${job.title ?? "?"}")`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Annonce introuvable dans Mes annonces", trace };
+  }
+
+  // Carte englobante : ancêtre porteur des actions. LBC balise ses composants
+  // en data-qa-id — on remonte jusqu'à un conteneur plausible.
+  const card = anchor.closest('[data-qa-id*="ad"], article, li') ?? anchor.closest("div");
+  t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}${card?.getAttribute?.("data-qa-id") ? ` data-qa-id="${card.getAttribute("data-qa-id")}"` : ""}>`);
+
+  // Contrôle Supprimer : bouton direct de la carte, sinon menu "..." de la
+  // carte ouvert au préalable (ouvrir un menu n'est pas destructif).
+  let control = findLbcDelete(card);
+  if (!control) {
+    const menuBtn = Array.from(card?.querySelectorAll("button") ?? []).find((b) => {
+      const label = ((b.getAttribute("aria-label") || "") + " " + b.textContent).toLowerCase();
+      return /options|gérer|actions|menu|plus/.test(label) || b.textContent.trim() === "…";
+    });
+    if (menuBtn) {
+      t(`menu de carte ouvert : "${(menuBtn.getAttribute("aria-label") || menuBtn.textContent).trim()}"`);
+      realClick(menuBtn);
+      await humanPause(600, 1200);
+      control = findLbcDelete(document); // le menu peut se monter en portal
+    }
+  }
+
+  if (!control) {
+    const visible = Array.from(card?.querySelectorAll("button, a") ?? [])
+      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 20);
+    t(`contrôle Supprimer INTROUVABLE — actions visibles sur la carte : ${visible.join(" | ") || "(aucune)"}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Contrôle de suppression introuvable", trace };
+  }
+  t(`contrôle Supprimer localisé : "${control.textContent.trim()}"${control.getAttribute("data-qa-id") ? ` (data-qa-id="${control.getAttribute("data-qa-id")}")` : ""}`);
+
+  if (DELETE_DRY_RUN) {
+    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    return { success: true, dryRun: true, found: true, trace };
+  }
+
+  // ── LIVE (après validation manuelle) ───────────────────────────────────
+  realClick(control);
+  await humanPause(900, 1800);
+  // LBC enchaîne généralement sur un motif de suppression + confirmation.
+  const reason = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return null;
+    return Array.from(dialog.querySelectorAll('input[type="radio"], button, label'))
+      .find((el) => /vendu|je ne souhaite plus|autre/i.test(el.textContent || el.value || "")) ?? null;
+  }, 6000);
+  if (reason) { t(`motif choisi : "${(reason.textContent || reason.value || "").trim()}"`); realClick(reason); await humanPause(500, 1000); }
+  const confirmBtn = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return null;
+    return Array.from(dialog.querySelectorAll("button"))
+      .find((b) => /supprimer|confirmer|valider/i.test(b.textContent)) ?? null;
+  }, 6000);
+  if (!confirmBtn) return { success: false, error: "Confirmation de suppression introuvable", trace };
+  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+  realClick(confirmBtn);
+  await sleep(3000);
+  return { success: true, trace };
+}
+
+function findLbcDelete(root) {
+  if (!root) return null;
+  return (
+    root.querySelector('[data-qa-id*="delete"], [data-qa-id*="supprimer"]') ??
+    Array.from(root.querySelectorAll("button, a, [role='menuitem']"))
+      .find((el) => /^supprimer/i.test(el.textContent.trim())) ??
+    null
+  );
 }
 
 // ── Remplissage du wizard ────────────────────────────────────────────────────
