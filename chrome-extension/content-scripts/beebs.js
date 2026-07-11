@@ -103,11 +103,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // GROUPÉE, pas par carte — une barre d'actions "Tout sélectionner | Supprimer"
 // en tête de liste, alimentée par une CHECKBOX par annonce. Il n'y a pas de
 // menu "…" ni de bouton Supprimer dans la carte elle-même.
-// ⚠️ Non exécuté de bout en bout : l'annonce Patagonia déposée ce jour-là est
-// restée "en cours de vérification" chez Beebs (délai de modération) et n'a
-// jamais atteint l'onglet "Actuellement en ligne" — la checkbox de carte et le
-// dialogue de confirmation restent donc À CONFIRMER au premier dry-run avec
-// une annonce réellement en ligne.
+// ⚠️ NON EXÉCUTÉ — et pas seulement par manque de temps : DEUX dépôts réels
+// (2026-07-11, 21h et 23h23) ont été confirmés par Beebs ("Votre article a
+// bien été ajouté à votre dressing"), sont apparus dans "En cours de
+// vérification"… puis ont DISPARU des DEUX onglets ("Actuellement en ligne" et
+// "En cours de vérification"), sans message ni notification. Le second a été
+// re-vérifié 30 min après le dépôt : introuvable. Cause inconnue (rejet
+// silencieux de modération ? dépôt web non finalisé sans l'app mobile ?) — à
+// élucider AVANT de compter sur Beebs en production, car un job partirait en
+// "published" pour une annonce qui n'existe pas.
+// Conséquence directe : la checkbox de carte et le dialogue de confirmation de
+// suppression n'ont JAMAIS pu être observés (aucune annonce en ligne à
+// supprimer). Les sélecteurs ci-dessous restent À CONFIRMER.
 // ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas
 // été validées manuellement.
 const DELETE_DRY_RUN = true;
