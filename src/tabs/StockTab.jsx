@@ -1528,11 +1528,28 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       </div>
+      {/* initialListing depuis la ligne inventaire : sans lui, platformSupport
+          calculait detectObjectIcon(undefined) → 📦 → 4 plateformes "unmapped",
+          chips grisées et CTA "Générer" mort (bug du 2026-07-11). Mêmes clés que
+          le lensResult du flux Lens ; les champs Lens absents (prix_vente_suggere,
+          taille_estimee, etat_estime…) restent undefined → les fallbacks invId du
+          stepper (prix DB…) s'appliquent comme avant. initialPhotos : photos déjà
+          connues de l'article (format inventaire.photos [{type,url}], mêmes
+          fallbacks que la relecture cross_post_jobs du stepper) — vide → étape
+          upload comme avant. */}
       {publishItem&&(
         <ListingPreviewScreen
           inventaireId={publishItem.id}
           userId={user.id}
-          initialPhotos={[]}
+          initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
+            .map(p=>p?.url||p?.original||p?.enhanced||p?.bg_removed)
+            .filter(Boolean)}
+          initialListing={{
+            titre:       publishItem.titre       ?? null,
+            description: publishItem.description ?? null,
+            categorie:   publishItem.type        ?? null,
+            marque:      publishItem.marque      ?? null,
+          }}
           onClose={()=>{setPublishItem(null);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
