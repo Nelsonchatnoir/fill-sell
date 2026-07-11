@@ -1500,16 +1500,23 @@ export default function ListingPreviewScreen({
         }
       }
 
-      // Champs partagés (Sujet 4) : initialisés depuis les copies fraîches —
-      // le serveur a déjà canonicalisé, la première copie non vide par champ
-      // EST la canonique. Overrides remis à zéro : nouvelle génération =
-      // nouvelles copies, plus aucune édition manuelle à protéger.
+      // Champs partagés (Sujet 4) : initialisés depuis les copies fraîches, à
+      // l'UNANIMITÉ seulement — la valeur ne devient canonique que si TOUTES
+      // les copies consommatrices générées portent la MÊME valeur non vide
+      // (= la canonicalisation serveur a réellement eu lieu). L'ancien
+      // "première copie non vide" laissait une hallucination isolée d'un des
+      // 4 appels devenir canonique et neutraliser la garde (cas réel du
+      // 2026-07-11 : taille "M" eBay/Beebs, Vinted vide → garde muette alors
+      // que le job Vinted partait sans taille). Divergence → champ vide →
+      // missingSharedFields se déclenche et l'input inline demande la vraie
+      // valeur. Overrides remis à zéro : nouvelle génération = nouvelles
+      // copies, plus aucune édition manuelle à protéger.
       const shared = { taille:"", couleur:"", matiere:"", marque:"" };
       for (const key of SHARED_FIELD_KEYS) {
-        for (const p of SHARED_PROPAGATION[key]) {
-          const v = String(initialEdited[p]?.platform_fields?.[key] ?? "").trim();
-          if (v) { shared[key] = v; break; }
-        }
+        const values = SHARED_PROPAGATION[key]
+          .filter(p => initialEdited[p])
+          .map(p => String(initialEdited[p].platform_fields?.[key] ?? "").trim());
+        if (values.length && values.every(v => v && v === values[0])) shared[key] = values[0];
       }
       setSharedFields(shared);
       setSharedOverrides({});
@@ -1564,10 +1571,17 @@ export default function ListingPreviewScreen({
     const lbcShoes = lbcPath?.[0] === "Mode" && lbcPath?.[1] === "Chaussures";
     const guardPlatforms = (key) =>
       key === "taille" && lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD[key];
-    return SHARED_FIELD_KEYS.filter(key =>
-      !String(sharedFields[key] ?? "").trim() &&
-      [...selected].some(p => guardPlatforms(key).includes(p))
-    );
+    // Manquant si la canonique est vide OU si la copie d'une plateforme
+    // gardée sélectionnée est vide : les jobs partent depuis
+    // edited[p].platform_fields (handlePublish), pas depuis sharedFields —
+    // une canonique remplie ne prouve pas que chaque copie l'est (divergence
+    // possible : copie vidée à la main, plateforme re-cochée sans copie…).
+    return SHARED_FIELD_KEYS.filter(key => {
+      const guarded = guardPlatforms(key).filter(p => selected.has(p));
+      if (!guarded.length) return false;
+      if (!String(sharedFields[key] ?? "").trim()) return true;
+      return guarded.some(p => !String(edited[p]?.platform_fields?.[key] ?? "").trim());
+    });
   }, [sharedFields, selected, edited, initialListing]);
 
   // ── Publication ───────────────────────────────────────────────────────────
