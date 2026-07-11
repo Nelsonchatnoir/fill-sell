@@ -155,6 +155,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     pollAndProcessJobs();
     sendResponse({ ok: true });
   }
+  // Source de vérité UNIQUE du "suis-je connecté" pour le popup (fix
+  // 2026-07-11) : session VALIDÉE (refresh si expiration proche, storage
+  // purgé si le refresh est mort) au lieu d'une relecture brute du storage
+  // qui ne vérifiait que la présence d'un access_token — deux
+  // implémentations qui divergeaient.
+  if (msg?.type === "GET_VALID_SESSION") {
+    getValidSession().then(
+      (session) => sendResponse({ session }),
+      (e) => {
+        console.error("[background] GET_VALID_SESSION:", e);
+        sendResponse({ session: null });
+      }
+    );
+    return true; // réponse asynchrone
+  }
   // Publication ciblée depuis le popup : publie UNIQUEMENT les jobs demandés
   // (plateformes cochées de l'annonce affichée), en réutilisant processJob.
   // Le poll automatique (POLL_NOW) reste inchangé.
@@ -233,7 +248,15 @@ async function getValidSession() {
       session = { ...session, ...refreshed };
       await chrome.storage.local.set({ [SESSION]: session });
     } else {
-      console.warn("[background] Refresh du token échoué — reconnexion nécessaire");
+      // Refresh mort : PURGE du storage, pas seulement retour null (fix
+      // 2026-07-11). Sinon l'access_token périmé reste stocké et tout
+      // lecteur du storage (popup.load) croit à une session valide sur sa
+      // simple présence — "Connecté" affiché, poll bloqué en silence,
+      // reconnexion impossible (le clic compte ne fait rien tant que
+      // state.session est truthy). Le storage.onChanged du popup re-render
+      // en "Se connecter" tout seul.
+      await chrome.storage.local.remove(SESSION);
+      console.warn("[background] Refresh du token échoué — session purgée, reconnexion nécessaire");
       return null;
     }
   }

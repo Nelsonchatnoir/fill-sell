@@ -102,8 +102,18 @@ async function fetchPendingJobs(accessToken) {
 // ── Chargement ───────────────────────────────────────────────────────────────
 
 async function load() {
-  const store = await chrome.storage.local.get([SESSION]);
-  const session = store[SESSION];
+  // Session VALIDÉE par le background (fix 2026-07-11) : getValidSession
+  // refresh si l'expiration est proche et PURGE le storage si le refresh est
+  // mort. L'ancienne lecture brute du storage ne testait que la présence
+  // d'access_token → "Connecté" affiché avec un token périmé, impossible de
+  // se reconnecter. Une seule source de vérité désormais.
+  let session = null;
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: "GET_VALID_SESSION" });
+    session = resp?.session ?? null;
+  } catch (e) {
+    console.warn("[popup] GET_VALID_SESSION:", e);
+  }
   state.session = session?.access_token ? session : null;
 
   if (state.session) {
@@ -137,10 +147,15 @@ function renderAccount() {
   const on = Boolean(state.session);
   els.acct.classList.toggle("on", on);
   els.acct.classList.toggle("off", !on);
+  // Cliquable dans les deux états depuis le fix 2026-07-11 (déconnexion) —
+  // le CSS .acct ne met le pointer que sur .off, on l'impose ici plutôt que
+  // de toucher popup.html.
+  els.acct.style.cursor = "pointer";
   if (on) {
     const payload = decodeJwtPayload(state.session.access_token);
+    const email = state.session.email || payload?.email || "";
     els.acctLabel.textContent = "Connecté";
-    els.acct.title = state.session.email || payload?.email || "";
+    els.acct.title = email ? `${email} — cliquer pour se déconnecter` : "Cliquer pour se déconnecter";
   } else {
     els.acctLabel.textContent = "Se connecter";
     els.acct.title = "";
@@ -277,7 +292,25 @@ function openLogin() {
   window.close();
 }
 
-els.acct.addEventListener("click", () => { if (!state.session) openLogin(); });
+// Déconnexion explicite (fix 2026-07-11) : connecté, le 1er clic sur la
+// pastille arme une confirmation inline ("Se déconnecter ?", 4 s), le 2e la
+// exécute — storage purgé, re-render immédiat. Ni confirm() natif (dialog
+// modal qui gèle le popup) ni menu dropdown (CSS neuf dans popup.html) : on
+// reste sur la pastille .on/.off existante.
+let logoutArm = null;
+els.acct.addEventListener("click", async () => {
+  if (!state.session) { openLogin(); return; }
+  if (logoutArm) {
+    clearTimeout(logoutArm);
+    logoutArm = null;
+    await chrome.storage.local.remove(SESSION);
+    state.session = null;
+    load();
+    return;
+  }
+  els.acctLabel.textContent = "Se déconnecter ?";
+  logoutArm = setTimeout(() => { logoutArm = null; renderAccount(); }, 4000);
+});
 
 els.history.addEventListener("click", () => {
   chrome.tabs.create({ url: "https://fillsell.app/app" });
