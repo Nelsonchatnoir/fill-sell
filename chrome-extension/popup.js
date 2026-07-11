@@ -7,7 +7,7 @@
 // La publication réelle passe par le background (POLL_NOW aujourd'hui,
 // PUBLISH_NOW ciblé au commit suivant) — jamais réécrite ici.
 
-const { SESSION, LAST_POLL } = FILLSELL_CONFIG.STORAGE_KEYS;
+const { SESSION, LAST_POLL, RECENT_RESULTS } = FILLSELL_CONFIG.STORAGE_KEYS;
 
 // Plateformes affichées, de haut en bas. `supported:false` => "Bientôt"
 // (ligne atténuée, non sélectionnable). Beebs passé à true le 2026-07-11 :
@@ -43,6 +43,7 @@ const state = {
   annonce: null,        // { key, title, price, photo, tag, byPlatform: {vinted: job, ...} }
   selected: new Set(),  // plateformes cochées (parmi celles "prêtes")
   status: {},           // { [platform]: { phase: 'idle'|'busy'|'done'|'err'|'connect', msg } }
+  recent: {},           // { [platform]: résultat terminé <30 min par le poll de fond (Sujet 5) }
   publishing: false,
 };
 
@@ -135,10 +136,30 @@ async function load() {
         if (p.supported && state.annonce.byPlatform[p.key]) state.selected.add(p.key);
       }
     }
+    // Jobs terminés récemment par le poll de fond (Sujet 5) : ils sortent de
+    // get-pending-jobs (status=pending only) → badge "Publié" au lieu de
+    // "Non incluse". Match sur la MÊME annonce quand une annonce pending est
+    // affichée, sinon sur le groupe terminé le plus récent (cas "tout est
+    // fini", annonce=null).
+    state.recent = {};
+    try {
+      const rr = await chrome.storage.local.get(RECENT_RESULTS);
+      const now = Date.now();
+      const fresh = Object.values(rr[RECENT_RESULTS] ?? {}).filter(
+        (r) => now - (r.ts ?? 0) < 30 * 60 * 1000 && ["dry_run_completed", "published"].includes(r.status)
+      );
+      const refKey = state.annonce?.key ?? fresh.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0]?.annonceKey ?? null;
+      for (const r of fresh) {
+        if (r.annonceKey === refKey) state.recent[r.platform] = r;
+      }
+    } catch (e) {
+      console.warn("[popup] recent results:", e);
+    }
   } else {
     state.jobs = [];
     state.annonce = null;
     state.selected = new Set();
+    state.recent = {};
   }
   state.status = {};
   render();
@@ -220,8 +241,12 @@ function rowState(p) {
   if (st?.phase === "done") return "done";
   if (st?.phase === "err") return "err";
   if (st?.phase === "connect") return "connect";
-  if (!state.annonce || !state.annonce.byPlatform[p.key]) return "none";
-  return "ready";
+  if (state.annonce?.byPlatform[p.key]) return "ready";
+  // Terminé (<30 min) par le poll de fond (Sujet 5) : badge "Publié" au lieu
+  // de "Non incluse" — un job pending pour la même plateforme garde la main
+  // (test au-dessus : un job régénéré redevient "ready").
+  if (state.recent[p.key]) return "done";
+  return "none";
 }
 
 function renderFlow() {
@@ -422,7 +447,10 @@ chrome.runtime.onMessage.addListener((msg) => {
 // Re-render si le background met à jour la session pendant que le popup est ouvert.
 // Pendant une publication, on ne recharge pas (ça écraserait les états live).
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && (changes[SESSION] || changes[LAST_POLL]) && !state.publishing) load();
+  // RECENT_RESULTS inclus (Sujet 5) : le poll de fond qui termine un job
+  // re-render le popup DÉJÀ OUVERT — le live redevient cohérent sans
+  // toucher à emitProgress.
+  if (area === "local" && (changes[SESSION] || changes[LAST_POLL] || changes[RECENT_RESULTS]) && !state.publishing) load();
 });
 
 load();

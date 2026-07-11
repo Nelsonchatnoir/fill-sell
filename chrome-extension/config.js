@@ -17,5 +17,9 @@ const FILLSELL_CONFIG = {
   STORAGE_KEYS: {
     SESSION: "fillsell_session",
     LAST_POLL: "fillsell_last_poll",
+    // Jobs terminés récemment par le poll de fond (Sujet 5, 2026-07-11) :
+    // { [jobId]: { platform, status, title, inventaire_id, annonceKey, ts } },
+    // purgé à 30 min — lu par le popup pour afficher "Publié" après coup.
+    RECENT_RESULTS: "fillsell_recent_results",
   },
 };

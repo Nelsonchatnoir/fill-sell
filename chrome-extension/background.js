@@ -187,6 +187,37 @@ function emitProgress(payload) {
   chrome.runtime.sendMessage({ type: "FILLSELL_PROGRESS", ...payload }).catch(() => {});
 }
 
+// ── Résultats récents pour le popup (Sujet 5, 2026-07-11) ─────────────────────
+// Le poll de fond termine des jobs SANS que le popup le sache : une fois
+// dry_run_completed/published, le job sort de get-pending-jobs et le popup
+// retombait sur "Non incluse" (FILLSELL_PROGRESS n'est émis que par le flux
+// PUBLISH_NOW, jamais par pollAndProcessJobs). On persiste 30 min de
+// résultats terminés ; le popup les lit à l'ouverture, et son
+// storage.onChanged le re-render même déjà ouvert. annonceKey reprend la
+// même formule que firstAnnonce côté popup (inv:<id> / title:<titre|jobId>).
+const RECENT_RESULTS_TTL_MS = 30 * 60 * 1000;
+async function recordRecentResult(job, status) {
+  try {
+    const KEY = FILLSELL_CONFIG.STORAGE_KEYS.RECENT_RESULTS;
+    const store = await chrome.storage.local.get(KEY);
+    const now = Date.now();
+    const entries = Object.fromEntries(
+      Object.entries(store[KEY] ?? {}).filter(([, r]) => now - (r.ts ?? 0) < RECENT_RESULTS_TTL_MS)
+    );
+    entries[job.id] = {
+      platform: job.platform,
+      status,
+      title: job.title ?? "",
+      inventaire_id: job.inventaire_id ?? null,
+      annonceKey: job.inventaire_id != null ? `inv:${job.inventaire_id}` : `title:${job.title || job.id}`,
+      ts: now,
+    };
+    await chrome.storage.local.set({ [KEY]: entries });
+  } catch (e) {
+    console.warn("[background] recordRecentResult:", e);
+  }
+}
+
 // Orchestration de la publication ciblée. Réutilise getValidSession (refresh),
 // get-pending-jobs et processJob — aucune mécanique de remplissage réécrite.
 async function publishSelected(jobIds) {
@@ -421,6 +452,7 @@ async function processJob(job, accessToken) {
       // prochain job.
       console.log(`[background] Job ${job.id} : DRY_RUN réussi → dry_run_completed (terminal, plus de boucle)`);
       await updateJobStatus(accessToken, job.id, "dry_run_completed", completionExtras(job, result));
+      await recordRecentResult(job, "dry_run_completed");
       return { status: "dry_run_completed", unfilled: result.unfilledRequired ?? [] };
     } else if (result?.needsUser) {
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
@@ -433,6 +465,7 @@ async function processJob(job, accessToken) {
         ...completionExtras(job, result),
         listing_url: result.listingUrl ?? undefined,
       });
+      await recordRecentResult(job, "published");
       // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
       // qui garde son onglet Vinted ouvert entre deux dépôts.
       return { status: "published", listingUrl: result.listingUrl ?? null };
