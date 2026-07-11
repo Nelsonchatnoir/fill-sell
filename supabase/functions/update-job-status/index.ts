@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -22,7 +23,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
 // (user.id) et alimente le client scoped user pour la RLS.
 
-const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed"];
+// 'sold' (2026-07-11) : remonté par le POLL DE DÉTECTION de l'extension quand
+// une annonce published n'est plus en vente — traité à part (garde stricte
+// published→sold + orchestration complète via _shared/sale-orchestration.ts :
+// vente, inventaire, frères, email), jamais par le patch générique.
+// 'deleted' (2026-07-11) : terminal d'un job action='delete' exécuté en LIVE.
+const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed", "sold", "deleted"];
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
@@ -70,6 +76,31 @@ serve(async (req) => {
       return json({ error: `status invalide, valeurs acceptées : ${ALLOWED_STATUSES.join(", ")}` }, 400);
     }
 
+    // ── Vente détectée : orchestration dédiée, pas le patch générique ────────
+    if (status === "sold") {
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      const result = await orchestrateSale(admin, user.id, jobId);
+      if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);
+      console.log(`[update-job-status] userId=${user.id} job=${jobId} → sold (orchestré)`);
+      return json({ success: true, sale: result });
+    }
+
+    // ── 'deleted' : réservé aux jobs action='delete' (suppression LIVE) ──────
+    if (status === "deleted") {
+      const { data: cur } = await userClient
+        .from("cross_post_jobs")
+        .select("id, action")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (!cur) return json({ error: "Job introuvable" }, 404);
+      if (cur.action !== "delete") {
+        return json({ error: "'deleted' est réservé aux jobs action='delete'" }, 400);
+      }
+    }
+
     const patch: Record<string, unknown> = { status };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -92,7 +123,12 @@ serve(async (req) => {
       // on garde l'error explicative si fournie, sinon on nettoie.
       patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
     } else if (status === "dry_run_completed") {
-      // Terminal : dry-run réussi, ne repart pas dans la queue.
+      // Terminal : dry-run réussi, ne repart pas dans la queue. L'éventuel
+      // détail (champs manquants, trace du dry-run delete) vit dans
+      // platform_fields, pas dans error.
+      patch.error = null;
+    } else if (status === "deleted") {
+      // Terminal : annonce réellement supprimée de la plateforme.
       patch.error = null;
     }
 

@@ -1,129 +1,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { orchestrateSale } from "../_shared/sale-orchestration.ts";
+
+// v5 (2026-07-11) — ORCHESTRATEUR DB PUR, appelé par l'extension Chrome.
+//
+// Les v1-v4 faisaient du scraping HTTP serveur des listing_url (User-Agent
+// Safari iPhone + détecteurs HTML par plateforme). Abandonné (décision
+// 2026-07-11) : les IPs Supabase se font bloquer par DataDome/bot-shield, la
+// fonction n'était appelée par aucun cron, et listing_url n'était jamais
+// peuplé. La DÉTECTION vit désormais dans le background de l'extension
+// (session réelle du vendeur, mêmes détecteurs HTML portés là-bas) ; ici ne
+// reste que l'orchestration de la vente, partagée avec update-job-status :
+//   POST { job_id } + Bearer JWT utilisateur
+//   → garde published→sold, vente alignée confirmSell (frais 0), inventaire
+//     → vendu + marges, annulation de TOUS les frères (pending inclus),
+//     platform_fields.pending_removal sur les frères encore live (bandeau
+//     semi-auto de l'app), email via email-tunnel.
+// Voir _shared/sale-orchestration.ts pour le détail.
+//
+// Déploiement : supabase functions deploy check-listing-status
+// (verify_jwt peut rester au défaut : l'appel porte toujours un JWT user.)
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
 function isAllowedOrigin(origin: string): boolean {
   return ALLOWED_ORIGINS.includes(origin) || origin.startsWith("chrome-extension://");
 }
-
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-);
-
-// ── Détection par plateforme ───────────────────────────────────────────────────
-
-function detectLeboncoin(html: string): "sold" | "active" | "unknown" {
-  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/);
-  if (m) {
-    try {
-      const data = JSON.parse(m[1]);
-      const pp = data?.props?.pageProps;
-      const isActive = pp?.adDetail?.isActive ?? pp?.ad?.isActive;
-      if (isActive === false) return "sold";
-      if (isActive === true) return "active";
-      const st = String(pp?.adDetail?.adStatus ?? pp?.ad?.status ?? "");
-      if (/INACTIVE|DELETED|SOLD/i.test(st)) return "sold";
-      if (/^ACTIVE$/i.test(st)) return "active";
-    } catch { /* fall through */ }
-  }
-  if (
-    html.includes("Cette annonce n’est plus disponible") ||
-    html.includes("Cette annonce n’est plus disponible") ||
-    html.includes("a été supprimée") ||
-    html.includes('"isActive":false') ||
-    html.includes('"adStatus":"INACTIVE"') ||
-    html.includes('"adStatus":"DELETED"')
-  ) return "sold";
-  return "active";
-}
-
-function detectVinted(html: string, finalUrl: string): "sold" | "active" | "unknown" {
-  if (/\/not-found|\/404/.test(finalUrl)) return "sold";
-  if (
-    html.includes('"can_buy":false') ||
-    html.includes('"status":"sold"') ||
-    html.includes('"is_hidden":true') ||
-    html.includes('"sold":true') ||
-    html.includes("item-not-available") ||
-    html.includes("n’est plus disponible") ||
-    html.includes("is no longer available")
-  ) return "sold";
-  return "active";
-}
-
-function detectEbay(html: string, finalUrl: string): "sold" | "active" | "unknown" {
-  if (!/\/itm\//.test(finalUrl)) return "sold";
-  if (
-    html.includes("This listing was ended") ||
-    html.includes("Cette annonce a pris fin") ||
-    html.includes('"listingStatus":"Completed"') ||
-    html.includes('"listingStatus":"Ended"')
-  ) return "sold";
-  return "active";
-}
-
-function detectBeebs(html: string): "sold" | "active" | "unknown" {
-  if (
-    html.includes('"sold":true') ||
-    html.includes('"is_sold":true') ||
-    html.includes("n’est plus disponible") ||
-    html.includes("n’est plus disponible")
-  ) return "sold";
-  return "active";
-}
-
-// ── Fetch + détection ──────────────────────────────────────────────────────────
-
-async function checkListingUrl(
-  url: string,
-  platform: string
-): Promise<"sold" | "active" | "unknown"> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12_000);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8",
-        "Cache-Control": "no-cache",
-      },
-      redirect: "follow",
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-
-    const { status } = res;
-    const finalUrl = res.url;
-    console.log(`[check-listing] ${platform} → HTTP ${status} (${url})`);
-
-    if (status === 404 || status === 410) return "sold";
-    // Bot protection ou erreur serveur → ne pas conclure à sold
-    if (status !== 200) return "unknown";
-
-    const html = await res.text();
-
-    switch (platform) {
-      case "leboncoin": return detectLeboncoin(html);
-      case "vinted":    return detectVinted(html, finalUrl);
-      case "ebay":      return detectEbay(html, finalUrl);
-      case "beebs":     return detectBeebs(html);
-      default:          return "unknown";
-    }
-  } catch (err: unknown) {
-    clearTimeout(timer);
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(`[check-listing] Erreur fetch ${url}: ${msg}`);
-    return "unknown";
-  }
-}
-
-// ── Handler principal ──────────────────────────────────────────────────────────
 
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
@@ -142,174 +44,28 @@ serve(async (req) => {
     });
 
   try {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader.startsWith("Bearer ")) return json({ error: "Non autorisé" }, 401);
+
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const { data: { user }, error: authErr } = await admin.auth.getUser(authHeader.slice(7).trim());
+    if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
+
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { /* ok */ }
+    const jobId = body.job_id as string | undefined;
+    if (!jobId) return json({ error: "job_id requis" }, 400);
 
-    // ── Authentification ──────────────────────────────────────────────────────
-    let userId: string | null = null;
-    const authHeader  = req.headers.get("Authorization") ?? "";
-    const cronHeader  = req.headers.get("x-cron-secret");
-    const CRON_SECRET = Deno.env.get("CRON_SECRET");
-
-    if (authHeader.startsWith("Bearer ")) {
-      const jwt = authHeader.slice(7).trim();
-      const { data: { user }, error } = await supabase.auth.getUser(jwt);
-      if (error || !user) return json({ error: "Token invalide ou expiré" }, 401);
-      userId = user.id;
-    } else if (CRON_SECRET && cronHeader === CRON_SECRET) {
-      userId = (body?.user_id as string) ?? null;
-    } else {
-      return json({ error: "Non autorisé" }, 401);
-    }
-
-    if (!userId) return json({ error: "user_id manquant" }, 400);
-
-    // Valider que userId existe en base (défense en profondeur, surtout pour le chemin cron)
-    const { data: profileCheck } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .single();
-    if (!profileCheck) return json({ error: "user_id invalide" }, 400);
-
-    // ── Récupération des jobs published ──────────────────────────────────────
-    const { data: jobs, error: jobsErr } = await supabase
-      .from("cross_post_jobs")
-      .select("id, listing_url, platform, inventaire_id, title, price")
-      .eq("user_id", userId)
-      .eq("status", "published")
-      .not("listing_url", "is", null);
-
-    if (jobsErr) return json({ error: jobsErr.message }, 500);
-
-    console.log(`[check-listing] userId=${userId} → ${jobs?.length ?? 0} job(s) à vérifier`);
-
-    const results: Array<{ id: string; platform: string; detected: string }> = [];
-
-    for (let i = 0; i < (jobs?.length ?? 0); i++) {
-      const job = jobs![i];
-      const detected = await checkListingUrl(job.listing_url, job.platform);
-
-      const patch: Record<string, unknown> = {
-        last_checked_at: new Date().toISOString(),
-      };
-      if (detected === "sold") {
-        patch.status  = "sold";
-        patch.sold_at = new Date().toISOString();
-      }
-
-      const { error: updateErr } = await supabase
-        .from("cross_post_jobs")
-        .update(patch)
-        .eq("id", job.id);
-
-      if (updateErr) {
-        console.error(`[check-listing] Update error job ${job.id}:`, updateErr.message);
-      }
-
-      // Annuler tous les autres jobs du même article
-      if (detected === "sold" && job.inventaire_id) {
-        const { error: cancelErr } = await supabase
-          .from("cross_post_jobs")
-          .update({ status: "cancelled" })
-          .eq("inventaire_id", job.inventaire_id)
-          .eq("user_id", userId)
-          .eq("status", "published")
-          .neq("id", job.id);
-
-        if (cancelErr) {
-          console.error(`[check-listing] Cancel siblings error (inventaire_id=${job.inventaire_id}):`, cancelErr.message);
-        } else {
-          console.log(`[check-listing] Siblings cancelled for inventaire_id=${job.inventaire_id}`);
-        }
-
-        // Auto-create vente (dedup par inventaire_id + plateforme)
-        const { data: existing } = await supabase
-          .from("ventes")
-          .select("id")
-          .eq("inventaire_id", job.inventaire_id)
-          .eq("plateforme", job.platform)
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        if (!existing) {
-          const { data: inv } = await supabase
-            .from("inventaire")
-            .select("titre, prix_achat, marque, type")
-            .eq("id", job.inventaire_id)
-            .single();
-
-          const prixVente = Number(job.price ?? 0);
-          const prixAchat = Number(inv?.prix_achat ?? 0);
-          const benefice = prixVente - prixAchat;
-
-          const { error: venteErr } = await supabase
-            .from("ventes")
-            .insert({
-              user_id: userId,
-              inventaire_id: job.inventaire_id,
-              titre: job.title ?? inv?.titre ?? null,
-              prix_vente: prixVente,
-              prix_achat: prixAchat,
-              benefice,
-              plateforme: job.platform,
-              date: new Date().toISOString().slice(0, 10),
-              statut: "vendu",
-              marque: inv?.marque ?? null,
-              type: inv?.type ?? null,
-            });
-
-          if (venteErr) {
-            console.error(`[check-listing] Insert vente error (inventaire_id=${job.inventaire_id}):`, venteErr.message);
-          } else {
-            console.log(`[check-listing] Vente créée inventaire_id=${job.inventaire_id} plateforme=${job.platform}`);
-
-            // Push notification si push_token présent
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("push_token")
-              .eq("id", userId)
-              .single();
-
-            if (profile?.push_token) {
-              const platformLabel = job.platform.charAt(0).toUpperCase() + job.platform.slice(1);
-              const sign = benefice >= 0 ? "+" : "";
-              const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Accept: "application/json" },
-                body: JSON.stringify({
-                  to: profile.push_token,
-                  title: `Vendu sur ${platformLabel} 🎉`,
-                  body: `${sign}${benefice.toFixed(0)}€ de bénéfice`,
-                  sound: "default",
-                  data: { inventaire_id: job.inventaire_id, platform: job.platform },
-                }),
-              });
-              if (!pushRes.ok) {
-                console.error(`[check-listing] Push failed:`, await pushRes.text());
-              } else {
-                console.log(`[check-listing] Push envoyé à userId=${userId}`);
-              }
-            }
-          }
-        } else {
-          console.log(`[check-listing] Vente déjà existante inventaire_id=${job.inventaire_id} plateforme=${job.platform}, skip`);
-        }
-      }
-
-      results.push({ id: job.id, platform: job.platform, detected });
-
-      if (i < jobs!.length - 1) {
-        await new Promise((r) => setTimeout(r, 600));
-      }
-    }
-
-    const soldCount = results.filter((r) => r.detected === "sold").length;
-    return json({ success: true, checked: results.length, sold: soldCount, results });
-
+    const result = await orchestrateSale(admin, user.id, jobId);
+    if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);
+    return json({ success: true, sale: result });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[check-listing] Erreur inattendue:", msg);
+    console.error("[check-listing-status] Erreur inattendue:", msg);
     return json({ error: msg }, 500);
   }
 });

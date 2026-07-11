@@ -47,9 +47,13 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
 
+    // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
+    // (action='delete', armés par le bandeau semi-auto de l'app après une
+    // vente) passent par la même file — le background route sur job.action
+    // et cible l'annonce via listing_url.
     const { data: jobs, error: jobsErr } = await userClient
       .from("cross_post_jobs")
-      .select("id, platform, title, description, price, photos, photo_option, platform_fields, inventaire_id, created_at")
+      .select("id, platform, action, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: true });
 
