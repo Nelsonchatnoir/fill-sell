@@ -28,23 +28,54 @@ cross_post_jobs (status = pending)
 get-pending-jobs (edge function, JWT + RLS)
         │  retourne les jobs pending de l'utilisateur
         ▼
-background.js : dispatch par plateforme
+background.js : dispatch par plateforme (routage sur job.action)
         │  update-job-status → processing
         │  ouvre l'onglet de dépôt, envoie le job au content script
         ▼
 content-scripts/<plateforme>.js : fillListingForm(job)
         │  remplit le formulaire (DRY_RUN : ne publie pas)
         ▼
+background.js : captureListingUrl + detectReauth
+        │  URL de l'annonce créée ; ré-authentification plateforme → needsUser
+        ▼
 update-job-status (edge function, JWT + RLS)
         │  published (+ listing_url) / failed (+ error) / pending (dry-run)
+
+── puis, à chaque cycle de poll (30 min) ──────────────────────────────
+background.js : checkPublishedListings
+        │  visite les listing_url published dans la session du vendeur
+        │  (détecteurs HTML : annonce vendue ?)
         ▼
-check-listing-status (cron existant)
-           published → sold : création de la vente + push + annulation des jobs frères
+check-listing-status v5 (orchestrateur DB, plus de scraping serveur)
+        │  job → sold, vente créée, inventaire → vendu, frères annulés,
+        │  pending_removal posé sur les frères encore en ligne, email
+        ▼
+app : bandeau « Vendu — retirer des N autres plateformes ? »
+        │  le clic utilisateur insère des jobs action='delete'
+        ▼
+content-scripts/<plateforme>.js : deleteListing(job)
+           DELETE_DRY_RUN : localise le contrôle sans cliquer
 ```
 
-Statuts `cross_post_jobs` : `pending → processing → published / failed`,
-puis `published → sold / cancelled` (géré par `check-listing-status`, pas par
-l'extension).
+Statuts `cross_post_jobs` : `pending → processing → published / failed /
+dry_run_completed`, puis `published → sold` (détecté par l'extension, orchestré
+par `check-listing-status`) et `cancelled` pour les frères d'un article vendu.
+Les jobs `action='delete'` finissent en `deleted` (LIVE) ou `dry_run_completed`.
+
+### Cas « needsUser » (job remis en attente, retry borné au poll suivant)
+
+- **Adresse Leboncoin absente** (réglages FillSell) ou brouillon LBC bloquant.
+- **Ré-authentification plateforme** : une plateforme peut exiger une
+  reconnexion AU MOMENT du clic de publication, même avec une session valide au
+  remplissage — constaté en réel sur eBay (redirection vers `signin.ebay.fr`,
+  « Se connecter avec une clé d'accès » / passkey). C'est infranchissable par
+  automatisation **et ce n'est pas un bug** : `detectReauth` (background.js) le
+  reconnaît, remet le job en attente avec « Reconnexion <plateforme> requise »,
+  et le poll suivant retente une fois l'utilisateur reconnecté à la main. Sans
+  cette garde, le job partait en `published` fantôme (le content script, dont
+  la navigation détruit le contexte, avait déjà répondu « succès »).
+- **Vinted, modale « Ajoute des photos »** : minimum 3 photos imposé sur les
+  marques premium.
 
 ## Charger l'extension en mode développeur (unpacked)
 
