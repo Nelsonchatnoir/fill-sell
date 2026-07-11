@@ -853,50 +853,68 @@ const REAUTH_PATHS = {
   beebs: /\/(login|signin|connexion)/i,
 };
 
-async function detectReauth(tabId, platform) {
-  const tab = await chrome.tabs.get(tabId).catch(() => null);
-  if (!tab?.url) return null;
-
-  let host = "";
-  let path = "";
-  try {
-    const u = new URL(tab.url);
-    host = u.hostname;
-    path = u.pathname;
-  } catch {
-    return null;
-  }
-
+// Polling court : la redirection de ré-authentification peut arriver une
+// poignée de secondes après le clic (le handler ne rend la main qu'après son
+// propre sleep, mais la plateforme peut être plus lente). Une seule lecture de
+// l'URL laisserait passer le cas.
+async function detectReauth(tabId, platform, timeoutMs = 6000) {
   const hostRe = REAUTH_HOSTS[platform];
+  if (!hostRe) return null;
   const pathRe = REAUTH_PATHS[platform];
-  const hostMatch = hostRe ? hostRe.test(host) : false;
-  // Pour les plateformes dont le login vit sur le domaine principal, le host
-  // seul ne prouve rien — il faut aussi le chemin.
-  const isReauth = pathRe ? hostMatch && pathRe.test(path) : hostMatch;
-  if (!isReauth) return null;
 
-  const label = platform.charAt(0).toUpperCase() + platform.slice(1);
-  return (
-    `Reconnexion ${label} requise : la plateforme a demandé une ré-authentification ` +
-    `(${host}${path}) au moment de la publication — l'annonce n'a PAS été créée. ` +
-    `Se reconnecter sur ${label} dans Chrome (l'onglet de travail est resté ouvert) ; ` +
-    "le job repartira automatiquement au prochain passage."
-  );
+  const listingRe = LISTING_URL_PATTERNS[platform];
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab?.url) {
+      // Sortie immédiate quand l'onglet est déjà sur l'annonce créée : pas de
+      // ré-authentification possible, inutile d'attendre le timeout (sinon on
+      // ajouterait ces secondes à CHAQUE publication réussie).
+      if (listingRe?.test(tab.url)) return null;
+
+      let host = "", path = "";
+      try {
+        const u = new URL(tab.url);
+        host = u.hostname;
+        path = u.pathname;
+      } catch { /* URL interne (chrome://) : rien à conclure */ }
+
+      // Pour les plateformes dont le login vit sur le domaine principal, le
+      // host seul ne prouve rien — il faut aussi le chemin.
+      if (host && hostRe.test(host) && (!pathRe || pathRe.test(path))) {
+        const label = platform.charAt(0).toUpperCase() + platform.slice(1);
+        return (
+          `Reconnexion ${label} requise : la plateforme a demandé une ré-authentification ` +
+          `(${host}${path}) au moment de la publication — l'annonce n'a PAS été créée. ` +
+          `Se reconnecter sur ${label} dans Chrome (l'onglet de travail est resté ouvert) ; ` +
+          "le job repartira automatiquement au prochain passage."
+        );
+      }
+    }
+    await sleep(1000);
+  }
+  return null;
 }
 
 // ── A1 : capture de l'URL de l'annonce créée (publication LIVE) ────────────────
-// Après le clic "publier" du content script, la plateforme redirige l'onglet
-// de travail vers l'annonce créée (ou une page de confirmation qui pointe
-// vers elle). On surveille l'URL de l'onglet, puis en repli on cherche un
-// lien correspondant dans la page. Patterns par plateforme :
-//   vinted    /items/{id}[-slug]      (redirection directe post-submit)
-//   leboncoin /ad/{categorie}/{id}    (page de confirmation avec lien
-//                                      "Voir mon annonce")
-//   ebay      /itm/{id} ou itemId=…   (page de félicitations post-frais)
-//   beebs     à confirmer au premier LIVE (pattern produit supposé)
-// ⚠️ Formats déduits des URLs publiques connues, PAS encore observés sur une
-// vraie redirection post-submit (aucune publication LIVE n'a encore eu lieu,
-// DRY_RUN partout) — à valider pendant les 3 publications réelles de rodage.
+// Ce que fait RÉELLEMENT chaque plateforme après le clic de publication
+// (constaté en publication réelle le 2026-07-11, plus de suppositions) :
+//   vinted    → REDIRIGE vers /member/{userId} (le profil, pas l'annonce !).
+//               L'URL de l'annonce (/items/{id}-{slug}) n'apparaît QUE dans la
+//               liste du dressing → surveillance de l'URL puis repli "liens de
+//               la page", qui la trouve là.
+//   leboncoin → /deposer-une-annonce/confirmation : "Nous avons bien reçu votre
+//               annonce !" — AUCUN lien vers l'annonce (pas de "Voir mon
+//               annonce"). L'URL /ad/{categorie}/{id} n'existe que dans
+//               "Mes annonces" → aller-retour obligatoire (captureFromMyListings).
+//   beebs     → /fr/listing/success : "Votre article a bien été ajouté…" — aucun
+//               lien non plus, ET l'annonce part en modération avant d'être en
+//               ligne. Même aller-retour, sur /my-adverts/creating.
+//               ⚠️ Le format d'URL produit Beebs reste NON OBSERVÉ (l'annonce de
+//               test n'était pas sortie de modération) : le pattern ci-dessous
+//               est encore une supposition, à confirmer.
+//   ebay      → non observé : le clic a déclenché une ré-authentification
+//               passkey (cf. detectReauth), l'annonce n'a jamais été créée.
 const LISTING_URL_PATTERNS = {
   vinted: /https:\/\/www\.vinted\.(?:fr|com)\/items\/\d+[^#\s"']*/i,
   leboncoin: /https:\/\/www\.leboncoin\.fr\/ad\/[^#\s"']+\/\d+[^#\s"']*/i,
@@ -933,9 +951,10 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
     await sleep(1000);
   }
 
-  // Repli 1 : page de confirmation sans redirection ("Voir mon annonce",
-  // félicitations eBay…) — un lien de la page matche le pattern.
-  const fromLinks = await findListingLinkInPage(tabId, pattern.source);
+  // Repli 1 : la page où l'on a atterri contient le lien de l'annonce —
+  // profil Vinted (qui liste TOUTES les annonces : le titre est indispensable
+  // pour ne pas ramener la mauvaise) ou vraie page de confirmation.
+  const fromLinks = await findListingLinkInPage(tabId, pattern.source, job?.title ?? null);
   if (fromLinks) return fromLinks;
 
   // Repli 2 (LBC/Beebs) : aller-retour par "Mes annonces". L'onglet de travail
@@ -949,33 +968,41 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
   return captureFromMyListings(tabId, platform, pattern, myListings, job?.title ?? null);
 }
 
+// Cherche le lien de NOTRE annonce dans la page courante.
+// ⚠️ Le titre n'est PAS optionnel dans les faits : après une publication
+// Vinted, l'onglet atterrit sur le PROFIL du vendeur, qui liste toutes ses
+// annonces (86 sur le compte de test). Prendre "le premier lien qui matche le
+// pattern" y ramènerait l'URL d'un AUTRE article — et on l'écrirait dans
+// listing_url, donc la détection de vente surveillerait le mauvais article et
+// le retrait cross-plateforme supprimerait la mauvaise annonce.
+// Règle : match par titre d'abord ; à défaut, on n'accepte un lien sans titre
+// QUE s'il est le SEUL de la page (cas d'une vraie page de confirmation).
 async function findListingLinkInPage(tabId, patternSource, title = null) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
       func: (src, wanted) => {
         const re = new RegExp(src, "i");
-        const links = Array.from(document.querySelectorAll("a[href]"));
-        // Avec un titre : on exige que le lien (ou son conteneur proche) le
-        // porte — sinon on ramènerait l'annonce d'un autre article.
-        if (wanted) {
-          const norm = (s) => (s || "").trim().toLowerCase();
-          const target = norm(wanted);
-          for (const a of links) {
-            const m = a.href.match(re);
-            if (!m) continue;
-            const scope = a.closest("article, li, div") ?? a;
-            if (norm(a.textContent).includes(target) || norm(scope.textContent).includes(target)) {
-              return m[0];
-            }
-          }
-          return null;
-        }
-        for (const a of links) {
+        const matches = [];
+        for (const a of Array.from(document.querySelectorAll("a[href]"))) {
           const m = a.href.match(re);
-          if (m) return m[0];
+          if (m) matches.push({ url: m[0], el: a });
         }
-        return null;
+        if (!matches.length) return null;
+
+        if (wanted) {
+          const norm = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+          const target = norm(wanted);
+          for (const { url, el } of matches) {
+            const scope = el.closest("article, li, [class*='item'], [class*='card']") ?? el;
+            const hay = norm(el.getAttribute("title") || "") + " " + norm(el.textContent) + " " + norm(scope.textContent);
+            if (target && hay.includes(target)) return url;
+          }
+        }
+        // Pas de correspondance par titre : un lien unique est sans ambiguïté
+        // (page de confirmation) ; plusieurs → on refuse de deviner.
+        const unique = [...new Set(matches.map((m) => m.url))];
+        return unique.length === 1 ? unique[0] : null;
       },
       args: [patternSource, title],
     });

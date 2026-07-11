@@ -603,39 +603,55 @@ async function fillPriceField(value) {
   //      la soumission est refusée avec « Le champ prix doit être supérieur
   //      ou égal à 1.0 » (constaté sur l'annonce 9376376044 : publication
   //      bloquée jusqu'à une frappe clavier manuelle).
-  // Fix : frappe caractère par caractère via document.execCommand("insertText")
-  // — c'est ce que fait déjà leboncoin.js (typeInto) sur ses inputs React, et
-  // c'est la seule voie qui produit un vrai InputEvent (inputType/data) sans
-  // relire el.value. setNativeValue reste en repli si execCommand disparaît
-  // (déprécié mais toujours supporté par Chrome).
+  // Fix : document.execCommand("insertText") — la seule voie qui produit un
+  // vrai InputEvent (inputType/data), comme leboncoin.js (typeInto/
+  // setFieldValue) sur ses inputs React.
+  //
+  // ⚠️ EN UN SEUL APPEL, jamais caractère par caractère : testé en réel le
+  // 2026-07-11, une frappe char-by-char via execCommand redonne "NaN €" —
+  // le masque reformate le champ après CHAQUE insertion et le caret se
+  // retrouve au mauvais endroit, donc les caractères suivants s'insèrent dans
+  // la valeur déjà formatée. Une insertion unique sur une sélection totale
+  // laisse le masque formater une fois : "200" → "200,00 €" (vérifié).
+  // L'exception au timing humain reste assumée (un prix fait 2-4 caractères,
+  // ce n'est pas le signal de vitesse qui a déclenché le blocage LBC).
   const el = await waitForElement('#price, [data-testid="price-input--input"]');
   await humanPause();
   el.focus();
-  try { el.setSelectionRange?.(0, el.value.length); } catch { /* pas de sélection sur ce type */ }
 
   const str = String(value).replace(".", ",");
-  let ok = true;
-  for (const char of str) {
-    dispatchKey(el, "keydown", char);
-    dispatchKey(el, "keypress", char);
-    ok = document.execCommand("insertText", false, char) && ok;
-    dispatchKey(el, "keyup", char);
-    if (!ok) break;
-    await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+  let ok = false;
+  try {
+    el.setSelectionRange?.(0, el.value.length);
+    document.execCommand("delete", false, null); // vide le champ ET son masque
+    await humanPause();
+    el.setSelectionRange?.(0, el.value.length);
+    dispatchKey(el, "keydown", str[0]);
+    ok = document.execCommand("insertText", false, str);
+    dispatchKey(el, "keyup", str[str.length - 1]);
+  } catch (e) {
+    console.warn("[vinted] ⚠️ prix : execCommand indisponible —", String(e?.message ?? e));
   }
   if (!ok) {
-    console.warn("[vinted] ⚠️ prix : execCommand indisponible — repli setNativeValue (validation Vinted possiblement refusée)");
+    // Repli historique : pose la valeur mais Vinted REFUSE la soumission
+    // (« Le champ prix doit être supérieur ou égal à 1.0 ») — la garde
+    // ci-dessous ne le verra pas (l'affichage est correct), le clic Publier
+    // échouera. Ce repli n'existe que si execCommand disparaît de Chrome.
+    console.warn("[vinted] ⚠️ prix : repli setNativeValue — la validation Vinted risque de refuser la soumission");
     setNativeValue(el, str);
   }
   el.dispatchEvent(new Event("blur", { bubbles: true }));
   await humanPause();
 
-  // Vérification : le champ doit contenir un montant non nul. Si la validation
-  // Vinted a rejeté la saisie, l'erreur remonte AU MOMENT du clic Publier —
-  // autant la détecter ici, où le message est actionnable.
+  // Vérification immédiate : le champ doit afficher un montant non nul et
+  // SANS NaN. C'est cette garde qui a attrapé le "NaN €" de la frappe
+  // char-by-char en test réel — sans elle, le job serait parti jusqu'au clic
+  // Publier pour échouer là-bas, sans message exploitable.
   const shown = String(el.value ?? "");
-  if (!/[1-9]/.test(shown)) {
-    throw new Error(`Prix non pris en compte par Vinted (champ = "${shown}") — la saisie masquée a été rejetée.`);
+  if (/nan/i.test(shown) || !/[1-9]/.test(shown)) {
+    throw new Error(
+      `Prix non pris en compte par Vinted (champ = "${shown}") — la saisie du champ masqué a été rejetée.`
+    );
   }
 }
 
@@ -830,13 +846,24 @@ async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000) {
 // Referme proprement un panneau resté ouvert après un échec de sélection —
 // sans ça, le champ suivant échouerait en cascade (openDropdown attendrait
 // la disparition d'un panneau qui ne se ferme jamais).
-// Constaté en publication RÉELLE (2026-07-11) : le panneau MATIÈRE
-// (multi-sélection, pas de bouton "Fait") reste OUVERT après le clic sur une
-// option et recouvre le bas du formulaire — le clic suivant sur "Ajouter" ne
-// part jamais. Le clic sur document.body ne le referme pas non plus. Seule la
-// touche Échap ferme ces panneaux. Cascade : "Fait" → Échap → clic extérieur.
+// Ferme un panneau de dropdown resté ouvert.
+//
+// ⚠️ Le panneau MATIÈRE (multi-sélection, pas de bouton "Fait") reste OUVERT
+// après le clic sur une option — constaté en publication RÉELLE le 2026-07-11,
+// il recouvrait le formulaire et le clic suivant sur "Ajouter" partait dans le
+// vide. Les trois voies ont été testées sur la vraie page :
+//   - document.body.click()  → NE FERME PAS. C'est le bug d'origine : un
+//     .click() nu n'émet QUE l'event "click", sans pointerdown/mousedown — or
+//     c'est sur ceux-là que Vinted branche sa détection de "clic extérieur".
+//   - KeyboardEvent Escape synthétique (document / panneau / activeElement)
+//     → NE FERME PAS (Vinted ignore les events clavier non trusted ; l'Échap
+//     qui marchait en test manuel était une vraie frappe, hors de portée d'un
+//     content script).
+//   - séquence souris COMPLÈTE (simulateFullClick) sur un élément EXTÉRIEUR au
+//     panneau → FERME. C'est la seule voie qui marche.
 async function closeAnyOpenDropdown() {
   if (!document.querySelector(DROPDOWN_PANEL_SELECTOR)) return;
+
   const done = findButtonByExactText("Fait");
   if (done) {
     done.click();
@@ -845,14 +872,14 @@ async function closeAnyOpenDropdown() {
       return;
     }
   }
-  // Échap : la seule voie confirmée pour les panneaux multi-sélection.
-  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 27, which: 27, bubbles: true, cancelable: true, composed: true }));
-  document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", keyCode: 27, which: 27, bubbles: true, cancelable: true, composed: true }));
-  if (await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000)) {
-    await humanPause();
-    return;
-  }
-  document.body.click(); // dernier repli
+
+  // Clic extérieur RÉALISTE : un élément qui n'est ni dans le panneau ni un
+  // champ (le titre du formulaire fait un point de sortie neutre), avec la
+  // séquence pointer/mouse complète.
+  const panel = document.querySelector(DROPDOWN_PANEL_SELECTOR);
+  const outside = Array.from(document.querySelectorAll("h1, h2, header"))
+    .find((el) => el.offsetParent !== null && !panel?.contains(el)) ?? document.body;
+  simulateFullClick(outside);
   await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
   await humanPause();
 }
