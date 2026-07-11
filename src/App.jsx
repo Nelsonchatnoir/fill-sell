@@ -3,6 +3,8 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
+import { Browser } from '@capacitor/browser';
+import { App as CapacitorApp } from '@capacitor/app';
 import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
@@ -3624,8 +3626,21 @@ export default function App({ loginOnly = false }){
           setShowCurrencyOnboarding(true);
         }
       }
-      if(!p.data?.username&&!localStorage.getItem('fs_username_asked')&&confirmed){
-        setShowUsernameOnboarding(true);
+      if(!p.data?.username){
+        // Nom fourni par le provider OAuth (Google le renvoie à chaque connexion,
+        // Apple seulement à la toute première) : Supabase le garde dans
+        // user_metadata — on le PERSISTE dans profiles à la première entrée pour
+        // ne plus jamais dépendre de la réponse du provider, et la modale pseudo
+        // ne s'affiche alors pas. getSession = lecture locale, pas d'appel réseau.
+        const{data:{session:authSession}}=await supabase.auth.getSession();
+        const meta=authSession?.user?.user_metadata||{};
+        const providerName=String(meta.full_name||meta.name||'').trim().slice(0,30);
+        if(providerName){
+          const{error:unErr}=await supabase.rpc('set_profile_username',{p_username:providerName});
+          if(!unErr){setUsername(providerName);localStorage.setItem('fs_username_asked','1');}
+        } else if(!localStorage.getItem('fs_username_asked')&&confirmed){
+          setShowUsernameOnboarding(true);
+        }
       }
     }
     setLoading(false);
@@ -4636,6 +4651,69 @@ export default function App({ loginOnly = false }){
     }
   };
 
+  // OAuth navigateur (Apple web / Google) — flux PKCE, générique par provider.
+  // Web/desktop : redirection pleine page vers le provider, retour sur
+  //   /auth/callback?code=… (AuthCallback échange le code puis route vers /app).
+  // Android natif : skipBrowserRedirect + @capacitor/browser (Custom Tab), le
+  //   provider redirige vers app.fillsell.app://callback (intent-filter du
+  //   manifest) et l'écouteur appUrlOpen ci-dessous échange le code — dans la
+  //   MÊME webview que l'initiation, où vit le code_verifier PKCE.
+  // iOS natif n'utilise pas ce chemin : Apple y passe par le plugin natif
+  //   AppleSignIn (signInWithIdToken), voir handleAppleSignIn.
+  const handleOAuthSignIn = async (provider) => {
+    const { data: { session: existingSession } } = await supabase.auth.getSession();
+    if (existingSession) { navigate('/app'); return; }
+    setLoginError("");
+    try {
+      if (isNative) {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: 'app.fillsell.app://callback', skipBrowserRedirect: true },
+        });
+        if (error) throw error;
+        if (data?.url) await Browser.open({ url: data.url });
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        });
+        if (error) throw error;
+        // Redirection pleine page imminente — rien à faire ici.
+      }
+    } catch (e) {
+      console.error(`OAuth ${provider} error:`, e);
+      setLoginError(e.message || 'Erreur de connexion');
+    }
+  };
+
+  // Retour du deep link OAuth natif (app.fillsell.app://callback?code=…).
+  // Android uniquement : iOS passe par le plugin natif AppleSignIn et n'a pas
+  // (encore) le pod @capacitor/app — addListener y rejetterait en UNIMPLEMENTED.
+  useEffect(() => {
+    if (!isNative || platform !== 'android') return;
+    const subPromise = CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
+      if (!url?.startsWith('app.fillsell.app://callback')) return;
+      try { await Browser.close(); } catch { /* Custom Tab déjà fermé */ }
+      const m = url.match(/[?&]code=([^&#]+)/);
+      if (!m) return; // annulation ou erreur provider : on reste sur le login
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(decodeURIComponent(m[1]));
+        if (error) throw error;
+        if (data?.session) {
+          setUser(data.session.user);
+          setAppLoading(true); // splash pendant fetchAll, comme handleAppleSignIn
+          await fetchAll(data.session.user.id);
+          navigate('/app');
+        }
+      } catch (e) {
+        console.error('OAuth deep link error:', e);
+        setLoginError(e.message || 'Erreur de connexion');
+      }
+    });
+    return () => { subPromise.then(s => s.remove()).catch(() => {}); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleLogin(){
     if(isSigningIn||isSigningUp)return;
     setLoginError("");
@@ -4779,17 +4857,39 @@ export default function App({ loginOnly = false }){
           />
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {isNative&&platform==='ios'&&(
-            <div style={{marginBottom:14}}>
+          {/* Fournisseurs (2026-07-11) :
+              - iOS natif  : Apple via plugin natif (signInWithIdToken) — prioritaire, pas de Google.
+              - Web/desktop: Apple (OAuth PKCE → /auth/callback) + Google.
+              - Android    : Google (OAuth via Custom Tab + deep link app.fillsell.app://callback). */}
+          <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+            {isNative&&platform==='ios'&&(
               <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
                 <span style={{fontSize:19}}>&#63743;</span>
                 {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
               </button>
-              <div style={{textAlign:"center",color:UI.mute,fontSize:12.5,marginTop:12}}>
-                {lang==='fr'?'— ou —':'— or —'}
-              </div>
+            )}
+            {!isNative&&(
+              <button onClick={()=>handleOAuthSignIn('apple')} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
+                <span style={{fontSize:19}}>&#63743;</span>
+                {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
+              </button>
+            )}
+            {(!isNative||platform==='android')&&(
+              <button onClick={()=>handleOAuthSignIn('google')} style={{width:"100%",backgroundColor:UI.card,color:UI.ink,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,cursor:"pointer",fontFamily:"inherit"}}>
+                {/* Logo Google officiel (G quadricolore) */}
+                <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                {lang==='fr'?'Se connecter avec Google':'Sign in with Google'}
+              </button>
+            )}
+            <div style={{textAlign:"center",color:UI.mute,fontSize:12.5,marginTop:2}}>
+              {lang==='fr'?'— ou —':'— or —'}
             </div>
-          )}
+          </div>
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
             onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
