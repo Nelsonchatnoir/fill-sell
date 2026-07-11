@@ -3334,6 +3334,12 @@ export default function App({ loginOnly = false }){
   const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
   const [showUsernameOnboarding,setShowUsernameOnboarding]=useState(false);
   const [username,setUsername]=useState('');
+  // Bandeau retrait cross-plateforme (Phase B, 2026-07-11) : jobs frères d'un
+  // article VENDU encore en ligne ailleurs — flag platform_fields.
+  // pending_removal posé par l'orchestration serveur (sale-orchestration.ts).
+  // Le clic "Retirer" arme des jobs action='delete' (semi-auto : jamais de
+  // suppression sans ce clic).
+  const [pendingRemovals,setPendingRemovals]=useState([]);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
@@ -3643,6 +3649,13 @@ export default function App({ loginOnly = false }){
         }
       }
     }
+    // Annonces à retirer (article vendu, frères encore live) — voir le bandeau.
+    const{data:pendingRem}=await supabase.from('cross_post_jobs')
+      .select('id, platform, title, inventaire_id, listing_url, platform_fields')
+      .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
+      .contains('platform_fields',{pending_removal:true});
+    setPendingRemovals(pendingRem||[]);
+
     setLoading(false);
     setAppLoading(false);
     // Quota Lens : usage_logs est LA source de vérité (comptée côté serveur par
@@ -4011,6 +4024,33 @@ export default function App({ loginOnly = false }){
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
     setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
+  }
+
+  // ── Retrait cross-plateforme (Phase B, 2026-07-11) ─────────────────────────
+  // Arme les jobs action='delete' pour les annonces frères encore en ligne
+  // d'un article vendu (insert direct : RLS "Users manage own cross_post_jobs",
+  // aucune Pépite débitée — ce n'est pas une publication). Le flag
+  // pending_removal est levé pour que le bandeau disparaisse ; l'extension
+  // exécutera les suppressions à son prochain cycle (30 min max), en
+  // DELETE_DRY_RUN tant que les 3 validations réelles n'ont pas eu lieu.
+  async function armRemovals(group){
+    if(!group.length)return;
+    const rows=group.map(j=>({
+      user_id:user.id,inventaire_id:j.inventaire_id,platform:j.platform,
+      action:'delete',status:'pending',photo_option:'original',
+      title:j.title,listing_url:j.listing_url,platform_fields:{},
+    }));
+    const{error}=await supabase.from('cross_post_jobs').insert(rows);
+    if(error){console.error('[armRemovals] insert:',error.message);return;}
+    for(const j of group){
+      // .select() après update : les updates silencieusement bloqués par RLS
+      // ont déjà été vécus sur profiles — on vérifie que la ligne revient.
+      await supabase.from('cross_post_jobs')
+        .update({platform_fields:{...(j.platform_fields||{}),pending_removal:false}})
+        .eq('id',j.id).select('id');
+    }
+    setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)));
+    track('arm_removals',{count:group.length});
   }
 
   function markSold(item){
@@ -5435,6 +5475,41 @@ export default function App({ loginOnly = false }){
       </div>
 
       <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
+
+        {/* Bandeau retrait cross-plateforme : visible sur tous les onglets tant
+            que des annonces d'un article vendu restent en ligne ailleurs.
+            "Plus tard" masque localement (le flag reste → réapparaît au
+            prochain chargement), "Retirer" arme les jobs delete. */}
+        {pendingRemovals.length>0&&Object.entries(
+          pendingRemovals.reduce((acc,j)=>{
+            const k=String(j.inventaire_id??j.title??j.id);
+            (acc[k]=acc[k]||[]).push(j);return acc;
+          },{})
+        ).map(([k,group])=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const platLabels=group.map(g=>PLAT[g.platform]||g.platform).join(', ');
+          return (
+            <div key={k} style={{background:UI.paper,border:`1px solid ${UI.amber}55`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                <strong>🎉 {lang==='fr'?'Vendu :':'Sold:'} « {group[0].title||(lang==='fr'?'Article':'Item')} »</strong>
+                <br/>
+                {lang==='fr'
+                  ?<>Encore en ligne sur <strong>{platLabels}</strong> — retirer {group.length>1?`ces ${group.length} annonces`:'cette annonce'} ?</>
+                  :<>Still live on <strong>{platLabels}</strong> — remove {group.length>1?`these ${group.length} listings`:'this listing'}?</>}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>armRemovals(group)}
+                  style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?`Retirer (${group.length})`:`Remove (${group.length})`}
+                </button>
+                <button onClick={()=>setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)))}
+                  style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?'Plus tard':'Later'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
 
         {tab===0&&(
           <DashboardTab
