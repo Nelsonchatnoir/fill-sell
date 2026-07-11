@@ -10,12 +10,15 @@
 const { SESSION, LAST_POLL } = FILLSELL_CONFIG.STORAGE_KEYS;
 
 // Plateformes affichées, de haut en bas. `supported:false` => "Bientôt"
-// (Beebs pour l'instant : ligne atténuée, non sélectionnable).
+// (ligne atténuée, non sélectionnable). Beebs passé à true le 2026-07-11 :
+// le flag n'avait jamais suivi le handler (content-scripts/beebs.js complet
+// depuis le 2026-07-08, implemented:true côté background, DRY_RUN=true comme
+// les 3 autres — aucune publication réelle possible à ce stade).
 const PLATFORMS = [
-  { key: "vinted",    name: "Vinted",    supported: true,  loginUrl: "https://www.vinted.fr/" },
-  { key: "leboncoin", name: "Leboncoin", supported: true,  loginUrl: "https://www.leboncoin.fr/" },
-  { key: "ebay",      name: "eBay",      supported: true,  loginUrl: "https://www.ebay.fr/" },
-  { key: "beebs",     name: "Beebs",     supported: false, loginUrl: "https://www.beebs.app/" },
+  { key: "vinted",    name: "Vinted",    supported: true, loginUrl: "https://www.vinted.fr/" },
+  { key: "leboncoin", name: "Leboncoin", supported: true, loginUrl: "https://www.leboncoin.fr/" },
+  { key: "ebay",      name: "eBay",      supported: true, loginUrl: "https://www.ebay.fr/" },
+  { key: "beebs",     name: "Beebs",     supported: true, loginUrl: "https://www.beebs.app/" },
 ];
 
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
