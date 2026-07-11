@@ -472,6 +472,21 @@ async function processJob(job, accessToken) {
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
     } else if (result?.success) {
+      // Ré-authentification post-clic (2026-07-11, constaté en réel sur eBay) :
+      // le clic "Mettre en vente avec les frais affichés" a redirigé l'onglet
+      // vers signin.ebay.fr (clé d'accès / passkey). Le content script, lui,
+      // avait déjà répondu success — l'annonce n'existe pourtant PAS. La
+      // navigation détruit son contexte, donc SEUL le background peut voir
+      // l'écran de reconnexion. Traité comme un needsUser standard (même
+      // mécanique que l'adresse LBC manquante) : ré-armement borné, message
+      // clair, et le prochain poll retentera une fois l'utilisateur reconnecté.
+      const reauth = await detectReauth(tabId, job.platform);
+      if (reauth) {
+        console.warn(`[background] Job ${job.id} : ${reauth}`);
+        await rearmBounded(accessToken, job, reauth);
+        return { status: "needsUser", error: reauth };
+      }
+
       // A1 (2026-07-11) : l'URL de l'annonce créée est capturée CÔTÉ
       // BACKGROUND, pas par le content script — la redirection post-submit
       // peut détruire son contexte JS avant qu'il ait pu répondre (raison du
@@ -481,7 +496,7 @@ async function processJob(job, accessToken) {
       // sans listing_url, ni détection de vente ni retrait ciblé ne
       // fonctionneront pour ce job.
       let listingUrl = result.listingUrl ?? null;
-      if (!listingUrl) listingUrl = await captureListingUrl(tabId, job.platform);
+      if (!listingUrl) listingUrl = await captureListingUrl(tabId, job.platform, job);
       console.log(`[background] Job ${job.id} publié : ${listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
         ...completionExtras(job, result),
@@ -817,6 +832,58 @@ function waitForTabComplete(tabId, timeoutMs = 30_000) {
   });
 }
 
+// ── Ré-authentification interceptée après le clic de publication ───────────────
+// Une plateforme peut exiger une reconnexion AU MOMENT de l'action engageante,
+// même avec une session valide au remplissage : constaté en réel le 2026-07-11
+// sur eBay, où « Mettre en vente avec les frais affichés » a redirigé vers
+// signin.ebay.fr → « Se connecter avec une clé d'accès » (passkey). C'est
+// INFRANCHISSABLE par automatisation, et c'est très bien ainsi : on ne cherche
+// pas à contourner, on le signale à l'utilisateur.
+// La détection doit vivre ICI : la redirection détruit le contexte du content
+// script, qui a déjà répondu success sans savoir que l'annonce n'a pas été
+// créée. Sans cette garde, le job partait en "published" fantôme.
+const REAUTH_HOSTS = {
+  ebay: /(^|\.)signin\.ebay\.(fr|com)$/i,
+  vinted: /(^|\.)vinted\.(fr|com)$/i, // sous-chemin /auth uniquement, cf. ci-dessous
+  leboncoin: /(^|\.)auth\.leboncoin\.fr$/i,
+  beebs: /(^|\.)beebs\.app$/i,        // sous-chemin /login uniquement
+};
+const REAUTH_PATHS = {
+  vinted: /\/(auth|login|member\/signup_login)/i,
+  beebs: /\/(login|signin|connexion)/i,
+};
+
+async function detectReauth(tabId, platform) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab?.url) return null;
+
+  let host = "";
+  let path = "";
+  try {
+    const u = new URL(tab.url);
+    host = u.hostname;
+    path = u.pathname;
+  } catch {
+    return null;
+  }
+
+  const hostRe = REAUTH_HOSTS[platform];
+  const pathRe = REAUTH_PATHS[platform];
+  const hostMatch = hostRe ? hostRe.test(host) : false;
+  // Pour les plateformes dont le login vit sur le domaine principal, le host
+  // seul ne prouve rien — il faut aussi le chemin.
+  const isReauth = pathRe ? hostMatch && pathRe.test(path) : hostMatch;
+  if (!isReauth) return null;
+
+  const label = platform.charAt(0).toUpperCase() + platform.slice(1);
+  return (
+    `Reconnexion ${label} requise : la plateforme a demandé une ré-authentification ` +
+    `(${host}${path}) au moment de la publication — l'annonce n'a PAS été créée. ` +
+    `Se reconnecter sur ${label} dans Chrome (l'onglet de travail est resté ouvert) ; ` +
+    "le job repartira automatiquement au prochain passage."
+  );
+}
+
 // ── A1 : capture de l'URL de l'annonce créée (publication LIVE) ────────────────
 // Après le clic "publier" du content script, la plateforme redirige l'onglet
 // de travail vers l'annonce créée (ou une page de confirmation qui pointe
@@ -834,10 +901,26 @@ const LISTING_URL_PATTERNS = {
   vinted: /https:\/\/www\.vinted\.(?:fr|com)\/items\/\d+[^#\s"']*/i,
   leboncoin: /https:\/\/www\.leboncoin\.fr\/ad\/[^#\s"']+\/\d+[^#\s"']*/i,
   ebay: /https:\/\/www\.ebay\.(?:fr|com)\/itm\/[^#\s"']*\d{9,}[^#\s"']*/i,
-  beebs: /https:\/\/www\.beebs\.app\/[^#\s"']*(?:produit|product|annonce|item)[^#\s"']+/i,
+  beebs: /https:\/\/www\.beebs\.app\/[^#\s"']*(?:produit|product|annonce|item|p\/)[^#\s"']+/i,
 };
 
-async function captureListingUrl(tabId, platform, timeoutMs = 25_000) {
+// Page "Mes annonces" par plateforme (2026-07-11) : Leboncoin et Beebs NE
+// redirigent PAS vers l'annonce créée — leur dépôt finit sur une page de
+// confirmation générique ("Nous avons bien reçu votre annonce !" /
+// "Votre article a bien été ajouté…"), sans le moindre lien vers l'annonce.
+// Constaté en publication réelle. Le SEUL endroit où l'URL existe est la liste
+// des annonces du compte : on y fait un aller-retour, on repère l'annonce par
+// son TITRE (exact), et on revient. Vinted et eBay, eux, redirigent
+// directement — pas d'aller-retour pour eux.
+const MY_LISTINGS_URL = {
+  leboncoin: "https://www.leboncoin.fr/compte/part/mes-annonces",
+  // Beebs : l'annonce passe d'abord par "En cours de vérification"
+  // (/my-adverts/creating) avant d'atteindre "Actuellement en ligne"
+  // (/my-adverts) — délai de modération observé > 30 min. On regarde les deux.
+  beebs: "https://www.beebs.app/fr/account/my-adverts/creating",
+};
+
+async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000) {
   const pattern = LISTING_URL_PATTERNS[platform];
   if (!pattern) return null;
 
@@ -850,27 +933,93 @@ async function captureListingUrl(tabId, platform, timeoutMs = 25_000) {
     await sleep(1000);
   }
 
-  // Repli : page de confirmation sans redirection ("Voir mon annonce",
+  // Repli 1 : page de confirmation sans redirection ("Voir mon annonce",
   // félicitations eBay…) — un lien de la page matche le pattern.
+  const fromLinks = await findListingLinkInPage(tabId, pattern.source);
+  if (fromLinks) return fromLinks;
+
+  // Repli 2 (LBC/Beebs) : aller-retour par "Mes annonces". L'onglet de travail
+  // est navigué puis RENDU à la page où il était — un vendeur qui va vérifier
+  // son annonce fait exactement ce trajet.
+  const myListings = MY_LISTINGS_URL[platform];
+  if (!myListings) {
+    console.warn(`[background] captureListingUrl(${platform}) : aucune URL capturée — listing_url restera vide`);
+    return null;
+  }
+  return captureFromMyListings(tabId, platform, pattern, myListings, job?.title ?? null);
+}
+
+async function findListingLinkInPage(tabId, patternSource, title = null) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (patternSource) => {
-        const re = new RegExp(patternSource, "i");
-        for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+      func: (src, wanted) => {
+        const re = new RegExp(src, "i");
+        const links = Array.from(document.querySelectorAll("a[href]"));
+        // Avec un titre : on exige que le lien (ou son conteneur proche) le
+        // porte — sinon on ramènerait l'annonce d'un autre article.
+        if (wanted) {
+          const norm = (s) => (s || "").trim().toLowerCase();
+          const target = norm(wanted);
+          for (const a of links) {
+            const m = a.href.match(re);
+            if (!m) continue;
+            const scope = a.closest("article, li, div") ?? a;
+            if (norm(a.textContent).includes(target) || norm(scope.textContent).includes(target)) {
+              return m[0];
+            }
+          }
+          return null;
+        }
+        for (const a of links) {
           const m = a.href.match(re);
           if (m) return m[0];
         }
         return null;
       },
-      args: [pattern.source],
+      args: [patternSource, title],
     });
-    if (res?.result) return res.result;
+    return res?.result ?? null;
   } catch (e) {
-    console.warn(`[background] captureListingUrl(${platform}) repli lien :`, String(e?.message ?? e));
+    console.warn("[background] findListingLinkInPage :", String(e?.message ?? e));
+    return null;
   }
-  console.warn(`[background] captureListingUrl(${platform}) : aucune URL capturée — listing_url restera vide`);
-  return null;
+}
+
+async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, title) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const backTo = tab?.url ?? null;
+  try {
+    console.log(`[background] captureListingUrl(${platform}) : aller-retour par "Mes annonces"`);
+    await sleep(randInt(1500, 3500)); // laisser la plateforme enregistrer l'annonce
+    const loaded = waitForTabComplete(tabId);
+    await chrome.tabs.update(tabId, { url: myListingsUrl + WORK_TAB_FRAGMENT });
+    await loaded;
+    await sleep(randInt(1200, 2500)); // rendu de la liste
+
+    const url = await findListingLinkInPage(tabId, pattern.source, title);
+    if (url) {
+      console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces — ${url}`);
+      return url;
+    }
+    console.warn(
+      `[background] captureListingUrl(${platform}) : annonce introuvable dans Mes annonces ` +
+      "(modération en cours ?) — listing_url restera vide, la détection de vente ne couvrira pas ce job."
+    );
+    return null;
+  } catch (e) {
+    console.warn(`[background] captureFromMyListings(${platform}) :`, String(e?.message ?? e));
+    return null;
+  } finally {
+    // Rendre l'onglet de travail à sa page d'origine (page de confirmation) :
+    // le job suivant le renaviguera de toute façon, mais on ne le laisse pas
+    // planté sur la liste des annonces du vendeur.
+    if (backTo) {
+      const back = waitForTabComplete(tabId).catch(() => {});
+      await chrome.tabs.update(tabId, { url: backTo }).catch(() => {});
+      await back;
+    }
+  }
 }
 
 // ── A2 : détection de vente sur les annonces published ─────────────────────────

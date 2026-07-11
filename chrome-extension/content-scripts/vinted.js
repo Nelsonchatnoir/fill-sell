@@ -221,7 +221,7 @@ async function fillListingForm(job) {
     };
   }
 
-  if (job.photos?.length) await uploadPhotos(job.photos);
+  const photoResult = job.photos?.length ? await uploadPhotos(job.photos) : null;
   if (job.title) await fillTextField('#title, [data-testid="title--input"]', job.title);
   if (job.description) await fillTextField('#description, [data-testid="description--input"]', job.description);
 
@@ -232,6 +232,12 @@ async function fillListingForm(job) {
   // suivent sautent avec un warning en cas de libellé introuvable, plutôt
   // que de faire échouer le job entier sur un détail.
   const warnings = [];
+  if (photoResult?.duplicated) {
+    warnings.push(
+      `photos: ${job.photos.length} fournie(s), complétées à ${photoResult.count} par duplication ` +
+      "(Vinted exige 3 photos minimum sur les marques premium)"
+    );
+  }
 
   if (fields.marque) {
     // Deux sections dans le menu marque avec des ids différents :
@@ -327,8 +333,30 @@ async function fillListingForm(job) {
     return { success: true, dryRun: true, warnings, unfilledRequired: [] };
   }
 
+  // Filet avant le clic (2026-07-11) : un panneau de dropdown resté ouvert
+  // recouvre le bouton Publier et le clic part dans le vide, sans erreur.
+  await closeAnyOpenDropdown();
+
   const publishBtn = await waitForElement('[data-testid="upload-form-save-button"]');
   publishBtn.click();
+  await sleep(2500);
+
+  // Modale "Ajoute des photos à cette annonce" (marques premium, < 3 photos) :
+  // uploadPhotos complète désormais toujours à 3, mais si Vinted durcit sa
+  // règle, on la DÉTECTE au lieu de croire à une publication réussie — le job
+  // repart en needsUser plutôt qu'en published fantôme.
+  const photoModal = Array.from(document.querySelectorAll("h2, h3, [role='dialog']"))
+    .some((el) => /ajoute des photos à cette annonce/i.test(el.textContent || ""));
+  if (photoModal) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Vinted refuse la publication : « Ajoute des photos à cette annonce » (minimum imposé sur " +
+        "les marques premium). Ajouter des photos à l'annonce dans l'app, puis régénérer le job.",
+      warnings,
+    };
+  }
 
   // listingUrl : capturé CÔTÉ BACKGROUND (captureListingUrl, 2026-07-11) —
   // la redirection post-submit peut détruire ce contexte avant sendResponse,
@@ -563,28 +591,52 @@ async function fillTextField(selector, value) {
 }
 
 async function fillPriceField(value) {
-  // Prix = champ texte avec formatage monétaire live (virgule + €), pas
-  // type="number" natif. Bug "NaN €" : la version précédente relisait
-  // `el.value` à chaque caractère pour concaténer — mais Vinted reformate le
-  // champ à la volée sur "input" (masque monétaire), donc `el.value` reflète
-  // sa version déjà reformatée, pas notre saisie brute ; concaténer dessus
-  // produit une chaîne invalide que le parseur de Vinted ne peut plus lire.
-  // Fix : on construit la cible nous-mêmes (jamais de lecture de `el.value`),
-  // et on l'assigne en un seul coup — alternative validée par le rapport DOM
-  // ("définir la valeur puis déclencher input/change/blur").
+  // Prix = champ texte à masque monétaire live (virgule + €), pas type="number".
   //
-  // ⚠️ EXCEPTION VOLONTAIRE au timing humain (2026-07-09) : typeHuman
-  // concatène sur el.value, ce qui ré-introduirait exactement le bug "NaN €"
-  // décrit ci-dessus sur ce champ masqué. Un prix fait 2 à 4 caractères — la
-  // pose en un coup n'est pas le signal de vitesse qui a déclenché le blocage
-  // (c'étaient le titre et la description). On encadre de pauses humaines.
+  // ⚠️ HISTORIQUE — deux pièges successifs, le second constaté en PUBLICATION
+  // RÉELLE le 2026-07-11 :
+  //   1. typeHuman concatène sur el.value, que Vinted reformate à la volée →
+  //      chaîne invalide ("NaN €"). D'où l'ancienne pose en un coup.
+  //   2. Mais setNativeValue NE SUFFIT PAS : il n'émet qu'un Event("input")
+  //      générique, sans inputType ni data. Le masque de Vinted ne met alors
+  //      pas à jour SON état interne — le champ AFFICHE bien "200,00 €" mais
+  //      la soumission est refusée avec « Le champ prix doit être supérieur
+  //      ou égal à 1.0 » (constaté sur l'annonce 9376376044 : publication
+  //      bloquée jusqu'à une frappe clavier manuelle).
+  // Fix : frappe caractère par caractère via document.execCommand("insertText")
+  // — c'est ce que fait déjà leboncoin.js (typeInto) sur ses inputs React, et
+  // c'est la seule voie qui produit un vrai InputEvent (inputType/data) sans
+  // relire el.value. setNativeValue reste en repli si execCommand disparaît
+  // (déprécié mais toujours supporté par Chrome).
   const el = await waitForElement('#price, [data-testid="price-input--input"]');
   await humanPause();
   el.focus();
+  try { el.setSelectionRange?.(0, el.value.length); } catch { /* pas de sélection sur ce type */ }
+
   const str = String(value).replace(".", ",");
-  setNativeValue(el, str);
+  let ok = true;
+  for (const char of str) {
+    dispatchKey(el, "keydown", char);
+    dispatchKey(el, "keypress", char);
+    ok = document.execCommand("insertText", false, char) && ok;
+    dispatchKey(el, "keyup", char);
+    if (!ok) break;
+    await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+  }
+  if (!ok) {
+    console.warn("[vinted] ⚠️ prix : execCommand indisponible — repli setNativeValue (validation Vinted possiblement refusée)");
+    setNativeValue(el, str);
+  }
   el.dispatchEvent(new Event("blur", { bubbles: true }));
   await humanPause();
+
+  // Vérification : le champ doit contenir un montant non nul. Si la validation
+  // Vinted a rejeté la saisie, l'erreur remonte AU MOMENT du clic Publier —
+  // autant la détecter ici, où le message est actionnable.
+  const shown = String(el.value ?? "");
+  if (!/[1-9]/.test(shown)) {
+    throw new Error(`Prix non pris en compte par Vinted (champ = "${shown}") — la saisie masquée a été rejetée.`);
+  }
 }
 
 async function openDropdown(triggerSelector) {
@@ -641,17 +693,25 @@ function findButtonByExactText(text) {
   return null;
 }
 
+// Valide ET FERME le panneau. Le "Fait" n'existe pas partout (Matière/Couleur
+// en multi-sélection n'en ont pas) : après le clic éventuel, on GARANTIT que
+// le panneau a disparu (closeAnyOpenDropdown → Échap), sinon il recouvre le
+// bouton Publier — bug constaté en publication réelle le 2026-07-11.
 async function confirmDropdownIfNeeded() {
   const doneBtn = findButtonByExactText("Fait");
-  if (doneBtn) {
-    doneBtn.click();
-    // Attente active de la fermeture réelle du panneau plutôt qu'un délai
-    // fixe : hypothèse confirmée par test réel — le clic sur #brand juste
-    // après "Fait" (250 ms fixes) tombait sur la modale Catégorie encore en
-    // train de se démonter, #brand-search-input n'apparaissait jamais.
-    await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 3000);
-    await humanPause();
+  if (!doneBtn) {
+    await closeAnyOpenDropdown();
+    return;
   }
+  doneBtn.click();
+  // Attente active de la fermeture réelle du panneau plutôt qu'un délai
+  // fixe : hypothèse confirmée par test réel — le clic sur #brand juste
+  // après "Fait" (250 ms fixes) tombait sur la modale Catégorie encore en
+  // train de se démonter, #brand-search-input n'apparaissait jamais.
+  if (!(await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 3000))) {
+    await closeAnyOpenDropdown(); // "Fait" cliqué mais panneau récalcitrant
+  }
+  await humanPause();
 }
 
 // Match exact d'abord (texte entier, ou segment pour les grilles de taille
@@ -770,11 +830,29 @@ async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000) {
 // Referme proprement un panneau resté ouvert après un échec de sélection —
 // sans ça, le champ suivant échouerait en cascade (openDropdown attendrait
 // la disparition d'un panneau qui ne se ferme jamais).
+// Constaté en publication RÉELLE (2026-07-11) : le panneau MATIÈRE
+// (multi-sélection, pas de bouton "Fait") reste OUVERT après le clic sur une
+// option et recouvre le bas du formulaire — le clic suivant sur "Ajouter" ne
+// part jamais. Le clic sur document.body ne le referme pas non plus. Seule la
+// touche Échap ferme ces panneaux. Cascade : "Fait" → Échap → clic extérieur.
 async function closeAnyOpenDropdown() {
   if (!document.querySelector(DROPDOWN_PANEL_SELECTOR)) return;
   const done = findButtonByExactText("Fait");
-  if (done) done.click();
-  else document.body.click();
+  if (done) {
+    done.click();
+    if (await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000)) {
+      await humanPause();
+      return;
+    }
+  }
+  // Échap : la seule voie confirmée pour les panneaux multi-sélection.
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 27, which: 27, bubbles: true, cancelable: true, composed: true }));
+  document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", keyCode: 27, which: 27, bubbles: true, cancelable: true, composed: true }));
+  if (await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000)) {
+    await humanPause();
+    return;
+  }
+  document.body.click(); // dernier repli
   await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
   await humanPause();
 }
@@ -947,8 +1025,10 @@ async function selectColors(colorNames, warnings = []) {
       warnings.push(note);
     }
   }
-  document.body.click(); // fermer le menu, pas de bouton "valider" identifié
-  await humanPause();
+  // Multi-sélection sans bouton "valider" : le clic body NE FERME PAS le
+  // panneau (constaté en réel le 2026-07-11, même famille que Matière) — on
+  // passe par la cascade Échap de closeAnyOpenDropdown.
+  await closeAnyOpenDropdown();
 }
 
 async function selectPackageSize(size = "Petit") {
@@ -969,8 +1049,31 @@ async function urlToFile(url, index) {
   return new File([blob], `photo_${index}.${ext}`, { type: blob.type });
 }
 
+// Minimum 3 photos (constaté en publication réelle le 2026-07-11) : avec 2
+// photos sur un article de marque premium (Patagonia), le clic Publier ouvre
+// une modale bloquante « Ajoute des photos à cette annonce — Les annonces
+// comportant des articles de luxe et des articles haut de gamme doivent
+// inclure au moins 3 photos pour prouver leur authenticité ». Vinted ne dit
+// PAS à l'avance quelles marques sont concernées : on complète donc TOUJOURS
+// à 3 en dupliquant la dernière photo fournie (mieux qu'une annonce bloquée ;
+// l'utilisateur peut retirer le doublon à la main). Aucun effet si l'app en
+// fournit déjà 3 ou plus.
+const VINTED_MIN_PHOTOS = 3;
+
 async function uploadPhotos(photos) {
-  const files = await Promise.all(photos.map((p, i) => urlToFile(p.url, i)));
+  const source = photos.slice();
+  const duplicated = source.length > 0 && source.length < VINTED_MIN_PHOTOS;
+  while (source.length > 0 && source.length < VINTED_MIN_PHOTOS) {
+    source.push(source[source.length - 1]);
+  }
+  if (duplicated) {
+    console.warn(
+      `[vinted] ⚠️ ${photos.length} photo(s) fournie(s) — complété à ${VINTED_MIN_PHOTOS} par duplication ` +
+      "(minimum imposé par Vinted sur les marques premium, sinon modale bloquante au clic Publier)."
+    );
+  }
+
+  const files = await Promise.all(source.map((p, i) => urlToFile(p.url, i)));
   const input = await waitForElement('input[data-testid="add-photos-input"]');
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
@@ -978,6 +1081,7 @@ async function uploadPhotos(photos) {
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await sleep(1500 * files.length); // laisser le temps à l'upload asynchrone Vinted
+  return { count: files.length, duplicated };
 }
 
 // Marqueur de version dans le log : permet de vérifier depuis la console
