@@ -270,6 +270,18 @@ serve(async (req) => {
     // inventaire n'existe encore (switch "ajouter au stock" différé/désactivé) — évite de
     // dépendre d'une ligne DB qui n'est créée qu'à la publication, voire jamais.
     const item_data = body.item_data && typeof body.item_data === "object" ? body.item_data : null;
+    // canonical_fields (2026-07-11, Sujet 4) : taille/couleur/matiere/marque
+    // déjà connus du CLIENT (Lens taille_estimee, saisie utilisateur…) —
+    // l'inventaire n'a pas ces colonnes, seul le client peut les fournir.
+    // Quand une valeur est présente, elle est injectée dans itemContext comme
+    // contrainte ET sert de source prioritaire à la canonicalisation
+    // post-génération (voir après le Promise.all).
+    const canonicalIn = body.canonical_fields && typeof body.canonical_fields === "object" ? body.canonical_fields : {};
+    const canonicalProvided: Record<string, string> = {};
+    for (const k of ["taille", "couleur", "matiere", "marque"]) {
+      const v = canonicalIn[k];
+      if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
+    }
 
     // ── Mode ciblé "resolve_genre" (2026-07-09) ───────────────────────────────
     // Relance UNIQUEMENT le champ genre avec une instruction stricte. Appelé
@@ -483,6 +495,13 @@ serve(async (req) => {
     }
 
     // ── Step 3: Claude Haiku — title + description per platform ──────────────
+    // Champs canoniques connus (client) : injectés comme CONTRAINTES — chaque
+    // prompt plateforme doit les recopier tels quels au lieu de ré-inférer
+    // (4 inférences indépendantes divergeaient : taille "M" Vinted/Beebs vs
+    // "L" eBay/LBC sur le même article, job du 2026-07-11 09:56).
+    const canonicalCtx = Object.entries(canonicalProvided).map(
+      ([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v} (valeur CONFIRMÉE — recopie-la TELLE QUELLE dans platform_fields.${k}, ne la ré-infère pas)`
+    );
     const itemContext = [
       item.marque && `Marque: ${item.marque}`,
       item.titre && `Article: ${item.titre}`,
@@ -490,6 +509,7 @@ serve(async (req) => {
       item.description && `Description: ${item.description}`,
       item.statut && `État: ${item.statut}`,
       item.prix_vente != null && `Prix: ${item.prix_vente}€`,
+      ...canonicalCtx,
     ].filter(Boolean).join("\n");
 
     const fallbackTitle = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "Article";
@@ -552,6 +572,47 @@ serve(async (req) => {
         }
       })
     );
+
+    // ── Canonicalisation taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──
+    // Les 4 appels ci-dessus restent indépendants et non déterministes : le
+    // même article peut sortir taille "M" chez Vinted et "L" chez eBay. Une
+    // seule valeur SOURCE par champ, répliquée partout — zéro appel IA en
+    // plus : priorité à la valeur client (canonical_fields), sinon première
+    // réponse non vide dans un ordre FIXE, français d'abord (l'anglais
+    // résiduel d'eBay — "Black" — ne doit jamais devenir la référence).
+    // Chaque plateforme garde ensuite sa propre conversion vers son
+    // vocabulaire local (cascades extension / selects app, inchangés).
+    // La réplication ne pose un champ QUE sur les plateformes qui le
+    // CONSOMMENT réellement. taille inclut leboncoin : son PROMPT n'en a pas
+    // (volontaire, cf. Sujet 3) mais leboncoin.js remplit la Pointure
+    // (critère OBLIGATOIRE sur Mode>Chaussures) depuis fields.taille — la
+    // valeur arrive par la config stepper côté app, pas par la génération.
+    // couleur reste hors Leboncoin (aucun schéma ni handler ne la lit).
+    // ⚠️ Carte de RÉPLICATION ≠ carte de GARDE côté app : la garde
+    // pré-publication ne bloque JAMAIS Leboncoin sur taille/couleur.
+    {
+      const FIELD_PLATFORMS: Record<string, string[]> = {
+        taille:  ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"],
+        couleur: ["vinted", "beebs", "ebay"],
+        matiere: ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"],
+        marque:  ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"],
+      };
+      const PRIORITY = ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"];
+      const clean = (v: unknown): string | null => {
+        const s = typeof v === "string" ? v.trim() : "";
+        return s && s.toLowerCase() !== "null" ? s : null;
+      };
+      for (const [field, consumers] of Object.entries(FIELD_PLATFORMS)) {
+        const canonical = canonicalProvided[field] ??
+          PRIORITY.filter((p) => consumers.includes(p))
+            .map((p) => clean(platformListings[p]?.platform_fields?.[field]))
+            .find(Boolean) ?? null;
+        if (!canonical) continue; // rien de fiable nulle part : le client bloquera/demandera
+        for (const p of consumers) {
+          if (platformListings[p]) platformListings[p].platform_fields[field] = canonical;
+        }
+      }
+    }
 
     // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
     return json({

@@ -31,6 +31,32 @@ export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
+// ── Champs partagés taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──────
+// UNE valeur source par champ (canonicalisée côté generate-listing), deux
+// cartes distinctes :
+// - PROPAGATION : qui reçoit la valeur répliquée — suit les schémas/handlers
+//   réels (taille inclut leboncoin : leboncoin.js remplit la Pointure,
+//   critère OBLIGATOIRE sur Mode>Chaussures, depuis fields.taille).
+// - GARDE : qui peut BLOQUER la publication si le champ manque — décision
+//   produit : jamais Leboncoin sur couleur (aucun champ structuré), et sur
+//   taille SEULEMENT pour Mode>Chaussures (la Pointure y est OBLIGATOIRE —
+//   "Veuillez choisir une pointure", shoe_size ; le critère taille des
+//   autres catégories, clothing_st, n'est pas requis). Cette exception est
+//   résolue dynamiquement dans missingSharedFields, pas dans la carte.
+const SHARED_FIELD_KEYS = ["taille", "couleur", "matiere", "marque"];
+const SHARED_PROPAGATION = {
+  taille:  ["vinted", "beebs", "leboncoin", "ebay"],
+  couleur: ["vinted", "beebs", "ebay"],
+  matiere: ["vinted", "beebs", "leboncoin", "ebay"],
+  marque:  ["vinted", "beebs", "leboncoin", "ebay"],
+};
+const SHARED_GUARD = {
+  taille:  ["vinted", "beebs", "ebay"],
+  couleur: ["vinted", "beebs", "ebay"],
+  matiere: ["vinted", "beebs", "leboncoin", "ebay"],
+  marque:  ["vinted", "beebs", "leboncoin", "ebay"],
+};
+
 // Options traduites pour l'affichage, mais `value` reste le libellé FR canonique
 // envoyé aux plateformes (Vinted/Leboncoin/Beebs restent des sites francophones).
 function getPlatformFieldsConfig(t) {
@@ -704,7 +730,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
-function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, lang }) {
+function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang }) {
   const { t } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -858,10 +884,16 @@ function StepGeneration({ generating, generateError, platformListings, processed
                       {fieldConfigs.map((field, fi) => {
                         const val = e.platform_fields?.[field.key] ?? "";
                         const isLastOdd = fi === fieldConfigs.length - 1 && fieldConfigs.length % 2 !== 0;
-                        const onChange = nv => setEdited(prev => ({
-                          ...prev,
-                          [p]: { ...prev[p], platform_fields: { ...prev[p].platform_fields, [field.key]: nv } },
-                        }));
+                        const onChange = nv => {
+                          // Champ partagé édité à la main sur CETTE plateforme :
+                          // le lien avec la source canonique casse pour cette
+                          // copie seulement (Sujet 4, override local sacré).
+                          noteOverride?.(p, field.key);
+                          setEdited(prev => ({
+                            ...prev,
+                            [p]: { ...prev[p], platform_fields: { ...prev[p].platform_fields, [field.key]: nv } },
+                          }));
+                        };
                         return (
                           <div key={field.key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
                             <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{field.label}</div>
@@ -950,9 +982,19 @@ function StockToggle({ checked, onChange, label, hint }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
+  // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
+  // inputs que l'éditeur de StepGeneration — la taille réutilise les groupes
+  // (lettres/numérique/pointures) de la config Vinted, le reste est texte.
+  const fieldsCfg = getPlatformFieldsConfig(t);
+  const sharedFieldCfg = {
+    taille:  fieldsCfg.vinted.find(f => f.key === "taille"),
+    couleur: { key:"couleur", label:t("fieldColorLabel"),    type:"text" },
+    matiere: { key:"matiere", label:t("fieldMaterialLabel"), type:"text" },
+    marque:  { key:"marque",  label:t("fieldBrandLabel"),    type:"text" },
+  };
 
   return (
     <div>
@@ -989,6 +1031,54 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
       {publishError && (
         <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
           {publishError}
+        </div>
+      )}
+
+      {missingSharedFields.length > 0 && (
+        // Encart inline (Sujet 4) : les champs partagés manquants se
+        // complètent ICI, sans quitter le step — l'écriture passe par
+        // onSharedFieldChange qui met à jour la SOURCE canonique (donc
+        // toutes les copies plateformes non éditées à la main d'un coup).
+        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, marginBottom:12 }}>
+          <div style={{ fontSize:13, color:"#B91C1C", fontWeight:600, marginBottom:10 }}>
+            {t("stepPublishSharedMissingTitle")}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            {missingSharedFields.map((key, fi) => {
+              const field = sharedFieldCfg[key];
+              const val = sharedFields[key] ?? "";
+              const isLastOdd = fi === missingSharedFields.length - 1 && missingSharedFields.length % 2 !== 0;
+              return (
+                <div key={key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
+                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{field.label}</div>
+                  {field.type === "select" ? (
+                    <select
+                      value={val}
+                      onChange={ev => onSharedFieldChange?.(key, ev.target.value)}
+                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: val ? T.ink : T.mute }}
+                    >
+                      <option value="">—</option>
+                      {field.groups
+                        ? field.groups.map(g => (
+                            <optgroup key={g.groupLabel} label={g.groupLabel}>
+                              {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </optgroup>
+                          ))
+                        : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={ev => onSharedFieldChange?.(key, ev.target.value)}
+                      placeholder="—"
+                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1095,6 +1185,10 @@ export default function ListingPreviewScreen({
   const [platformListings, setPlatformListings]       = useState(null);
   const [processedPhotos, setProcessedPhotos]         = useState([]);
   const [edited, setEdited]                           = useState({});
+  // Champs partagés (Sujet 4) : source canonique unique + trace des copies
+  // éditées à la main (sacrées : plus jamais resynchronisées).
+  const [sharedFields, setSharedFields]     = useState({ taille:"", couleur:"", matiere:"", marque:"" });
+  const [sharedOverrides, setSharedOverrides] = useState({}); // { [platform]: Set<fieldKey> }
 
   // Step 3 — sélection plateformes (chips) + publication
   const [selected, setSelected]         = useState(new Set(PLATFORMS_DEFAULT));
@@ -1341,6 +1435,16 @@ export default function ListingPreviewScreen({
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
           ...(invId ? { inventaire_id: invId } : { item_data: itemData }),
+          // Champs canoniques déjà connus du client (Lens taille_estimee,
+          // article) : le serveur les injecte comme contraintes dans les 4
+          // prompts et les réplique après génération (Sujet 4) —
+          // l'inventaire n'a pas ces colonnes, seul le client les connaît.
+          canonical_fields: {
+            taille:  initialListing?.taille_estimee ?? initialListing?.taille ?? null,
+            couleur: initialListing?.couleur ?? null,
+            matiere: initialListing?.matiere ?? null,
+            marque:  initialListing?.marque  ?? null,
+          },
           photos,
           platforms,
           photo_option: photoOption,
@@ -1396,6 +1500,20 @@ export default function ListingPreviewScreen({
         }
       }
 
+      // Champs partagés (Sujet 4) : initialisés depuis les copies fraîches —
+      // le serveur a déjà canonicalisé, la première copie non vide par champ
+      // EST la canonique. Overrides remis à zéro : nouvelle génération =
+      // nouvelles copies, plus aucune édition manuelle à protéger.
+      const shared = { taille:"", couleur:"", matiere:"", marque:"" };
+      for (const key of SHARED_FIELD_KEYS) {
+        for (const p of SHARED_PROPAGATION[key]) {
+          const v = String(initialEdited[p]?.platform_fields?.[key] ?? "").trim();
+          if (v) { shared[key] = v; break; }
+        }
+      }
+      setSharedFields(shared);
+      setSharedOverrides({});
+
       setEdited(initialEdited);
       setPlatformListings(data);
     } catch (e) {
@@ -1405,12 +1523,74 @@ export default function ListingPreviewScreen({
     }
   }
 
+  // ── Champs partagés : setter propagateur + garde générique (Sujet 4) ──────
+  // Écrit la source canonique ET la propage aux copies plateformes non
+  // éditées à la main (override local sacré, cf. sharedOverrides).
+  function setSharedField(key, value) {
+    setSharedFields(prev => ({ ...prev, [key]: value }));
+    setEdited(prev => {
+      const next = { ...prev };
+      for (const p of SHARED_PROPAGATION[key]) {
+        if (!next[p]) continue;
+        if (sharedOverrides[p]?.has(key)) continue;
+        next[p] = { ...next[p], platform_fields: { ...next[p].platform_fields, [key]: value } };
+      }
+      return next;
+    });
+  }
+  // Édition manuelle d'UNE copie plateforme : le lien casse pour cette copie
+  // seulement (les autres restent synchronisées sur la source).
+  function noteSharedOverride(platform, key) {
+    if (!SHARED_FIELD_KEYS.includes(key)) return;
+    setSharedOverrides(prev => {
+      const set = new Set(prev[platform] ?? []);
+      set.add(key);
+      return { ...prev, [platform]: set };
+    });
+  }
+  // Garde générique : un champ partagé vide bloque si AU MOINS une plateforme
+  // SÉLECTIONNÉE le consomme (SHARED_GUARD). Dérivé de l'état → corriger un
+  // champ dans l'encart inline de StepPublish re-render ce step seulement.
+  // Exception taille×Leboncoin (2026-07-11) : LBC ne bloque sur la taille
+  // QUE pour Mode>Chaussures (Pointure obligatoire, shoe_size) — même
+  // détection icône→getLbcCategoryPath que le bloc LBC de handlePublish.
+  const missingSharedFields = useMemo(() => {
+    const lbcIcon = detectObjectIcon(
+      edited.leboncoin?.title,
+      edited.leboncoin?.description,
+      edited.leboncoin?.platform_fields?.categorie || initialListing?.categorie
+    );
+    const lbcPath = getLbcCategoryPath(lbcIcon);
+    const lbcShoes = lbcPath?.[0] === "Mode" && lbcPath?.[1] === "Chaussures";
+    const guardPlatforms = (key) =>
+      key === "taille" && lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD[key];
+    return SHARED_FIELD_KEYS.filter(key =>
+      !String(sharedFields[key] ?? "").trim() &&
+      [...selected].some(p => guardPlatforms(key).includes(p))
+    );
+  }, [sharedFields, selected, edited, initialListing]);
+
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
     setPublishing(true);
     setPublishError("");
     try {
+      // ── Filet champs partagés (Sujet 4) : l'encart inline de StepPublish
+      // est le chemin nominal, ce re-check attrape un état périmé ou une
+      // course — même règle SHARED_GUARD, avant tout effet de bord.
+      if (missingSharedFields.length) {
+        const labels = {
+          taille:  t("fieldSizeLabel"),
+          couleur: t("fieldColorLabel"),
+          matiere: t("fieldMaterialLabel"),
+          marque:  t("fieldBrandLabel"),
+        };
+        throw new Error(tpl("stepPublishSharedFieldsMissing", {
+          fields: missingSharedFields.map(k => labels[k]).join(", "),
+        }));
+      }
+
       // Switch "Ajouter au stock" ON et article pas encore en stock : on le crée
       // maintenant, juste avant de générer les jobs de publication, pour que
       // cross_post_jobs.inventaire_id pointe vers la bonne ligne dès l'insert.
@@ -1927,6 +2107,7 @@ export default function ListingPreviewScreen({
             setEdited={setEdited}
             onPhotoClick={setLightboxUrl}
             onRetry={handleGeneratePlatforms}
+            noteOverride={noteSharedOverride}
             lang={lang}
           />
         )}
@@ -1942,6 +2123,9 @@ export default function ListingPreviewScreen({
             setAddToStock={setAddToStock}
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
+            missingSharedFields={missingSharedFields}
+            sharedFields={sharedFields}
+            onSharedFieldChange={setSharedField}
           />
         )}
       </div>
