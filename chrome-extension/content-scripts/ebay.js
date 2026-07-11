@@ -103,6 +103,17 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
   const warnings = [];
+  // Trace des specifics réellement posés — ou trouvés déjà remplis — pendant
+  // ce run (2026-07-11). Sert UNIQUEMENT au constat unfilledRequired du
+  // DRY_RUN : fillSpecificSafe ne dit pas QUEL label du groupe a matché, donc
+  // un succès marque tout le groupe de synonymes (même logique que la
+  // comparaison en face dans computeUnfilledRequired).
+  const filledSpecifics = new Set();
+  const fillSpecificTracked = async (labels, value) => {
+    const ok = await fillSpecificSafe(labels, value, warnings);
+    if (ok) for (const l of labels) filledSpecifics.add(normalizeFuzzy(l));
+    return ok;
+  };
 
   // Session : signin.ebay.fr intercepte la navigation quand le compte n'est
   // pas connecté. Même règle que Vinted/LBC : needsUser (ré-armement borné
@@ -217,18 +228,18 @@ async function fillListingForm(job) {
   // ("Taille" en vêtements, "Pointure EU" en chaussures...) — on prend le
   // premier présent sur la page.
   if (fields.marque) {
-    await fillSpecificSafe(["Marque"], fields.marque, warnings);
+    await fillSpecificTracked(["Marque"], fields.marque);
   }
   const taille = fields.taille ? String(fields.taille).replace(/^EU\s*/i, "") : null;
   if (taille) {
-    await fillSpecificSafe(["Taille", "Pointure EU", "Pointure"], taille, warnings);
+    await fillSpecificTracked(["Taille", "Pointure EU", "Pointure"], taille);
   }
   const couleur = fields.colors?.[0] || fields.couleur;
   if (couleur) {
-    await fillSpecificSafe(["Couleur"], couleur, warnings);
+    await fillSpecificTracked(["Couleur"], couleur);
   }
   if (fields.matiere) {
-    await fillSpecificSafe(["Matière", "Matériau", "Matériaux"], fields.matiere, warnings);
+    await fillSpecificTracked(["Matière", "Matériau", "Matériaux"], fields.matiere);
   }
 
   // ── État ──────────────────────────────────────────────────────────────────
@@ -282,15 +293,19 @@ async function fillListingForm(job) {
       "\nChamps plateforme:", fields,
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
     );
-    // unfilledRequired systématiquement VIDE sur eBay, même raison que Vinted :
-    // le seul champ marqué obligatoire dans le code est le genre
-    // (ebayGenreRequired), traité par precheckJob avant navigation. Les item
-    // specifics sont TOUS documentés non bloquants ici (warning si introuvable)
-    // — le référentiel des aspects réellement obligatoires par catégorie est en
-    // cours de constitution via l'API Taxonomy (table ebay_item_aspects), et
-    // c'est LUI qui pourra un jour alimenter cette liste. Rien n'est deviné
-    // d'ici là.
-    return { success: true, dryRun: true, warnings, unfilledRequired: [] };
+    // unfilledRequired réel depuis le 2026-07-11 : le job porte
+    // fields.ebayRequiredAspects (référentiel API Taxonomy, table
+    // ebay_item_aspects lue par ListingPreviewScreen) et on compare aux
+    // specifics effectivement posés pendant ce run. Champ absent du job
+    // (catégorie hors référentiel) → [] , comportement d'avant. Le genre
+    // (ebayGenreRequired) reste traité par precheckJob avant navigation.
+    const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics);
+    if (unfilledRequired.length) {
+      const note = `aspects obligatoires eBay non remplis (${unfilledRequired.length}) : ${unfilledRequired.join(", ")}`;
+      console.warn(`[ebay] ⚠️ ${note}`);
+      warnings.push(note);
+    }
+    return { success: true, dryRun: true, warnings, unfilledRequired };
   }
 
   // Publication LIVE : le clic "Mettre en vente avec les frais affichés"
@@ -339,6 +354,34 @@ function specificRow(labelBtn) {
     if (expandBtn && expandBtn !== labelBtn) return { row, expandBtn };
   }
   return null;
+}
+
+// ── Constat des obligatoires non remplis (2026-07-11) ───────────────────────
+// fields.ebayRequiredAspects = noms d'aspects required=true de la catégorie
+// (référentiel API Taxonomy, posé sur le job par ListingPreviewScreen). Pur
+// CONSTAT : on compare la liste aux specifics posés pendant ce run
+// (filledSpecifics) et aux valeurs pré-remplies par eBay lui-même (lecture
+// SEULE du bouton-valeur — même anatomie et même piège badge "Tendances" que
+// fillSpecificSafe). On ne tente RIEN de remplir ici : les obligatoires hors
+// de nos 4 champs (Type, Style, Longueur de la robe...) ressortent avec leur
+// label eBay exact — rapport honnête de ce qui manque, pas un mensonge
+// d'exhaustivité. ebayRequiredAspects absent (catégorie hors référentiel :
+// les 3 non-feuilles du mapping, ou id futur non re-fetché) → [] comme avant.
+function computeUnfilledRequired(fields, filledSpecifics) {
+  const required = Array.isArray(fields.ebayRequiredAspects) ? fields.ebayRequiredAspects : [];
+  const unfilled = [];
+  for (const name of required) {
+    if (filledSpecifics.has(normalizeFuzzy(name))) continue;
+    const found = findSpecificLabelButton([name]);
+    const anatomy = found ? specificRow(found.btn) : null;
+    const current = anatomy ? anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "") : "";
+    if (current) {
+      console.log(`[ebay] ${name}: obligatoire déjà pré-rempli par eBay ("${current}"), conservé`);
+      continue;
+    }
+    unfilled.push(name);
+  }
+  return unfilled;
 }
 
 async function fillSpecificSafe(labels, rawValue, warnings) {
@@ -403,9 +446,25 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
 
     // Menu ouvert : recherche + options. La recherche filtre ET permet
     // d'ajouter une valeur libre ("Recherchez/ajoutez des détails").
+    //
+    // ⚠️ Recherche SCOPÉE À LA LIGNE (relevé en session réelle 2026-07-11,
+    // catégorie 15687 T-shirts) : les menu-containers des specifics
+    // coexistent TOUS dans le DOM dès le rendu (10 relevés, un par ligne,
+    // le 1er du document étant celui de Marque), cachés tant que leur ligne
+    // n'est pas dépliée. L'ancien document.querySelector(SPECIFICS_MENU_SELECTOR)
+    // regardait donc toujours le container de MARQUE : Marque passait
+    // (container document-first), Couleur/Matière ne passaient jamais
+    // ("menu pas ouvert") alors que leur menu s'ouvrait bien — Taille passait
+    // par les toggles et Type/Département étaient pré-remplis, ce qui a
+    // masqué le bug. Le menu qui s'ouvre est .fake-menu-button__menu dans le
+    // .se-filter-menu-button de la ligne ; fallback document pour ne pas
+    // régresser si eBay téléporte un jour le menu hors de la ligne.
+    const holder = anatomy.expandBtn.closest(".se-filter-menu-button") || anatomy.row;
     const menu = await waitFor(() => {
-      const m = document.querySelector(SPECIFICS_MENU_SELECTOR);
-      return m && m.offsetParent !== null ? m : null;
+      const scoped = holder.querySelector(`${SPECIFICS_MENU_SELECTOR}, .fake-menu-button__menu`);
+      if (scoped && scoped.offsetParent !== null) return scoped;
+      const global = document.querySelector(SPECIFICS_MENU_SELECTOR);
+      return global && global.offsetParent !== null ? global : null;
     }, 5000);
     if (!menu) throw new Error(`menu du specific "${found.label}" pas ouvert`);
 
@@ -695,8 +754,18 @@ function containsAsWords(hay, needle) {
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
 }
 
-// Cascade v2 identique à vinted.js/leboncoin.js : exact → option⊂valeur (la
-// plus longue) → valeur⊂option (la plus courte) → composants (et/,/&/+).
+// Cascade v2 : exact → option⊂valeur (la plus longue) → valeur⊂option (la
+// plus courte) → composants (et/,/&/+).
+// ⚠️ DIVERGENCE avec vinted.js/leboncoin.js depuis le 2026-07-11 : le stage
+// "exact" ne fait PLUS le fallback label.split("/"). Chez Vinted, une case
+// "M / 38 / 10" est UNE option à équivalences (le split y est légitime) ;
+// chez eBay, "M/L" et "L" sont DEUX tailles DISTINCTES (demi-tailles) — le
+// split créait un faux positif : taille="L" matchait le segment "L" de
+// "M/L" (avant "L" dans le DOM) et .find() s'arrêtait là. Cas réel : job
+// 8dbdeb70 (taille="L", catégorie 15687) affichait "M/L" sélectionné alors
+// que l'option "L" existait. Un exact = la valeur ENTIÈRE de l'option, rien
+// d'autre ; si "L" n'existe pas, les stages fuzzy prennent le relais (avec
+// warning, donc jamais en silence).
 function findOptionCascade(root, optionSelector, text) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
@@ -704,9 +773,7 @@ function findOptionCascade(root, optionSelector, text) {
   if (!options.length) return null;
   const target = normalizeFuzzy(text);
 
-  const exact = options.find(
-    (o) => o.norm === target || o.label.split("/").some((p) => normalizeFuzzy(p) === target)
-  );
+  const exact = options.find((o) => o.norm === target);
   if (exact) return { ...exact, stage: "exact" };
 
   const optionInTarget = (t) =>
