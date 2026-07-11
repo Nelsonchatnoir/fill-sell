@@ -711,8 +711,9 @@ function findButtonByExactText(text) {
 
 // Valide ET FERME le panneau. Le "Fait" n'existe pas partout (Matière/Couleur
 // en multi-sélection n'en ont pas) : après le clic éventuel, on GARANTIT que
-// le panneau a disparu (closeAnyOpenDropdown → Échap), sinon il recouvre le
-// bouton Publier — bug constaté en publication réelle le 2026-07-11.
+// le panneau a disparu (closeAnyOpenDropdown → clic extérieur complet), sinon
+// il recouvre le bouton Publier — bug constaté en publication réelle du
+// 2026-07-11.
 async function confirmDropdownIfNeeded() {
   const doneBtn = findButtonByExactText("Fait");
   if (!doneBtn) {
@@ -1054,7 +1055,7 @@ async function selectColors(colorNames, warnings = []) {
   }
   // Multi-sélection sans bouton "valider" : le clic body NE FERME PAS le
   // panneau (constaté en réel le 2026-07-11, même famille que Matière) — on
-  // passe par la cascade Échap de closeAnyOpenDropdown.
+  // passe par le clic extérieur complet de closeAnyOpenDropdown.
   await closeAnyOpenDropdown();
 }
 
