@@ -90,9 +90,14 @@ Deno.serve(async (req) => {
 
   try {
     // ── Garde admin : seule la service_role key peut déclencher le fetch ────
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // Depuis la migration des clés API (07/2026), la SUPABASE_SERVICE_ROLE_KEY
+    // injectée ne correspond plus au JWT legacy que le gateway exige en Bearer :
+    // on accepte aussi le secret custom SERVICE_ROLE_KEY (= JWT legacy).
+    const injectedKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const customKey = Deno.env.get("SERVICE_ROLE_KEY");
     const auth = req.headers.get("Authorization") ?? "";
-    if (auth !== `Bearer ${serviceKey}`) {
+    const allowed = [injectedKey, customKey].filter(Boolean).map((k) => `Bearer ${k}`);
+    if (!allowed.includes(auth)) {
       return json({ error: "Réservé au service_role (fournir la SERVICE_ROLE_KEY en Bearer)" }, 403);
     }
 
@@ -194,7 +199,7 @@ Deno.serve(async (req) => {
 
     if (dryRun) return json(summary);
 
-    const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, (injectedKey ?? customKey)!);
     // Upsert par lots : évite un payload unique énorme (237 lignes × aspects).
     const CHUNK = 50;
     for (let i = 0; i < rows.length; i += CHUNK) {
