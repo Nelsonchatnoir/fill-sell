@@ -37,12 +37,20 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ────────────────────────────────
 // ⚠️ DELETE_DRY_RUN doit rester à true tant que 3 suppressions réelles n'ont
-// pas été validées manuellement (même règle que DRY_RUN pour la publication).
-// En dry-run : LOCALISE le contrôle de suppression sans JAMAIS le cliquer, et
-// remonte une trace pas-à-pas (relevé de sélecteurs pour la bascule live —
-// les sélecteurs ci-dessous sont des cascades défensives PAS ENCORE observées
-// sur une vraie page : aucune annonce live n'existait au moment du dev, cf.
-// session du 2026-07-11).
+// pas été validées manuellement (même règle que DRY_RUN pour la publication ;
+// la 1re suppression réelle a été validée en session pilotée le 2026-07-11 —
+// les 2 suivantes restent à faire avant la bascule).
+// SÉLECTEURS CONFIRMÉS en session réelle du 2026-07-11 (annonce
+// /items/9376376044 réellement publiée puis supprimée) :
+//   page annonce vendeur → button[data-testid="item-delete-button"]
+//     ("Supprimer" — visible directement, avec item-edit-button,
+//      item-hide-button, mark-as-sold-button, mark-as-reserved-button)
+//   modale "Supprimer l'article" →
+//     button[data-testid="item-delete-confirmation-button"]
+//       ("Confirmer et supprimer")
+//     button[data-testid="item-delete-cancelation-button"] ("Annuler")
+//   après confirmation : redirection vers /member/<id> ; l'URL de l'annonce
+//   sert ensuite une page "Page not found".
 const DELETE_DRY_RUN = true;
 
 async function deleteListing(job) {
@@ -57,11 +65,13 @@ async function deleteListing(job) {
   t(`page annonce ok : ${location.pathname}`);
   await humanPause(800, 1800);
 
-  // Cascade de localisation du contrôle "Supprimer" (annonce dont on est
-  // vendeur) : testid explicite → bouton/lien au texte exact → entrée d'un
-  // menu "plus d'options" ouvert au préalable (ouvrir un menu n'est pas
-  // destructif, cliquer "Supprimer" le serait — jamais fait en dry-run).
-  let control = document.querySelector('[data-testid*="delete"]');
+  // Sélecteur CONFIRMÉ (session réelle 2026-07-11) en tête de cascade, puis
+  // repli générique testid → texte exact → menu "plus d'options" (ouvrir un
+  // menu n'est pas destructif, cliquer "Supprimer" le serait — jamais fait
+  // en dry-run).
+  let control =
+    document.querySelector('[data-testid="item-delete-button"]') ??
+    document.querySelector('[data-testid*="delete"]');
   if (control) t(`contrôle trouvé par testid : ${control.getAttribute("data-testid")}`);
 
   if (!control) {
@@ -100,16 +110,23 @@ async function deleteListing(job) {
   // ── LIVE (après validation manuelle) ─────────────────────────────────────
   simulateFullClick(control);
   await humanPause(800, 1600);
-  // Modale de confirmation attendue : bouton "Supprimer" dans un dialog.
+  // Modale "Supprimer l'article" — sélecteur CONFIRMÉ (2026-07-11) :
+  // item-delete-confirmation-button ("Confirmer et supprimer"), repli texte.
   const confirmBtn = await waitFor(() => {
-    const dialog = document.querySelector('[role="dialog"], .ReactModal__Content');
-    if (!dialog) return null;
-    return Array.from(dialog.querySelectorAll("button"))
-      .find((b) => /supprimer|delete/i.test(b.textContent)) ?? null;
+    return (
+      document.querySelector('[data-testid="item-delete-confirmation-button"]') ??
+      (() => {
+        const dialog = document.querySelector('[role="dialog"], .ReactModal__Content');
+        if (!dialog) return null;
+        return Array.from(dialog.querySelectorAll("button"))
+          .find((b) => /confirmer et supprimer|supprimer|delete/i.test(b.textContent)) ?? null;
+      })()
+    );
   }, 6000);
   if (!confirmBtn) return { success: false, error: "Modale de confirmation introuvable après le clic Supprimer", trace };
   t(`confirmation : "${confirmBtn.textContent.trim()}"`);
   simulateFullClick(confirmBtn);
+  // Confirmé en réel : redirection vers /member/<id> après suppression.
   await sleep(3000);
   return { success: true, trace };
 }
@@ -288,7 +305,10 @@ async function fillListingForm(job) {
   // réel est saisi ou estimé.
   if (fields.packageSize) await selectPackageSize(fields.packageSize);
 
-  if (DRY_RUN) {
+  // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
+  // marqué platform_fields.live_run === true (test supervisé) publie vraiment.
+  const dryRun = DRY_RUN && job.platform_fields?.live_run !== true;
+  if (dryRun) {
     console.log(
       "[vinted] 🧪 DRY_RUN actif — formulaire rempli, publication NON déclenchée.",
       "\nJob:", job.id,

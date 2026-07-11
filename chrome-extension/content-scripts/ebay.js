@@ -386,7 +386,11 @@ async function fillListingForm(job) {
   // ── Description (RTE dans une iframe same-origin) ─────────────────────────
   if (job.description) await fillDescription(job.description, warnings);
 
-  if (DRY_RUN) {
+  // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
+  // explicitement marqué platform_fields.live_run === true (test supervisé
+  // Patagonia) publie pour de vrai. Aucun autre job n'est affecté.
+  const dryRun = DRY_RUN && job.platform_fields?.live_run !== true;
+  if (dryRun) {
     const draftId = new URLSearchParams(location.search).get("draftId");
     warnings.push(`brouillon eBay auto-sauvegardé (draftId=${draftId}) — à supprimer dans Vendre > Brouillons après inspection`);
     console.log(
@@ -412,15 +416,34 @@ async function fillListingForm(job) {
     return { success: true, dryRun: true, warnings, unfilledRequired };
   }
 
-  // Publication LIVE : le clic "Mettre en vente avec les frais affichés"
-  // est un engagement de frais — refus explicite tant que le flux n'a pas
-  // été validé manuellement (même politique que Leboncoin).
-  return {
-    success: false,
-    error:
-      "Publication LIVE eBay pas encore implémentée : valider manuellement le flux de " +
-      "publication (frais, options) avant d'automatiser le bouton final. Laisser DRY_RUN=true.",
-  };
+  // ── Publication LIVE (job live_run uniquement) ─────────────────────────────
+  // Le clic "Mettre en vente avec les frais affichés" est un engagement de
+  // frais : réservé aux jobs marqués live_run (test supervisé). Libellé relevé
+  // en session réelle 2026-07-07 ; on privilégie le bouton mentionnant les
+  // frais, repli sur tout "Mettre en vente" hors liens de navigation.
+  const listBtn =
+    Array.from(document.querySelectorAll("button")).find((b) =>
+      /mettre en vente avec les frais/i.test(b.textContent)
+    ) ??
+    Array.from(document.querySelectorAll("button")).find((b) =>
+      /^mettre en vente/i.test(b.textContent.trim())
+    );
+  if (!listBtn) {
+    return {
+      success: false,
+      needsUser: true,
+      error: "LIVE : bouton « Mettre en vente » introuvable sur le formulaire — publier à la main puis vérifier le sélecteur.",
+      warnings,
+      unfilledRequired: computeUnfilledRequired(fields, filledSpecifics),
+    };
+  }
+  console.log(`[ebay] 🚀 LIVE — clic « ${listBtn.textContent.trim()} » (engagement de frais)`);
+  await humanPause(1200, 2400);
+  realClick(listBtn);
+  // La redirection/confirmation est surveillée côté background
+  // (captureListingUrl) — on répond tout de suite.
+  await sleep(3000);
+  return { success: true, listingUrl: null, warnings, unfilledRequired: computeUnfilledRequired(fields, filledSpecifics) };
 }
 
 // ── État : comparaison de famille (neuf vs occasion) ────────────────────────

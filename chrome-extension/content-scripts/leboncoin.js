@@ -32,10 +32,21 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
 // ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas été
-// validées manuellement. Dry-run = LOCALISER le contrôle "Supprimer" de
-// l'annonce ciblée dans "Mes annonces" sans jamais le cliquer, trace détaillée
-// en retour (cascades défensives, pas encore observées sur la vraie page —
-// aucune annonce live n'existait au moment du dev, session du 2026-07-11).
+// validées manuellement (la 1re a été validée en session pilotée le
+// 2026-07-11 — les 2 suivantes restent à faire avant la bascule).
+// FLUX CONFIRMÉ en session réelle du 2026-07-11 (annonce /ad/vetements/
+// 3231410109 réellement publiée puis supprimée) :
+//   1. /compte/part/mes-annonces : la carte d'annonce porte une rangée
+//      d'actions "Vendez plus vite | Mettre en pause | Modifier gratuitement |
+//      [icône poubelle]" — la poubelle est un bouton ICÔNE (svg, sans texte
+//      ni aria-label relevé) situé après "Modifier gratuitement" dans la
+//      carte. Une barre d'actions bulk ("Supprimer") existe aussi en tête de
+//      liste, activée par les checkboxes.
+//   2. Le clic poubelle NAVIGUE vers /compte/mes-annonces/suppression (page
+//      dédiée, pas de modale) : récap de l'annonce + boutons "Revenir à Mes
+//      annonces" / "Valider la suppression". AUCUN motif demandé.
+//   3. "Valider la suppression" → "Votre demande de suppression a bien été
+//      prise en compte / Votre annonce sera supprimée dans quelques instants".
 const DELETE_DRY_RUN = true;
 
 async function deleteListing(job) {
@@ -73,19 +84,17 @@ async function deleteListing(job) {
   const card = anchor.closest('[data-qa-id*="ad"], article, li') ?? anchor.closest("div");
   t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}${card?.getAttribute?.("data-qa-id") ? ` data-qa-id="${card.getAttribute("data-qa-id")}"` : ""}>`);
 
-  // Contrôle Supprimer : bouton direct de la carte, sinon menu "..." de la
-  // carte ouvert au préalable (ouvrir un menu n'est pas destructif).
+  // Contrôle Supprimer (flux réel 2026-07-11) : la poubelle est le DERNIER
+  // bouton à icône (svg sans texte) de la rangée d'actions de la carte, après
+  // "Modifier gratuitement". Repli : bouton/qa-id explicite si LBC en ajoute
+  // un jour un.
   let control = findLbcDelete(card);
   if (!control) {
-    const menuBtn = Array.from(card?.querySelectorAll("button") ?? []).find((b) => {
-      const label = ((b.getAttribute("aria-label") || "") + " " + b.textContent).toLowerCase();
-      return /options|gérer|actions|menu|plus/.test(label) || b.textContent.trim() === "…";
-    });
-    if (menuBtn) {
-      t(`menu de carte ouvert : "${(menuBtn.getAttribute("aria-label") || menuBtn.textContent).trim()}"`);
-      realClick(menuBtn);
-      await humanPause(600, 1200);
-      control = findLbcDelete(document); // le menu peut se monter en portal
+    const iconButtons = Array.from(card?.querySelectorAll("button") ?? [])
+      .filter((b) => !b.textContent.trim() && b.querySelector("svg"));
+    if (iconButtons.length) {
+      control = iconButtons[iconButtons.length - 1];
+      t(`poubelle candidate : dernier bouton-icône de la carte (${iconButtons.length} icône(s))`);
     }
   }
 
@@ -96,7 +105,7 @@ async function deleteListing(job) {
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     return { success: false, error: "Contrôle de suppression introuvable", trace };
   }
-  t(`contrôle Supprimer localisé : "${control.textContent.trim()}"${control.getAttribute("data-qa-id") ? ` (data-qa-id="${control.getAttribute("data-qa-id")}")` : ""}`);
+  t(`contrôle Supprimer localisé : "${control.textContent.trim() || "(icône poubelle)"}"${control.getAttribute("data-qa-id") ? ` (data-qa-id="${control.getAttribute("data-qa-id")}")` : ""}`);
 
   if (DELETE_DRY_RUN) {
     t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
@@ -104,26 +113,20 @@ async function deleteListing(job) {
   }
 
   // ── LIVE (après validation manuelle) ───────────────────────────────────
+  // Flux réel confirmé : la poubelle NAVIGUE vers /compte/mes-annonces/
+  // suppression (page dédiée, aucun motif), puis "Valider la suppression".
   realClick(control);
-  await humanPause(900, 1800);
-  // LBC enchaîne généralement sur un motif de suppression + confirmation.
-  const reason = await waitFor(() => {
-    const dialog = document.querySelector('[role="dialog"]');
-    if (!dialog) return null;
-    return Array.from(dialog.querySelectorAll('input[type="radio"], button, label'))
-      .find((el) => /vendu|je ne souhaite plus|autre/i.test(el.textContent || el.value || "")) ?? null;
-  }, 6000);
-  if (reason) { t(`motif choisi : "${(reason.textContent || reason.value || "").trim()}"`); realClick(reason); await humanPause(500, 1000); }
   const confirmBtn = await waitFor(() => {
-    const dialog = document.querySelector('[role="dialog"]');
-    if (!dialog) return null;
-    return Array.from(dialog.querySelectorAll("button"))
-      .find((b) => /supprimer|confirmer|valider/i.test(b.textContent)) ?? null;
-  }, 6000);
-  if (!confirmBtn) return { success: false, error: "Confirmation de suppression introuvable", trace };
-  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+    if (!/suppression/.test(location.pathname)) return null;
+    return findButtonByExactText("Valider la suppression");
+  }, 10_000);
+  if (!confirmBtn) return { success: false, error: "Page /suppression ou bouton « Valider la suppression » introuvable après le clic poubelle", trace };
+  t(`page de confirmation atteinte : ${location.pathname} — "Valider la suppression"`);
+  await humanPause(900, 1800);
   realClick(confirmBtn);
+  // Attendu : "Votre demande de suppression a bien été prise en compte".
   await sleep(3000);
+  t(`résultat : ${document.body.innerText.includes("suppression a bien été prise en compte") ? "confirmation reçue" : "confirmation NON détectée (vérifier)"}`);
   return { success: true, trace };
 }
 
@@ -377,7 +380,10 @@ async function fillListingForm(job) {
     };
   }
 
-  if (DRY_RUN) {
+  // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
+  // marqué platform_fields.live_run === true (test supervisé) publie vraiment.
+  const dryRun = DRY_RUN && job.platform_fields?.live_run !== true;
+  if (dryRun) {
     console.log(
       "[leboncoin] 🧪 DRY_RUN actif — aperçu rempli, Continuer final (« je confirme " +
       "l'exactitude ») NON cliqué.",
@@ -391,15 +397,50 @@ async function fillListingForm(job) {
     return { success: true, dryRun: true, warnings, unfilledRequired };
   }
 
-  // Publication LIVE : le flux post-aperçu (Continuer final → options de
-  // visibilité → dépôt) n'a pas encore été relevé — refus explicite plutôt
-  // qu'un enchaînement à l'aveugle sur un bouton d'engagement.
-  return {
-    success: false,
-    error:
-      "Publication LIVE Leboncoin pas encore implémentée : le flux post-aperçu doit être " +
-      "relevé et validé avant d'automatiser le Continuer final. Laisser DRY_RUN=true.",
-  };
+  // ── Publication LIVE (job live_run uniquement) ─────────────────────────────
+  // Flux post-aperçu CONFIRMÉ en session réelle (2026-07-11) : Continuer final
+  // → page /deposer-une-annonce/options (options de visibilité payantes) →
+  // bouton "Déposer sans booster mon annonce" → /deposer-une-annonce/
+  // confirmation ("Nous avons bien reçu votre annonce !"). Politique STRICTE :
+  // on ne clique JAMAIS un CTA qui mentionne un paiement non nul ; le chemin
+  // gratuit explicite ("Déposer sans booster…") est requis, sinon needsUser.
+  const finalContinue = findButtonByExactText("Continuer");
+  if (!finalContinue) {
+    return { success: false, needsUser: true, error: "LIVE : Continuer final introuvable sur l'aperçu.", warnings, unfilledRequired };
+  }
+  console.log("[leboncoin] 🚀 LIVE — Continuer final (« je confirme l'exactitude »)");
+  await humanPause(1200, 2400);
+  realClick(finalContinue);
+
+  // Écran /options : chemin gratuit explicite ("Déposer sans booster mon
+  // annonce", libellé confirmé en réel), sinon on rend la main.
+  const freeCta = await waitFor(() => {
+    const btns = Array.from(document.querySelectorAll("button, a[role='button'], a"));
+    return (
+      btns.find((el) => /déposer sans booster/i.test(el.textContent)) ??
+      btns.find((el) => /continuer sans|sans option|non merci|déposer sans/i.test(el.textContent)) ??
+      btns.find((el) => /déposer (mon |l['’])annonce|publier l['’]annonce|valider et déposer/i.test(el.textContent)) ??
+      null
+    );
+  }, 15_000);
+  if (!freeCta) {
+    return {
+      success: false, needsUser: true, warnings, unfilledRequired,
+      error: "LIVE : écran post-aperçu non reconnu (options de visibilité ?) — terminer le dépôt à la main, la trace servira de relevé.",
+    };
+  }
+  const ctaText = freeCta.textContent.trim();
+  if (/payer/i.test(ctaText) || (/\d+[,.]\d{2}\s*€/.test(ctaText) && !/0[,.]00\s*€/.test(ctaText))) {
+    return {
+      success: false, needsUser: true, warnings, unfilledRequired,
+      error: `LIVE : le seul CTA trouvé mentionne un paiement (« ${ctaText} ») — jamais cliqué automatiquement.`,
+    };
+  }
+  console.log(`[leboncoin] 🚀 LIVE — clic chemin gratuit : « ${ctaText} »`);
+  await humanPause(1000, 2000);
+  realClick(freeCta);
+  await sleep(4000);
+  return { success: true, listingUrl: null, warnings, unfilledRequired };
 }
 
 // ── Catégorie ────────────────────────────────────────────────────────────────

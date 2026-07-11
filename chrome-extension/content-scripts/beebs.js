@@ -97,11 +97,17 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
  *   (chaque champ est sauté silencieusement s'il est absent).
  */
 // ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
-// Page "Mes annonces" : /fr/account/my-adverts — RELEVÉE en session réelle le
-// 2026-07-11 (onglets "En Ligne" / "En Vérification", champ Rechercher,
-// case "Tout sélectionner"). La page était VIDE ce jour-là : la carte
-// d'annonce et son contrôle de suppression n'ont jamais été observés —
-// cascades défensives à valider au premier dry-run avec une annonce en ligne.
+// Page "Mes annonces" : /fr/account/my-adverts — onglets "Actuellement en
+// ligne" / "En cours de vérification" (/my-adverts/creating), champ Rechercher.
+// MÉCANIQUE DE SUPPRESSION relevée en session réelle du 2026-07-11 : elle est
+// GROUPÉE, pas par carte — une barre d'actions "Tout sélectionner | Supprimer"
+// en tête de liste, alimentée par une CHECKBOX par annonce. Il n'y a pas de
+// menu "…" ni de bouton Supprimer dans la carte elle-même.
+// ⚠️ Non exécuté de bout en bout : l'annonce Patagonia déposée ce jour-là est
+// restée "en cours de vérification" chez Beebs (délai de modération) et n'a
+// jamais atteint l'onglet "Actuellement en ligne" — la checkbox de carte et le
+// dialogue de confirmation restent donc À CONFIRMER au premier dry-run avec
+// une annonce réellement en ligne.
 // ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas
 // été validées manuellement.
 const DELETE_DRY_RUN = true;
@@ -138,54 +144,57 @@ async function deleteListing(job) {
   const card = anchor.closest("article, li") ?? anchor.closest("div");
   t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}>`);
 
-  let control = findBeebsDelete(card);
-  if (!control) {
-    const menuBtn = Array.from(card?.querySelectorAll("button") ?? []).find((b) => {
-      const label = ((b.getAttribute("aria-label") || "") + " " + b.textContent).toLowerCase();
-      return /options|menu|plus|gérer|actions/.test(label) || b.textContent.trim() === "…";
-    });
-    if (menuBtn) {
-      t(`menu de carte ouvert : "${(menuBtn.getAttribute("aria-label") || menuBtn.textContent).trim()}"`);
-      menuBtn.click();
-      await humanPause(600, 1200);
-      control = findBeebsDelete(document);
-    }
-  }
+  // Suppression GROUPÉE (relevé 2026-07-11) : cocher la checkbox de CETTE
+  // annonce, puis cliquer le "Supprimer" de la barre d'actions en tête de
+  // liste. La checkbox est le seul input[type=checkbox] de la carte ; le
+  // bouton Supprimer vit HORS de la carte (barre partagée).
+  const checkbox = card?.querySelector('input[type="checkbox"]') ?? null;
+  const bulkDelete = findBeebsDelete(document);
 
-  if (!control) {
-    const visible = Array.from(card?.querySelectorAll("button, a") ?? [])
-      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 20);
-    t(`contrôle Supprimer INTROUVABLE — actions visibles sur la carte : ${visible.join(" | ") || "(aucune)"}`);
+  if (!checkbox || !bulkDelete) {
+    const visible = Array.from(card?.querySelectorAll("button, a, input") ?? [])
+      .map((b) => b.textContent.trim() || b.type).filter(Boolean).slice(0, 20);
+    t(`mécanique groupée INCOMPLÈTE — checkbox: ${!!checkbox}, bouton Supprimer: ${!!bulkDelete} — éléments de carte : ${visible.join(" | ") || "(aucun)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Contrôle de suppression introuvable", trace };
+    return { success: false, error: "Checkbox d'annonce ou bouton Supprimer groupé introuvable", trace };
   }
-  t(`contrôle Supprimer localisé : "${control.textContent.trim()}"`);
+  t(`checkbox de l'annonce + bouton "${bulkDelete.textContent.trim()}" (barre groupée) localisés`);
 
   if (DELETE_DRY_RUN) {
-    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    t("🧪 DELETE_DRY_RUN actif — contrôles localisés, AUCUN clic (ni coche) effectué.");
     return { success: true, dryRun: true, found: true, trace };
   }
 
   // ── LIVE (après validation manuelle) ───────────────────────────────────
-  control.click();
+  checkbox.click(); // sélectionne UNIQUEMENT cette annonce (jamais "Tout sélectionner")
+  await humanPause(700, 1400);
+  bulkDelete.click();
   await humanPause(800, 1600);
+  // Dialogue de confirmation : présence non confirmée (annonce jamais sortie
+  // de modération le 2026-07-11) — s'il n'y en a pas, la suppression est déjà
+  // effective et le waitFor retombe à null sans échouer le job.
   const confirmBtn = await waitFor(() => {
     const dialog = document.querySelector('[role="dialog"], [class*="modal" i]');
     if (!dialog) return null;
     return Array.from(dialog.querySelectorAll("button"))
       .find((b) => /supprimer|confirmer|oui/i.test(b.textContent)) ?? null;
   }, 6000);
-  if (!confirmBtn) return { success: false, error: "Confirmation de suppression introuvable", trace };
-  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
-  confirmBtn.click();
+  if (confirmBtn) {
+    t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+    confirmBtn.click();
+  } else {
+    t("aucun dialogue de confirmation — suppression supposée immédiate");
+  }
   await sleep(3000);
   return { success: true, trace };
 }
 
+// Bouton "Supprimer" de la barre d'actions groupée (hors carte) — cherché au
+// niveau document, jamais dans la carte (relevé 2026-07-11).
 function findBeebsDelete(root) {
   if (!root) return null;
   return Array.from(root.querySelectorAll("button, a, [role='menuitem']"))
-    .find((el) => /^supprimer/i.test(el.textContent.trim())) ?? null;
+    .find((el) => /^supprimer$/i.test(el.textContent.trim())) ?? null;
 }
 
 async function fillListingForm(job) {
@@ -301,7 +310,10 @@ async function fillListingForm(job) {
     };
   }
 
-  if (DRY_RUN) {
+  // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
+  // marqué platform_fields.live_run === true (test supervisé) publie vraiment.
+  const dryRun = DRY_RUN && job.platform_fields?.live_run !== true;
+  if (dryRun) {
     console.log(
       "[beebs] 🧪 DRY_RUN actif — formulaire rempli, « Mettre en vente » NON cliqué.",
       "\nJob:", job.id,
