@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-12-15h30 (delete: garde de peinture + paintTab — cause 0x0 elucidee)";
+const VINTED_BUILD = "2026-07-13-03h30 (prix: preuve de commit React via fibers + repose onglet peint — categorie hors de cause)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -751,47 +751,49 @@ async function fillPriceField(value) {
   // laisse le masque formater une fois : "200" → "200,00 €" (vérifié).
   // L'exception au timing humain reste assumée (un prix fait 2-4 caractères,
   // ce n'est pas le signal de vitesse qui a déclenché le blocage LBC).
-  const el = await waitForElement('#price, [data-testid="price-input--input"]');
-  await humanPause();
-  el.focus();
-
   const str = String(value).replace(".", ",");
-  let ok = false;
-  try {
-    el.setSelectionRange?.(0, el.value.length);
-    document.execCommand("delete", false, null); // vide le champ ET son masque
+
+  // Saisie complète, ré-exécutable telle quelle (le nœud peut être remonté par
+  // React entre deux poses : on le re-résout à chaque appel).
+  const typeIntoPrice = async () => {
+    const el = await waitForElement('#price, [data-testid="price-input--input"]');
     await humanPause();
-    el.setSelectionRange?.(0, el.value.length);
-    dispatchKey(el, "keydown", str[0]);
-    ok = document.execCommand("insertText", false, str);
-    dispatchKey(el, "keyup", str[str.length - 1]);
-  } catch (e) {
-    console.warn("[vinted] ⚠️ prix : execCommand indisponible —", String(e?.message ?? e));
-  }
-  if (!ok) {
-    // Repli historique : pose la valeur mais Vinted REFUSE la soumission
-    // (« Le champ prix doit être supérieur ou égal à 1.0 ») — la garde
-    // ci-dessous ne le verra pas (l'affichage est correct), le clic Publier
-    // échouera. Ce repli n'existe que si execCommand disparaît de Chrome.
-    console.warn("[vinted] ⚠️ prix : repli setNativeValue — la validation Vinted risque de refuser la soumission");
-    setNativeValue(el, str);
-  }
-  // ⚠️ VRAI BLUR, pas un Event('blur') synthétique (2026-07-13).
-  // PREUVE (sonde réseau, run réel) : le champ affiche « 95,00 € » et la requête
-  // part quand même avec  price: null  et  {"field":"price","value":""}.
-  // La valeur n'atteint donc JAMAIS l'état que Vinted sérialise.
-  // Vérifié sur la vraie page : `el.dispatchEvent(new Event("blur"))` ne retire
-  // PAS le focus (document.activeElement reste l'input) et React n'écoute même
-  // pas 'blur' — il écoute 'focusout'. Le onBlur du composant n'était donc
-  // JAMAIS appelé. Or c'est le point de commit classique d'un champ à masque
-  // monétaire : onChange nourrit l'affichage, onBlur propage la valeur au
-  // formulaire parent. D'où le prix affiché mais jamais soumis — et la latence
-  // au clic sur le champ que Nico a remarquée (le champ n'était jamais quitté).
-  // el.blur() déclenche un focusout NATIF : le seul qui réveille React.
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-  el.blur();
-  await sleep(800); // laisser le commit se propager au state du formulaire
-  await humanPause();
+    el.focus();
+    let ok = false;
+    try {
+      el.setSelectionRange?.(0, el.value.length);
+      document.execCommand("delete", false, null); // vide le champ ET son masque
+      await humanPause();
+      el.setSelectionRange?.(0, el.value.length);
+      dispatchKey(el, "keydown", str[0]);
+      ok = document.execCommand("insertText", false, str);
+      dispatchKey(el, "keyup", str[str.length - 1]);
+    } catch (e) {
+      console.warn("[vinted] ⚠️ prix : execCommand indisponible —", String(e?.message ?? e));
+    }
+    if (!ok) {
+      // Repli historique : pose la valeur mais Vinted REFUSE la soumission
+      // (« Le champ prix doit être supérieur ou égal à 1.0 ») — la garde
+      // ci-dessous ne le verra pas (l'affichage est correct), le clic Publier
+      // échouera. Ce repli n'existe que si execCommand disparaît de Chrome.
+      console.warn("[vinted] ⚠️ prix : repli setNativeValue — la validation Vinted risque de refuser la soumission");
+      setNativeValue(el, str);
+    }
+    // 'change' natif + el.blur() (focusout réel). ⚠️ RÉVISION 2026-07-13 (lecture
+    // des fibers React sur le vrai formulaire) : le blur n'est PAS le point de
+    // commit — quand le composant fonctionne, onChange committe SEUL (l'état
+    // React porte déjà "95" avant tout blur) et le blur ne fait que FORMATER
+    // l'affichage ("95" → "95,00 €"). Le blur réel reste : inoffensif, fidèle au
+    // geste humain, et il quitte réellement le champ (l'ancien Event('blur')
+    // synthétique ne retirait même pas le focus).
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.blur();
+    await sleep(800); // laisser un éventuel commit différé se propager
+    await humanPause();
+    return el;
+  };
+
+  let el = await typeIntoPrice();
 
   // Vérification immédiate : le champ doit afficher un montant non nul et
   // SANS NaN. C'est cette garde qui a attrapé le "NaN €" de la frappe
@@ -802,6 +804,49 @@ async function fillPriceField(value) {
     throw new Error(
       `Prix non pris en compte par Vinted (champ = "${shown}") — la saisie du champ masqué a été rejetée.`
     );
+  }
+
+  // ── PREUVE DE COMMIT (2026-07-13) — l'affichage MENT. ────────────────────────
+  // Prouvé en run réel (sonde réseau) puis reproduit en session pilotée : le
+  // champ peut afficher « 95,00 € » avec un état React VIDE à tous les niveaux
+  // (lecture des fibers) — la soumission part alors avec price: null. La
+  // catégorie est HORS DE CAUSE (T-shirts et Baskets se comportent à
+  // l'identique, testé croisé sur le vrai formulaire) ; le mode défaillant est
+  // lié à l'état focus/peinture du document (même famille que le throttling
+  // React de l'onglet caché documenté sur eBay). Seul l'état React fait foi, et
+  // il n'est lisible que depuis le monde MAIN → on le demande au background.
+  // S'il est vide : repose avec l'onglet PEINT (mode où le commit passe,
+  // vérifié), puis échec franc AVANT le clic Publier si rien n'y fait.
+  const committedOk = (s) => /[1-9]/.test(String(s?.committed ?? ""));
+  let state = await askBackground({ type: "VINTED_PRICE_STATE" });
+  if (state?.readable && !committedOk(state)) {
+    console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — repose avec onglet peint");
+    await askBackground({ type: "VINTED_PAINT_FOR_PRICE" });
+    try {
+      el = await typeIntoPrice();
+      state = await askBackground({ type: "VINTED_PRICE_STATE" });
+    } finally {
+      await askBackground({ type: "VINTED_UNPAINT" });
+    }
+    if (state?.readable && !committedOk(state)) {
+      throw new Error(
+        `Prix jamais commité dans l'état React du formulaire (affiché "${String(el.value ?? "")}", ` +
+        `état "${String(state?.committed ?? "")}"), même après repose avec onglet peint — job arrêté ` +
+        "AVANT le clic Publier (sinon Vinted recevrait price: null et refuserait)."
+      );
+    }
+    if (state?.readable) console.log("[vinted] prix commité à la repose (onglet peint) :", state.committed);
+  }
+}
+
+// Messages vers le background (lecture des fibers React en monde MAIN, peinture
+// temporaire de l'onglet). Résilient : background plus ancien ou message inconnu
+// → null, et l'appelant continue comme avant (aucune régression possible).
+function askBackground(msg) {
+  try {
+    return chrome.runtime.sendMessage(msg).catch(() => null);
+  } catch {
+    return Promise.resolve(null);
   }
 }
 

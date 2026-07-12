@@ -17,7 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-01h30 (Vinted: VRAI blur - le prix n arrivait jamais au formulaire; eBay: selecteur elargi " +
+  "2026-07-13-03h30 (Vinted: preuve de commit prix via fibers + repose onglet peint; eBay: selecteur resserre) " +
+  "(precedent: Vinted VRAI blur; eBay selecteur elargi " +
   "+ filet chip + dump DOM) ⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -148,6 +149,31 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // ── Messages (auth content script + popup) ────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // Preuve de commit du prix Vinted (2026-07-13) — demandes émises par le
+  // content script vinted.js PENDANT le remplissage (cf. readVintedPriceState).
+  const senderTabId = _sender?.tab?.id;
+  if (msg?.type === "VINTED_PRICE_STATE" && senderTabId != null) {
+    readVintedPriceState(senderTabId).then(sendResponse);
+    return true;
+  }
+  if (msg?.type === "VINTED_PAINT_FOR_PRICE" && senderTabId != null) {
+    (async () => {
+      if (!vintedPricePaintReleases.has(senderTabId)) {
+        vintedPricePaintReleases.set(senderTabId, await paintTab(senderTabId));
+      }
+      sendResponse({ painted: true });
+    })().catch((e) => sendResponse({ painted: false, error: String(e?.message ?? e) }));
+    return true;
+  }
+  if (msg?.type === "VINTED_UNPAINT" && senderTabId != null) {
+    (async () => {
+      const release = vintedPricePaintReleases.get(senderTabId);
+      vintedPricePaintReleases.delete(senderTabId);
+      if (release) await release();
+      sendResponse({ ok: true });
+    })().catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (msg?.type === "FILLSELL_SESSION" && msg.session?.access_token) {
     chrome.storage.local
       .set({ [FILLSELL_CONFIG.STORAGE_KEYS.SESSION]: msg.session })
@@ -1316,6 +1342,50 @@ async function installVintedProbe(tabId) {
     console.warn("[background] Sonde Vinted non installée :", String(e?.message ?? e));
   }
 }
+
+// ── Preuve de commit du prix Vinted (2026-07-13) ───────────────────────────────
+// Le champ prix peut AFFICHER un montant jamais commité dans l'état React que le
+// formulaire sérialise (price: null à la soumission — prouvé par la sonde, puis
+// reproduit en session pilotée par lecture des fibers ; catégorie hors de cause,
+// T-shirts et Baskets se comportent pareil ; le mode défaillant est lié à l'état
+// focus/peinture du document, même famille que le throttling React de l'onglet
+// caché documenté sur eBay). Le content script vit dans un monde ISOLÉ qui ne
+// voit pas les fibers React : il demande la lecture ici (monde MAIN), et une
+// peinture temporaire de l'onglet quand la repose l'exige — même mécanique
+// paintTab que la suppression, rendue à l'utilisateur dès la fin de la pose.
+async function readVintedPriceState(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => {
+        const el = document.querySelector('#price, [data-testid="price-input--input"]');
+        if (!el) return { found: false, readable: false };
+        const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+        if (!key) return { found: true, readable: false, dom: String(el.value ?? "") };
+        // On remonte les fibers : la prop `value` la plus HAUTE est celle du
+        // formulaire (les niveaux bas portent l'affichage formaté "95,00 €",
+        // le niveau formulaire porte "95" — relevé réel du 2026-07-13).
+        let fiber = el[key];
+        let committed = null;
+        for (let depth = 0; fiber && depth < 8; depth++, fiber = fiber.return) {
+          const v = fiber.memoizedProps && typeof fiber.memoizedProps === "object"
+            ? fiber.memoizedProps.value
+            : undefined;
+          if (typeof v === "string" || typeof v === "number") committed = String(v);
+        }
+        return { found: true, readable: committed !== null, dom: String(el.value ?? ""), committed };
+      },
+    });
+    return res?.result ?? { found: false, readable: false };
+  } catch (e) {
+    return { found: false, readable: false, error: String(e?.message ?? e) };
+  }
+}
+
+// Peintures en cours, par onglet — la restauration doit survivre à plusieurs
+// demandes successives du même job sans voler deux fois l'écran.
+const vintedPricePaintReleases = new Map();
 
 // Résumé lisible de ce que Vinted a REÇU, à joindre à l'erreur du job.
 async function readVintedProbe(tabId) {
