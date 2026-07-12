@@ -1261,6 +1261,26 @@ function detectVintedState(html, finalUrl) {
   return jsonField(html, "item_closing_action") === "sold" ? "sold" : "unavailable";
 }
 
+// Prix affiché sur la page de l'annonce — plus à jour que job.price si le
+// vendeur a changé son prix depuis la publication.
+// ⚠️ VÉRIFIÉ sur une annonce réellement vendue : Vinted n'expose AUCUN prix de
+// TRANSACTION distinct du prix demandé. Champs présents :
+//     \"price\":{\"amount\":\"24.5\"}       → prix demandé
+//     \"originalAskingAmount\":\"24.5\"     → idem
+//     \"totalAmount\":\"26.43\"             → ce que paie l'ACHETEUR (frais de
+//                                            protection inclus) — SURTOUT PAS la
+//                                            recette du vendeur, à ne jamais
+//                                            utiliser comme prix de vente
+//     \"offerValue\":$undefined            → une offre acceptée n'est PAS exposée
+// Donc : une vente négociée sera enregistrée au prix demandé. L'utilisateur
+// corrige dans l'app (le prix de vente y est éditable). C'est la meilleure
+// donnée publiquement disponible, et on ne devine pas le reste.
+function vintedListedPrice(html) {
+  const m = html.match(/\\?"price\\?":\s*\{\s*\\?"amount\\?":\s*\\?"([\d.]+)\\?"/);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // LEBONCOIN — relevé réel : une annonce supprimée rend HTTP 410, et les champs
 // isActive/adStatus que cherchait l'ancien code N'EXISTENT PAS dans la réponse.
 // Surtout : LBC n'expose AUCUN statut « vendu » public — une annonce vendue est
@@ -1299,25 +1319,27 @@ function detectBeebsState(html) {
   return st === "AVAILABLE" ? "active" : "unavailable";
 }
 
+// Retourne { state, price } — price = prix lu SUR LA PAGE (null si inconnu),
+// utilisé comme prix de vente à l'auto-confirmation quand il est disponible.
 async function checkListingState(url, platform) {
   try {
     const res = await fetch(url, { credentials: "include", redirect: "follow" });
     // 404/410 : l'annonce n'est plus là. Ce n'est PAS une vente — c'était la
     // guillotine qui fabriquait les ventes fantômes.
-    if (res.status === 404 || res.status === 410) return "unavailable";
-    if (!res.ok) return "unknown"; // bot-shield ou erreur serveur : ne pas conclure
+    if (res.status === 404 || res.status === 410) return { state: "unavailable", price: null };
+    if (!res.ok) return { state: "unknown", price: null }; // bot-shield : ne pas conclure
     const html = await res.text();
     const finalUrl = res.url;
     switch (platform) {
-      case "leboncoin": return detectLeboncoinState(html);
-      case "vinted":    return detectVintedState(html, finalUrl);
-      case "ebay":      return detectEbayState(html, finalUrl);
-      case "beebs":     return detectBeebsState(html);
-      default:          return "unknown";
+      case "leboncoin": return { state: detectLeboncoinState(html), price: null };
+      case "vinted":    return { state: detectVintedState(html, finalUrl), price: vintedListedPrice(html) };
+      case "ebay":      return { state: detectEbayState(html, finalUrl), price: null };
+      case "beebs":     return { state: detectBeebsState(html), price: null };
+      default:          return { state: "unknown", price: null };
     }
   } catch (e) {
     console.warn(`[background] checkListingState(${url}):`, String(e?.message ?? e));
-    return "unknown";
+    return { state: "unknown", price: null };
   }
 }
 
@@ -1362,8 +1384,8 @@ async function checkPublishedListings(session) {
   console.log(`[background] Détection : ${due.length} annonce(s) à vérifier`);
   for (let i = 0; i < due.length; i++) {
     const job = due[i];
-    const state = await checkListingState(job.listing_url, job.platform);
-    console.log(`[background] ${job.platform} ${job.id} → ${state}`);
+    const { state, price } = await checkListingState(job.listing_url, job.platform);
+    console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}`);
 
     const patch = { last_checked_at: new Date().toISOString() };
 
@@ -1390,7 +1412,13 @@ async function checkPublishedListings(session) {
       // item_closing_action="sold"). Orchestration serveur (vente, inventaire,
       // frères, email), idempotente.
       try {
-        const r = await callEdgeFunction("check-listing-status", session.access_token, { job_id: job.id });
+        // price : prix lu sur la page (plus à jour que le prix de publication si
+        // le vendeur l'a changé). Omis si inconnu → l'orchestration retombe sur
+        // job.price. Une vente NÉGOCIÉE n'étant pas exposée par Vinted, le prix
+        // enregistré reste corrigeable dans l'app.
+        const payload = { job_id: job.id };
+        if (price) payload.price = price;
+        const r = await callEdgeFunction("check-listing-status", session.access_token, payload);
         console.log(`[background] Vente CONFIRMÉE et orchestrée pour ${job.id}:`, JSON.stringify(r?.sale ?? r));
       } catch (e) {
         console.error(`[background] Orchestration vente ${job.id}:`, String(e?.message ?? e));
