@@ -140,9 +140,13 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 //   3. La suppression est ASYNCHRONE : la liste reste obsolète quelques
 //      secondes après la confirmation (une vérification immédiate conclut à
 //      tort à un échec — vécu).
+//   4. La propagation va jusqu'à la page PUBLIQUE, avec du retard : celle-ci a
+//      continué de répondre 200 (avec bouton d'achat) plusieurs minutes après
+//      la suppression — cache CDN — avant de basculer en 404. Ne jamais
+//      conclure à un échec sur une lecture immédiate de la page publique.
 // ⚠️ DELETE_DRY_RUN : passé à false le 2026-07-12 sur décision de Nico (session
-// autonome). Gate Beebs : 1 suppression exécutée, disparue côté vendeur, mais
-// la page publique répondait encore (cache CDN ?) — À RECONFIRMER.
+// autonome). Gate Beebs : 1/3 — suppression CONFIRMÉE (disparue de « Mes
+// annonces », page publique en 404).
 const DELETE_DRY_RUN = false;
 
 async function deleteListing(job) {
