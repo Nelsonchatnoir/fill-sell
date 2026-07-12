@@ -476,8 +476,18 @@ async function waitForPublishOutcome(timeoutMs = 30_000) {
   };
 }
 
-// Messages de validation du formulaire Vinted. On ratisse large (les classes du
-// design system changent) puis on déduplique.
+// Messages de validation du formulaire Vinted.
+// ⚠️ NE PAS FILTRER PAR VOCABULAIRE (leçon du 2026-07-12). La 1re version exigeait
+// que le texte contienne « doit/obligatoire/requis/supérieur/… » — or les messages
+// les plus DÉCISIFS de Vinted n'emploient AUCUN de ces mots :
+//     « Ajoute au moins une photo »      → MASQUÉ
+//     « Choisis une sous-catégorie »     → MASQUÉ
+//     « Le champ prix doit être supérieur ou égal à 1.0 » → remonté
+// Résultat : sur un refus, on ne remontait QUE l'erreur de prix et on accusait le
+// prix… alors que la vraie cause pouvait être la photo ou la catégorie. Vérifié
+// sur le VRAI formulaire : un formulaire sans catégorie affiche l'erreur
+// « prix ≥ 1.0 » MÊME quand le prix a été tapé au clavier par un humain — ce
+// message est donc un SYMPTÔME, pas un diagnostic. On remonte tout, désormais.
 function readValidationErrors() {
   const nodes = document.querySelectorAll(
     '[data-testid*="error"], [class*="error"], [role="alert"], .web_ui__InputBar__error'
@@ -486,7 +496,6 @@ function readValidationErrors() {
   for (const n of nodes) {
     const txt = (n.textContent || "").trim();
     if (!txt || txt.length > 200) continue;
-    if (!/doit|obligatoire|requis|invalide|erreur|sup[ée]rieur|inf[ée]rieur|manquant/i.test(txt)) continue;
     seen.add(txt);
   }
   return seen.size ? [...seen].join(" · ") : null;
