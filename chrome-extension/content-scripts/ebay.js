@@ -1,11 +1,14 @@
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
 //
-// ⚠️ DRY_RUN doit rester à true tant que le clic "Mettre en vente avec les
-// frais affichés" (engagement de frais + publication réelle) n'a pas été
-// validé manuellement. En dry-run, le formulaire est rempli de bout en bout
-// mais ce bouton n'est JAMAIS cliqué — eBay conserve de toute façon un
-// BROUILLON auto-sauvegardé (draftId dans l'URL), inspectable puis
-// supprimable dans "Vendre > Brouillons".
+// ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
+// Nico : 1 article test, T-shirt Patagonia à 30 €, piloté à la main) : TOUT
+// job publish part désormais en LIVE, plus seulement ceux marqués
+// platform_fields.live_run — le clic "Mettre en vente avec les frais
+// affichés" (engagement de frais + publication réelle) est effectué. En
+// dry-run, le formulaire était rempli de bout en bout mais ce bouton n'était
+// JAMAIS cliqué — eBay conserve de toute façon un BROUILLON auto-sauvegardé
+// (draftId dans l'URL), inspectable puis supprimable dans
+// "Vendre > Brouillons".
 //
 // Architecture relevée en session réelle (2026-07-07, connecté) :
 //   - Pas de wizard à piloter : l'URL directe
@@ -34,7 +37,7 @@
 //     "Fréquemment sélectionnées" et extraction auto depuis le titre qui
 //     pré-remplissent des specifics (on ne ré-écrit jamais un champ déjà
 //     rempli).
-const DRY_RUN = true;
+const DRY_RUN = false;
 
 const SPECIFICS_MENU_SELECTOR = ".se-filter-menu-button__menu-container";
 
@@ -216,6 +219,11 @@ async function fillListingForm(job) {
   const fillSpecificTracked = async (labels, value) => {
     const ok = await fillSpecificSafe(labels, value, warnings);
     if (ok) for (const l of labels) filledSpecifics.add(normalizeFuzzy(l));
+    // ~5 s entre deux champs (2026-07-12, observation en direct de Nico) :
+    // l'enchaînement rapide faisait sauter des remplissages — la page n'a
+    // pas fini de digérer l'action précédente (re-renders lourds d'eBay)
+    // quand la suivante part. On lui laisse LARGEMENT le temps.
+    await fieldSettle();
     return ok;
   };
 
@@ -316,7 +324,10 @@ async function fillListingForm(job) {
     }
   }
 
-  if (job.photos?.length) await uploadPhotos(job.photos);
+  if (job.photos?.length) {
+    await uploadPhotos(job.photos);
+    await fieldSettle();
+  }
 
   // Titre : déjà passé par l'URL, mais tronqué/réencodé possible — on
   // impose la valeur exacte du job si elle diffère (80 caractères max eBay).
@@ -324,6 +335,10 @@ async function fillListingForm(job) {
   const wantedTitle = String(job.title ?? "").slice(0, 80);
   if (titleInput && wantedTitle && titleInput.value !== wantedTitle) {
     await typeInto(titleInput, wantedTitle);
+    // Le titre déclenche côté eBay un recalcul lourd (suggestions de
+    // catégorie/aspects) : on le laisse se terminer avant d'attaquer les
+    // specifics.
+    await fieldSettle();
   }
 
   // ── Item specifics (tous non bloquants, warning si introuvable) ──────────
@@ -359,6 +374,7 @@ async function fillListingForm(job) {
 
   // ── Prix : basculer Enchères → Achat immédiat puis poser le prix ─────────
   if (job.price != null) {
+    await fieldSettle();
     await ensureAchatImmediat(warnings);
     // 20 s (et pas 8) : la section PRIX se re-rend après la bascule Achat
     // immédiat ET après le calcul du prix suggéré (priceAutoFillPref) — cas
@@ -384,7 +400,16 @@ async function fillListingForm(job) {
   }
 
   // ── Description (RTE dans une iframe same-origin) ─────────────────────────
-  if (job.description) await fillDescription(job.description, warnings);
+  // descOk (2026-07-12, vécu en LIVE réel) : l'iframe RTE n'était pas encore
+  // chargée au moment du remplissage, le texte est parti dans le vide et eBay
+  // a refusé la soumission (« Vous devez ajouter une description ») — pendant
+  // que le job partait en "published" fantôme. La description est OBLIGATOIRE
+  // côté eBay : en LIVE, on ne clique PAS si elle n'a pas pu être posée.
+  let descOk = true;
+  if (job.description) {
+    await fieldSettle();
+    descOk = await fillDescription(job.description, warnings);
+  }
 
   // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
   // explicitement marqué platform_fields.live_run === true (test supervisé
@@ -416,11 +441,69 @@ async function fillListingForm(job) {
     return { success: true, dryRun: true, warnings, unfilledRequired };
   }
 
-  // ── Publication LIVE (job live_run uniquement) ─────────────────────────────
+  // ── Publication LIVE ────────────────────────────────────────────────────────
+  // Description manquante = refus GARANTI par la validation eBay : inutile de
+  // cliquer, on remonte tout de suite un needsUser actionnable (le formulaire
+  // et son brouillon restent en place dans l'onglet de travail).
+  if (!descOk) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "LIVE : description non posée dans l'éditeur eBay (" +
+        (warnings.find((w) => w.startsWith("description:")) ?? "cause inconnue") +
+        ") — publication NON tentée : eBay la refuse (« Vous devez ajouter une description »). " +
+        "Le job repartira au prochain passage.",
+      warnings,
+      unfilledRequired: computeUnfilledRequired(fields, filledSpecifics),
+    };
+  }
+
+  // Passe de rattrapage finale (2026-07-12, observation en session réelle) :
+  // l'onglet de travail étant caché, une pose peut n'avoir pas pris au
+  // premier passage (réaction au clic différée par le throttling). Plusieurs
+  // dizaines de secondes se sont écoulées depuis (prix, description) : on
+  // re-tente UNE fois, sans refresh de page, chaque aspect obligatoire connu
+  // encore vide dans le DOM ACTUEL — avant de conclure au needsUser.
+  const knownAspectFills = [
+    { labels: ["Marque"], value: fields.marque },
+    { labels: ["Taille", "Pointure EU", "Pointure"], value: taille },
+    { labels: ["Couleur"], value: couleur },
+    { labels: ["Matière", "Matériau", "Matériaux"], value: fields.matiere },
+  ];
+  const emptyBeforeRetry = computeUnfilledRequired(fields, filledSpecifics);
+  for (const { labels, value } of knownAspectFills) {
+    if (!value || !labels.some((l) => emptyBeforeRetry.includes(l))) continue;
+    console.log(`[ebay] passe finale : re-tentative sur "${labels[0]}" (obligatoire encore vide dans le DOM)`);
+    await fillSpecificTracked(labels, value);
+  }
+
+  // Aspect obligatoire CONNU (référentiel ebay_item_aspects porté par le job
+  // via fields.ebayRequiredAspects) encore vide au moment du clic = refus
+  // GARANTI par la validation eBay (vécu en LIVE réel 2026-07-12 : « La
+  // caractéristique de l'objet Marque est manquante ») : on ne clique pas non
+  // plus. computeUnfilledRequired lit l'état RÉEL du formulaire (valeurs
+  // pré-remplies par eBay incluses) et filledSpecifics n'est alimenté que par
+  // des poses VÉRIFIÉES en relecture (fillSpecificSafe) — plus de confiance
+  // aveugle dans le fait d'avoir cliqué.
+  const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics);
+  if (unfilledRequired.length) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        `LIVE : aspect(s) obligatoire(s) eBay vide(s) sur le formulaire : ${unfilledRequired.join(", ")} — ` +
+        "publication NON tentée (refus eBay garanti). Compléter le(s) champ(s) dans l'app ou " +
+        "directement sur le formulaire resté ouvert ; le job repartira au prochain passage.",
+      warnings,
+      unfilledRequired,
+    };
+  }
+
   // Le clic "Mettre en vente avec les frais affichés" est un engagement de
-  // frais : réservé aux jobs marqués live_run (test supervisé). Libellé relevé
-  // en session réelle 2026-07-07 ; on privilégie le bouton mentionnant les
-  // frais, repli sur tout "Mettre en vente" hors liens de navigation.
+  // frais. Libellé relevé en session réelle 2026-07-07 ; on privilégie le
+  // bouton mentionnant les frais, repli sur tout "Mettre en vente" hors liens
+  // de navigation.
   const listBtn =
     Array.from(document.querySelectorAll("button")).find((b) =>
       /mettre en vente avec les frais/i.test(b.textContent)
@@ -434,16 +517,19 @@ async function fillListingForm(job) {
       needsUser: true,
       error: "LIVE : bouton « Mettre en vente » introuvable sur le formulaire — publier à la main puis vérifier le sélecteur.",
       warnings,
-      unfilledRequired: computeUnfilledRequired(fields, filledSpecifics),
+      unfilledRequired,
     };
   }
   console.log(`[ebay] 🚀 LIVE — clic « ${listBtn.textContent.trim()} » (engagement de frais)`);
   await humanPause(1200, 2400);
   realClick(listBtn);
-  // La redirection/confirmation est surveillée côté background
-  // (captureListingUrl) — on répond tout de suite.
+  // La suite est surveillée côté background — detectReauth, puis
+  // verifyEbaySubmission (2026-07-12 : la soumission peut être REFUSÉE sur
+  // place par la validation eBay, bandeau « Vous devez ajouter une
+  // description » vécu en LIVE réel, et seul le background survit à une
+  // éventuelle redirection), puis captureListingUrl. On répond tout de suite.
   await sleep(3000);
-  return { success: true, listingUrl: null, warnings, unfilledRequired: computeUnfilledRequired(fields, filledSpecifics) };
+  return { success: true, listingUrl: null, warnings, unfilledRequired };
 }
 
 // ── État : comparaison de famille (neuf vs occasion) ────────────────────────
@@ -525,122 +611,41 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     // ⚠️ "Tendances" est un BADGE d'aide affiché dans le bouton-valeur de
     // certains champs (Matière, Type de taille...), pas une valeur
     // sélectionnée — faux positif vécu au dry-run ("déjà rempli (Tendances)").
-    const current = anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "");
+    const readValue = () => anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "");
     // eBay pré-remplit beaucoup depuis le titre et la catégorie (Département,
     // Type, Style...) : on ne ré-écrit jamais une valeur existante.
+    const current = readValue();
     if (current) {
       console.log(`[ebay] ${found.label}: déjà rempli ("${current}"), conservé`);
       return true;
     }
 
-    // Fast-path 1 : chip "Fréquemment sélectionnées" qui matche exactement —
-    // un clic, pas de menu, pas de frappe (précieux aussi parce que l'onglet
-    // de travail est en arrière-plan : les timers y sont bridés à 1 s).
-    const chip = [...anatomy.row.querySelectorAll("button.fake-link")]
-      .find((b) => normalizeFuzzy(b.textContent) === normalizeFuzzy(String(rawValue)));
-    if (chip) {
-      realClick(chip);
-      await humanPause();
-      console.log(`[ebay] ${found.label}: chip "Fréquemment sélectionnées" cliquée ("${chip.textContent.trim()}")`);
-      return true;
-    }
-
-    // Fast-path 2 : certains champs (Taille sur les vêtements) ne sont PAS
-    // des menus mais un GROUPE DE TOGGLES (2XS...4XL) rendu directement dans
-    // la ligne (vécu au dry-run : "menu pas ouvert") — cascade sur les
-    // toggles, pas de dropdown.
-    const toggles = [...anatomy.row.querySelectorAll("button.se-toggle-button-group__toggle-button, .toggle-button")];
-    if (toggles.length) {
-      const match = findOptionCascade(anatomy.row, "button.se-toggle-button-group__toggle-button, .toggle-button", String(rawValue));
-      if (!match) {
-        throw new Error(
-          `option "${rawValue}" absente du groupe de toggles. Options: ` +
-          JSON.stringify(toggles.map((t) => t.textContent.trim()).slice(0, 20))
-        );
+    // 2 poses, chacune VÉRIFIÉE par relecture (2026-07-12, même rigueur que
+    // fillDescription) : un clic (chip, toggle, option de menu) peut ne pas
+    // être enregistré par eBay pendant que la ligne se re-rend — vécu en LIVE
+    // réel, chip Marque « Patagonia » visible à l'écran mais jamais cochée,
+    // job soumis puis refusé (« La caractéristique de l'objet Marque est
+    // manquante »). Seule la valeur RELUE dans le bouton-valeur fait foi,
+    // jamais le fait d'avoir cliqué. La 2e pose ignore la chip et passe par
+    // le menu, le chemin le plus explicite.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip: attempt > 1 });
+      // 8 s : l'onglet de travail est caché, le commit React qui affiche la
+      // valeur est différé par le throttling (observé en session réelle
+      // 2026-07-12 : toggle Taille cliqué → valeur "M" visible ~1-2 s plus
+      // tard, davantage sous charge).
+      const taken = await waitFor(() => readValue() || null, 8000);
+      if (taken) {
+        console.log(`[ebay] ${found.label}: valeur posée et relue ("${taken}")${attempt > 1 ? " (2e pose)" : ""}`);
+        return true;
       }
-      realClick(match.el);
-      await humanPause();
-      if (match.stage !== "exact") {
-        const note = `${fieldName}: "${rawValue}" → toggle eBay "${match.label}" (match ${match.stage})`;
-        console.warn(`[ebay] ≈ ${note}`);
-        warnings.push(note);
-      }
-      return true;
-    }
-
-    found.btn.scrollIntoView({ block: "center" });
-    realClick(anatomy.expandBtn);
-
-    // Menu ouvert : recherche + options. La recherche filtre ET permet
-    // d'ajouter une valeur libre ("Recherchez/ajoutez des détails").
-    //
-    // ⚠️ Recherche SCOPÉE À LA LIGNE (relevé en session réelle 2026-07-11,
-    // catégorie 15687 T-shirts) : les menu-containers des specifics
-    // coexistent TOUS dans le DOM dès le rendu (10 relevés, un par ligne,
-    // le 1er du document étant celui de Marque), cachés tant que leur ligne
-    // n'est pas dépliée. L'ancien document.querySelector(SPECIFICS_MENU_SELECTOR)
-    // regardait donc toujours le container de MARQUE : Marque passait
-    // (container document-first), Couleur/Matière ne passaient jamais
-    // ("menu pas ouvert") alors que leur menu s'ouvrait bien — Taille passait
-    // par les toggles et Type/Département étaient pré-remplis, ce qui a
-    // masqué le bug. Le menu qui s'ouvre est .fake-menu-button__menu dans le
-    // .se-filter-menu-button de la ligne ; fallback document pour ne pas
-    // régresser si eBay téléporte un jour le menu hors de la ligne.
-    const holder = anatomy.expandBtn.closest(".se-filter-menu-button") || anatomy.row;
-    const menu = await waitFor(() => {
-      const scoped = holder.querySelector(`${SPECIFICS_MENU_SELECTOR}, .fake-menu-button__menu`);
-      if (scoped && scoped.offsetParent !== null) return scoped;
-      const global = document.querySelector(SPECIFICS_MENU_SELECTOR);
-      return global && global.offsetParent !== null ? global : null;
-    }, 5000);
-    if (!menu) throw new Error(`menu du specific "${found.label}" pas ouvert`);
-
-    const search = menu.querySelector("input.textbox__control, input[type='text']");
-    if (search) {
-      // Frappe humaine (80–250 ms/caractère + keydown/keyup) au lieu des
-      // 40 ms fixes d'avant le 2026-07-09.
-      search.focus();
-      setNativeValue(search, "");
-      for (const char of String(rawValue)) {
-        dispatchKey(search, "keydown", char);
-        dispatchKey(search, "keypress", char);
-        setNativeValue(search, search.value + char);
-        dispatchKey(search, "keyup", char);
-        await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
-      }
-      await sleep(700); // debounce du filtre
-    }
-
-    const optionSelector = '[role="menuitemradio"], [role="menuitemcheckbox"], .menu__item';
-    let match = findOptionCascade(menu, optionSelector, String(rawValue));
-    if (!match && search) {
-      // Aucune option : valeur libre — eBay matérialise la saisie comme
-      // première entrée du menu une fois tapée ; on re-scanne sans filtre
-      // de cascade (n'importe quelle option contenant la saisie exacte).
-      const typed = [...menu.querySelectorAll(optionSelector)]
-        .find((o) => normalizeFuzzy(o.textContent).includes(normalizeFuzzy(String(rawValue))));
-      if (typed) match = { el: typed, label: typed.textContent.trim(), stage: "saisie-libre" };
-    }
-    if (!match) {
-      const available = [...menu.querySelectorAll(optionSelector)]
-        .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 20);
-      throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
-    }
-
-    await humanPause(); // temps de "lecture" de la liste avant le clic
-    realClick(match.el);
-    await humanPause();
-    // menuitemradio se ferme seul ; menuitemcheckbox (multi) reste ouvert.
-    if (document.querySelector(SPECIFICS_MENU_SELECTOR)?.offsetParent) {
+      console.warn(`[ebay] ${found.label}: valeur non enregistrée (relecture vide, pose ${attempt}/2)`);
+      // Referme un éventuel menu/panneau resté ouvert avant de re-poser.
       document.body.click();
-      await humanPause();
+      await sleep(randInt(1200, 2200));
+      await dismissLightboxes();
     }
-    if (match.stage !== "exact") {
-      const note = `${fieldName}: "${rawValue}" → option eBay "${match.label}" (match ${match.stage})`;
-      console.warn(`[ebay] ≈ ${note}`);
-      warnings.push(note);
-    }
-    return true;
+    throw new Error(`la valeur "${rawValue}" ne persiste pas après 2 poses (relecture vide)`);
   } catch (e) {
     const note = `${fieldName}: champ sauté — ${e.message}`;
     console.warn(`[ebay] ⚠️ ${note}`);
@@ -648,6 +653,142 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     document.body.click(); // referme un éventuel menu resté ouvert
     await humanPause();
     return false;
+  }
+}
+
+// Pose UNE fois la valeur d'un specific (chip / toggles / menu) — l'écriture
+// seule : la vérification par relecture vit dans fillSpecificSafe. Jette sur
+// les cas sans issue (option absente du référentiel de la page, menu pas
+// ouvert), que la relance ne réparerait pas.
+async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip = false } = {}) {
+  // Fast-path 1 : chip "Fréquemment sélectionnées" qui matche exactement —
+  // un clic, pas de menu, pas de frappe (précieux aussi parce que l'onglet
+  // de travail est en arrière-plan : les timers y sont bridés à 1 s).
+  if (!skipChip) {
+    const chip = [...anatomy.row.querySelectorAll("button.fake-link")]
+      .find((b) => normalizeFuzzy(b.textContent) === normalizeFuzzy(String(rawValue)));
+    if (chip) {
+      realClick(chip);
+      await humanPause();
+      console.log(`[ebay] ${found.label}: chip "Fréquemment sélectionnées" cliquée ("${chip.textContent.trim()}")`);
+      return;
+    }
+  }
+
+  // Fast-path 2 : certains champs (Taille sur les vêtements) ne sont PAS
+  // des menus mais un GROUPE DE TOGGLES (2XS...4XL) rendu directement dans
+  // la ligne (vécu au dry-run : "menu pas ouvert") — cascade sur les
+  // toggles, pas de dropdown.
+  const toggles = [...anatomy.row.querySelectorAll("button.se-toggle-button-group__toggle-button, .toggle-button")];
+  if (toggles.length) {
+    const match = findOptionCascade(anatomy.row, "button.se-toggle-button-group__toggle-button, .toggle-button", String(rawValue));
+    if (!match) {
+      throw new Error(
+        `option "${rawValue}" absente du groupe de toggles. Options: ` +
+        JSON.stringify(toggles.map((t) => t.textContent.trim()).slice(0, 20))
+      );
+    }
+    realClick(match.el);
+    await humanPause();
+    if (match.stage !== "exact") {
+      const note = `${fieldName}: "${rawValue}" → toggle eBay "${match.label}" (match ${match.stage})`;
+      console.warn(`[ebay] ≈ ${note}`);
+      warnings.push(note);
+    }
+    return;
+  }
+
+  found.btn.scrollIntoView({ block: "center" });
+
+  // Menu ouvert : recherche + options. La recherche filtre ET permet
+  // d'ajouter une valeur libre ("Recherchez/ajoutez des détails").
+  //
+  // ⚠️ Recherche SCOPÉE À LA LIGNE (relevé en session réelle 2026-07-11,
+  // catégorie 15687 T-shirts) : les menu-containers des specifics
+  // coexistent TOUS dans le DOM dès le rendu (10 relevés, un par ligne,
+  // le 1er du document étant celui de Marque), cachés tant que leur ligne
+  // n'est pas dépliée. L'ancien document.querySelector(SPECIFICS_MENU_SELECTOR)
+  // regardait donc toujours le container de MARQUE : Marque passait
+  // (container document-first), Couleur/Matière ne passaient jamais
+  // ("menu pas ouvert") alors que leur menu s'ouvrait bien — Taille passait
+  // par les toggles et Type/Département étaient pré-remplis, ce qui a
+  // masqué le bug. Le menu qui s'ouvre est .fake-menu-button__menu dans le
+  // .se-filter-menu-button de la ligne ; fallback document pour ne pas
+  // régresser si eBay téléporte un jour le menu hors de la ligne.
+  const holder = anatomy.expandBtn.closest(".se-filter-menu-button") || anatomy.row;
+  const visibleMenu = () => {
+    const scoped = holder.querySelector(`${SPECIFICS_MENU_SELECTOR}, .fake-menu-button__menu`);
+    if (scoped && scoped.offsetParent !== null) return scoped;
+    const global = document.querySelector(SPECIFICS_MENU_SELECTOR);
+    return global && global.offsetParent !== null ? global : null;
+  };
+  // Onglet de travail CACHÉ (observé en session réelle 2026-07-12) : la
+  // réaction d'eBay au clic (ouverture du menu, commits d'état React) est
+  // DIFFÉRÉE de plusieurs secondes par le throttling — un clic peut sembler
+  // perdu alors qu'il n'a pas encore produit son effet. On attend d'abord ;
+  // si aria-expanded n'est toujours pas passé à true (l'état commité), le
+  // clic a réellement été avalé (vécu) : on re-clique UNE fois.
+  realClick(anatomy.expandBtn);
+  let menu = await waitFor(visibleMenu, 4000);
+  if (!menu) {
+    if (anatomy.expandBtn.getAttribute("aria-expanded") !== "true") {
+      console.log(`[ebay] ${found.label}: menu sans réaction au 1er clic — re-clic`);
+      realClick(anatomy.expandBtn);
+    }
+    menu = await waitFor(visibleMenu, 8000);
+  }
+  if (!menu) throw new Error(`menu du specific "${found.label}" pas ouvert`);
+
+  const search = menu.querySelector("input.textbox__control, input[type='text']");
+  if (search) {
+    // Valeur posée EN UN SEUL setNativeValue (2026-07-12, même leçon que le
+    // prix Vinted) : la frappe incrémentale search.value + char se CORROMPT
+    // dans l'onglet de travail caché — les commits React différés par le
+    // throttling s'intercalent entre deux écritures. Reproduit en session
+    // réelle : "Patagonia" tapé caractère par caractère → "iaPatagonia" dans
+    // le champ, filtre sans résultat, champ sauté. Un encadrement
+    // keydown/keyup garde une trace clavier plausible ; ce champ vit DANS le
+    // menu d'un formulaire déjà rempli à cadence humaine.
+    search.focus();
+    await humanPause();
+    const firstChar = String(rawValue)[0] ?? "";
+    dispatchKey(search, "keydown", firstChar);
+    dispatchKey(search, "keypress", firstChar);
+    setNativeValue(search, String(rawValue));
+    dispatchKey(search, "keyup", firstChar);
+    // Debounce du filtre : 1500 ms (700 avant) — les timers de la page sont
+    // eux aussi bridés quand l'onglet est caché.
+    await sleep(1500);
+  }
+
+  const optionSelector = '[role="menuitemradio"], [role="menuitemcheckbox"], .menu__item';
+  let match = findOptionCascade(menu, optionSelector, String(rawValue));
+  if (!match && search) {
+    // Aucune option : valeur libre — eBay matérialise la saisie comme
+    // première entrée du menu une fois tapée ; on re-scanne sans filtre
+    // de cascade (n'importe quelle option contenant la saisie exacte).
+    const typed = [...menu.querySelectorAll(optionSelector)]
+      .find((o) => normalizeFuzzy(o.textContent).includes(normalizeFuzzy(String(rawValue))));
+    if (typed) match = { el: typed, label: typed.textContent.trim(), stage: "saisie-libre" };
+  }
+  if (!match) {
+    const available = [...menu.querySelectorAll(optionSelector)]
+      .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 20);
+    throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
+  }
+
+  await humanPause(); // temps de "lecture" de la liste avant le clic
+  realClick(match.el);
+  await humanPause();
+  // menuitemradio se ferme seul ; menuitemcheckbox (multi) reste ouvert.
+  if (document.querySelector(SPECIFICS_MENU_SELECTOR)?.offsetParent) {
+    document.body.click();
+    await humanPause();
+  }
+  if (match.stage !== "exact") {
+    const note = `${fieldName}: "${rawValue}" → option eBay "${match.label}" (match ${match.stage})`;
+    console.warn(`[ebay] ≈ ${note}`);
+    warnings.push(note);
   }
 }
 
@@ -679,31 +820,51 @@ async function ensureAchatImmediat(warnings) {
 }
 
 // ── Description (iframe RTE same-origin #se-rte-frame__summary) ─────────────
+// Retourne true si la description a RÉELLEMENT pris (relecture), false sinon.
+// Durci le 2026-07-12 après un faux positif en LIVE réel : 5 s d'attente sur
+// la seule PRÉSENCE de l'iframe ne suffisaient pas — son document n'était pas
+// initialisé, le texte partait dans le vide, et eBay refusait la soumission
+// (« Vous devez ajouter une description »). On attend désormais l'iframe ET
+// son document prêt ET la zone éditable (20 s, comme les autres attentes du
+// formulaire), puis on VÉRIFIE en relisant le contenu posé.
 async function fillDescription(text, warnings) {
-  const iframe = await waitFor(
-    () => document.querySelector('iframe#se-rte-frame__summary, iframe[title="Description"]'),
-    5000
-  );
-  if (!iframe) {
-    warnings.push("description: iframe RTE introuvable — description non remplie");
-    return;
+  const target = await waitFor(() => {
+    const iframe = document.querySelector('iframe#se-rte-frame__summary, iframe[title="Description"]');
+    const doc = iframe?.contentDocument;
+    if (!doc || doc.readyState !== "complete" || !doc.body) return null;
+    return doc.querySelector('[contenteditable="true"]') || doc.body;
+  }, 20000);
+  if (!target) {
+    warnings.push("description: RTE (iframe) pas chargé après 20 s — description non remplie");
+    return false;
   }
+  // textContent + <br> manuels : le RTE interprète le HTML, on n'injecte
+  // que des sauts de ligne (jamais le texte brut en innerHTML).
+  const html = String(text)
+    .split("\n")
+    .map((line) => line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])))
+    .join("<br>");
   try {
-    const doc = iframe.contentDocument;
-    const target = doc.querySelector('[contenteditable="true"]') || doc.body;
-    target.focus?.();
-    // textContent + <br> manuels : le RTE interprète le HTML, on n'injecte
-    // que des sauts de ligne (jamais le texte brut en innerHTML).
-    target.innerHTML = String(text)
-      .split("\n")
-      .map((line) => line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])))
-      .join("<br>");
-    target.dispatchEvent(new Event("input", { bubbles: true }));
-    doc.body.dispatchEvent(new Event("input", { bubbles: true }));
-    await humanPause();
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      target.focus?.();
+      target.innerHTML = html;
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+      target.ownerDocument.body.dispatchEvent(new Event("input", { bubbles: true }));
+      await humanPause();
+      // Relecture : un RTE qui finit de s'initialiser peut réécrire son
+      // contenu PAR-DESSUS le nôtre — seul le texte effectivement présent
+      // fait foi, pas le fait d'avoir écrit.
+      const got = (target.textContent || "").replace(/\s+/g, " ").trim();
+      if (got.length >= Math.min(20, String(text).trim().length)) return true;
+      console.warn(`[ebay] description vide après la pose (tentative ${attempt}/2)`);
+      await sleep(1500);
+    }
   } catch (e) {
     warnings.push(`description: RTE inaccessible (${e.message}) — description non remplie`);
+    return false;
   }
+  warnings.push("description: le texte posé dans le RTE ne persiste pas (relu vide 2 fois) — description non remplie");
+  return false;
 }
 
 // ── Popups parasites ─────────────────────────────────────────────────────────
@@ -790,6 +951,12 @@ function sleep(ms) {
 // setTimeout.
 const HUMAN_CHAR_MIN = 80, HUMAN_CHAR_MAX = 250;
 const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
+// Pause d'assimilation ENTRE CHAQUE champ (2026-07-12, demandé par Nico après
+// observation en direct) : ~5 s pour laisser eBay digérer chaque action
+// (re-renders lourds, recalculs de suggestions) avant d'attaquer la suivante.
+// Jitter léger : jamais deux pauses identiques (règle anti-bot du projet).
+const FIELD_SETTLE_MIN_MS = 4600, FIELD_SETTLE_MAX_MS = 5800;
+const fieldSettle = () => sleep(randInt(FIELD_SETTLE_MIN_MS, FIELD_SETTLE_MAX_MS));
 const HUMAN_TYPE_MAX_CHARS = 120;
 const HUMAN_CHUNK_CHARS = 40;
 
