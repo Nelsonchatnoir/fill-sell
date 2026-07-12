@@ -1147,4 +1147,4 @@ async function uploadPhotos(photos) {
   await sleep(1500 * files.length);
 }
 
-console.log("[ebay] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v3: entrée par la home + specifics expand-button/chips + timing humain)");
+console.log(`[ebay] prêt — build ${EBAY_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

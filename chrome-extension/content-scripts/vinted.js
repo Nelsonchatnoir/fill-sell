@@ -1,3 +1,9 @@
+// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
+// dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
+// chaque modification de ce fichier.
+const VINTED_BUILD = "2026-07-12-12h40 (DRY_RUN=false, delete confirmé 1/3, empreinte)";
+console.log(`[vinted.js] build ${VINTED_BUILD}`);
+
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
 //
 // ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
@@ -1117,4 +1123,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension (le libellé change à chaque évolution notable du remplissage).
-console.log("[vinted] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", matching: cascade-v1 + login-check + timing humain)");
+console.log(`[vinted] prêt — build ${VINTED_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

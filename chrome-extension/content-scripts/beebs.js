@@ -1,3 +1,9 @@
+// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
+// dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
+// chaque modification de ce fichier.
+const BEEBS_BUILD = "2026-07-12-12h40 (DRY_RUN=false, delete groupé jamais exécuté 0/3, empreinte)";
+console.log(`[beebs.js] build ${BEEBS_BUILD}`);
+
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
 //
 // ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
@@ -905,4 +911,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension.
-console.log("[beebs] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", v3 : + matière/couleur branchées, champ Âge (À TESTER), warnings avec options réelles)");
+console.log(`[beebs] prêt — build ${BEEBS_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

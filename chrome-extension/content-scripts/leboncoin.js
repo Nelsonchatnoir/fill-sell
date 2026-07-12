@@ -1,3 +1,9 @@
+// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
+// dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
+// chaque modification de ce fichier.
+const LEBONCOIN_BUILD = "2026-07-12-12h40 (DRY_RUN=false, delete confirmé 1/3, empreinte)";
+console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
+
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
 //
 // ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
@@ -1165,4 +1171,4 @@ async function uploadPhotos(input, photos) {
   await sleep(1500 * files.length);
 }
 
-console.log("[leboncoin] Content script FillSell chargé (DRY_RUN =", DRY_RUN, ", wizard-v7: sélection d'adresse validée par la valeur de l'input + filtrage des clés i18n brutes de LBC)");
+console.log(`[leboncoin] prêt — build ${LEBONCOIN_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
