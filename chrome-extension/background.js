@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-15h30 (paintTab pour la suppression, verrou withJobFlowLock, verifyEbaySubmission, recover " +
+  "2026-07-12-16h20 (detection 3 etats — plus AUCUNE vente fantome, paintTab, verrou, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -1216,80 +1216,107 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h par annonce
 const SALE_CHECK_MAX_PER_CYCLE = 8;
 
-function detectLeboncoinSold(html) {
-  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/);
-  if (m) {
-    try {
-      const data = JSON.parse(m[1]);
-      const pp = data?.props?.pageProps;
-      const isActive = pp?.adDetail?.isActive ?? pp?.ad?.isActive;
-      if (isActive === false) return "sold";
-      if (isActive === true) return "active";
-      const st = String(pp?.adDetail?.adStatus ?? pp?.ad?.status ?? "");
-      if (/INACTIVE|DELETED|SOLD/i.test(st)) return "sold";
-      if (/^ACTIVE$/i.test(st)) return "active";
-    } catch { /* fall through */ }
+// ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
+// Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
+// avec succès) étaient FAUX DANS LES DEUX SENS. Vérifié sur du vrai HTML :
+//   · une annonce Vinted RÉELLEMENT VENDUE ne déclenchait AUCUN motif → "active"
+//     (les motifs cherchaient "can_buy":false alors que le HTML porte du JSON
+//     ÉCHAPPÉ : \"can_buy\":false — ils ne pouvaient matcher NULLE PART) ;
+//   · une annonce SUPPRIMÉE (404/410) était déclarée "sold" par une guillotine
+//     en amont → toute annonce retirée à la main fabriquait une VENTE FANTÔME
+//     (ligne dans ventes, inventaire passé en vendu, frères annulés, email).
+//
+// TROIS ÉTATS désormais, et une règle absolue : UNE DISPARITION N'EST JAMAIS
+// UNE VENTE. Le doute ne s'écrit pas en base, il se demande à l'utilisateur.
+//   "active"      → toujours en ligne, rien à faire
+//   "sold"        → PREUVE POSITIVE de vente → orchestration automatique
+//   "unavailable" → plus en ligne, cause inconnue (supprimée, masquée,
+//                   expirée, vendue sans trace…) → AUCUNE écriture comptable,
+//                   drapeau + bandeau de confirmation dans l'app
+//   "unknown"     → on n'a rien pu conclure (bot-shield, champs absents) →
+//                   on ne touche à rien, on réessaiera
+//
+// ⚠️ can_buy vaut false AUSSI sur ses PROPRES annonces actives (on n'achète pas
+// chez soi) : ce champ ne doit JAMAIS servir de signal de vente.
+
+// Les pages embarquent leur JSON dans du HTML : les guillemets y sont échappés
+// (\"champ\":valeur). On accepte les deux formes — c'est précisément ce qui
+// manquait et qui rendait tous les anciens motifs inopérants.
+function jsonField(html, key) {
+  const m = html.match(new RegExp('\\\\?"' + key + '\\\\?":\\s*(\\\\?"[^"\\\\]*\\\\?"|true|false|null|\\d+)'));
+  if (!m) return null;
+  return m[1].replace(/\\/g, "").replace(/^"|"$/g, "");
+}
+
+// VINTED — signal VÉRIFIÉ en session réelle (annonce vendue 8758429057 vs
+// annonce active 9350977566) :
+//   vendue : \"is_closed\":true,  \"item_closing_action\":\"sold\"
+//   active : \"is_closed\":false, \"item_closing_action\":null
+// (is_reserved et is_hidden sont des booléens SÉPARÉS : masqué/réservé ≠ vendu)
+function detectVintedState(html, finalUrl) {
+  if (/\/not-found|\/404/.test(finalUrl)) return "unavailable";
+  const closed = jsonField(html, "is_closed");
+  if (closed === null) return "unknown"; // page inattendue : ne rien conclure
+  if (closed !== "true") return "active";
+  return jsonField(html, "item_closing_action") === "sold" ? "sold" : "unavailable";
+}
+
+// LEBONCOIN — relevé réel : une annonce supprimée rend HTTP 410, et les champs
+// isActive/adStatus que cherchait l'ancien code N'EXISTENT PAS dans la réponse.
+// Surtout : LBC n'expose AUCUN statut « vendu » public — une annonce vendue est
+// simplement RETIRÉE, réponse identique à une suppression manuelle. La preuve de
+// vente ne peut donc venir que de la page vendeur (mes-transactions) — étape 2.
+function detectLeboncoinState(html) {
+  if (html.includes("Cette annonce n’est plus disponible") || html.includes("a été supprimée")) {
+    return "unavailable";
   }
-  if (
-    html.includes("Cette annonce n’est plus disponible") ||
-    html.includes("a été supprimée") ||
-    html.includes('"isActive":false') ||
-    html.includes('"adStatus":"INACTIVE"') ||
-    html.includes('"adStatus":"DELETED"')
-  ) return "sold";
   return "active";
 }
 
-function detectVintedSold(html, finalUrl) {
-  if (/\/not-found|\/404/.test(finalUrl)) return "sold";
-  if (
-    html.includes('"can_buy":false') ||
-    html.includes('"status":"sold"') ||
-    html.includes('"is_hidden":true') ||
-    html.includes('"sold":true') ||
-    html.includes("item-not-available") ||
-    html.includes("n’est plus disponible") ||
-    html.includes("is no longer available")
-  ) return "sold";
-  return "active";
+// EBAY — relevé réel sur notre annonce TERMINÉE SANS VENTE (800328233923) :
+//   "listingStatus":"ENDED"  (EN MAJUSCULES — l'ancien code cherchait "Ended")
+// ⚠️ La page contient les mots « Vendu » et un prix de vente… qui appartiennent
+// aux annonces RECOMMANDÉES en bas de page : toute détection par texte brut est
+// un faux positif garanti. On ne lit que le champ JSON.
+// La valeur d'une annonce réellement VENDUE n'a PAS pu être observée (aucune
+// vente eBay sur le compte) : tant qu'on ne l'a pas relevée, eBay ne conclut
+// JAMAIS "sold" tout seul → "unavailable" → bandeau.
+function detectEbayState(html, finalUrl) {
+  if (!/\/itm\//.test(finalUrl)) return "unavailable";
+  const st = (jsonField(html, "listingStatus") || "").toUpperCase();
+  if (!st) return "unknown";
+  if (st === "ACTIVE") return "active";
+  return "unavailable"; // ENDED, COMPLETED… : terminée ≠ vendue (à confirmer)
 }
 
-function detectEbaySold(html, finalUrl) {
-  if (!/\/itm\//.test(finalUrl)) return "sold";
-  if (
-    html.includes("This listing was ended") ||
-    html.includes("Cette annonce a pris fin") ||
-    html.includes('"listingStatus":"Completed"') ||
-    html.includes('"listingStatus":"Ended"')
-  ) return "sold";
-  return "active";
+// BEEBS — relevé réel : active → \"status\":\"AVAILABLE\" ; supprimée → 404.
+// ⚠️ La chaîne \"sold\":\"Vendu\" est un LIBELLÉ de traduction présent sur TOUTES
+// les pages (y compris actives) : piège de l'ancien motif "sold":true.
+// Valeur du champ status pour une vente réelle : NON OBSERVÉE → jamais "sold".
+function detectBeebsState(html) {
+  const st = (jsonField(html, "status") || "").toUpperCase();
+  if (!st) return "unknown";
+  return st === "AVAILABLE" ? "active" : "unavailable";
 }
 
-function detectBeebsSold(html) {
-  if (
-    html.includes('"sold":true') ||
-    html.includes('"is_sold":true') ||
-    html.includes("n’est plus disponible")
-  ) return "sold";
-  return "active";
-}
-
-async function checkListingSold(url, platform) {
+async function checkListingState(url, platform) {
   try {
     const res = await fetch(url, { credentials: "include", redirect: "follow" });
-    if (res.status === 404 || res.status === 410) return "sold";
+    // 404/410 : l'annonce n'est plus là. Ce n'est PAS une vente — c'était la
+    // guillotine qui fabriquait les ventes fantômes.
+    if (res.status === 404 || res.status === 410) return "unavailable";
     if (!res.ok) return "unknown"; // bot-shield ou erreur serveur : ne pas conclure
     const html = await res.text();
     const finalUrl = res.url;
     switch (platform) {
-      case "leboncoin": return detectLeboncoinSold(html);
-      case "vinted":    return detectVintedSold(html, finalUrl);
-      case "ebay":      return detectEbaySold(html, finalUrl);
-      case "beebs":     return detectBeebsSold(html);
+      case "leboncoin": return detectLeboncoinState(html);
+      case "vinted":    return detectVintedState(html, finalUrl);
+      case "ebay":      return detectEbayState(html, finalUrl);
+      case "beebs":     return detectBeebsState(html);
       default:          return "unknown";
     }
   } catch (e) {
-    console.warn(`[background] checkListingSold(${url}):`, String(e?.message ?? e));
+    console.warn(`[background] checkListingState(${url}):`, String(e?.message ?? e));
     return "unknown";
   }
 }
@@ -1316,7 +1343,7 @@ async function checkPublishedListings(session) {
   try {
     jobs = await restRequest(
       "cross_post_jobs" +
-        "?select=id,platform,listing_url,last_checked_at" +
+        "?select=id,platform,listing_url,last_checked_at,platform_fields" +
         "&status=eq.published&action=eq.publish&listing_url=not.is.null" +
         "&order=last_checked_at.asc.nullsfirst&limit=30",
       session.access_token
@@ -1332,23 +1359,39 @@ async function checkPublishedListings(session) {
     .slice(0, SALE_CHECK_MAX_PER_CYCLE);
   if (!due.length) return;
 
-  console.log(`[background] Détection de vente : ${due.length} annonce(s) à vérifier`);
+  console.log(`[background] Détection : ${due.length} annonce(s) à vérifier`);
   for (let i = 0; i < due.length; i++) {
     const job = due[i];
-    const detected = await checkListingSold(job.listing_url, job.platform);
-    console.log(`[background] ${job.platform} ${job.id} → ${detected}`);
+    const state = await checkListingState(job.listing_url, job.platform);
+    console.log(`[background] ${job.platform} ${job.id} → ${state}`);
+
+    const patch = { last_checked_at: new Date().toISOString() };
+
+    if (state === "unavailable") {
+      // L'annonce n'est plus en ligne, SANS preuve de vente. On n'écrit RIEN de
+      // comptable : ni vente, ni inventaire, ni annulation des frères. On pose
+      // un simple drapeau — l'app affichera un bandeau de confirmation
+      // (« Vendue ? Oui / Non ») et c'est le CLIC qui déclenchera, ou non,
+      // l'orchestration. Une disparition n'est jamais une vente.
+      const pf = job.platform_fields ?? {};
+      if (!pf.unavailable_since) {
+        patch.platform_fields = { ...pf, unavailable_since: new Date().toISOString() };
+        console.log(`[background] ${job.platform} ${job.id} : plus en ligne, AUCUNE preuve de vente → confirmation utilisateur`);
+      }
+    }
 
     await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
       method: "PATCH",
-      body: JSON.stringify({ last_checked_at: new Date().toISOString() }),
-    }).catch((e) => console.warn("[background] last_checked_at:", String(e?.message ?? e)));
+      body: JSON.stringify(patch),
+    }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
 
-    if (detected === "sold") {
-      // Orchestration serveur (vente, inventaire, frères, email) —
-      // check-listing-status v5. Idempotente : une re-détection est sans effet.
+    if (state === "sold") {
+      // PREUVE POSITIVE de vente (aujourd'hui : Vinted uniquement — is_closed +
+      // item_closing_action="sold"). Orchestration serveur (vente, inventaire,
+      // frères, email), idempotente.
       try {
         const r = await callEdgeFunction("check-listing-status", session.access_token, { job_id: job.id });
-        console.log(`[background] Vente orchestrée pour ${job.id}:`, JSON.stringify(r?.sale ?? r));
+        console.log(`[background] Vente CONFIRMÉE et orchestrée pour ${job.id}:`, JSON.stringify(r?.sale ?? r));
       } catch (e) {
         console.error(`[background] Orchestration vente ${job.id}:`, String(e?.message ?? e));
       }
