@@ -35,10 +35,25 @@ const PLATFORM_LABELS: Record<string, string> = {
   vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", vestiaire: "Vestiaire",
 };
 
+// priceOverride (2026-07-12) : prix de vente RÉEL, quand on le connaît mieux que
+// le prix de publication. Deux sources, jamais devinées :
+//   · l'utilisateur, via le champ éditable du bandeau de confirmation (couvre la
+//     négociation : remise main propre marchandée, offre acceptée…) ;
+//   · la plateforme, quand elle expose le prix réel (LBC : la page
+//     mes-transactions affiche le montant encaissé — étape 2).
+// Absent → on retombe sur job.price (prix de mise en ligne), qui reste la
+// meilleure donnée disponible.
+// ⚠️ Vinted : sa page d'annonce vendue n'expose PAS de prix de transaction
+// distinct du prix demandé (vérifié : price/originalAskingAmount = prix
+// demandé ; totalAmount = ce que paie l'ACHETEUR, frais de protection inclus —
+// à ne surtout pas confondre avec la recette du vendeur). Une offre acceptée
+// n'est pas exposée publiquement : le prix auto-confirmé peut donc être le prix
+// demandé, l'utilisateur le corrige dans l'app si besoin.
 export async function orchestrateSale(
   admin: any,
   userId: string,
   jobId: string,
+  opts?: { priceOverride?: number },
 ): Promise<SaleOrchestration> {
   const none: SaleOrchestration = {
     ok: false, venteCreated: false, inventaireUpdated: false,
@@ -78,7 +93,8 @@ export async function orchestrateSale(
     inv = data ?? null;
   }
 
-  const prixVente = Number(job.price ?? 0);
+  const override = Number(opts?.priceOverride);
+  const prixVente = Number.isFinite(override) && override > 0 ? override : Number(job.price ?? 0);
   const prixAchat = Number(inv?.prix_achat ?? 0);
   const purchaseCosts = Number(inv?.purchase_costs ?? 0);
   const sellingFees = 0; // décision produit : 0, éditable ensuite dans l'app
