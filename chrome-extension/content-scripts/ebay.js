@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-12-12h05 (desc-blur-oracle + empreinte, après 340158e)";
+const EBAY_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, fin d annonce eBay 1/3 — Mettre fin à l annonce)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -83,14 +83,28 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // Jamais bloquant : lien introuvable ou page de connexion → { clicked:false },
 // le background enchaîne sur la navigation directe vers l'URL de dépôt.
 // ── Fin d'annonce (Phase B, 2026-07-11) ─────────────────────────────────────
-// eBay ne "supprime" pas : on TERMINE l'annonce ("Terminer l'annonce") depuis
-// le Hub vendeur (/sh/lst/active — page vérifiée en session réelle 2026-07-11,
-// mais VIDE à ce moment-là : la ligne d'annonce et son menu d'actions n'ont
-// jamais été observés, cascades défensives à valider au premier dry-run avec
-// une annonce en cours).
-// ⚠️ DELETE_DRY_RUN reste à true tant que 3 fins d'annonces réelles n'ont pas
-// été validées manuellement.
-const DELETE_DRY_RUN = true;
+// eBay ne "supprime" pas : on met FIN à l'annonce depuis le Hub vendeur
+// (/sh/lst/active). RELEVÉ RÉEL 2026-07-12 (1re fin d'annonce réellement
+// exécutée, item 800328233923 — la page était vide le 11/07, tout ce qui suit
+// était supposé et FAUX) :
+//   1. La ligne (tr.grid-row) porte un bouton-icône SANS TEXTE dont
+//      l'aria-label est « Afficher d'autres actions (<titre de l'annonce>) » —
+//      c'est le déclencheur du menu. Aucun aria-haspopup (l'ancienne détection
+//      le cherchait : elle n'aurait jamais trouvé le menu).
+//   2. Le menu s'ouvre EN PORTAIL, hors de la ligne (piège identique aux
+//      specifics) : le chercher dans la ligne ne donne rien.
+//   3. Le libellé exact est « Mettre fin à l'annonce » (button.fake-menu__item)
+//      — PAS « Terminer l'annonce », qui n'existe nulle part. Voisins DANGEREUX
+//      dans le même menu : « Sponsoriser », « Utiliser le format Enchères »,
+//      « Vendre un objet similaire » → matching par texte EXACT, jamais fuzzy.
+//   4. Confirmation : dialogue « Voulez-vous vraiment mettre fin à cette
+//      annonce ? » qui NOMME l'article, bouton « Mettre fin à l'annonce ».
+//      AUCUN motif à choisir (l'ancien code en cherchait un).
+//   5. Preuve de succès : « 1 annonce a été terminée. » dans le hub, et la page
+//      publique /itm/<id> affiche « TERMINÉ ».
+// ⚠️ DELETE_DRY_RUN : passé à false le 2026-07-12 sur décision de Nico (session
+// autonome). Gate eBay : 1/3 fins d'annonce réelles.
+const DELETE_DRY_RUN = false;
 
 async function deleteListing(job) {
   const trace = [];
@@ -121,27 +135,33 @@ async function deleteListing(job) {
   const row = anchor.closest("tr") ?? anchor.closest('[class*="grid-row"], [class*="listing-row"], li');
   t(`ligne englobante : <${row?.tagName?.toLowerCase() ?? "?"}>`);
 
-  // Menu d'actions de la ligne (dropdown) : l'ouvrir n'est pas destructif.
-  let control = findEbayEnd(row ?? document);
-  if (!control) {
-    const menuBtn = Array.from(row?.querySelectorAll("button") ?? []).find((b) => {
-      const label = ((b.getAttribute("aria-label") || "") + " " + b.textContent).toLowerCase();
-      return b.getAttribute("aria-haspopup") === "true" || /actions|options|menu/.test(label);
-    });
-    if (menuBtn) {
-      t(`menu d'actions ouvert : "${(menuBtn.getAttribute("aria-label") || menuBtn.textContent).trim()}"`);
-      realClick(menuBtn);
-      await humanPause(700, 1400);
-      control = findEbayEnd(document); // menus eBay montés en portal
-    }
-  }
-
-  if (!control) {
-    const visible = Array.from((row ?? document).querySelectorAll("button, a"))
-      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 20);
-    t(`"Terminer l'annonce" INTROUVABLE — actions visibles : ${visible.join(" | ") || "(aucune)"}`);
+  // Déclencheur du menu : bouton-icône sans texte, identifié par son aria-label
+  // « Afficher d'autres actions (<titre>) » — le titre y figure, ce qui permet
+  // de vérifier qu'on ouvre le menu de LA BONNE ligne.
+  const menuBtn = Array.from(row?.querySelectorAll("button") ?? []).find((b) =>
+    /afficher d['’]autres actions/i.test(b.getAttribute("aria-label") || "")
+  );
+  if (!menuBtn) {
+    t("déclencheur de menu (aria-label « Afficher d'autres actions ») INTROUVABLE sur la ligne");
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Action 'Terminer l'annonce' introuvable", trace };
+    return { success: false, error: "Menu d'actions de la ligne introuvable", trace };
+  }
+  t(`menu d'actions : "${menuBtn.getAttribute("aria-label")}"`);
+  menuBtn.scrollIntoView({ block: "center" });
+  await humanPause(900, 1800);
+  realClick(menuBtn);
+
+  // Le menu est monté EN PORTAIL (hors de la ligne) : on le cherche au niveau
+  // document. Texte EXACT — le menu contient des voisins dangereux
+  // (« Sponsoriser », « Utiliser le format Enchères »).
+  const control = await waitFor(() => findEbayEnd(document), 8000);
+  if (!control) {
+    const visible = Array.from(document.querySelectorAll("button.fake-menu__item"))
+      .filter((b) => b.getClientRects().length)
+      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 15);
+    t(`« Mettre fin à l'annonce » INTROUVABLE — items du menu : ${visible.join(" | ") || "(aucun)"}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Action « Mettre fin à l'annonce » introuvable", trace };
   }
   t(`contrôle localisé : "${control.textContent.trim()}"`);
 
@@ -150,34 +170,45 @@ async function deleteListing(job) {
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  // ── LIVE (après validation manuelle) ───────────────────────────────────
+  // ── LIVE ────────────────────────────────────────────────────────────────
+  await humanPause(900, 1700);
   realClick(control);
-  await humanPause(1000, 2000);
-  // Dialogue de motif ("L'objet n'est plus à vendre"…) puis bouton final.
-  const reason = await waitFor(() => {
-    const dialog = document.querySelector('[role="dialog"], .lightbox-dialog');
-    if (!dialog) return null;
-    return Array.from(dialog.querySelectorAll('input[type="radio"], label'))
-      .find((el) => /plus à vendre|n'est plus disponible|vendu/i.test(el.textContent || "")) ?? null;
-  }, 8000);
-  if (reason) { t(`motif choisi : "${(reason.textContent || "").trim()}"`); realClick(reason); await humanPause(500, 1100); }
-  const confirmBtn = await waitFor(() => {
-    const dialog = document.querySelector('[role="dialog"], .lightbox-dialog');
-    if (!dialog) return null;
-    return Array.from(dialog.querySelectorAll("button"))
-      .find((b) => /terminer|envoyer|confirmer|end listing/i.test(b.textContent)) ?? null;
-  }, 8000);
-  if (!confirmBtn) return { success: false, error: "Confirmation de fin d'annonce introuvable", trace };
-  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
+
+  // Dialogue de confirmation : il NOMME l'article — dernière garde avant le
+  // clic irréversible. Aucun motif à choisir (vérifié en réel).
+  const dialog = await waitFor(() => {
+    return Array.from(document.querySelectorAll('[role="dialog"], [class*="dialog"], [class*="modal"]'))
+      .filter((d) => d.getClientRects().length)
+      .find((d) => /voulez-vous vraiment mettre fin/i.test(d.innerText || "")) ?? null;
+  }, 10000);
+  if (!dialog) return { success: false, error: "Dialogue de confirmation de fin d'annonce introuvable", trace };
+
+  const titleOk = !job.title || dialog.innerText.toLowerCase().includes(job.title.trim().toLowerCase());
+  if (!titleOk) {
+    t(`ABANDON : le dialogue ne nomme pas "${job.title}" — aucun clic`);
+    return { success: false, error: "Le dialogue de confirmation ne nomme pas l'annonce du job — abandon", trace };
+  }
+  t("dialogue de confirmation : nomme bien l'annonce du job");
+
+  const confirmBtn = Array.from(dialog.querySelectorAll("button"))
+    .filter((b) => b.getClientRects().length)
+    .find((b) => b.textContent.replace(/\s+/g, " ").trim() === "Mettre fin à l'annonce");
+  if (!confirmBtn) return { success: false, error: "Bouton « Mettre fin à l'annonce » du dialogue introuvable", trace };
+
+  await humanPause(800, 1600);
   realClick(confirmBtn);
-  await sleep(3000);
+  await sleep(4000);
+  t(`résultat : ${/annonce a été terminée/i.test(document.body.innerText) ? "« annonce terminée » confirmé" : "confirmation non détectée (vérifier le hub)"}`);
   return { success: true, trace };
 }
 
+// Texte EXACT (relevé réel) : « Mettre fin à l'annonce ». Le fuzzy est proscrit
+// ici — le même menu porte « Sponsoriser » et « Utiliser le format Enchères ».
 function findEbayEnd(root) {
   if (!root) return null;
-  return Array.from(root.querySelectorAll("button, a, [role='menuitem'], [role='option']"))
-    .find((el) => /terminer l['’]annonce|end listing/i.test(el.textContent.trim())) ?? null;
+  return Array.from(root.querySelectorAll("button.fake-menu__item, [role='menuitem'], button"))
+    .filter((el) => el.getClientRects().length)
+    .find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Mettre fin à l'annonce") ?? null;
 }
 
 function goToSellFromHome() {
