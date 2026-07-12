@@ -60,7 +60,15 @@ serve(async (req) => {
     const jobId = body.job_id as string | undefined;
     if (!jobId) return json({ error: "job_id requis" }, 400);
 
-    const result = await orchestrateSale(admin, user.id, jobId);
+    // price (2026-07-12, optionnel) : prix de vente RÉEL quand il est mieux connu
+    // que le prix de publication — champ éditable du bandeau de confirmation
+    // (négociation), ou montant lu sur la page vendeur de la plateforme.
+    // Validé strictement : un nombre fini > 0, sinon ignoré (on retombe sur
+    // job.price). Jamais de valeur devinée.
+    const rawPrice = Number(body.price);
+    const priceOverride = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : undefined;
+
+    const result = await orchestrateSale(admin, user.id, jobId, { priceOverride });
     if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);
     return json({ success: true, sale: result });
   } catch (err: unknown) {
