@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -14,8 +13,9 @@ import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 // ré-armé en pending (sinon get-pending-jobs le rejouait à chaque cron de
 // 30 min → réouverture d'onglets en boucle → suspension DataDome, incident
 // vécu). Pour re-tester, régénérer le job depuis l'app (nouveau pending).
-// Le cycle post-publication (published → sold + création de vente + annulation
-// des jobs frères) reste géré par check-listing-status — ne pas le dupliquer ici.
+// Le cycle post-publication (vente + inventaire + annulation des frères) vit
+// EXCLUSIVEMENT dans check-listing-status, et n'est déclenché QUE par le clic de
+// confirmation de l'utilisateur dans l'app. Ne jamais le rebrancher ici.
 //
 // Déploiement : supabase functions deploy update-job-status
 // verify_jwt reste à true (défaut) : la fonction reçoit toujours un JWT
@@ -23,12 +23,21 @@ import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 // auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
 // (user.id) et alimente le client scoped user pour la RLS.
 
-// 'sold' (2026-07-11) : remonté par le POLL DE DÉTECTION de l'extension quand
-// une annonce published n'est plus en vente — traité à part (garde stricte
-// published→sold + orchestration complète via _shared/sale-orchestration.ts :
-// vente, inventaire, frères, email), jamais par le patch générique.
+// ⚠️ 'sold' RETIRÉ le 2026-07-12 (décision produit) — et le statut n'est plus
+// acceptable ici du tout. Cette fonction pouvait orchestrer une vente (créer la
+// ligne dans `ventes`, passer l'inventaire en vendu, annuler les frères) sur un
+// simple appel status='sold'. Plus personne ne l'appelait ainsi, mais un chemin
+// d'écriture automatique qui dort n'est pas une garantie : c'est un risque
+// latent. Il est supprimé.
+// DÉSORMAIS, DANS TOUT LE CODE, UNE VENTE NE PEUT ÊTRE ÉCRITE QUE PAR UN CLIC :
+// le bandeau de l'app → check-listing-status { job_id, price } → orchestrateSale.
+// Raison : aucune plateforme n'expose le prix NÉGOCIÉ ; écrire une vente sans
+// confirmation humaine, c'est écrire une marge potentiellement fausse que
+// personne ne reviendra corriger.
+// Le job passe en 'sold' via l'orchestration elle-même, jamais par ce patch.
+//
 // 'deleted' (2026-07-11) : terminal d'un job action='delete' exécuté en LIVE.
-const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed", "sold", "deleted"];
+const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed", "deleted"];
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
 
@@ -74,18 +83,6 @@ serve(async (req) => {
     if (!jobId || !status) return json({ error: "job_id et status requis" }, 400);
     if (!ALLOWED_STATUSES.includes(status)) {
       return json({ error: `status invalide, valeurs acceptées : ${ALLOWED_STATUSES.join(", ")}` }, 400);
-    }
-
-    // ── Vente détectée : orchestration dédiée, pas le patch générique ────────
-    if (status === "sold") {
-      const admin = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-      const result = await orchestrateSale(admin, user.id, jobId);
-      if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);
-      console.log(`[update-job-status] userId=${user.id} job=${jobId} → sold (orchestré)`);
-      return json({ success: true, sale: result });
     }
 
     // ── 'deleted' : réservé aux jobs action='delete' (suppression LIVE) ──────
