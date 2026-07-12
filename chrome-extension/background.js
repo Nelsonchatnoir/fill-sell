@@ -17,9 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-21h00 ⚠️ TEMP TEST : delais de grace TOUS a 20 min (a revert avant launch) — " +
-  "reprise des jobs processing orphelins, AUCUNE ecriture auto, paintTab, verrou, recover " +
-  "listing_url, discard vérifié avant navigation, après 340158e)";
+  "2026-07-12-23h00 (fix run du soir : race waitForTabComplete, preuve de publication Vinted, " +
+  "emoji titres, colis Petit, quantite LBC, icone unifiee, onglet peint eBay) ⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -524,7 +523,30 @@ const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
 const jobDelayMs = () =>
   FILLSELL_CONFIG.JOB_DELAY_MS + randInt(0, FILLSELL_CONFIG.JOB_DELAY_JITTER_MS);
 
-async function processJob(job, accessToken) {
+// Emoji dans le TITRE (2026-07-12) : generate-listing en produit ("Xiaomi Redmi
+// Note 10 5G 128Go Gris Graphite 📱✨", "New Balance 9060 … 🔥") et plusieurs
+// plateformes refusent les caractères spéciaux dans ce champ. On nettoie ICI,
+// au point d'entrée commun aux 4 handlers : le correctif protège Vinted,
+// Leboncoin, eBay et Beebs d'un coup, sans redéployer generate-listing (le
+// prompt reste à corriger en amont — voir rapport, en attente du go de Nico).
+// La DESCRIPTION n'est PAS touchée : les emoji y sont acceptés et voulus.
+function stripEmoji(text) {
+  return String(text ?? "")
+    // pictogrammes, symboles, drapeaux, dingbats + sélecteurs de variante / ZWJ
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeJob(job) {
+  const title = stripEmoji(job.title);
+  if (title === job.title) return job;
+  console.log(`[background] Titre nettoyé (emoji retirés) : "${job.title}" → "${title}"`);
+  return { ...job, title };
+}
+
+async function processJob(rawJob, accessToken) {
+  const job = sanitizeJob(rawJob);
   const handler = PLATFORM_HANDLERS[job.platform];
   if (!handler) {
     console.warn(`[background] Plateforme inconnue "${job.platform}", job ${job.id} laissé en pending`);
@@ -574,10 +596,28 @@ async function processJob(job, accessToken) {
     const tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
     if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
+    // ⚠️ eBay : onglet PEINT pendant le remplissage (2026-07-12, non encore
+    // validé en run réel — voir rapport). Les aspects obligatoires (Marque,
+    // Couleur) ne "prennent" pas dans un onglet caché : les commits React y
+    // sont différés par le throttling de Chrome, la chip est cliquée mais
+    // jamais enregistrée (échec RÉPÉTÉ : « aspect obligatoire vide : Marque »
+    // ce soir sur les New Balance, et 3× ce matin sur le Patagonia — malgré
+    // les 2 poses et les relectures à 8 s déjà en place). Un onglet peint n'est
+    // pas throttlé : c'est exactement la parade qui a débloqué la SUPPRESSION
+    // Vinted (cause 0×0 élucidée le 2026-07-12). Le reste des plateformes
+    // continue de tourner en arrière-plan, sans voler le focus.
+    const release = job.platform === "ebay" ? await paintTab(tabId) : null;
+
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
     // on lui envoie le job et on attend le résultat du remplissage.
-    let result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+    let result;
+    try {
+      result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+    } finally {
+      // L'utilisateur retrouve son onglet même si le remplissage a jeté.
+      if (release) await release().catch(() => {});
+    }
 
     // Brouillon LBC bloquant sur l'onglet persistant : tentative unique dans
     // un onglet temporaire dédié à CE job (voir retryInTempTab — exception
@@ -777,7 +817,7 @@ async function retryInTempTab(job, handler, originalResult) {
       ? handler.newListingUrl(job)
       : handler.newListingUrl;
     tab = await chrome.tabs.create({ url: tempUrl + "#fillsell-temp", active: false });
-    await waitForTabComplete(tab.id);
+    await waitForTabComplete(tab.id, tempUrl + "#fillsell-temp");
     const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
     if (result?.draftBlocked) {
       return {
@@ -829,7 +869,7 @@ async function navigateHomeToForm(tabId, listingUrl) {
 
   // Navigation interne vers le formulaire (depuis une page du site, avec
   // referrer) plutôt qu'une ouverture d'onglet froide.
-  const loaded = waitForTabComplete(tabId);
+  const loaded = waitForTabComplete(tabId, listingUrl + WORK_TAB_FRAGMENT);
   await chrome.tabs.update(tabId, { url: listingUrl + WORK_TAB_FRAGMENT });
   await loaded;
 }
@@ -885,7 +925,7 @@ async function getOrCreateWorkTab(platform, url) {
   // 3. Aucun onglet à nous : en créer UN, mémorisé pour les jobs suivants
   const tab = await chrome.tabs.create({ url: target, active: false });
   await chrome.storage.session.set({ [key]: tab.id });
-  await waitForTabComplete(tab.id);
+  await waitForTabComplete(tab.id, target);
   return tab.id;
 }
 
@@ -950,7 +990,7 @@ async function navigateWorkTab(tabId, target) {
     try {
       // Écouteur attaché AVANT de déclencher la navigation : un chargement
       // rapide pourrait sinon émettre son "complete" avant qu'on ne l'attende.
-      const loaded = waitForTabComplete(effectiveId);
+      const loaded = waitForTabComplete(effectiveId, target);
       await chrome.tabs.update(effectiveId, { url: target });
       await loaded;
       return effectiveId;
@@ -971,29 +1011,82 @@ async function navigateWorkTab(tabId, target) {
 // Toujours UN SEUL onglet persistant à l'arrivée.
 async function replaceWorkTab(oldTabId, target) {
   const fresh = await chrome.tabs.create({ url: target, active: false });
-  await waitForTabComplete(fresh.id);
+  await waitForTabComplete(fresh.id, target);
   await chrome.tabs.remove(oldTabId).catch(() => {});
   return fresh.id;
 }
 
 // ── Helpers onglets ────────────────────────────────────────────────────────────
 
-function waitForTabComplete(tabId, timeoutMs = 30_000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      reject(new Error("Timeout: la page de dépôt n'a pas fini de charger"));
-    }, timeoutMs);
+// ⚠️ RACE CORRIGÉE le 2026-07-12 (cause n°1 des échecs du run du soir) : cette
+// fonction n'écoutait QUE l'événement onUpdated "complete". Si la page finissait
+// de charger AVANT que l'écouteur ne soit attaché — cas courant : onglet restauré
+// après discard, page en cache, navigation instantanée — l'événement était déjà
+// passé et PERSONNE ne le rattrapait. On attendait alors 30 s dans le vide, puis :
+//   · dans navigateWorkTab → "Onglet bloqué (dialogue beforeunload resté ouvert ?)"
+//     — message TROMPEUR : il n'y avait aucun dialogue, juste un événement manqué ;
+//   · puis replaceWorkTab → nouvel onglet → MÊME race → "Timeout: la page de dépôt
+//     n'a pas fini de charger" → job failed.
+// C'est ce qui explique les timeouts Vinted/Leboncoin/Beebs de ce soir sur des
+// pages qui, elles, s'étaient chargées normalement.
+// Parade : on lit l'ÉTAT RÉEL de l'onglet en plus d'écouter l'événement — et on
+// vérifie que l'URL est bien la cible, pour ne pas conclure "chargé" sur la page
+// PRÉCÉDENTE (encore "complete" pendant les premiers ms d'un tabs.update).
+function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
+  const urlMatches = (url) => {
+    if (!expectUrl) return true;
+    const strip = (u) => String(u || "").split("#")[0];
+    return strip(url) === strip(expectUrl) || String(url || "").includes(WORK_TAB_FRAGMENT);
+  };
 
-    function onUpdated(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === "complete") {
-        clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        // Petit délai pour laisser l'app JS de la plateforme s'initialiser
-        setTimeout(resolve, 2000);
-      }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Petit délai pour laisser l'app JS de la plateforme s'initialiser
+      // (et le content script du manifest s'injecter à document_idle).
+      setTimeout(resolve, 2000);
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    const timer = setTimeout(
+      () => fail(new Error("Timeout: la page de dépôt n'a pas fini de charger")),
+      timeoutMs
+    );
+
+    function onUpdated(updatedTabId, info, tab) {
+      if (updatedTabId !== tabId || info.status !== "complete") return;
+      if (!urlMatches(tab?.url)) return; // "complete" de la page précédente
+      succeed();
+    }
+    function onRemoved(removedTabId) {
+      if (removedTabId === tabId) fail(new Error("Onglet de travail fermé pendant le chargement"));
     }
     chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.onRemoved.addListener(onRemoved);
+
+    // Rattrapage de la race : l'onglet est peut-être DÉJÀ chargé sur la cible.
+    chrome.tabs
+      .get(tabId)
+      .then((tab) => {
+        if (!tab) return;
+        if (tab.status === "complete" && !tab.discarded && urlMatches(tab.url)) succeed();
+      })
+      .catch(() => {
+        /* onglet disparu : onRemoved (ou le timeout) tranchera */
+      });
   });
 }
 
@@ -1830,7 +1923,7 @@ async function processDeleteJob(job, accessToken) {
 // ~1–2 min de temps RÉEL. Le timer Web Worker des content scripts garantit que
 // ce temps n'est plus dilaté par le throttling des onglets cachés (fix
 // 2026-07-08) — mais il reste supérieur à l'ancien budget de 120 s.
-function sendMessageToTab(tabId, message, timeoutMs = 300_000) {
+function sendMessageToTabOnce(tabId, message, timeoutMs) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error("Timeout: pas de réponse du content script")),
@@ -1845,4 +1938,36 @@ function sendMessageToTab(tabId, message, timeoutMs = 300_000) {
       }
     });
   });
+}
+
+// "Could not establish connection. Receiving end does not exist." (vécu ce soir
+// sur Vinted) = le content script du manifest n'est pas ENCORE injecté quand on
+// envoie le premier message : il s'exécute à document_idle, et une SPA peut
+// enchaîner une navigation interne juste après le "complete" qui nous a
+// débloqués. Cette erreur est émise AVANT toute livraison — le message n'a
+// donc jamais atteint la page : le renvoyer ne peut pas dupliquer un
+// remplissage (contrairement à un timeout, où l'on ne sait pas). On ne rejoue
+// QUE ce cas, jamais les autres.
+async function sendMessageToTab(tabId, message, timeoutMs = 300_000) {
+  const RETRY_WINDOW_MS = 20_000;
+  const deadline = Date.now() + RETRY_WINDOW_MS;
+  let attempt = 0;
+
+  for (;;) {
+    try {
+      return await sendMessageToTabOnce(tabId, message, timeoutMs);
+    } catch (e) {
+      const msg = String(e?.message ?? e);
+      const noReceiver =
+        msg.includes("Receiving end does not exist") ||
+        msg.includes("Could not establish connection");
+      if (!noReceiver || Date.now() >= deadline) throw e;
+      attempt += 1;
+      console.log(
+        `[background] Content script pas encore prêt sur l'onglet ${tabId} ` +
+        `(tentative ${attempt}) — nouvel essai dans 1 s`
+      );
+      await sleep(1000);
+    }
+  }
 }
