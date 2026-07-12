@@ -4071,19 +4071,24 @@ export default function App({ loginOnly = false }){
     track('arm_removals',{count:group.length});
   }
 
-  // ── Annonce disparue sans preuve de vente : l'utilisateur tranche ──────────
-  // (Phase B, 2026-07-12) Le poll a vu l'annonce hors ligne sans pouvoir prouver
-  // la vente. AUCUNE écriture n'a eu lieu. Deux issues, et une seule
-  // orchestration : « Oui » appelle EXACTEMENT la même fonction serveur que la
-  // détection automatique (check-listing-status → orchestrateSale : vente,
-  // inventaire, marge, annulation des frères, proposition de retrait). La preuve
-  // machine et le clic humain aboutissent au même endroit.
+  // ── Annonce hors ligne : l'utilisateur tranche. TOUJOURS. ──────────────────
+  // (Phase B, décision produit 2026-07-12) Le poll ne fait que POSER UN DRAPEAU,
+  // sur les 4 plateformes — y compris Vinted, dont la preuve de vente est
+  // pourtant fiable. Motif : le prix réel peut différer du prix affiché
+  // (négociation), et un vendeur à volume ne repasserait jamais corriger — la
+  // marge resterait fausse en silence, pour toujours.
+  // CETTE FONCTION EST LE SEUL CHEMIN QUI ÉCRIT UNE VENTE EN BASE
+  // (check-listing-status → orchestrateSale : vente, inventaire, marges,
+  // annulation des frères, proposition de retrait).
   async function confirmSaleFromBanner(job){
     // Prix confirmé : la saisie de l'utilisateur si elle est valide, sinon le
-    // prix de mise en ligne. C'est LUI qui devient prix_vente côté serveur
+    // prix pré-rempli. C'est LUI qui devient prix_vente côté serveur
     // (négociation, remise main propre marchandée…).
     const saisi=parseFloat(String(salePriceDraft[job.id]??'').replace(',','.'));
-    const prix=Number.isFinite(saisi)&&saisi>0?saisi:Number(job.price)||0;
+    // Défaut = ce que montre le champ : prix lu sur la page si la plateforme
+    // l'expose (Vinted), sinon prix de mise en ligne.
+    const defaut=Number(job.platform_fields?.detected_price??job.price)||0;
+    const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
     if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
     setConfirmingSale(job.id);
     try{
@@ -5574,30 +5579,47 @@ export default function App({ loginOnly = false }){
           );
         })}
 
-        {/* Annonce hors ligne SANS preuve de vente : on demande, on ne suppose pas.
-            Le clic "Oui" déclenche la même orchestration que la détection auto. */}
+        {/* Annonce hors ligne : on demande TOUJOURS, on n'écrit jamais tout seul.
+            Deux libellés selon la force du signal, un seul comportement — le clic
+            "Oui" est le SEUL chemin qui écrit en base (vente, inventaire, marges).
+            Décision produit 2026-07-12 : même Vinted, dont la preuve de vente est
+            fiable, passe par ici — le prix réel peut différer du prix affiché
+            (négociation) et un vendeur à volume ne corrigerait jamais après coup. */}
         {unavailableListings.map(job=>{
           const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
           const plat=PLAT[job.platform]||job.platform;
           const busy=confirmingSale===job.id;
+          const pf=job.platform_fields||{};
+          // Preuve positive de vente (Vinted : is_closed + item_closing_action)
+          const vendu=pf.sale_signal==='sold';
+          // Prix pré-rempli : celui lu sur la page si la plateforme l'expose,
+          // sinon le prix de mise en ligne. Modifiable dans les deux cas.
+          const prixDefaut=pf.detected_price??job.price;
           return (
-            <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.teal}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+            <div key={job.id} style={{background:UI.paper,border:`1px solid ${vendu?UI.teal+'55':UI.border}`,borderLeft:`4px solid ${vendu?UI.teal:UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
               <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
-                <strong>{lang==='fr'?'Annonce plus en ligne':'Listing no longer online'}</strong>
+                <strong>{vendu
+                  ?(lang==='fr'?`🎉 Vendue sur ${plat} !`:`🎉 Sold on ${plat}!`)
+                  :(lang==='fr'?'Annonce plus en ligne':'Listing no longer online')}</strong>
                 <br/>
-                {lang==='fr'
-                  ?<>« {job.title||'Article'} » n'est plus en ligne sur <strong>{plat}</strong>. Vendue ?</>
-                  :<>“{job.title||'Item'}” is no longer online on <strong>{plat}</strong>. Sold?</>}
+                {vendu
+                  ?(lang==='fr'
+                    ?<>« {job.title||'Article'} » — confirme le prix pour l'enregistrer.</>
+                    :<>“{job.title||'Item'}” — confirm the price to record it.</>)
+                  :(lang==='fr'
+                    ?<>« {job.title||'Article'} » n'est plus en ligne sur <strong>{plat}</strong>. Vendue ?</>
+                    :<>“{job.title||'Item'}” is no longer online on <strong>{plat}</strong>. Sold?</>)}
               </div>
-              {/* Prix éditable : le prix affiché est celui de la mise en ligne,
-                  mais la vente a pu être négociée (offre acceptée, marchandage
-                  en remise main propre). C'est ce montant qui sera enregistré. */}
+              {/* Prix éditable : la vente a pu être négociée (offre acceptée,
+                  marchandage en remise main propre) — même sur Vinted, qui
+                  n'expose PAS le montant d'une offre acceptée. C'est ce montant
+                  qui sera enregistré comme prix_vente. */}
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <label style={{fontSize:13,color:UI.mute2,fontWeight:600}}>
                   {lang==='fr'?'Prix de vente':'Sale price'}
                 </label>
                 <input type="text" inputMode="decimal" disabled={busy}
-                  value={salePriceDraft[job.id]??(job.price!=null?String(job.price):'')}
+                  value={salePriceDraft[job.id]??(prixDefaut!=null?String(prixDefaut):'')}
                   onChange={e=>setSalePriceDraft(p=>({...p,[job.id]:e.target.value}))}
                   style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
                 <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
