@@ -155,6 +155,53 @@ passent par le bandeau. Comportement sûr, jamais faux.
 
 ---
 
+## Annexe — Économie des Pépites : le grant Free est GATÉ avec Lens
+
+Rien à voir avec la détection de vente, mais découvert pendant l'audit du
+2026-07-12 et consigné ici pour ne pas être défait par erreur.
+
+### Le calcul exact (décision Nico, 2026-07-12)
+
+Le grant Free de **30 Pépites/mois** est un **pack de découverte** calibré sur le
+**parcours complet**, pas un crédit de publication :
+
+```
+    analyse Lens   6 Pépites   (price_lens_overflow)
+  + publication    3 Pépites   (price_original)
+  ───────────────────────────
+  = 9 Pépites par essai complet   →   30 Pépites ≈ 3 essais complets
+```
+
+**Ne jamais toucher à l'un de ces trois montants (30 / 6 / 3) sans refaire ce
+calcul** : ils forment un équilibre, pas trois réglages indépendants.
+
+### Pourquoi il est GATÉ avec le déploiement de lens-analysis
+
+Les migrations `20260707100000_lens_coins_config` et
+`20260707200000_lens_coins_free_provisioning` **n'ont jamais été appliquées en
+prod** — ce n'est pas un oubli, c'est le gate. Vérifié le 2026-07-12 : la prod
+exécute encore la version de `grant_monthly_coins` qui **rejette le tier
+`free`**, et le sweep ne parcourt que les comptes payants.
+
+⚠️ **Le piège** : les Pépites ne servent pas qu'à Lens, elles servent aussi à
+**publier** (`spend_coins_and_publish` ne regarde aucun tier, seulement le solde).
+Aujourd'hui, les **327 comptes gratuits ont 0 Pépite** — c'est *ça*, le paywall de
+la publication cross-post.
+
+Activer le grant Free **avant** que Lens soit payant en Pépites donnerait donc à
+ces 327 comptes **~10 publications cross-post gratuites par mois** (30 ÷ 3), sans
+la contrepartie Lens : le cadeau sans la contrepartie, et la fin de l'upsell
+« passe Premium pour publier ».
+
+→ **Le grant Free s'active EN MÊME TEMPS que le déploiement de lens-analysis.
+Jamais avant.**
+
+Ces deux migrations sont **délibérément exclues** du repair de l'historique fait
+le 2026-07-12 (les 20 autres y sont) : les marquer « applied » sans les exécuter
+enterrerait le provisioning Free pour toujours.
+
+---
+
 ## Où vit quoi
 
 | Rôle | Fichier |
