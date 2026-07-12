@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-12h05 (verrou withJobFlowLock, verifyEbaySubmission, recover " +
+  "2026-07-12-15h30 (paintTab pour la suppression, verrou withJobFlowLock, verifyEbaySubmission, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -1455,6 +1455,47 @@ async function recoverMissingListingUrls(session) {
   }
 }
 
+// ── Onglet PEINT le temps d'une action (2026-07-12) ────────────────────────────
+// Chrome ne calcule NI layout NI hydratation React pour un onglet qui n'a jamais
+// été peint — et l'onglet de travail est créé active:false, donc jamais peint.
+// Constaté et prouvé sur la page annonce Vinted (/items/<id>) :
+//   onglet caché  → le DOM est là (HTML serveur : 2,2 Mo de textContent, 105
+//                   boutons, [data-testid="item-delete-button"] présent), mais
+//                   AUCUN layout (innerText 158 car., tous les rects 0×0,
+//                   offsetParent null) et AUCUN handler React attaché : le clic
+//                   part dans le vide, la modale ne se monte JAMAIS.
+//                   → c'est très exactement l'erreur « Modale de confirmation
+//                     introuvable après le clic Supprimer ».
+//   onglet peint  → bouton 361×36, le même clic monte la modale
+//                   (item-delete-modal, item-delete-confirmation-button).
+// La publication, elle, n'a jamais eu besoin de ça : ses formulaires
+// (/items/new, /lstng…) s'hydratent en arrière-plan. C'est la page ANNONCE
+// Vinted qui exige la visibilité — on ne peint donc QUE le temps de la
+// suppression, puis on rend la main à l'onglet de l'utilisateur.
+async function paintTab(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) return async () => {};
+  if (tab.active) return async () => {}; // déjà peint : rien à faire ni à rendre
+
+  // Onglet actif AVANT nous, dans la fenêtre de l'onglet de travail : on le
+  // restaurera à la fin (l'utilisateur retrouve son écran).
+  const [previous] = await chrome.tabs.query({ active: true, windowId: tab.windowId }).catch(() => []);
+
+  await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+  // Une fenêtre minimisée/occluse ne peint pas non plus : on la ramène au
+  // premier plan (sans la déplacer ni la redimensionner).
+  await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+  // Laisser le temps au premier paint + à l'hydratation de s'exécuter.
+  await sleep(randInt(2500, 4000));
+  console.log(`[background] Onglet de travail ${tabId} rendu VISIBLE (hydratation requise par la page)`);
+
+  return async () => {
+    if (previous && previous.id !== tabId) {
+      await chrome.tabs.update(previous.id, { active: true }).catch(() => {});
+    }
+  };
+}
+
 // ── Phase B : exécution d'un job de SUPPRESSION (action='delete') ──────────────
 // Armé UNIQUEMENT par le bandeau semi-auto de l'app (jamais automatique).
 // Cible par plateforme : la page où vit le contrôle de suppression —
@@ -1489,7 +1530,17 @@ async function processDeleteJob(job, accessToken) {
 
     // Même onglet de travail persistant que la publication (anti-DataDome).
     const tabId = await getOrCreateWorkTab(job.platform, target);
-    const result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
+
+    // L'onglet doit être PEINT pendant la suppression (2026-07-12, cause
+    // prouvée de l'échec « Modale de confirmation introuvable ») — voir
+    // withPaintedTab.
+    const restore = await paintTab(tabId);
+    let result;
+    try {
+      result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
+    } finally {
+      await restore();
+    }
 
     if (result?.dryRun) {
       const trace = result.trace ?? [];
