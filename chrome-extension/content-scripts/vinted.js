@@ -438,6 +438,8 @@ async function fillListingForm(job) {
   // validation exact quand Vinted refuse.
   const proof = await waitForPublishOutcome();
   if (proof.error) {
+    // La sonde réseau dit ce que Vinted a REÇU (et répondu) — c'est elle qui
+    // tranchera si le prix part à 0/null malgré un champ correctement affiché.
     return { success: false, error: proof.error, warnings };
   }
   return { success: true, listingUrl: proof.listingUrl, warnings };
