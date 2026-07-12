@@ -4795,10 +4795,14 @@ export default function App({ loginOnly = false }){
   };
 
   // Retour du deep link OAuth natif (app.fillsell.app://callback?code=…).
-  // Android uniquement : iOS passe par le plugin natif AppleSignIn et n'a pas
-  // (encore) le pod @capacitor/app — addListener y rejetterait en UNIMPLEMENTED.
+  // Android ET iOS (2026-07-12) : @capacitor/app est désormais synchronisé sur
+  // les deux plateformes, et le scheme est déclaré côté iOS dans Info.plist
+  // (CFBundleURLTypes) comme il l'est côté Android (intent-filter).
+  // Ne concerne QUE Google : Sign in with Apple sur iOS reste le plugin natif
+  // (handleAppleSignIn, signInWithIdToken) et ne passe jamais par ici — le
+  // filtre sur app.fillsell.app://callback ignore de toute façon le reste.
   useEffect(() => {
-    if (!isNative || platform !== 'android') return;
+    if (!isNative) return;
     const subPromise = CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
       if (!url?.startsWith('app.fillsell.app://callback')) return;
       try { await Browser.close(); } catch { /* Custom Tab déjà fermé */ }
@@ -4965,10 +4969,13 @@ export default function App({ loginOnly = false }){
           />
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* Fournisseurs (2026-07-11) :
-              - iOS natif  : Apple via plugin natif (signInWithIdToken) — prioritaire, pas de Google.
+          {/* Fournisseurs (maj 2026-07-12) :
+              - iOS natif  : Apple via plugin natif (signInWithIdToken) — EN PREMIER,
+                             comme l'exige Apple — PUIS Google (OAuth via
+                             SFSafariViewController + deep link app.fillsell.app://callback).
+                             Guideline 4.8 respectée : Sign in with Apple est proposé.
               - Web/desktop: Apple (OAuth PKCE → /auth/callback) + Google.
-              - Android    : Google (OAuth via Custom Tab + deep link app.fillsell.app://callback). */}
+              - Android    : Google (OAuth via Custom Tab + même deep link). */}
           <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
             {isNative&&platform==='ios'&&(
               <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
@@ -4986,7 +4993,9 @@ export default function App({ loginOnly = false }){
                 {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
               </button>
             )}
-            {(!isNative||platform==='android')&&(
+            {/* Google : web/desktop, Android et iOS. Sur iOS il est rendu APRÈS le
+                bouton Apple ci-dessus, qui reste l'option native et prioritaire. */}
+            {(
               <button onClick={()=>handleOAuthSignIn('google')} style={{width:"100%",backgroundColor:UI.card,color:UI.ink,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,cursor:"pointer",fontFamily:"inherit"}}>
                 {/* Logo Google officiel (G quadricolore) */}
                 <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
