@@ -3344,6 +3344,9 @@ export default function App({ loginOnly = false }){
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
   const [confirmingSale,setConfirmingSale]=useState(null);
+  // Prix de vente confirmé par l'utilisateur, par job (pré-rempli avec le prix
+  // de mise en ligne, MODIFIABLE : la vente a pu être négociée).
+  const [salePriceDraft,setSalePriceDraft]=useState({});
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
@@ -3666,7 +3669,7 @@ export default function App({ loginOnly = false }){
     // la plateforme ?). Rien n'a été écrit en compta : c'est l'utilisateur qui
     // tranche via le bandeau. Une disparition n'est jamais une vente.
     const{data:unavail}=await supabase.from('cross_post_jobs')
-      .select('id, platform, title, inventaire_id, listing_url, platform_fields')
+      .select('id, platform, title, price, inventaire_id, listing_url, platform_fields')
       .eq('user_id',uid).eq('status','published').eq('action','publish')
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
@@ -4076,9 +4079,15 @@ export default function App({ loginOnly = false }){
   // inventaire, marge, annulation des frères, proposition de retrait). La preuve
   // machine et le clic humain aboutissent au même endroit.
   async function confirmSaleFromBanner(job){
+    // Prix confirmé : la saisie de l'utilisateur si elle est valide, sinon le
+    // prix de mise en ligne. C'est LUI qui devient prix_vente côté serveur
+    // (négociation, remise main propre marchandée…).
+    const saisi=parseFloat(String(salePriceDraft[job.id]??'').replace(',','.'));
+    const prix=Number.isFinite(saisi)&&saisi>0?saisi:Number(job.price)||0;
+    if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
     setConfirmingSale(job.id);
     try{
-      const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id}});
+      const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id,price:prix}});
       if(error)throw error;
       setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
       track('confirm_sale_banner',{platform:job.platform});
@@ -5579,6 +5588,19 @@ export default function App({ loginOnly = false }){
                 {lang==='fr'
                   ?<>« {job.title||'Article'} » n'est plus en ligne sur <strong>{plat}</strong>. Vendue ?</>
                   :<>“{job.title||'Item'}” is no longer online on <strong>{plat}</strong>. Sold?</>}
+              </div>
+              {/* Prix éditable : le prix affiché est celui de la mise en ligne,
+                  mais la vente a pu être négociée (offre acceptée, marchandage
+                  en remise main propre). C'est ce montant qui sera enregistré. */}
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <label style={{fontSize:13,color:UI.mute2,fontWeight:600}}>
+                  {lang==='fr'?'Prix de vente':'Sale price'}
+                </label>
+                <input type="text" inputMode="decimal" disabled={busy}
+                  value={salePriceDraft[job.id]??(job.price!=null?String(job.price):'')}
+                  onChange={e=>setSalePriceDraft(p=>({...p,[job.id]:e.target.value}))}
+                  style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
+                <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
               </div>
               <div style={{display:"flex",gap:10}}>
                 <button disabled={busy} onClick={()=>confirmSaleFromBanner(job)}
