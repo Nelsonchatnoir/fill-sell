@@ -220,7 +220,11 @@ async function recordRecentResult(job, status) {
 
 // Orchestration de la publication ciblée. Réutilise getValidSession (refresh),
 // get-pending-jobs et processJob — aucune mécanique de remplissage réécrite.
-async function publishSelected(jobIds) {
+function publishSelected(jobIds) {
+  return withJobFlowLock("publish-now", () => publishSelectedUnlocked(jobIds));
+}
+
+async function publishSelectedUnlocked(jobIds) {
   const session = await getValidSession();
   if (!session) return { ok: false, reason: "no_session" };
 
@@ -347,7 +351,39 @@ function updateJobStatus(accessToken, jobId, status, extra = {}) {
 
 // ── Boucle principale ──────────────────────────────────────────────────────────
 
-async function pollAndProcessJobs() {
+// ── Verrou de flux de jobs (2026-07-12) ────────────────────────────────────────
+// pollAndProcessJobs (alarme 30 min — RÉ-ARMÉE À +1 MIN à chaque rechargement
+// de l'extension via onInstalled — ou POLL_NOW) et publishSelected
+// (PUBLISH_NOW du popup) partagent les MÊMES onglets de travail persistants.
+// Sans verrou, les deux flux se chevauchent : le second discard/re-navigue
+// l'onglet pendant que le premier remplit → RELOAD de page en plein
+// remplissage. Vécu en direct le 2026-07-12 : Publier cliqué dans le popup
+// peu après un rechargement d'extension, l'alarme à +1 min a repris le même
+// job pending et re-navigué l'onglet eBay au moment du Titre/Marque.
+// On sérialise : un seul flux de jobs à la fois, le suivant attend son tour.
+let jobFlowTail = Promise.resolve();
+let jobFlowBusyLabel = null;
+function withJobFlowLock(label, fn) {
+  if (jobFlowBusyLabel) {
+    console.log(`[background] ${label} : flux "${jobFlowBusyLabel}" en cours — mise en file (onglets de travail partagés)`);
+  }
+  const run = jobFlowTail.then(async () => {
+    jobFlowBusyLabel = label;
+    try {
+      return await fn();
+    } finally {
+      jobFlowBusyLabel = null;
+    }
+  });
+  jobFlowTail = run.catch(() => {});
+  return run;
+}
+
+function pollAndProcessJobs() {
+  return withJobFlowLock("poll", pollAndProcessJobsUnlocked);
+}
+
+async function pollAndProcessJobsUnlocked() {
   const session = await getValidSession();
   if (!session) {
     console.log("[background] Pas de session valide, poll ignoré");
@@ -378,6 +414,13 @@ async function pollAndProcessJobs() {
     await processJob(jobs[i], session.access_token);
     if (i < jobs.length - 1) await sleep(jobDelayMs());
   }
+
+  // Re-capture différée des listing_url manquants (2026-07-12) : LBC/Beebs
+  // n'affichent l'annonce dans "Mes annonces" qu'après modération/indexation —
+  // l'aller-retour fait dans la foulée du dépôt peut revenir bredouille.
+  await recoverMissingListingUrls(session).catch((e) =>
+    console.error("[background] recoverMissingListingUrls:", e)
+  );
 
   // Détection de vente (Phase A2, 2026-07-11) : après les jobs du cycle, on
   // vérifie une tranche des annonces published — depuis le NAVIGATEUR du
@@ -485,6 +528,21 @@ async function processJob(job, accessToken) {
         console.warn(`[background] Job ${job.id} : ${reauth}`);
         await rearmBounded(accessToken, job, reauth);
         return { status: "needsUser", error: reauth };
+      }
+
+      // Vérification de SOUMISSION (2026-07-12, vécu en LIVE réel sur eBay) :
+      // le content script répond success juste après le clic, mais la
+      // validation eBay peut refuser SUR PLACE (« Vous devez ajouter une
+      // description », formulaire jamais soumis) — le job partait quand même
+      // en "published" fantôme. Seul le background peut trancher : il survit
+      // à la redirection (succès) comme à l'absence de redirection (refus).
+      if (job.platform === "ebay") {
+        const submitError = await verifyEbaySubmission(tabId);
+        if (submitError) {
+          console.warn(`[background] Job ${job.id} : ${submitError}`);
+          await rearmBounded(accessToken, job, submitError);
+          return { status: "needsUser", error: submitError };
+        }
       }
 
       // A1 (2026-07-11) : l'URL de l'annonce créée est capturée CÔTÉ
@@ -896,6 +954,75 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
   return null;
 }
 
+// ── Vérification de soumission eBay (2026-07-12) ───────────────────────────────
+// Le clic « Mettre en vente avec les frais affichés » peut être REFUSÉ sur
+// place par la validation du formulaire (vécu en LIVE réel : « Vous devez
+// ajouter une description » — l'onglet reste sur /lstng, rien n'est soumis),
+// pendant que le content script a déjà répondu success. Signal de succès RÉEL
+// exigé : l'onglet QUITTE le formulaire (redirection vers la confirmation ou
+// l'annonce). Tant qu'il y reste, on lit les bandeaux d'erreur visibles pour
+// remonter le message exact d'eBay ; à l'échéance sans redirection ni bandeau,
+// on refuse quand même le "published" — aucun signal de succès ≠ succès.
+async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    // Onglet disparu : impossible d'observer quoi que ce soit — on n'invente
+    // pas un refus (captureListingUrl rendra listing_url null, c'est tout).
+    if (!tab) return null;
+    let path = "";
+    try {
+      path = new URL(tab.url || "").pathname;
+    } catch { /* URL interne (chrome://) : on continue d'attendre */ }
+    if (path && !/\/lstng/.test(path)) return null; // formulaire quitté : soumission partie
+
+    const errors = await readVisibleEbayErrors(tabId);
+    if (errors.length) {
+      return (
+        "Publication eBay REFUSÉE par la validation du formulaire : " +
+        `« ${errors.join(" | ")} » — l'onglet de travail est resté sur le formulaire, ` +
+        "le job repartira au prochain passage."
+      );
+    }
+    await sleep(1000);
+  }
+  return (
+    `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
+    `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection ni bandeau d'erreur — ` +
+    "job NON marqué publié, il repartira au prochain passage."
+  );
+}
+
+// Bandeaux d'erreur visibles du formulaire eBay. Sélecteurs volontairement
+// larges (le markup exact des notices n'a pas été relevé) mais bornés par la
+// visibilité et la taille du texte : 8-250 caractères — filtre les conteneurs
+// géants (un [class*="error"] parent de tout le formulaire) et les miettes.
+// Un faux positif ici part en needsUser, jamais en published : sens sûr.
+async function readVisibleEbayErrors(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const texts = [];
+        const seen = new Set();
+        const sel = '[role="alert"], .page-notice, .inline-notice, [class*="error" i]';
+        for (const el of document.querySelectorAll(sel)) {
+          if (!el.getClientRects().length) continue; // invisible
+          const t = (el.innerText || "").replace(/\s+/g, " ").trim();
+          if (t.length < 8 || t.length > 250 || seen.has(t)) continue;
+          seen.add(t);
+          texts.push(t);
+        }
+        return texts.slice(0, 3);
+      },
+    });
+    return res?.result ?? [];
+  } catch (e) {
+    console.warn("[background] readVisibleEbayErrors :", String(e?.message ?? e));
+    return [];
+  }
+}
+
 // ── A1 : capture de l'URL de l'annonce créée (publication LIVE) ────────────────
 // Ce que fait RÉELLEMENT chaque plateforme après le clic de publication
 // (constaté en publication réelle le 2026-07-11, plus de suppositions) :
@@ -1018,7 +1145,12 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
   const backTo = tab?.url ?? null;
   try {
     console.log(`[background] captureListingUrl(${platform}) : aller-retour par "Mes annonces"`);
-    await sleep(randInt(1500, 3500)); // laisser la plateforme enregistrer l'annonce
+    // 8-15 s : constaté en LIVE réel (2026-07-12), 1,5-3,5 s ne suffisaient
+    // pas — l'annonce venait d'être déposée mais n'était pas encore indexée
+    // dans "Mes annonces" (LBC comme Beebs). Si elle n'y est toujours pas
+    // (modération plus longue), recoverMissingListingUrls re-cherchera aux
+    // cycles de poll suivants.
+    await sleep(randInt(8000, 15000));
     const loaded = waitForTabComplete(tabId);
     await chrome.tabs.update(tabId, { url: myListingsUrl + WORK_TAB_FRAGMENT });
     await loaded;
@@ -1031,7 +1163,8 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
     }
     console.warn(
       `[background] captureListingUrl(${platform}) : annonce introuvable dans Mes annonces ` +
-      "(modération en cours ?) — listing_url restera vide, la détection de vente ne couvrira pas ce job."
+      "(modération en cours ?) — listing_url vide pour l'instant, re-tentative aux prochains " +
+      "cycles de poll (recoverMissingListingUrls)."
     );
     return null;
   } catch (e) {
@@ -1200,6 +1333,103 @@ async function checkPublishedListings(session) {
     }
 
     if (i < due.length - 1) await sleep(randInt(1500, 4000));
+  }
+}
+
+// ── Re-capture différée des listing_url manquants (2026-07-12) ─────────────────
+// Vécu en LIVE réel : LBC et Beebs publient bien, mais l'annonce ne figure
+// dans "Mes annonces" qu'après un délai de modération/indexation —
+// l'aller-retour de captureListingUrl, fait dans la foulée du dépôt, revenait
+// bredouille ("annonce introuvable dans Mes annonces") et le job restait
+// published SANS listing_url, donc invisible de la détection de vente et du
+// retrait ciblé. On re-tente ici, au cycle de poll suivant : UNE navigation
+// par plateforme et par cycle (cadence humaine — "je vais voir si mon annonce
+// est en ligne"), tous les jobs manquants de la plateforme sont cherchés sur
+// la même page chargée. Fenêtre bornée à 48 h après le dépôt : au-delà, ce
+// n'est plus un délai de modération, on arrête de frapper à la porte.
+const LISTING_URL_RECOVERY_PAGES = {
+  leboncoin: ["https://www.leboncoin.fr/compte/part/mes-annonces"],
+  // Beebs : d'abord "Actuellement en ligne" (l'URL publique de l'annonce vit
+  // là), puis "En cours de vérification" au cas où la carte y porte déjà le
+  // lien. ⚠️ Rappel : le format d'URL produit Beebs reste NON OBSERVÉ
+  // (LISTING_URL_PATTERNS.beebs est une supposition).
+  beebs: [
+    "https://www.beebs.app/fr/account/my-adverts",
+    "https://www.beebs.app/fr/account/my-adverts/creating",
+  ],
+};
+const LISTING_URL_RECOVERY_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+async function recoverMissingListingUrls(session) {
+  let jobs;
+  try {
+    jobs = await restRequest(
+      "cross_post_jobs" +
+        "?select=id,platform,title,created_at" +
+        "&status=eq.published&action=eq.publish&listing_url=is.null" +
+        "&platform=in.(leboncoin,beebs)&order=created_at.desc&limit=10",
+      session.access_token
+    );
+  } catch (e) {
+    console.error("[background] Lecture des published sans listing_url:", String(e?.message ?? e));
+    return;
+  }
+
+  const now = Date.now();
+  // Le titre est indispensable au repérage dans la liste (règle
+  // findListingLinkInPage : jamais "le premier lien qui matche").
+  const eligible = (jobs ?? []).filter(
+    (j) => j.title && j.created_at && now - Date.parse(j.created_at) < LISTING_URL_RECOVERY_MAX_AGE_MS
+  );
+  if (!eligible.length) return;
+
+  const byPlatform = new Map();
+  for (const j of eligible) {
+    if (!byPlatform.has(j.platform)) byPlatform.set(j.platform, []);
+    byPlatform.get(j.platform).push(j);
+  }
+
+  for (const [platform, platformJobs] of byPlatform) {
+    const pattern = LISTING_URL_PATTERNS[platform];
+    console.log(
+      `[background] listing_url manquant : ${platformJobs.length} job(s) ${platform} — passage par "Mes annonces"`
+    );
+    let remaining = [...platformJobs];
+    for (const pageUrl of LISTING_URL_RECOVERY_PAGES[platform] ?? []) {
+      if (!remaining.length) break;
+      let tabId;
+      try {
+        // Onglet de travail persistant habituel — pas de restauration de page :
+        // le prochain job le renaviguera, et un vendeur qui vérifie ses
+        // annonces reste précisément sur cette liste.
+        tabId = await getOrCreateWorkTab(platform, pageUrl);
+      } catch (e) {
+        console.warn(`[background] recover(${platform}) : onglet indisponible — ${String(e?.message ?? e)}`);
+        break;
+      }
+      await sleep(randInt(1500, 3000)); // rendu de la liste
+      const stillMissing = [];
+      for (const job of remaining) {
+        const url = await findListingLinkInPage(tabId, pattern.source, job.title);
+        if (url) {
+          console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
+          await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+            method: "PATCH",
+            body: JSON.stringify({ listing_url: url }),
+          }).catch((e) => console.warn("[background] PATCH listing_url:", String(e?.message ?? e)));
+        } else {
+          stillMissing.push(job);
+        }
+      }
+      remaining = stillMissing;
+    }
+    if (remaining.length) {
+      console.log(
+        `[background] listing_url toujours introuvable pour ${remaining.length} job(s) ${platform} ` +
+        "(modération en cours ?) — nouvelle tentative au prochain cycle."
+      );
+    }
+    await sleep(randInt(3000, 8000)); // pause entre plateformes, jamais en rafale
   }
 }
 
