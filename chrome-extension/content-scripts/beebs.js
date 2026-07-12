@@ -1,9 +1,12 @@
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
 //
-// ⚠️ DRY_RUN doit rester à true tant qu'au moins 3 publications réelles n'ont
-// pas été validées manuellement. En dry-run, le formulaire est rempli mais le
-// bouton "Mettre en vente" n'est JAMAIS cliqué — le résultat est loggé en
-// console.
+// ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
+// Nico : 1 article test, T-shirt Patagonia à 30 €, piloté à la main) : TOUT
+// job publish part désormais en LIVE, plus seulement ceux marqués
+// platform_fields.live_run. Objectif secondaire du test : vérifier si le
+// prix à 200 € expliquait la disparition des annonces (cf. commit 1fc671e).
+// En dry-run, le formulaire était rempli mais le bouton "Mettre en vente"
+// n'était JAMAIS cliqué — le résultat était loggé en console.
 //
 // Architecture relevée en session réelle (2026-07-08, connecté — cookie
 // datadome présent, même protection anti-bot que Vinted, mêmes précautions
@@ -59,7 +62,7 @@
 //   - Le bouton "Mettre en vente" n'est JAMAIS désactivé par des champs vides
 //     côté client (pas de `disabled`, vérifié) — obligatoire vs facultatif
 //     déduit du seul marqueur "(facultatif)" affiché à côté du libellé.
-const DRY_RUN = true;
+const DRY_RUN = false;
 
 // ── Communication avec le background ────────────────────────────────────────
 

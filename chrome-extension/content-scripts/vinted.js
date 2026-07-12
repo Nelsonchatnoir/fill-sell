@@ -1,9 +1,11 @@
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
 //
-// ⚠️ DRY_RUN doit rester à true tant qu'au moins 3 publications réelles n'ont
-// pas été validées manuellement. En dry-run, le formulaire est rempli mais le
-// bouton publier n'est JAMAIS cliqué — le résultat est loggé en console.
-const DRY_RUN = true;
+// ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
+// Nico : 1 article test, T-shirt Patagonia à 30 €, piloté à la main) : TOUT
+// job publish part désormais en LIVE, plus seulement ceux marqués
+// platform_fields.live_run. En dry-run, le formulaire était rempli mais le
+// bouton publier n'était JAMAIS cliqué — le résultat était loggé en console.
+const DRY_RUN = false;
 
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
 // supposé partagé avec Marque/Taille/État/Couleur/Matière, mêmes composants

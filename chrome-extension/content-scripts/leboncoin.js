@@ -1,11 +1,13 @@
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
 //
-// ⚠️ DRY_RUN doit rester à true tant que le flux post-aperçu (options de
-// visibilité → dépôt réel) n'a pas été validé manuellement. En dry-run, le
-// wizard est rempli jusqu'à l'APERÇU FINAL inclus (description, prix,
-// adresse), mais le "Continuer" de l'aperçu — qui porte la mention « je
-// confirme l'exactitude des informations » — n'est JAMAIS cliqué.
-const DRY_RUN = true;
+// ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
+// Nico : 1 article test, T-shirt Patagonia à 30 €, piloté à la main) : TOUT
+// job publish part désormais en LIVE, plus seulement ceux marqués
+// platform_fields.live_run. En dry-run, le wizard était rempli jusqu'à
+// l'APERÇU FINAL inclus (description, prix, adresse), mais le "Continuer" de
+// l'aperçu — qui porte la mention « je confirme l'exactitude des
+// informations » — n'était JAMAIS cliqué.
+const DRY_RUN = false;
 
 // ── Communication avec le background ────────────────────────────────────────
 
