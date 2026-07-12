@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, fin d annonce eBay 1/3 — Mettre fin à l annonce)";
+const EBAY_BUILD = "2026-07-13-03h30 (specifics: selecteur RESSERRE aux 2 classes verifiees + dump aussi quand la valeur ne persiste pas)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -632,24 +632,32 @@ function findSpecificLabelButton(labels) {
 // son textContent. La ligne porte aussi les chips "Fréquemment
 // sélectionnées" (button.fake-link) : sélection en UN clic sans ouvrir le
 // menu quand l'une d'elles matche notre valeur.
-// ⚠️ Élargi le 2026-07-13 après l'échec « bouton-valeur (se-expand-button)
-// introuvable pour "Marque" » (run réel, 2 tentatives).
-// Ce que j'ai VÉRIFIÉ sur le vrai formulaire (catégorie 15709, baskets homme) :
-// Marque, Couleur, Département, Type et Pointure EU exposent TOUS le même bouton
-// (`se-expand-button__button fake-menu-button__button …`), trouvé à la 4e
-// remontée. Le sélecteur est donc juste SUR CE RENDU — le DOM du run était
-// différent, et je n'ai pas pu le reproduire. Plutôt que de deviner :
-//   · on remonte plus haut (10 au lieu de 6) et on accepte les variantes réelles
-//     du design system eBay (fake-menu-button, combobox, listbox) ;
-//   · quand rien ne matche, on DUMPE la structure réelle de la ligne dans
-//     l'erreur — au prochain échec, on aura le DOM exact au lieu d'une devinette.
+// ⚠️ RESSERRÉ le 2026-07-13 (annule l'élargissement du même jour). L'élargissement
+// (`button[aria-expanded]`, `[role=combobox]`, `button.btn--form`…) était une
+// devinette posée sur un DOM jamais observé, et il est DANGEREUX combiné à la
+// remontée de 10 parents : près de la racine, le premier bouton générique venu
+// peut appartenir à un AUTRE champ — readValue() lit alors une valeur qui n'est
+// pas la nôtre et le champ est sauté en silence (« déjà rempli, conservé »), ou
+// pire, on clique le mauvais menu. Ce que j'ai VÉRIFIÉ sur le vrai formulaire
+// (catégorie 15709, baskets homme) : Marque, Couleur, Département, Type et
+// Pointure EU exposent TOUS `se-expand-button__button fake-menu-button__button`.
+// On ne matche donc QUE ces deux classes vérifiées. Quand rien ne matche :
+//   · le filet par la chip « Fréquemment sélectionnées » reste (chemin
+//     indépendant, vérifié fonctionnel) ;
+//   · on DUMPE la structure réelle de la ligne dans l'erreur — au prochain
+//     échec, on aura le DOM exact au lieu d'une nouvelle devinette.
 const SPECIFIC_VALUE_BTN =
-  "button.se-expand-button__button, button.fake-menu-button__button, " +
-  'button[aria-expanded], [role="combobox"], [role="listbox"] button, button.btn--form';
+  "button.se-expand-button__button, button.fake-menu-button__button";
+
+// Les labels de specifics portent tous cet id : en croiser PLUSIEURS dans le
+// conteneur courant signifie qu'on a dépassé notre ligne et qu'on est dans un
+// bloc multi-champs — le bouton-valeur trouvé là peut être celui d'un voisin.
+const SPECIFIC_LABEL_BTN = 'button[id*="item-specific-dropdown-label"]';
 
 function specificRow(labelBtn) {
   let row = labelBtn.parentElement;
   for (let i = 0; i < 10 && row; i++, row = row.parentElement) {
+    if (row.querySelectorAll(SPECIFIC_LABEL_BTN).length > 1) return null;
     const expandBtn = row.querySelector(SPECIFIC_VALUE_BTN);
     if (expandBtn && expandBtn !== labelBtn) return { row, expandBtn };
   }
@@ -766,7 +774,11 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
       await sleep(randInt(1200, 2200));
       await dismissLightboxes();
     }
-    throw new Error(`la valeur "${rawValue}" ne persiste pas après 2 poses (relecture vide)`);
+    // Même relevé que pour « bouton-valeur introuvable » : quand la valeur ne se
+    // POSE pas, c'est le DOM réel de la ligne qu'il nous faut, pas une devinette.
+    throw new Error(
+      `la valeur "${rawValue}" ne persiste pas après 2 poses (relecture vide) — ${dumpSpecificRow(found.btn)}`
+    );
   } catch (e) {
     const note = `${fieldName}: champ sauté — ${e.message}`;
     console.warn(`[ebay] ⚠️ ${note}`);
