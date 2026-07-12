@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-16h20 (detection 3 etats — plus AUCUNE vente fantome, paintTab, verrou, recover " +
+  "2026-07-12-17h00 (AUCUNE ecriture auto — bandeau sur les 4 plateformes, paintTab, verrou, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -1389,16 +1389,37 @@ async function checkPublishedListings(session) {
 
     const patch = { last_checked_at: new Date().toISOString() };
 
-    if (state === "unavailable") {
-      // L'annonce n'est plus en ligne, SANS preuve de vente. On n'écrit RIEN de
-      // comptable : ni vente, ni inventaire, ni annulation des frères. On pose
-      // un simple drapeau — l'app affichera un bandeau de confirmation
-      // (« Vendue ? Oui / Non ») et c'est le CLIC qui déclenchera, ou non,
-      // l'orchestration. Une disparition n'est jamais une vente.
+    // ⚠️ RÈGLE ABSOLUE (décision produit 2026-07-12) : le poll N'ÉCRIT JAMAIS
+    // de vente en base — sur AUCUNE plateforme, pas même Vinted dont la preuve
+    // de vente est pourtant fiable. Raison : le prix réel peut différer du prix
+    // affiché (offre acceptée, marchandage), et un vendeur à volume ne
+    // repassera jamais corriger après coup — la marge resterait fausse pour
+    // toujours, en silence. Un bandeau au bon moment coûte moins cher qu'une
+    // comptabilité fausse.
+    // Le poll ne fait donc qu'une chose : POSER UN DRAPEAU. Le seul chemin qui
+    // écrit (vente, inventaire, marges, frères) est le clic « Oui, enregistrer
+    // la vente » dans l'app.
+    //
+    // La preuve positive ne disparaît pas pour autant — elle change de rôle :
+    //   sale_signal="sold"        → bandeau IMMÉDIAT et affirmatif (« Vendue sur
+    //                               Vinted 🎉 »), sans attendre une disparition
+    //                               ambiguë, avec le prix lu sur la page pré-rempli
+    //   sale_signal="unavailable" → bandeau interrogatif (« Plus en ligne —
+    //                               vendue ? »), prix de publication pré-rempli
+    if (state === "sold" || state === "unavailable") {
       const pf = job.platform_fields ?? {};
       if (!pf.unavailable_since) {
-        patch.platform_fields = { ...pf, unavailable_since: new Date().toISOString() };
-        console.log(`[background] ${job.platform} ${job.id} : plus en ligne, AUCUNE preuve de vente → confirmation utilisateur`);
+        patch.platform_fields = {
+          ...pf,
+          unavailable_since: new Date().toISOString(),
+          sale_signal: state, // "sold" = preuve positive | "unavailable" = doute
+          ...(state === "sold" && price ? { detected_price: price } : {}),
+        };
+        console.log(
+          state === "sold"
+            ? `[background] ${job.platform} ${job.id} : VENTE DÉTECTÉE (preuve positive)${price ? ` au prix affiché ${price} €` : ""} → confirmation utilisateur (aucune écriture)`
+            : `[background] ${job.platform} ${job.id} : plus en ligne, AUCUNE preuve de vente → confirmation utilisateur`
+        );
       }
     }
 
@@ -1406,24 +1427,6 @@ async function checkPublishedListings(session) {
       method: "PATCH",
       body: JSON.stringify(patch),
     }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
-
-    if (state === "sold") {
-      // PREUVE POSITIVE de vente (aujourd'hui : Vinted uniquement — is_closed +
-      // item_closing_action="sold"). Orchestration serveur (vente, inventaire,
-      // frères, email), idempotente.
-      try {
-        // price : prix lu sur la page (plus à jour que le prix de publication si
-        // le vendeur l'a changé). Omis si inconnu → l'orchestration retombe sur
-        // job.price. Une vente NÉGOCIÉE n'étant pas exposée par Vinted, le prix
-        // enregistré reste corrigeable dans l'app.
-        const payload = { job_id: job.id };
-        if (price) payload.price = price;
-        const r = await callEdgeFunction("check-listing-status", session.access_token, payload);
-        console.log(`[background] Vente CONFIRMÉE et orchestrée pour ${job.id}:`, JSON.stringify(r?.sale ?? r));
-      } catch (e) {
-        console.error(`[background] Orchestration vente ${job.id}:`, String(e?.message ?? e));
-      }
-    }
 
     if (i < due.length - 1) await sleep(randInt(1500, 4000));
   }
