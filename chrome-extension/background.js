@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-17h40 (AUCUNE ecriture auto + delai de grace par plateforme, paintTab, verrou, recover " +
+  "2026-07-12-18h10 (delai de grace + fausse alerte auto-reparee, AUCUNE ecriture auto, paintTab, verrou, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -1464,6 +1464,24 @@ async function checkPublishedListings(session) {
     //                               ambiguë, avec le prix lu sur la page pré-rempli
     //   sale_signal="unavailable" → bandeau interrogatif (« Plus en ligne —
     //                               vendue ? »), prix de publication pré-rempli
+    // FAUX POSITIF QUI SE RÉPARE (2026-07-12) : une annonce marquée hors ligne
+    // peut REVENIR (modération Beebs enfin passée, incident temporaire de la
+    // plateforme, lecture ratée…). Sans ce nettoyage, le drapeau restait à vie et
+    // le bandeau « Vendue ? » mentait indéfiniment sur une annonce bel et bien en
+    // ligne. Si on la revoit active, on efface le drapeau : le bandeau disparaît
+    // tout seul. Le délai de grâce réduit ce cas, il ne l'élimine pas.
+    if (state === "active") {
+      const pf = job.platform_fields ?? {};
+      if (pf.unavailable_since) {
+        const cleaned = { ...pf };
+        delete cleaned.unavailable_since;
+        delete cleaned.sale_signal;
+        delete cleaned.detected_price;
+        patch.platform_fields = cleaned;
+        console.log(`[background] ${job.platform} ${job.id} : de nouveau EN LIGNE → drapeau levé, bandeau retiré (fausse alerte)`);
+      }
+    }
+
     if (state === "sold" || state === "unavailable") {
       const pf = job.platform_fields ?? {};
       if (!pf.unavailable_since) {
