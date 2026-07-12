@@ -331,6 +331,30 @@ async function fillListingForm(job) {
     await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
   }
 
+  // QUANTITÉ (2026-07-12) — critère OBLIGATOIRE sur certaines catégories
+  // (constaté sur la chaise ce soir : « Ce champ est requis », le Continuer ne
+  // passait jamais à l'aperçu et le job mourait là). Il n'était REMPLI NULLE
+  // PART : le mot "quantité" n'existait pas dans ce fichier. Le champ n'apparaît
+  // pas sur toutes les catégories (absent sur Mode) → remplissage best-effort,
+  // jamais bloquant. Valeur : la quantité du job si elle existe, sinon 1 (une
+  // annonce cross-post porte une pièce unique — cf. dette D6 de la Phase B).
+  const quantiteInput = document.querySelector(
+    'input#quantity, input[name="quantity"], input[id$="_quantity"]'
+  );
+  if (quantiteInput) {
+    const qte = String(job.platform_fields?.quantite ?? job.quantite ?? 1);
+    setFieldValue(quantiteInput, qte);
+    await humanPause();
+    if (!String(quantiteInput.value ?? "").trim()) {
+      const note = 'quantité: le champ est resté vide après saisie — LBC bloquera sur "Ce champ est requis"';
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      unfilledRequired.push("quantite");
+    } else {
+      console.log(`[leboncoin] Quantité renseignée : ${quantiteInput.value}`);
+    }
+  }
+
   // Continuer → interstitiel "juste prix" → aperçu final
   const continueBtn = findButtonByExactText("Continuer");
   if (!continueBtn) throw new Error('Bouton "Continuer" introuvable après les critères.');
