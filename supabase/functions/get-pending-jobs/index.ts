@@ -47,14 +47,25 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
 
+    // include_processing (2026-07-12) : OPT-IN, demandé UNIQUEMENT par le popup.
+    // Le popup ne lisait que les jobs 'pending' : dès qu'un job passait en
+    // 'processing', il disparaissait de sa liste et la ligne retombait sur
+    // « Non incluse » — vécu sur Beebs, qui est traité en DERNIER et a donc le
+    // plus de chances d'être déjà en cours quand le popup (re)lit la file.
+    // ⚠️ Le BACKGROUND ne passe PAS ce flag et continue de ne voir que 'pending' :
+    // lui renvoyer des jobs 'processing' le ferait re-traiter des jobs en cours.
+    const body = await req.json().catch(() => ({}));
+    const includeProcessing = body?.include_processing === true;
+    const statuses = includeProcessing ? ["pending", "processing"] : ["pending"];
+
     // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
     // (action='delete', armés par le bandeau semi-auto de l'app après une
     // vente) passent par la même file — le background route sur job.action
     // et cible l'annonce via listing_url.
     const { data: jobs, error: jobsErr } = await userClient
       .from("cross_post_jobs")
-      .select("id, platform, action, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at")
-      .eq("status", "pending")
+      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at")
+      .in("status", statuses)
       .order("created_at", { ascending: true });
 
     if (jobsErr) return json({ error: jobsErr.message }, 500);
