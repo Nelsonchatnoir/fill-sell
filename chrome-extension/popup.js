@@ -86,8 +86,14 @@ function firstAnnonce(jobs) {
   };
 }
 
-// Lecture seule des jobs pending (affichage). La publication passe par le
+// Lecture seule des jobs à publier (affichage). La publication passe par le
 // background, qui refait un getValidSession (refresh) de son côté.
+// include_processing (2026-07-12) : on demande AUSSI les jobs déjà en cours.
+// Sans ça, un job passé en 'processing' disparaissait de la liste et sa ligne
+// retombait sur « Non incluse » alors qu'il était en train d'être publié —
+// vécu sur Beebs (traité en dernier, donc souvent déjà en cours quand le popup
+// relit la file, et l'événement live FILLSELL_PROGRESS est perdu si le popup
+// était fermé à ce moment-là).
 async function fetchPendingJobs(accessToken) {
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/get-pending-jobs`, {
     method: "POST",
@@ -96,7 +102,7 @@ async function fetchPendingJobs(accessToken) {
       Authorization: `Bearer ${accessToken}`,
       apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
     },
-    body: "{}",
+    body: JSON.stringify({ include_processing: true }),
   });
   if (!res.ok) throw new Error(`get-pending-jobs → HTTP ${res.status}`);
   const data = await res.json().catch(() => ({}));
@@ -138,7 +144,12 @@ async function load() {
     state.selected = new Set();
     if (state.annonce) {
       for (const p of PLATFORMS) {
-        if (p.supported && state.annonce.byPlatform[p.key]) state.selected.add(p.key);
+        const job = state.annonce.byPlatform[p.key];
+        // ⚠️ JAMAIS un job déjà en cours (status 'processing', visible depuis
+        // include_processing) : le cocher par défaut le ferait re-publier par
+        // PUBLISH_NOW → DOUBLE ANNONCE. Il s'affiche en « Publication… », il ne
+        // se sélectionne pas.
+        if (p.supported && job && job.status !== "processing") state.selected.add(p.key);
       }
     }
     // Jobs terminés récemment par le poll de fond (Sujet 5) : ils sortent de
@@ -246,7 +257,12 @@ function rowState(p) {
   if (st?.phase === "done") return "done";
   if (st?.phase === "err") return "err";
   if (st?.phase === "connect") return "connect";
-  if (state.annonce?.byPlatform[p.key]) return "ready";
+  const job = state.annonce?.byPlatform[p.key];
+  // Job DÉJÀ en cours côté serveur (2026-07-12) : « Publication… », même si on
+  // n'a reçu aucun événement live (popup fermé au moment du démarrage du job).
+  // C'est ce qui affichait « Non incluse » sur Beebs pendant toute sa publication.
+  if (job?.status === "processing") return "busy";
+  if (job) return "ready";
   // Terminé (<30 min) par le poll de fond (Sujet 5) : badge "Publié" au lieu
   // de "Non incluse" — un job pending pour la même plateforme garde la main
   // (test au-dessus : un job régénéré redevient "ready").
@@ -392,7 +408,9 @@ function selectedJobIds() {
   const ids = [];
   for (const key of state.selected) {
     const job = state.annonce?.byPlatform[key];
-    if (job) ids.push(job.id);
+    // Double filet contre la double publication : un job 'processing' n'est
+    // jamais envoyé à PUBLISH_NOW, même s'il s'était retrouvé sélectionné.
+    if (job && job.status !== "processing") ids.push(job.id);
   }
   return ids;
 }
