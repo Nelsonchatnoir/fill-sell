@@ -364,19 +364,19 @@ async function fillListingForm(job) {
   }
   if (job.price != null) await fillPriceField(job.price);
 
-  // packageSize : TOUJOURS absent, et c'est un choix, pas un oubli.
-  // Re-vérifié le 2026-07-09 : aucune source de donnée fiable n'existe dans le
-  // projet — ni poids ni dimensions nulle part (lens-analysis extrait titre,
-  // marque, matiere, taille_estimee, etat_estime, prix… mais jamais de poids ;
-  // la table inventaire n'en a pas de colonne ; aucun prompt ne l'infère).
-  // Le seul candidat serait platform_fields.format_colis, mais c'est une
-  // inférence IA faite pour le vocabulaire de LEBONCOIN (Lettre | Petit colis |
-  // … | Non défini), pas pour celui de Vinted (Petit | Moyen | Grand) : le
-  // transposer serait une heuristique inter-plateformes de plus, posée sur une
-  // devinette. On préfère le défaut de Vinted ("Petit", pré-coché), qui est au
-  // moins le cas majoritaire d'un vêtement. À rebrancher le jour où un poids
-  // réel est saisi ou estimé.
-  if (fields.packageSize) await selectPackageSize(fields.packageSize);
+  // Format de colis — RÈGLE PRODUIT (Nico, 2026-07-12) : sur TOUTE la branche
+  // Mode (vêtements ET chaussures), c'est TOUJOURS « Petit », sans exception.
+  // ⚠️ Ne pas se fier au "défaut pré-coché" : Vinted pré-coche selon la
+  // CATÉGORIE et met « Moyen » sur les chaussures (constaté sur l'annonce New
+  // Balance de ce soir, colis parti en Moyen). On clique donc explicitement.
+  // Hors Mode (le peu qui existe sur Vinted), aucune donnée de poids n'existe
+  // dans le projet : on laisse le défaut de Vinted plutôt que de deviner.
+  const isFashionJob =
+    (job.platform_fields?.categorie ?? "") === "Mode" ||
+    /^(femmes?|hommes?|enfants?|filles?|gar[çc]ons?)$/i.test(String(fields.categoryPath?.[0] ?? "")) ||
+    Boolean(String(job.platform_fields?.taille ?? "").trim());
+  const wantedPackage = fields.packageSize ?? (isFashionJob ? "Petit" : null);
+  if (wantedPackage) await selectPackageSize(wantedPackage);
 
   // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
   // marqué platform_fields.live_run === true (test supervisé) publie vraiment.
@@ -425,13 +425,71 @@ async function fillListingForm(job) {
     };
   }
 
-  // listingUrl : capturé CÔTÉ BACKGROUND (captureListingUrl, 2026-07-11) —
-  // la redirection post-submit peut détruire ce contexte avant sendResponse,
-  // le background surveille l'URL de l'onglet à notre place. On répond
-  // immédiatement après le clic.
-  const listingUrl = null;
+  // ⚠️ PREUVE DE PUBLICATION (2026-07-12) — le trou noir du run de ce soir.
+  // AVANT : on retournait `success: true` juste après le clic, sans rien
+  // vérifier. Quand Vinted REFUSAIT le formulaire (validation : « Le champ prix
+  // doit être supérieur ou égal à 1.0 »), le job partait quand même en
+  // "published" — annonce inexistante, listing_url vide ("aucune URL capturée"),
+  // et pire : une annonce fantôme entrait dans le poll de détection de vente.
+  // Vérifié en base ce soir : 2 jobs Vinted "published" (Xiaomi, New Balance)
+  // alors que la garde-robe Vinted ne contient NI l'un NI l'autre.
+  // MAINTENANT : on ne conclut au succès que sur une PREUVE — la redirection
+  // vers la page de l'annonce (/items/<id>) — et on remonte le message de
+  // validation exact quand Vinted refuse.
+  const proof = await waitForPublishOutcome();
+  if (proof.error) {
+    return { success: false, error: proof.error, warnings };
+  }
+  return { success: true, listingUrl: proof.listingUrl, warnings };
+}
 
-  return { success: true, listingUrl, warnings };
+// Après le clic Publier, Vinted fait l'un des trois :
+//   1. redirige vers /items/<id> (succès — c'est notre seule preuve) ;
+//   2. reste sur le formulaire et affiche une/des erreurs de validation ;
+//   3. rame (upload photos, anti-bot) — on laisse du temps avant de conclure.
+async function waitForPublishOutcome(timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastValidation = null;
+
+  while (Date.now() < deadline) {
+    const m = location.pathname.match(/^\/items\/(\d+)/);
+    if (m) return { listingUrl: location.origin + location.pathname };
+
+    const validation = readValidationErrors();
+    if (validation) lastValidation = validation;
+
+    await sleep(1000);
+  }
+
+  if (lastValidation) {
+    return {
+      error:
+        `Vinted a REFUSÉ la publication : ${lastValidation} — l'annonce n'a PAS été créée. ` +
+        "(Le formulaire est resté sur /items/new.)",
+    };
+  }
+  return {
+    error:
+      "Publication Vinted non confirmée : aucune redirection vers la page de l'annonce après " +
+      `${timeoutMs / 1000} s, et aucun message d'erreur lisible. L'annonce n'a PAS été considérée ` +
+      "comme publiée (le statut ne sera pas 'published' sans preuve).",
+  };
+}
+
+// Messages de validation du formulaire Vinted. On ratisse large (les classes du
+// design system changent) puis on déduplique.
+function readValidationErrors() {
+  const nodes = document.querySelectorAll(
+    '[data-testid*="error"], [class*="error"], [role="alert"], .web_ui__InputBar__error'
+  );
+  const seen = new Set();
+  for (const n of nodes) {
+    const txt = (n.textContent || "").trim();
+    if (!txt || txt.length > 200) continue;
+    if (!/doit|obligatoire|requis|invalide|erreur|sup[ée]rieur|inf[ée]rieur|manquant/i.test(txt)) continue;
+    seen.add(txt);
+  }
+  return seen.size ? [...seen].join(" · ") : null;
 }
 
 // ── Helpers génériques ─────────────────────────────────────────────────────────
@@ -1126,13 +1184,28 @@ async function selectColors(colorNames, warnings = []) {
   await closeAnyOpenDropdown();
 }
 
+// ⚠️ 2026-07-12 : « Petit » n'est PAS toujours pré-coché — Vinted choisit le
+// format par défaut selon la CATÉGORIE, et sur les chaussures il pré-coche
+// « Moyen » (constaté sur l'annonce New Balance de ce soir). L'ancien
+// `if (size === "Petit") return;` faisait donc confiance à un défaut qui n'en
+// est pas un : on ne cliquait rien et le colis partait en Moyen.
+// Décision produit Nico (2026-07-12) : sur TOUTE la branche Mode (vêtements ET
+// chaussures), c'est TOUJOURS « Petit », sans exception. On CLIQUE désormais le
+// format, on ne le suppose plus.
 async function selectPackageSize(size = "Petit") {
-  if (size === "Petit") return; // pré-coché par défaut, rien à faire
   const map = { Petit: 1, Moyen: 2, Grand: 3 };
   const n = map[size] || 1;
   const radio = await waitForElement(`[data-testid="package_type_selector_${n}--input"]`);
-  radio.click();
-  await humanPause();
+  if (!radio.checked) {
+    simulateFullClick(radio);
+    await humanPause();
+  }
+  // Vérification : le format retenu doit être celui demandé (sinon on publierait
+  // avec des frais de port faux, invisible jusqu'à la première vente).
+  const after = document.querySelector(`[data-testid="package_type_selector_${n}--input"]`);
+  if (after && !after.checked) {
+    console.warn(`[vinted] ⚠️ format de colis : "${size}" n'a pas pris (radio non coché après clic)`);
+  }
 }
 
 // job.photos: [{ url, type }] — pas des File prêts, on fetch chaque url puis
