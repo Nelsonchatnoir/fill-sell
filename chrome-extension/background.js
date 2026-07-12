@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-17h00 (AUCUNE ecriture auto — bandeau sur les 4 plateformes, paintTab, verrou, recover " +
+  "2026-07-12-17h40 (AUCUNE ecriture auto + delai de grace par plateforme, paintTab, verrou, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -1213,8 +1213,35 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // (30 min), chacune au plus toutes les SALE_CHECK_MIN_INTERVAL_MS, avec une
 // pause jitter entre deux fetches — un humain qui re-regarde ses annonces,
 // pas une rafale.
-const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h par annonce
+const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
 const SALE_CHECK_MAX_PER_CYCLE = 8;
+
+// ── Délai de grâce après publication (2026-07-12) ─────────────────────────────
+// SALE_CHECK_MIN_INTERVAL_MS n'espaçait que deux vérifications SUCCESSIVES : une
+// annonce fraîchement publiée (last_checked_at null) partait en tête de file et
+// était vérifiée IMMÉDIATEMENT. Or une annonce n'est pas encore consultable
+// publiquement dans les minutes qui suivent son dépôt — elle serait lue comme
+// "unavailable" et un bandeau « Vendue ? » s'afficherait sur une annonce qui
+// vient d'être mise en ligne.
+// Fenêtres calées sur ce qu'on a RÉELLEMENT observé le 2026-07-12 :
+//   beebs     : 24 h — passe par « En cours de vérification » (modération), et
+//               sa propagation est différée à DEUX niveaux (liste vendeur
+//               obsolète plusieurs secondes, page publique servie en cache CDN
+//               plusieurs MINUTES après un changement d'état). C'est aussi la
+//               plateforme dont des annonces ont « disparu » sans explication :
+//               large marge assumée.
+//   leboncoin : 6 h — l'annonce n'était pas indexée dans « Mes annonces »
+//               immédiatement après le dépôt (captureListingUrl revenait
+//               bredouille : c'est ce qui a motivé recoverMissingListingUrls).
+//   ebay      : 2 h — mise en ligne rapide et /itm/ répond tout de suite.
+//   vinted    : 2 h — annonce consultable immédiatement après publication.
+const PUBLISH_GRACE_MS = {
+  beebs: 24 * 60 * 60 * 1000,
+  leboncoin: 6 * 60 * 60 * 1000,
+  ebay: 2 * 60 * 60 * 1000,
+  vinted: 2 * 60 * 60 * 1000,
+};
+const PUBLISH_GRACE_DEFAULT_MS = 6 * 60 * 60 * 1000;
 
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
@@ -1365,7 +1392,7 @@ async function checkPublishedListings(session) {
   try {
     jobs = await restRequest(
       "cross_post_jobs" +
-        "?select=id,platform,listing_url,last_checked_at,platform_fields" +
+        "?select=id,platform,listing_url,last_checked_at,published_at,created_at,platform_fields" +
         "&status=eq.published&action=eq.publish&listing_url=not.is.null" +
         "&order=last_checked_at.asc.nullsfirst&limit=30",
       session.access_token
@@ -1376,7 +1403,28 @@ async function checkPublishedListings(session) {
   }
 
   const now = Date.now();
+
+  // Délai de grâce : une annonce trop fraîche n'est PAS vérifiée du tout — on ne
+  // la lit même pas (économie de requêtes, et zéro risque de conclure sur une
+  // annonce en cours d'indexation/modération). Elle sera examinée au cycle qui
+  // suivra la fin de sa fenêtre.
+  const inGrace = (j) => {
+    const ref = Date.parse(j.published_at ?? j.created_at ?? "");
+    if (!Number.isFinite(ref)) return false; // pas de date fiable : on ne bloque pas
+    const grace = PUBLISH_GRACE_MS[j.platform] ?? PUBLISH_GRACE_DEFAULT_MS;
+    return now - ref < grace;
+  };
+
+  const fresh = (jobs ?? []).filter(inGrace);
+  if (fresh.length) {
+    console.log(
+      `[background] Délai de grâce : ${fresh.length} annonce(s) trop récente(s), non vérifiée(s) — ` +
+      fresh.map((j) => `${j.platform} (${Math.round((PUBLISH_GRACE_MS[j.platform] ?? PUBLISH_GRACE_DEFAULT_MS) / 3600000)} h)`).join(", ")
+    );
+  }
+
   const due = (jobs ?? [])
+    .filter((j) => !inGrace(j))
     .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > SALE_CHECK_MIN_INTERVAL_MS)
     .slice(0, SALE_CHECK_MAX_PER_CYCLE);
   if (!due.length) return;
@@ -1386,6 +1434,16 @@ async function checkPublishedListings(session) {
     const job = due[i];
     const { state, price } = await checkListingState(job.listing_url, job.platform);
     console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}`);
+
+    // État AMBIGU (bot-shield, page inattendue, champs absents) : on ne conclut
+    // RIEN, on ne pose AUCUN drapeau — et on ne tamponne même pas
+    // last_checked_at, pour que le job soit re-examiné au cycle suivant plutôt
+    // que d'attendre 2 h sur une lecture qui n'a rien donné.
+    if (state === "unknown") {
+      console.log(`[background] ${job.platform} ${job.id} : état indéterminé — aucune conclusion, nouvelle tentative au prochain cycle`);
+      if (i < due.length - 1) await sleep(randInt(1500, 4000));
+      continue;
+    }
 
     const patch = { last_checked_at: new Date().toISOString() };
 
