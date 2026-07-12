@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-12-12h40 (DRY_RUN=false, delete confirmé 1/3, empreinte)";
+const VINTED_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, delete Vinted 1/3 — bot-shield sur la 2e)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -44,10 +44,14 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 }
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ────────────────────────────────
-// ⚠️ DELETE_DRY_RUN doit rester à true tant que 3 suppressions réelles n'ont
-// pas été validées manuellement (même règle que DRY_RUN pour la publication ;
-// la 1re suppression réelle a été validée en session pilotée le 2026-07-11 —
-// les 2 suivantes restent à faire avant la bascule).
+// ⚠️ DELETE_DRY_RUN : passé à false le 2026-07-12 sur décision de Nico (session
+// autonome). Gate Vinted : 1/3 — la 2e suppression réelle n'a PAS pu être faite
+// le 2026-07-12 : la page annonce ne se rendait plus dans la session
+// d'automatisation (squelettes de chargement, bouton Supprimer présent dans le
+// DOM mais en 0×0), alors qu'elle s'affichait normalement dans le navigateur
+// personnel de Nico — bot-shield (cookie datadome présent) visant la session
+// pilotée, PAS le compte. Les sélecteurs ci-dessous restent valides : le bouton
+// était bien là, avec son data-testid. Ne pas marteler cette page.
 // SÉLECTEURS CONFIRMÉS en session réelle du 2026-07-11 (annonce
 // /items/9376376044 réellement publiée puis supprimée) :
 //   page annonce vendeur → button[data-testid="item-delete-button"]
@@ -59,7 +63,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 //     button[data-testid="item-delete-cancelation-button"] ("Annuler")
 //   après confirmation : redirection vers /member/<id> ; l'URL de l'annonce
 //   sert ensuite une page "Page not found".
-const DELETE_DRY_RUN = true;
+const DELETE_DRY_RUN = false;
 
 async function deleteListing(job) {
   const trace = [];
