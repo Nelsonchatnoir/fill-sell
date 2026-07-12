@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-18h10 (delai de grace + fausse alerte auto-reparee, AUCUNE ecriture auto, paintTab, verrou, recover " +
+  "2026-07-12-19h00 (reprise des jobs processing orphelins, delai de grace, AUCUNE ecriture auto, paintTab, verrou, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -386,6 +386,77 @@ function pollAndProcessJobs() {
   return withJobFlowLock("poll", pollAndProcessJobsUnlocked);
 }
 
+// ── Reprise des jobs orphelins bloqués en 'processing' (2026-07-12) ───────────
+// TROU IDENTIFIÉ À L'AUDIT : processJob passe le job en 'processing' AVANT
+// d'ouvrir l'onglet et de remplir. Si le service worker meurt en cours de route
+// — Manifest V3 le tue à l'inactivité et RIEN ne le maintient en vie ici — ou si
+// le PC s'éteint / le réseau tombe, le job reste 'processing' POUR TOUJOURS :
+// get-pending-jobs ne sélectionne que 'pending', donc plus rien ne le reprend,
+// il ne repart jamais et n'apparaît jamais en échec. Job perdu, en silence.
+// Le risque a AUGMENTÉ avec les pauses eBay (fieldSettle ~5 s par champ) : plus
+// un job dure, plus la fenêtre de mort du worker est grande.
+//
+// Seuil GÉNÉREUX : une publication eBay complète (photos + 7 champs à ~5 s +
+// attentes de 20 s + description + gardes) prend plusieurs minutes. 15 minutes
+// laissent largement finir un job légitime — on ne veut surtout pas interrompre
+// un remplissage en cours.
+// Borne de reprise : un job qui meurt systématiquement au même endroit ne doit
+// pas reboucler à l'infini (réouverture d'onglets → DataDome, incident vécu).
+const STALE_PROCESSING_MS = 15 * 60 * 1000;
+const MAX_STALE_RECOVERIES = 2;
+
+async function recoverStaleProcessingJobs(session) {
+  let jobs;
+  try {
+    jobs = await restRequest(
+      "cross_post_jobs?select=id,platform,action,title,created_at,platform_fields&status=eq.processing",
+      session.access_token
+    );
+  } catch (e) {
+    console.error("[background] Lecture des jobs 'processing':", String(e?.message ?? e));
+    return;
+  }
+  if (!jobs?.length) return;
+
+  const now = Date.now();
+  for (const job of jobs) {
+    const pf = job.platform_fields ?? {};
+    // processing_since est posé au passage en 'processing'. Les jobs d'AVANT ce
+    // correctif ne l'ont pas : on retombe sur created_at (majorant sûr — le job
+    // ne peut pas avoir commencé avant d'exister).
+    const since = Date.parse(pf.processing_since ?? job.created_at ?? "");
+    if (!Number.isFinite(since) || now - since < STALE_PROCESSING_MS) continue;
+
+    const minutes = Math.round((now - since) / 60000);
+    const recoveries = (pf.stale_recoveries ?? 0) + 1;
+    const cleaned = { ...pf, stale_recoveries: recoveries };
+    delete cleaned.processing_since;
+
+    if (recoveries > MAX_STALE_RECOVERIES) {
+      const msg =
+        `Job resté bloqué en cours de traitement (${minutes} min) après ` +
+        `${MAX_STALE_RECOVERIES} reprises — abandonné pour éviter une boucle. ` +
+        "Cause probable : interruption répétée (navigateur fermé, veille, réseau). " +
+        "Régénérer l'annonce depuis l'app pour retenter.";
+      console.error(`[background] Job ${job.id} (${job.platform}) : ${msg}`);
+      await updateJobStatus(session.access_token, job.id, "failed", {
+        error: msg,
+        platform_fields: cleaned,
+      }).catch((e) => console.error("[background] abandon job bloqué:", String(e?.message ?? e)));
+      continue;
+    }
+
+    console.warn(
+      `[background] Job ${job.id} (${job.platform}, ${job.action}) bloqué en 'processing' depuis ` +
+      `${minutes} min → repassé en pending (reprise ${recoveries}/${MAX_STALE_RECOVERIES})`
+    );
+    await updateJobStatus(session.access_token, job.id, "pending", {
+      error: `Reprise après interruption (bloqué ${minutes} min en cours de traitement)`,
+      platform_fields: cleaned,
+    }).catch((e) => console.error("[background] reprise job bloqué:", String(e?.message ?? e)));
+  }
+}
+
 async function pollAndProcessJobsUnlocked() {
   const session = await getValidSession();
   if (!session) {
@@ -396,6 +467,13 @@ async function pollAndProcessJobsUnlocked() {
   await chrome.storage.local.set({
     [FILLSELL_CONFIG.STORAGE_KEYS.LAST_POLL]: new Date().toISOString(),
   });
+
+  // AVANT de lire la file : repêcher les jobs orphelins d'un cycle précédent
+  // (service worker tué en plein remplissage, PC éteint…). Sans ça, ils restent
+  // 'processing' à vie et get-pending-jobs ne les verra jamais.
+  await recoverStaleProcessingJobs(session).catch((e) =>
+    console.error("[background] recoverStaleProcessingJobs:", e)
+  );
 
   let jobs;
   try {
@@ -472,7 +550,13 @@ async function processJob(job, accessToken) {
       return { status: "failed", error: blocker };
     }
 
-    await updateJobStatus(accessToken, job.id, "processing");
+    // processing_since : horodatage du DÉBUT de traitement, lu par
+    // recoverStaleProcessingJobs pour repêcher un job dont le worker est mort en
+    // route. Sans lui, la reprise se baserait sur created_at — qui peut être bien
+    // plus ancien que le début réel du traitement (job resté en file).
+    await updateJobStatus(accessToken, job.id, "processing", {
+      platform_fields: { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() },
+    });
 
     // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
     // neuf par job (voir getOrCreateWorkTab : DataDome a suspendu la session
@@ -1673,7 +1757,11 @@ async function processDeleteJob(job, accessToken) {
   }
 
   try {
-    await updateJobStatus(accessToken, job.id, "processing");
+    // Même horodatage que la publication (cf. recoverStaleProcessingJobs) : un
+    // job delete peut lui aussi mourir en route.
+    await updateJobStatus(accessToken, job.id, "processing", {
+      platform_fields: { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() },
+    });
 
     const target = DELETE_TARGETS[job.platform]?.(job);
     if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
