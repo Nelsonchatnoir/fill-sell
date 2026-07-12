@@ -820,13 +820,20 @@ async function ensureAchatImmediat(warnings) {
 }
 
 // ── Description (iframe RTE same-origin #se-rte-frame__summary) ─────────────
-// Retourne true si la description a RÉELLEMENT pris (relecture), false sinon.
-// Durci le 2026-07-12 après un faux positif en LIVE réel : 5 s d'attente sur
-// la seule PRÉSENCE de l'iframe ne suffisaient pas — son document n'était pas
-// initialisé, le texte partait dans le vide, et eBay refusait la soumission
-// (« Vous devez ajouter une description »). On attend désormais l'iframe ET
-// son document prêt ET la zone éditable (20 s, comme les autres attentes du
-// formulaire), puis on VÉRIFIE en relisant le contenu posé.
+// Retourne true si la description a RÉELLEMENT pris, false sinon.
+//
+// ⚠️ Deux faux positifs vécus en LIVE réel avant d'arriver ici :
+// 1. (2026-07-12 matin) iframe pas encore initialisée → attente durcie :
+//    document "complete" + zone éditable (20 s).
+// 2. (2026-07-12 midi) le VRAI piège, isolé en session réelle sur le
+//    formulaire : eBay ne synchronise l'état soumis de la description
+//    qu'au BLUR/FOCUSOUT du contenteditable — jamais sur l'événement
+//    "input", jamais au keyup (testé un par un). Écrire l'innerHTML et
+//    relire le MÊME DOM disait "pris" pendant que l'état eBay restait
+//    vide → soumission refusée (« Vous devez ajouter une description »).
+//    L'état soumis a un miroir lisible : le textarea CACHÉ
+//    [name="description"] (éditeur source HTML du RTE) dans le document
+//    PARENT — c'est LUI l'oracle de la relecture, pas le contenteditable.
 async function fillDescription(text, warnings) {
   const target = await waitFor(() => {
     const iframe = document.querySelector('iframe#se-rte-frame__summary, iframe[title="Description"]');
@@ -844,6 +851,9 @@ async function fillDescription(text, warnings) {
     .split("\n")
     .map((line) => line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])))
     .join("<br>");
+  // Oracle : miroir de l'état eBay, dans le document parent (pas l'iframe).
+  const oracle = () => document.querySelector('textarea[name="description"]');
+  const marker = String(text).split("\n")[0].slice(0, 30);
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {
       target.focus?.();
@@ -851,19 +861,35 @@ async function fillDescription(text, warnings) {
       target.dispatchEvent(new Event("input", { bubbles: true }));
       target.ownerDocument.body.dispatchEvent(new Event("input", { bubbles: true }));
       await humanPause();
-      // Relecture : un RTE qui finit de s'initialiser peut réécrire son
-      // contenu PAR-DESSUS le nôtre — seul le texte effectivement présent
-      // fait foi, pas le fait d'avoir écrit.
-      const got = (target.textContent || "").replace(/\s+/g, " ").trim();
-      if (got.length >= Math.min(20, String(text).trim().length)) return true;
-      console.warn(`[ebay] description vide après la pose (tentative ${attempt}/2)`);
+      // Le déclencheur de synchro (validé en isolation : run 1 et run 2
+      // synchronisés au 1er essai, y compris par-dessus un contenu existant).
+      target.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+      target.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      const synced = await waitFor(() => {
+        const ta = oracle();
+        return ta && ta.value.includes(marker) ? ta : null;
+      }, 8000);
+      if (synced) {
+        console.log(`[ebay] description synchronisée (textarea miroir, ${synced.value.length} car.)${attempt > 1 ? " (2e pose)" : ""}`);
+        return true;
+      }
+      if (!oracle()) {
+        // Markup eBay changé (plus de textarea miroir) : repli sur la
+        // relecture du contenteditable, avec un warning-relevé pour ne pas
+        // masquer la perte de l'oracle.
+        const got = (target.textContent || "").replace(/\s+/g, " ").trim();
+        const ok = got.length >= Math.min(20, String(text).trim().length);
+        warnings.push("description: textarea miroir [name=description] introuvable — relecture CE seule (oracle perdu, à re-relever)");
+        return ok;
+      }
+      console.warn(`[ebay] description non synchronisée dans le textarea miroir (pose ${attempt}/2)`);
       await sleep(1500);
     }
   } catch (e) {
     warnings.push(`description: RTE inaccessible (${e.message}) — description non remplie`);
     return false;
   }
-  warnings.push("description: le texte posé dans le RTE ne persiste pas (relu vide 2 fois) — description non remplie");
+  warnings.push("description: posée dans le RTE mais JAMAIS synchronisée dans l'état eBay (textarea miroir vide après 2 poses + blur) — description non prise");
   return false;
 }
 
