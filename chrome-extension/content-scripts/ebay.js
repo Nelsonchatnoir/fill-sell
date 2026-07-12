@@ -632,13 +632,44 @@ function findSpecificLabelButton(labels) {
 // son textContent. La ligne porte aussi les chips "Fréquemment
 // sélectionnées" (button.fake-link) : sélection en UN clic sans ouvrir le
 // menu quand l'une d'elles matche notre valeur.
+// ⚠️ Élargi le 2026-07-13 après l'échec « bouton-valeur (se-expand-button)
+// introuvable pour "Marque" » (run réel, 2 tentatives).
+// Ce que j'ai VÉRIFIÉ sur le vrai formulaire (catégorie 15709, baskets homme) :
+// Marque, Couleur, Département, Type et Pointure EU exposent TOUS le même bouton
+// (`se-expand-button__button fake-menu-button__button …`), trouvé à la 4e
+// remontée. Le sélecteur est donc juste SUR CE RENDU — le DOM du run était
+// différent, et je n'ai pas pu le reproduire. Plutôt que de deviner :
+//   · on remonte plus haut (10 au lieu de 6) et on accepte les variantes réelles
+//     du design system eBay (fake-menu-button, combobox, listbox) ;
+//   · quand rien ne matche, on DUMPE la structure réelle de la ligne dans
+//     l'erreur — au prochain échec, on aura le DOM exact au lieu d'une devinette.
+const SPECIFIC_VALUE_BTN =
+  "button.se-expand-button__button, button.fake-menu-button__button, " +
+  'button[aria-expanded], [role="combobox"], [role="listbox"] button, button.btn--form';
+
 function specificRow(labelBtn) {
   let row = labelBtn.parentElement;
-  for (let i = 0; i < 6 && row; i++, row = row.parentElement) {
-    const expandBtn = row.querySelector("button.se-expand-button__button, button[aria-expanded]");
+  for (let i = 0; i < 10 && row; i++, row = row.parentElement) {
+    const expandBtn = row.querySelector(SPECIFIC_VALUE_BTN);
     if (expandBtn && expandBtn !== labelBtn) return { row, expandBtn };
   }
   return null;
+}
+
+// Photographie de la ligne quand le bouton-valeur reste introuvable : c'est ce
+// relevé qui remplacera les suppositions au prochain run.
+function dumpSpecificRow(labelBtn) {
+  const scope = labelBtn.closest("li, .se-field, .field, div")?.parentElement ?? labelBtn.parentElement;
+  const noeuds = [...(scope?.querySelectorAll("button, input, select, [role]") ?? [])]
+    .slice(0, 10)
+    .map((e) => {
+      const cls = String(e.className || "").slice(0, 70);
+      const role = e.getAttribute("role") || "";
+      const aria = e.getAttribute("aria-expanded") || "";
+      return `${e.tagName.toLowerCase()}${cls ? "." + cls.replace(/\s+/g, ".") : ""}` +
+        `${role ? `[role=${role}]` : ""}${aria ? `[aria-expanded=${aria}]` : ""}`;
+    });
+  return noeuds.length ? `structure réelle de la ligne : ${noeuds.join(" ; ")}` : "ligne vide dans le DOM";
 }
 
 // ── Constat des obligatoires non remplis (2026-07-11) ───────────────────────
@@ -679,7 +710,25 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
       return false;
     }
     const anatomy = specificRow(found.btn);
-    if (!anatomy) throw new Error(`bouton-valeur (se-expand-button) introuvable pour "${found.label}"`);
+    if (!anatomy) {
+      // FILET (2026-07-13) : le bouton-valeur est introuvable, mais la CHIP
+      // « Fréquemment sélectionnées » est un chemin indépendant — et elle
+      // fonctionne (vérifié sur le vrai formulaire : la chip « New Balance »
+      // pose la Marque en < 4 s). On tente donc la chip AVANT d'abandonner la
+      // ligne, au lieu de la sauter comme avant.
+      const chipSeule = [...(found.btn.closest("li, .se-field, div")?.parentElement?.querySelectorAll("button.fake-link") ?? [])]
+        .find((b) => normalizeFuzzy(b.textContent) === normalizeFuzzy(String(rawValue)));
+      if (chipSeule) {
+        console.log(`[ebay] ${found.label}: bouton-valeur absent — pose par la chip « ${chipSeule.textContent.trim()} »`);
+        realClick(chipSeule);
+        await humanPause();
+        return true;
+      }
+      throw new Error(
+        `bouton-valeur introuvable pour "${found.label}" (aucune chip « ${rawValue} » non plus) — ` +
+        dumpSpecificRow(found.btn)
+      );
+    }
     // ⚠️ "Tendances" est un BADGE d'aide affiché dans le bouton-valeur de
     // certains champs (Matière, Type de taille...), pas une valeur
     // sélectionnée — faux positif vécu au dry-run ("déjà rempli (Tendances)").
