@@ -13,11 +13,14 @@ importScripts("config.js");
 // contredisaient le code du dépôt principal sans qu'on puisse le voir.
 // Ce log, imprimé au démarrage du SW, dit quelle COPIE tourne réellement :
 // vérifier `version` et `build` avant de diagnostiquer quoi que ce soit.
+// Format daté depuis le 2026-07-12 (les libellés de features ne permettaient
+// pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
+// modification de ce fichier.
 const FILLSELL_BUILD =
-  "merge-v2 (beebs implémenté, entrée eBay par la home, timing humain, " +
-  "pré-check catégorie avant navigation, adresse LBC validée par la valeur de l'input)";
+  "2026-07-12-12h05 (verrou withJobFlowLock, verifyEbaySubmission, recover " +
+  "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
-  `[background] FillSell service worker v${chrome.runtime.getManifest().version} — build: ${FILLSELL_BUILD}`
+  `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
 
 const ALARM_NAME = "fillsell-poll-jobs";
@@ -837,8 +840,27 @@ async function navigateWorkTab(tabId, target) {
       const discarded = await chrome.tabs.discard(tabId);
       if (discarded?.id != null) effectiveId = discarded.id;
     } catch {
-      // Déjà déchargé ou discard indisponible : on navigue quand même —
-      // une page déjà déchargée n'a aucun beforeunload armé.
+      // Déjà déchargé ou discard indisponible : l'état RÉEL est vérifié
+      // juste en dessous, on ne suppose plus rien.
+    }
+    // 4. (2026-07-12) discard peut échouer SANS lever, même inactif — cas
+    //    identifié : DevTools attachés à l'onglet de travail (précisément
+    //    quand on observe un run en direct). Naviguer un onglet NON déchargé
+    //    dont le formulaire porte des modifications non sauvegardées (les
+    //    specifics prennent réellement depuis les fixes LIVE) déclenche le
+    //    dialogue beforeunload → page gelée, timeout 30 s, remplacement
+    //    tardif et dialogue orphelin (vécu au run du 2026-07-12 midi). On
+    //    vérifie l'état réel : pas déchargé → remplacement IMMÉDIAT, aucun
+    //    dialogue possible, pas de gel.
+    const check = await chrome.tabs.get(effectiveId).catch(() => null);
+    if (!check || !check.discarded) {
+      if (check) {
+        console.log(
+          `[background] Onglet de travail ${effectiveId} non déchargé après discard ` +
+          "(DevTools attachés ?) — remplacement direct pour éviter le dialogue beforeunload"
+        );
+      }
+      return replaceWorkTab(effectiveId, target);
     }
     try {
       // Écouteur attaché AVANT de déclencher la navigation : un chargement

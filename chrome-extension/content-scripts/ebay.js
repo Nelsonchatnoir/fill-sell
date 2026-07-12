@@ -1,3 +1,10 @@
+// Empreinte de version (2026-07-12, demande Nico) : PREMIÈRE ligne de console
+// à l'injection — permet de vérifier, à chaque test, quelle version du code
+// tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
+// ce fichier.
+const EBAY_BUILD = "2026-07-12-12h05 (desc-blur-oracle + empreinte, après 340158e)";
+console.log(`[ebay.js] build ${EBAY_BUILD}`);
+
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
 //
 // ⚠️ DRY_RUN passé à false le 2026-07-12 (session de rodage supervisée par
