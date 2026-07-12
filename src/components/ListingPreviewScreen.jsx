@@ -65,6 +65,52 @@ const SHARED_GUARD = {
   marque:  ["vinted", "beebs", "leboncoin", "ebay"],
 };
 
+// ── Icône objet : UNE résolution, stable, pour TOUTES les plateformes ─────────
+// (2026-07-12, run du soir) Les mappings catalogue (Vinted/eBay/Beebs/LBC) sont
+// tous indexés par l'icône objet, et l'icône était calculée depuis le titre de
+// CHAQUE COPIE plateforme. Deux échecs prouvés ce soir :
+//   · eBay : le titre est en ANGLAIS ("… Tulip Design Chair …") et les règles de
+//     detectObjectIcon sont en FRANÇAIS → icône 📦 → ebayCategoryId absent → job
+//     refusé avant même d'ouvrir un onglet. Le mapping 🪑 (id 54235) existait
+//     pourtant : ce n'est pas le catalogue qui manquait, c'est l'icône.
+//   · Beebs : titre marketing "New Balance 9060 Noir Suède/Mesh 44" — aucun mot
+//     "baskets"/"sneakers" → 📦 → beebsCategoryPath null. Le message d'erreur
+//     accusait le GENRE ("genre = Homme"), alors que getBeebsCategoryPath('👟',
+//     'Homme') résout parfaitement : le genre était bon, l'icône était fausse.
+// Règle : on détecte sur la SOURCE française et stable (l'article), pas sur la
+// prose réécrite par l'IA pour chaque plateforme.
+function resolveArticleIcon({ initialListing, edited, pf }) {
+  // Copies FR seulement — jamais eBay (traduite en anglais).
+  const frTitle =
+    initialListing?.titre ??
+    edited?.leboncoin?.title ??
+    edited?.vinted?.title ??
+    edited?.beebs?.title ??
+    "";
+  const frDesc =
+    initialListing?.description ??
+    edited?.leboncoin?.description ??
+    edited?.vinted?.description ??
+    "";
+  // La marque et la taille sont des signaux : "New Balance" + "EU 44" disent
+  // "chaussure" là où le titre marketing ne le dit pas.
+  const marque = pf?.marque ?? initialListing?.marque ?? "";
+  const taille = pf?.taille ?? initialListing?.taille ?? "";
+  const categorie = pf?.categorie || initialListing?.categorie;
+
+  const icon = detectObjectIcon(frTitle, `${frDesc} ${marque}`, categorie);
+  if (icon !== "📦") return icon; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)
+
+  // Dernier recours UNIQUEMENT (l'icône est déjà le défaut « Autre », on ne peut
+  // rien dégrader) : une POINTURE trahit une chaussure. Volontairement borné aux
+  // libellés de pointure (EU/UK/US/« pointure ») — un simple "44" ne suffit pas,
+  // une veste peut être taille 44.
+  if (/(?:pointure|\b(?:eu|uk|us)\s?(?:3[5-9]|4[0-9]|50)\b)/i.test(`${taille} ${frTitle}`)) {
+    return "👟";
+  }
+  return icon;
+}
+
 // Vêtements & chaussures de SPORT (2026-07-12) — utilisé UNIQUEMENT à l'intérieur
 // de la feuille Loisirs>Sport & Plein air, jamais ailleurs (cf. missingSharedFields).
 // Pourquoi : le mapping range "combinaison de ski" ou "maillot de foot" avec les
@@ -1590,15 +1636,14 @@ export default function ListingPreviewScreen({
   // QUE pour Mode>Chaussures (Pointure obligatoire, shoe_size) — même
   // détection icône→getLbcCategoryPath que le bloc LBC de handlePublish.
   const missingSharedFields = useMemo(() => {
-    // La catégorie était lue depuis la SEULE copie Leboncoin : si LBC n'est pas
-    // sélectionné, edited.leboncoin peut être absent → icône déduite d'un titre
-    // vide. On prend donc la première copie disponible, avec repli sur l'article.
+    // Même résolution d'icône que les mappings catalogue (resolveArticleIcon) :
+    // source française et stable, jamais la copie eBay (anglaise).
     const catSrc = edited.leboncoin ?? edited.vinted ?? edited.ebay ?? edited.beebs ?? null;
-    const catIcon = detectObjectIcon(
-      catSrc?.title ?? initialListing?.titre,
-      catSrc?.description,
-      catSrc?.platform_fields?.categorie || initialListing?.categorie
-    );
+    const catIcon = resolveArticleIcon({
+      initialListing,
+      edited,
+      pf: catSrc?.platform_fields ?? {},
+    });
     const catPath = getLbcCategoryPath(catIcon);
     const lbcShoes = catPath?.[0] === "Mode" && catPath?.[1] === "Chaussures";
     // Scope catégorie de la taille (bug Xiaomi, 2026-07-12) : seuls les articles
@@ -1704,11 +1749,7 @@ export default function ListingPreviewScreen({
       // plateforme avant de publier s'il n'est pas d'accord.
       const iconFor = (platform) => {
         const pf = edited[platform]?.platform_fields ?? {};
-        return detectObjectIcon(
-          edited[platform]?.title,
-          edited[platform]?.description,
-          pf.categorie || initialListing?.categorie
-        );
+        return resolveArticleIcon({ initialListing, edited, pf });
       };
       const genreUnresolved = (platform) => {
         if (!selected.has(platform)) return false;
@@ -1752,11 +1793,7 @@ export default function ListingPreviewScreen({
       const rows = [...selected].map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         if (platform === "leboncoin") {
-          const icon = detectObjectIcon(
-            edited[platform]?.title,
-            edited[platform]?.description,
-            pf.categorie || initialListing?.categorie
-          );
+          const icon = resolveArticleIcon({ initialListing, edited, pf });
           const lbcPath = getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
@@ -1780,11 +1817,7 @@ export default function ListingPreviewScreen({
           // règles que les tuiles Stock/Ventes) + genre IA/corrigé. null →
           // pas de categoryPath → l'extension marque le job "failed" avec un
           // message explicite (fallback volontaire, cf. vintedCategories.js).
-          const icon = detectObjectIcon(
-            edited[platform]?.title,
-            edited[platform]?.description,
-            pf.categorie || initialListing?.categorie
-          );
+          const icon = resolveArticleIcon({ initialListing, edited, pf });
           // Genre vide/Mixte sur une catégorie qui l'exige → genre auto-résolu
           // (cf. bloc autoGenre) : le job part avec un rayon réel au lieu
           // d'être condamné au fallback.
@@ -1815,11 +1848,7 @@ export default function ListingPreviewScreen({
           // valeurs du stepper (Femme/Homme/Enfant) passent TELLES QUELLES
           // — eBay a un vrai rayon "Enfant : unisexe" (contrairement à
           // Vinted/Beebs) ; seul Mixte reste sans rayon (sauf 🌸 parfums).
-          const icon = detectObjectIcon(
-            edited[platform]?.title,
-            edited[platform]?.description,
-            pf.categorie || initialListing?.categorie
-          );
+          const icon = resolveArticleIcon({ initialListing, edited, pf });
           // Même auto-résolution que Vinted — sauf si le genre actuel résout
           // déjà un rayon (🌸+Mixte = Parfums mixtes, rayon réel).
           if (autoGenre && ebayGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")
@@ -1850,11 +1879,7 @@ export default function ListingPreviewScreen({
           // tête du fichier) — pas de blocage dur ici, comme eBay : le flag
           // beebsGenreRequired est posé pour que l'extension retourne un
           // needsUser explicite plutôt qu'un échec silencieux.
-          const icon = detectObjectIcon(
-            edited[platform]?.title,
-            edited[platform]?.description,
-            pf.categorie || initialListing?.categorie
-          );
+          const icon = resolveArticleIcon({ initialListing, edited, pf });
           // Même auto-résolution que Vinted/eBay. Indispensable ici : l'arbre
           // Mode Beebs est genré jusqu'aux accessoires (montres, bijoux,
           // sacs…) — sans genre, AUCUNE montre ne pouvait jamais partir
