@@ -43,6 +43,14 @@ const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 //   "Veuillez choisir une pointure", shoe_size ; le critère taille des
 //   autres catégories, clothing_st, n'est pas requis). Cette exception est
 //   résolue dynamiquement dans missingSharedFields, pas dans la carte.
+//
+// ⚠️ taille est en plus SCOPÉE PAR CATÉGORIE (2026-07-12, bug Xiaomi) : cette
+// carte ne dit QUE « quelles plateformes peuvent bloquer », jamais « sur quels
+// articles ». Sans scope, publier un téléphone sur Vinted/Beebs/eBay exigeait
+// une taille — un smartphone n'en a pas. La garde taille ne s'applique donc
+// qu'aux articles Mode>Vêtements et Mode>Chaussures (cf. sizeGuardApplies dans
+// missingSharedFields). couleur/matiere/marque restent gardés partout : ils ont
+// un sens sur toutes les catégories (un téléphone a une couleur et une marque).
 const SHARED_FIELD_KEYS = ["taille", "couleur", "matiere", "marque"];
 const SHARED_PROPAGATION = {
   taille:  ["vinted", "beebs", "leboncoin", "ebay"],
@@ -1562,15 +1570,27 @@ export default function ListingPreviewScreen({
   // QUE pour Mode>Chaussures (Pointure obligatoire, shoe_size) — même
   // détection icône→getLbcCategoryPath que le bloc LBC de handlePublish.
   const missingSharedFields = useMemo(() => {
-    const lbcIcon = detectObjectIcon(
-      edited.leboncoin?.title,
-      edited.leboncoin?.description,
-      edited.leboncoin?.platform_fields?.categorie || initialListing?.categorie
+    // La catégorie était lue depuis la SEULE copie Leboncoin : si LBC n'est pas
+    // sélectionné, edited.leboncoin peut être absent → icône déduite d'un titre
+    // vide. On prend donc la première copie disponible, avec repli sur l'article.
+    const catSrc = edited.leboncoin ?? edited.vinted ?? edited.ebay ?? edited.beebs ?? null;
+    const catIcon = detectObjectIcon(
+      catSrc?.title ?? initialListing?.titre,
+      catSrc?.description,
+      catSrc?.platform_fields?.categorie || initialListing?.categorie
     );
-    const lbcPath = getLbcCategoryPath(lbcIcon);
-    const lbcShoes = lbcPath?.[0] === "Mode" && lbcPath?.[1] === "Chaussures";
-    const guardPlatforms = (key) =>
-      key === "taille" && lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD[key];
+    const catPath = getLbcCategoryPath(catIcon);
+    const lbcShoes = catPath?.[0] === "Mode" && catPath?.[1] === "Chaussures";
+    // Scope catégorie de la taille (bug Xiaomi, 2026-07-12) : seuls les articles
+    // portés ont une taille. Un téléphone, un casque ou un lot de cartes n'en
+    // ont pas — les leur demander bloquait la publication sur un champ absurde.
+    const sizeGuardApplies =
+      catPath?.[0] === "Mode" && (catPath?.[1] === "Vêtements" || catPath?.[1] === "Chaussures");
+    const guardPlatforms = (key) => {
+      if (key !== "taille") return SHARED_GUARD[key];
+      if (!sizeGuardApplies) return [];
+      return lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD.taille;
+    };
     // Manquant si la canonique est vide OU si la copie d'une plateforme
     // gardée sélectionnée est vide : les jobs partent depuis
     // edited[p].platform_fields (handlePublish), pas depuis sharedFields —
