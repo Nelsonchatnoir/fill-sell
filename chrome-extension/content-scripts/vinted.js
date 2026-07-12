@@ -776,7 +776,21 @@ async function fillPriceField(value) {
     console.warn("[vinted] ⚠️ prix : repli setNativeValue — la validation Vinted risque de refuser la soumission");
     setNativeValue(el, str);
   }
-  el.dispatchEvent(new Event("blur", { bubbles: true }));
+  // ⚠️ VRAI BLUR, pas un Event('blur') synthétique (2026-07-13).
+  // PREUVE (sonde réseau, run réel) : le champ affiche « 95,00 € » et la requête
+  // part quand même avec  price: null  et  {"field":"price","value":""}.
+  // La valeur n'atteint donc JAMAIS l'état que Vinted sérialise.
+  // Vérifié sur la vraie page : `el.dispatchEvent(new Event("blur"))` ne retire
+  // PAS le focus (document.activeElement reste l'input) et React n'écoute même
+  // pas 'blur' — il écoute 'focusout'. Le onBlur du composant n'était donc
+  // JAMAIS appelé. Or c'est le point de commit classique d'un champ à masque
+  // monétaire : onChange nourrit l'affichage, onBlur propage la valeur au
+  // formulaire parent. D'où le prix affiché mais jamais soumis — et la latence
+  // au clic sur le champ que Nico a remarquée (le champ n'était jamais quitté).
+  // el.blur() déclenche un focusout NATIF : le seul qui réveille React.
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  el.blur();
+  await sleep(800); // laisser le commit se propager au state du formulaire
   await humanPause();
 
   // Vérification immédiate : le champ doit afficher un montant non nul et
