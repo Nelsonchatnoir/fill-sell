@@ -93,6 +93,11 @@ export default function ExtensionPage() {
             : "Une fois chargée, utilise l'app FillSell normalement : chaque annonce publiée est mise en file et l'extension remplit les formulaires des plateformes pour toi. Une version Web Store remplacera bientôt cette étape manuelle."}
         </p>
 
+        <p style={{ margin: "14px 4px 0", fontSize: 12, lineHeight: 1.55, color: UI.mute }}>
+          {en ? "Trouble installing? " : "Un souci avec l'installation ? "}
+          <a href="mailto:support@fillsell.app" style={{ color: UI.teal, fontWeight: 600, textDecoration: "none" }}>support@fillsell.app</a>
+        </p>
+
       </div>
     </div>
   );
