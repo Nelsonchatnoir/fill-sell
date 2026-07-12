@@ -384,6 +384,21 @@ async function fillListingForm(job) {
   // Libellés multiples par champ : le nom varie selon la catégorie
   // ("Taille" en vêtements, "Pointure EU" en chaussures...) — on prend le
   // premier présent sur la page.
+  //
+  // ⚠️ ATTENDRE QUE LES ASPECTS SOIENT INTERACTIFS (2026-07-12). Les lignes de
+  // specifics ET leurs chips « Fréquemment sélectionnées » sont rendues de façon
+  // ASYNCHRONE, après le squelette du formulaire. Vérifié sur le vrai formulaire
+  // des New Balance (catégorie 15709) : une fois la page réellement prête, la
+  // chip « New Balance » (Marque) et la chip « Noir » (Couleur) existent et un
+  // simple clic les pose en moins de 4 s — la mécanique n'est donc PAS cassée.
+  // Attaquer les specifics trop tôt, en revanche, tombe sur une ligne sans chip
+  // et sans menu prêt : c'est le scénario des « Marque/Couleur vides ».
+  await waitFor(
+    () => document.querySelectorAll('button[id*="item-specific-dropdown-label"]').length > 0,
+    20_000,
+  );
+  await fieldSettle();
+
   if (fields.marque) {
     await fillSpecificTracked(["Marque"], fields.marque);
   }
@@ -509,11 +524,23 @@ async function fillListingForm(job) {
     { labels: ["Couleur"], value: couleur },
     { labels: ["Matière", "Matériau", "Matériaux"], value: fields.matiere },
   ];
-  const emptyBeforeRetry = computeUnfilledRequired(fields, filledSpecifics);
-  for (const { labels, value } of knownAspectFills) {
-    if (!value || !labels.some((l) => emptyBeforeRetry.includes(l))) continue;
-    console.log(`[ebay] passe finale : re-tentative sur "${labels[0]}" (obligatoire encore vide dans le DOM)`);
-    await fillSpecificTracked(labels, value);
+  // Passe finale RENFORCÉE (2026-07-12) : jusqu'à 2 tours, espacés, en
+  // repassant TOUJOURS par la chip (fillSpecificSafe la privilégie au 1er essai).
+  // Un aspect chargé en retard est ainsi rattrapé même s'il était absent du DOM
+  // au premier passage.
+  for (let tour = 1; tour <= 2; tour++) {
+    const encoreVides = computeUnfilledRequired(fields, filledSpecifics);
+    if (!encoreVides.length) break;
+    const aRattraper = knownAspectFills.filter(
+      ({ labels, value }) => value && labels.some((l) => encoreVides.includes(l)),
+    );
+    if (!aRattraper.length) break;
+    console.log(
+      `[ebay] passe finale (tour ${tour}/2) : ${aRattraper.length} aspect(s) obligatoire(s) encore vide(s) — ` +
+      aRattraper.map(({ labels }) => labels[0]).join(", "),
+    );
+    for (const { labels, value } of aRattraper) await fillSpecificTracked(labels, value);
+    if (tour === 1) await fieldSettle(); // laisse eBay commiter avant de reconstater
   }
 
   // Aspect obligatoire CONNU (référentiel ebay_item_aspects porté par le job
@@ -526,13 +553,20 @@ async function fillListingForm(job) {
   // aveugle dans le fait d'avoir cliqué.
   const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics);
   if (unfilledRequired.length) {
+    // ⚠️ Les WARNINGS sont désormais DANS le message d'erreur (2026-07-12).
+    // Jusqu'ici on savait QUE « Marque » était vide, jamais POURQUOI : la raison
+    // exacte (« menu pas ouvert », « option sans correspondance », « la valeur ne
+    // persiste pas après 2 poses »…) restait dans les warnings, qui n'étaient
+    // écrits nulle part. Deux soirs de suite, ce diagnostic manquant nous a
+    // laissés deviner. Il remonte maintenant en base avec le job.
+    const detail = warnings.length ? ` Détail du remplissage : ${warnings.join(" | ")}` : "";
     return {
       success: false,
       needsUser: true,
       error:
         `LIVE : aspect(s) obligatoire(s) eBay vide(s) sur le formulaire : ${unfilledRequired.join(", ")} — ` +
         "publication NON tentée (refus eBay garanti). Compléter le(s) champ(s) dans l'app ou " +
-        "directement sur le formulaire resté ouvert ; le job repartira au prochain passage.",
+        `directement sur le formulaire resté ouvert ; le job repartira au prochain passage.${detail}`,
       warnings,
       unfilledRequired,
     };
