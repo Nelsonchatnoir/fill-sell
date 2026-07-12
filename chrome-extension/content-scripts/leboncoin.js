@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, delete LBC 2/3 — lien Supprimer, plus une icône)";
+const LEBONCOIN_BUILD = "2026-07-12-18h00 (commentaire DELETE_DRY_RUN périmé retiré — aucun changement de comportement)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -39,9 +39,6 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 }
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
-// ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas été
-// validées manuellement (la 1re a été validée en session pilotée le
-// 2026-07-11 — les 2 suivantes restent à faire avant la bascule).
 // FLUX CONFIRMÉ en session réelle du 2026-07-11 (annonce /ad/vetements/
 // 3231410109 réellement publiée puis supprimée) :
 //   1. /compte/part/mes-annonces : la carte d'annonce porte une rangée
