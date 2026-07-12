@@ -17,8 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-23h55 (fix regression eBay: rattrapage d URL strict; Vinted: toutes les erreurs de validation; " +
-  "popup: jobs processing visibles) ⚠️ TEMP TEST : delais de grace a 20 min";
+  "2026-07-13-00h30 (eBay: succes lu AVANT erreur + attente aspects + passe finale x2 + warnings; " +
+  "Vinted: sonde reseau MAIN world) ⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -608,6 +608,10 @@ async function processJob(rawJob, accessToken) {
     // continue de tourner en arrière-plan, sans voler le focus.
     const release = job.platform === "ebay" ? await paintTab(tabId) : null;
 
+    // Sonde réseau Vinted : installée AVANT le remplissage (elle doit être en
+    // place quand le clic Publier part), lue seulement si Vinted refuse.
+    if (job.platform === "vinted") await installVintedProbe(tabId);
+
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
     // on lui envoie le job et on attend le résultat du remplissage.
@@ -693,7 +697,13 @@ async function processJob(rawJob, accessToken) {
       // qui garde son onglet Vinted ouvert entre deux dépôts.
       return { status: "published", listingUrl };
     } else {
-      throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
+      // Vinted a refusé : on joint à l'erreur ce que la SONDE a vu passer sur le
+      // réseau (prix réellement envoyé + réponse du serveur). C'est ce message
+      // qui doit trancher, au prochain run, entre « la saisie ne part pas » et
+      // « Vinted attend autre chose ».
+      const base = result?.error || "Le content script n'a pas retourné de résultat";
+      const probe = job.platform === "vinted" ? await readVintedProbe(tabId) : "";
+      throw new Error(base + probe);
     }
   } catch (e) {
     const msg = String(e?.message ?? e);
@@ -1197,6 +1207,21 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
     } catch { /* URL interne (chrome://) : on continue d'attendre */ }
     if (path && !/\/lstng/.test(path)) return null; // formulaire quitté : soumission partie
 
+    // ⚠️⚠️ LE SUCCÈS SE LIT AVANT L'ERREUR (2026-07-12) — bug le plus dangereux
+    // trouvé jusqu'ici. readVisibleEbayErrors ratisse tout .page-notice /
+    // [role=alert] / [class*=error] VISIBLE et appelle ça une erreur. Or eBay
+    // affiche sa CONFIRMATION DE PUBLICATION dans une .page-notice. Résultat, le
+    // 2026-07-12 : l'annonce itm/800330102796 était BEL ET BIEN EN LIGNE, et le
+    // job est parti en "failed" avec l'erreur « Votre annonce est désormais
+    // publiée sur le site » — puis a été RÉ-ARMÉ (rearmBounded) et retraité : à
+    // un clic près, on créait un DOUBLON. On ne lit donc plus les erreurs sans
+    // avoir d'abord cherché la preuve du contraire.
+    const success = await readEbaySuccessNotice(tabId);
+    if (success) {
+      console.log(`[background] eBay : publication CONFIRMÉE par la page (« ${success} »)`);
+      return null; // pas d'erreur : c'est un succès
+    }
+
     const errors = await readVisibleEbayErrors(tabId);
     if (errors.length) {
       return (
@@ -1219,6 +1244,130 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
 // visibilité et la taille du texte : 8-250 caractères — filtre les conteneurs
 // géants (un [class*="error"] parent de tout le formulaire) et les miettes.
 // Un faux positif ici part en needsUser, jamais en published : sens sûr.
+// ── Sonde réseau Vinted (2026-07-12) ──────────────────────────────────────────
+// Le refus « Le champ prix doit être supérieur ou égal à 1.0 » nous fait tourner
+// en rond : sur la VRAIE page, le champ affiche « 95,00 € » et le masque le
+// formate quelle que soit la méthode de saisie testée — et Vinted refuse quand
+// même. Impossible de trancher sans voir ce qui part RÉELLEMENT sur le réseau.
+//
+// ⚠️ La sonde DOIT vivre dans le monde MAIN : un content script s'exécute dans un
+// monde ISOLÉ, où window.fetch n'est PAS celui de la page — la patcher là n'aurait
+// rien observé du tout. D'où l'injection via chrome.scripting (world: "MAIN").
+//
+// Purement OBSERVATIONNEL : on n'intercepte pas, on ne bloque pas, on ne rejoue
+// rien. Aucune publication n'est déclenchée par cette sonde — le garde-fou
+// DRY_RUN du projet reste entièrement intact.
+async function installVintedProbe(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => {
+        if (window.__fsProbeInstalled) return;
+        window.__fsProbeInstalled = true;
+        window.__fsCaptures = [];
+        const ENDPOINT = /\/api\/v2\/(?:items|item_upload)/i;
+        const priceOf = (body) => {
+          if (typeof body !== "string") return null;
+          try {
+            const j = JSON.parse(body);
+            const item = j.item ?? j;
+            if (item && Object.prototype.hasOwnProperty.call(item, "price")) return JSON.stringify(item.price);
+          } catch { /* pas du JSON */ }
+          const m = body.match(/"price"\s*:\s*("[^"]*"|[\d.]+|null)/i);
+          return m ? m[1] : null;
+        };
+        const origFetch = window.fetch;
+        window.fetch = async function (input, init) {
+          const url = typeof input === "string" ? input : input?.url ?? "";
+          const res = await origFetch.apply(this, arguments);
+          try {
+            if (ENDPOINT.test(url) && String(init?.method ?? "GET").toUpperCase() !== "GET") {
+              const txt = await res.clone().text().catch(() => "");
+              window.__fsCaptures.push({
+                url, status: res.status,
+                prix: priceOf(init?.body),
+                reponse: String(txt).slice(0, 250),
+              });
+            }
+          } catch { /* la sonde ne doit JAMAIS casser la publication */ }
+          return res;
+        };
+        const oOpen = XMLHttpRequest.prototype.open;
+        const oSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function (m, u) { this.__u = u; this.__m = m; return oOpen.apply(this, arguments); };
+        XMLHttpRequest.prototype.send = function (body) {
+          try {
+            if (ENDPOINT.test(this.__u ?? "") && String(this.__m).toUpperCase() !== "GET") {
+              this.addEventListener("load", () => {
+                window.__fsCaptures.push({
+                  url: this.__u, status: this.status,
+                  prix: priceOf(typeof body === "string" ? body : null),
+                  reponse: String(this.responseText ?? "").slice(0, 250),
+                });
+              });
+            }
+          } catch { /* idem */ }
+          return oSend.apply(this, arguments);
+        };
+      },
+    });
+  } catch (e) {
+    console.warn("[background] Sonde Vinted non installée :", String(e?.message ?? e));
+  }
+}
+
+// Résumé lisible de ce que Vinted a REÇU, à joindre à l'erreur du job.
+async function readVintedProbe(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => window.__fsCaptures ?? [],
+    });
+    const caps = res?.result ?? [];
+    if (!caps.length) {
+      return (
+        " [sonde réseau : AUCUNE requête de publication n'est partie — Vinted a bloqué la " +
+        "soumission côté client, le formulaire n'a jamais été envoyé au serveur.]"
+      );
+    }
+    const c = caps[caps.length - 1];
+    return (
+      ` [sonde réseau : ${c.url} → HTTP ${c.status} · prix ENVOYÉ = ${c.prix ?? "ABSENT du corps"}` +
+      ` · réponse : ${String(c.reponse).replace(/\s+/g, " ")}]`
+    );
+  } catch (e) {
+    return ` [sonde réseau indisponible : ${String(e?.message ?? e)}]`;
+  }
+}
+
+// Notice de SUCCÈS d'eBay après « Mettre en vente » (2026-07-12). eBay la rend
+// dans une .page-notice — le même conteneur que ses erreurs, d'où la confusion
+// qui a marqué "failed" une annonce réellement publiée. Texte relevé en réel :
+// « Votre annonce est désormais publiée sur le site ».
+// On cherche la formulation, pas le conteneur : c'est le seul discriminant fiable.
+async function readEbaySuccessNotice(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const RE = /annonce est (?:désormais )?(?:en ligne|publiée)|votre annonce a été (?:publiée|mise en vente)|listing is now live|your listing (?:was|has been) (?:published|posted)/i;
+        for (const el of document.querySelectorAll('[role="alert"], .page-notice, .inline-notice, [class*="notice" i], [class*="success" i]')) {
+          if (!el.getClientRects().length) continue; // invisible
+          const t = (el.innerText || "").replace(/\s+/g, " ").trim();
+          if (t && RE.test(t)) return t.slice(0, 160);
+        }
+        return null;
+      },
+    });
+    return res?.result ?? null;
+  } catch (e) {
+    console.warn("[background] readEbaySuccessNotice :", String(e?.message ?? e));
+    return null; // dans le doute, on ne PRÉTEND pas au succès
+  }
+}
+
 async function readVisibleEbayErrors(tabId) {
   try {
     const [res] = await chrome.scripting.executeScript({
