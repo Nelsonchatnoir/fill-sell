@@ -3340,6 +3340,10 @@ export default function App({ loginOnly = false }){
   // Le clic "Retirer" arme des jobs action='delete' (semi-auto : jamais de
   // suppression sans ce clic).
   const [pendingRemovals,setPendingRemovals]=useState([]);
+  // Annonces constatées HORS LIGNE sans preuve de vente (Phase B, 2026-07-12) :
+  // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
+  const [unavailableListings,setUnavailableListings]=useState([]);
+  const [confirmingSale,setConfirmingSale]=useState(null);
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
@@ -3655,6 +3659,17 @@ export default function App({ loginOnly = false }){
       .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
       .contains('platform_fields',{pending_removal:true});
     setPendingRemovals(pendingRem||[]);
+
+    // Annonces DISPARUES sans preuve de vente (2026-07-12) : le poll de
+    // l'extension a constaté qu'elles ne sont plus en ligne, mais AUCUNE preuve
+    // de vente n'a été trouvée (supprimée ? expirée ? vendue sans validation sur
+    // la plateforme ?). Rien n'a été écrit en compta : c'est l'utilisateur qui
+    // tranche via le bandeau. Une disparition n'est jamais une vente.
+    const{data:unavail}=await supabase.from('cross_post_jobs')
+      .select('id, platform, title, inventaire_id, listing_url, platform_fields')
+      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .not('platform_fields->>unavailable_since','is',null);
+    setUnavailableListings(unavail||[]);
 
     setLoading(false);
     setAppLoading(false);
@@ -4051,6 +4066,45 @@ export default function App({ loginOnly = false }){
     }
     setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)));
     track('arm_removals',{count:group.length});
+  }
+
+  // ── Annonce disparue sans preuve de vente : l'utilisateur tranche ──────────
+  // (Phase B, 2026-07-12) Le poll a vu l'annonce hors ligne sans pouvoir prouver
+  // la vente. AUCUNE écriture n'a eu lieu. Deux issues, et une seule
+  // orchestration : « Oui » appelle EXACTEMENT la même fonction serveur que la
+  // détection automatique (check-listing-status → orchestrateSale : vente,
+  // inventaire, marge, annulation des frères, proposition de retrait). La preuve
+  // machine et le clic humain aboutissent au même endroit.
+  async function confirmSaleFromBanner(job){
+    setConfirmingSale(job.id);
+    try{
+      const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id}});
+      if(error)throw error;
+      setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
+      track('confirm_sale_banner',{platform:job.platform});
+      await fetchAll(); // vente + inventaire + bandeau de retrait des frères
+    }catch(e){
+      console.error('[confirmSaleFromBanner]',e?.message??e);
+      setToast({visible:true,message:t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }finally{
+      setConfirmingSale(null);
+    }
+  }
+
+  // « Non, je l'ai retirée » : pas une vente. Le job est clos (l'annonce
+  // n'existe plus) et le drapeau levé — aucune ligne de vente, aucun inventaire
+  // touché. Le bandeau ne réapparaîtra pas.
+  async function dismissUnavailable(job){
+    const pf={...(job.platform_fields||{})};
+    delete pf.unavailable_since;
+    const{error}=await supabase.from('cross_post_jobs')
+      .update({status:'cancelled',platform_fields:pf,
+               error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
+      .eq('id',job.id).select('id');
+    if(error){console.error('[dismissUnavailable]',error.message);return;}
+    setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
+    track('dismiss_unavailable',{platform:job.platform});
   }
 
   function markSold(item){
@@ -5505,6 +5559,35 @@ export default function App({ loginOnly = false }){
                 <button onClick={()=>setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)))}
                   style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                   {lang==='fr'?'Plus tard':'Later'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Annonce hors ligne SANS preuve de vente : on demande, on ne suppose pas.
+            Le clic "Oui" déclenche la même orchestration que la détection auto. */}
+        {unavailableListings.map(job=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const plat=PLAT[job.platform]||job.platform;
+          const busy=confirmingSale===job.id;
+          return (
+            <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.teal}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                <strong>{lang==='fr'?'Annonce plus en ligne':'Listing no longer online'}</strong>
+                <br/>
+                {lang==='fr'
+                  ?<>« {job.title||'Article'} » n'est plus en ligne sur <strong>{plat}</strong>. Vendue ?</>
+                  :<>“{job.title||'Item'}” is no longer online on <strong>{plat}</strong>. Sold?</>}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button disabled={busy} onClick={()=>confirmSaleFromBanner(job)}
+                  style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>
+                  {busy?(lang==='fr'?'…':'…'):(lang==='fr'?'Oui, enregistrer la vente':'Yes, record the sale')}
+                </button>
+                <button disabled={busy} onClick={()=>dismissUnavailable(job)}
+                  style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
                 </button>
               </div>
             </div>
