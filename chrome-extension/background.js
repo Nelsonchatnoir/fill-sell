@@ -17,7 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-19h00 (reprise des jobs processing orphelins, delai de grace, AUCUNE ecriture auto, paintTab, verrou, recover " +
+  "2026-07-12-21h00 ⚠️ TEMP TEST : delais de grace TOUS a 20 min (a revert avant launch) — " +
+  "reprise des jobs processing orphelins, AUCUNE ecriture auto, paintTab, verrou, recover " +
   "listing_url, discard vérifié avant navigation, après 340158e)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -1319,13 +1320,20 @@ const SALE_CHECK_MAX_PER_CYCLE = 8;
 //               bredouille : c'est ce qui a motivé recoverMissingListingUrls).
 //   ebay      : 2 h — mise en ligne rapide et /itm/ répond tout de suite.
 //   vinted    : 2 h — annonce consultable immédiatement après publication.
+// ⚠️⚠️ TEST MANUEL DU 2026-07-12 — VALEURS TEMPORAIRES, À REVERT AVANT LE LAUNCH ⚠️⚠️
+// Les 4 plateformes sont ramenées à 20 min le temps d'une session de validation
+// bout en bout (publication → retrait manuel → unavailable_since → sale_signal →
+// bandeau → confirmation → retrait synchronisé), pour ne pas attendre les vraies
+// fenêtres. Valeurs de PRODUCTION à restaurer :
+//   beebs 24 h · leboncoin 6 h · ebay 2 h · vinted 2 h  (+ défaut 6 h)
+// Rien d'autre n'est touché : ni les seuils, ni le détecteur 3 états.
 const PUBLISH_GRACE_MS = {
-  beebs: 24 * 60 * 60 * 1000,
-  leboncoin: 6 * 60 * 60 * 1000,
-  ebay: 2 * 60 * 60 * 1000,
-  vinted: 2 * 60 * 60 * 1000,
+  beebs: 20 * 60 * 1000,     // TEMP TEST (prod : 24 * 60 * 60 * 1000)
+  leboncoin: 20 * 60 * 1000, // TEMP TEST (prod :  6 * 60 * 60 * 1000)
+  ebay: 20 * 60 * 1000,      // TEMP TEST (prod :  2 * 60 * 60 * 1000)
+  vinted: 20 * 60 * 1000,    // TEMP TEST (prod :  2 * 60 * 60 * 1000)
 };
-const PUBLISH_GRACE_DEFAULT_MS = 6 * 60 * 60 * 1000;
+const PUBLISH_GRACE_DEFAULT_MS = 6 * 60 * 60 * 1000; // inchangé (aucune plateforme ne l'utilise)
 
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
