@@ -65,6 +65,26 @@ const SHARED_GUARD = {
   marque:  ["vinted", "beebs", "leboncoin", "ebay"],
 };
 
+// Vêtements & chaussures de SPORT (2026-07-12) — utilisé UNIQUEMENT à l'intérieur
+// de la feuille Loisirs>Sport & Plein air, jamais ailleurs (cf. missingSharedFields).
+// Pourquoi : le mapping range "combinaison de ski" ou "maillot de foot" avec les
+// ballons et les vélos ; ces articles se PORTENT et ont une taille, l'équipement
+// non. Ne jamais y mettre de mot qui décrive de l'équipement (casque, raquette,
+// ballon…) : il redemanderait une taille pour un objet qui n'en a pas.
+const SPORTSWEAR_RE = new RegExp(
+  [
+    // hauts / bas / combinaisons
+    "combinaison", "n[ée]opr[eè]ne", "wetsuit", "rashguard", "maillot", "jersey",
+    "cuissard", "brassi[eè]re", "justaucorps", "l[ée]otard", "kimono", "judogi", "dobok",
+    "surv[eê]tement", "jogging", "legging", "collant", "cycliste", "softshell", "polaire",
+    "veste de (?:ski|sport)", "pantalon de ski", "salopette de ski", "doudoune de ski",
+    // chaussures de sport (elles ont une pointure)
+    "chaussons? d['’]escalade", "chaussures? de (?:ski|foot|sport|running|rando(?:nn[ée]e)?)",
+    "crampons?", "patins?", "rollers?", "chaussons? de danse",
+  ].join("|"),
+  "i",
+);
+
 // Options traduites pour l'affichage, mais `value` reste le libellé FR canonique
 // envoyé aux plateformes (Vinted/Leboncoin/Beebs restent des sites francophones).
 function getPlatformFieldsConfig(t) {
@@ -1584,8 +1604,20 @@ export default function ListingPreviewScreen({
     // Scope catégorie de la taille (bug Xiaomi, 2026-07-12) : seuls les articles
     // portés ont une taille. Un téléphone, un casque ou un lot de cartes n'en
     // ont pas — les leur demander bloquait la publication sur un champ absurde.
-    const sizeGuardApplies =
+    const isFashionWearable =
       catPath?.[0] === "Mode" && (catPath?.[1] === "Vêtements" || catPath?.[1] === "Chaussures");
+    // Vêtements de sport (2026-07-12) : une combinaison de ski, un maillot de
+    // foot ou des chaussons d'escalade se portent — et Vinted en demande la
+    // taille — mais le mapping les range en Loisirs>Sport & Plein air, avec
+    // l'ÉQUIPEMENT (ballons, vélos, tentes, haltères) qui n'a pas de taille.
+    // On ne peut donc pas élargir la garde à toute la feuille : on distingue,
+    // À L'INTÉRIEUR du sport uniquement, ce qui se porte de ce qui ne se porte
+    // pas. Restreint à la feuille sport pour ne pas rouvrir le bug d'origine
+    // (un "short" cité dans la description d'un téléphone ne doit rien déclencher).
+    const isSportLeaf = catPath?.[0] === "Loisirs" && catPath?.[1] === "Sport & Plein air";
+    const sportText = `${catSrc?.title ?? initialListing?.titre ?? ""} ${catSrc?.description ?? ""}`;
+    const isSportswear = isSportLeaf && SPORTSWEAR_RE.test(sportText);
+    const sizeGuardApplies = isFashionWearable || isSportswear;
     const guardPlatforms = (key) => {
       if (key !== "taille") return SHARED_GUARD[key];
       if (!sizeGuardApplies) return [];
