@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-12-12h40 (DRY_RUN=false, delete groupé jamais exécuté 0/3, empreinte)";
+const BEEBS_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, delete Beebs 1/3 — voie par carte + motif obligatoire)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -108,11 +108,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
 // Page "Mes annonces" : /fr/account/my-adverts — onglets "Actuellement en
 // ligne" / "En cours de vérification" (/my-adverts/creating), champ Rechercher.
-// MÉCANIQUE DE SUPPRESSION relevée en session réelle du 2026-07-11 : elle est
-// GROUPÉE, pas par carte — une barre d'actions "Tout sélectionner | Supprimer"
-// en tête de liste, alimentée par une CHECKBOX par annonce. Il n'y a pas de
-// menu "…" ni de bouton Supprimer dans la carte elle-même.
-// ⚠️ NON EXÉCUTÉ — et pas seulement par manque de temps : DEUX dépôts réels
+// ❌ AFFIRMATION ERRONÉE du 2026-07-11 (relevée sur une page VIDE, corrigée le
+// 2026-07-12, cf. relevé réel plus bas) : « la suppression est GROUPÉE, pas par
+// carte ; il n'y a pas de bouton Supprimer dans la carte elle-même ». C'est
+// FAUX — chaque carte a le sien. La barre groupée existe aussi, et c'est
+// précisément le piège : elle agit sur les annonces COCHÉES.
+// ⚠️ Contexte historique — DEUX dépôts réels
 // (2026-07-11, 21h et 23h23) ont été confirmés par Beebs ("Votre article a
 // bien été ajouté à votre dressing"), sont apparus dans "En cours de
 // vérification"… puis ont DISPARU des DEUX onglets ("Actuellement en ligne" et
@@ -121,12 +122,28 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // silencieux de modération ? dépôt web non finalisé sans l'app mobile ?) — à
 // élucider AVANT de compter sur Beebs en production, car un job partirait en
 // "published" pour une annonce qui n'existe pas.
-// Conséquence directe : la checkbox de carte et le dialogue de confirmation de
-// suppression n'ont JAMAIS pu être observés (aucune annonce en ligne à
-// supprimer). Les sélecteurs ci-dessous restent À CONFIRMER.
-// ⚠️ DELETE_DRY_RUN reste à true tant que 3 suppressions réelles n'ont pas
-// été validées manuellement.
-const DELETE_DRY_RUN = true;
+// RELEVÉ RÉEL 2026-07-12 (1re suppression Beebs jamais exécutée, annonce
+// 33607886) — l'ancien code, écrit sur une page VIDE, était faux sur les deux
+// points essentiels :
+//   1. Il n'y a PAS que la suppression groupée : chaque carte porte sa propre
+//      barre « Modifier | Dupliquer | Supprimer » (button.text-coral-main).
+//      C'est la voie retenue : scopée à l'annonce, sans dépendre d'un état de
+//      sélection. ⚠️ Le « Supprimer » de la barre groupée (« Tout sélectionner
+//      | Supprimer ») existe aussi au niveau document — l'ancien
+//      findBeebsDelete le trouvait en premier : avec « Tout sélectionner »
+//      coché, il aurait VIDÉ LE COMPTE.
+//   2. Un MOTIF est obligatoire, et « Vendu via Beebs » est PRÉ-COCHÉ
+//      (radio_reason-0). Le laisser = déclarer une vente réalisée sur Beebs.
+//      Le code sélectionne explicitement « Vendu via une autre plateforme »
+//      (radio_reason-1) — exact pour un job delete, qui n'est armé qu'après
+//      une vente réelle ailleurs. Bouton final : « Supprimer l'annonce ».
+//   3. La suppression est ASYNCHRONE : la liste reste obsolète quelques
+//      secondes après la confirmation (une vérification immédiate conclut à
+//      tort à un échec — vécu).
+// ⚠️ DELETE_DRY_RUN : passé à false le 2026-07-12 sur décision de Nico (session
+// autonome). Gate Beebs : 1 suppression exécutée, disparue côté vendeur, mais
+// la page publique répondait encore (cache CDN ?) — À RECONFIRMER.
+const DELETE_DRY_RUN = false;
 
 async function deleteListing(job) {
   const trace = [];
@@ -157,60 +174,105 @@ async function deleteListing(job) {
     return { success: false, error: "Annonce introuvable dans Mes annonces Beebs", trace };
   }
 
-  const card = anchor.closest("article, li") ?? anchor.closest("div");
-  t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}>`);
-
-  // Suppression GROUPÉE (relevé 2026-07-11) : cocher la checkbox de CETTE
-  // annonce, puis cliquer le "Supprimer" de la barre d'actions en tête de
-  // liste. La checkbox est le seul input[type=checkbox] de la carte ; le
-  // bouton Supprimer vit HORS de la carte (barre partagée).
-  const checkbox = card?.querySelector('input[type="checkbox"]') ?? null;
-  const bulkDelete = findBeebsDelete(document);
-
-  if (!checkbox || !bulkDelete) {
-    const visible = Array.from(card?.querySelectorAll("button, a, input") ?? [])
-      .map((b) => b.textContent.trim() || b.type).filter(Boolean).slice(0, 20);
-    t(`mécanique groupée INCOMPLÈTE — checkbox: ${!!checkbox}, bouton Supprimer: ${!!bulkDelete} — éléments de carte : ${visible.join(" | ") || "(aucun)"}`);
+  // Carte = ancêtre qui contient à la fois le titre et la barre d'actions
+  // « Modifier | Dupliquer | Supprimer » de CETTE annonce.
+  const card = findBeebsCard(anchor);
+  if (!card) {
+    t("carte englobante (avec sa barre Modifier/Dupliquer/Supprimer) INTROUVABLE");
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Checkbox d'annonce ou bouton Supprimer groupé introuvable", trace };
+    return { success: false, error: "Carte de l'annonce introuvable", trace };
   }
-  t(`checkbox de l'annonce + bouton "${bulkDelete.textContent.trim()}" (barre groupée) localisés`);
+
+  // Contrôle de suppression DE LA CARTE (button.text-coral-main, sans testid),
+  // reconnu par le trio « Modifier / Dupliquer / Supprimer » de son parent.
+  const cardDelete = findBeebsCardDelete(card);
+  if (!cardDelete) {
+    const visible = Array.from(card.querySelectorAll("button"))
+      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 12);
+    t(`« Supprimer » de la carte INTROUVABLE — boutons de la carte : ${visible.join(" | ") || "(aucun)"}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Bouton Supprimer de la carte introuvable", trace };
+  }
+  t('contrôle localisé : « Supprimer » de la carte (voie par carte, PAS la barre groupée)');
 
   if (DELETE_DRY_RUN) {
-    t("🧪 DELETE_DRY_RUN actif — contrôles localisés, AUCUN clic (ni coche) effectué.");
+    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  // ── LIVE (après validation manuelle) ───────────────────────────────────
-  checkbox.click(); // sélectionne UNIQUEMENT cette annonce (jamais "Tout sélectionner")
-  await humanPause(700, 1400);
-  bulkDelete.click();
-  await humanPause(800, 1600);
-  // Dialogue de confirmation : présence non confirmée (annonce jamais sortie
-  // de modération le 2026-07-11) — s'il n'y en a pas, la suppression est déjà
-  // effective et le waitFor retombe à null sans échouer le job.
-  const confirmBtn = await waitFor(() => {
-    const dialog = document.querySelector('[role="dialog"], [class*="modal" i]');
-    if (!dialog) return null;
-    return Array.from(dialog.querySelectorAll("button"))
-      .find((b) => /supprimer|confirmer|oui/i.test(b.textContent)) ?? null;
-  }, 6000);
-  if (confirmBtn) {
-    t(`confirmation : "${confirmBtn.textContent.trim()}"`);
-    confirmBtn.click();
-  } else {
-    t("aucun dialogue de confirmation — suppression supposée immédiate");
+  // ── LIVE ────────────────────────────────────────────────────────────────
+  cardDelete.scrollIntoView({ block: "center" });
+  await humanPause(1000, 1900);
+  realClick(cardDelete);
+
+  const dialog = await waitFor(() => {
+    return Array.from(document.querySelectorAll('[role="dialog"], [class*="modal" i]'))
+      .filter((d) => d.getClientRects().length)
+      .find((d) => /supprimer mon annonce/i.test(d.innerText || "")) ?? null;
+  }, 10000);
+  if (!dialog) return { success: false, error: "Dialogue « Supprimer mon annonce » introuvable", trace };
+
+  // ⚠️ MOTIF OBLIGATOIRE, et « Vendu via Beebs » est PRÉ-COCHÉ par défaut
+  // (radio_reason-0) : le laisser tel quel déclarerait à Beebs une vente
+  // réalisée CHEZ EUX — faux, et potentiellement facturable. Un job delete
+  // n'est armé qu'après une vente RÉELLE sur une AUTRE plateforme (bandeau
+  // semi-auto de l'app) : le motif exact est donc radio_reason-1.
+  const reasonLabel = "Vendu via une autre plateforme";
+  const radio = Array.from(dialog.querySelectorAll('input[type="radio"]')).find((r) => {
+    const lab = dialog.querySelector(`label[for="${r.id}"]`);
+    return (lab?.textContent || "").trim() === reasonLabel;
+  });
+  if (!radio) {
+    const dispo = Array.from(dialog.querySelectorAll("label")).map((l) => l.textContent.trim());
+    return { success: false, error: `Motif « ${reasonLabel} » introuvable (motifs : ${dispo.join(" | ")})`, trace };
   }
-  await sleep(3000);
+  realClick(radio);
+  radio.dispatchEvent(new Event("change", { bubbles: true }));
+  await humanPause(800, 1500);
+  if (!radio.checked) {
+    return { success: false, error: "Motif de suppression non sélectionné (état non commité) — abandon", trace };
+  }
+  t(`motif sélectionné : « ${reasonLabel} » (défaut « Vendu via Beebs » écarté)`);
+
+  const confirmBtn = Array.from(dialog.querySelectorAll("button"))
+    .filter((b) => b.getClientRects().length)
+    .find((b) => /^supprimer l['’]annonce$/i.test(b.textContent.replace(/\s+/g, " ").trim()));
+  if (!confirmBtn) return { success: false, error: "Bouton « Supprimer l'annonce » introuvable dans le dialogue", trace };
+
+  await humanPause(800, 1600);
+  realClick(confirmBtn);
+  // La suppression Beebs est ASYNCHRONE : le dialogue se ferme, mais la liste
+  // continue d'afficher l'annonce pendant plusieurs secondes (constaté en réel
+  // — une première vérification trop rapide conclut à tort à un échec).
+  await sleep(6000);
+  t("confirmation envoyée — propagation Beebs asynchrone (la liste peut rester obsolète quelques secondes)");
   return { success: true, trace };
 }
 
-// Bouton "Supprimer" de la barre d'actions groupée (hors carte) — cherché au
-// niveau document, jamais dans la carte (relevé 2026-07-11).
-function findBeebsDelete(root) {
-  if (!root) return null;
-  return Array.from(root.querySelectorAll("button, a, [role='menuitem']"))
-    .find((el) => /^supprimer$/i.test(el.textContent.trim())) ?? null;
+// Carte de l'annonce : on remonte jusqu'à l'ancêtre qui porte la barre
+// d'actions « Modifier / Dupliquer / Supprimer ».
+function findBeebsCard(anchor) {
+  let el = anchor;
+  for (let i = 0; i < 10 && el; i++, el = el.parentElement) {
+    const txt = (el.innerText || "").replace(/\s+/g, " ");
+    if (/Modifier/.test(txt) && /Dupliquer/.test(txt) && /Supprimer/.test(txt)) return el;
+  }
+  return null;
+}
+
+// ⚠️ Ne JAMAIS chercher « Supprimer » au niveau document : la page porte AUSSI
+// le bouton « Supprimer » de la barre groupée (« Tout sélectionner |
+// Supprimer »), qui agit sur les annonces COCHÉES — avec « Tout sélectionner »
+// actif, il viderait le compte. On ne prend que le bouton de la carte, reconnu
+// par le trio Modifier/Dupliquer/Supprimer de son parent immédiat.
+function findBeebsCardDelete(card) {
+  return Array.from(card.querySelectorAll("button"))
+    .filter((b) => b.getClientRects().length)
+    .find((b) => {
+      if (b.textContent.replace(/\s+/g, " ").trim() !== "Supprimer") return false;
+      const parentTxt = (b.parentElement?.innerText || "").replace(/\s+/g, " ");
+      return /Modifier/.test(parentTxt) && /Dupliquer/.test(parentTxt);
+    }) ?? null;
 }
 
 async function fillListingForm(job) {
