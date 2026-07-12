@@ -49,8 +49,19 @@ const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 // articles ». Sans scope, publier un téléphone sur Vinted/Beebs/eBay exigeait
 // une taille — un smartphone n'en a pas. La garde taille ne s'applique donc
 // qu'aux articles Mode>Vêtements et Mode>Chaussures (cf. sizeGuardApplies dans
-// missingSharedFields). couleur/matiere/marque restent gardés partout : ils ont
-// un sens sur toutes les catégories (un téléphone a une couleur et une marque).
+// missingSharedFields).
+// MATIÈRE : même scope que la Taille depuis le 2026-07-12 (3e cas du même bug).
+// Le référentiel eBay réel (ebay_item_aspects) ne la déclare obligatoire sur
+// AUCUNE des catégories du run — contrairement à COULEUR et MARQUE, qu'eBay
+// exige sur les 4 (meuble compris). Ces deux-là restent donc gardées partout,
+// et le champ Marque offre un raccourci « Sans marque » (NO_BRAND_VALUE) pour
+// les objets qui n'en ont légitimement pas, plutôt que de forcer une invention.
+// Valeur canonique pour un objet sans marque (meubles, artisanat, lots…).
+// C'est le libellé que les plateformes attendent — Vinted et eBay ont tous deux
+// une entrée « Sans marque » dans leur référentiel de marques. On l'envoie donc
+// telle quelle : la garde Marque reste satisfaite sans rien inventer.
+const NO_BRAND_VALUE = "Sans marque";
+
 const SHARED_FIELD_KEYS = ["taille", "couleur", "matiere", "marque"];
 const SHARED_PROPAGATION = {
   taille:  ["vinted", "beebs", "leboncoin", "ebay"],
@@ -1149,6 +1160,28 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
                       style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                     />
                   )}
+                  {/* Marque : raccourci « Sans marque » (2026-07-12). La garde est
+                      JUSTE — eBay exige l'aspect Marque même sur les meubles
+                      (référentiel ebay_item_aspects : Chaises 54235 → Couleur,
+                      Hauteur, Largeur, Longueur, MARQUE, Type). Ce qui manquait,
+                      c'est quoi répondre quand l'objet n'a légitimement pas de
+                      marque : sans issue, on finit par taper n'importe quoi
+                      (le "p" du run réel). « Sans marque » est la valeur
+                      canonique attendue par les plateformes. */}
+                  {key === "marque" && (
+                    <button
+                      type="button"
+                      onClick={() => onSharedFieldChange?.("marque", NO_BRAND_VALUE)}
+                      style={{
+                        marginTop:6, padding:"5px 10px", borderRadius:999,
+                        border:`1px solid ${T.border}`, background: val === NO_BRAND_VALUE ? T.teal : T.card,
+                        color: val === NO_BRAND_VALUE ? "#fff" : T.mute2,
+                        fontSize:11.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+                      }}
+                    >
+                      {val === NO_BRAND_VALUE ? "✓ " : ""}{t("fieldBrandNone")}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1663,7 +1696,25 @@ export default function ListingPreviewScreen({
     const sportText = `${catSrc?.title ?? initialListing?.titre ?? ""} ${catSrc?.description ?? ""}`;
     const isSportswear = isSportLeaf && SPORTSWEAR_RE.test(sportText);
     const sizeGuardApplies = isFashionWearable || isSportswear;
+
+    // MATIÈRE — 3e cas du même bug que la Taille (2026-07-12). SHARED_GUARD la
+    // rendait bloquante sur les 4 plateformes, TOUTES catégories confondues.
+    // Vérifié dans le référentiel eBay réel (table ebay_item_aspects) : la
+    // Matière n'est obligatoire sur AUCUNE des catégories du run —
+    //   Chaises 54235      → Couleur, Hauteur, Largeur, Longueur, Marque, Type
+    //   Téléphones 9355    → Capacité, Couleur, Marque, Modèle
+    //   Baskets 15709      → Couleur, Département, Marque, Pointure EU, Style, Type
+    //   T-shirts 15687     → Couleur, Département, Marque, Taille, Type
+    // …alors qu'elle a un vrai sens sur les vêtements (coton/laine/cuir). On la
+    // garde donc sur la Mode (même périmètre que la Taille, vêtements de sport
+    // inclus) et on cesse de bloquer ailleurs.
+    // Couleur et Marque restent gardées partout : elles, eBay les EXIGE sur les
+    // 4 catégories ci-dessus, meuble compris — les retirer remplacerait un
+    // blocage visible dans l'app par un refus silencieux d'eBay à la publication.
+    const materialGuardApplies = sizeGuardApplies;
+
     const guardPlatforms = (key) => {
+      if (key === "matiere") return materialGuardApplies ? SHARED_GUARD.matiere : [];
       if (key !== "taille") return SHARED_GUARD[key];
       if (!sizeGuardApplies) return [];
       return lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD.taille;
