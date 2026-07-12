@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-12-12h40 (DRY_RUN=false, delete confirmé 1/3, empreinte)";
+const LEBONCOIN_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, delete LBC 2/3 — lien Supprimer, plus une icône)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -55,7 +55,17 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 //      annonces" / "Valider la suppression". AUCUN motif demandé.
 //   3. "Valider la suppression" → "Votre demande de suppression a bien été
 //      prise en compte / Votre annonce sera supprimée dans quelques instants".
-const DELETE_DRY_RUN = true;
+// MISE À JOUR 2026-07-12 (2e suppression réelle, annonce /ad/vetements/
+// 3231526889) — le point 1 a CHANGÉ : le contrôle n'est plus une poubelle-icône
+// mais un LIEN texte « Supprimer » (<a href="/compte/mes-annonces/suppression">)
+// dans la carte. Le reste du flux est identique (page dédiée, aucun motif,
+// « Valider la suppression » → « Votre demande de suppression a bien été prise
+// en compte »). Le bouton final porte data-testid="button-delete-confirm", mais
+// ce nœud est REMPLACÉ par un re-render juste après le chargement (le testid
+// disparaît) : matcher aussi par texte exact, comme le fait findButtonByExactText.
+// ⚠️ DELETE_DRY_RUN : passé à false le 2026-07-12 sur décision de Nico (session
+// autonome). Gate Leboncoin : 2/3 suppressions réelles.
+const DELETE_DRY_RUN = false;
 
 async function deleteListing(job) {
   const trace = [];
@@ -138,8 +148,16 @@ async function deleteListing(job) {
   return { success: true, trace };
 }
 
+// Relevé réel 2026-07-12 : le contrôle de suppression n'est PAS (plus ?) un
+// bouton-icône — c'est un LIEN vers la page dédiée,
+// <a href="/compte/mes-annonces/suppression"> texte « Supprimer ». On le
+// cherche d'abord par ce href (le plus stable et sans ambiguïté possible),
+// puis on retombe sur les anciennes heuristiques.
 function findLbcDelete(root) {
   if (!root) return null;
+  const byHref = Array.from(root.querySelectorAll('a[href*="/suppression"]'))
+    .find((a) => a.getClientRects().length);
+  if (byHref) return byHref;
   return (
     root.querySelector('[data-qa-id*="delete"], [data-qa-id*="supprimer"]') ??
     Array.from(root.querySelectorAll("button, a, [role='menuitem']"))
