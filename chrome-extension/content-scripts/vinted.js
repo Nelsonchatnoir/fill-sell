@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, delete Vinted 1/3 — bot-shield sur la 2e)";
+const VINTED_BUILD = "2026-07-12-15h30 (delete: garde de peinture + paintTab — cause 0x0 elucidee)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -45,13 +45,28 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ────────────────────────────────
 // ⚠️ DELETE_DRY_RUN : passé à false le 2026-07-12 sur décision de Nico (session
-// autonome). Gate Vinted : 1/3 — la 2e suppression réelle n'a PAS pu être faite
-// le 2026-07-12 : la page annonce ne se rendait plus dans la session
-// d'automatisation (squelettes de chargement, bouton Supprimer présent dans le
-// DOM mais en 0×0), alors qu'elle s'affichait normalement dans le navigateur
-// personnel de Nico — bot-shield (cookie datadome présent) visant la session
-// pilotée, PAS le compte. Les sélecteurs ci-dessous restent valides : le bouton
-// était bien là, avec son data-testid. Ne pas marteler cette page.
+// autonome). Gate Vinted : 1/3.
+//
+// ✅ CAUSE ÉLUCIDÉE le 2026-07-12 (ce n'était ni DataDome, ni la connexion, ni
+// le sélecteur — les trois hypothèses successives étaient fausses) : la page
+// annonce Vinted n'est ni peinte ni hydratée dans un onglet EN ARRIÈRE-PLAN,
+// et l'onglet de travail est créé active:false.
+//   onglet caché  : DOM complet (HTML serveur), [data-testid="item-delete-button"]
+//                   TROUVÉ par querySelector, mais 0×0, offsetParent null, aucun
+//                   handler React → simulateFullClick sans aucun effet → la
+//                   modale ne se monte jamais → « Modale de confirmation
+//                   introuvable » (on accusait la modale ; le coupable était le
+//                   clic, qui n'avait rien déclenché).
+//   onglet peint  : bouton 361×36, le même clic monte la modale.
+// Parade : le background rend l'onglet visible pendant la suppression
+// (paintTab), et la garde de peinture ci-dessous refuse tout clic sur un
+// élément à 0×0.
+//
+// Markup de la modale relevé en réel (onglet peint) :
+//   item-delete-modal--overlay, item-delete-modal,
+//   item-delete-confirmation-button ("Confirmer et supprimer"),
+//   item-delete-cancelation-button ("Annuler")
+// → les sélecteurs du 2026-07-11 étaient corrects et le sont restés.
 // SÉLECTEURS CONFIRMÉS en session réelle du 2026-07-11 (annonce
 // /items/9376376044 réellement publiée puis supprimée) :
 //   page annonce vendeur → button[data-testid="item-delete-button"]
@@ -119,7 +134,33 @@ async function deleteListing(job) {
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  // ── LIVE (après validation manuelle) ─────────────────────────────────────
+  // ── LIVE ─────────────────────────────────────────────────────────────────
+  // Garde de PEINTURE (2026-07-12) : querySelector trouve le bouton même dans
+  // un onglet jamais peint — le DOM y est complet (HTML serveur) mais sans
+  // layout ni handlers React : le clic part dans le vide et la modale ne se
+  // monte jamais. C'était la vraie cause de « Modale de confirmation
+  // introuvable » : on accusait la modale, alors que le clic n'avait servi à
+  // rien. Le background rend désormais l'onglet visible (paintTab) ; on vérifie
+  // ici que ça a bien produit un layout AVANT de cliquer, et on échoue avec un
+  // message exact sinon — plus jamais de clic dans le vide.
+  const painted = await waitFor(() => {
+    const r = control.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r : null;
+  }, 10000);
+  if (!painted) {
+    t(`page NON PEINTE (visibilityState=${document.visibilityState}) : le bouton Supprimer existe mais mesure 0×0 — aucun clic tenté`);
+    return {
+      success: false,
+      error:
+        "Page Vinted non peinte (onglet resté en arrière-plan) : le bouton Supprimer est dans le DOM mais " +
+        "sans layout ni handler — cliquer n'aurait aucun effet. L'onglet de travail doit être visible " +
+        "pendant la suppression.",
+      trace,
+    };
+  }
+  t(`bouton Supprimer peint (${Math.round(painted.width)}×${Math.round(painted.height)}) — clic`);
+  control.scrollIntoView({ block: "center" });
+  await humanPause(600, 1200);
   simulateFullClick(control);
   await humanPause(800, 1600);
   // Modale "Supprimer l'article" — sélecteur CONFIRMÉ (2026-07-11) :
@@ -135,7 +176,21 @@ async function deleteListing(job) {
       })()
     );
   }, 6000);
-  if (!confirmBtn) return { success: false, error: "Modale de confirmation introuvable après le clic Supprimer", trace };
+  if (!confirmBtn) {
+    // Si on arrive ici, ce n'est PAS un problème de peinture (vérifiée juste
+    // au-dessus) : la modale ne s'est réellement pas montée, ou son markup a
+    // changé. On remonte les testids présents — c'est ce relevé qui a permis
+    // d'élucider le cas du 2026-07-12.
+    const testids = [...document.querySelectorAll("[data-testid]")]
+      .map((e) => e.getAttribute("data-testid"))
+      .filter((id) => /delete|modal|dialog/i.test(id));
+    t(`modale NON montée — testids delete/modal présents : ${testids.join(", ") || "(aucun)"}`);
+    return {
+      success: false,
+      error: `Modale de confirmation introuvable après le clic Supprimer (testids présents : ${testids.join(", ") || "aucun"})`,
+      trace,
+    };
+  }
   t(`confirmation : "${confirmBtn.textContent.trim()}"`);
   simulateFullClick(confirmBtn);
   // Confirmé en réel : redirection vers /member/<id> après suppression.
