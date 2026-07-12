@@ -17,8 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-00h30 (eBay: succes lu AVANT erreur + attente aspects + passe finale x2 + warnings; " +
-  "Vinted: sonde reseau MAIN world) ⚠️ TEMP TEST : delais de grace a 20 min";
+  "2026-07-13-01h30 (Vinted: VRAI blur - le prix n arrivait jamais au formulaire; eBay: selecteur elargi " +
+  "+ filet chip + dump DOM) ⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
