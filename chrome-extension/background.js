@@ -17,8 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-12-23h00 (fix run du soir : race waitForTabComplete, preuve de publication Vinted, " +
-  "emoji titres, colis Petit, quantite LBC, icone unifiee, onglet peint eBay) ⚠️ TEMP TEST : delais de grace a 20 min";
+  "2026-07-12-23h55 (fix regression eBay: rattrapage d URL strict; Vinted: toutes les erreurs de validation; " +
+  "popup: jobs processing visibles) ⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -1032,11 +1032,27 @@ async function replaceWorkTab(oldTabId, target) {
 // Parade : on lit l'ÉTAT RÉEL de l'onglet en plus d'écouter l'événement — et on
 // vérifie que l'URL est bien la cible, pour ne pas conclure "chargé" sur la page
 // PRÉCÉDENTE (encore "complete" pendant les premiers ms d'un tabs.update).
+// ⚠️⚠️ RÉGRESSION eBay DU 2026-07-12, CORRIGÉE ICI — ma propre faute, pas la
+// peinture de l'onglet. La 1re version de ce rattrapage acceptait l'onglet comme
+// "déjà chargé" si son URL contenait simplement WORK_TAB_FRAGMENT. Or l'onglet de
+// travail porte CE fragment en permanence (getOrCreateWorkTab le colle à l'URL
+// d'entrée). Conséquence, sur le SEUL chemin qui navigue home → formulaire —
+// navigateHomeToForm, donc eBay et lui seul :
+//   waitForTabComplete(tab, urlDuFormulaire) était appelé alors que l'onglet
+//   était encore sur la HOME eBay (déjà "complete", fragment présent) → le
+//   rattrapage concluait "chargé" IMMÉDIATEMENT → on renvoyait la main avant même
+//   que tabs.update ne lance la navigation → FILL_LISTING partait sur une page en
+//   train d'être détruite → 0/25 photos, titre vide, formulaire quasi intact.
+// D'où : rattrapage STRICT (l'URL doit être la cible, au fragment près), et
+// écoute de l'événement laissée PERMISSIVE — indispensable car eBay REDIRIGE
+// (/sl/list?… → /lstng?draftId=…) : l'URL finale n'est jamais l'URL demandée, et
+// exiger l'égalité sur l'événement ferait expirer tous les jobs eBay.
 function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
-  const urlMatches = (url) => {
-    if (!expectUrl) return true;
+  // Utilisé UNIQUEMENT par le rattrapage d'état (jamais par l'écouteur).
+  const isAlreadyOnTarget = (url) => {
+    if (!expectUrl) return false; // sans cible, on ne peut RIEN affirmer : on attend l'événement
     const strip = (u) => String(u || "").split("#")[0];
-    return strip(url) === strip(expectUrl) || String(url || "").includes(WORK_TAB_FRAGMENT);
+    return strip(url) === strip(expectUrl);
   };
 
   return new Promise((resolve, reject) => {
@@ -1066,9 +1082,11 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
       timeoutMs
     );
 
-    function onUpdated(updatedTabId, info, tab) {
+    // PERMISSIF à dessein (cf. commentaire de tête) : eBay redirige vers une URL
+    // différente de celle demandée. La navigation est déclenchée juste après
+    // l'attachement de cet écouteur, donc le prochain "complete" est le nôtre.
+    function onUpdated(updatedTabId, info) {
       if (updatedTabId !== tabId || info.status !== "complete") return;
-      if (!urlMatches(tab?.url)) return; // "complete" de la page précédente
       succeed();
     }
     function onRemoved(removedTabId) {
@@ -1077,12 +1095,15 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.tabs.onRemoved.addListener(onRemoved);
 
-    // Rattrapage de la race : l'onglet est peut-être DÉJÀ chargé sur la cible.
+    // Rattrapage de la race : l'onglet est peut-être DÉJÀ chargé SUR LA CIBLE.
+    // STRICT (isAlreadyOnTarget) : sans cible explicite, ou sur une autre URL, on
+    // ne conclut RIEN et on attend l'événement — c'est ce laxisme qui avait cassé
+    // eBay (on validait la home au lieu du formulaire).
     chrome.tabs
       .get(tabId)
       .then((tab) => {
         if (!tab) return;
-        if (tab.status === "complete" && !tab.discarded && urlMatches(tab.url)) succeed();
+        if (tab.status === "complete" && !tab.discarded && isAlreadyOnTarget(tab.url)) succeed();
       })
       .catch(() => {
         /* onglet disparu : onRemoved (ou le timeout) tranchera */
