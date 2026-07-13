@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-13-03h30 (specifics: selecteur RESSERRE aux 2 classes verifiees + dump aussi quand la valeur ne persiste pas)";
+const EBAY_BUILD = "2026-07-13-11h00 (aspects statiques lus via textual-display — faux Style vide corrige, dump systematique des obligatoires vides)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -485,7 +485,7 @@ async function fillListingForm(job) {
     // specifics effectivement posés pendant ce run. Champ absent du job
     // (catégorie hors référentiel) → [] , comportement d'avant. Le genre
     // (ebayGenreRequired) reste traité par precheckJob avant navigation.
-    const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics);
+    const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics, warnings);
     if (unfilledRequired.length) {
       const note = `aspects obligatoires eBay non remplis (${unfilledRequired.length}) : ${unfilledRequired.join(", ")}`;
       console.warn(`[ebay] ⚠️ ${note}`);
@@ -508,7 +508,7 @@ async function fillListingForm(job) {
         ") — publication NON tentée : eBay la refuse (« Vous devez ajouter une description »). " +
         "Le job repartira au prochain passage.",
       warnings,
-      unfilledRequired: computeUnfilledRequired(fields, filledSpecifics),
+      unfilledRequired: computeUnfilledRequired(fields, filledSpecifics, warnings),
     };
   }
 
@@ -551,7 +551,7 @@ async function fillListingForm(job) {
   // pré-remplies par eBay incluses) et filledSpecifics n'est alimenté que par
   // des poses VÉRIFIÉES en relecture (fillSpecificSafe) — plus de confiance
   // aveugle dans le fait d'avoir cliqué.
-  const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics);
+  const unfilledRequired = computeUnfilledRequired(fields, filledSpecifics, warnings);
   if (unfilledRequired.length) {
     // ⚠️ Les WARNINGS sont désormais DANS le message d'erreur (2026-07-12).
     // Jusqu'ici on savait QUE « Marque » était vide, jamais POURQUOI : la raison
@@ -665,19 +665,43 @@ function specificRow(labelBtn) {
 }
 
 // Photographie de la ligne quand le bouton-valeur reste introuvable : c'est ce
-// relevé qui remplacera les suppositions au prochain run.
+// relevé qui remplacera les suppositions au prochain run. Depuis le 2026-07-13,
+// inclut les div.textual-display (valeurs statiques, cf. readAspectDisplayValue)
+// et le texte des nœuds — c'est ce qui a manqué pour diagnostiquer Style.
 function dumpSpecificRow(labelBtn) {
-  const scope = labelBtn.closest("li, .se-field, .field, div")?.parentElement ?? labelBtn.parentElement;
-  const noeuds = [...(scope?.querySelectorAll("button, input, select, [role]") ?? [])]
+  const scope =
+    labelBtn.closest('[class*="summary__attributes--field"], li, .se-field, .field, div')?.parentElement ??
+    labelBtn.parentElement;
+  const noeuds = [...(scope?.querySelectorAll('button, input, select, [role], [class*="textual-display"]') ?? [])]
     .slice(0, 10)
     .map((e) => {
       const cls = String(e.className || "").slice(0, 70);
       const role = e.getAttribute("role") || "";
       const aria = e.getAttribute("aria-expanded") || "";
+      const txt = (e.textContent || "").trim().slice(0, 30);
       return `${e.tagName.toLowerCase()}${cls ? "." + cls.replace(/\s+/g, ".") : ""}` +
-        `${role ? `[role=${role}]` : ""}${aria ? `[aria-expanded=${aria}]` : ""}`;
+        `${role ? `[role=${role}]` : ""}${aria ? `[aria-expanded=${aria}]` : ""}${txt ? ` txt="${txt}"` : ""}`;
     });
   return noeuds.length ? `structure réelle de la ligne : ${noeuds.join(" ; ")}` : "ligne vide dans le DOM";
+}
+
+// ⚠️ VARIANTE « SUMMARY » du formulaire (autopsiée sur le vrai brouillon le
+// 2026-07-13, bug du faux « Style vide ») : certains aspects n'ont AUCUN
+// bouton-valeur — eBay les affiche en TEXTE STATIQUE (div.textual-display dans
+// la zone summary__attributes--value de la ligne). Constaté sur Style, posé
+// « Baskets » par eBay depuis la catégorie, non éditable en ligne. Aucun
+// sélecteur de bouton ne peut lire ces champs : l'ancien sélecteur large ne
+// « marchait » que par accident — il appariait le LABEL du champ voisin (les
+// labels sont des button.fake-link[aria-expanded], hôtes de tooltip) et lisait
+// « Marque » comme valeur de Style : faux positif qui laissait passer.
+// Vérifié sur les 6 obligatoires de la catégorie 15709 : ce repli lit
+// « Baskets » (Style, statique), « Homme »/« Sportif » (dropdowns remplis,
+// cohérent avec le bouton), « » (Marque/Pointure/Couleur vides — les chips
+// « Fréquemment sélectionnées » ne polluent PAS la lecture).
+function readAspectDisplayValue(labelBtn) {
+  const field = labelBtn.closest('[class*="summary__attributes--field"]');
+  const display = field?.querySelector('[class*="summary__attributes--value"] [class*="textual-display"]');
+  return (display?.textContent ?? "").trim().replace(/^Tendances$/i, "");
 }
 
 // ── Constat des obligatoires non remplis (2026-07-11) ───────────────────────
@@ -691,18 +715,28 @@ function dumpSpecificRow(labelBtn) {
 // label eBay exact — rapport honnête de ce qui manque, pas un mensonge
 // d'exhaustivité. ebayRequiredAspects absent (catégorie hors référentiel :
 // les 3 non-feuilles du mapping, ou id futur non re-fetché) → [] comme avant.
-function computeUnfilledRequired(fields, filledSpecifics) {
+function computeUnfilledRequired(fields, filledSpecifics, warnings = []) {
   const required = Array.isArray(fields.ebayRequiredAspects) ? fields.ebayRequiredAspects : [];
   const unfilled = [];
   for (const name of required) {
     if (filledSpecifics.has(normalizeFuzzy(name))) continue;
     const found = findSpecificLabelButton([name]);
     const anatomy = found ? specificRow(found.btn) : null;
-    const current = anatomy ? anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "") : "";
+    // Bouton-valeur d'abord (les deux variantes du formulaire l'exposent pour
+    // les dropdowns), TEXTE STATIQUE en repli (variante summary : Style n'a
+    // aucun bouton, cf. readAspectDisplayValue — le faux « Style vide » du
+    // job dde03c2f venait de là).
+    let current = anatomy ? anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "") : "";
+    if (!current && found) current = readAspectDisplayValue(found.btn);
     if (current) {
       console.log(`[ebay] ${name}: obligatoire déjà pré-rempli par eBay ("${current}"), conservé`);
       continue;
     }
+    // PREUVE systématique : ce chemin ne produisait AUCUN dump (leçon du faux
+    // « Style vide » — on a conclu sans relevé). Le DOM réel de la ligne part
+    // dans les warnings, donc dans le « Détail du remplissage » du job.
+    const dump = found ? dumpSpecificRow(found.btn) : "label introuvable dans le DOM";
+    warnings.push(`${name}: obligatoire lu VIDE sur le formulaire — ${dump}`);
     unfilled.push(name);
   }
   return unfilled;
@@ -719,6 +753,14 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     }
     const anatomy = specificRow(found.btn);
     if (!anatomy) {
+      // Champ à AFFICHAGE STATIQUE déjà porteur d'une valeur (variante summary,
+      // cf. readAspectDisplayValue — le cas Style) : rien à poser, rien à
+      // cliquer, on conserve la valeur d'eBay comme pour un dropdown pré-rempli.
+      const staticValue = readAspectDisplayValue(found.btn);
+      if (staticValue) {
+        console.log(`[ebay] ${found.label}: déjà rempli en affichage statique ("${staticValue}"), conservé`);
+        return true;
+      }
       // FILET (2026-07-13) : le bouton-valeur est introuvable, mais la CHIP
       // « Fréquemment sélectionnées » est un chemin indépendant — et elle
       // fonctionne (vérifié sur le vrai formulaire : la chip « New Balance »
