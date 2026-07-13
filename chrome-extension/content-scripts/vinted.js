@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-13-11h00 (prix: escalade par clics TRUSTED chrome.debugger + exigence niveau BRUT — paintTab seul ne suffisait pas)";
+const VINTED_BUILD = "2026-07-13-14h00 (prix commite par props.onChange React — invisible, zero debugger; succes prouve par la sonde + modale post-publi fermee)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -445,10 +445,17 @@ async function fillListingForm(job) {
   return { success: true, listingUrl: proof.listingUrl, warnings };
 }
 
-// Après le clic Publier, Vinted fait l'un des trois :
-//   1. redirige vers /items/<id> (succès — c'est notre seule preuve) ;
+// Après le clic Publier, Vinted fait l'un des QUATRE (le 4e découvert en réel
+// le 2026-07-13, job 32a47b4e) :
+//   1. redirige vers /items/<id> (succès — preuve n°1) ;
 //   2. reste sur le formulaire et affiche une/des erreurs de validation ;
-//   3. rame (upload photos, anti-bot) — on laisse du temps avant de conclure.
+//   3. rame (upload photos, anti-bot) — on laisse du temps avant de conclure ;
+//   4. PUBLIE (HTTP 200, item créé) mais affiche une modale à la place de la
+//      redirection (after_upload_actions: ["show_item_verification_modal"]) —
+//      l'annonce 9386838630 était réellement en ligne pendant que le job
+//      partait en failed « aucune redirection ». D'où la preuve n°2 : la
+//      RÉPONSE SERVEUR capturée par la sonde (item.id + code:0 + HTTP 200),
+//      qui donne aussi l'URL sans attendre aucune navigation.
 async function waitForPublishOutcome(timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   let lastValidation = null;
@@ -456,6 +463,15 @@ async function waitForPublishOutcome(timeoutMs = 30_000) {
   while (Date.now() < deadline) {
     const m = location.pathname.match(/^\/items\/(\d+)/);
     if (m) return { listingUrl: location.origin + location.pathname };
+
+    const served = await readProbeSuccess();
+    if (served) {
+      // Fermeture best-effort de la modale post-publication pour laisser
+      // l'onglet de travail propre — le succès est déjà acquis, on ne le
+      // conditionne à rien de visuel.
+      await closePostPublishModal();
+      return { listingUrl: served.listingUrl };
+    }
 
     const validation = readValidationErrors();
     if (validation) lastValidation = validation;
@@ -476,6 +492,48 @@ async function waitForPublishOutcome(timeoutMs = 30_000) {
       `${timeoutMs / 1000} s, et aucun message d'erreur lisible. L'annonce n'a PAS été considérée ` +
       "comme publiée (le statut ne sera pas 'published' sans preuve).",
   };
+}
+
+// Preuve n°2 : la sonde réseau (monde MAIN, posée par le background) a capturé
+// la réponse du POST /api/v2/item_upload/items. HTTP 200 + code:0 + item.id ⇒
+// l'annonce EXISTE, quelle que soit la suite visuelle (modale, redirection
+// lente…). Les captures portent la réponse en texte tronqué : on extrait par
+// motif, pas de parse strict.
+async function readProbeSuccess() {
+  const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
+  const captures = Array.isArray(res?.captures) ? res.captures : [];
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    if (Number(c?.status) !== 200) continue;
+    if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
+    const body = String(c?.reponse ?? "");
+    const idMatch = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
+    if (idMatch && /"code"\s*:\s*0\b/.test(body)) {
+      return { listingUrl: `${location.origin}/items/${idMatch[1]}` };
+    }
+  }
+  return null;
+}
+
+// Modale post-publication (show_item_verification_modal & consorts) : on tente
+// les fermetures classiques du design system Vinted, sans jamais échouer — si
+// la modale reste, l'onglet de travail sera de toute façon re-navigué au
+// prochain job (et le succès est déjà rapporté).
+async function closePostPublishModal() {
+  try {
+    const dialog = Array.from(document.querySelectorAll('[role="dialog"], .web_ui__Dialog__content'))
+      .find((d) => d.offsetParent !== null);
+    if (!dialog) return;
+    const closer =
+      dialog.querySelector('[data-testid*="close"], button[aria-label*="Fermer" i], button[aria-label*="Close" i]') ??
+      Array.from(dialog.querySelectorAll("button")).find((b) =>
+        /^(plus tard|non merci|fermer|ok|compris|continuer)$/i.test((b.textContent || "").trim())
+      );
+    if (closer) {
+      simulateFullClick(closer);
+      await humanPause();
+    }
+  } catch { /* best-effort assumé */ }
 }
 
 // Messages de validation du formulaire Vinted.
@@ -816,18 +874,17 @@ async function fillPriceField(value) {
   // React de l'onglet caché documenté sur eBay). Seul l'état React fait foi, et
   // il n'est lisible que depuis le monde MAIN → on le demande au background.
   //
-  // ⚠️ RÉVISION post-job c7e10631 (2026-07-13 matin) : la 1re escalade (repose
-  // avec onglet peint) a ÉCHOUÉ — prix ENVOYÉ = null malgré la peinture, car
-  // paintTab ne produit AUCUN événement d'entrée, et la lecture « au plus
-  // haut » a pris un niveau d'affichage pour le formulaire (faux positif).
-  // Deux corrections, toutes deux issues du relevé en session pilotée :
-  //   1. la validation exige un niveau BRUT (sans €) qui parse au bon montant —
-  //      le niveau formulaire porte "95", jamais "95,00 €" ;
-  //   2. l'escalade injecte des clics TRUSTED (chrome.debugger, seuls événements
-  //      isTrusted=true qu'une extension puisse émettre) : un AVANT la repose
-  //      (constaté : un seul événement trusted bascule la page dans le mode où
-  //      les saisies synthétiques committent) et un APRÈS (focusout réel d'un
-  //      humain qui quitte le champ), avant relecture.
+  // ⚠️ HISTORIQUE des escalades (2026-07-13), les deux prouvées en réel :
+  //   v1 repose+onglet peint → ÉCHEC (job c7e10631 : paintTab ne produit aucun
+  //      événement, et la lecture « au plus haut » prenait un niveau d'affichage
+  //      pour le formulaire — d'où l'exigence de niveau BRUT ci-dessous) ;
+  //   v2 clics trusted chrome.debugger → a commité (job 32a47b4e) mais bandeau
+  //      « débogage » global non supprimable : invendable en production.
+  // v3 — appel DIRECT de props.onChange du composant prix via les fibers
+  // (monde MAIN, côté background) : prouvé en session pilotée dans les
+  // conditions exactes de l'échec (onglet caché, hasFocus=false, zéro CDP) —
+  // le niveau formulaire passe à la valeur brute, signature du mode sain.
+  // Invisible, sans permission supplémentaire, Chrome par défaut.
   const expected = parseFloat(String(value).replace(",", "."));
   const committedOk = (s) =>
     Array.isArray(s?.levels) &&
@@ -838,55 +895,23 @@ async function fillPriceField(value) {
     });
   let state = await askBackground({ type: "VINTED_PRICE_STATE" });
   if (state?.readable && !committedOk(state)) {
-    console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — escalade : peinture + clics TRUSTED + repose");
-    await askBackground({ type: "VINTED_PAINT_FOR_PRICE" });
-    try {
-      await trustedNeutralClick(); // bascule la page dans le mode où les commits passent
-      el = await typeIntoPrice();
-      await trustedNeutralClick(); // focusout RÉEL après la saisie, avant relecture
-      await sleep(1000);
-      state = await askBackground({ type: "VINTED_PRICE_STATE" });
-    } finally {
-      await askBackground({ type: "VINTED_UNPAINT" });
+    console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — commit direct par props.onChange (fibers)");
+    const commit = await askBackground({ type: "VINTED_COMMIT_PRICE", value: str });
+    if (!commit?.ok) {
+      console.warn("[vinted] ⚠️ commit direct refusé :", commit?.reason ?? "réponse nulle");
     }
+    await sleep(1000); // laisser le re-render propager la prop value
+    state = await askBackground({ type: "VINTED_PRICE_STATE" });
     if (state?.readable && !committedOk(state)) {
       throw new Error(
         `Prix jamais commité dans l'état React du formulaire (affiché "${String(el.value ?? "")}", ` +
-        `niveaux fibers [${(state?.levels ?? []).map((v) => `"${v}"`).join(", ")}]), même après clics ` +
-        "trusted + repose avec onglet peint — job arrêté AVANT le clic Publier (sinon Vinted " +
-        "recevrait price: null et refuserait)."
+        `niveaux fibers [${(state?.levels ?? []).map((v) => `"${v}"`).join(", ")}], ` +
+        `commit direct : ${commit?.ok ? "ok" : commit?.reason ?? "échec"}) — job arrêté AVANT le ` +
+        "clic Publier (sinon Vinted recevrait price: null et refuserait)."
       );
     }
-    if (state?.readable) console.log("[vinted] prix commité à la repose (clics trusted) :", state.levels);
+    if (state?.readable) console.log("[vinted] prix commité par props.onChange :", state.levels);
   }
-}
-
-// Clic TRUSTED « dans le vide » : un titre du formulaire (texte statique, aucun
-// handler) — JAMAIS un point arbitraire type coin haut-gauche, où vivent le
-// logo et des liens (une navigation en plein remplissage détruirait le job).
-// Le clic lui-même est émis par le background via chrome.debugger
-// (Input.dispatchMouseEvent = pipeline d'entrée du navigateur, isTrusted=true) ;
-// il exige des coordonnées viewport → on amène la cible à l'écran d'abord.
-async function trustedNeutralClick() {
-  const target = Array.from(document.querySelectorAll("h1, h2"))
-    .find((h) => h.offsetParent !== null && (h.textContent || "").trim());
-  if (!target) {
-    console.warn("[vinted] ⚠️ clic trusted : aucun titre visible à viser, clic sauté");
-    return false;
-  }
-  target.scrollIntoView({ block: "center" });
-  await sleep(400);
-  const r = target.getBoundingClientRect();
-  const res = await askBackground({
-    type: "VINTED_TRUSTED_CLICK",
-    x: r.left + r.width / 2,
-    y: r.top + r.height / 2,
-  });
-  if (!res?.clicked) {
-    console.warn("[vinted] ⚠️ clic trusted refusé par le background :", res?.error ?? "réponse nulle");
-  }
-  await humanPause();
-  return !!res?.clicked;
 }
 
 // Messages vers le background (lecture des fibers React en monde MAIN, peinture
