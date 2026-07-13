@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-14-00h30 (filtre de visibilite: opacity retiree — les animations CSS ne tournent pas en fenetre non rendue, un dialogue ouvert y reste a opacity 0; suppressions sans layout sur les 4 plateformes)";
+  "2026-07-13-20h15 (confirmation eBay lue aussi dans la MODALE — role=dialog/lightbox/modal — avec extraction du numero d'annonce vers listing_url; job 5e3ee1e2, item 800334919061)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -720,12 +720,15 @@ async function processJob(rawJob, accessToken) {
       // en "published" fantôme. Seul le background peut trancher : il survit
       // à la redirection (succès) comme à l'absence de redirection (refus).
       if (job.platform === "ebay") {
-        const submitError = await verifyEbaySubmission(tabId);
-        if (submitError) {
-          console.warn(`[background] Job ${job.id} : ${submitError}`);
-          await rearmBounded(accessToken, job, submitError);
-          return { status: "needsUser", error: submitError };
+        const verdict = await verifyEbaySubmission(tabId);
+        if (verdict.error) {
+          console.warn(`[background] Job ${job.id} : ${verdict.error}`);
+          await rearmBounded(accessToken, job, verdict.error);
+          return { status: "needsUser", error: verdict.error };
         }
+        // Numéro d'annonce déjà extrait de la preuve (modale ou réponse
+        // serveur) : c'est le listing_url, inutile de repasser par la capture.
+        if (verdict.listingUrl && !result.listingUrl) result.listingUrl = verdict.listingUrl;
       }
 
       // ── PUBLICATION ET CAPTURE D'URL SONT DÉCOUPLÉES (règle Nico, 2026-07-13)
@@ -1479,18 +1482,21 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
 // l'annonce). Tant qu'il y reste, on lit les bandeaux d'erreur visibles pour
 // remonter le message exact d'eBay ; à l'échéance sans redirection ni bandeau,
 // on refuse quand même le "published" — aucun signal de succès ≠ succès.
+// Retourne { error, listingUrl } : error non-null = refus/non confirmé ;
+// listingUrl non-null = numéro d'annonce extrait de la preuve (modale ou
+// réponse serveur), à prendre comme listing_url sans repasser par la capture.
 async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     // Onglet disparu : impossible d'observer quoi que ce soit — on n'invente
     // pas un refus (captureListingUrl rendra listing_url null, c'est tout).
-    if (!tab) return null;
+    if (!tab) return { error: null, listingUrl: null };
     let path = "";
     try {
       path = new URL(tab.url || "").pathname;
     } catch { /* URL interne (chrome://) : on continue d'attendre */ }
-    if (path && !/\/lstng/.test(path)) return null; // formulaire quitté : soumission partie
+    if (path && !/\/lstng/.test(path)) return { error: null, listingUrl: null }; // formulaire quitté : soumission partie
 
     // ⚠️⚠️ LE SUCCÈS SE LIT AVANT L'ERREUR (2026-07-12) — bug le plus dangereux
     // trouvé jusqu'ici. readVisibleEbayErrors ratisse tout .page-notice /
@@ -1503,8 +1509,14 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
     // avoir d'abord cherché la preuve du contraire.
     const success = await readEbaySuccessNotice(tabId);
     if (success) {
-      console.log(`[background] eBay : publication CONFIRMÉE par la page (« ${success} »)`);
-      return null; // pas d'erreur : c'est un succès
+      console.log(
+        `[background] eBay : publication CONFIRMÉE par la page (« ${success.text} »` +
+        `${success.listingUrl ? ` — ${success.listingUrl}` : ""})`
+      );
+      // Bandeau : rien à fermer (best-effort sans effet). Modale : on la ferme
+      // pour laisser l'onglet de travail propre pour le job suivant.
+      await closeEbayPostPublishPopup(tabId);
+      return { error: null, listingUrl: success.listingUrl };
     }
 
     // 2e PREUVE (2026-07-13) : la RÉPONSE SERVEUR. eBay publie en affichant une
@@ -1516,25 +1528,29 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
     if (served) {
       console.log(`[background] eBay : publication CONFIRMÉE par la réponse serveur (${served})`);
       await closeEbayPostPublishPopup(tabId);
-      return null; // pas d'erreur : c'est un succès
+      return { error: null, listingUrl: served };
     }
 
     const errors = await readVisibleEbayErrors(tabId);
     if (errors.length) {
-      return (
-        "Publication eBay REFUSÉE par la validation du formulaire : " +
-        `« ${errors.join(" | ")} » — l'onglet de travail est resté sur le formulaire, ` +
-        "le job repartira au prochain passage."
-      );
+      return {
+        error:
+          "Publication eBay REFUSÉE par la validation du formulaire : " +
+          `« ${errors.join(" | ")} » — l'onglet de travail est resté sur le formulaire, ` +
+          "le job repartira au prochain passage.",
+        listingUrl: null,
+      };
     }
     await sleep(1000);
   }
-  return (
-    `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
-    `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
-    "ni d'erreur, et sans réponse serveur portant un numéro d'annonce — job NON marqué publié, " +
-    "il repartira au prochain passage."
-  );
+  return {
+    error:
+      `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
+      `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
+      "ni d'erreur, et sans réponse serveur portant un numéro d'annonce — job NON marqué publié, " +
+      "il repartira au prochain passage.",
+    listingUrl: null,
+  };
 }
 
 // Popup post-publication eBay (« Votre annonce est désormais publiée sur le
@@ -1929,6 +1945,17 @@ function estVisibleSansLayout(el) {
   return true;
 }
 
+// ⚠️ LA CONFIRMATION PEUT ARRIVER EN MODALE (2026-07-13, job 5e3ee1e2) : eBay a
+// affiché « Votre annonce est désormais publiée sur le site » dans une POPUP
+// (item 800334919061 dedans), pas dans un bandeau — les sélecteurs ci-dessous
+// ne scannaient que des bandeaux, la modale est restée invisible pour ce
+// lecteur pendant les 20 s de verifyEbaySubmission, et le job d'une annonce EN
+// LIGNE est parti en « non confirmée » (retry = risque de doublon). On scanne
+// donc AUSSI les conteneurs de popup — la même famille de sélecteurs que
+// closeEbayPostPublishPopup, qui savait déjà les trouver pour les fermer.
+// Retourne { text, listingUrl } (listingUrl si un numéro d'annonce est présent
+// dans la modale : href /itm/… prioritaire, sinon nombre de 9+ chiffres du
+// texte), ou null.
 async function readEbaySuccessNotice(tabId) {
   try {
     const [res] = await chrome.scripting.executeScript({
@@ -1939,10 +1966,21 @@ async function readEbaySuccessNotice(tabId) {
       func: (helperSrc) => {
         const estVisible = new Function(`return (${helperSrc})`)();
         const RE = /annonce est (?:désormais )?(?:en ligne|publiée)|votre annonce a été (?:publiée|mise en vente)|listing is now live|your listing (?:was|has been) (?:published|posted)/i;
-        for (const el of document.querySelectorAll('[role="alert"], .page-notice, .inline-notice, [class*="notice" i], [class*="success" i]')) {
+        const containers = document.querySelectorAll(
+          '[role="alert"], .page-notice, .inline-notice, [class*="notice" i], [class*="success" i], ' +
+          '[role="dialog"], [class*="lightbox" i], [class*="modal" i]'
+        );
+        for (const el of containers) {
           if (!estVisible(el)) continue;
           const t = (el.textContent || "").replace(/\s+/g, " ").trim();
-          if (t && RE.test(t)) return t.slice(0, 160);
+          if (!t || !RE.test(t)) continue;
+          let id = null;
+          for (const a of el.querySelectorAll('a[href*="/itm/"]')) {
+            const m = String(a.getAttribute("href") || "").match(/\/itm\/(\d{9,})/);
+            if (m) { id = m[1]; break; }
+          }
+          if (!id) id = (t.match(/\b(\d{9,})\b/) || [])[1] ?? null;
+          return { text: t.slice(0, 160), listingUrl: id ? `https://www.ebay.fr/itm/${id}` : null };
         }
         return null;
       },
