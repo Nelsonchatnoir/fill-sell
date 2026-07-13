@@ -17,9 +17,9 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-19h00 (sonde reseau GENERIQUE Vinted+eBay: la reponse serveur prouve la publication, pas la redirection; " +
-  "publication et capture d URL DECOUPLEES (Beebs publie sans attendre la moderation); delai de grace uniformise a 4h — " +
-  "plus aucun TEMP TEST a reverter)";
+  "2026-07-13-22h00 (detection d etat: lecture depuis un VRAI ONGLET — le fetch du service worker etait bloque 403 par DataDome " +
+  "(boucle unknown infinie sur Leboncoin); indetermine BORNE (4 essais puis job marque non verifiable, retry 24h); " +
+  "page anti-bot ne peut plus passer pour 'active')";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -2076,6 +2076,11 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // pas une rafale.
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
 const SALE_CHECK_MAX_PER_CYCLE = 8;
+// Lectures indéterminées consécutives au-delà desquelles on cesse d'insister :
+// le job est marqué non vérifiable (message explicite en base) et n'est plus
+// retenté qu'une fois par jour. Aucune conclusion n'est jamais inventée.
+const MAX_UNKNOWN_CHECKS = 4;
+const UNKNOWN_RETRY_MS = 24 * 60 * 60 * 1000;
 
 // ── Délai de grâce après publication (2026-07-12) ─────────────────────────────
 // SALE_CHECK_MIN_INTERVAL_MS n'espaçait que deux vérifications SUCCESSIVES : une
@@ -2204,15 +2209,108 @@ function detectBeebsState(html) {
 
 // Retourne { state, price } — price = prix lu SUR LA PAGE (null si inconnu),
 // utilisé comme prix de vente à l'auto-confirmation quand il est disponible.
+// ⚠️ LE FETCH DOIT PARTIR D'UN VRAI ONGLET, PAS DU SERVICE WORKER (2026-07-13).
+// PREUVE (job 9051246f, bloqué en « unknown » cycle après cycle) : leboncoin.fr
+// répond HTTP 403 + page captcha DataDome à toute requête qui ne vient pas d'un
+// navigateur réel — mesuré sur l'URL de l'annonce, avec ET sans User-Agent
+// Chrome. Or checkListingState faisait `if (!res.ok) return "unknown"` : le job
+// ne pouvait JAMAIS conclure, et repartait à chaque cycle. Une boucle infinie,
+// par construction, pas un accident.
+// Un fetch émis depuis le service worker n'a ni l'empreinte TLS, ni les en-têtes
+// Sec-Fetch-*, ni le contexte de page d'un vrai navigateur — DataDome le voit
+// immédiatement. Depuis un ONGLET ouvert sur le domaine, la même requête est une
+// requête same-origin ordinaire, avec les cookies (dont le cookie datadome de
+// l'utilisateur) et l'empreinte du navigateur : elle passe.
+// On lit donc la page DEPUIS l'onglet de travail de la plateforme (celui-là même
+// qui publie et supprime), et on ne retombe sur le fetch du service worker que
+// si aucun onglet n'est disponible.
+async function fetchListingHtml(url, platform) {
+  const tabId = await workTabForFetch(platform).catch(() => null);
+  if (tabId != null) {
+    try {
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        args: [url],
+        func: async (cible) => {
+          try {
+            const r = await fetch(cible, { credentials: "include", redirect: "follow" });
+            const txt = await r.text();
+            return { ok: r.ok, status: r.status, finalUrl: r.url, html: txt.slice(0, 3_000_000) };
+          } catch (e) {
+            return { erreur: String(e?.message ?? e) };
+          }
+        },
+      });
+      const r = res?.result;
+      if (r && !r.erreur) return r;
+      console.warn(`[background] lecture via onglet (${platform}) : ${r?.erreur ?? "sans résultat"} — repli service worker`);
+    } catch (e) {
+      console.warn(`[background] lecture via onglet (${platform}) impossible :`, String(e?.message ?? e));
+    }
+  }
+  // Repli : historique, et bloqué par DataDome sur Leboncoin (403). Conservé
+  // pour les plateformes qui l'acceptent, jamais comme voie principale.
+  const res = await fetch(url, { credentials: "include", redirect: "follow" });
+  const html = res.ok ? await res.text() : "";
+  return { ok: res.ok, status: res.status, finalUrl: res.url, html };
+}
+
+// Onglet utilisable pour lire une page de la plateforme : le nôtre s'il est déjà
+// sur le bon domaine (cas normal — il y publie), sinon on en ouvre un dans la
+// FENÊTRE DE TRAVAIL DÉDIÉE (invisible, jamais de focus volé).
+async function workTabForFetch(platform) {
+  const host = PLATFORM_HOSTS[platform];
+  if (!host) return null;
+
+  const store = await chrome.storage.session.get(workTabKey(platform));
+  const known = store[workTabKey(platform)];
+  if (known != null) {
+    const tab = await chrome.tabs.get(known).catch(() => null);
+    if (tab && new URL(tab.url || "https://x.invalid").hostname.endsWith(host)) return tab.id;
+  }
+  // Pas d'onglet exploitable : on en ouvre un sur la HOME de la plateforme (page
+  // anodine, aucun formulaire touché), qui servira aussi aux vérifications
+  // suivantes.
+  return getOrCreateWorkTab(platform, `https://www.${host}/`);
+}
+
+const PLATFORM_HOSTS = {
+  leboncoin: "leboncoin.fr",
+  vinted: "vinted.fr",
+  ebay: "ebay.fr",
+  beebs: "beebs.app",
+};
+
+// Page de vérification anti-bot (DataDome & co) : courte, sans le contenu de
+// l'annonce, et porteuse de ses marqueurs. Motifs relevés en réel sur la réponse
+// 403 de leboncoin.fr (2026-07-13) : « datadome », « geo.captcha ».
+function estPageBotShield(html) {
+  const debut = String(html ?? "").slice(0, 4000);
+  return /datadome|geo\.captcha|captcha-delivery|\bAre you a human\b|Vérification que vous n/i.test(debut);
+}
+
+// Retourne { state, price } — price = prix lu SUR LA PAGE (null si inconnu).
 async function checkListingState(url, platform) {
   try {
-    const res = await fetch(url, { credentials: "include", redirect: "follow" });
+    const res = await fetchListingHtml(url, platform);
     // 404/410 : l'annonce n'est plus là. Ce n'est PAS une vente — c'était la
     // guillotine qui fabriquait les ventes fantômes.
     if (res.status === 404 || res.status === 410) return { state: "unavailable", price: null };
-    if (!res.ok) return { state: "unknown", price: null }; // bot-shield : ne pas conclure
-    const html = await res.text();
-    const finalUrl = res.url;
+    if (!res.ok) {
+      console.warn(`[background] ${platform} : HTTP ${res.status} sur la page de l'annonce (bot-shield ?) — aucune conclusion`);
+      return { state: "unknown", price: null };
+    }
+    const { html, finalUrl } = res;
+    // ⚠️ Une page de bot-shield peut arriver en HTTP 200 (DataDome sert parfois
+    // son captcha avec un statut normal). detectLeboncoinState, qui conclut
+    // « active » dès qu'il ne voit pas « plus disponible », dirait alors ACTIVE
+    // sur un captcha — une annonce supprimée passerait pour en ligne. On ne
+    // conclut jamais sur une page qu'on n'a pas vraiment reçue.
+    if (estPageBotShield(html)) {
+      console.warn(`[background] ${platform} : page de vérification anti-bot reçue (HTTP ${res.status}) — aucune conclusion`);
+      return { state: "unknown", price: null };
+    }
     switch (platform) {
       case "leboncoin": return { state: detectLeboncoinState(html), price: null };
       case "vinted":    return { state: detectVintedState(html, finalUrl), price: vintedListedPrice(html) };
@@ -2279,9 +2377,20 @@ async function checkPublishedListings(session) {
     );
   }
 
+  // Temporisation CROISSANTE sur les lectures indéterminées (2026-07-13) : 1re
+  // relecture au cycle suivant, puis 30 min, 2 h… et 24 h une fois le job déclaré
+  // non vérifiable. Sans ça, un job bloqué (bot-shield) consommait une place de
+  // vérification à CHAQUE cycle, indéfiniment, en évinçant les autres.
+  const dueDelayMs = (j) => {
+    const echecs = Number(j.platform_fields?.check_unknown_count ?? 0);
+    if (j.platform_fields?.check_unresolved) return UNKNOWN_RETRY_MS;
+    if (!echecs) return SALE_CHECK_MIN_INTERVAL_MS;
+    return Math.min(SALE_CHECK_MIN_INTERVAL_MS, [0, 30 * 60 * 1000, 2 * 60 * 60 * 1000][echecs] ?? SALE_CHECK_MIN_INTERVAL_MS);
+  };
+
   const due = (jobs ?? [])
     .filter((j) => !inGrace(j))
-    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > SALE_CHECK_MIN_INTERVAL_MS)
+    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > dueDelayMs(j))
     .slice(0, SALE_CHECK_MAX_PER_CYCLE);
   if (!due.length) return;
 
@@ -2292,16 +2401,63 @@ async function checkPublishedListings(session) {
     console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}`);
 
     // État AMBIGU (bot-shield, page inattendue, champs absents) : on ne conclut
-    // RIEN, on ne pose AUCUN drapeau — et on ne tamponne même pas
-    // last_checked_at, pour que le job soit re-examiné au cycle suivant plutôt
-    // que d'attendre 2 h sur une lecture qui n'a rien donné.
+    // RIEN et on ne pose AUCUN drapeau — conclure sur une lecture ratée, c'est
+    // fabriquer une fausse vente ou une fausse disparition.
+    //
+    // ⚠️ MAIS ON NE BOUCLE PLUS INDÉFINIMENT (2026-07-13, job 9051246f : bloqué
+    // en « unknown » cycle après cycle, pendant des heures, sans jamais rien
+    // dire). Un indéterminé qui se répète n'est pas un aléa, c'est un blocage —
+    // on compte les échecs consécutifs, on espace les tentatives, et au-delà de
+    // MAX_UNKNOWN on ARRÊTE de frapper à la porte en l'écrivant noir sur blanc
+    // dans le job (visible en base et dans l'app), au lieu de tourner en silence.
     if (state === "unknown") {
-      console.log(`[background] ${job.platform} ${job.id} : état indéterminé — aucune conclusion, nouvelle tentative au prochain cycle`);
+      const pf = job.platform_fields ?? {};
+      const echecs = Number(pf.check_unknown_count ?? 0) + 1;
+      const patchUnknown = {
+        last_checked_at: new Date().toISOString(), // ⚠️ on tamponne : sans ça, le job repassait à CHAQUE cycle
+        platform_fields: { ...pf, check_unknown_count: echecs },
+      };
+
+      if (echecs >= MAX_UNKNOWN_CHECKS) {
+        patchUnknown.platform_fields.check_unresolved = true;
+        patchUnknown.error =
+          `Impossible de vérifier l'état de cette annonce ${job.platform} après ${echecs} tentatives ` +
+          "(page de vérification anti-bot ou format inattendu). L'annonce N'A PAS été touchée et le job " +
+          "reste 'published' : vérifier à la main sur la plateforme. Nouvelle tentative dans 24 h.";
+        console.warn(
+          `[background] ${job.platform} ${job.id} : ABANDON après ${echecs} lectures indéterminées — ` +
+          "job marqué non vérifiable (aucune conclusion, aucune écriture), prochaine tentative dans 24 h"
+        );
+      } else {
+        console.log(
+          `[background] ${job.platform} ${job.id} : état indéterminé (${echecs}/${MAX_UNKNOWN_CHECKS}) — ` +
+          "aucune conclusion, nouvelle tentative après temporisation"
+        );
+      }
+
+      await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+        method: "PATCH",
+        body: JSON.stringify(patchUnknown),
+      }).catch((e) => console.warn("[background] PATCH unknown:", String(e?.message ?? e)));
+
       if (i < due.length - 1) await sleep(randInt(1500, 4000));
       continue;
     }
 
     const patch = { last_checked_at: new Date().toISOString() };
+
+    // Lecture ENFIN aboutie : on efface les compteurs d'indétermination, sinon un
+    // job guéri (bot-shield passé, onglet enfin disponible) resterait pénalisé
+    // par sa temporisation de 24 h et son message « non vérifiable ».
+    const pfCourant = job.platform_fields ?? {};
+    if (pfCourant.check_unknown_count || pfCourant.check_unresolved) {
+      const remis = { ...pfCourant };
+      delete remis.check_unknown_count;
+      delete remis.check_unresolved;
+      patch.platform_fields = remis;
+      patch.error = null;
+      console.log(`[background] ${job.platform} ${job.id} : lecture de nouveau possible → compteurs d'indétermination effacés`);
+    }
 
     // ⚠️ RÈGLE ABSOLUE (décision produit 2026-07-12) : le poll N'ÉCRIT JAMAIS
     // de vente en base — sur AUCUNE plateforme, pas même Vinted dont la preuve
@@ -2327,7 +2483,9 @@ async function checkPublishedListings(session) {
     // ligne. Si on la revoit active, on efface le drapeau : le bandeau disparaît
     // tout seul. Le délai de grâce réduit ce cas, il ne l'élimine pas.
     if (state === "active") {
-      const pf = job.platform_fields ?? {};
+      // ⚠️ On repart de patch.platform_fields s'il existe déjà (remise à zéro des
+      // compteurs d'indétermination juste au-dessus) — sinon on l'écraserait.
+      const pf = patch.platform_fields ?? job.platform_fields ?? {};
       if (pf.unavailable_since) {
         const cleaned = { ...pf };
         delete cleaned.unavailable_since;
@@ -2339,7 +2497,7 @@ async function checkPublishedListings(session) {
     }
 
     if (state === "sold" || state === "unavailable") {
-      const pf = job.platform_fields ?? {};
+      const pf = patch.platform_fields ?? job.platform_fields ?? {}; // idem : ne pas écraser la remise à zéro
       if (!pf.unavailable_since) {
         patch.platform_fields = {
           ...pf,
