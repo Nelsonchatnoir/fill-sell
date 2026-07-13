@@ -545,7 +545,7 @@ ${s} .meta .hl{color:var(--ink);}
    colonne de droite — c'est le chevauchement « En ligne » / « Republier ».
    La 5e pastille (« En ligne ») n'a fait que révéler le défaut, elle ne l'a pas
    créé : 4 plateformes suffisaient déjà à serrer la carte sur mobile. */
-${s} .icons{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;min-width:0;}
+${s} .icons{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;min-width:0;}
 ${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;flex:0 0 auto;white-space:nowrap;}
 ${s} .ic-vinted{background:#09B584;}
 ${s} .ic-leboncoin{background:#EA5B0C;}
@@ -557,9 +557,17 @@ ${s} .ic-loc{background:var(--mute);}
 /* « En ligne » : un STATUT, pas une plateforme. Il ouvre la rangée, et se
    distingue par sa FORME (chip clair cerclé de teal + point) plutôt que par une
    6e couleur pleine : cinq aplats saturés côte à côte rendaient la carte
-   illisible. Teal du design system (pas de nouvelle teinte), poids 700 max. */
+   illisible. Teal du design system (pas de nouvelle teinte), poids 700 max.
+   ⚠️ white-space:nowrap est porté par .micon : sans lui, « En ligne » se cassait
+   en « En » / « ligne » quand la place manquait (constaté sur la 1re carte). */
 ${s} .ic-online{background:rgba(47,158,144,.12);color:var(--teal-deep);box-shadow:inset 0 0 0 1px rgba(47,158,144,.40);}
 ${s} .ic-online .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);flex:0 0 auto;}
+/* Plateformes : LOGOS et non plus noms écrits. « Leboncoin » + « Beebs » en toutes
+   lettres débordaient la carte en largeur mobile quel que soit le CSS — quatre
+   logos de 18 px tiennent dans la place d'un seul nom. Aucun socle ni cadre ici :
+   PlatformLogo fournit déjà l'icône carrée (socle blanc pour vinted/ebay, icône
+   d'app pleine pour beebs/leboncoin). */
+${s} .plogo{display:flex;align-items:center;flex:0 0 auto;line-height:0;}
 ${s} .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
 ${s} .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
 ${s} .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
