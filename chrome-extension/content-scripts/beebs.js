@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-13-23h59 (realClick MANQUANT ajoute — ReferenceError dormant; suppression sans layout)";
+const BEEBS_BUILD = "2026-07-14-00h30 (opacity retiree du filtre — les animations CSS ne tournent pas en fenetre non rendue : dialogue bloque a opacity 0)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -269,7 +269,17 @@ function estVisibleSansLayout(el) {
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
     if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
     const st = getComputedStyle(n);
-    if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+    // ⚠️ PAS DE TEST SUR L'OPACITÉ (2026-07-13, prouvé sur la vraie page Beebs).
+    // Les animations CSS NE TOURNENT PAS dans une fenêtre non rendue : un élément
+    // qui s'ouvre avec une animation « fade-in » reste bloqué sur la 1re keyframe,
+    // donc opacity: 0 — POUR TOUJOURS. Mesuré sur le dialogue « Supprimer mon
+    // annonce » : data-state="open", display:grid, visibility:visible… et
+    // opacity:"0". Le rejeter, c'est se rendre aveugle exactement comme avec
+    // getClientRects — c'est ce qui donnait « Dialogue introuvable » alors que le
+    // clic avait parfaitement ouvert la modale.
+    // display:none / visibility:hidden / hidden / aria-hidden restent : ceux-là
+    // sont posés explicitement et ne dépendent d'aucune animation.
+    if (st.display === "none" || st.visibility === "hidden") return false;
   }
   return true;
 }
