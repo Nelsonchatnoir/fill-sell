@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-22h05 (jsonField scope a l'annonce : lecture ancree sur l'id extrait de listing_url pour vinted/ebay/beebs, plus jamais premiere occurrence du document)";
+  "2026-07-13-22h15 (recover listing_url : titres compares sans emoji ni ponctuation + diagnostic des liens de la page en cas d'echec — la cause beebs sera nommee au prochain cycle)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -2173,7 +2173,7 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
   // Repli 1 : la page où l'on a atterri contient le lien de l'annonce —
   // profil Vinted (qui liste TOUTES les annonces : le titre est indispensable
   // pour ne pas ramener la mauvaise) ou vraie page de confirmation.
-  const fromLinks = await findListingLinkInPage(tabId, pattern.source, job?.title ?? null);
+  const { url: fromLinks } = await findListingLinkInPage(tabId, pattern.source, job?.title ?? null);
   if (fromLinks) return fromLinks;
 
   // Repli 2 (LBC/Beebs) : aller-retour par "Mes annonces". L'onglet de travail
@@ -2207,43 +2207,65 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // match par TITRE est OBLIGATOIRE — requireTitle:true. Le repli « lien unique »
 // ne vaut QUE sur une vraie page de confirmation, où l'unique lien est
 // forcément celui de l'annonce qu'on vient de déposer.
+// Retourne { url, diag } — url = lien de NOTRE annonce (ou null), diag = ce que
+// la page contenait vraiment (nombre d'ancres, liens conformes au pattern,
+// échantillon de chemins). Le diag existe parce qu'un échec Beebs était
+// INDIAGNOSTICABLE (2026-07-13, job f834e5a5 : listing_url jamais capturée
+// malgré des cycles de re-capture) : impossible de savoir si c'est le pattern
+// d'URL (toujours une supposition pour Beebs) qui ne matche aucun lien, ou le
+// titre qui ne matche aucune carte. Le log du caller nomme désormais la cause.
 async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false } = {}) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
       func: (src, wanted, titreObligatoire) => {
         const re = new RegExp(src, "i");
+        const ancres = Array.from(document.querySelectorAll("a[href]"));
         const matches = [];
-        for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+        for (const a of ancres) {
           const m = a.href.match(re);
           if (m) matches.push({ url: m[0], el: a });
         }
-        if (!matches.length) return null;
+        const diag = {
+          ancres: ancres.length,
+          conformesAuPattern: matches.length,
+          chemins: [...new Set(
+            ancres.map((a) => { try { return new URL(a.href).pathname; } catch { return null; } }).filter(Boolean)
+          )].slice(0, 12),
+        };
+        const done = (url) => ({ url, diag });
+        if (!matches.length) return done(null);
 
         if (wanted) {
-          const norm = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+          // Normalisation insensible aux EMOJI et à la ponctuation (2026-07-13) :
+          // un titre « T-shirt Patagonia P-6 Logo noir 🔥 » doit matcher une
+          // carte qui l'affiche sans l'emoji ou avec une ponctuation remaniée.
+          // Ne garder que lettres et chiffres reste DISCRIMINANT (deux annonces
+          // se distinguent par leurs mots, pas par leurs emoji) : la garde
+          // anti-« mauvaise annonce » ne s'affaiblit pas.
+          const norm = (s) => (s || "").toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
           const target = norm(wanted);
           for (const { url, el } of matches) {
             const scope = el.closest("article, li, [class*='item'], [class*='card']") ?? el;
-            const hay = norm(el.getAttribute("title") || "") + " " + norm(el.textContent) + " " + norm(scope.textContent);
-            if (target && hay.includes(target)) return url;
+            const hay = norm((el.getAttribute("title") || "") + " " + el.textContent + " " + scope.textContent);
+            if (target && hay.includes(target)) return done(url);
           }
         }
         // Page de liste : pas de titre reconnu = on ne rend RIEN. Mieux vaut un
         // listing_url vide (que la re-capture différée retentera) qu'une URL qui
         // appartient à un autre article.
-        if (titreObligatoire) return null;
+        if (titreObligatoire) return done(null);
         // Page de confirmation : un lien unique est sans ambiguïté ;
         // plusieurs → on refuse de deviner.
         const unique = [...new Set(matches.map((m) => m.url))];
-        return unique.length === 1 ? unique[0] : null;
+        return done(unique.length === 1 ? unique[0] : null);
       },
       args: [patternSource, title, requireTitle],
     });
-    return res?.result ?? null;
+    return res?.result ?? { url: null, diag: null };
   } catch (e) {
     console.warn("[background] findListingLinkInPage :", String(e?.message ?? e));
-    return null;
+    return { url: null, diag: null };
   }
 }
 
@@ -2265,7 +2287,7 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 
     // requireTitle : page de LISTE — jamais de repli « lien unique » ici (c'est
     // ce repli qui a collé l'URL du T-shirt Patagonia sur le job New Balance).
-    const url = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
     if (url) {
       console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces — ${url}`);
       return url;
@@ -2931,11 +2953,12 @@ async function recoverMissingListingUrls(session) {
       }
       await sleep(randInt(1500, 3000)); // rendu de la liste
       const stillMissing = [];
+      let diagPage = null;
       for (const job of remaining) {
         // requireTitle : on est sur une page de LISTE, et on y cherche PLUSIEURS
         // jobs à la fois — le repli « lien unique » y serait catastrophique
         // (il attribuerait la même URL à tous les jobs de la plateforme).
-        const url = await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
+        const { url, diag } = await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
         if (url) {
           console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
           await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
@@ -2944,7 +2967,19 @@ async function recoverMissingListingUrls(session) {
           }).catch((e) => console.warn("[background] PATCH listing_url:", String(e?.message ?? e)));
         } else {
           stillMissing.push(job);
+          diagPage = diag;
         }
+      }
+      // Échec sur cette page : le diagnostic NOMME la cause au lieu de laisser
+      // deviner — « 0 lien conforme au pattern » = le pattern d'URL est faux
+      // (cas suspecté pour Beebs, format jamais observé) ; « N liens conformes
+      // mais aucun titre reconnu » = c'est le repérage par titre qui rate.
+      // L'échantillon de chemins révèle le format d'URL réel de la plateforme.
+      if (stillMissing.length && diagPage) {
+        console.log(
+          `[background] recover(${platform}) ${pageUrl} : ${diagPage.conformesAuPattern} lien(s) conforme(s) au pattern ` +
+          `sur ${diagPage.ancres} ancre(s) — chemins vus : ${diagPage.chemins.join(" | ") || "(aucun)"}`
+        );
       }
       remaining = stillMissing;
     }
