@@ -547,11 +547,18 @@ ${s} .ic-ebay{background:#0064D2;}
 ${s} .ic-plateforme{background:var(--teal-deep);}
 ${s} .ic-pending{background:var(--amber);}
 ${s} .ic-loc{background:var(--mute);}
+/* « En ligne » : statut, pas plateforme — il précède les pastilles de plateformes
+   (qui disent OÙ, pas QUE l'annonce est publiée). Vert plein = état sain. */
+${s} .ic-online{background:#1FA97E;}
 ${s} .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
 ${s} .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
 ${s} .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
 ${s} .btn-stack{display:flex;flex-direction:column;gap:4px;width:78px;}
 ${s} .btn-publier{font-size:11.5px;font-weight:700;color:#fff;text-align:center;background:linear-gradient(155deg,var(--teal),var(--teal-deep));padding:6px 0;border-radius:9px;border:none;cursor:pointer;font-family:inherit;}
+/* Déjà en ligne : « Republier » reste accessible (ajouter une plateforme) mais
+   n'appelle plus l'action principale — l'aplat plein disait « il te reste à
+   publier » sur un article déjà publié. */
+${s} .btn-publier.is-online{background:transparent;color:var(--teal-deep);border:1px solid var(--teal);font-weight:600;padding:5px 0;}
 ${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 0;border-radius:9px;cursor:pointer;font-family:inherit;}
 ${s} .cat-filters{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;}
 ${s} .cat-filters::-webkit-scrollbar{display:none;}
