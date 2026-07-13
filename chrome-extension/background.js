@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-21h55 (detection LBC par preuve positive scopee a l'id : le libelle i18n 'a ete supprimee' present sur TOUTES les pages ne fabrique plus d'unavailable)";
+  "2026-07-13-22h05 (jsonField scope a l'annonce : lecture ancree sur l'id extrait de listing_url pour vinted/ebay/beebs, plus jamais premiere occurrence du document)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -2355,11 +2355,51 @@ const PUBLISH_GRACE_DEFAULT_MS = 4 * 60 * 60 * 1000;
 // ⚠️ can_buy vaut false AUSSI sur ses PROPRES annonces actives (on n'achète pas
 // chez soi) : ce champ ne doit JAMAIS servir de signal de vente.
 
+// Toutes les positions de l'id de NOTRE annonce dans la page (jamais au milieu
+// d'un nombre plus long). Zéro position = la page ne parle pas de notre
+// annonce : aucune lecture de champ ne doit aboutir.
+function adAnchors(html, adId) {
+  if (!adId) return [];
+  const re = new RegExp("(?<![0-9])" + adId + "(?![0-9])", "g");
+  const out = [];
+  let m;
+  while ((m = re.exec(html))) out.push(m.index);
+  return out;
+}
+
+// Parmi toutes les occurrences d'un motif GLOBAL, celle la plus proche d'une
+// ancre (= d'une occurrence de l'id de notre annonce). Les items recommandés
+// portent leurs champs près de LEURS ids — pas du nôtre.
+function nearestMatch(html, globalRe, anchors) {
+  let best = null;
+  let bestDist = Infinity;
+  let m;
+  while ((m = globalRe.exec(html))) {
+    let d = Infinity;
+    for (const a of anchors) d = Math.min(d, Math.abs(a - m.index));
+    if (d < bestDist) {
+      bestDist = d;
+      best = m;
+    }
+  }
+  return best;
+}
+
+// Lecture d'un champ JSON SCOPÉE À L'ANNONCE (durcie 2026-07-13). L'ancien
+// jsonField prenait la PREMIÈRE occurrence de la clé dans TOUT le HTML : ça ne
+// tenait que parce que l'objet de l'item courant précède les recommandations
+// dans le JSON — de la chance, pas une garantie (cf. le libellé i18n LBC et le
+// "sold":"Vendu" Beebs, deux pièges du même moule). On choisit désormais
+// l'occurrence la plus proche d'une occurrence de l'id de l'annonce, et on ne
+// rend RIEN si l'id est absent de la page.
 // Les pages embarquent leur JSON dans du HTML : les guillemets y sont échappés
 // (\"champ\":valeur). On accepte les deux formes — c'est précisément ce qui
 // manquait et qui rendait tous les anciens motifs inopérants.
-function jsonField(html, key) {
-  const m = html.match(new RegExp('\\\\?"' + key + '\\\\?":\\s*(\\\\?"[^"\\\\]*\\\\?"|true|false|null|\\d+)'));
+function jsonFieldForAd(html, key, adId) {
+  const anchors = adAnchors(html, adId);
+  if (!anchors.length) return null;
+  const re = new RegExp('\\\\?"' + key + '\\\\?":\\s*(\\\\?"[^"\\\\]*\\\\?"|true|false|null|\\d+)', "g");
+  const m = nearestMatch(html, re, anchors);
   if (!m) return null;
   return m[1].replace(/\\/g, "").replace(/^"|"$/g, "");
 }
@@ -2369,12 +2409,12 @@ function jsonField(html, key) {
 //   vendue : \"is_closed\":true,  \"item_closing_action\":\"sold\"
 //   active : \"is_closed\":false, \"item_closing_action\":null
 // (is_reserved et is_hidden sont des booléens SÉPARÉS : masqué/réservé ≠ vendu)
-function detectVintedState(html, finalUrl) {
+function detectVintedState(html, finalUrl, adId) {
   if (/\/not-found|\/404/.test(finalUrl)) return "unavailable";
-  const closed = jsonField(html, "is_closed");
-  if (closed === null) return "unknown"; // page inattendue : ne rien conclure
+  const closed = jsonFieldForAd(html, "is_closed", adId);
+  if (closed === null) return "unknown"; // page inattendue ou id absent : ne rien conclure
   if (closed !== "true") return "active";
-  return jsonField(html, "item_closing_action") === "sold" ? "sold" : "unavailable";
+  return jsonFieldForAd(html, "item_closing_action", adId) === "sold" ? "sold" : "unavailable";
 }
 
 // Prix affiché sur la page de l'annonce — plus à jour que job.price si le
@@ -2391,8 +2431,10 @@ function detectVintedState(html, finalUrl) {
 // Donc : une vente négociée sera enregistrée au prix demandé. L'utilisateur
 // corrige dans l'app (le prix de vente y est éditable). C'est la meilleure
 // donnée publiquement disponible, et on ne devine pas le reste.
-function vintedListedPrice(html) {
-  const m = html.match(/\\?"price\\?":\s*\{\s*\\?"amount\\?":\s*\\?"([\d.]+)\\?"/);
+function vintedListedPrice(html, adId) {
+  const anchors = adAnchors(html, adId);
+  if (!anchors.length) return null;
+  const m = nearestMatch(html, /\\?"price\\?":\s*\{\s*\\?"amount\\?":\s*\\?"([\d.]+)\\?"/g, anchors);
   const n = m ? Number(m[1]) : NaN;
   return Number.isFinite(n) && n > 0 ? n : null;
 }
@@ -2452,9 +2494,9 @@ function detectLeboncoinState(html, adId) {
 // La valeur d'une annonce réellement VENDUE n'a PAS pu être observée (aucune
 // vente eBay sur le compte) : tant qu'on ne l'a pas relevée, eBay ne conclut
 // JAMAIS "sold" tout seul → "unavailable" → bandeau.
-function detectEbayState(html, finalUrl) {
+function detectEbayState(html, finalUrl, adId) {
   if (!/\/itm\//.test(finalUrl)) return "unavailable";
-  const st = (jsonField(html, "listingStatus") || "").toUpperCase();
+  const st = (jsonFieldForAd(html, "listingStatus", adId) || "").toUpperCase();
   if (!st) return "unknown";
   if (st === "ACTIVE") return "active";
   return "unavailable"; // ENDED, COMPLETED… : terminée ≠ vendue (à confirmer)
@@ -2464,8 +2506,12 @@ function detectEbayState(html, finalUrl) {
 // ⚠️ La chaîne \"sold\":\"Vendu\" est un LIBELLÉ de traduction présent sur TOUTES
 // les pages (y compris actives) : piège de l'ancien motif "sold":true.
 // Valeur du champ status pour une vente réelle : NON OBSERVÉE → jamais "sold".
-function detectBeebsState(html) {
-  const st = (jsonField(html, "status") || "").toUpperCase();
+// ⚠️ "status" est la clé la plus générique des quatre : l'ancrage sur l'id est
+// ici VITAL. Tant que le format d'URL produit Beebs n'est pas observé (donc
+// tant qu'extractListingId n'a pas d'id fiable), ce détecteur rendra "unknown"
+// — c'est voulu : mieux vaut aucun verdict qu'un verdict lu sur le mauvais objet.
+function detectBeebsState(html, adId) {
+  const st = (jsonFieldForAd(html, "status", adId) || "").toUpperCase();
   if (!st) return "unknown";
   return st === "AVAILABLE" ? "active" : "unavailable";
 }
@@ -2575,11 +2621,14 @@ async function checkListingState(url, platform) {
       console.warn(`[background] ${platform} : page de vérification anti-bot reçue (HTTP ${res.status}) — aucune conclusion`);
       return { state: "unknown", price: null };
     }
+    // L'id vient de listing_url (la source de vérité), pas de finalUrl : une
+    // redirection ne doit jamais changer QUELLE annonce on cherche dans la page.
+    const adId = extractListingId(url, platform);
     switch (platform) {
-      case "leboncoin": return { state: detectLeboncoinState(html, extractListingId(url, "leboncoin")), price: null };
-      case "vinted":    return { state: detectVintedState(html, finalUrl), price: vintedListedPrice(html) };
-      case "ebay":      return { state: detectEbayState(html, finalUrl), price: null };
-      case "beebs":     return { state: detectBeebsState(html), price: null };
+      case "leboncoin": return { state: detectLeboncoinState(html, adId), price: null };
+      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId) };
+      case "ebay":      return { state: detectEbayState(html, finalUrl, adId), price: null };
+      case "beebs":     return { state: detectBeebsState(html, adId), price: null };
       default:          return { state: "unknown", price: null };
     }
   } catch (e) {
