@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-13-19h00 (sonde reseau relayee au background — la publication est prouvee par la reponse serveur, meme sans redirection)";
+const EBAY_BUILD = "2026-07-13-23h45 (suppression SANS LAYOUT : estVisibleSansLayout + textContent ; confirmation deleguee au background)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -170,8 +170,8 @@ async function deleteListing(job) {
   const control = await waitFor(() => findEbayEnd(document), 8000);
   if (!control) {
     const visible = Array.from(document.querySelectorAll("button.fake-menu__item"))
-      .filter((b) => b.getClientRects().length)
-      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 15);
+      .filter(estVisibleSansLayout)
+      .map(texteDe).filter(Boolean).slice(0, 15);
     t(`« Mettre fin à l'annonce » INTROUVABLE — items du menu : ${visible.join(" | ") || "(aucun)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     return { success: false, error: "Action « Mettre fin à l'annonce » introuvable", trace };
@@ -191,12 +191,14 @@ async function deleteListing(job) {
   // clic irréversible. Aucun motif à choisir (vérifié en réel).
   const dialog = await waitFor(() => {
     return Array.from(document.querySelectorAll('[role="dialog"], [class*="dialog"], [class*="modal"]'))
-      .filter((d) => d.getClientRects().length)
-      .find((d) => /voulez-vous vraiment mettre fin/i.test(d.innerText || "")) ?? null;
+      .filter(estVisibleSansLayout)
+      .find((d) => /voulez-vous vraiment mettre fin/i.test(texteDe(d))) ?? null;
   }, 10000);
   if (!dialog) return { success: false, error: "Dialogue de confirmation de fin d'annonce introuvable", trace };
 
-  const titleOk = !job.title || dialog.innerText.toLowerCase().includes(job.title.trim().toLowerCase());
+  // Garde du titre : elle reste, mais sur textContent (innerText est vide sans
+  // rendu — c'est ce qui la faisait échouer, pas un vrai désaccord de titre).
+  const titleOk = !job.title || texteDe(dialog).toLowerCase().includes(job.title.trim().toLowerCase());
   if (!titleOk) {
     t(`ABANDON : le dialogue ne nomme pas "${job.title}" — aucun clic`);
     return { success: false, error: "Le dialogue de confirmation ne nomme pas l'annonce du job — abandon", trace };
@@ -204,15 +206,47 @@ async function deleteListing(job) {
   t("dialogue de confirmation : nomme bien l'annonce du job");
 
   const confirmBtn = Array.from(dialog.querySelectorAll("button"))
-    .filter((b) => b.getClientRects().length)
-    .find((b) => b.textContent.replace(/\s+/g, " ").trim() === "Mettre fin à l'annonce");
+    .filter(estVisibleSansLayout)
+    .find((b) => texteDe(b) === "Mettre fin à l'annonce");
   if (!confirmBtn) return { success: false, error: "Bouton « Mettre fin à l'annonce » du dialogue introuvable", trace };
 
   await humanPause(800, 1600);
   realClick(confirmBtn);
   await sleep(4000);
-  t(`résultat : ${/annonce a été terminée/i.test(document.body.innerText) ? "« annonce terminée » confirmé" : "confirmation non détectée (vérifier le hub)"}`);
+  // ⚠️ La CONFIRMATION ne se lit plus dans la page (document.body.innerText est
+  // vide sans rendu, et le clic navigue de toute façon : le content script peut
+  // mourir avant de répondre). C'est le BACKGROUND qui tranche, en interrogeant
+  // la plateforme : annonce plus en ligne ⇒ suppression confirmée. On se contente
+  // ici de rapporter ce qu'on a fait.
+  t(`clic de fin d'annonce effectué${/annonce a été terminée/i.test(texteDe(document.body)) ? " — « annonce terminée » lu sur la page" : " (confirmation déléguée au background)"}`);
   return { success: true, trace };
+}
+
+// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER (2026-07-13, règle produit).
+// L'onglet de travail vit dans une fenêtre MINIMISÉE, qui n'est jamais rendue :
+//   · getClientRects() → 0 pour TOUT, y compris les éléments réellement affichés
+//   · offsetParent     → null pour tout
+//   · innerText        → "" (il dépend du rendu ; textContent, non)
+// Ces API ne mesurent donc PAS « est-ce visible ? », mais « la fenêtre est-elle
+// rendue ? » — et la réponse est toujours non. Filtrer dessus, c'est se rendre
+// AVEUGLE : c'est ce qui faisait échouer les suppressions (« Carte introuvable »,
+// « dialogue introuvable ») alors que les CLICS, eux, fonctionnent parfaitement
+// dans cette fenêtre (prouvé : les deux annonces eBay ont bien été supprimées,
+// seule leur confirmation a échoué).
+// Le style CALCULÉ, lui, est disponible SANS layout : c'est le seul critère de
+// visibilité utilisable ici.
+function estVisibleSansLayout(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+  }
+  return true;
+}
+
+// Texte normalisé d'un élément, SANS innerText (vide sans rendu).
+function texteDe(el) {
+  return (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
 // Texte EXACT (relevé réel) : « Mettre fin à l'annonce ». Le fuzzy est proscrit
@@ -220,8 +254,8 @@ async function deleteListing(job) {
 function findEbayEnd(root) {
   if (!root) return null;
   return Array.from(root.querySelectorAll("button.fake-menu__item, [role='menuitem'], button"))
-    .filter((el) => el.getClientRects().length)
-    .find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Mettre fin à l'annonce") ?? null;
+    .filter(estVisibleSansLayout)
+    .find((el) => texteDe(el) === "Mettre fin à l'annonce") ?? null;
 }
 
 function goToSellFromHome() {
