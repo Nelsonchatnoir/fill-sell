@@ -3610,6 +3610,17 @@ export default function App({ loginOnly = false }){
   }
 
   async function fetchAll(uid){
+    // GARDE (2026-07-13) : sans uid, chaque requête ci-dessous part en
+    // `user_id=eq.undefined` et revient en 400 — une dizaine d'erreurs, un
+    // refetch entièrement raté, et des états (bandeaux, stock, profil) qui
+    // restent silencieusement vides. Vécu sur confirmSaleFromBanner, qui
+    // appelait `fetchAll()` sans argument. On échoue BRUYAMMENT plutôt que de
+    // marteler la base avec des UUID invalides.
+    if(!uid){
+      console.error("[fetchAll] appelé sans user id — refetch annulé (aucune requête envoyée). C'est un bug d'appelant.");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
@@ -4119,7 +4130,15 @@ export default function App({ loginOnly = false }){
       if(error)throw error;
       setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
       track('confirm_sale_banner',{platform:job.platform});
-      await fetchAll(); // vente + inventaire + bandeau de retrait des frères
+      // ⚠️ user.id OBLIGATOIRE (2026-07-13). Cet appel était `fetchAll()` — sans
+      // argument. fetchAll(uid) prend l'utilisateur en PARAMÈTRE : uid valait donc
+      // `undefined`, et TOUTES les requêtes du refetch partaient en
+      // `user_id=eq.undefined` → 10 erreurs 400 (« invalid input syntax for type
+      // uuid: 'undefined' »), y compris celle qui construit le bandeau de retrait
+      // des annonces frères. D'où le bandeau qui n'apparaissait qu'après un F5 :
+      // ce n'était pas un défaut de rafraîchissement, c'était le refetch qui
+      // échouait entièrement.
+      await fetchAll(user.id); // vente + inventaire + bandeau de retrait des frères
     }catch(e){
       console.error('[confirmSaleFromBanner]',e?.message??e);
       setToast({visible:true,message:t('genericError')});
