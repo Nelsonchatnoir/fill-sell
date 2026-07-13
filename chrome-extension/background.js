@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-20h25 (sonde : numero d'annonce extrait sur le corps COMPLET avant troncature a 250 chars, listing_id ajoute au motif, angles morts documentes)";
+  "2026-07-13-21h55 (detection LBC par preuve positive scopee a l'id : le libelle i18n 'a ete supprimee' present sur TOUTES les pages ne fabrique plus d'unavailable)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -2397,16 +2397,51 @@ function vintedListedPrice(html) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// LEBONCOIN — relevé réel : une annonce supprimée rend HTTP 410, et les champs
-// isActive/adStatus que cherchait l'ancien code N'EXISTENT PAS dans la réponse.
-// Surtout : LBC n'expose AUCUN statut « vendu » public — une annonce vendue est
-// simplement RETIRÉE, réponse identique à une suppression manuelle. La preuve de
-// vente ne peut donc venir que de la page vendeur (mes-transactions) — étape 2.
-function detectLeboncoinState(html) {
-  if (html.includes("Cette annonce n’est plus disponible") || html.includes("a été supprimée")) {
-    return "unavailable";
-  }
-  return "active";
+// Identifiant numérique de l'annonce, extrait de listing_url. C'est LUI qui
+// scope les lectures de page à NOTRE annonce — jamais « la première chaîne qui
+// matche quelque part dans le document ».
+function extractListingId(url, platform) {
+  const patterns = {
+    vinted: /\/items\/(\d+)/,
+    leboncoin: /\/ad\/[^/]+\/(\d+)/,
+    ebay: /\/itm\/[^?#]*?(\d{9,})/,
+    // ⚠️ Format d'URL produit Beebs toujours NON OBSERVÉ : on suppose un long
+    // nombre dans le chemin. À confirmer dès la première URL réelle capturée.
+    beebs: /(\d{6,})/,
+  };
+  const m = String(url ?? "").match(patterns[platform] ?? /(\d{6,})/);
+  return m ? m[1] : null;
+}
+
+// LEBONCOIN — RÉÉCRIT le 2026-07-13 après un FAUX POSITIF SYSTÉMATIQUE prouvé
+// en réel (job 1a3893ae, annonce 3232382692 EN LIGNE, HTTP 200, titre présent) :
+// l'ancienne détection html.includes("a été supprimée") matchait un LIBELLÉ de
+// traduction i18n embarqué dans le JSON Next.js de TOUTES les pages d'annonces,
+// actives comprises — "components/quickreply" →
+//     "notified-seller-410":{"text":"Cette annonce a été supprimée."}
+// Chaque annonce LBC active était donc marquée "unavailable" à chaque cycle.
+// C'est le piège exact du "sold":"Vendu" de Beebs (documenté plus bas)… répété
+// sur l'autre plateforme.
+//
+// Désormais : PREUVE POSITIVE uniquement, scopée à l'id de l'annonce.
+//   · id trouvé dans le JSON de la page ("list_id") ou dans l'URL canonique
+//     (og:url / link rel=canonical portent /ad/<catégorie>/<id>)  → active
+//   · HTTP 404/410 — relevé réel : une annonce supprimée rend 410
+//     (géré en amont dans checkListingState)                      → unavailable
+//   · HTTP 200 mais aucune trace de l'id                          → unknown
+// RÈGLE : on ne conclut plus JAMAIS « absente » sur la présence d'une chaîne de
+// texte — uniquement absence de preuve positive + statut HTTP explicite.
+// Rappel inchangé : LBC n'expose AUCUN statut « vendu » public — une annonce
+// vendue est simplement RETIRÉE, réponse identique à une suppression manuelle.
+// La preuve de vente ne peut venir que de la page vendeur (mes-transactions).
+function detectLeboncoinState(html, adId) {
+  if (!adId) return "unknown";
+  // \"list_id\":3232382692 — JSON échappé ou non, valeur quotée ou non
+  const idField = new RegExp('\\\\?"(?:list_id|listId)\\\\?":\\s*\\\\?"?' + adId + '(?![0-9])');
+  if (idField.test(html)) return "active";
+  const canonical = new RegExp('leboncoin\\.fr/ad/[^"\\s]*/' + adId + '(?![0-9])');
+  if (canonical.test(html)) return "active";
+  return "unknown";
 }
 
 // EBAY — relevé réel sur notre annonce TERMINÉE SANS VENTE (800328233923) :
@@ -2531,16 +2566,17 @@ async function checkListingState(url, platform) {
     }
     const { html, finalUrl } = res;
     // ⚠️ Une page de bot-shield peut arriver en HTTP 200 (DataDome sert parfois
-    // son captcha avec un statut normal). detectLeboncoinState, qui conclut
-    // « active » dès qu'il ne voit pas « plus disponible », dirait alors ACTIVE
-    // sur un captcha — une annonce supprimée passerait pour en ligne. On ne
-    // conclut jamais sur une page qu'on n'a pas vraiment reçue.
+    // son captcha avec un statut normal). Les détecteurs à preuve positive
+    // rendraient "unknown" dessus (l'id n'y figure pas), mais on garde ce garde
+    // explicite : le log nomme la cause réelle (anti-bot) au lieu d'un
+    // "unknown" muet, et aucun détecteur futur ne pourra conclure sur une page
+    // qu'on n'a pas vraiment reçue.
     if (estPageBotShield(html)) {
       console.warn(`[background] ${platform} : page de vérification anti-bot reçue (HTTP ${res.status}) — aucune conclusion`);
       return { state: "unknown", price: null };
     }
     switch (platform) {
-      case "leboncoin": return { state: detectLeboncoinState(html), price: null };
+      case "leboncoin": return { state: detectLeboncoinState(html, extractListingId(url, "leboncoin")), price: null };
       case "vinted":    return { state: detectVintedState(html, finalUrl), price: vintedListedPrice(html) };
       case "ebay":      return { state: detectEbayState(html, finalUrl), price: null };
       case "beebs":     return { state: detectBeebsState(html), price: null };
