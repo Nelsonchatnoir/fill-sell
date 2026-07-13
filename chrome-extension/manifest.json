@@ -3,7 +3,7 @@
   "name": "FillSell — Cross-post",
   "version": "0.3.0",
   "description": "Publie automatiquement vos annonces FillSell sur Vinted, Leboncoin, Beebs et eBay.",
-  "permissions": ["storage", "alarms", "scripting", "debugger"],
+  "permissions": ["storage", "alarms", "scripting"],
   "host_permissions": [
     "https://*.vinted.fr/*",
     "https://*.vinted.com/*",
