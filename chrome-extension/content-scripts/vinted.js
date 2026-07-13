@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-13-17h00 (sonde relayee au background — la preuve de publication survit a la redirection qui tue la page)";
+const VINTED_BUILD = "2026-07-13-23h45 (suppression SANS LAYOUT : garde de peinture retiree — elle interdisait toute suppression en fenetre minimisee)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -148,30 +148,18 @@ async function deleteListing(job) {
   }
 
   // ── LIVE ─────────────────────────────────────────────────────────────────
-  // Garde de PEINTURE (2026-07-12) : querySelector trouve le bouton même dans
-  // un onglet jamais peint — le DOM y est complet (HTML serveur) mais sans
-  // layout ni handlers React : le clic part dans le vide et la modale ne se
-  // monte jamais. C'était la vraie cause de « Modale de confirmation
-  // introuvable » : on accusait la modale, alors que le clic n'avait servi à
-  // rien. Le background rend désormais l'onglet visible (paintTab) ; on vérifie
-  // ici que ça a bien produit un layout AVANT de cliquer, et on échoue avec un
-  // message exact sinon — plus jamais de clic dans le vide.
-  const painted = await waitFor(() => {
-    const r = control.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 ? r : null;
-  }, 10000);
-  if (!painted) {
-    t(`page NON PEINTE (visibilityState=${document.visibilityState}) : le bouton Supprimer existe mais mesure 0×0 — aucun clic tenté`);
-    return {
-      success: false,
-      error:
-        "Page Vinted non peinte (onglet resté en arrière-plan) : le bouton Supprimer est dans le DOM mais " +
-        "sans layout ni handler — cliquer n'aurait aucun effet. L'onglet de travail doit être visible " +
-        "pendant la suppression.",
-      trace,
-    };
-  }
-  t(`bouton Supprimer peint (${Math.round(painted.width)}×${Math.round(painted.height)}) — clic`);
+  // ⚠️ GARDE DE PEINTURE SUPPRIMÉE (2026-07-13). Elle exigeait que le bouton
+  // mesure plus de 0×0 avant de cliquer — or l'onglet de travail vit désormais
+  // dans une fenêtre MINIMISÉE, jamais rendue : le bouton y mesure TOUJOURS 0×0.
+  // Cette garde interdisait donc purement et simplement toute suppression Vinted.
+  // Son hypothèse de départ (« sans layout, le clic part dans le vide et les
+  // handlers React ne sont pas attachés ») est INFIRMÉE par un run réel du
+  // 2026-07-13 : en fenêtre minimisée, les clics de suppression eBay ont bel et
+  // bien retiré les deux annonces. Le clic fonctionne sans layout ; c'était la
+  // LECTURE (rects, innerText) qui était aveugle, pas l'action.
+  // On clique donc, et c'est la MODALE qui fait foi juste après — puis, en
+  // dernier ressort, l'état réel de l'annonce, vérifié par le background.
+  t(`bouton Supprimer localisé (visibilityState=${document.visibilityState}, pas de mesure de layout) — clic`);
   control.scrollIntoView({ block: "center" });
   await humanPause(600, 1200);
   simulateFullClick(control);
@@ -534,8 +522,9 @@ async function readProbeSuccess() {
 // prochain job (et le succès est déjà rapporté).
 async function closePostPublishModal() {
   try {
-    const dialog = Array.from(document.querySelectorAll('[role="dialog"], .web_ui__Dialog__content'))
-      .find((d) => d.offsetParent !== null);
+    // offsetParent est null en fenêtre minimisée (aucun layout) : on prendrait
+    // toujours « aucune modale ». On prend la première du DOM — best-effort.
+    const dialog = document.querySelector('[role="dialog"], .web_ui__Dialog__content');
     if (!dialog) return;
     const closer =
       dialog.querySelector('[data-testid*="close"], button[aria-label*="Fermer" i], button[aria-label*="Close" i]') ??
