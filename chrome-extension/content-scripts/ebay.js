@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-13-11h00 (aspects statiques lus via textual-display — faux Style vide corrige, dump systematique des obligatoires vides)";
+const EBAY_BUILD = "2026-07-13-19h00 (sonde reseau relayee au background — la publication est prouvee par la reponse serveur, meme sans redirection)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -71,6 +71,19 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
 
     return true; // réponse asynchrone
+  });
+
+  // ── Relais des captures de la sonde réseau (2026-07-13) ─────────────────────
+  // Même mécanique que Vinted : la sonde vit dans le monde MAIN et MEURT avec la
+  // page ; elle postMessage chaque capture, on la relaie au background, qui la
+  // garde. C'est ce qui permet de prouver qu'eBay a bien créé l'annonce
+  // (réponse serveur) quand il se contente d'afficher une popup sans rediriger
+  // — job 63cfc7f7 : annonce 800332793676 en ligne, job laissé en pending.
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data?.__fillsellProbe) return;
+    try {
+      chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
+    } catch { /* extension rechargée : sans conséquence */ }
   });
 }
 
