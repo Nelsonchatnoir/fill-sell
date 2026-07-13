@@ -538,10 +538,17 @@ ${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hid
 ${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
 ${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 ${s} .meta .hl{color:var(--ink);}
-/* ⚠️ flex-wrap OBLIGATOIRE (2026-07-13). Sans lui, la rangée de pastilles ne
+/* ⚠️⚠️ AUCUN BACKTICK DANS CE FICHIER — tout ce CSS est un template literal JS.
+   Un backtick posé ici (j'avais écrit .left entre backticks, à la mode Markdown)
+   TERMINE la chaîne : buildCardCss se casse en plein milieu et l'app entière
+   part en écran blanc (« .left is not a function »). Et vite build ne le voit
+   PAS : le fichier reste syntaxiquement valide, il ne veut simplement plus rien
+   dire. Citer un sélecteur ? Guillemets français, jamais de backtick.
+
+   flex-wrap OBLIGATOIRE (2026-07-13). Sans lui, la rangée de pastilles ne
    pouvait PAS passer à la ligne : chaque pastille a un contenu de largeur
    irréductible (min-width auto), donc au-delà de 3-4 pastilles la rangée
-   débordait de la colonne `.left` et venait passer SOUS les boutons de la
+   débordait de la colonne de gauche et venait passer SOUS les boutons de la
    colonne de droite — c'est le chevauchement « En ligne » / « Republier ».
    La 5e pastille (« En ligne ») n'a fait que révéler le défaut, elle ne l'a pas
    créé : 4 plateformes suffisaient déjà à serrer la carte sur mobile. */
