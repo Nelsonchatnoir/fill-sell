@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-23h55 (vinted : espaces insecables normalisees dans le match d'options — '128 Go' U+00A0 du DOM matche enfin le '128 Go' genere)";
+  "2026-07-14-00h10 (sonde : corps binaires des pixels de tracking assainis a la capture + ceinture texteSain sur updateJobStatus — plus jamais d'U+0000 vers Postgres)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -370,11 +370,23 @@ async function callEdgeFunction(name, accessToken, body) {
   return data;
 }
 
+// Caractères de contrôle retirés de tout texte destiné à la base (2026-07-13,
+// job c1cd4ff1) : un U+0000 dans `error` fait REJETER le PATCH entier par
+// Postgres (« unsupported Unicode escape sequence ») — le job garde alors
+// l'erreur Postgres au lieu de la vraie, et une annonce publiée peut finir
+// "failed". La sonde assainit déjà à la capture (extraitSain) ; ceci est la
+// ceinture GLOBALE, quel que soit le chemin qui compose le message.
+function texteSain(s) {
+  return String(s ?? "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "�");
+}
+
 function updateJobStatus(accessToken, jobId, status, extra = {}) {
+  const safe = { ...extra };
+  if (typeof safe.error === "string") safe.error = texteSain(safe.error);
   return callEdgeFunction("update-job-status", accessToken, {
     job_id: jobId,
     status,
-    ...extra,
+    ...safe,
   });
 }
 
@@ -1576,7 +1588,10 @@ async function readEbayFailureDiagnostics(tabId) {
               `${String(c?.url ?? "?")} → HTTP ${c?.status}` +
               (c?.annonceId ? ` · id candidat ${c.annonceId}` : "") +
               ` · corps: ` +
-              String(c?.reponse ?? "").replace(/\s+/g, " ").slice(0, 120)
+              // texteSain : des captures posées par une sonde ANTÉRIEURE au
+              // fix (corps binaires bruts) peuvent encore vivre côté
+              // background — on n'embarque jamais leurs octets de contrôle.
+              texteSain(String(c?.reponse ?? "")).replace(/\s+/g, " ").slice(0, 120)
           )
           .join(" ; ")
       : "AUCUNE capture — la soumission n'est jamais partie, ou est partie hors fetch/XHR du top frame";
@@ -1722,6 +1737,24 @@ async function installNetworkProbe(tabId, platform) {
             window.postMessage({ __fillsellProbe: true, capture: cap }, window.location.origin);
           } catch { /* la sonde ne doit JAMAIS casser la publication */ }
         };
+        // ⚠️ CORPS BINAIRES ASSAINIS (2026-07-13, job c1cd4ff1). Le motif eBay
+        // capture TOUTE requête non-GET du domaine (assumé) — y compris les
+        // pixels de tracking (collectsysteminfo, collectbehaviorinfo) dont la
+        // réponse est un GIF ("GIF89a" + octets bruts, dont des U+0000).
+        // Embarqué tel quel dans un message d'erreur, un U+0000 est REJETÉ par
+        // Postgres (« unsupported Unicode escape sequence ») : le PATCH du job
+        // plante, et le catch-all marque le job failed avec l'erreur Postgres —
+        // une annonce PUBLIÉE (800335907526) est passée en failed comme ça.
+        // Un corps visiblement binaire n'est pas conservé (l'URL et le statut
+        // suffisent au diagnostic) ; le reste est nettoyé de ses caractères de
+        // contrôle avant tout stockage.
+        const extraitSain = (txt) => {
+          const s = String(txt ?? "");
+          if (/^GIF8|^\x89PNG|^\xFF\xD8/.test(s) || /[\x00-\x08\x0E-\x1F]/.test(s.slice(0, 64))) {
+            return `(corps binaire, ${s.length} octets — non conservé)`;
+          }
+          return s.slice(0, 250).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "\uFFFD");
+        };
         const origFetch = window.fetch;
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input?.url ?? "";
@@ -1733,7 +1766,7 @@ async function installNetworkProbe(tabId, platform) {
                 url, status: res.status,
                 prix: priceOf(init?.body),
                 annonceId: annonceIdOf(txt),
-                reponse: String(txt).slice(0, 250),
+                reponse: extraitSain(txt),
               });
             }
           } catch { /* la sonde ne doit JAMAIS casser la publication */ }
@@ -1746,11 +1779,15 @@ async function installNetworkProbe(tabId, platform) {
           try {
             if (ENDPOINT.test(this.__u ?? "") && String(this.__m).toUpperCase() !== "GET") {
               this.addEventListener("load", () => {
+                // responseText jette sur les responseType non-texte : on ne
+                // laisse pas la sonde planter pour un blob de tracking.
+                let corps = "";
+                try { corps = this.responseText ?? ""; } catch { corps = "(responseType non texte)"; }
                 relay({
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
-                  annonceId: annonceIdOf(this.responseText),
-                  reponse: String(this.responseText ?? "").slice(0, 250),
+                  annonceId: annonceIdOf(corps),
+                  reponse: extraitSain(corps),
                 });
               });
             }
