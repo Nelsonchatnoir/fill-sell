@@ -2420,6 +2420,11 @@ async function checkPublishedListings(session) {
 
       if (echecs >= MAX_UNKNOWN_CHECKS) {
         patchUnknown.platform_fields.check_unresolved = true;
+        // Horodatage de la BASCULE (pas de la dernière tentative) : c'est lui qui
+        // permet à l'app de dire « invérifiable depuis 3 jours » et de te le
+        // signaler. Posé une seule fois, jamais écrasé par les relectures.
+        patchUnknown.platform_fields.check_unresolved_since =
+          pf.check_unresolved_since ?? new Date().toISOString();
         patchUnknown.error =
           `Impossible de vérifier l'état de cette annonce ${job.platform} après ${echecs} tentatives ` +
           "(page de vérification anti-bot ou format inattendu). L'annonce N'A PAS été touchée et le job " +
@@ -2454,6 +2459,7 @@ async function checkPublishedListings(session) {
       const remis = { ...pfCourant };
       delete remis.check_unknown_count;
       delete remis.check_unresolved;
+      delete remis.check_unresolved_since; // le bandeau de l'app disparaît de lui-même
       patch.platform_fields = remis;
       patch.error = null;
       console.log(`[background] ${job.platform} ${job.id} : lecture de nouveau possible → compteurs d'indétermination effacés`);
