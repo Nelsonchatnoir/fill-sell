@@ -270,22 +270,54 @@ const StockTab = memo(function StockTab({
   const [voiceInputMode, setVoiceInputMode] = useState('write');
   const [examplesOpen, setExamplesOpen] = useState(false);
 
+  // ⚠️ RAFRAÎCHISSEMENT (2026-07-13) — sans lui, le Stock MENTAIT.
+  // La publication est faite par l'EXTENSION, dans son coin, plusieurs minutes
+  // après le clic : elle passe les jobs en "published" en base, mais cette liste
+  // n'était lue QU'UNE FOIS, au montage (deps [user?.id]). Rien ne la relisait
+  // jamais — l'article restait affiché comme non publié jusqu'au prochain
+  // rechargement complet de l'app (bug remonté par Nico : « Publier » toujours
+  // actif alors que les 4 plateformes étaient en ligne).
+  // On relit donc : au retour sur l'onglet (le cas réel — on part surveiller la
+  // publication ailleurs, on revient), et à intervalle régulier tant que l'app
+  // est visible. Pas de realtime : le projet n'en utilise nulle part, et une
+  // relecture de quelques lignes toutes les 20 s est sans effet mesurable.
+  //
+  // "processing" est dans le filtre, et ce n'est pas un détail : c'est le statut
+  // porté PENDANT la publication. Sans lui, l'article ne montrait NI « En
+  // cours… » ni ses plateformes tant que l'extension travaillait — il avait
+  // simplement l'air de n'avoir jamais été publié.
   useEffect(() => {
     if (!user?.id) return;
-    supabase
-      .from("cross_post_jobs")
-      .select("id, inventaire_id, platform, status")
-      .eq("user_id", user.id)
-      .in("status", ["pending", "published"])
-      .then(({ data }) => {
-        if (!data) return;
-        const map = {};
-        for (const job of data) {
-          if (!map[job.inventaire_id]) map[job.inventaire_id] = [];
-          map[job.inventaire_id].push(job);
-        }
-        setJobsByInventaire(map);
-      });
+    let annule = false;
+
+    const relire = async () => {
+      const { data } = await supabase
+        .from("cross_post_jobs")
+        .select("id, inventaire_id, platform, status")
+        .eq("user_id", user.id)
+        .eq("action", "publish")
+        .in("status", ["pending", "processing", "published"]);
+      if (annule || !data) return;
+      const map = {};
+      for (const job of data) {
+        if (!map[job.inventaire_id]) map[job.inventaire_id] = [];
+        map[job.inventaire_id].push(job);
+      }
+      setJobsByInventaire(map);
+    };
+
+    relire();
+    const onVisible = () => { if (document.visibilityState === "visible") relire(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") relire();
+    }, 20000);
+
+    return () => {
+      annule = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
   }, [user?.id]);
 
   const pendingTotal = Object.values(jobsByInventaire).flat()
@@ -1474,7 +1506,11 @@ const StockTab = memo(function StockTab({
                   const invested=item.buy*(item.quantite||1)+(item.purchaseCosts||0);
                   const jobs=jobsByInventaire[item.id]||[];
                   const published=jobs.filter(j=>j.status==="published").map(j=>j.platform);
-                  const hasPending=jobs.some(j=>j.status==="pending");
+                  // "processing" = publication en cours côté extension : même
+                  // affichage « En cours… » que pending (pour le vendeur, c'est
+                  // le même moment ; la nuance est purement interne).
+                  const hasPending=jobs.some(j=>j.status==="pending"||j.status==="processing");
+                  const enLigne=published.length>0;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
                     // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
@@ -1492,11 +1528,15 @@ const StockTab = memo(function StockTab({
                             {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
                             {typeLabel(item.type||"Autre",lang)}
                           </div>
-                          {(published.length>0||hasPending||item.plateforme||item.emplacement)&&(
+                          {(enLigne||hasPending||item.plateforme||item.emplacement)&&(
                             <div className="icons">
+                              {/* Statut explicite : les pastilles de plateformes disaient OÙ,
+                                  jamais QUE l'article est en ligne — d'où la confusion avec
+                                  un article jamais publié. */}
+                              {enLigne&&<div className="micon ic-online">● {lang==="en"?"Live":"En ligne"}</div>}
                               {published.map(p=>(<div key={p} className={`micon ic-${p}`}>{PLATFORM_LABELS[p]||p}</div>))}
                               {hasPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
-                              {published.length===0&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
+                              {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
                             </div>
                           )}
@@ -1504,9 +1544,13 @@ const StockTab = memo(function StockTab({
                         <div className="right">
                           <div className="price">{fmt(invested)}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
                           <div className="btn-stack">
+                            {/* Déjà en ligne : le bouton reste (on peut vouloir ajouter une
+                                plateforme) mais il ne dit plus « Publier » — il disait à
+                                l'utilisateur qu'il RESTAIT quelque chose à faire, alors que
+                                l'annonce était en ligne. */}
                             {isPro&&(
-                              <button className="btn-publier" onClick={e=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}}>
-                                {lang==='fr'?'Publier':'Publish'}
+                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}}>
+                                {enLigne?(lang==='fr'?'Republier':'Republish'):(lang==='fr'?'Publier':'Publish')}
                               </button>
                             )}
                             <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
