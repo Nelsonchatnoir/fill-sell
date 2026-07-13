@@ -36,7 +36,7 @@ import {
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, content-type, apikey",
 };
 
 function json(data: unknown, status = 200) {

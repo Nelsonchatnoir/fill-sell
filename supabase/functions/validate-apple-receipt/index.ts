@@ -36,7 +36,7 @@ serve(async (req) => {
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
   const CORS = {
     "Access-Control-Allow-Origin": corsOrigin,
-    "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, content-type, apikey",
   };
 
   if (req.method === "OPTIONS") {

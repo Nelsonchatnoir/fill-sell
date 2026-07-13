@@ -72,7 +72,7 @@ async function fetchAppleStatus(originalTransactionId: string, sandbox = false):
 serve(async (req) => {
   const CORS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-admin-key",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, content-type, apikey, x-admin-key",
   };
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
