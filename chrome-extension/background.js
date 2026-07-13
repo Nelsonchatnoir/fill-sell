@@ -17,9 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-03h30 (Vinted: preuve de commit prix via fibers + repose onglet peint; eBay: selecteur resserre) " +
-  "(precedent: Vinted VRAI blur; eBay selecteur elargi " +
-  "+ filet chip + dump DOM) ⚠️ TEMP TEST : delais de grace a 20 min";
+  "2026-07-13-11h00 (Vinted: clic TRUSTED via chrome.debugger + lecture fibers par niveaux; permission debugger ajoutee au manifest) " +
+  "⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -163,6 +162,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
       sendResponse({ painted: true });
     })().catch((e) => sendResponse({ painted: false, error: String(e?.message ?? e) }));
+    return true;
+  }
+  if (msg?.type === "VINTED_TRUSTED_CLICK" && senderTabId != null) {
+    trustedClick(senderTabId, Math.round(Number(msg.x) || 0), Math.round(Number(msg.y) || 0)).then(
+      () => sendResponse({ clicked: true }),
+      (e) => sendResponse({ clicked: false, error: String(e?.message ?? e) })
+    );
     return true;
   }
   if (msg?.type === "VINTED_UNPAINT" && senderTabId != null) {
@@ -1363,18 +1369,28 @@ async function readVintedPriceState(tabId) {
         if (!el) return { found: false, readable: false };
         const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
         if (!key) return { found: true, readable: false, dom: String(el.value ?? "") };
-        // On remonte les fibers : la prop `value` la plus HAUTE est celle du
-        // formulaire (les niveaux bas portent l'affichage formaté "95,00 €",
-        // le niveau formulaire porte "95" — relevé réel du 2026-07-13).
+        // On remonte les fibers et on renvoie TOUS les niveaux porteurs d'une
+        // prop `value` (relevé réel du 2026-07-13 : niveaux bas = affichage
+        // formaté "95,00 €", niveau formulaire = valeur BRUTE "95"). ⚠️ Ne pas
+        // résumer au "plus haut" : après la repose peinte du job c7e10631, ce
+        // raccourci a pris un niveau d'affichage pour le formulaire (faux
+        // positif → price: null envoyé quand même). C'est le content script
+        // qui exige un niveau BRUT au bon montant.
         let fiber = el[key];
-        let committed = null;
+        const levels = [];
         for (let depth = 0; fiber && depth < 8; depth++, fiber = fiber.return) {
           const v = fiber.memoizedProps && typeof fiber.memoizedProps === "object"
             ? fiber.memoizedProps.value
             : undefined;
-          if (typeof v === "string" || typeof v === "number") committed = String(v);
+          if (typeof v === "string" || typeof v === "number") levels.push(String(v));
         }
-        return { found: true, readable: committed !== null, dom: String(el.value ?? ""), committed };
+        return {
+          found: true,
+          readable: levels.length > 0,
+          dom: String(el.value ?? ""),
+          committed: levels.length ? levels[levels.length - 1] : null,
+          levels,
+        };
       },
     });
     return res?.result ?? { found: false, readable: false };
@@ -1386,6 +1402,29 @@ async function readVintedPriceState(tabId) {
 // Peintures en cours, par onglet — la restauration doit survivre à plusieurs
 // demandes successives du même job sans voler deux fois l'écran.
 const vintedPricePaintReleases = new Map();
+
+// ── Clic TRUSTED via chrome.debugger (2026-07-13) ──────────────────────────────
+// paintTab ne produit AUCUN événement d'entrée (tabs.update + windows.update,
+// rien d'autre) : rendre l'onglet visible n'a PAS suffi à sortir le formulaire
+// Vinted du mode où les commits React se perdent — job c7e10631 : prix
+// ENVOYÉ = null malgré la repose peinte. Constaté en session pilotée
+// (2026-07-13) : UN SEUL événement trusted suffit à basculer la page dans le
+// mode où les saisies synthétiques committent, pour toute la suite de la
+// session. Seul chrome.debugger permet à une extension d'émettre un événement
+// isTrusted=true (Input.dispatchMouseEvent passe par le pipeline d'entrée du
+// navigateur, comme un vrai clic). Attach/détach à chaque clic : le bandeau
+// jaune « débogage en cours » ne dure que le temps de la pose du prix.
+async function trustedClick(tabId, x, y) {
+  const target = { tabId };
+  await chrome.debugger.attach(target, "1.3");
+  try {
+    const base = { x, y, button: "left", clickCount: 1, pointerType: "mouse" };
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mousePressed", ...base });
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseReleased", ...base });
+  } finally {
+    await chrome.debugger.detach(target).catch(() => {});
+  }
+}
 
 // Résumé lisible de ce que Vinted a REÇU, à joindre à l'erreur du job.
 async function readVintedProbe(tabId) {

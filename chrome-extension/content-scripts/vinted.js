@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-13-03h30 (prix: preuve de commit React via fibers + repose onglet peint — categorie hors de cause)";
+const VINTED_BUILD = "2026-07-13-11h00 (prix: escalade par clics TRUSTED chrome.debugger + exigence niveau BRUT — paintTab seul ne suffisait pas)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -815,15 +815,36 @@ async function fillPriceField(value) {
   // lié à l'état focus/peinture du document (même famille que le throttling
   // React de l'onglet caché documenté sur eBay). Seul l'état React fait foi, et
   // il n'est lisible que depuis le monde MAIN → on le demande au background.
-  // S'il est vide : repose avec l'onglet PEINT (mode où le commit passe,
-  // vérifié), puis échec franc AVANT le clic Publier si rien n'y fait.
-  const committedOk = (s) => /[1-9]/.test(String(s?.committed ?? ""));
+  //
+  // ⚠️ RÉVISION post-job c7e10631 (2026-07-13 matin) : la 1re escalade (repose
+  // avec onglet peint) a ÉCHOUÉ — prix ENVOYÉ = null malgré la peinture, car
+  // paintTab ne produit AUCUN événement d'entrée, et la lecture « au plus
+  // haut » a pris un niveau d'affichage pour le formulaire (faux positif).
+  // Deux corrections, toutes deux issues du relevé en session pilotée :
+  //   1. la validation exige un niveau BRUT (sans €) qui parse au bon montant —
+  //      le niveau formulaire porte "95", jamais "95,00 €" ;
+  //   2. l'escalade injecte des clics TRUSTED (chrome.debugger, seuls événements
+  //      isTrusted=true qu'une extension puisse émettre) : un AVANT la repose
+  //      (constaté : un seul événement trusted bascule la page dans le mode où
+  //      les saisies synthétiques committent) et un APRÈS (focusout réel d'un
+  //      humain qui quitte le champ), avant relecture.
+  const expected = parseFloat(String(value).replace(",", "."));
+  const committedOk = (s) =>
+    Array.isArray(s?.levels) &&
+    s.levels.some((v) => {
+      if (!v || /€/.test(String(v))) return false; // niveau d'affichage formaté : ne prouve rien
+      const n = parseFloat(String(v).replace(",", "."));
+      return Number.isFinite(n) && Math.abs(n - expected) < 0.005;
+    });
   let state = await askBackground({ type: "VINTED_PRICE_STATE" });
   if (state?.readable && !committedOk(state)) {
-    console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — repose avec onglet peint");
+    console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — escalade : peinture + clics TRUSTED + repose");
     await askBackground({ type: "VINTED_PAINT_FOR_PRICE" });
     try {
+      await trustedNeutralClick(); // bascule la page dans le mode où les commits passent
       el = await typeIntoPrice();
+      await trustedNeutralClick(); // focusout RÉEL après la saisie, avant relecture
+      await sleep(1000);
       state = await askBackground({ type: "VINTED_PRICE_STATE" });
     } finally {
       await askBackground({ type: "VINTED_UNPAINT" });
@@ -831,12 +852,41 @@ async function fillPriceField(value) {
     if (state?.readable && !committedOk(state)) {
       throw new Error(
         `Prix jamais commité dans l'état React du formulaire (affiché "${String(el.value ?? "")}", ` +
-        `état "${String(state?.committed ?? "")}"), même après repose avec onglet peint — job arrêté ` +
-        "AVANT le clic Publier (sinon Vinted recevrait price: null et refuserait)."
+        `niveaux fibers [${(state?.levels ?? []).map((v) => `"${v}"`).join(", ")}]), même après clics ` +
+        "trusted + repose avec onglet peint — job arrêté AVANT le clic Publier (sinon Vinted " +
+        "recevrait price: null et refuserait)."
       );
     }
-    if (state?.readable) console.log("[vinted] prix commité à la repose (onglet peint) :", state.committed);
+    if (state?.readable) console.log("[vinted] prix commité à la repose (clics trusted) :", state.levels);
   }
+}
+
+// Clic TRUSTED « dans le vide » : un titre du formulaire (texte statique, aucun
+// handler) — JAMAIS un point arbitraire type coin haut-gauche, où vivent le
+// logo et des liens (une navigation en plein remplissage détruirait le job).
+// Le clic lui-même est émis par le background via chrome.debugger
+// (Input.dispatchMouseEvent = pipeline d'entrée du navigateur, isTrusted=true) ;
+// il exige des coordonnées viewport → on amène la cible à l'écran d'abord.
+async function trustedNeutralClick() {
+  const target = Array.from(document.querySelectorAll("h1, h2"))
+    .find((h) => h.offsetParent !== null && (h.textContent || "").trim());
+  if (!target) {
+    console.warn("[vinted] ⚠️ clic trusted : aucun titre visible à viser, clic sauté");
+    return false;
+  }
+  target.scrollIntoView({ block: "center" });
+  await sleep(400);
+  const r = target.getBoundingClientRect();
+  const res = await askBackground({
+    type: "VINTED_TRUSTED_CLICK",
+    x: r.left + r.width / 2,
+    y: r.top + r.height / 2,
+  });
+  if (!res?.clicked) {
+    console.warn("[vinted] ⚠️ clic trusted refusé par le background :", res?.error ?? "réponse nulle");
+  }
+  await humanPause();
+  return !!res?.clicked;
 }
 
 // Messages vers le background (lecture des fibers React en monde MAIN, peinture
