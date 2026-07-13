@@ -17,7 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-11h00 (Vinted: clic TRUSTED via chrome.debugger + lecture fibers par niveaux; permission debugger ajoutee au manifest) " +
+  "2026-07-13-14h00 (INVISIBLE: fenetre de travail dediee minimisee pour les 4 plateformes + suppressions, plus aucun focus vole; " +
+  "prix Vinted commite par props.onChange React; permission debugger RETIREE) " +
   "⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -155,29 +156,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     readVintedPriceState(senderTabId).then(sendResponse);
     return true;
   }
-  if (msg?.type === "VINTED_PAINT_FOR_PRICE" && senderTabId != null) {
-    (async () => {
-      if (!vintedPricePaintReleases.has(senderTabId)) {
-        vintedPricePaintReleases.set(senderTabId, await paintTab(senderTabId));
-      }
-      sendResponse({ painted: true });
-    })().catch((e) => sendResponse({ painted: false, error: String(e?.message ?? e) }));
+  if (msg?.type === "VINTED_COMMIT_PRICE" && senderTabId != null) {
+    commitVintedPrice(senderTabId, String(msg.value ?? "")).then(sendResponse);
     return true;
   }
-  if (msg?.type === "VINTED_TRUSTED_CLICK" && senderTabId != null) {
-    trustedClick(senderTabId, Math.round(Number(msg.x) || 0), Math.round(Number(msg.y) || 0)).then(
-      () => sendResponse({ clicked: true }),
-      (e) => sendResponse({ clicked: false, error: String(e?.message ?? e) })
-    );
-    return true;
-  }
-  if (msg?.type === "VINTED_UNPAINT" && senderTabId != null) {
-    (async () => {
-      const release = vintedPricePaintReleases.get(senderTabId);
-      vintedPricePaintReleases.delete(senderTabId);
-      if (release) await release();
-      sendResponse({ ok: true });
-    })().catch(() => sendResponse({ ok: false }));
+  // Captures STRUCTURÉES de la sonde réseau (succès par preuve serveur —
+  // cf. waitForPublishOutcome côté content script, cas de la modale
+  // show_item_verification_modal qui masque la redirection).
+  if (msg?.type === "VINTED_PROBE_CAPTURES" && senderTabId != null) {
+    readVintedProbeCaptures(senderTabId).then(sendResponse);
     return true;
   }
   if (msg?.type === "FILLSELL_SESSION" && msg.session?.access_token) {
@@ -858,7 +845,7 @@ async function retryInTempTab(job, handler, originalResult) {
     const tempUrl = typeof handler.newListingUrl === "function"
       ? handler.newListingUrl(job)
       : handler.newListingUrl;
-    tab = await chrome.tabs.create({ url: tempUrl + "#fillsell-temp", active: false });
+    tab = await createWorkTabInWorkWindow(tempUrl + "#fillsell-temp");
     await waitForTabComplete(tab.id, tempUrl + "#fillsell-temp");
     const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
     if (result?.draftBlocked) {
@@ -937,6 +924,96 @@ async function navigateHomeToForm(tabId, listingUrl) {
 const WORK_TAB_FRAGMENT = "#fillsell-worker";
 const workTabKey = (platform) => `fillsell_work_tab_${platform}`;
 
+// ── Fenêtre de travail DÉDIÉE (2026-07-13) ────────────────────────────────────
+// CONTRAINTE PRODUIT NON NÉGOCIABLE (Nico) : une fois l'annonce publiée depuis
+// l'app, tout le reste (cross-post, suppression, republication) est automatique
+// et INVISIBLE. Rien ne doit apparaître, passer au premier plan ni voler le
+// focus de la fenêtre de l'utilisateur — jamais, même brièvement, même pendant
+// une suppression.
+//
+// Ce que faisait l'ancienne architecture, et qui violait ça : les onglets de
+// travail vivaient dans LA fenêtre de l'utilisateur, et paintTab les activait
+// (tabs.update active:true) en ramenant la fenêtre au premier plan
+// (windows.update focused:true) — pour toute publication eBay et toute
+// suppression. Un onglet qui s'active, c'est aussi l'onglet de l'utilisateur
+// qui disparaît sous ses yeux.
+//
+// Parade : une fenêtre Chrome À NOUS, créée focused:false et immédiatement
+// minimisée, qui héberge TOUS les onglets de travail des 4 plateformes et des
+// suppressions. Toute activation d'onglet se fait DANS cette fenêtre : elle est
+// alors sans effet visible pour l'utilisateur (sa fenêtre garde le focus, son
+// onglet reste affiché). Elle est recréée à la demande si l'utilisateur la
+// ferme, et jamais ramenée au premier plan par nous.
+//
+// ⚠️ Conséquence assumée et documentée (mesurée le 2026-07-13) : une fenêtre non
+// rendue ne reçoit AUCUN événement d'entrée (souris comme clavier, y compris
+// CDP) et son rendu React peut être différé. C'est le prix de l'invisibilité, et
+// c'est le bon compromis : Vinted n'en a plus besoin (le prix se commite
+// désormais par appel direct des props React, cf. commitVintedPrice) ; eBay
+// s'appuie sur ses relectures/re-poses déjà en place, quitte à être plus lent,
+// et échoue proprement en needsUser plutôt que d'imposer quoi que ce soit à
+// l'écran.
+const WORK_WINDOW_KEY = "fillsell_work_window";
+
+async function getOrCreateWorkWindow() {
+  const store = await chrome.storage.session.get(WORK_WINDOW_KEY);
+  const known = store[WORK_WINDOW_KEY];
+  if (known != null) {
+    const win = await chrome.windows.get(known).catch(() => null);
+    if (win) return win.id;
+  }
+
+  // about:blank : la fenêtre naît vide et silencieuse ; les onglets de travail
+  // y sont créés ensuite. focused:false dès la création — on ne prend JAMAIS le
+  // focus, même le temps d'un battement.
+  const win = await chrome.windows.create({
+    url: "about:blank",
+    focused: false,
+    state: "minimized",
+  });
+  // Ceinture et bretelles : certaines plateformes ignorent `state` à la
+  // création (fenêtre créée normale puis minimisée juste après). Sans focus.
+  await chrome.windows.update(win.id, { state: "minimized", focused: false }).catch(() => {});
+  await chrome.storage.session.set({ [WORK_WINDOW_KEY]: win.id });
+  console.log(`[background] Fenêtre de travail dédiée ${win.id} créée (minimisée, jamais focus)`);
+  return win.id;
+}
+
+// Crée un onglet DANS la fenêtre de travail. Repli explicite : si la fenêtre
+// dédiée est indisponible (API refusée, fenêtre fermée pendant la course), on
+// crée l'onglet là où on peut, mais TOUJOURS en arrière-plan — jamais de vol de
+// focus, au pire un onglet inactif de plus chez l'utilisateur.
+async function createWorkTabInWorkWindow(url) {
+  try {
+    const windowId = await getOrCreateWorkWindow();
+    return await chrome.tabs.create({ url, active: false, windowId });
+  } catch (e) {
+    console.warn(
+      "[background] Fenêtre de travail indisponible, onglet créé en arrière-plan dans la fenêtre courante :",
+      String(e?.message ?? e)
+    );
+    return chrome.tabs.create({ url, active: false });
+  }
+}
+
+// Rapatrie un onglet de travail déjà existant (adopté par son fragment, ou
+// hérité d'une version antérieure de l'extension) dans la fenêtre dédiée —
+// sinon il resterait chez l'utilisateur et toute activation le lui volerait.
+// index:-1 = à la fin ; l'onglet reste inactif.
+async function moveTabToWorkWindow(tabId) {
+  try {
+    const [tab, windowId] = await Promise.all([chrome.tabs.get(tabId), getOrCreateWorkWindow()]);
+    if (tab.windowId === windowId) return tabId;
+    const moved = await chrome.tabs.move(tabId, { windowId, index: -1 });
+    const movedTab = Array.isArray(moved) ? moved[0] : moved;
+    console.log(`[background] Onglet de travail ${tabId} rapatrié dans la fenêtre dédiée ${windowId}`);
+    return movedTab?.id ?? tabId;
+  } catch (e) {
+    console.warn(`[background] Rapatriement de l'onglet ${tabId} impossible :`, String(e?.message ?? e));
+    return tabId;
+  }
+}
+
 async function getOrCreateWorkTab(platform, url) {
   const key = workTabKey(platform);
   const target = url + WORK_TAB_FRAGMENT;
@@ -948,7 +1025,12 @@ async function getOrCreateWorkTab(platform, url) {
   if (store[key] != null) {
     const tab = await chrome.tabs.get(store[key]).catch(() => null);
     if (tab) {
-      const effectiveId = await navigateWorkTab(tab.id, target);
+      // Rapatriement AVANT navigation : un onglet hérité (version antérieure de
+      // l'extension, ou fenêtre dédiée fermée par l'utilisateur) vit peut-être
+      // encore dans la fenêtre de l'utilisateur — l'y laisser, c'est risquer de
+      // la lui voler à la première activation.
+      const inWorkWindow = await moveTabToWorkWindow(tab.id);
+      const effectiveId = await navigateWorkTab(inWorkWindow, target);
       await chrome.storage.session.set({ [key]: effectiveId });
       return effectiveId;
     }
@@ -959,13 +1041,15 @@ async function getOrCreateWorkTab(platform, url) {
   const candidates = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
   const marked = candidates.find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
   if (marked) {
-    const effectiveId = await navigateWorkTab(marked.id, target);
+    const inWorkWindow = await moveTabToWorkWindow(marked.id);
+    const effectiveId = await navigateWorkTab(inWorkWindow, target);
     await chrome.storage.session.set({ [key]: effectiveId });
     return effectiveId;
   }
 
-  // 3. Aucun onglet à nous : en créer UN, mémorisé pour les jobs suivants
-  const tab = await chrome.tabs.create({ url: target, active: false });
+  // 3. Aucun onglet à nous : en créer UN dans la fenêtre de travail dédiée,
+  //    mémorisé pour les jobs suivants.
+  const tab = await createWorkTabInWorkWindow(target);
   await chrome.storage.session.set({ [key]: tab.id });
   await waitForTabComplete(tab.id, target);
   return tab.id;
@@ -1052,7 +1136,7 @@ async function navigateWorkTab(tabId, target) {
 // ne déclenche jamais la popup beforeunload, contrairement à une navigation.
 // Toujours UN SEUL onglet persistant à l'arrivée.
 async function replaceWorkTab(oldTabId, target) {
-  const fresh = await chrome.tabs.create({ url: target, active: false });
+  const fresh = await createWorkTabInWorkWindow(target);
   await waitForTabComplete(fresh.id, target);
   await chrome.tabs.remove(oldTabId).catch(() => {});
   return fresh.id;
@@ -1399,30 +1483,73 @@ async function readVintedPriceState(tabId) {
   }
 }
 
-// Peintures en cours, par onglet — la restauration doit survivre à plusieurs
-// demandes successives du même job sans voler deux fois l'écran.
-const vintedPricePaintReleases = new Map();
-
-// ── Clic TRUSTED via chrome.debugger (2026-07-13) ──────────────────────────────
-// paintTab ne produit AUCUN événement d'entrée (tabs.update + windows.update,
-// rien d'autre) : rendre l'onglet visible n'a PAS suffi à sortir le formulaire
-// Vinted du mode où les commits React se perdent — job c7e10631 : prix
-// ENVOYÉ = null malgré la repose peinte. Constaté en session pilotée
-// (2026-07-13) : UN SEUL événement trusted suffit à basculer la page dans le
-// mode où les saisies synthétiques committent, pour toute la suite de la
-// session. Seul chrome.debugger permet à une extension d'émettre un événement
-// isTrusted=true (Input.dispatchMouseEvent passe par le pipeline d'entrée du
-// navigateur, comme un vrai clic). Attach/détach à chaque clic : le bandeau
-// jaune « débogage en cours » ne dure que le temps de la pose du prix.
-async function trustedClick(tabId, x, y) {
-  const target = { tabId };
-  await chrome.debugger.attach(target, "1.3");
+// ── Commit du prix par appel DIRECT des props React (v3, 2026-07-13) ──────────
+// HISTORIQUE des deux impasses, toutes deux prouvées en réel :
+//   · v1 « repose avec onglet peint » : paintTab ne produit aucun événement
+//     d'entrée, le mode commits-perdus persistait (job c7e10631, price: null).
+//   · v2 « clic trusted chrome.debugger » : a bien commité (job 32a47b4e,
+//     prix 125 envoyé) MAIS bandeau « débogage en cours » global et non
+//     supprimable sans flag de lancement — invendable en production, et les
+//     Input.dispatchMouseEvent ne sont de toute façon PAS délivrés à une
+//     fenêtre non rendue (mesuré : 0 événement, souris comme clavier).
+// v3 — LE canal propre, prouvé en session pilotée dans les conditions exactes
+// de l'échec (onglet caché, hasFocus=false, zéro CDP) : le composant prix
+// (premier ancêtre fiber de #price dont les props portent onChange + currency/
+// locale) tient l'affichage dans son état interne mais sa prop `value` reste
+// undefined — le formulaire n'a rien reçu. Appeler DIRECTEMENT son
+// props.onChange("95") committe au niveau formulaire (prop value = "95",
+// signature exacte du mode sain). Sans événement, sans focus, sans rendu,
+// sans permission supplémentaire : Chrome par défaut, n'importe quel poste.
+async function commitVintedPrice(tabId, value) {
   try {
-    const base = { x, y, button: "left", clickCount: 1, pointerType: "mouse" };
-    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mousePressed", ...base });
-    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseReleased", ...base });
-  } finally {
-    await chrome.debugger.detach(target).catch(() => {});
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      args: [value],
+      func: (raw) => {
+        const el = document.querySelector('#price, [data-testid="price-input--input"]');
+        if (!el) return { ok: false, reason: "champ prix introuvable" };
+        const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+        if (!key) return { ok: false, reason: "fibers React introuvables sur #price" };
+        // Localisateur robuste (pas de profondeur codée en dur) : le composant
+        // prix est le premier ancêtre dont les props exposent onChange ET un
+        // marqueur monétaire (currency/locale) — relevé réel du 2026-07-13.
+        let fiber = el[key];
+        for (let depth = 0; fiber && depth < 12; depth++, fiber = fiber.return) {
+          const p = fiber.memoizedProps;
+          if (
+            p && typeof p === "object" && typeof p.onChange === "function" &&
+            ("currency" in p || "locale" in p)
+          ) {
+            try {
+              p.onChange(String(raw));
+              return { ok: true, depth };
+            } catch (e) {
+              return { ok: false, reason: `onChange a jeté : ${String(e?.message ?? e)}` };
+            }
+          }
+        }
+        return { ok: false, reason: "composant prix (onChange+currency/locale) introuvable dans les 12 niveaux" };
+      },
+    });
+    return res?.result ?? { ok: false, reason: "executeScript sans résultat" };
+  } catch (e) {
+    return { ok: false, reason: String(e?.message ?? e) };
+  }
+}
+
+// Captures brutes de la sonde réseau (objets, pas le résumé texte de
+// readVintedProbe) — pour la preuve de succès par réponse serveur.
+async function readVintedProbeCaptures(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => window.__fsCaptures ?? [],
+    });
+    return { captures: res?.result ?? [] };
+  } catch (e) {
+    return { captures: [], error: String(e?.message ?? e) };
   }
 }
 
@@ -2069,39 +2196,54 @@ async function recoverMissingListingUrls(session) {
   }
 }
 
-// ── Onglet PEINT le temps d'une action (2026-07-12) ────────────────────────────
-// Chrome ne calcule NI layout NI hydratation React pour un onglet qui n'a jamais
-// été peint — et l'onglet de travail est créé active:false, donc jamais peint.
-// Constaté et prouvé sur la page annonce Vinted (/items/<id>) :
-//   onglet caché  → le DOM est là (HTML serveur : 2,2 Mo de textContent, 105
-//                   boutons, [data-testid="item-delete-button"] présent), mais
-//                   AUCUN layout (innerText 158 car., tous les rects 0×0,
-//                   offsetParent null) et AUCUN handler React attaché : le clic
-//                   part dans le vide, la modale ne se monte JAMAIS.
-//                   → c'est très exactement l'erreur « Modale de confirmation
-//                     introuvable après le clic Supprimer ».
-//   onglet peint  → bouton 361×36, le même clic monte la modale
-//                   (item-delete-modal, item-delete-confirmation-button).
-// La publication, elle, n'a jamais eu besoin de ça : ses formulaires
-// (/items/new, /lstng…) s'hydratent en arrière-plan. C'est la page ANNONCE
-// Vinted qui exige la visibilité — on ne peint donc QUE le temps de la
-// suppression, puis on rend la main à l'onglet de l'utilisateur.
+// ── Onglet ACTIF (dans la fenêtre dédiée) le temps d'une action ────────────────
+// Historique : Chrome ne calcule ni layout ni hydratation React pour un onglet
+// jamais peint. Sur la page annonce Vinted (/items/<id>), un onglet caché donne
+// des rects 0×0 et aucun handler React attaché — le clic Supprimer part dans le
+// vide, la modale ne se monte jamais. La v1 de cette fonction traitait le
+// symptôme au pire endroit possible : elle ACTIVAIT l'onglet dans la fenêtre de
+// l'utilisateur et ramenait celle-ci au premier plan (windows.update
+// focused:true), lui volant son écran à chaque publication eBay et à chaque
+// suppression.
+//
+// v2 (2026-07-13) : les onglets de travail vivent désormais dans la FENÊTRE
+// DÉDIÉE (cf. getOrCreateWorkWindow). « Activer » un onglet là-bas est sans
+// aucun effet visible pour l'utilisateur — sa fenêtre garde le focus, son
+// onglet reste affiché. On ne touche donc plus JAMAIS à `focused` : ni sur sa
+// fenêtre, ni sur la nôtre (la ramener au premier plan serait exactement ce
+// qu'on cherche à éviter).
+//
+// ⚠️ Une fenêtre minimisée reste non rendue : cette activation ne garantit plus
+// la peinture, contrairement à la v1. C'est un compromis ASSUMÉ (contrainte
+// produit : invisible > rapide). Les chemins qui en dépendaient ont leur filet :
+//   · Vinted publication → n'en a jamais eu besoin (formulaires hydratés en
+//     arrière-plan), et le prix se commite maintenant par appel direct des props
+//     React (commitVintedPrice), sans rendu ni focus ;
+//   · eBay → relectures + re-poses déjà en place, échec propre en needsUser ;
+//   · suppressions → si le contrôle reste à 0×0, le job repart en needsUser au
+//     lieu d'imposer une fenêtre à l'écran (voir deleteListing).
+// Le jour où un chemin exige VRAIMENT la peinture, la voie propre est un rendu
+// hors-champ de la fenêtre dédiée, jamais un focus volé.
 async function paintTab(tabId) {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   if (!tab) return async () => {};
-  if (tab.active) return async () => {}; // déjà peint : rien à faire ni à rendre
+  if (tab.active) return async () => {};
 
-  // Onglet actif AVANT nous, dans la fenêtre de l'onglet de travail : on le
-  // restaurera à la fin (l'utilisateur retrouve son écran).
-  const [previous] = await chrome.tabs.query({ active: true, windowId: tab.windowId }).catch(() => []);
+  const workWindowId = await getOrCreateWorkWindow().catch(() => null);
+  if (tab.windowId !== workWindowId) {
+    // L'onglet n'est pas chez nous : on s'abstient. Aucune activation dans la
+    // fenêtre de l'utilisateur, à aucun prix — c'est la règle produit.
+    console.warn(
+      `[background] Onglet ${tabId} hors de la fenêtre de travail : activation ANNULÉE ` +
+      "(l'invisibilité prime ; le job échouera proprement si la page exige d'être rendue)"
+    );
+    return async () => {};
+  }
 
+  const [previous] = await chrome.tabs.query({ active: true, windowId: workWindowId }).catch(() => []);
   await chrome.tabs.update(tabId, { active: true }).catch(() => {});
-  // Une fenêtre minimisée/occluse ne peint pas non plus : on la ramène au
-  // premier plan (sans la déplacer ni la redimensionner).
-  await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
-  // Laisser le temps au premier paint + à l'hydratation de s'exécuter.
-  await sleep(randInt(2500, 4000));
-  console.log(`[background] Onglet de travail ${tabId} rendu VISIBLE (hydratation requise par la page)`);
+  await sleep(randInt(2500, 4000)); // laisser une chance au layout/hydratation
+  console.log(`[background] Onglet ${tabId} activé DANS la fenêtre de travail (aucun impact utilisateur)`);
 
   return async () => {
     if (previous && previous.id !== tabId) {
@@ -2149,15 +2291,31 @@ async function processDeleteJob(job, accessToken) {
     // Même onglet de travail persistant que la publication (anti-DataDome).
     const tabId = await getOrCreateWorkTab(job.platform, target);
 
-    // L'onglet doit être PEINT pendant la suppression (2026-07-12, cause
-    // prouvée de l'échec « Modale de confirmation introuvable ») — voir
-    // withPaintedTab.
+    // Onglet activé DANS la fenêtre de travail dédiée (aucun impact chez
+    // l'utilisateur — cf. paintTab v2). ⚠️ La fenêtre étant minimisée, la
+    // peinture n'est plus garantie : si la page de suppression exige un rendu
+    // (contrôles à 0×0, handlers React non attachés), le content script échoue
+    // et le job repart en needsUser (ci-dessous) plutôt que d'imposer une
+    // fenêtre à l'écran. Contrainte produit : invisible avant tout.
     const restore = await paintTab(tabId);
     let result;
     try {
       result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
     } finally {
       await restore();
+    }
+
+    // Échec typique d'une page non rendue (contrôle introuvable / modale jamais
+    // montée) : ce n'est PAS une erreur définitive — l'annonce est toujours en
+    // ligne et la suppression reste faisable. On ré-arme (borné) au lieu de
+    // brûler le job en "failed", et le message dit quoi faire.
+    if (result && !result.success && !result.dryRun && !result.needsUser && /introuvable|0×0|0x0|modale/i.test(String(result.error ?? ""))) {
+      const msg =
+        `Suppression ${job.platform} non aboutie dans l'onglet de travail (page probablement non rendue : ` +
+        `${result.error}). L'annonce est TOUJOURS en ligne. Nouvelle tentative au prochain passage ; ` +
+        "sinon la retirer à la main sur la plateforme.";
+      await rearmBounded(accessToken, job, msg);
+      return { status: "needsUser", error: msg };
     }
 
     if (result?.dryRun) {
