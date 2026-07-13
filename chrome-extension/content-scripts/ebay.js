@@ -469,6 +469,18 @@ async function fillListingForm(job) {
   if (fields.marque) {
     await fillSpecificTracked(["Marque"], fields.marque);
   }
+  // modele + stockage (2026-07-13, lot High-Tech smartphone — job c7291bea :
+  // « Modèle » et « Capacité de stockage » sont des aspects OBLIGATOIRES de la
+  // catégorie Téléphones mobiles (9355), le dropdown existait avec ses options
+  // réelles (128 Go/256 Go/512 Go) mais aucune source ne l'alimentait). Les
+  // libellés "Modèle"/"Capacité de stockage" viennent d'ebayRequiredAspects
+  // (référentiel API Taxonomy) — pas devinés.
+  if (fields.modele) {
+    await fillSpecificTracked(["Modèle"], fields.modele);
+  }
+  if (fields.stockage) {
+    await fillSpecificTracked(["Capacité de stockage"], fields.stockage);
+  }
   const taille = fields.taille ? String(fields.taille).replace(/^EU\s*/i, "") : null;
   if (taille) {
     await fillSpecificTracked(["Taille", "Pointure EU", "Pointure"], taille);
@@ -587,6 +599,8 @@ async function fillListingForm(job) {
   // encore vide dans le DOM ACTUEL — avant de conclure au needsUser.
   const knownAspectFills = [
     { labels: ["Marque"], value: fields.marque },
+    { labels: ["Modèle"], value: fields.modele },
+    { labels: ["Capacité de stockage"], value: fields.stockage },
     { labels: ["Taille", "Pointure EU", "Pointure"], value: taille },
     { labels: ["Couleur"], value: couleur },
     { labels: ["Matière", "Matériau", "Matériaux"], value: fields.matiere },
