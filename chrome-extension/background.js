@@ -17,8 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-14h00 (INVISIBLE: fenetre de travail dediee minimisee pour les 4 plateformes + suppressions, plus aucun focus vole; " +
-  "prix Vinted commite par props.onChange React; permission debugger RETIREE) " +
+  "2026-07-13-17h00 (logs propres: canal coupe = signature d un SUCCES Vinted (sonde relayee, survit a la redirection); " +
+  "listing_url eBay via le Hub vendeur; lectures eBay sans layout (fenetre minimisee)) " +
   "⚠️ TEMP TEST : delais de grace a 20 min";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
@@ -166,6 +166,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "VINTED_PROBE_CAPTURES" && senderTabId != null) {
     readVintedProbeCaptures(senderTabId).then(sendResponse);
     return true;
+  }
+  // Capture relayée en direct par la sonde (via le content script) : elle est
+  // stockée ICI pour survivre à la redirection qui détruit la page.
+  if (msg?.type === "VINTED_PROBE_CAPTURE" && senderTabId != null) {
+    recordVintedCapture(senderTabId, msg.capture ?? {});
+    sendResponse({ ok: true });
+    return; // réponse synchrone
   }
   if (msg?.type === "FILLSELL_SESSION" && msg.session?.access_token) {
     chrome.storage.local
@@ -582,6 +589,10 @@ async function processJob(rawJob, accessToken) {
 
   console.log(`[background] Job ${job.id} → ${job.platform}`);
 
+  // Hissé hors du try : sur canal coupé, le catch doit pouvoir interroger la
+  // sonde de CET onglet pour savoir si l'annonce a été créée malgré tout.
+  let tabId = null;
+
   try {
     // AVANT tout : catégorie résolue ? Sinon échec sec, sans ouvrir d'onglet
     // ni naviguer (voir precheckJob).
@@ -612,7 +623,9 @@ async function processJob(rawJob, accessToken) {
     // entryUrl (eBay) : l'onglet de travail atterrit d'abord sur la home du
     // site, puis rejoint le formulaire par une navigation interne — jamais
     // d'ouverture d'onglet directement sur l'URL de dépôt.
-    const tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
+    // (workTabId est déclaré HORS du try : le catch en a besoin pour demander à
+    // la sonde si l'annonce a malgré tout été créée — cf. canal coupé.)
+    tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
     if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
     // ⚠️ eBay : onglet PEINT pendant le remplissage (2026-07-12, non encore
@@ -731,6 +744,30 @@ async function processJob(rawJob, accessToken) {
     // pas un verdict sur le job — ré-armement borné plutôt que failed sec
     // (cas réel du 2026-07-06 : "message channel closed before a response").
     if (/message channel closed|Receiving end does not exist/i.test(msg)) {
+      // ⚠️ D'ABORD : le canal coupé peut être la SIGNATURE D'UN SUCCÈS.
+      // Vinted REDIRIGE après une publication réussie — la redirection détruit
+      // le content script AVANT qu'il ne réponde, et le job partait en retry
+      // puis en "failed" alors que l'annonce était EN LIGNE (job ba84ebb0,
+      // 2026-07-13 : New Balance 125 € publiée, job failed). Ne jamais conclure
+      // à l'échec sans avoir demandé au serveur ce qu'il a répondu : les
+      // captures de la sonde sont relayées au background et SURVIVENT à la
+      // mort de la page.
+      const publishedUrl = job.platform === "vinted" && tabId != null
+        ? await vintedUploadSucceeded(tabId).catch(() => null)
+        : null;
+      if (publishedUrl) {
+        console.log(
+          `[background] Job ${job.id} : canal coupé PAR LA REDIRECTION de succès — ` +
+          `l'annonce EXISTE (${publishedUrl}), publication confirmée par la réponse serveur`
+        );
+        await updateJobStatus(accessToken, job.id, "published", {
+          error: null,
+          listing_url: publishedUrl,
+        });
+        await recordRecentResult(job, "published");
+        return { status: "published", listingUrl: publishedUrl };
+      }
+
       console.warn(`[background] Job ${job.id} : canal coupé pendant le remplissage (transitoire) — ${msg}`);
       await rearmBounded(accessToken, job, `Remplissage interrompu (onglet navigué/rechargé) : ${msg}`)
         .catch((err) => console.error("[background] update-job-status failed:", err));
@@ -1393,6 +1430,19 @@ async function installVintedProbe(tabId) {
           const m = body.match(/"price"\s*:\s*("[^"]*"|[\d.]+|null)/i);
           return m ? m[1] : null;
         };
+        // ⚠️ RELAIS IMMÉDIAT (2026-07-13) : window.__fsCaptures vit dans la PAGE
+        // et MEURT avec elle. Or Vinted REDIRIGE après une publication réussie —
+        // au moment où on voudrait lire la preuve, la page (et la capture) n'existe
+        // déjà plus (job ba84ebb0 : annonce en ligne, job en "failed"). Chaque
+        // capture est donc poussée DANS L'INSTANT vers le content script
+        // (postMessage : seul canal entre monde MAIN et monde isolé), qui la relaie
+        // au background, qui la garde. La preuve survit ainsi à la navigation.
+        const relay = (cap) => {
+          window.__fsCaptures.push(cap);
+          try {
+            window.postMessage({ __fillsellProbe: true, capture: cap }, window.location.origin);
+          } catch { /* la sonde ne doit JAMAIS casser la publication */ }
+        };
         const origFetch = window.fetch;
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input?.url ?? "";
@@ -1400,7 +1450,7 @@ async function installVintedProbe(tabId) {
           try {
             if (ENDPOINT.test(url) && String(init?.method ?? "GET").toUpperCase() !== "GET") {
               const txt = await res.clone().text().catch(() => "");
-              window.__fsCaptures.push({
+              relay({
                 url, status: res.status,
                 prix: priceOf(init?.body),
                 reponse: String(txt).slice(0, 250),
@@ -1416,7 +1466,7 @@ async function installVintedProbe(tabId) {
           try {
             if (ENDPOINT.test(this.__u ?? "") && String(this.__m).toUpperCase() !== "GET") {
               this.addEventListener("load", () => {
-                window.__fsCaptures.push({
+                relay({
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
                   reponse: String(this.responseText ?? "").slice(0, 250),
@@ -1538,19 +1588,59 @@ async function commitVintedPrice(tabId, value) {
   }
 }
 
-// Captures brutes de la sonde réseau (objets, pas le résumé texte de
-// readVintedProbe) — pour la preuve de succès par réponse serveur.
+// Captures relayées par la sonde, gardées CÔTÉ BACKGROUND (2026-07-13).
+// Indispensable : la page — donc window.__fsCaptures — meurt à la redirection
+// post-publication, exactement quand on a besoin de la preuve. Ici, elles
+// survivent à la navigation, à la mort du content script, et au job lui-même.
+const vintedCapturesByTab = new Map();
+
+function recordVintedCapture(tabId, capture) {
+  const list = vintedCapturesByTab.get(tabId) ?? [];
+  list.push(capture);
+  // On ne garde que les dernières : un onglet de travail sert des dizaines de
+  // jobs sans jamais être fermé.
+  vintedCapturesByTab.set(tabId, list.slice(-10));
+}
+
+// Captures brutes de la sonde (objets, pas le résumé texte de readVintedProbe).
+// Union des deux sources : celles relayées (survivent à tout) et celles encore
+// présentes dans la page (au cas où le relais n'aurait pas eu le temps).
 async function readVintedProbeCaptures(tabId) {
+  let inPage = [];
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
       func: () => window.__fsCaptures ?? [],
     });
-    return { captures: res?.result ?? [] };
-  } catch (e) {
-    return { captures: [], error: String(e?.message ?? e) };
+    inPage = res?.result ?? [];
+  } catch { /* page morte/naviguée : les captures relayées suffisent */ }
+  const relayed = vintedCapturesByTab.get(tabId) ?? [];
+  const seen = new Set();
+  const captures = [...relayed, ...inPage].filter((c) => {
+    const k = `${c?.url}|${c?.status}|${c?.reponse}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return { captures };
+}
+
+// L'annonce Vinted a-t-elle RÉELLEMENT été créée ? Lecture de la réponse
+// serveur : HTTP 200 + code:0 + item.id ⇒ oui, quoi qu'ait fait la page ensuite
+// (redirection qui tue le content script, modale de vérification, timeout…).
+// Retourne l'URL de l'annonce, ou null.
+async function vintedUploadSucceeded(tabId) {
+  const { captures } = await readVintedProbeCaptures(tabId);
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    if (Number(c?.status) !== 200) continue;
+    if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
+    const body = String(c?.reponse ?? "");
+    const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
+    if (id && /"code"\s*:\s*0\b/.test(body)) return `https://www.vinted.fr/items/${id[1]}`;
   }
+  return null;
 }
 
 // Résumé lisible de ce que Vinted a REÇU, à joindre à l'erreur du job.
@@ -1583,15 +1673,36 @@ async function readVintedProbe(tabId) {
 // qui a marqué "failed" une annonce réellement publiée. Texte relevé en réel :
 // « Votre annonce est désormais publiée sur le site ».
 // On cherche la formulation, pas le conteneur : c'est le seul discriminant fiable.
+// ⚠️ VISIBILITÉ SANS LAYOUT (2026-07-13, fenêtre de travail dédiée) : ne jamais
+// filtrer par getClientRects()/offsetParent ici. Un onglet non rendu n'a AUCUN
+// layout — tous les rects valent 0, y compris pour les bandeaux réellement
+// affichés. Ces deux lectures deviendraient aveugles : plus jamais de
+// confirmation de publication reconnue, plus jamais d'erreur détectée. Le style
+// CALCULÉ, lui, reste disponible sans layout : c'est le seul critère de
+// visibilité utilisable dans une fenêtre minimisée. innerText dépend AUSSI du
+// layout (vide sans rendu) → textContent.
+function estVisibleSansLayout(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+  }
+  return true;
+}
+
 async function readEbaySuccessNotice(tabId) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => {
+      // La fonction injectée ne capture AUCUNE portée : le helper de visibilité
+      // est passé en source et reconstruit dans la page.
+      args: [String(estVisibleSansLayout)],
+      func: (helperSrc) => {
+        const estVisible = new Function(`return (${helperSrc})`)();
         const RE = /annonce est (?:désormais )?(?:en ligne|publiée)|votre annonce a été (?:publiée|mise en vente)|listing is now live|your listing (?:was|has been) (?:published|posted)/i;
         for (const el of document.querySelectorAll('[role="alert"], .page-notice, .inline-notice, [class*="notice" i], [class*="success" i]')) {
-          if (!el.getClientRects().length) continue; // invisible
-          const t = (el.innerText || "").replace(/\s+/g, " ").trim();
+          if (!estVisible(el)) continue;
+          const t = (el.textContent || "").replace(/\s+/g, " ").trim();
           if (t && RE.test(t)) return t.slice(0, 160);
         }
         return null;
@@ -1608,13 +1719,15 @@ async function readVisibleEbayErrors(tabId) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => {
+      args: [String(estVisibleSansLayout)], // cf. readEbaySuccessNotice : pas de layout en fenêtre minimisée
+      func: (helperSrc) => {
+        const estVisible = new Function(`return (${helperSrc})`)();
         const texts = [];
         const seen = new Set();
         const sel = '[role="alert"], .page-notice, .inline-notice, [class*="error" i]';
         for (const el of document.querySelectorAll(sel)) {
-          if (!el.getClientRects().length) continue; // invisible
-          const t = (el.innerText || "").replace(/\s+/g, " ").trim();
+          if (!estVisible(el)) continue;
+          const t = (el.textContent || "").replace(/\s+/g, " ").trim();
           if (t.length < 8 || t.length > 250 || seen.has(t)) continue;
           seen.add(t);
           texts.push(t);
@@ -1669,6 +1782,15 @@ const MY_LISTINGS_URL = {
   // (/my-adverts/creating) avant d'atteindre "Actuellement en ligne"
   // (/my-adverts) — délai de modération observé > 30 min. On regarde les deux.
   beebs: "https://www.beebs.app/fr/account/my-adverts/creating",
+  // eBay (ajouté le 2026-07-13) : le commentaire ci-dessus disait « eBay
+  // redirige directement, pas d'aller-retour » — c'était une SUPPOSITION, eBay
+  // n'ayant jamais publié en réel à l'époque (ré-auth passkey). Maintenant qu'il
+  // publie : la page d'après-publication n'expose PAS d'URL /itm/ exploitable
+  // (job f89341ab : annonce 800332688748 bel et bien en ligne, listing_url vide,
+  // « aucune URL capturée »). VÉRIFIÉ sur le Hub vendeur : /sh/lst/active porte
+  // le lien https://www.ebay.fr/itm/800332688748 avec le TITRE exact de
+  // l'annonce — exactement ce dont findListingLinkInPage a besoin.
+  ebay: "https://www.ebay.fr/sh/lst/active",
 };
 
 async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000) {
