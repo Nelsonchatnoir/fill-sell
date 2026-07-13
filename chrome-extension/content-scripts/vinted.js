@@ -1065,7 +1065,9 @@ async function confirmDropdownIfNeeded() {
 // matche "XS / 34 / 6" — textes d'options confirmés par inspection DOM.
 function findOptionByText(root, optionSelector, text) {
   const options = Array.from(root.querySelectorAll(optionSelector));
-  const normalize = (s) => s.trim().toLowerCase();
+  // \s+ → " " : mêmes espaces insécables que dans la cascade (cf.
+  // normalizeFuzzy — « 128 Go » du DOM porte U+00A0, prouvé job 7b67d67f).
+  const normalize = (s) => s.replace(/\s+/g, " ").trim().toLowerCase();
   const target = normalize(text);
   const exact = options.find(
     (o) =>
@@ -1101,8 +1103,15 @@ async function waitForOptionByText(optionSelector, text, timeoutMs = 5000) {
 //   3. composants — la valeur est éclatée sur "et"/","/"&"/"+"/"/" et
 //      chaque composant repasse par 1 puis 2/2bis ("Résine" seul, etc.)
 // Retourne { el, label, stage } ou null — le caller décide de skipper. ──
+// ⚠️ ESPACES NORMALISÉS (2026-07-13, job 7b67d67f — prouvé par relevé de
+// codes) : les options Vinted à valeur numérique portent une ESPACE
+// INSÉCABLE entre nombre et unité — « 128 Go » du DOM est
+// 0031 0032 0038 00A0 0047 006F (U+00A0), jamais égal au « 128 Go » (espace
+// normale) généré par l'IA. Aucun étage de la cascade ne matchait → champ
+// stockage sauté → refus 400 Vinted (internal_memory_capacity). \s couvre
+// U+00A0 et U+202F : les deux côtés de la comparaison passent par ici.
 const normalizeFuzzy = (s) =>
-  s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  s.replace(/\s+/g, " ").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 function containsAsWords(hay, needle) {
   if (!needle) return false;

@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-23h10 (lot High-Tech smartphone : vinted modele/stockage/simlockage — defaut assume Non=desimlocke — et ebay Modele/Capacite de stockage alimentes)";
+  "2026-07-13-23h55 (vinted : espaces insecables normalisees dans le match d'options — '128 Go' U+00A0 du DOM matche enfin le '128 Go' genere)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
