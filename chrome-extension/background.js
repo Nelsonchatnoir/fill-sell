@@ -1966,13 +1966,24 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // pattern" y ramènerait l'URL d'un AUTRE article — et on l'écrirait dans
 // listing_url, donc la détection de vente surveillerait le mauvais article et
 // le retrait cross-plateforme supprimerait la mauvaise annonce.
-// Règle : match par titre d'abord ; à défaut, on n'accepte un lien sans titre
-// QUE s'il est le SEUL de la page (cas d'une vraie page de confirmation).
-async function findListingLinkInPage(tabId, patternSource, title = null) {
+//
+// ⚠️⚠️ CE DANGER S'EST RÉALISÉ (2026-07-13, constaté en base). Le repli
+// « lien unique » ci-dessous contournait la garde qu'on venait d'écrire : sur
+// « Mes annonces » Beebs, UNE SEULE annonce était listée à ce moment-là (le
+// T-shirt Patagonia — la New Balance était encore en modération). unique === 1,
+// donc on a rendu l'URL du Patagonia… pour le job New Balance. Résultat en base :
+// un job Beebs « 9060 Noir » portant l'URL de l'annonce du T-shirt. Une vente du
+// Patagonia aurait été comptée sur la New Balance, et un retrait cross-plateforme
+// aurait SUPPRIMÉ LA MAUVAISE ANNONCE.
+// Règle désormais : sur une page de LISTE (Mes annonces, profil vendeur…), le
+// match par TITRE est OBLIGATOIRE — requireTitle:true. Le repli « lien unique »
+// ne vaut QUE sur une vraie page de confirmation, où l'unique lien est
+// forcément celui de l'annonce qu'on vient de déposer.
+async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false } = {}) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (src, wanted) => {
+      func: (src, wanted, titreObligatoire) => {
         const re = new RegExp(src, "i");
         const matches = [];
         for (const a of Array.from(document.querySelectorAll("a[href]"))) {
@@ -1990,12 +2001,16 @@ async function findListingLinkInPage(tabId, patternSource, title = null) {
             if (target && hay.includes(target)) return url;
           }
         }
-        // Pas de correspondance par titre : un lien unique est sans ambiguïté
-        // (page de confirmation) ; plusieurs → on refuse de deviner.
+        // Page de liste : pas de titre reconnu = on ne rend RIEN. Mieux vaut un
+        // listing_url vide (que la re-capture différée retentera) qu'une URL qui
+        // appartient à un autre article.
+        if (titreObligatoire) return null;
+        // Page de confirmation : un lien unique est sans ambiguïté ;
+        // plusieurs → on refuse de deviner.
         const unique = [...new Set(matches.map((m) => m.url))];
         return unique.length === 1 ? unique[0] : null;
       },
-      args: [patternSource, title],
+      args: [patternSource, title, requireTitle],
     });
     return res?.result ?? null;
   } catch (e) {
@@ -2020,7 +2035,9 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
     await loaded;
     await sleep(randInt(1200, 2500)); // rendu de la liste
 
-    const url = await findListingLinkInPage(tabId, pattern.source, title);
+    // requireTitle : page de LISTE — jamais de repli « lien unique » ici (c'est
+    // ce repli qui a collé l'URL du T-shirt Patagonia sur le job New Balance).
+    const url = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
     if (url) {
       console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces — ${url}`);
       return url;
@@ -2438,7 +2455,10 @@ async function recoverMissingListingUrls(session) {
       await sleep(randInt(1500, 3000)); // rendu de la liste
       const stillMissing = [];
       for (const job of remaining) {
-        const url = await findListingLinkInPage(tabId, pattern.source, job.title);
+        // requireTitle : on est sur une page de LISTE, et on y cherche PLUSIEURS
+        // jobs à la fois — le repli « lien unique » y serait catastrophique
+        // (il attribuerait la même URL à tous les jobs de la plateforme).
+        const url = await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
         if (url) {
           console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
           await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
