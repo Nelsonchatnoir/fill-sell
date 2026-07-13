@@ -2087,6 +2087,29 @@ export default function ListingPreviewScreen({
       if (addToStock && currentInvId && processedPhotos?.length) {
         await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", currentInvId);
       }
+      // Le DERNIER prix publié fait foi dans l'inventaire (2026-07-13, job
+      // 3d194668) : le prix saisi au stepper n'était JAMAIS persisté — la
+      // ligne inventaire gardait le prix de la génération initiale (souvent
+      // NULL si le prix a été fixé après), et « Republier » depuis le Stock
+      // repartait au prix vide → job price=NULL → refus plateforme.
+      // .select() de contrôle : leçon RLS profiles — un UPDATE silencieusement
+      // bloqué doit se VOIR, pas passer pour un succès. Policy « update own »
+      // (auth.uid() = user_id) + GRANT UPDATE authenticated vérifiés en base
+      // le 2026-07-13. Jamais bloquant : la publication, elle, a réussi.
+      if (currentInvId && price != null && Number(price) > 0) {
+        const { data: prixMaj, error: prixErr } = await supabase
+          .from("inventaire")
+          .update({ prix_vente: Number(price) })
+          .eq("id", currentInvId)
+          .select("id, prix_vente");
+        if (prixErr || !prixMaj?.length) {
+          console.error(
+            `[FillSell] prix_vente NON persisté sur inventaire ${currentInvId} — ` +
+            (prixErr ? `update en erreur : ${prixErr.message}` : "update silencieusement bloqué (RLS ?)") +
+            " — le prochain « Republier » repartirait sans prix."
+          );
+        }
+      }
       setDone(true);
     } catch (e) {
       setPublishError(e.message);
