@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-13-14h00 (prix commite par props.onChange React — invisible, zero debugger; succes prouve par la sonde + modale post-publi fermee)";
+const VINTED_BUILD = "2026-07-13-17h00 (sonde relayee au background — la preuve de publication survit a la redirection qui tue la page)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -40,6 +40,19 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
 
     return true; // réponse asynchrone
+  });
+
+  // ── Relais des captures de la sonde réseau (2026-07-13) ─────────────────────
+  // La sonde vit dans le monde MAIN (window.__fsCaptures) : elle MEURT avec la
+  // page. Or Vinted redirige après une publication réussie — au moment où on
+  // voudrait lire la preuve, elle n'existe plus (job ba84ebb0 : annonce en
+  // ligne, job en "failed"). La sonde postMessage donc chaque capture ; on la
+  // relaie AUSSITÔT au background, seul endroit qui survit à la navigation.
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data?.__fillsellProbe) return;
+    try {
+      chrome.runtime.sendMessage({ type: "VINTED_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
+    } catch { /* extension rechargée : sans conséquence */ }
   });
 }
 
