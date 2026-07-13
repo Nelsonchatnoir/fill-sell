@@ -17,9 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-22h00 (detection d etat: lecture depuis un VRAI ONGLET — le fetch du service worker etait bloque 403 par DataDome " +
-  "(boucle unknown infinie sur Leboncoin); indetermine BORNE (4 essais puis job marque non verifiable, retry 24h); " +
-  "page anti-bot ne peut plus passer pour 'active')";
+  "2026-07-13-23h00 (fenetre de travail: UNE SEULE, toujours — adoption par fragment si l id est oublie, creations serialisees, " +
+  "consolidation des fenetres en trop; precedent: detection d etat lue depuis un VRAI ONGLET + indetermine borne)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -1024,12 +1023,50 @@ const workTabKey = (platform) => `fillsell_work_tab_${platform}`;
 // l'écran.
 const WORK_WINDOW_KEY = "fillsell_work_window";
 
-async function getOrCreateWorkWindow() {
+// ⚠️ UNE SEULE FENÊTRE, TOUJOURS (durci le 2026-07-13 — des fenêtres minimisées
+// s'accumulaient). La v1 ne savait retrouver sa fenêtre QUE par l'id mémorisé en
+// storage.session. Deux trous, tous deux réalistes :
+//   1. l'id se perd (redémarrage du navigateur, storage.session vidé) alors que
+//      la fenêtre, elle, existe toujours → on en créait une DE PLUS, et ainsi de
+//      suite à chaque perte de mémoire ;
+//   2. deux appels concurrents (une publication et une vérification d'état qui
+//      démarrent ensemble) passaient tous les deux le test « pas de fenêtre »
+//      avant que le premier n'ait écrit son id → DEUX fenêtres créées d'un coup.
+// Parade : on ne se fie plus à la mémoire seule — on ADOPTE toute fenêtre qui
+// contient déjà un onglet de travail à nous (fragment #fillsell-worker), on
+// SÉRIALISE les créations (une seule à la fois), et on CONSOLIDE : si plusieurs
+// fenêtres de travail traînent, on rapatrie leurs onglets dans la première et on
+// ferme les surnuméraires. L'invariant « une seule fenêtre » est ainsi rétabli
+// même après un état déjà dégradé.
+let workWindowInFlight = null;
+
+function getOrCreateWorkWindow() {
+  if (!workWindowInFlight) {
+    workWindowInFlight = resolveWorkWindow().finally(() => { workWindowInFlight = null; });
+  }
+  return workWindowInFlight;
+}
+
+async function resolveWorkWindow() {
   const store = await chrome.storage.session.get(WORK_WINDOW_KEY);
   const known = store[WORK_WINDOW_KEY];
   if (known != null) {
     const win = await chrome.windows.get(known).catch(() => null);
-    if (win) return win.id;
+    if (win) {
+      await consolidateWorkWindows(win.id);
+      return win.id;
+    }
+  }
+
+  // Mémoire perdue : la fenêtre existe peut-être encore. On la reconnaît à ses
+  // onglets de travail (fragment #fillsell-worker) — jamais à une fenêtre de
+  // l'utilisateur, qui n'en porte pas.
+  const adoptee = await findExistingWorkWindow();
+  if (adoptee != null) {
+    await chrome.storage.session.set({ [WORK_WINDOW_KEY]: adoptee });
+    console.log(`[background] Fenêtre de travail ${adoptee} RETROUVÉE (id oublié) — réutilisée, aucune création`);
+    await consolidateWorkWindows(adoptee);
+    return adoptee;
   }
 
   // about:blank : la fenêtre naît vide et silencieuse ; les onglets de travail
@@ -1044,8 +1081,43 @@ async function getOrCreateWorkWindow() {
   // création (fenêtre créée normale puis minimisée juste après). Sans focus.
   await chrome.windows.update(win.id, { state: "minimized", focused: false }).catch(() => {});
   await chrome.storage.session.set({ [WORK_WINDOW_KEY]: win.id });
-  console.log(`[background] Fenêtre de travail dédiée ${win.id} créée (minimisée, jamais focus)`);
+  console.log(`[background] Fenêtre de travail dédiée ${win.id} CRÉÉE (minimisée, jamais focus)`);
   return win.id;
+}
+
+// Une fenêtre est « à nous » si elle contient au moins un onglet portant notre
+// fragment. Aucune fenêtre de l'utilisateur ne peut être adoptée par erreur.
+async function findExistingWorkWindow() {
+  const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
+  const notres = fenetres.filter((w) =>
+    (w.tabs ?? []).some((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))
+  );
+  return notres.length ? notres[0].id : null;
+}
+
+// Répare un état déjà dégradé : plusieurs fenêtres de travail ouvertes. On
+// rapatrie leurs onglets dans celle qu'on garde, puis on ferme les autres.
+// Idempotent et silencieux quand tout va bien (cas normal : aucune fenêtre en
+// trop → aucune action).
+async function consolidateWorkWindows(gardee) {
+  const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
+  const enTrop = fenetres.filter(
+    (w) => w.id !== gardee && (w.tabs ?? []).some((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))
+  );
+  if (!enTrop.length) return;
+
+  console.warn(
+    `[background] ${enTrop.length} fenêtre(s) de travail en trop détectée(s) — rapatriement des onglets ` +
+    `dans la fenêtre ${gardee}, puis fermeture (invariant : UNE seule fenêtre)`
+  );
+  for (const w of enTrop) {
+    for (const t of w.tabs ?? []) {
+      if ((t.url || "").includes(WORK_TAB_FRAGMENT)) {
+        await chrome.tabs.move(t.id, { windowId: gardee, index: -1 }).catch(() => {});
+      }
+    }
+    await chrome.windows.remove(w.id).catch(() => {});
+  }
 }
 
 // Crée un onglet DANS la fenêtre de travail. Repli explicite : si la fenêtre
