@@ -4,6 +4,7 @@ import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
@@ -1505,7 +1506,12 @@ const StockTab = memo(function StockTab({
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   const invested=item.buy*(item.quantite||1)+(item.purchaseCosts||0);
                   const jobs=jobsByInventaire[item.id]||[];
-                  const published=jobs.filter(j=>j.status==="published").map(j=>j.platform);
+                  // ⚠️ dédoublonnage (2026-07-13) : un article REPUBLIÉ crée un
+                  // NOUVEAU job pour la même plateforme, sans clore l'ancien —
+                  // deux jobs "published" leboncoin coexistent donc en base pour
+                  // la même et unique annonce (même listing_url, vérifié). Sans
+                  // ce Set, la pastille Leboncoin s'affichait DEUX FOIS.
+                  const published=[...new Set(jobs.filter(j=>j.status==="published").map(j=>j.platform))];
                   // "processing" = publication en cours côté extension : même
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
@@ -1534,7 +1540,16 @@ const StockTab = memo(function StockTab({
                                   jamais QUE l'article est en ligne — d'où la confusion avec
                                   un article jamais publié. */}
                               {enLigne&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
-                              {published.map(p=>(<div key={p} className={`micon ic-${p}`}>{PLATFORM_LABELS[p]||p}</div>))}
+                              {/* LOGOS, pas les noms écrits : « Leboncoin » + « Beebs » en
+                                  toutes lettres débordaient la carte en largeur mobile, quel
+                                  que soit le CSS. Un logo carré de 18 px règle le problème à
+                                  la racine. title= garde le nom accessible au survol/lecteur
+                                  d'écran. */}
+                              {published.map(p=>(
+                                <span key={p} className="plogo" title={PLATFORM_LABELS[p]||p}>
+                                  <PlatformLogo platform={p} size={18}/>
+                                </span>
+                              ))}
                               {hasPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
                               {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
