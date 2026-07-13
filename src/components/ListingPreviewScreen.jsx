@@ -1757,6 +1757,15 @@ export default function ListingPreviewScreen({
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
+    // Garde-fou prix (2026-07-13, job 3d194668) : un job price=NULL a atteint
+    // la base via « Republier » et n'a été refusé qu'en bout de chaîne, par
+    // Vinted. AUCUN flux ne doit pouvoir publier sans prix valide — seuil à
+    // 1 €, le minimum Vinted (le plus strict des quatre plateformes).
+    const prixNum = Number(price);
+    if (price == null || String(price).trim() === "" || !Number.isFinite(prixNum) || prixNum < 1) {
+      setPublishError(t("stepPublishPriceMissing"));
+      return;
+    }
     setPublishing(true);
     setPublishError("");
     try {
