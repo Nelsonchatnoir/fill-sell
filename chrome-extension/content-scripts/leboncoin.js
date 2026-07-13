@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-12-18h00 (commentaire DELETE_DRY_RUN périmé retiré — aucun changement de comportement)";
+const LEBONCOIN_BUILD = "2026-07-13-23h45 (suppression SANS LAYOUT : lien /suppression + confirmation lus sans rects ni innerText)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -141,7 +141,12 @@ async function deleteListing(job) {
   realClick(confirmBtn);
   // Attendu : "Votre demande de suppression a bien été prise en compte".
   await sleep(3000);
-  t(`résultat : ${document.body.innerText.includes("suppression a bien été prise en compte") ? "confirmation reçue" : "confirmation NON détectée (vérifier)"}`);
+  // ⚠️ textContent, PAS innerText : l'onglet de travail vit dans une fenêtre
+  // minimisée, jamais rendue — innerText y est TOUJOURS vide (il dépend du
+  // layout). La confirmation ultime reste de toute façon celle du background,
+  // qui interroge la plateforme.
+  const corps = (document.body.textContent ?? "").replace(/\s+/g, " ");
+  t(`résultat : ${corps.includes("suppression a bien été prise en compte") ? "confirmation reçue" : "confirmation non lue sur la page (déléguée au background)"}`);
   return { success: true, trace };
 }
 
@@ -152,8 +157,18 @@ async function deleteListing(job) {
 // puis on retombe sur les anciennes heuristiques.
 function findLbcDelete(root) {
   if (!root) return null;
-  const byHref = Array.from(root.querySelectorAll('a[href*="/suppression"]'))
-    .find((a) => a.getClientRects().length);
+  // ⚠️ PAS de getClientRects ici : fenêtre minimisée = aucun layout = 0 partout,
+  // le lien de suppression n'était donc JAMAIS retenu. La visibilité se lit sur
+  // le style calculé, qui reste disponible sans rendu.
+  const estVisible = (el) => {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
+      const st = getComputedStyle(n);
+      if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+    }
+    return true;
+  };
+  const byHref = Array.from(root.querySelectorAll('a[href*="/suppression"]')).find(estVisible);
   if (byHref) return byHref;
   return (
     root.querySelector('[data-qa-id*="delete"], [data-qa-id*="supprimer"]') ??
