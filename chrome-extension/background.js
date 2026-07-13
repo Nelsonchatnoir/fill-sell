@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-20h20 (diagnostic joint au « non confirmée » eBay : dump des captures de la sonde + markup d'une popup visible non reconnue — pur logging)";
+  "2026-07-13-20h25 (sonde : numero d'annonce extrait sur le corps COMPLET avant troncature a 250 chars, listing_id ajoute au motif, angles morts documentes)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -1573,7 +1573,9 @@ async function readEbayFailureDiagnostics(tabId) {
           .slice(-5)
           .map(
             (c) =>
-              `${String(c?.url ?? "?")} → HTTP ${c?.status} · corps: ` +
+              `${String(c?.url ?? "?")} → HTTP ${c?.status}` +
+              (c?.annonceId ? ` · id candidat ${c.annonceId}` : "") +
+              ` · corps: ` +
               String(c?.reponse ?? "").replace(/\s+/g, " ").slice(0, 120)
           )
           .join(" ; ")
@@ -1662,6 +1664,16 @@ const PROBE_ENDPOINTS = {
   ebay: String.raw`ebay\.(?:fr|com)`,
 };
 
+// ⚠️ ANGLES MORTS ASSUMÉS de la sonde (2026-07-13, relevés lors du job
+// 5e3ee1e2 — notés pour référence future, PAS élargis tant que le besoin réel
+// n'apparaît pas, la preuve DOM par modale couvrant le cas rencontré) :
+//   • TOP FRAME uniquement (executeScript sans allFrames) : une soumission
+//     partie d'une iframe n'est pas vue ;
+//   • fetch/XHR de la PAGE uniquement : navigator.sendBeacon, les web workers
+//     et le service worker de la plateforme échappent aux hooks ;
+//   • un POST de formulaire pleine page (navigation document) n'est pas une
+//     requête fetch/XHR : invisible aussi.
+
 async function installNetworkProbe(tabId, platform) {
   const endpointSource = PROBE_ENDPOINTS[platform];
   if (!endpointSource) return;
@@ -1683,6 +1695,18 @@ async function installNetworkProbe(tabId, platform) {
             if (item && Object.prototype.hasOwnProperty.call(item, "price")) return JSON.stringify(item.price);
           } catch { /* pas du JSON */ }
           const m = body.match(/"price"\s*:\s*("[^"]*"|[\d.]+|null)/i);
+          return m ? m[1] : null;
+        };
+        // ⚠️ Numéro d'annonce cherché sur le corps COMPLET, AVANT troncature
+        // (2026-07-13, job 5e3ee1e2) : la réponse de publication peut être un
+        // gros JSON où l'id apparaît bien au-delà des 250 chars conservés —
+        // tronquer d'abord détruisait la preuve. Le candidat matché voyage
+        // dans la capture (annonceId), à côté de l'extrait tronqué des logs.
+        const annonceIdOf = (txt) => {
+          const s = String(txt ?? "");
+          const m =
+            s.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ??
+            s.match(/\/itm\/(\d{9,})/);
           return m ? m[1] : null;
         };
         // ⚠️ RELAIS IMMÉDIAT (2026-07-13) : window.__fsCaptures vit dans la PAGE
@@ -1708,6 +1732,7 @@ async function installNetworkProbe(tabId, platform) {
               relay({
                 url, status: res.status,
                 prix: priceOf(init?.body),
+                annonceId: annonceIdOf(txt),
                 reponse: String(txt).slice(0, 250),
               });
             }
@@ -1724,6 +1749,7 @@ async function installNetworkProbe(tabId, platform) {
                 relay({
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
+                  annonceId: annonceIdOf(this.responseText),
                   reponse: String(this.responseText ?? "").slice(0, 250),
                 });
               });
@@ -1750,9 +1776,15 @@ async function ebayUploadSucceeded(tabId) {
     const c = captures[i];
     const status = Number(c?.status);
     if (!(status >= 200 && status < 300)) continue;
+    // annonceId : extrait par la sonde sur le corps COMPLET de la réponse,
+    // AVANT troncature (2026-07-13, job 5e3ee1e2 — un id au-delà des 250 chars
+    // conservés était détruit à la capture, preuve perdue).
+    if (/^\d{9,}$/.test(String(c?.annonceId ?? ""))) return `https://www.ebay.fr/itm/${c.annonceId}`;
+    // Repli : captures posées par une sonde antérieure (sans annonceId) — le
+    // motif ne peut alors chercher que dans l'extrait tronqué.
     const body = String(c?.reponse ?? "");
     const m =
-      body.match(/"(?:listingId|itemId|item_id)"\s*:\s*"?(\d{9,})/i) ??
+      body.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ??
       body.match(/\/itm\/(\d{9,})/);
     if (m) return `https://www.ebay.fr/itm/${m[1]}`;
   }
