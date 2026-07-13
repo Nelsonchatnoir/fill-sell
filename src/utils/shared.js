@@ -538,8 +538,15 @@ ${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hid
 ${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
 ${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 ${s} .meta .hl{color:var(--ink);}
-${s} .icons{display:flex;gap:5px;margin-top:6px;}
-${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;}
+/* ⚠️ flex-wrap OBLIGATOIRE (2026-07-13). Sans lui, la rangée de pastilles ne
+   pouvait PAS passer à la ligne : chaque pastille a un contenu de largeur
+   irréductible (min-width auto), donc au-delà de 3-4 pastilles la rangée
+   débordait de la colonne `.left` et venait passer SOUS les boutons de la
+   colonne de droite — c'est le chevauchement « En ligne » / « Republier ».
+   La 5e pastille (« En ligne ») n'a fait que révéler le défaut, elle ne l'a pas
+   créé : 4 plateformes suffisaient déjà à serrer la carte sur mobile. */
+${s} .icons{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;min-width:0;}
+${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;flex:0 0 auto;white-space:nowrap;}
 ${s} .ic-vinted{background:#09B584;}
 ${s} .ic-leboncoin{background:#EA5B0C;}
 ${s} .ic-beebs{background:#FF6B35;}
@@ -547,9 +554,12 @@ ${s} .ic-ebay{background:#0064D2;}
 ${s} .ic-plateforme{background:var(--teal-deep);}
 ${s} .ic-pending{background:var(--amber);}
 ${s} .ic-loc{background:var(--mute);}
-/* « En ligne » : statut, pas plateforme — il précède les pastilles de plateformes
-   (qui disent OÙ, pas QUE l'annonce est publiée). Vert plein = état sain. */
-${s} .ic-online{background:#1FA97E;}
+/* « En ligne » : un STATUT, pas une plateforme. Il ouvre la rangée, et se
+   distingue par sa FORME (chip clair cerclé de teal + point) plutôt que par une
+   6e couleur pleine : cinq aplats saturés côte à côte rendaient la carte
+   illisible. Teal du design system (pas de nouvelle teinte), poids 700 max. */
+${s} .ic-online{background:rgba(47,158,144,.12);color:var(--teal-deep);box-shadow:inset 0 0 0 1px rgba(47,158,144,.40);}
+${s} .ic-online .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);flex:0 0 auto;}
 ${s} .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
 ${s} .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
 ${s} .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
