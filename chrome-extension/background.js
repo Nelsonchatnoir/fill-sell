@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-22h40 (visibilite : l'attribut hidden n'est plus un verdict — eBay le laisse sur ses dialogues OUVERTS et l'ecrase en CSS ; seul le style calcule tranche, 4 copies alignees)";
+  "2026-07-13-23h10 (lot High-Tech smartphone : vinted modele/stockage/simlockage — defaut assume Non=desimlocke — et ebay Modele/Capacite de stockage alimentes)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );

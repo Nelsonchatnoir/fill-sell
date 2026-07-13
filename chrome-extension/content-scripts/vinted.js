@@ -327,6 +327,62 @@ async function fillListingForm(job) {
       await closeAnyOpenDropdown();
     }
   }
+
+  // ── High-Tech (2026-07-13, relevé RÉEL du formulaire Téléphones portables —
+  // échec 400 du job f69e319c : model / internal_memory_capacity / sim_lock
+  // tous requis et jamais remplis) ────────────────────────────────────────────
+  // ⚠️ Le champ Modèle (#model) n'EXISTE dans le DOM qu'après la pose de la
+  // MARQUE (constaté : il apparaît à la sélection de Xiaomi) — ce bloc doit
+  // rester APRÈS le bloc marque ci-dessus. Ses options n'ont PAS d'aria-label
+  // (contrairement aux marques) : on matche par texte sur les fils --title.
+  if (fields.modele) {
+    try {
+      await selectSimpleOption(
+        '#model, [data-testid="model-select-input"]',
+        '[data-testid^="model-"][data-testid$="--title"]',
+        fields.modele,
+        { searchInputSelector: "#model-search-input" }
+      );
+    } catch (e) {
+      const note = `modèle: champ sauté — ${e.message}`;
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
+      await closeAnyOpenDropdown();
+    }
+  }
+  // Espace de stockage : liste fermée (20 options relevées, 256 Mo → 4 To),
+  // mêmes testids que état/matière → cascade standard.
+  if (fields.stockage) {
+    await selectClosedOptionSafe(
+      "stockage",
+      '#internal_memory_capacity, [data-testid="category-internal_memory_capacity-single-list-input"]',
+      '[data-testid^="internal_memory_capacity-"]',
+      fields.stockage,
+      warnings
+    );
+  }
+  // Simlockage : champ OBLIGATOIRE du formulaire téléphone (400 réel du job
+  // f69e319c : « Sélectionne une valeur pour continuer »).
+  // ⚠️ SÉMANTIQUE PIÉGEUSE, prouvée sur annonces réelles le 2026-07-13 : le
+  // libellé porteur est « Simlockage » (Non = pas de simlock = désimlocké),
+  // PAS le placeholder « L'appareil est-il désimlocké ? » — 4 annonces sur 5
+  // dont la description dit « désimlocké » portent sim_lock="Non" (la 5e est
+  // un vendeur piégé par cette ambiguïté de Vinted).
+  // DÉFAUT ASSUMÉ : « Non » (= désimlocké), la quasi-totalité du marché FR de
+  // l'occasion — indéductible d'une photo, donc jamais généré par l'IA.
+  // fields.simlock ("Oui"/"Non") prime s'il est fourni un jour. Le bloc est
+  // gaté sur la PRÉSENCE du champ dans le DOM : hors téléphone, il n'existe
+  // pas et on ne tente rien.
+  if (document.querySelector('#sim_lock, [data-testid="category-sim_lock-single-list-input"]')) {
+    await selectClosedOptionSafe(
+      "simlockage",
+      '#sim_lock, [data-testid="category-sim_lock-single-list-input"]',
+      '[data-testid^="sim_lock-"]',
+      fields.simlock ?? "Non",
+      warnings
+    );
+  }
+
   if (fields.taille) {
     // La grille Vinted affiche "42", pas "EU 42" (préfixe côté FillSell) —
     // on retire le préfixe, le match exact-par-segment fait le reste.
