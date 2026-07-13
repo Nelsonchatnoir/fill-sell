@@ -1533,7 +1533,7 @@ const StockTab = memo(function StockTab({
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
                                   un article jamais publié. */}
-                              {enLigne&&<div className="micon ic-online">● {lang==="en"?"Live":"En ligne"}</div>}
+                              {enLigne&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
                               {published.map(p=>(<div key={p} className={`micon ic-${p}`}>{PLATFORM_LABELS[p]||p}</div>))}
                               {hasPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
                               {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
