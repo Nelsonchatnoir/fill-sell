@@ -3344,6 +3344,13 @@ export default function App({ loginOnly = false }){
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
   const [confirmingSale,setConfirmingSale]=useState(null);
+  // Annonces que l'extension n'ARRIVE PLUS À VÉRIFIER (2026-07-13) : après 4
+  // lectures indéterminées d'affilée (page anti-bot, format inattendu), elle
+  // cesse d'insister et pose platform_fields.check_unresolved. RIEN de destructif
+  // n'en découle — mais sans ce bandeau, l'annonce cessait d'être surveillée SANS
+  // que personne ne le sache. C'est le trou que ce bandeau ferme : l'extension
+  // continue de retenter une fois par jour, et si ça dure, on te le DIT.
+  const [unverifiableListings,setUnverifiableListings]=useState([]);
   // Prix de vente confirmé par l'utilisateur, par job (pré-rempli avec le prix
   // de mise en ligne, MODIFIABLE : la vente a pu être négociée).
   const [salePriceDraft,setSalePriceDraft]=useState({});
@@ -3673,6 +3680,22 @@ export default function App({ loginOnly = false }){
       .eq('user_id',uid).eq('status','published').eq('action','publish')
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
+
+    // Annonces INVÉRIFIABLES depuis plus de 2 jours (2026-07-13). L'extension
+    // retente une fois par jour et se répare toute seule si la cause disparaît
+    // (bot-shield levé, onglet rouvert) — on n'alerte donc pas au premier jour.
+    // Mais au-delà, c'est à toi de trancher : l'annonce est peut-être toujours en
+    // ligne et plus personne ne la surveille. On ne conclut RIEN à ta place, on
+    // te donne le lien.
+    const{data:unverif}=await supabase.from('cross_post_jobs')
+      .select('id, platform, title, listing_url, platform_fields')
+      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .not('platform_fields->>check_unresolved_since','is',null);
+    const seuil=Date.now()-2*24*60*60*1000;
+    setUnverifiableListings((unverif||[]).filter(j=>{
+      const t=Date.parse(j.platform_fields?.check_unresolved_since??'');
+      return Number.isFinite(t)&&t<seuil;
+    }));
 
     setLoading(false);
     setAppLoading(false);
@@ -5643,6 +5666,37 @@ export default function App({ loginOnly = false }){
                   {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
                 </button>
               </div>
+            </div>
+          );
+        })}
+
+        {/* Annonce INVÉRIFIABLE depuis > 2 jours : la surveillance automatique
+            n'aboutit plus (page anti-bot, format inattendu). ⚠️ Bandeau PUREMENT
+            INFORMATIF — aucun bouton destructif, aucune écriture : l'annonce est
+            peut-être parfaitement en ligne. L'extension continue de retenter une
+            fois par jour et le bandeau disparaîtra tout seul dès qu'une lecture
+            aboutira. Le lien permet de vérifier à la main en attendant. */}
+        {unverifiableListings.map(job=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const plat=PLAT[job.platform]||job.platform;
+          const depuis=Math.floor((Date.now()-Date.parse(job.platform_fields?.check_unresolved_since))/86400000);
+          return (
+            <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.mute2}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                <strong>{lang==='fr'?'Vérification impossible':'Cannot verify listing'}</strong>
+                <br/>
+                {lang==='fr'
+                  ?<>Impossible de vérifier l'état de « {job.title||'Article'} » sur <strong>{plat}</strong> depuis {depuis} jour{depuis>1?'s':''}. L'annonce est peut-être toujours en ligne — <strong>rien n'a été modifié</strong>. On réessaie chaque jour ; en attendant, tu peux vérifier toi-même.</>
+                  :<>Could not check “{job.title||'Item'}” on <strong>{plat}</strong> for {depuis} day{depuis>1?'s':''}. The listing may well still be online — <strong>nothing was changed</strong>. We keep retrying daily; meanwhile you can check yourself.</>}
+              </div>
+              {job.listing_url&&(
+                <div>
+                  <a href={job.listing_url} target="_blank" rel="noopener noreferrer"
+                    style={{display:"inline-block",padding:"9px 18px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:13.5,fontWeight:600,textDecoration:"none",fontFamily:"inherit"}}>
+                    {lang==='fr'?`Ouvrir l'annonce ${plat}`:`Open the ${plat} listing`}
+                  </a>
+                </div>
+              )}
             </div>
           );
         })}
