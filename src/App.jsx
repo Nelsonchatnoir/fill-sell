@@ -3781,7 +3781,40 @@ export default function App({ loginOnly = false }){
     };
     document.addEventListener('visibilitychange',onVisible);
     return()=>document.removeEventListener('visibilitychange',onVisible);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
+
+  // ── Poll sentinelle des jobs (2026-07-13) ───────────────────────────────────
+  // Pendant que l'app est VISIBLE : une seule petite requête toutes les 45 s
+  // sur cross_post_jobs (statuts + marqueurs de bandeaux extraits du JSON) ;
+  // fetchAll complet UNIQUEMENT si l'empreinte a changé — zéro martèlement
+  // quand rien ne bouge, et le bandeau de retrait apparaît en ≤ 45 s quand
+  // l'extension termine un retrait en tâche de fond, sans F5 ni changement
+  // d'onglet. ⚠️ Pas de colonne updated_at sur cross_post_jobs (vérifié en
+  // base, aucun trigger non plus) : l'empreinte porte sur les champs qui
+  // pilotent réellement les bandeaux et les chips, pas sur un horodatage.
+  const empreinteJobsRef=useRef(null);
+  useEffect(()=>{
+    if(!user?.id) return;
+    empreinteJobsRef.current=null; // nouvel utilisateur = nouvelle référence
+    let arret=false;
+    const sonde=async()=>{
+      if(document.visibilityState!=='visible') return;
+      const {data,error}=await supabase.from('cross_post_jobs')
+        .select('id,status,last_checked_at,sale_signal:platform_fields->>sale_signal,unavailable_since:platform_fields->>unavailable_since,pending_removal:platform_fields->>pending_removal,check_unresolved_since:platform_fields->>check_unresolved_since')
+        .eq('user_id',user.id)
+        .order('created_at',{ascending:false})
+        .limit(80);
+      if(arret||error||!data) return;
+      const empreinte=JSON.stringify(data);
+      if(empreinteJobsRef.current===null){ empreinteJobsRef.current=empreinte; return; } // 1re lecture = référence, pas de refetch
+      if(empreinte!==empreinteJobsRef.current){
+        empreinteJobsRef.current=empreinte;
+        fetchAll(user.id,{silencieux:true});
+      }
+    };
+    sonde();
+    const t=setInterval(sonde,45_000);
+    return()=>{arret=true;clearInterval(t);};
   },[user?.id]);
 
 
