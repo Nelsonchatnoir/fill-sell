@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-12-14h10 (DELETE_DRY_RUN=false, delete Beebs 1/3 — voie par carte + motif obligatoire)";
+const BEEBS_BUILD = "2026-07-13-19h00 (depot PROUVE avant published — plus de succes suppose ; listing_url differe assume, la moderation n est plus attendue)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -411,11 +411,52 @@ async function fillListingForm(job) {
   const publishBtn = document.querySelector('button[type="submit"]');
   publishBtn?.click();
 
-  // TODO: attendre la redirection vers l'annonce créée et récupérer son URL
-  //   (comme Vinted — non nécessaire tant que DRY_RUN reste true)
-  const listingUrl = null;
+  // ── PREUVE DE DÉPÔT (2026-07-13) ────────────────────────────────────────────
+  // AVANT : on renvoyait success:true juste après le clic, sans RIEN vérifier —
+  // le même « published sans preuve » que celui corrigé sur Vinted et eBay. Un
+  // refus de validation serait passé pour une publication.
+  // MAINTENANT : on attend la CONFIRMATION DE DÉPÔT de Beebs (« Votre article a
+  // bien été ajouté à votre dressing Beebs, il sera mis en ligne dès qu'il aura
+  // été vérifié par notre équipe », ou l'atterrissage sur /listing/success).
+  //
+  // ⚠️ Le dépôt confirmé est le SEUL succès qu'on puisse attendre ici, et c'est
+  // suffisant (règle Nico, 2026-07-13) : l'annonce part en MODÉRATION, elle
+  // n'est donc ni en ligne ni listée dans « Mes annonces » à cet instant.
+  // listingUrl reste null — ce n'est PAS une erreur, la re-capture différée
+  // côté background ira le chercher plus tard.
+  const proof = await waitForBeebsDeposit();
+  if (!proof.ok) return { success: false, error: proof.error, warnings, unfilledRequired };
 
-  return { success: true, listingUrl, warnings, unfilledRequired };
+  console.log(`[beebs] dépôt CONFIRMÉ (${proof.preuve}) — annonce en modération, listing_url différé`);
+  return { success: true, listingUrl: null, warnings, unfilledRequired };
+}
+
+// Confirmation de dépôt Beebs : page de succès OU message de confirmation.
+// ⚠️ Aucun filtre par getClientRects()/offsetParent : l'onglet de travail vit
+// dans une fenêtre minimisée, donc SANS LAYOUT — tous les rects y valent 0, même
+// pour du texte bel et bien affiché (leçon du 2026-07-13). textContent, lui,
+// est fiable sans rendu.
+async function waitForBeebsDeposit(timeoutMs = 30_000) {
+  const CONFIRME = /bien été ajouté à (?:votre|ton) dressing|sera mis en ligne dès qu|en cours de vérification/i;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (/\/listing\/success/i.test(location.pathname)) {
+      return { ok: true, preuve: `redirection vers ${location.pathname}` };
+    }
+    const txt = (document.body?.textContent || "").replace(/\s+/g, " ");
+    const m = txt.match(CONFIRME);
+    if (m) return { ok: true, preuve: `message « ${m[0]} »` };
+    await sleep(1000);
+  }
+
+  return {
+    ok: false,
+    error:
+      "Dépôt Beebs non confirmé : ni redirection vers /listing/success, ni message de confirmation " +
+      `après ${timeoutMs / 1000} s. L'annonce n'a PAS été considérée comme déposée (jamais de ` +
+      "« published » sans preuve) — le job repartira au prochain passage.",
+  };
 }
 
 // ── Helpers génériques ───────────────────────────────────────────────────────
