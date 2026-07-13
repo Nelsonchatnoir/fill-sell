@@ -7,7 +7,12 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
+// ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
+// casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
+// equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
+// chemin « Oui, enregistrer la vente » était cassé depuis toujours en local. Passe
+// généralisée aux 15 fonctions restantes. La PROD n'a jamais été affectée.
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
 // Packs de pièces (grille 2026-07-06) — price IDs Stripe à créer dans le
 // dashboard puis renseigner dans les secrets edge functions.

@@ -6,7 +6,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Auth : JWT utilisateur (verify_jwt=true au déploiement, comme get-pending-jobs).
 // Déploiement : supabase functions deploy validate-coin-purchase
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
+// ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
+// casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
+// equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
+// chemin « Oui, enregistrer la vente » était cassé depuis toujours en local. Passe
+// généralisée aux 15 fonctions restantes. La PROD n'a jamais été affectée.
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const PACKAGE_NAME = "app.fillsell.app";
 
 // Packs validés (grille 2026-07-06) : montants crédités par product id.

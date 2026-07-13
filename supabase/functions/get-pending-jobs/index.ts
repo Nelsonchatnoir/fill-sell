@@ -12,7 +12,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
 // (user.id) et alimente le client scoped user pour la RLS.
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
+// ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
+// casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
+// equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
+// chemin « Oui, enregistrer la vente » était cassé depuis toujours en local. Passe
+// généralisée aux 15 fonctions restantes. La PROD n'a jamais été affectée.
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
 function isAllowedOrigin(origin: string): boolean {
   return ALLOWED_ORIGINS.includes(origin) || origin.startsWith("chrome-extension://");
