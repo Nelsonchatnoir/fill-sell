@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-13-19h00 (depot PROUVE avant published — plus de succes suppose ; listing_url differe assume, la moderation n est plus attendue)";
+const BEEBS_BUILD = "2026-07-13-23h45 (suppression SANS LAYOUT : findBeebsCard lisait innerText — toujours vide en fenetre minimisee)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -211,8 +211,8 @@ async function deleteListing(job) {
 
   const dialog = await waitFor(() => {
     return Array.from(document.querySelectorAll('[role="dialog"], [class*="modal" i]'))
-      .filter((d) => d.getClientRects().length)
-      .find((d) => /supprimer mon annonce/i.test(d.innerText || "")) ?? null;
+      .filter(estVisibleSansLayout)
+      .find((d) => /supprimer mon annonce/i.test(texteDe(d))) ?? null;
   }, 10000);
   if (!dialog) return { success: false, error: "Dialogue « Supprimer mon annonce » introuvable", trace };
 
@@ -239,8 +239,8 @@ async function deleteListing(job) {
   t(`motif sélectionné : « ${reasonLabel} » (défaut « Vendu via Beebs » écarté)`);
 
   const confirmBtn = Array.from(dialog.querySelectorAll("button"))
-    .filter((b) => b.getClientRects().length)
-    .find((b) => /^supprimer l['’]annonce$/i.test(b.textContent.replace(/\s+/g, " ").trim()));
+    .filter(estVisibleSansLayout)
+    .find((b) => /^supprimer l['’]annonce$/i.test(texteDe(b)));
   if (!confirmBtn) return { success: false, error: "Bouton « Supprimer l'annonce » introuvable dans le dialogue", trace };
 
   await humanPause(800, 1600);
@@ -253,28 +253,57 @@ async function deleteListing(job) {
   return { success: true, trace };
 }
 
+// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER (2026-07-13, règle produit).
+// L'onglet de travail vit dans une fenêtre MINIMISÉE, donc JAMAIS rendue :
+// getClientRects() vaut 0 partout, offsetParent est null partout, et innerText
+// est VIDE (il dépend du rendu — textContent, non). Filtrer là-dessus ne teste
+// pas « est-ce visible ? » mais « la fenêtre est-elle rendue ? » : la réponse est
+// toujours non, et le code devient AVEUGLE. C'est très exactement l'échec
+// « Carte de l'annonce introuvable » : findBeebsCard cherchait le trio
+// Modifier/Dupliquer/Supprimer dans un innerText… toujours vide.
+// Les CLICS, eux, fonctionnent parfaitement dans cette fenêtre (prouvé sur eBay :
+// les deux annonces ont bien été supprimées). Seule la LECTURE était cassée.
+// Le style calculé reste disponible sans layout : c'est le seul critère de
+// visibilité utilisable ici.
+function estVisibleSansLayout(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+  }
+  return true;
+}
+
+function texteDe(el) {
+  return (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
 // Carte de l'annonce : on remonte jusqu'à l'ancêtre qui porte la barre
-// d'actions « Modifier / Dupliquer / Supprimer ».
+// d'actions « Modifier / Dupliquer / Supprimer ». textContent, pas innerText.
 function findBeebsCard(anchor) {
   let el = anchor;
   for (let i = 0; i < 10 && el; i++, el = el.parentElement) {
-    const txt = (el.innerText || "").replace(/\s+/g, " ");
+    const txt = texteDe(el);
     if (/Modifier/.test(txt) && /Dupliquer/.test(txt) && /Supprimer/.test(txt)) return el;
   }
   return null;
 }
 
-// ⚠️ Ne JAMAIS chercher « Supprimer » au niveau document : la page porte AUSSI
-// le bouton « Supprimer » de la barre groupée (« Tout sélectionner |
-// Supprimer »), qui agit sur les annonces COCHÉES — avec « Tout sélectionner »
-// actif, il viderait le compte. On ne prend que le bouton de la carte, reconnu
-// par le trio Modifier/Dupliquer/Supprimer de son parent immédiat.
+// ⚠️ DANGER MAXIMAL — NE JAMAIS chercher « Supprimer » au niveau document : la
+// page porte AUSSI le bouton « Supprimer » de la barre groupée (« Tout
+// sélectionner | Supprimer »), qui agit sur les annonces COCHÉES — avec « Tout
+// sélectionner » actif, il VIDERAIT LE COMPTE. On ne prend que le bouton DE LA
+// CARTE, reconnu par le trio Modifier/Dupliquer/Supprimer de son parent immédiat.
+// Cette garde est conservée à l'identique — seule la lecture passe de innerText
+// (vide sans rendu) à textContent. Le passage au style calculé ne l'affaiblit
+// pas : elle repose sur la STRUCTURE (le parent porte les trois actions de la
+// carte), pas sur une mesure d'écran.
 function findBeebsCardDelete(card) {
   return Array.from(card.querySelectorAll("button"))
-    .filter((b) => b.getClientRects().length)
+    .filter(estVisibleSansLayout)
     .find((b) => {
-      if (b.textContent.replace(/\s+/g, " ").trim() !== "Supprimer") return false;
-      const parentTxt = (b.parentElement?.innerText || "").replace(/\s+/g, " ");
+      if (texteDe(b) !== "Supprimer") return false;
+      const parentTxt = texteDe(b.parentElement);
       return /Modifier/.test(parentTxt) && /Dupliquer/.test(parentTxt);
     }) ?? null;
 }
