@@ -17,8 +17,9 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-23h00 (fenetre de travail: UNE SEULE, toujours — adoption par fragment si l id est oublie, creations serialisees, " +
-  "consolidation des fenetres en trop; precedent: detection d etat lue depuis un VRAI ONGLET + indetermine borne)";
+  "2026-07-13-23h45 (SUPPRESSIONS SANS LAYOUT sur les 4 plateformes — fenetre minimisee, zero rendu; " +
+  "annonce introuvable = peut-etre DEJA supprimee : on interroge la plateforme avant de conclure; " +
+  "un job annule ne ressuscite plus)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -2855,17 +2856,39 @@ async function processDeleteJob(job, accessToken) {
       await restore();
     }
 
-    // Échec typique d'une page non rendue (contrôle introuvable / modale jamais
-    // montée) : ce n'est PAS une erreur définitive — l'annonce est toujours en
-    // ligne et la suppression reste faisable. On ré-arme (borné) au lieu de
-    // brûler le job en "failed", et le message dit quoi faire.
-    if (result && !result.success && !result.dryRun && !result.needsUser && /introuvable|0×0|0x0|modale/i.test(String(result.error ?? ""))) {
-      const msg =
-        `Suppression ${job.platform} non aboutie dans l'onglet de travail (page probablement non rendue : ` +
-        `${result.error}). L'annonce est TOUJOURS en ligne. Nouvelle tentative au prochain passage ; ` +
-        "sinon la retirer à la main sur la plateforme.";
-      await rearmBounded(accessToken, job, msg);
-      return { status: "needsUser", error: msg };
+    // ⚠️ « ANNONCE INTROUVABLE » PEUT VOULOIR DIRE « DÉJÀ SUPPRIMÉE » (2026-07-13,
+    // vécu sur les deux annonces eBay : elles étaient bel et bien retirées, et le
+    // job s'acharnait en « introuvable dans le Hub — nouvelle tentative »).
+    // Avant de conclure quoi que ce soit, on demande à la PLATEFORME. Une annonce
+    // qui n'est plus en ligne, c'est une suppression RÉUSSIE, pas un échec.
+    if (result && !result.success && !result.dryRun && !result.needsUser) {
+      const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+      if (state === "unavailable" || state === "sold") {
+        console.log(
+          `[background] Job ${job.id} : le content script n'a pas abouti (${result.error}), MAIS l'annonce ` +
+          `${job.platform} n'est plus en ligne — suppression CONFIRMÉE par l'état réel de l'annonce`
+        );
+        await updateJobStatus(accessToken, job.id, "deleted", {
+          error: null,
+          platform_fields: {
+            ...(job.platform_fields ?? {}),
+            delete_confirmed_by: "etat_annonce",
+            delete_trace: result.trace ?? [],
+          },
+        });
+        await recordRecentResult(job, "deleted");
+        return { status: "deleted" };
+      }
+
+      // L'annonce est TOUJOURS là (ou illisible) : ré-armement borné, jamais un
+      // "failed" sec — la suppression reste faisable au prochain passage.
+      if (/introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
+        const msg =
+          `Suppression ${job.platform} non aboutie (${result.error}). L'annonce est TOUJOURS en ligne ` +
+          "(vérifié). Nouvelle tentative au prochain passage ; sinon la retirer à la main sur la plateforme.";
+        await rearmBounded(accessToken, job, msg);
+        return { status: "needsUser", error: msg };
+      }
     }
 
     if (result?.dryRun) {
