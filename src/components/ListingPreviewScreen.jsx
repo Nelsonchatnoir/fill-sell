@@ -233,12 +233,28 @@ function getPlatformFieldsConfig(t) {
     { value:"Mixte",  label:t("genderUnisex") },
   ];
 
+  // modele + stockage (2026-07-13, lot High-Tech smartphone) : consommés par
+  // vinted.js (#model / #internal_memory_capacity) et ebay.js (aspects
+  // « Modèle » / « Capacité de stockage »). Sans ces entrées,
+  // mergeFieldsWithLens jetait les valeurs générées (aucune clé hors config
+  // ne survit — même piège que l'univers LBC, 3e récidive). La liste stockage
+  // est RELEVÉE sur le formulaire Vinted (Téléphones portables, 20 options) ;
+  // les libellés eBay observés (128 Go/256 Go/512 Go) utilisent les mêmes
+  // unités françaises, la liste sert donc aux deux plateformes.
+  const storage = [
+    "256 Mo", "512 Mo", "1 Go", "2 Go", "3 Go", "4 Go", "6 Go", "8 Go",
+    "10 Go", "12 Go", "16 Go", "32 Go", "64 Go", "128 Go", "256 Go",
+    "512 Go", "1 To", "2 To", "3 To", "4 To",
+  ].map(v => ({ value: v, label: v }));
+
   return {
     vinted: [
       { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
       { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"genre",     label:t("fieldGenderLabel"),    type:"select", options: gender },
       { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
+      { key:"modele",    label:t("fieldModelLabel"),     type:"text" },
+      { key:"stockage",  label:t("fieldStorageLabel"),   type:"select", options: storage },
       { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
       { key:"couleur",   label:t("fieldColorLabel"),     type:"text" },
       { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
@@ -298,6 +314,8 @@ function getPlatformFieldsConfig(t) {
       { key:"taille",  label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
       { key:"genre",   label:t("fieldGenderLabel"),    type:"select", options: ebayGender },
       { key:"marque",  label:t("fieldBrandLabel"),     type:"text" },
+      { key:"modele",  label:t("fieldModelLabel"),     type:"text" },
+      { key:"stockage",label:t("fieldStorageLabel"),   type:"select", options: storage },
       { key:"matiere", label:t("fieldMaterialLabel"),  type:"text" },
       { key:"couleur", label:t("fieldColorLabel"),     type:"text" },
     ],
@@ -354,6 +372,10 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
       case "categorie":   lensVal = lensResult?.categorie      ?? null; break;
       case "taille":
       case "size":        lensVal = lensResult?.taille_estimee ?? null; break;
+      // modele existe dans lensResult depuis toujours (schéma lens-analysis) :
+      // ce repli le fait arriver au formulaire même sur un job généré AVANT le
+      // redéploiement de generate-listing (qui ne produisait pas la clé).
+      case "modele":      lensVal = lensResult?.modele         ?? null; break;
       default:            lensVal = null;
     }
     result[field.key] = lensVal
