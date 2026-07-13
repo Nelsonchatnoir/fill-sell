@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-20h15 (confirmation eBay lue aussi dans la MODALE — role=dialog/lightbox/modal — avec extraction du numero d'annonce vers listing_url; job 5e3ee1e2, item 800334919061)";
+  "2026-07-13-20h20 (diagnostic joint au « non confirmée » eBay : dump des captures de la sonde + markup d'une popup visible non reconnue — pur logging)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -1548,9 +1548,57 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
       `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
       `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
       "ni d'erreur, et sans réponse serveur portant un numéro d'annonce — job NON marqué publié, " +
-      "il repartira au prochain passage.",
+      "il repartira au prochain passage." +
+      (await readEbayFailureDiagnostics(tabId)),
     listingUrl: null,
   };
+}
+
+// Diagnostic joint au message « non confirmée » (2026-07-13, job 5e3ee1e2) :
+// jusqu'ici cette branche ne disait RIEN de ce que la sonde avait vu —
+// impossible de distinguer depuis les logs « 0 capture » (soumission jamais
+// partie, ou partie hors fetch/XHR du top frame) de « captures qui ne matchent
+// pas le motif » (id au-delà de la troncature, clé de réponse inconnue). Même
+// philosophie que readVintedProbe côté Vinted : PUR LOGGING, ne change aucune
+// décision publish/fail. On joint aussi le markup d'une éventuelle popup
+// visible non reconnue comme succès — c'est la donnée qui manquait pour
+// relever le markup réel de la modale de confirmation.
+async function readEbayFailureDiagnostics(tabId) {
+  let sonde;
+  try {
+    const { captures } = await readProbeCaptures(tabId);
+    sonde = captures.length
+      ? `${captures.length} capture(s) non-GET : ` +
+        captures
+          .slice(-5)
+          .map(
+            (c) =>
+              `${String(c?.url ?? "?")} → HTTP ${c?.status} · corps: ` +
+              String(c?.reponse ?? "").replace(/\s+/g, " ").slice(0, 120)
+          )
+          .join(" ; ")
+      : "AUCUNE capture — la soumission n'est jamais partie, ou est partie hors fetch/XHR du top frame";
+  } catch (e) {
+    sonde = `illisible (${String(e?.message ?? e)})`;
+  }
+
+  let popup = "";
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [String(estVisibleSansLayout)],
+      func: (helperSrc) => {
+        const estVisible = new Function(`return (${helperSrc})`)();
+        const dialog = Array.from(
+          document.querySelectorAll('[role="dialog"], [class*="lightbox" i], [class*="modal" i]')
+        ).find(estVisible);
+        return dialog ? dialog.outerHTML.replace(/\s+/g, " ").slice(0, 400) : null;
+      },
+    });
+    if (res?.result) popup = ` · popup visible NON reconnue comme succès, markup : ${res.result}`;
+  } catch { /* pur logging : jamais bloquant */ }
+
+  return ` [sonde réseau : ${sonde}${popup}]`;
 }
 
 // Popup post-publication eBay (« Votre annonce est désormais publiée sur le
