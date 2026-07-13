@@ -1,6 +1,7 @@
 import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import {
   formatCurrency, fmtp, getMargeColor,
   getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
@@ -25,8 +26,12 @@ const VENTES_CSS = buildCardCss('ventes-v2') + `
 const FEM_RE=/\b(robe|jupe|veste|chemise|blouse|doudoune|parka|combinaison|salopette|tunique|écharpe|casquette|ceinture|montre|bague|chaussures?|baskets?|bottes?|bottines?|sandales?|espadrilles?|ballerines?|chaussettes?|pochette|sacoche|valise|poupée|peluche|figurine|guitare|trompette|flûte|batterie|enceinte|tablette|imprimante|souris|console|télé|télévision|lampe|table|chaise|armoire|commode|étagère|bibliothèque|cafetière|bouilloire|machine|friteuse|perceuse|visseuse|scie|ponceuse|meuleuse|tondeuse|trottinette|raquette|tente|planche|palette|crème|poussette|cartes?|pièces?|assiettes?|tasses?|casserole|poêle|couette|parure|lunettes?|paire)\b/i;
 const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue':'Vendu');
 
-// Badge plateforme : mapping libellé libre -> classe couleur (mêmes classes que StockTab)
-const PLATFORM_CLASS={vinted:'ic-vinted',leboncoin:'ic-leboncoin','le bon coin':'ic-leboncoin',lbc:'ic-leboncoin',ebay:'ic-ebay',beebs:'ic-beebs'};
+// Plateforme : mapping libellé libre -> clé canonique de PlatformLogo (2026-07-13).
+// LOGOS, pas les noms écrits — même décision que StockTab (21fa63c) : le badge
+// texte « vinted » en toutes lettres était le seul restant de l'app. Le libellé
+// s.plateforme est du texte libre (saisie manuelle possible) : une valeur sans
+// clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
+const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs'};
 
 const TICKER_SALES = [
   { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       sell:42,   margin:27,  marginPct:64 },
@@ -265,7 +270,9 @@ const VentesTab = memo(function VentesTab({
                     </div>
                     {s.plateforme&&(
                       <div className="icons">
-                        <div className={`micon ${PLATFORM_CLASS[pKey]||'ic-plateforme'}`}>{s.plateforme}</div>
+                        {PLATFORM_KEY[pKey]
+                          ?<span className="plogo" title={s.plateforme}><PlatformLogo platform={PLATFORM_KEY[pKey]} size={18}/></span>
+                          :<div className="micon ic-plateforme">{s.plateforme}</div>}
                       </div>
                     )}
                   </div>
