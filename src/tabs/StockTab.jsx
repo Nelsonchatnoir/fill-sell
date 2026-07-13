@@ -1608,6 +1608,12 @@ const StockTab = memo(function StockTab({
             description: publishItem.description ?? null,
             categorie:   publishItem.type        ?? null,
             marque:      publishItem.marque      ?? null,
+            // Prix connu de la ligne inventaire (2026-07-13, job 3d194668) :
+            // pré-remplissage SYNCHRONE de la carte — le fallback DB du
+            // stepper existe mais arrive en async, et surtout il ne couvre
+            // pas ce que la ligne sait déjà. prix_vente est désormais tenu à
+            // jour à chaque publication (fix bd9a516).
+            prix_vente_suggere: publishItem.prix_vente ?? publishItem.prix_achat ?? null,
           }}
           onClose={()=>{setPublishItem(null);onStepperOpenChange?.(false);}}
           supabase={supabase}
