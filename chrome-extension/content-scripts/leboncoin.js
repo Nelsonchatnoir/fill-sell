@@ -162,7 +162,13 @@ function findLbcDelete(root) {
   // le style calculé, qui reste disponible sans rendu.
   const estVisible = (el) => {
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-      if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
+      // ⚠️ PAS DE TEST SUR L'ATTRIBUT hidden (2026-07-13, prouvé sur le dialogue
+      // eBay « Mettre fin à l'annonce » OUVERT à l'écran — job d4fd6671) : une
+      // plateforme peut LAISSER hidden sur un dialogue et l'écraser en CSS
+      // (display:flex). Le seul effet réel de hidden est display:none via la
+      // feuille UA : le test display ci-dessous couvre déjà les VRAIS hidden ;
+      // tester l'attribut rend aveugle sur une modale bel et bien ouverte.
+      if (n.getAttribute("aria-hidden") === "true") return false;
       const st = getComputedStyle(n);
       // ⚠️ PAS DE TEST SUR L'OPACITÉ (2026-07-13, prouvé sur la vraie page Beebs).
       // Les animations CSS NE TOURNENT PAS dans une fenêtre non rendue : un élément
@@ -172,7 +178,7 @@ function findLbcDelete(root) {
       // opacity:"0". Le rejeter, c'est se rendre aveugle exactement comme avec
       // getClientRects — c'est ce qui donnait « Dialogue introuvable » alors que le
       // clic avait parfaitement ouvert la modale.
-      // display:none / visibility:hidden / hidden / aria-hidden restent : ceux-là
+      // display:none / visibility:hidden / aria-hidden restent : ceux-là
       // sont posés explicitement et ne dépendent d'aucune animation.
       if (st.display === "none" || st.visibility === "hidden") return false;
     }

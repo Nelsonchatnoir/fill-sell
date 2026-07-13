@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-22h15 (recover listing_url : titres compares sans emoji ni ponctuation + diagnostic des liens de la page en cas d'echec — la cause beebs sera nommee au prochain cycle)";
+  "2026-07-13-22h40 (visibilite : l'attribut hidden n'est plus un verdict — eBay le laisse sur ses dialogues OUVERTS et l'ecrase en CSS ; seul le style calcule tranche, 4 copies alignees)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -2008,7 +2008,17 @@ async function readVintedProbe(tabId) {
 // layout (vide sans rendu) → textContent.
 function estVisibleSansLayout(el) {
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-    if (n.hasAttribute("hidden") || n.getAttribute("aria-hidden") === "true") return false;
+    // ⚠️ PAS DE TEST SUR L'ATTRIBUT hidden (2026-07-13, prouvé sur le dialogue
+    // eBay « Mettre fin à l'annonce » OUVERT à l'écran — job d4fd6671) : eBay
+    // LAISSE hidden sur la RACINE de ses dialogues (lightbox-dialog) et
+    // l'écrase en CSS (aria-hidden="false", display:flex). Le seul effet réel
+    // de hidden est display:none via la feuille UA : si le display calculé
+    // n'est pas none, la page l'a écrasé volontairement, donc l'élément EST
+    // affiché. Le test display ci-dessous couvre déjà les VRAIS hidden — et la
+    // lecture de la confirmation de publication en MODALE (f03bd3f) passe par
+    // ICI : même piège, même conteneur lightbox-dialog (cf. le faux négatif
+    // « publication non confirmée » du job 5e3ee1e2, contourné à la main).
+    if (n.getAttribute("aria-hidden") === "true") return false;
     const st = getComputedStyle(n);
     // ⚠️ PAS DE TEST SUR L'OPACITÉ (2026-07-13, prouvé sur la vraie page Beebs).
     // Les animations CSS NE TOURNENT PAS dans une fenêtre non rendue : un élément
@@ -2018,7 +2028,7 @@ function estVisibleSansLayout(el) {
     // opacity:"0". Le rejeter, c'est se rendre aveugle exactement comme avec
     // getClientRects — c'est ce qui donnait « Dialogue introuvable » alors que le
     // clic avait parfaitement ouvert la modale.
-    // display:none / visibility:hidden / hidden / aria-hidden restent : ceux-là
+    // display:none / visibility:hidden / aria-hidden restent : ceux-là
     // sont posés explicitement et ne dépendent d'aucune animation.
     if (st.display === "none" || st.visibility === "hidden") return false;
   }
