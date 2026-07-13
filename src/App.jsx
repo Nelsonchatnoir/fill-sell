@@ -3609,7 +3609,10 @@ export default function App({ loginOnly = false }){
     setConversionModal({open:true,trigger});
   }
 
-  async function fetchAll(uid){
+  // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
+  // visibilité, poll sentinelle) ne doivent pas faire clignoter le spinner —
+  // les données se remplacent en place, sans état de chargement visible.
+  async function fetchAll(uid,{silencieux=false}={}){
     // GARDE (2026-07-13) : sans uid, chaque requête ci-dessous part en
     // `user_id=eq.undefined` et revient en 400 — une dizaine d'erreurs, un
     // refetch entièrement raté, et des états (bandeaux, stock, profil) qui
@@ -3621,7 +3624,7 @@ export default function App({ loginOnly = false }){
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if(!silencieux) setLoading(true);
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
@@ -3757,6 +3760,29 @@ export default function App({ loginOnly = false }){
     });
     return()=>{ mounted=false; subscription.unsubscribe(); };
   },[]);
+
+  // ── Refetch au retour de visibilité (2026-07-13) ────────────────────────────
+  // L'extension écrit en base pendant que l'app est OUVERTE (retraits
+  // cross-plateforme terminés, sale_signal posés, statuts de jobs) et rien ne
+  // relisait ces états tant que l'utilisateur n'agissait pas : les bandeaux
+  // n'apparaissaient qu'après un F5 manuel (vécu : vente Vinted confirmée,
+  // retraits eBay/LBC réussis en tâche de fond, app muette). Revenir sur
+  // l'onglet/la fenêtre déclenche désormais un fetchAll silencieux (aucun
+  // spinner), au plus un toutes les 30 s.
+  const derniereVisibiliteRef=useRef(0);
+  useEffect(()=>{
+    if(!user?.id) return;
+    const onVisible=()=>{
+      if(document.visibilityState!=='visible') return;
+      const maintenant=Date.now();
+      if(maintenant-derniereVisibiliteRef.current<30_000) return;
+      derniereVisibiliteRef.current=maintenant;
+      fetchAll(user.id,{silencieux:true});
+    };
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>document.removeEventListener('visibilitychange',onVisible);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
 
 
   const buy=parseFloat(cBuy)||0;
