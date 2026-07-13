@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-13-23h45 (suppression SANS LAYOUT : findBeebsCard lisait innerText — toujours vide en fenetre minimisee)";
+const BEEBS_BUILD = "2026-07-13-23h59 (realClick MANQUANT ajoute — ReferenceError dormant; suppression sans layout)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -276,6 +276,22 @@ function estVisibleSansLayout(el) {
 
 function texteDe(el) {
   return (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+// ⚠️ MANQUAIT DEPUIS TOUJOURS (2026-07-13) : deleteListing appelait realClick —
+// nom repris d'ebay.js — alors que ce fichier ne l'a JAMAIS défini. Le flux de
+// remplissage, lui, clique avec el.click() : il n'a donc jamais rencontré le
+// problème. Et la suppression échouait toujours AVANT (findBeebsCard lisait
+// innerText, vide sans rendu), si bien que la ligne fautive n'était jamais
+// atteinte : « realClick is not defined » n'est apparu qu'une fois ce premier
+// bug corrigé. Un ReferenceError dormant, révélé par le fix qui le précédait.
+// Même implémentation qu'ebay.js : la séquence pointer/souris complète, plus
+// fidèle qu'un simple .click() sur les composants qui écoutent pointerdown.
+function realClick(el) {
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    const Ctor = type.startsWith("pointer") ? PointerEvent : MouseEvent;
+    el.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, view: window }));
+  }
 }
 
 // Carte de l'annonce : on remonte jusqu'à l'ancêtre qui porte la barre
