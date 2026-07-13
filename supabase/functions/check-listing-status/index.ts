@@ -21,7 +21,22 @@ import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 // Déploiement : supabase functions deploy check-listing-status
 // (verify_jwt peut rester au défaut : l'appel porte toujours un JWT user.)
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
+// ⚠️ localhost:5173 (Vite dev) AJOUTÉ le 2026-07-13 : sans lui, « Oui, enregistrer
+// la vente » échouait en CORS dès le préflight en développement (« header has a
+// value 'https://fillsell.app' that is not equal to the supplied origin »). Ce
+// chemin — le SEUL qui écrive une vente en base — n'avait jamais été exercé
+// bout en bout avant ce jour, d'où la découverte tardive.
+// ⚠️ Ce n'est PAS un oubli propre à cette fonction : au 2026-07-13, seule
+// lens-analysis autorisait l'origine de dev. Les autres fonctions appelées
+// depuis le navigateur casseront pareil en local le jour où on les exercera —
+// même correctif à appliquer alors (la prod, elle, n'a jamais été affectée :
+// https://fillsell.app est autorisée depuis toujours).
+const ALLOWED_ORIGINS = [
+  "https://fillsell.app",
+  "capacitor://localhost",
+  "https://localhost",
+  "http://localhost:5173", // Vite dev
+];
 
 function isAllowedOrigin(origin: string): boolean {
   return ALLOWED_ORIGINS.includes(origin) || origin.startsWith("chrome-extension://");
