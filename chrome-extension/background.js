@@ -379,6 +379,19 @@ function updateJobStatus(accessToken, jobId, status, extra = {}) {
   });
 }
 
+// Statut RÉEL du job en base, ici et maintenant. Le job qu'on manipule en
+// mémoire a été lu au début du cycle : entre-temps, l'utilisateur (ou nous) a pu
+// l'annuler, et une écriture aveugle le ferait revenir d'entre les morts.
+async function jobStatusNow(accessToken, jobId) {
+  try {
+    const rows = await restRequest(`cross_post_jobs?id=eq.${jobId}&select=status`, accessToken);
+    return rows?.[0]?.status ?? null;
+  } catch (e) {
+    console.warn(`[background] Lecture du statut de ${jobId} impossible :`, String(e?.message ?? e));
+    return null; // dans le doute, on laisse l'appelant faire comme avant
+  }
+}
+
 // ── Boucle principale ──────────────────────────────────────────────────────────
 
 // ── Verrou de flux de jobs (2026-07-12) ────────────────────────────────────────
@@ -855,6 +868,22 @@ function completionExtras(job, result) {
 // même risque DataDome que le dry-run en boucle. Compteur porté par
 // platform_fields.needsUserAttempts (partagé needsUser / erreurs transitoires).
 async function rearmBounded(accessToken, job, errorMsg) {
+  // ⚠️ NE JAMAIS RESSUSCITER UN JOB ANNULÉ (2026-07-13, vécu). Un job de
+  // suppression Beebs annulé À LA MAIN (il visait la mauvaise annonce !) avait
+  // déjà été happé par le cycle en cours : son échec a déclenché ce ré-armement,
+  // qui a réécrit status='pending' par-dessus le 'cancelled' — le job est
+  // reparti comme si de rien n'était, en route pour supprimer la mauvaise
+  // annonce. Une annulation doit être DÉFINITIVE : on relit le statut réel avant
+  // d'écrire quoi que ce soit.
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(
+      `[background] Job ${job.id} : statut devenu "${actuel}" pendant le traitement — ` +
+      `ré-armement ABANDONNÉ (on ne réécrit pas par-dessus). Cause de l'échec : ${errorMsg}`
+    );
+    return;
+  }
+
   const attempts = (job.platform_fields?.needsUserAttempts ?? 0) + 1;
   if (attempts >= MAX_NEEDS_USER_RETRIES) {
     console.warn(`[background] Job ${job.id} : cause toujours présente après ${attempts} tentatives → failed (sort de la boucle) — ${errorMsg}`);
@@ -2864,6 +2893,28 @@ async function processDeleteJob(job, accessToken) {
   } catch (e) {
     const msg = String(e?.message ?? e);
     if (/message channel closed|Receiving end does not exist/i.test(msg)) {
+      // ⚠️ MÊME LEÇON QUE LA PUBLICATION VINTED : le canal coupé est ici la
+      // SIGNATURE PROBABLE D'UN SUCCÈS. Le clic « Mettre fin à l'annonce »
+      // (eBay) NAVIGUE : la page se recharge, le content script meurt AVANT de
+      // répondre, et on n'a jamais sa réponse — alors que l'annonce vient d'être
+      // retirée. Ré-armer aveuglément, c'est retenter une suppression déjà faite
+      // (et conclure « annonce introuvable » au tour suivant, en boucle).
+      // On demande donc à la PLATEFORME, pas au canal : si l'annonce n'est plus
+      // en ligne, la suppression a réussi.
+      const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+      if (state === "unavailable" || state === "sold") {
+        console.log(
+          `[background] Job ${job.id} : canal coupé PAR LA NAVIGATION de suppression — ` +
+          `l'annonce ${job.platform} n'est PLUS en ligne : suppression CONFIRMÉE`
+        );
+        await updateJobStatus(accessToken, job.id, "deleted", {
+          error: null,
+          platform_fields: { ...(job.platform_fields ?? {}), delete_confirmed_by: "etat_annonce" },
+        }).catch((err) => console.error("[background] update-job-status failed:", err));
+        await recordRecentResult(job, "deleted");
+        return { status: "deleted" };
+      }
+      // Toujours en ligne (ou état illisible) : là seulement, on retente.
       await rearmBounded(accessToken, job, `Suppression interrompue (onglet navigué/rechargé) : ${msg}`)
         .catch((err) => console.error("[background] update-job-status failed:", err));
       return { status: "retry", error: msg };
