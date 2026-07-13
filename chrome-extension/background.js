@@ -17,9 +17,9 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-13-17h00 (logs propres: canal coupe = signature d un SUCCES Vinted (sonde relayee, survit a la redirection); " +
-  "listing_url eBay via le Hub vendeur; lectures eBay sans layout (fenetre minimisee)) " +
-  "⚠️ TEMP TEST : delais de grace a 20 min";
+  "2026-07-13-19h00 (sonde reseau GENERIQUE Vinted+eBay: la reponse serveur prouve la publication, pas la redirection; " +
+  "publication et capture d URL DECOUPLEES (Beebs publie sans attendre la moderation); delai de grace uniformise a 4h — " +
+  "plus aucun TEMP TEST a reverter)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -164,13 +164,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // cf. waitForPublishOutcome côté content script, cas de la modale
   // show_item_verification_modal qui masque la redirection).
   if (msg?.type === "VINTED_PROBE_CAPTURES" && senderTabId != null) {
-    readVintedProbeCaptures(senderTabId).then(sendResponse);
+    readProbeCaptures(senderTabId).then(sendResponse);
     return true;
   }
   // Capture relayée en direct par la sonde (via le content script) : elle est
   // stockée ICI pour survivre à la redirection qui détruit la page.
-  if (msg?.type === "VINTED_PROBE_CAPTURE" && senderTabId != null) {
-    recordVintedCapture(senderTabId, msg.capture ?? {});
+  // (VINTED_PROBE_CAPTURE : nom historique, la sonde est désormais générique —
+  // eBay relaie sous FILLSELL_PROBE_CAPTURE, même traitement.)
+  if ((msg?.type === "VINTED_PROBE_CAPTURE" || msg?.type === "FILLSELL_PROBE_CAPTURE") && senderTabId != null) {
+    recordProbeCapture(senderTabId, msg.capture ?? {});
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
@@ -642,7 +644,13 @@ async function processJob(rawJob, accessToken) {
 
     // Sonde réseau Vinted : installée AVANT le remplissage (elle doit être en
     // place quand le clic Publier part), lue seulement si Vinted refuse.
-    if (job.platform === "vinted") await installVintedProbe(tabId);
+    // Sonde réseau (Vinted ET eBay depuis le 2026-07-13) : installée AVANT le
+    // remplissage — elle doit être en place quand le clic Publier part. Les
+    // captures du job PRÉCÉDENT sont purgées d'abord : l'onglet de travail est
+    // le même d'un job à l'autre, et une vieille preuve de succès ferait passer
+    // le job courant pour publié (doublon garanti).
+    clearProbeCaptures(tabId);
+    await installNetworkProbe(tabId, job.platform);
 
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
@@ -709,16 +717,40 @@ async function processJob(rawJob, accessToken) {
         }
       }
 
-      // A1 (2026-07-11) : l'URL de l'annonce créée est capturée CÔTÉ
-      // BACKGROUND, pas par le content script — la redirection post-submit
-      // peut détruire son contexte JS avant qu'il ait pu répondre (raison du
-      // TODO historique de vinted.js). L'onglet, lui, survit : on surveille
-      // son URL puis, en repli, les liens de la page de confirmation.
-      // null si rien ne matche (non bloquant, comportement d'avant) — mais
-      // sans listing_url, ni détection de vente ni retrait ciblé ne
-      // fonctionneront pour ce job.
+      // ── PUBLICATION ET CAPTURE D'URL SONT DÉCOUPLÉES (règle Nico, 2026-07-13)
+      // Un job est PUBLIÉ dès que la plateforme a confirmé le dépôt. Le
+      // listing_url est un ENRICHISSEMENT : on le prend s'il est là tout de
+      // suite, sinon il est vide — ce n'est ni une erreur, ni un échec, et
+      // recoverMissingListingUrls (à chaque cycle de poll, jusqu'à 48 h) le
+      // récupérera. Aucun job ne doit plus rester incomplet parce qu'une
+      // plateforme met du temps à indexer son annonce.
+      //
+      // Sources, de la moins chère à la plus chère :
+      //   1. le content script (redirection observée sur place) ;
+      //   2. la RÉPONSE SERVEUR captée par la sonde (Vinted et eBay) — gratuite
+      //      et immédiate, elle porte le numéro d'annonce ;
+      //   3. le repli page/aller-retour "Mes annonces" (captureListingUrl), qui
+      //      coûte une navigation… et qui est INUTILE sur les plateformes à
+      //      modération : l'annonce n'y figure pas encore.
       let listingUrl = result.listingUrl ?? null;
-      if (!listingUrl) listingUrl = await captureListingUrl(tabId, job.platform, job);
+      if (!listingUrl && job.platform === "vinted") listingUrl = await vintedUploadSucceeded(tabId).catch(() => null);
+      if (!listingUrl && job.platform === "ebay") listingUrl = await ebayUploadSucceeded(tabId).catch(() => null);
+
+      // Beebs : dépôt CONFIRMÉ mais annonce en MODÉRATION (« il sera mis en
+      // ligne dès qu'il aura été vérifié par notre équipe ») — elle n'est PAS
+      // dans « Mes annonces » à cet instant. L'aller-retour ne pouvait donc que
+      // revenir bredouille, en coûtant plusieurs minutes au job (7 min sur le
+      // job 16f10f4a). On ne le tente même plus : le job est publié, l'URL
+      // viendra plus tard, par la re-capture différée.
+      if (!listingUrl && !PLATFORMS_WITH_DEFERRED_URL.has(job.platform)) {
+        listingUrl = await captureListingUrl(tabId, job.platform, job);
+      }
+      if (!listingUrl) {
+        console.log(
+          `[background] Job ${job.id} (${job.platform}) : publié, listing_url différé ` +
+          "(modération/indexation en cours) — recoverMissingListingUrls le récupérera."
+        );
+      }
       console.log(`[background] Job ${job.id} publié : ${listingUrl ?? "(URL non récupérée)"}`);
       await updateJobStatus(accessToken, job.id, "published", {
         ...completionExtras(job, result),
@@ -1375,6 +1407,18 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
       return null; // pas d'erreur : c'est un succès
     }
 
+    // 2e PREUVE (2026-07-13) : la RÉPONSE SERVEUR. eBay publie en affichant une
+    // POPUP et en restant sur /lstng — la redirection attendue n'arrive jamais,
+    // et si la popup n'est pas lue (onglet non rendu, markup inconnu), on
+    // déclarait « non confirmée » une annonce EN LIGNE (job 63cfc7f7, annonce
+    // 800332793676). Le réseau, lui, ne ment pas. Même parade que Vinted.
+    const served = await ebayUploadSucceeded(tabId);
+    if (served) {
+      console.log(`[background] eBay : publication CONFIRMÉE par la réponse serveur (${served})`);
+      await closeEbayPostPublishPopup(tabId);
+      return null; // pas d'erreur : c'est un succès
+    }
+
     const errors = await readVisibleEbayErrors(tabId);
     if (errors.length) {
       return (
@@ -1387,9 +1431,34 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
   }
   return (
     `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
-    `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection ni bandeau d'erreur — ` +
-    "job NON marqué publié, il repartira au prochain passage."
+    `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
+    "ni d'erreur, et sans réponse serveur portant un numéro d'annonce — job NON marqué publié, " +
+    "il repartira au prochain passage."
   );
+}
+
+// Popup post-publication eBay (« Votre annonce est désormais publiée sur le
+// site ») : fermée en best-effort pour laisser l'onglet de travail propre — le
+// succès est déjà acquis, il n'est conditionné à rien de visuel.
+async function closeEbayPostPublishPopup(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [String(estVisibleSansLayout)],
+      func: (helperSrc) => {
+        const estVisible = new Function(`return (${helperSrc})`)();
+        const dialog = Array.from(document.querySelectorAll('[role="dialog"], [class*="lightbox" i], [class*="modal" i]'))
+          .find(estVisible);
+        if (!dialog) return;
+        const closer =
+          dialog.querySelector('button[aria-label*="ermer" i], button[aria-label*="lose" i], button.lightbox-dialog__close') ??
+          Array.from(dialog.querySelectorAll("button")).find((b) =>
+            /^(fermer|close|ok|termin[eé]|continuer)$/i.test((b.textContent || "").trim())
+          );
+        closer?.click();
+      },
+    });
+  } catch { /* best-effort assumé */ }
 }
 
 // Bandeaux d'erreur visibles du formulaire eBay. Sélecteurs volontairement
@@ -1410,16 +1479,38 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
 // Purement OBSERVATIONNEL : on n'intercepte pas, on ne bloque pas, on ne rejoue
 // rien. Aucune publication n'est déclenchée par cette sonde — le garde-fou
 // DRY_RUN du projet reste entièrement intact.
-async function installVintedProbe(tabId) {
+// ── SONDE GÉNÉRIQUE (2026-07-13) ──────────────────────────────────────────────
+// Généralisée de Vinted à eBay : même leçon, même parade. Une plateforme peut
+// PUBLIER sans rediriger (Vinted : modale de vérification ; eBay : popup
+// « Votre annonce est désormais publiée sur le site » et l'onglet reste sur
+// /lstng). Se fier à la navigation, c'est déclarer « non confirmé » une annonce
+// bel et bien en ligne — vécu deux fois (jobs 32a47b4e, puis 63cfc7f7 : annonce
+// eBay 800332793676 publiée, job laissé en pending). La RÉPONSE SERVEUR, elle,
+// ne ment pas : on l'observe, et on en fait la 2e preuve de succès.
+const PROBE_ENDPOINTS = {
+  // Vinted : endpoint connu et vérifié (réponse {"item":{"id":…},"code":0}).
+  vinted: String.raw`\/api\/v2\/(?:items|item_upload)`,
+  // eBay : l'endpoint de soumission n'a jamais été relevé (aucun run n'avait
+  // publié jusqu'ici). On capture donc TOUTE requête non-GET du domaine et on
+  // cherche un numéro d'annonce dans la réponse — c'est ce que fait
+  // ebayUploadSucceeded, qui exige aussi un HTTP 2xx. Le jour où l'endpoint
+  // exact apparaît dans les logs, on resserrera ce motif.
+  ebay: String.raw`ebay\.(?:fr|com)`,
+};
+
+async function installNetworkProbe(tabId, platform) {
+  const endpointSource = PROBE_ENDPOINTS[platform];
+  if (!endpointSource) return;
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
-      func: () => {
+      args: [endpointSource],
+      func: (endpointSrc) => {
         if (window.__fsProbeInstalled) return;
         window.__fsProbeInstalled = true;
         window.__fsCaptures = [];
-        const ENDPOINT = /\/api\/v2\/(?:items|item_upload)/i;
+        const ENDPOINT = new RegExp(endpointSrc, "i");
         const priceOf = (body) => {
           if (typeof body !== "string") return null;
           try {
@@ -1479,8 +1570,29 @@ async function installVintedProbe(tabId) {
       },
     });
   } catch (e) {
-    console.warn("[background] Sonde Vinted non installée :", String(e?.message ?? e));
+    console.warn(`[background] Sonde réseau ${platform} non installée :`, String(e?.message ?? e));
   }
+}
+
+// L'annonce eBay a-t-elle RÉELLEMENT été créée ? Même principe que
+// vintedUploadSucceeded : la réponse serveur tranche, pas la navigation. eBay
+// publie en affichant une POPUP et en restant sur /lstng — la seule redirection
+// attendue n'arrive jamais (job 63cfc7f7 : annonce 800332793676 en ligne, job
+// laissé en pending « non confirmée »). On exige un HTTP 2xx ET un numéro
+// d'annonce (9 chiffres ou plus) dans la réponse. Retourne l'URL, ou null.
+async function ebayUploadSucceeded(tabId) {
+  const { captures } = await readProbeCaptures(tabId);
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    const status = Number(c?.status);
+    if (!(status >= 200 && status < 300)) continue;
+    const body = String(c?.reponse ?? "");
+    const m =
+      body.match(/"(?:listingId|itemId|item_id)"\s*:\s*"?(\d{9,})/i) ??
+      body.match(/\/itm\/(\d{9,})/);
+    if (m) return `https://www.ebay.fr/itm/${m[1]}`;
+  }
+  return null;
 }
 
 // ── Preuve de commit du prix Vinted (2026-07-13) ───────────────────────────────
@@ -1588,24 +1700,26 @@ async function commitVintedPrice(tabId, value) {
   }
 }
 
-// Captures relayées par la sonde, gardées CÔTÉ BACKGROUND (2026-07-13).
-// Indispensable : la page — donc window.__fsCaptures — meurt à la redirection
-// post-publication, exactement quand on a besoin de la preuve. Ici, elles
-// survivent à la navigation, à la mort du content script, et au job lui-même.
-const vintedCapturesByTab = new Map();
+// Captures relayées par la sonde, gardées CÔTÉ BACKGROUND (2026-07-13), pour
+// TOUTES les plateformes sondées. Indispensable : la page — donc
+// window.__fsCaptures — meurt à la redirection post-publication, exactement
+// quand on a besoin de la preuve. Ici, elles survivent à la navigation, à la
+// mort du content script, et au job lui-même.
+const probeCapturesByTab = new Map();
 
-function recordVintedCapture(tabId, capture) {
-  const list = vintedCapturesByTab.get(tabId) ?? [];
+function recordProbeCapture(tabId, capture) {
+  const list = probeCapturesByTab.get(tabId) ?? [];
   list.push(capture);
   // On ne garde que les dernières : un onglet de travail sert des dizaines de
-  // jobs sans jamais être fermé.
-  vintedCapturesByTab.set(tabId, list.slice(-10));
+  // jobs sans jamais être fermé. (eBay capture TOUT le non-GET du domaine :
+  // la fenêtre est plus large que sur Vinted, d'où les 30.)
+  probeCapturesByTab.set(tabId, list.slice(-30));
 }
 
 // Captures brutes de la sonde (objets, pas le résumé texte de readVintedProbe).
 // Union des deux sources : celles relayées (survivent à tout) et celles encore
 // présentes dans la page (au cas où le relais n'aurait pas eu le temps).
-async function readVintedProbeCaptures(tabId) {
+async function readProbeCaptures(tabId) {
   let inPage = [];
   try {
     const [res] = await chrome.scripting.executeScript({
@@ -1615,7 +1729,7 @@ async function readVintedProbeCaptures(tabId) {
     });
     inPage = res?.result ?? [];
   } catch { /* page morte/naviguée : les captures relayées suffisent */ }
-  const relayed = vintedCapturesByTab.get(tabId) ?? [];
+  const relayed = probeCapturesByTab.get(tabId) ?? [];
   const seen = new Set();
   const captures = [...relayed, ...inPage].filter((c) => {
     const k = `${c?.url}|${c?.status}|${c?.reponse}`;
@@ -1626,12 +1740,27 @@ async function readVintedProbeCaptures(tabId) {
   return { captures };
 }
 
+// Vide les captures d'un onglet AVANT un nouveau job : sans ça, la preuve de
+// succès du job PRÉCÉDENT (même onglet de travail, jamais fermé) ferait passer
+// le job courant pour publié. Erreur qu'on ne peut pas se permettre : elle
+// créerait des doublons et des listing_url croisés.
+function clearProbeCaptures(tabId) {
+  probeCapturesByTab.delete(tabId);
+  chrome.scripting
+    .executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => { window.__fsCaptures = []; },
+    })
+    .catch(() => {});
+}
+
 // L'annonce Vinted a-t-elle RÉELLEMENT été créée ? Lecture de la réponse
 // serveur : HTTP 200 + code:0 + item.id ⇒ oui, quoi qu'ait fait la page ensuite
 // (redirection qui tue le content script, modale de vérification, timeout…).
 // Retourne l'URL de l'annonce, ou null.
 async function vintedUploadSucceeded(tabId) {
-  const { captures } = await readVintedProbeCaptures(tabId);
+  const { captures } = await readProbeCaptures(tabId);
   for (let i = captures.length - 1; i >= 0; i--) {
     const c = captures[i];
     if (Number(c?.status) !== 200) continue;
@@ -1776,11 +1905,18 @@ const LISTING_URL_PATTERNS = {
 // des annonces du compte : on y fait un aller-retour, on repère l'annonce par
 // son TITRE (exact), et on revient. Vinted et eBay, eux, redirigent
 // directement — pas d'aller-retour pour eux.
+// Plateformes dont l'annonce n'est PAS consultable au moment du dépôt : leur
+// listing_url est DIFFÉRÉ par nature, et le chercher tout de suite est du temps
+// perdu (une navigation, plusieurs minutes) pour un résultat garanti vide.
+// Beebs annonce lui-même la modération : « il sera mis en ligne dès qu'il aura
+// été vérifié par notre équipe ». Le job est publié quand même ; la re-capture
+// différée fera le reste.
+const PLATFORMS_WITH_DEFERRED_URL = new Set(["beebs"]);
+
 const MY_LISTINGS_URL = {
   leboncoin: "https://www.leboncoin.fr/compte/part/mes-annonces",
-  // Beebs : l'annonce passe d'abord par "En cours de vérification"
-  // (/my-adverts/creating) avant d'atteindre "Actuellement en ligne"
-  // (/my-adverts) — délai de modération observé > 30 min. On regarde les deux.
+  // Beebs : conservé pour la RE-CAPTURE DIFFÉRÉE uniquement (jamais appelé au
+  // moment du dépôt — cf. PLATFORMS_WITH_DEFERRED_URL).
   beebs: "https://www.beebs.app/fr/account/my-adverts/creating",
   // eBay (ajouté le 2026-07-13) : le commentaire ci-dessus disait « eBay
   // redirige directement, pas d'aller-retour » — c'était une SUPPOSITION, eBay
@@ -1889,10 +2025,12 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
       console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces — ${url}`);
       return url;
     }
-    console.warn(
-      `[background] captureListingUrl(${platform}) : annonce introuvable dans Mes annonces ` +
-      "(modération en cours ?) — listing_url vide pour l'instant, re-tentative aux prochains " +
-      "cycles de poll (recoverMissingListingUrls)."
+    // Log volontairement NEUTRE (2026-07-13) : un listing_url pas encore
+    // disponible n'est PAS une anomalie — le job est publié, l'annonce est
+    // déposée, et la re-capture différée s'en charge. On ne crie plus au loup.
+    console.log(
+      `[background] captureListingUrl(${platform}) : annonce pas encore listée dans Mes annonces ` +
+      "(indexation en cours) — listing_url différé, re-tentative aux prochains cycles de poll."
     );
     return null;
   } catch (e) {
@@ -1929,32 +2067,20 @@ const SALE_CHECK_MAX_PER_CYCLE = 8;
 // publiquement dans les minutes qui suivent son dépôt — elle serait lue comme
 // "unavailable" et un bandeau « Vendue ? » s'afficherait sur une annonce qui
 // vient d'être mise en ligne.
-// Fenêtres calées sur ce qu'on a RÉELLEMENT observé le 2026-07-12 :
-//   beebs     : 24 h — passe par « En cours de vérification » (modération), et
-//               sa propagation est différée à DEUX niveaux (liste vendeur
-//               obsolète plusieurs secondes, page publique servie en cache CDN
-//               plusieurs MINUTES après un changement d'état). C'est aussi la
-//               plateforme dont des annonces ont « disparu » sans explication :
-//               large marge assumée.
-//   leboncoin : 6 h — l'annonce n'était pas indexée dans « Mes annonces »
-//               immédiatement après le dépôt (captureListingUrl revenait
-//               bredouille : c'est ce qui a motivé recoverMissingListingUrls).
-//   ebay      : 2 h — mise en ligne rapide et /itm/ répond tout de suite.
-//   vinted    : 2 h — annonce consultable immédiatement après publication.
-// ⚠️⚠️ TEST MANUEL DU 2026-07-12 — VALEURS TEMPORAIRES, À REVERT AVANT LE LAUNCH ⚠️⚠️
-// Les 4 plateformes sont ramenées à 20 min le temps d'une session de validation
-// bout en bout (publication → retrait manuel → unavailable_since → sale_signal →
-// bandeau → confirmation → retrait synchronisé), pour ne pas attendre les vraies
-// fenêtres. Valeurs de PRODUCTION à restaurer :
-//   beebs 24 h · leboncoin 6 h · ebay 2 h · vinted 2 h  (+ défaut 6 h)
-// Rien d'autre n'est touché : ni les seuils, ni le détecteur 3 états.
+// ⚠️ UNIFORMISÉ À 4 h SUR LES 4 PLATEFORMES (décision Nico, 2026-07-13). Cette
+// valeur remplace À LA FOIS les fenêtres par plateforme (beebs 24 h · leboncoin
+// 6 h · ebay 2 h · vinted 2 h — calées sur des observations ponctuelles) ET les
+// 20 min « TEMP TEST À REVERT AVANT LE LAUNCH » du 2026-07-12, qui traînaient
+// depuis. Un seul chiffre, tenable et explicable : 4 h couvrent la modération et
+// la propagation CDN observées, sans laisser une vraie vente invisible une
+// journée entière. Plus rien à reverter avant le launch.
 const PUBLISH_GRACE_MS = {
-  beebs: 20 * 60 * 1000,     // TEMP TEST (prod : 24 * 60 * 60 * 1000)
-  leboncoin: 20 * 60 * 1000, // TEMP TEST (prod :  6 * 60 * 60 * 1000)
-  ebay: 20 * 60 * 1000,      // TEMP TEST (prod :  2 * 60 * 60 * 1000)
-  vinted: 20 * 60 * 1000,    // TEMP TEST (prod :  2 * 60 * 60 * 1000)
+  beebs: 4 * 60 * 60 * 1000,
+  leboncoin: 4 * 60 * 60 * 1000,
+  ebay: 4 * 60 * 60 * 1000,
+  vinted: 4 * 60 * 60 * 1000,
 };
-const PUBLISH_GRACE_DEFAULT_MS = 6 * 60 * 60 * 1000; // inchangé (aucune plateforme ne l'utilise)
+const PUBLISH_GRACE_DEFAULT_MS = 4 * 60 * 60 * 1000;
 
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
@@ -2232,8 +2358,25 @@ async function checkPublishedListings(session) {
 // est en ligne"), tous les jobs manquants de la plateforme sont cherchés sur
 // la même page chargée. Fenêtre bornée à 48 h après le dépôt : au-delà, ce
 // n'est plus un délai de modération, on arrête de frapper à la porte.
+// ⚠️ COUVERTURE DES 4 PLATEFORMES (2026-07-13) — la re-capture différée est
+// désormais le filet de TOUT LE MONDE, puisqu'un job est publié sans attendre
+// son URL. État réel de chacune :
+//   · leboncoin / beebs → l'URL n'existe QUE dans "Mes annonces" : pages ci-dessous.
+//   · ebay             → même chose depuis qu'eBay publie pour de vrai : la page
+//                        d'après-publication n'expose aucune URL /itm/ (job
+//                        f89341ab). VÉRIFIÉ : le Hub vendeur porte le lien avec
+//                        le titre exact. (En temps normal la sonde donne l'URL
+//                        immédiatement ; ceci est le filet.)
+//   · vinted           → PAS de page ici, et c'est un constat, pas un oubli :
+//                        son URL vient de la réponse serveur (sonde) ou de la
+//                        redirection, toutes deux immédiates et vérifiées. Le
+//                        seul repli possible serait le profil du vendeur, dont
+//                        l'URL dépend de son id — non relevé côté extension. Si
+//                        un jour un job Vinted reste sans URL, c'est là qu'il
+//                        faudra brancher /api/v2/users/current.
 const LISTING_URL_RECOVERY_PAGES = {
   leboncoin: ["https://www.leboncoin.fr/compte/part/mes-annonces"],
+  ebay: ["https://www.ebay.fr/sh/lst/active"],
   // Beebs : d'abord "Actuellement en ligne" (l'URL publique de l'annonce vit
   // là), puis "En cours de vérification" au cas où la carte y porte déjà le
   // lien. ⚠️ Rappel : le format d'URL produit Beebs reste NON OBSERVÉ
