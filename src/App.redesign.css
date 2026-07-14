@@ -480,19 +480,9 @@ body.bg-dots {
   30%            { transform: scale(1.5); opacity: 1; }
 }
 
-/* ============================================================
-   6. Topbar premium badge shimmer (ctaGradient/ctaShimmer, .tb-premium)
-   ============================================================ */
-@keyframes ctaGradient {
-  0%, 100% { background-position: 0 0; }
-  50%      { background-position: 100% 0; }
-}
-@keyframes ctaShimmer {
-  0%   { background-position: 200% 0; }
-  60%  { background-position: -120% 0; }
-  100% { background-position: -120% 0; }
-}
-
+/* 6. Topbar premium badge shimmer — supprimé le 2026-07-14 avec .tb-premium :
+   les keyframes ctaGradient / ctaShimmer ne servaient qu'à ce badge, remplacé
+   par le composant PlanBadge (qui porte sa propre animation de reflet). */
 
 /* 7. EMPTY STATE DASHBOARD — supprimé le 2026-07-14 : l'état vide est
    désormais entièrement stylé en inline (composant EmptyStateDashboard,
@@ -539,33 +529,6 @@ body.bg-dots {
   overflow: visible !important;
   padding-right: 6px !important;
 }
-.tb-premium {
-  background: linear-gradient(110deg, #1D9E75 0%, #3EACA0 35%, #F9A26C 70%, #E8845A 100%) !important;
-  background-size: 200% 100% !important;
-  padding: 6px 13px !important;
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.005em;
-  border-radius: 99px !important;
-  box-shadow:
-    0 1px 2px rgba(232,132,90,0.20),
-    0 6px 16px rgba(29,158,117,0.30) !important;
-  animation: ctaGradient 6s ease-in-out infinite;
-  position: relative;
-  overflow: hidden;
-}
-.tb-premium::before {
-  content: "";
-  position: absolute; inset: 0;
-  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.45) 50%, transparent 70%);
-  background-size: 220% 100%;
-  background-position: 200% 0;
-  animation: ctaShimmer 4.5s cubic-bezier(0.4,0,0.2,1) infinite;
-  pointer-events: none;
-  border-radius: inherit;
-}
-.tb-premium > * { position: relative; z-index: 1; }
-
 .tb-icon-btn-light {
   width: 38px !important; height: 38px !important;
   background: rgba(15,23,42,0.04) !important;

@@ -101,18 +101,8 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-.tb-premium {
-  background: linear-gradient(135deg, #3EACA0 0%, #E8956D 100%);
-  border: none;
-  border-radius: var(--r-pill);
-  padding: 5px 11px;
-  font-size: 10px; font-weight: 700;
-  color: #fff;
-  display: inline-flex; align-items: center; gap: 4px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(62,172,160,0.25);
-}
+/* .tb-premium supprimé le 2026-07-14 : le badge d'abonnement du header est
+   désormais le composant PlanBadge (Premium / Pro), stylé en inline. */
 .tb-icon-btn-light {
   width: 36px; height: 36px;
   border-radius: 50%;
