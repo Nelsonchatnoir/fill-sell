@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { track } from '../analytics/analytics';
+import BrandMark from '../components/BrandMark';
 import './landing.css';
 
 /* Adresse de contact publique — la même que dans /legal. */
@@ -278,14 +279,12 @@ export default function LandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  /* Inscription. `plan` porte l'intention d'achat : create-checkout-session exige
-     une session Supabase, on ne peut donc pas partir sur Stripe depuis la landing.
-     App.jsx relit fs_intent_plan une fois le profil chargé et enchaîne seul sur le
-     checkout Stripe (web) ou l'achat in-app (iOS/Android). */
+  /* Tous les CTA de la landing mènent à la même création de compte — y compris
+     "Passer Premium" et "Passer Pro". Pas de paywall avant que l'utilisateur ait
+     vu l'app : l'upgrade se fait depuis l'app, pas depuis la landing. `plan` ne
+     sert plus qu'à distinguer les CTA dans l'analytics. */
   const startSignup = useCallback((plan) => {
     track('cta_click', { cta: `signup_${plan}`, page: 'landing' });
-    if (plan === 'premium' || plan === 'pro') sessionStorage.setItem('fs_intent_plan', plan);
-    else sessionStorage.removeItem('fs_intent_plan');
     nav('/login?mode=signup');
   }, [nav]);
 
@@ -316,10 +315,7 @@ export default function LandingPage() {
       {/* ══════════ NAV ══════════ */}
       <header className="lp-nav">
         <div className="lp-nav__inner">
-          <button className="lp-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <img src="/logo.png" alt="FillSell" width="30" height="30" />
-            <span className="lp-brand__name">FillSell</span>
-          </button>
+          <BrandMark onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
 
           <nav className="lp-nav__links">
             <button className="lp-nav__link" onClick={() => scrollTo('publication')}>{t.navPublish}</button>

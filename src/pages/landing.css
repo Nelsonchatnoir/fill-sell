@@ -121,26 +121,25 @@
 .lp-btn--ghost:hover { color: var(--lp-ink); background: var(--lp-surface); }
 
 /* ── Nav ────────────────────────────────────────────────────── */
+/* Même verre que le .topbar de l'app connectée (App.css), au pixel près : la
+   landing le rend seulement en sticky au lieu de fixed, faute de layout en
+   hauteur fixe. */
 .lp-nav {
   position: sticky; top: 0; z-index: 60;
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  background: rgba(237, 234, 224, 0.72);
-  border-bottom: 1px solid rgba(231, 227, 216, 0.9);
+  background: rgba(250, 250, 248, 0.92);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border-bottom: 1px solid var(--line);
 }
 .lp-nav__inner {
   max-width: 1200px; margin: 0 auto; padding: 13px 22px;
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
 }
-.lp-brand {
-  display: flex; align-items: center; gap: 9px;
-  background: none; border: none; padding: 0; cursor: pointer;
-}
-.lp-brand img { width: 30px; height: 30px; border-radius: 8px; display: block; }
-.lp-brand__name {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-weight: 700; font-size: 20px; letter-spacing: -0.01em; color: var(--lp-brand);
-}
+/* La marque du header vient du composant partagé <BrandMark> : elle porte les
+   classes .tb-logo / .logo-desktop / .logo-mobile / .name du topbar de l'app,
+   stylées dans App.css + App.redesign.css. Rien à redéfinir ici — c'est ce qui
+   garantit qu'il n'y a aucun écart visuel entre header public et header app. */
+
 .lp-nav__links { display: flex; gap: 6px; margin-left: 6px; flex-wrap: wrap; }
 .lp-nav__link {
   font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--lp-muted);
@@ -704,7 +703,6 @@
 
 @media (max-width: 640px) {
   .lp-nav__inner { padding: 11px 16px; gap: 10px; }
-  .lp-brand__name { font-size: 18px; }
   .lp-btn--nav { padding: 9px 14px; font-size: 12.5px; }
 
   .lp-hero { padding: 32px 16px 52px; }

@@ -30,6 +30,7 @@ import CoinStoreModal from './components/CoinStoreModal';
 import PepiteIcon from './components/PepiteIcon';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
+import BrandMark from './components/BrandMark';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from './components/voice/tokens';
 import VoiceResultCard from './components/voice/VoiceResultCard';
@@ -2018,20 +2019,6 @@ export default function App({ loginOnly = false }){
     if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});
     setConversionModal({open:true,trigger});
   }
-
-  // Intention d'achat posée par la landing ("Passer Premium" / "Passer Pro") :
-  // create-checkout-session exige une session Supabase, la landing ne peut donc
-  // pas partir sur Stripe elle-même. Elle écrit fs_intent_plan et on enchaîne ici,
-  // une fois le profil chargé (appLoading=false garantit isPremium/isPro à jour).
-  useEffect(()=>{
-    if(!user||appLoading)return;
-    const intent=sessionStorage.getItem('fs_intent_plan');
-    if(intent!=='premium'&&intent!=='pro')return;
-    sessionStorage.removeItem('fs_intent_plan');
-    if(intent==='pro'?isPro:isPremium)return; // déjà sur le palier visé
-    startTierCheckout(intent);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[user,appLoading,isPremium,isPro]);
 
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
   // visibilité, poll sentinelle) ne doivent pas faire clignoter le spinner —
@@ -4058,11 +4045,7 @@ export default function App({ loginOnly = false }){
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
 
       <div className="topbar">
-        <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} className="tb-logo">
-          <img src="/icon_1024x1024.png" alt="FillSell" className="logo-mobile" style={{width:30,height:30,borderRadius:9,objectFit:"cover",flexShrink:0}}/>
-          <img src="/logo.png" alt="FillSell" className="logo-desktop" style={{height:34,width:"auto",objectFit:"contain",flexShrink:0}}/>
-          <span className="name">FillSell</span>
-        </button>
+        <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
           <div style={{fontSize:13,fontWeight:700,color:UI.ink,letterSpacing:"-0.02em",lineHeight:1}}>
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
