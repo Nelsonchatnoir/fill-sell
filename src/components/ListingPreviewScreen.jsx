@@ -1584,7 +1584,21 @@ export default function ListingPreviewScreen({
           ...(notes ? { notes } : {}),
         },
       });
-      if (fnErr) throw new Error(fnErr.message || t("stepGenErrorTitle"));
+      if (fnErr) {
+        // 402 insufficient_coins (course : solde consommé entre le pré-check
+        // client du step 1 et cet appel) : functions.invoke ne lit pas le
+        // body d'erreur, il faut aller le chercher sur fnErr.context
+        // (Response). Même UX que Lens et publication : ConversionModal avec
+        // chemin "Utiliser mes Pépites", jamais un message générique.
+        let errBody = null;
+        try { errBody = await fnErr.context?.json(); } catch { /* body non-JSON → chemin générique */ }
+        if (errBody?.error === "insufficient_coins") {
+          refreshWallet();
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
+          return;
+        }
+        throw new Error(fnErr.message || t("stepGenErrorTitle"));
+      }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
       setProcessedPhotos(data.photos ?? []);
