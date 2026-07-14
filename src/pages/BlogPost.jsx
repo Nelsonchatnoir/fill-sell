@@ -3,7 +3,6 @@ import { Link, useParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getPostBySlug } from '../blog/posts';
-import '../pages/landing.css';
 import './blog.css';
 
 function useSEO({ title, description, ogImage }) {

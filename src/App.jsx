@@ -2019,6 +2019,20 @@ export default function App({ loginOnly = false }){
     setConversionModal({open:true,trigger});
   }
 
+  // Intention d'achat posée par la landing ("Passer Premium" / "Passer Pro") :
+  // create-checkout-session exige une session Supabase, la landing ne peut donc
+  // pas partir sur Stripe elle-même. Elle écrit fs_intent_plan et on enchaîne ici,
+  // une fois le profil chargé (appLoading=false garantit isPremium/isPro à jour).
+  useEffect(()=>{
+    if(!user||appLoading)return;
+    const intent=sessionStorage.getItem('fs_intent_plan');
+    if(intent!=='premium'&&intent!=='pro')return;
+    sessionStorage.removeItem('fs_intent_plan');
+    if(intent==='pro'?isPro:isPremium)return; // déjà sur le palier visé
+    startTierCheckout(intent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user,appLoading,isPremium,isPro]);
+
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
   // visibilité, poll sentinelle) ne doivent pas faire clignoter le spinner —
   // les données se remplacent en place, sans état de chargement visible.

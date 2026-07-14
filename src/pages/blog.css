@@ -1,5 +1,26 @@
 /* Blog — styles partagés entre BlogList et BlogPost */
-/* Réutilise les variables CSS de landing.css */
+
+/* Ces variables vivaient dans landing.css, que le blog importait juste pour
+   elles. La landing a sa propre palette (scopée .lp-root) depuis la refonte de
+   juillet 2026 : le blog garde donc ici les siennes, et n'importe plus la
+   feuille de la landing. */
+:root {
+  --teal: #3EACA0;
+  --teal-strong: #1D9E75;
+  --teal-bright: #4ECDC4;
+  --teal-dark: #0F6E56;
+  --teal-tint: #E8F5F0;
+  --peach: #E8956D;
+  --white: #FFFFFF;
+  --text: #0D1117;
+  --text-strong: #111827;
+  --sub: #6B7280;
+  --label: #A3A9A6;
+  --border: rgba(0, 0, 0, 0.06);
+  --grad: linear-gradient(135deg, #3EACA0 0%, #E8956D 100%);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.09);
+}
 
 .blog-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;

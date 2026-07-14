@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#0F172A", sub: "#475569", label: "#94A3B8", border: "rgba(0,0,0,0.06)" };
 
@@ -63,8 +63,8 @@ const css = `
   }
 `;
 
-const Section = ({ icon, title, children }) => (
-  <div className="legal-card">
+const Section = ({ icon, title, id, children }) => (
+  <div className="legal-card" id={id} style={id ? { scrollMarginTop: 84 } : undefined}>
     <div className="legal-h2">
       <span>{icon}</span>
       {title}
@@ -167,6 +167,15 @@ export default function Legal() {
   const p = privacyTexts[lang] || privacyTexts.fr;
   const en = lang === 'en';
 
+  // Le scroll natif du navigateur sur #ancre arrive avant le montage React :
+  // les liens du footer (/legal#mentions, /legal#confidentialite) le referaient
+  // à vide. On rejoue la cible une fois les sections rendues.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   return (
     <div style={{ minHeight: "100vh", background: "#F1F5F9", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{css}</style>
@@ -200,7 +209,7 @@ export default function Legal() {
         </div>
 
         {/* 1. Éditeur / Publisher */}
-        <Section icon="🏢" title={en ? '1. Publisher' : '1. Éditeur du site'}>
+        <Section id="mentions" icon="🏢" title={en ? '1. Publisher' : '1. Éditeur du site'}>
           <p className="legal-p">
             {en
               ? <>The website <span className="legal-strong">FillSell</span> (accessible at <span className="legal-strong">fillsell.app</span>) is published by:</>
@@ -230,7 +239,7 @@ export default function Legal() {
         </Section>
 
         {/* 3. CGU / T&C */}
-        <Section icon="📋" title={en ? '3. Terms and Conditions (T&C)' : '3. Conditions générales d\'utilisation (CGU)'}>
+        <Section id="cgu" icon="📋" title={en ? '3. Terms and Conditions (T&C)' : '3. Conditions générales d\'utilisation (CGU)'}>
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.1 Purpose' : '3.1 Objet'}</span><br />
             {en
@@ -296,7 +305,7 @@ export default function Legal() {
         </Section>
 
         {/* 4. RGPD / GDPR */}
-        <Section icon="🔒" title={en ? '4. Personal Data Protection (GDPR)' : '4. Protection des données personnelles (RGPD)'}>
+        <Section id="confidentialite" icon="🔒" title={en ? '4. Personal Data Protection (GDPR)' : '4. Protection des données personnelles (RGPD)'}>
           <p className="legal-p">
             <span className="legal-strong">{en ? '4.1 Data Controller' : '4.1 Responsable du traitement'}</span><br />
             {en
