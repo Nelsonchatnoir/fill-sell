@@ -216,14 +216,20 @@ export function IconTile({ icon, color, size=38 }) {
   );
 }
 
+// Tuile KPI — gabarit du design « Dashboard » (Claude Design, 2026-07-14) :
+// fond paper, tuile d'icône 36 px, libellé en eyebrow serré, valeur 24 px.
+// `icon` accepte un emoji ou un nœud SVG (le Dashboard passe des SVG).
 export function StatTile({ icon, tileColor, label, value, sub, subColor }) {
   return (
-    <div style={{ background:UI.card, borderRadius:16, padding:14, border:`1px solid ${UI.border}`, display:'flex', flexDirection:'column', gap:10 }}>
-      <IconTile icon={icon} color={tileColor} />
-      <div>
-        <Eyebrow style={{ marginBottom:3 }}>{label}</Eyebrow>
-        <div style={{ fontSize:20, fontWeight:600, color:UI.ink, letterSpacing:'-0.02em', lineHeight:1.15 }}>{value}</div>
-        {sub && <div style={{ fontSize:11, fontWeight:500, color: subColor || UI.mute2, marginTop:2 }}>{sub}</div>}
+    <div style={{
+      background:UI.paper, borderRadius:20, padding:'15px 15px 14px', border:`1px solid ${UI.border}`,
+      boxShadow:'0 1px 3px rgba(16,32,27,0.04)',
+    }}>
+      <IconTile icon={icon} color={tileColor} size={36} />
+      <div style={{ marginTop:12 }}>
+        <div style={{ fontSize:9.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:UI.mute, marginBottom:3 }}>{label}</div>
+        <div style={{ fontSize:24, fontWeight:700, color:UI.ink, letterSpacing:'-0.03em', lineHeight:1 }}>{value}</div>
+        {sub && <div style={{ fontSize:11.5, fontWeight:500, color: subColor || UI.mute, marginTop:5 }}>{sub}</div>}
       </div>
     </div>
   );
