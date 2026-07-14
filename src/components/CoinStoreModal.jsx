@@ -3,18 +3,14 @@ import { Capacitor } from "@capacitor/core";
 import { purchaseCoins } from "../lib/iap";
 import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import PepiteIcon from "./PepiteIcon";
+import { PACKS } from "./coinPacks";
 
 // Store de packs de pièces — grille validée 2026-07-06.
 // Natif : achat consumable @capgo/native-purchases puis validation du reçu par
 // l'edge function validate-coin-purchase (qui crédite le wallet, idempotent).
 // Web : checkout Stripe mode payment (create-checkout-session, product=coins_*),
 // crédit par stripe-webhook au retour — la page /success recharge l'app.
-const PACKS = [
-  { id: "coins_100",  product: "app.fillsell.coins.100",  coins: 100,  price: "4,99 €" },
-  { id: "coins_220",  product: "app.fillsell.coins.220",  coins: 220,  price: "9,99 €",  bonus: "+10%" },
-  { id: "coins_460",  product: "app.fillsell.coins.460",  coins: 460,  price: "19,99 €", bonus: "+15%" },
-  { id: "coins_1150", product: "app.fillsell.coins.1150", coins: 1150, price: "49,99 €", bonus: "+15%" },
-];
+// Packs : source unique dans ./coinPacks (partagée avec ConversionModal).
 
 const TEAL = "#2F9E90";
 const TEAL_DEEP = "#1B6E62";

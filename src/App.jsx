@@ -2138,16 +2138,21 @@ export default function App({ loginOnly = false }){
     setVoiceUsedToday(voiceCount);
   }
 
-  // Solde + derniers mouvements de pièces, rechargés à chaque ouverture des réglages
+  // Solde + derniers mouvements de pièces, rechargés à chaque ouverture des
+  // réglages ET de la modale de conversion : celle-ci affiche le vrai solde
+  // (« Tu es en Free · X Pépites »), il ne doit jamais être vide faute d'avoir
+  // ouvert les réglages avant. L'historique ne sert qu'aux réglages.
   useEffect(()=>{
-    if(!showSettings||!user)return;
+    const ouvert=showSettings||conversionModal.open;
+    if(!ouvert||!user)return;
     (async()=>{
       const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance').eq('user_id',user.id).maybeSingle();
       setCoinWallet(w??{included_balance:0,purchased_balance:0});
+      if(!showSettings)return;
       const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(5);
       setCoinHistory(h??[]);
     })();
-  },[showSettings,user]);
+  },[showSettings,conversionModal.open,user]);
 
   useEffect(()=>{
     let mounted=true;
