@@ -5853,10 +5853,7 @@ export default function App({ loginOnly = false }){
             stock={stock} stockVal={stockVal} stockQty={stockQty}
             tm={tm} salesForKpis={salesForKpis} totalM={totalM}
             selectedRange={selectedRange} setSelectedRange={setSelectedRange}
-            delSale={delSale}
-            resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
-            triggerCheckout={triggerCheckout}
             openUpgradeModal={openUpgradeModal}
             setTab={setTab}
             EmptyStateDashboard={EmptyStateDashboard}

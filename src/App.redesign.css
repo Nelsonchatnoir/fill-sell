@@ -494,127 +494,9 @@ body.bg-dots {
 }
 
 
-/* ============================================================
-   7. EMPTY STATE DASHBOARD — typewriter vocal
-   ============================================================ */
-.empty-hero {
-  position: relative;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.05);
-  border-radius: 24px;
-  padding: 28px 22px 24px;
-  text-align: center;
-  overflow: hidden;
-  box-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.04),
-    0 12px 32px rgba(0, 0, 0, 0.06);
-  isolation: isolate;
-}
-
-.empty-hero::before,
-.empty-hero::after {
-  content: "";
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(40px);
-  pointer-events: none;
-  z-index: -1;
-  animation: emptyBlob 9s ease-in-out infinite;
-}
-.empty-hero::before {
-  width: 220px; height: 220px;
-  top: -90px; left: -50px;
-  background: radial-gradient(circle, rgba(29, 158, 117, 0.30), transparent 70%);
-}
-.empty-hero::after {
-  width: 180px; height: 180px;
-  top: 40%; right: -60px;
-  background: radial-gradient(circle, rgba(249, 162, 108, 0.28), transparent 70%);
-  animation-delay: -4s;
-}
-
-@keyframes emptyBlob {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(15px, -10px) scale(1.08); }
-}
-
-.empty-hero-art {
-  width: 88px; height: 88px;
-  margin: 0 auto 18px;
-  border-radius: 26px;
-  background: linear-gradient(135deg, #0E7C5F 0%, #1D9E75 50%, #34D399 100%);
-  background-size: 200% 200%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 40px;
-  box-shadow:
-    0 8px 22px rgba(29, 158, 117, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  animation: ctaGradient 6s ease-in-out infinite;
-}
-
-.empty-hero h1 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  color: #0D0D0D;
-  margin: 0 0 8px;
-  line-height: 1.15;
-}
-
-.empty-hero p {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  color: #6B7280;
-  line-height: 1.5;
-  margin: 0 auto 4px;
-  max-width: 320px;
-}
-.empty-hero p b { color: #1D9E75; font-weight: 700; }
-
-/* Voice categories grid */
-.voice-categories {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  margin: 16px 0;
-}
-.voice-cat {
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.05);
-  border-radius: 14px;
-  padding: 12px 8px;
-  text-align: center;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.voice-cat .ico { font-size: 22px; line-height: 1; margin-bottom: 4px; }
-.voice-cat .lbl {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 11px; font-weight: 700; color: #0D0D0D;
-}
-
-.empty-hero-cta-stack {
-  display: flex; flex-direction: column; gap: 8px;
-  margin-top: 18px;
-}
-.empty-hero-secondary {
-  background: transparent;
-  border: 1.5px solid rgba(15, 23, 42, 0.10);
-  border-radius: 14px;
-  padding: 13px 18px;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px; font-weight: 700;
-  color: #0D0D0D;
-  cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.empty-hero-secondary:hover {
-  border-color: rgba(29, 158, 117, 0.4);
-  background: rgba(29, 158, 117, 0.04);
-}
+/* 7. EMPTY STATE DASHBOARD — supprimé le 2026-07-14 : l'état vide est
+   désormais entièrement stylé en inline (composant EmptyStateDashboard,
+   design Claude Design), plus aucune de ces classes n'était référencée. */
 
 /* ============================================================
    8. TOPBAR — refined glass + premium badge + lang switch
@@ -1186,49 +1068,6 @@ body.bg-dots {
   font-weight: 700;
 }
 
-/* Empty state — categorized voice grid (alternative compact layout) */
-.voice-categories {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  margin: 16px 0;
-}
-.voice-cat {
-  background: #fff;
-  border: 1px solid rgba(15,23,42,0.05);
-  border-radius: 14px;
-  padding: 12px 8px;
-  text-align: center;
-  transition: all 0.2s var(--ease);
-  cursor: pointer;
-}
-.voice-cat:hover {
-  transform: translateY(-2px);
-  border-color: rgba(29,158,117,0.30);
-  box-shadow: 0 8px 20px rgba(29,158,117,0.10);
-}
-.voice-cat .ico {
-  font-size: 22px;
-  margin-bottom: 4px;
-  line-height: 1;
-}
-.voice-cat .lbl {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.005em;
-}
-.voice-cat .cnt {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--sub);
-  margin-top: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
 /* ============================================================
    12. FAB — handled by Section 5
    ============================================================ */
@@ -1273,9 +1112,6 @@ body.bg-dots {
   .profit-hero::after,
   .fab-new .pulse-ring,
   .fab-new-btn,
-  .empty-hero::before,
-  .empty-hero-art,
-  .empty-hero-art::after,
   .activity-curve-svg .ac-line,
   .activity-curve-svg .ac-area,
   .donut-svg circle.seg,
