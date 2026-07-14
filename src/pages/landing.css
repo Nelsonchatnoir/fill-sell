@@ -320,16 +320,10 @@
   animation: lpSpin 0.8s linear infinite;
 }
 
-/* Logos plateformes */
-.lp-plat { display: inline-flex; align-items: center; font-weight: 700; font-size: 12px; border-radius: 6px; padding: 4px 9px; }
-.lp-plat--vinted { color: #fff; background: #09B1BA; }
-.lp-plat--lbc { color: #fff; background: #FF6E14; }
-.lp-plat--beebs { color: var(--lp-ink); background: #FFB020; }
-.lp-plat--ebay { font-size: 13px; background: #fff; border: 1px solid var(--lp-line); padding: 3px 8px; }
-.lp-plat--ebay .e { color: #E53238; }
-.lp-plat--ebay .b { color: #0064D2; }
-.lp-plat--ebay .a { color: #F5AF02; }
-.lp-plat--ebay .y { color: #86B817; }
+/* Plateformes — les logos eux-mêmes viennent de <PlatformLogo> (vrais tracés de
+   marque et icônes d'app officielles). On ne stylise ici que le libellé posé à
+   côté : aucune recoloration du logo. */
+.lp-plat__name { font-weight: 700; font-size: 13px; color: var(--lp-ink); }
 
 /* Écran 4 — succès */
 .lp-done__badge {
@@ -341,9 +335,9 @@
 }
 .lp-done__title { font-weight: 700; font-size: 17px; color: var(--lp-ink); }
 .lp-done__sub { font-weight: 500; font-size: 12.5px; color: var(--lp-dim); margin-top: 3px; }
-.lp-done__list { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
-.lp-done__list > span { display: inline-flex; align-items: center; gap: 5px; }
-.lp-done__ok { color: var(--lp-teal); font-size: 12px; }
+.lp-done__list { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.lp-done__list > span { display: inline-flex; align-items: center; gap: 3px; }
+.lp-done__ok { color: var(--lp-teal); font-size: 12px; font-weight: 700; }
 
 /* ── Publication auto ───────────────────────────────────────── */
 .lp-fan {
@@ -387,11 +381,16 @@
   color: var(--lp-teal-dark); background: rgba(47, 158, 144, 0.12);
   border-radius: 999px; padding: 5px 10px;
 }
-.lp-card__sold-on i { width: 5px; height: 5px; border-radius: 99px; background: var(--lp-teal); }
 .lp-card__sold-arr { font-weight: 700; font-size: 12px; color: #C99A3F; }
+/* Les 3 plateformes retirées : les vrais logos, désaturés et barrés — on ne les
+   recolore pas, on les éteint. */
 .lp-card__sold-off {
-  font-weight: 600; font-size: 11px; color: #B0392F;
-  text-decoration: line-through; text-decoration-color: rgba(176, 57, 47, 0.5);
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  filter: grayscale(1); opacity: 0.55;
+}
+.lp-card__sold-off::after {
+  content: ''; position: absolute; left: -3px; right: -3px; top: 50%;
+  height: 1.5px; background: rgba(176, 57, 47, 0.7);
 }
 
 /* ── Vocal ──────────────────────────────────────────────────── */

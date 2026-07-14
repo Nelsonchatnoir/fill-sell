@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { track } from '../analytics/analytics';
 import BrandMark from '../components/BrandMark';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import './landing.css';
 
 /* Adresse de contact publique — la même que dans /legal. */
@@ -243,15 +244,17 @@ const Arrow = ({ w = 46, h = 24 }) => (
   </svg>
 );
 
-const Vinted = () => <span className="lp-plat lp-plat--vinted">Vinted</span>;
-const Lbc = () => <span className="lp-plat lp-plat--lbc">leboncoin</span>;
-const Beebs = () => <span className="lp-plat lp-plat--beebs">Beebs</span>;
-const Ebay = () => (
-  <span className="lp-plat lp-plat--ebay">
-    <span className="e">e</span><span className="b">b</span><span className="a">a</span><span className="y">y</span>
-  </span>
-);
-const PLATFORMS = [Vinted, Lbc, Ebay, Beebs];
+/* Les 4 plateformes, rendues avec les vrais logos via <PlatformLogo> — le même
+   composant que StockTab, LensTab, VentesTab et ListingPreviewScreen. Vinted et
+   eBay sont les tracés de marque officiels (simple-icons) sur socle blanc ;
+   Leboncoin et Beebs sont les icônes d'app officielles (App Store). Aucune
+   recoloration avec nos tokens : chaque marque garde sa charte. */
+const PLATFORMS = [
+  { key: 'vinted', name: 'Vinted' },
+  { key: 'leboncoin', name: 'leboncoin' },
+  { key: 'ebay', name: 'eBay' },
+  { key: 'beebs', name: 'Beebs' },
+];
 
 export default function LandingPage() {
   const nav = useNavigate();
@@ -449,9 +452,10 @@ export default function LandingPage() {
                       {/* Étape 3 — envoi simultané aux 4 plateformes */}
                       <div className="lp-scr lp-scr--3">
                         <span className="lp-scr__label">{t.phS3}</span>
-                        {PLATFORMS.map((Plat, i) => (
-                          <div className="lp-send" key={i}>
-                            <Plat />
+                        {PLATFORMS.map((p) => (
+                          <div className="lp-send" key={p.key}>
+                            <PlatformLogo platform={p.key} size={22} />
+                            <span className="lp-plat__name">{p.name}</span>
                             <span style={{ flex: 1 }} />
                             <span className="lp-send__status">{t.phSending}</span>
                             <span className="lp-send__spin" />
@@ -472,8 +476,11 @@ export default function LandingPage() {
                           <div className="lp-done__sub">{t.phSent}</div>
                         </div>
                         <div className="lp-done__list">
-                          {PLATFORMS.map((Plat, i) => (
-                            <span key={i}><Plat /><span className="lp-done__ok">✓</span></span>
+                          {PLATFORMS.map((p) => (
+                            <span key={p.key} title={p.name}>
+                              <PlatformLogo platform={p.key} size={26} />
+                              <span className="lp-done__ok">✓</span>
+                            </span>
                           ))}
                         </div>
                       </div>
@@ -508,8 +515,13 @@ export default function LandingPage() {
               </div>
 
               <div className="lp-fan__grid">
-                {PLATFORMS.map((Plat, i) => (
-                  <div className="lp-fan__cell" key={i}><Plat /><CheckDisc /></div>
+                {PLATFORMS.map((p) => (
+                  <div className="lp-fan__cell" key={p.key}>
+                    <PlatformLogo platform={p.key} size={30} />
+                    <span className="lp-plat__name">{p.name}</span>
+                    <span style={{ flex: 1 }} />
+                    <CheckDisc />
+                  </div>
                 ))}
               </div>
             </div>
@@ -537,9 +549,18 @@ export default function LandingPage() {
               <div className="lp-card__title">{t.pubB2t}</div>
               <div className="lp-card__body">{t.pubB2b}</div>
               <div className="lp-card__sold">
-                <span className="lp-card__sold-on"><i />{t.pubSold} Vinted</span>
+                <span className="lp-card__sold-on">
+                  {t.pubSold}
+                  <PlatformLogo platform="vinted" size={16} />
+                  Vinted
+                </span>
                 <span className="lp-card__sold-arr">→</span>
-                <span className="lp-card__sold-off">leboncoin · ebay · Beebs</span>
+                {/* Les 3 autres, retirées : logos réels, désaturés et barrés. */}
+                <span className="lp-card__sold-off">
+                  {PLATFORMS.filter((p) => p.key !== 'vinted').map((p) => (
+                    <PlatformLogo key={p.key} platform={p.key} size={16} />
+                  ))}
+                </span>
               </div>
             </div>
 
@@ -643,7 +664,8 @@ export default function LandingPage() {
                     </div>
                     <div className="lp-lens__foot">
                       <span className="lp-lens__verdict">
-                        <Check color="#1B6E62" size={14} />{t.lensVerdict} · Vinted
+                        <Check color="#1B6E62" size={14} />{t.lensVerdict} ·
+                        <PlatformLogo platform="vinted" size={14} />Vinted
                       </span>
                       <span className="lp-lens__cost"><Pepite size={12} />{t.lensCost}</span>
                     </div>
