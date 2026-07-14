@@ -37,6 +37,17 @@ const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 // mieux. On le demande désormais à la source : de vraies photos, pas des copies.
 const MIN_PHOTOS = 3;
 
+// Photos UPLOADABLES vs photos RETOUCHÉES — deux plafonds distincts (2026-07-14).
+// La limite de 5 côté client n'a jamais été une limite d'upload : c'est le
+// garde-fou de COÛT de la retouche GPT Image. generate-listing le dit lui-même
+// (MAX_RETOUCHED = 5, index.ts l.439) et gère DÉJÀ le surplus : « les photos
+// au-delà sont conservées telles quelles ». Le serveur n'avait donc jamais
+// besoin qu'on plafonne l'upload — le client était juste plus strict que lui.
+// 10 : au-dessus du minimum de toutes les plateformes ciblées et bien en deçà
+// de leurs plafonds (Vinted 20, eBay 24…), sans exploser le payload des jobs.
+const MAX_PHOTOS = 10;
+const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOUCHED
+
 // ── Champs partagés taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──────
 // UNE valeur source par champ (canonicalisée côté generate-listing), deux
 // cartes distinctes :
@@ -522,7 +533,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
   const { t, tpl } = useTranslation(lang);
   const fileRef = useRef();
   const count = previews.length;
-  const MAX = 5;
+  const MAX = MAX_PHOTOS;
 
   return (
     <div>
@@ -625,7 +636,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
-  const MAX = 5;
+  const MAX = MAX_PHOTOS;
 
   // Système de pièces : plus de verrou par tier — chaque option affiche son
   // prix en pièces (coin_config via coinPrices, jamais hardcodé). Libellés et
@@ -690,6 +701,16 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
         }}
       />
 
+      {/* Au-delà de MAX_RETOUCHED, les photos partent BRUTES (garde-fou de coût
+          de generate-listing, qui les conserve telles quelles). On le dit. */}
+      {photoOption !== "original" && photos.length > MAX_RETOUCHED && (
+        <div style={{ marginBottom:12, padding:"10px 12px", background:T.paper, border:`1px solid ${T.border}`, borderRadius:12, fontSize:12, color:T.mute2, lineHeight:1.45 }}>
+          {lang === "en"
+            ? `Only the first ${MAX_RETOUCHED} photos are AI-enhanced. The others are published as-is.`
+            : `Seules les ${MAX_RETOUCHED} premières photos sont retouchées par l'IA. Les suivantes sont publiées telles quelles.`}
+        </div>
+      )}
+
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
         {photos.map((url, i) => (
           <div
@@ -698,6 +719,14 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
             style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer" }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+            {photoOption !== "original" && i >= MAX_RETOUCHED && (
+              <span style={{
+                position:"absolute", left:6, bottom:6, background:"rgba(16,32,27,0.72)", color:"#fff",
+                borderRadius:99, padding:"2px 7px", fontSize:9.5, fontWeight:700, whiteSpace:"nowrap",
+              }}>
+                {lang === "en" ? "Not enhanced" : "Non retouchée"}
+              </span>
+            )}
             <button
               onClick={e => { e.stopPropagation(); onRemovePhoto(i); }}
               style={{
@@ -1804,7 +1833,7 @@ export default function ListingPreviewScreen({
 
   // ── Ajouter / supprimer photos step 1 ────────────────────────────────────
   async function handleAddMorePhotos(files) {
-    const toAdd = files.slice(0, 5 - photos.length);
+    const toAdd = files.slice(0, MAX_PHOTOS - photos.length);
     if (!toAdd.length) return;
     const ts = Date.now();
     const urls = [];
