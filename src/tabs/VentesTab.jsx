@@ -347,8 +347,11 @@ const VentesTab = memo(function VentesTab({
         </>
       )}
 
-      {/* ── Bouton stats avancées ── */}
-      {isPremium&&(
+      {/* ── Bouton stats avancées (liste des ventes uniquement) ──
+          ⚠️ Ne PAS le rendre sur l'état vide : celui-ci a désormais son propre
+          CTA « Voir mes stats avancées » (cf. SalesTicker). Sans cette garde,
+          le bouton s'affichait une 2e fois tout en bas, sous le FAB micro. */}
+      {sales.length>0&&isPremium&&(
         <button onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
           style={{width:"100%",marginTop:4,padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
           onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
