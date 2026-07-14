@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
-import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff } from "lucide-react";
+import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
 import PepiteIcon from "./PepiteIcon";
@@ -505,6 +505,102 @@ function StepProgress({ step, labels }) {
   );
 }
 
+// ── Réordonnancement des photos ───────────────────────────────────────────────
+// L'ORDRE COMPTE, à deux titres : la photo 0 est la couverture de l'annonce sur
+// les 4 plateformes (l'extension uploade dans l'ordre du tableau, et
+// generate-listing étiquette l'index 0 "original"), et seules les MAX_RETOUCHED
+// premières passent en retouche IA. Réordonner = choisir sa couverture et ce qui
+// est retouché.
+//
+// Aucune dépendance (rien dans package.json, et le HTML5 drag&drop ne fonctionne
+// pas au tactile, donc inutilisable dans l'app Capacitor). Pointer Events, donc
+// souris ET tactile. Le drag part d'une POIGNÉE dédiée (touch-action:none sur la
+// poignée seulement) : le scroll de la page et le tap sur la photo restent
+// intacts.
+function moveItem(arr, from, to) {
+  const next = [...arr];
+  const [it] = next.splice(from, 1);
+  next.splice(to, 0, it);
+  return next;
+}
+
+function usePhotoDrag(onReorder) {
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const fromRef = useRef(null);
+  const overRef = useRef(null);
+
+  function onPointerDown(e, i) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    fromRef.current = i; overRef.current = i;
+    setDragIdx(i); setOverIdx(i);
+  }
+  // La capture renvoie les events à la poignée : on retrouve la vignette survolée
+  // par hit-test (elementFromPoint reste fiable sous capture).
+  function onPointerMove(e) {
+    if (fromRef.current === null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-photo-idx]");
+    const i = el ? Number(el.dataset.photoIdx) : null;
+    if (i !== null && !Number.isNaN(i) && i !== overRef.current) {
+      overRef.current = i;
+      setOverIdx(i);
+    }
+  }
+  function onPointerUp() {
+    const from = fromRef.current, to = overRef.current;
+    fromRef.current = null; overRef.current = null;
+    setDragIdx(null); setOverIdx(null);
+    if (from !== null && to !== null && from !== to) onReorder(from, to);
+  }
+
+  const handleProps = i => ({
+    onPointerDown: e => onPointerDown(e, i),
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel: onPointerUp,
+    onClick: e => e.stopPropagation(),
+    style: {
+      position:"absolute", left:6, top:6, width:22, height:22, borderRadius:8,
+      background:"rgba(16,32,27,0.55)", border:"none", padding:0, color:"#fff",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      cursor:"grab", touchAction:"none",
+    },
+  });
+
+  // Style de la vignette pendant le drag : la source s'efface, la cible s'entoure.
+  const tileProps = i => ({
+    "data-photo-idx": i,
+    style: {
+      opacity: dragIdx === i ? 0.35 : 1,
+      outline: dragIdx !== null && overIdx === i && dragIdx !== i ? `2px solid ${T.teal}` : "none",
+      outlineOffset: -2,
+    },
+  });
+
+  return { dragging: dragIdx !== null, handleProps, tileProps };
+}
+
+function DragHandle({ bind }) {
+  return (
+    <button aria-label="Réordonner" {...bind}>
+      <GripVertical size={13} />
+    </button>
+  );
+}
+
+function CoverBadge({ lang }) {
+  return (
+    <span style={{
+      position:"absolute", right:6, bottom:6, background:T.teal, color:"#fff",
+      borderRadius:99, padding:"2px 7px", fontSize:9.5, fontWeight:700, whiteSpace:"nowrap",
+    }}>
+      {lang === "en" ? "Cover" : "Couverture"}
+    </span>
+  );
+}
+
 function PrimaryButton({ children, disabled, onClick, icon:Icon }) {
   return (
     <button
@@ -529,11 +625,12 @@ function PrimaryButton({ children, disabled, onClick, icon:Icon }) {
 
 // ── Step 0 — Upload ───────────────────────────────────────────────────────────
 
-function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, micActive, toggleMic, error, lang }) {
+function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, setNotes, micActive, toggleMic, error, lang }) {
   const { t, tpl } = useTranslation(lang);
   const fileRef = useRef();
   const count = previews.length;
   const MAX = MAX_PHOTOS;
+  const drag = usePhotoDrag(onReorder);
 
   return (
     <div>
@@ -564,10 +661,26 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
         }}
       />
 
+      {count > 1 && (
+        <p style={{ margin:"0 0 8px", fontSize:11.5, color:T.mute, lineHeight:1.4 }}>
+          {lang === "en"
+            ? "Drag the handle to reorder — the first photo is the listing cover."
+            : "Glisse la poignée pour réordonner — la 1ʳᵉ photo est la couverture de l'annonce."}
+        </p>
+      )}
+
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-        {previews.map((url, i) => (
-          <div key={i} style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}` }}>
-            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+        {previews.map((url, i) => {
+          const tile = drag.tileProps(i);
+          return (
+          <div
+            key={i}
+            data-photo-idx={i}
+            style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}`, ...tile.style }}
+          >
+            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
+            {count > 1 && <DragHandle bind={drag.handleProps(i)} />}
+            {i === 0 && count > 1 && <CoverBadge lang={lang} />}
             {removable && (
               <button
                 onClick={() => onRemove(i)}
@@ -581,7 +694,8 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
         {count < MAX && (
           <button
             onClick={() => fileRef.current?.click()}
@@ -632,11 +746,12 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = MAX_PHOTOS;
+  const drag = usePhotoDrag(onReorderPhotos);
 
   // Système de pièces : plus de verrou par tier — chaque option affiche son
   // prix en pièces (coin_config via coinPrices, jamais hardcodé). Libellés et
@@ -711,14 +826,26 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
         </div>
       )}
 
+      {photos.length > 1 && (
+        <p style={{ margin:"0 0 8px", fontSize:11.5, color:T.mute, lineHeight:1.4 }}>
+          {lang === "en"
+            ? "Drag the handle to reorder — the first photo is the listing cover."
+            : "Glisse la poignée pour réordonner — la 1ʳᵉ photo est la couverture de l'annonce."}
+        </p>
+      )}
+
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-        {photos.map((url, i) => (
+        {photos.map((url, i) => {
+          const tile = drag.tileProps(i);
+          return (
           <div
             key={i}
-            onClick={() => onPhotoClick(url)}
-            style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer" }}
+            data-photo-idx={i}
+            onClick={() => { if (!drag.dragging) onPhotoClick(url); }}
+            style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer", ...tile.style }}
           >
-            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
+            {photos.length > 1 && <DragHandle bind={drag.handleProps(i)} />}
             {photoOption !== "original" && i >= MAX_RETOUCHED && (
               <span style={{
                 position:"absolute", left:6, bottom:6, background:"rgba(16,32,27,0.72)", color:"#fff",
@@ -727,6 +854,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
                 {lang === "en" ? "Not enhanced" : "Non retouchée"}
               </span>
             )}
+            {i === 0 && photos.length > 1 && <CoverBadge lang={lang} />}
             <button
               onClick={e => { e.stopPropagation(); onRemovePhoto(i); }}
               style={{
@@ -738,7 +866,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               <X size={11} color={T.ink} />
             </button>
           </div>
-        ))}
+          );
+        })}
         {photos.length < MAX && (
           <button
             onClick={() => addRef.current?.click()}
@@ -1728,7 +1857,7 @@ export default function ListingPreviewScreen({
 
   // ── Fichiers step 0 ───────────────────────────────────────────────────────
   function addFiles(files) {
-    const toAdd = files.slice(0, 5 - pickedFiles.length);
+    const toAdd = files.slice(0, MAX_PHOTOS - pickedFiles.length);
     if (!toAdd.length) return;
     setPickedFiles(prev => [...prev, ...toAdd]);
     toAdd.forEach(f => setPickedPreviews(prev => [...prev, URL.createObjectURL(f)]));
@@ -1740,6 +1869,23 @@ export default function ListingPreviewScreen({
       URL.revokeObjectURL(prev[idx]);
       return prev.filter((_, i) => i !== idx);
     });
+  }
+
+  // Étape 0 : la grille affiche soit les fichiers choisis (pickedPreviews), soit
+  // les photos déjà en ligne (article venant du Stock). On réordonne la source
+  // réellement affichée — et pickedFiles DOIT suivre pickedPreviews, c'est lui
+  // qui part à l'upload (handleUpload conserve l'ordre du tableau).
+  function handleReorderPreviews(from, to) {
+    if (pickedPreviews.length > 0) {
+      setPickedFiles(prev => moveItem(prev, from, to));
+      setPickedPreviews(prev => moveItem(prev, from, to));
+    } else {
+      setPhotos(prev => moveItem(prev, from, to));
+    }
+  }
+
+  function handleReorderPhotos(from, to) {
+    setPhotos(prev => moveItem(prev, from, to));
   }
 
   function compressImage(file, maxWidth = 1024, quality = 0.85) {
@@ -2621,6 +2767,7 @@ export default function ListingPreviewScreen({
             removable={pickedPreviews.length > 0}
             onAdd={addFiles}
             onRemove={removeFile}
+            onReorder={handleReorderPreviews}
             notes={notes}
             setNotes={setNotes}
             micActive={micActive}
@@ -2634,6 +2781,7 @@ export default function ListingPreviewScreen({
             photos={photos}
             onAddPhotos={handleAddMorePhotos}
             onRemovePhoto={handleRemovePhoto}
+            onReorderPhotos={handleReorderPhotos}
             onPhotoClick={setLightboxUrl}
             photoOption={photoOption}
             setPhotoOption={setPhotoOption}
