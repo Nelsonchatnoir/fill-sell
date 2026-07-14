@@ -131,22 +131,62 @@
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border-bottom: 1px solid var(--line);
 }
+/* nowrap : rien ne doit jamais retomber sous le logo. Ce qui ne tient plus part
+   dans le menu burger, jamais sur une deuxième ligne. */
 .lp-nav__inner {
   max-width: 1200px; margin: 0 auto; padding: 13px 22px;
-  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 18px; flex-wrap: nowrap;
 }
 /* La marque du header vient du composant partagé <BrandMark> : elle porte les
    classes .tb-logo / .logo-desktop / .logo-mobile / .name du topbar de l'app,
    stylées dans App.css + App.redesign.css. Rien à redéfinir ici — c'est ce qui
    garantit qu'il n'y a aucun écart visuel entre header public et header app. */
 
-.lp-nav__links { display: flex; gap: 6px; margin-left: 6px; flex-wrap: wrap; }
+.lp-nav__links { display: flex; gap: 6px; margin-left: 6px; flex-wrap: nowrap; }
 .lp-nav__link {
   font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--lp-muted);
   padding: 7px 11px; border-radius: 9px; background: none; border: none; cursor: pointer;
+  white-space: nowrap;
 }
 .lp-nav__link:hover { color: var(--lp-ink); background: var(--lp-surface); }
-.lp-nav__actions { margin-left: auto; display: flex; align-items: center; gap: 11px; }
+.lp-nav__actions {
+  margin-left: auto; display: flex; align-items: center; gap: 11px; flex-shrink: 0;
+}
+/* Langue + Se connecter : dans la barre en desktop, dans le menu en mobile. */
+.lp-nav__desk { display: flex; align-items: center; gap: 11px; }
+
+/* ── Burger (< 900px) ───────────────────────────────────────── */
+.lp-burger {
+  display: none; width: 38px; height: 38px; flex-shrink: 0;
+  flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: var(--lp-surface); border: 1px solid var(--lp-line);
+  border-radius: 10px; cursor: pointer; padding: 0;
+}
+.lp-burger span {
+  display: block; width: 16px; height: 2px; border-radius: 2px;
+  background: var(--lp-ink); transition: transform .2s ease, opacity .2s ease;
+}
+.lp-burger[aria-expanded="true"] span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.lp-burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.lp-burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+.lp-menu {
+  display: none;
+  border-top: 1px solid var(--lp-line);
+  background: rgba(250, 250, 248, 0.98);
+  padding: 10px 16px 14px;
+}
+.lp-menu__links { display: flex; flex-direction: column; }
+.lp-menu__link {
+  font-family: inherit; font-weight: 600; font-size: 15px; color: var(--lp-ink);
+  background: none; border: none; cursor: pointer; text-align: left;
+  padding: 13px 6px; border-bottom: 1px solid var(--lp-line);
+}
+.lp-menu__foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding-top: 14px;
+}
+.lp-menu__foot .lp-btn--ghost { padding: 10px 16px; font-size: 14px; }
 
 .lp-lang {
   display: inline-flex; background: var(--lp-surface);
@@ -199,13 +239,17 @@
 .lp-hero__ctas { display: flex; gap: 13px; flex-wrap: wrap; align-items: center; }
 .lp-hero__trust { display: flex; align-items: center; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
 .lp-hero__trust span { font-weight: 500; font-size: 13.5px; color: var(--lp-dim); }
-/* Badges officiels App Store / Google Play. Le badge Play est livré avec ~11 px
-   de marge transparente intégrée : on la compense pour aligner les deux hauteurs. */
-.lp-stores { display: flex; align-items: center; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
+/* Badges officiels App Store / Google Play, calés sur la même hauteur de bouton.
+   Apple sert un SVG détouré (126.5x40) : à 48px de haut, le bouton fait 48px.
+   Google sert un PNG 646x250 dont le bouton ne fait que 192px de haut — 29px de
+   vide transparent en haut ET en bas, aucun sur les côtés. Pour un bouton de
+   48px : image = 48 x 250/192 = 62.5px, et on résorbe le vide avec 7.25px de
+   marge négative VERTICALE uniquement (une marge horizontale mangerait le gap). */
+.lp-stores { display: flex; align-items: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
 .lp-store { display: block; line-height: 0; }
 .lp-store img { width: auto; display: block; }
 .lp-store--apple img { height: 48px; border-radius: 9px; }
-.lp-store--play img { height: 70px; margin: -11px; }
+.lp-store--play img { height: 62.5px; margin: -7.25px 0; }
 
 /* ── Téléphone (châssis) ────────────────────────────────────── */
 .lp-phone { position: relative; width: 300px; animation: lpFloat 6s ease-in-out infinite; }
@@ -696,12 +740,18 @@
 .lp-footer__social a:hover { background: var(--lp-teal); border-color: var(--lp-teal); color: #fff; }
 
 /* ── Responsive ─────────────────────────────────────────────── */
+/* < 900px : les liens d'ancres et le bloc langue/connexion quittent la barre et
+   passent dans le burger. Restent en ligne : marque + CTA + burger. */
 @media (max-width: 900px) {
   .lp-nav__links { display: none; }
+  .lp-nav__desk { display: none; }
+  .lp-burger { display: flex; }
+  .lp-menu.open { display: block; }
 }
 
 @media (max-width: 640px) {
   .lp-nav__inner { padding: 11px 16px; gap: 10px; }
+  .lp-nav__actions { gap: 8px; }
   .lp-btn--nav { padding: 9px 14px; font-size: 12.5px; }
 
   .lp-hero { padding: 32px 16px 52px; }
@@ -733,4 +783,14 @@
   .lp-footer__inner { flex-direction: column; align-items: flex-start; }
   .lp-footer__copy { margin-left: 0; }
   .lp-footer__links { gap: 14px; }
+}
+
+/* Très petits écrans (iPhone SE, 320px) : marque + CTA + burger doivent encore
+   tenir sur une ligne, y compris avec le libellé anglais "Get started". */
+@media (max-width: 380px) {
+  .lp-nav__inner { padding: 11px 12px; gap: 8px; }
+  .lp-nav__actions { gap: 8px; }
+  .lp-btn--nav { padding: 8px 12px; font-size: 12px; }
+  .lp-burger { width: 34px; height: 34px; }
+  .lp-menu { padding: 8px 12px 12px; }
 }

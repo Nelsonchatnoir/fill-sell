@@ -256,10 +256,24 @@ const PLATFORMS = [
   { key: 'beebs', name: 'Beebs' },
 ];
 
+/* Le sélecteur de langue est rendu deux fois : dans la barre en desktop, dans le
+   menu burger en mobile. */
+const LangToggle = ({ lang, onChange }) => (
+  <div className="lp-lang" role="group" aria-label="Langue / Language">
+    {['fr', 'en'].map((code) => (
+      <button key={code} className={lang === code ? 'on' : ''}
+        aria-pressed={lang === code} onClick={() => onChange(code)}>
+        {code.toUpperCase()}
+      </button>
+    ))}
+  </div>
+);
+
 export default function LandingPage() {
   const nav = useNavigate();
   const [lang, setLang] = useState(getInitialLang);
   const [openFaq, setOpenFaq] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const t = COPY[lang];
   const isNative = Capacitor.isNativePlatform();
@@ -278,9 +292,33 @@ export default function LandingPage() {
     return () => obs.disconnect();
   }, [lang]);
 
-  const scrollTo = useCallback((id) => {
+  /* Le menu burger n'existe que sous 900px : s'il est resté ouvert, le repasser
+     en desktop le laisserait affiché sans burger pour le refermer. */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const mq = window.matchMedia('(min-width: 900px)');
+    const onWide = (e) => { if (e.matches) setMenuOpen(false); };
+    const onEsc = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    mq.addEventListener('change', onWide);
+    window.addEventListener('keydown', onEsc);
+    return () => {
+      mq.removeEventListener('change', onWide);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [menuOpen]);
+
+  const goSection = useCallback((id) => {
+    setMenuOpen(false);
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  const navLinks = [
+    { id: 'publication', label: t.navPublish },
+    { id: 'vocal', label: t.navVocal },
+    { id: 'lens', label: 'Lens' },
+    { id: 'tarifs', label: t.navPricing },
+    { id: 'faq', label: 'FAQ' },
+  ];
 
   /* Tous les CTA de la landing mènent à la même création de compte — y compris
      "Passer Premium" et "Passer Pro". Pas de paywall avant que l'utilisateur ait
@@ -318,27 +356,40 @@ export default function LandingPage() {
       {/* ══════════ NAV ══════════ */}
       <header className="lp-nav">
         <div className="lp-nav__inner">
-          <BrandMark onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
+          <BrandMark onClick={() => { setMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
 
           <nav className="lp-nav__links">
-            <button className="lp-nav__link" onClick={() => scrollTo('publication')}>{t.navPublish}</button>
-            <button className="lp-nav__link" onClick={() => scrollTo('vocal')}>{t.navVocal}</button>
-            <button className="lp-nav__link" onClick={() => scrollTo('lens')}>Lens</button>
-            <button className="lp-nav__link" onClick={() => scrollTo('tarifs')}>{t.navPricing}</button>
-            <button className="lp-nav__link" onClick={() => scrollTo('faq')}>FAQ</button>
+            {navLinks.map((l) => (
+              <button key={l.id} className="lp-nav__link" onClick={() => goSection(l.id)}>{l.label}</button>
+            ))}
           </nav>
 
           <div className="lp-nav__actions">
-            <div className="lp-lang" role="group" aria-label="Langue / Language">
-              {['fr', 'en'].map((code) => (
-                <button key={code} className={lang === code ? 'on' : ''}
-                  aria-pressed={lang === code} onClick={() => changeLang(code)}>
-                  {code.toUpperCase()}
-                </button>
-              ))}
+            {/* Sous 900px, langue et connexion basculent dans le menu burger. */}
+            <div className="lp-nav__desk">
+              <LangToggle lang={lang} onChange={changeLang} />
+              <button className="lp-btn lp-btn--ghost" onClick={() => nav('/login')}>{t.login}</button>
             </div>
-            <button className="lp-btn lp-btn--ghost" onClick={() => nav('/login')}>{t.login}</button>
+
             <button className="lp-btn lp-btn--nav" onClick={() => startSignup('free')}>{t.ctaStart}</button>
+
+            <button className="lp-burger" id="lp-burger" aria-label="Menu" aria-expanded={menuOpen}
+              aria-controls="lp-menu" onClick={() => setMenuOpen((o) => !o)}>
+              <span /><span /><span />
+            </button>
+          </div>
+        </div>
+
+        <div className={`lp-menu${menuOpen ? ' open' : ''}`} id="lp-menu">
+          <nav className="lp-menu__links">
+            {navLinks.map((l) => (
+              <button key={l.id} className="lp-menu__link" onClick={() => goSection(l.id)}>{l.label}</button>
+            ))}
+          </nav>
+          <div className="lp-menu__foot">
+            <LangToggle lang={lang} onChange={changeLang} />
+            <button className="lp-btn lp-btn--ghost"
+              onClick={() => { setMenuOpen(false); nav('/login'); }}>{t.login}</button>
           </div>
         </div>
       </header>
