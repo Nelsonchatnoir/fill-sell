@@ -837,11 +837,43 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
-function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang }) {
+function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang,
+  price, setPrice, customPriced, setCustomPriced }) {
   const { t } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
   const [openCards, setOpenCards] = useState(new Set());
+
+  // Prix central (2026-07-14) : écrit le prix dans TOUTES les plateformes
+  // sélectionnées d'un coup. Une plateforme dont le prix a été édité à la main
+  // est marquée « personnalisée » (customPriced) et n'est plus écrasée — sinon
+  // un prix Vinted volontairement différent sautait à la première frappe ici.
+  const applyCentralPrice = (raw) => {
+    const v = raw === "" ? null : Number(raw);
+    setPrice(raw === "" ? null : v);
+    setEdited(prev => {
+      const next = { ...prev };
+      for (const p of selected) {
+        if (customPriced.has(p)) continue;
+        if (!next[p]) continue;
+        next[p] = { ...next[p], price: v };
+      }
+      return next;
+    });
+  };
+
+  // Édition du prix d'UNE plateforme : marque la carte comme personnalisée.
+  const applyPlatformPrice = (p, raw) => {
+    const v = raw === "" ? null : Number(raw);
+    setEdited(prev => ({ ...prev, [p]: { ...prev[p], price: v } }));
+    setCustomPriced(prev => new Set(prev).add(p));
+  };
+
+  // Retour au prix central pour une carte.
+  const resetPlatformPrice = (p) => {
+    setCustomPriced(prev => { const s = new Set(prev); s.delete(p); return s; });
+    setEdited(prev => ({ ...prev, [p]: { ...prev[p], price: price == null || price === "" ? null : Number(price) } }));
+  };
 
   useEffect(() => {
     if (platformListings) return;
@@ -927,10 +959,31 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
+      {/* Prix de vente central — s'applique aux plateformes non personnalisées */}
+      <div style={{ marginBottom:16, background:T.paper, border:`1px solid ${T.border}`, borderRadius:16, padding:"14px 15px" }}>
+        <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:T.mute, marginBottom:6 }}>
+          {t("fieldSalePriceLabel")}
+        </div>
+        <input
+          type="number"
+          inputMode="decimal"
+          value={price ?? ""}
+          onChange={ev => applyCentralPrice(ev.target.value)}
+          placeholder="—"
+          style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:17, fontWeight:700, fontFamily:"inherit", outline:"none", background:"#fff", color:T.ink, boxSizing:"border-box" }}
+        />
+        <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
+          {lang === "en"
+            ? "Applied to every selected platform. Change a card's price to set it apart."
+            : "Appliqué à toutes les plateformes sélectionnées. Modifie le prix d'une carte pour la dissocier."}
+        </div>
+      </div>
+
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {platforms.map(p => {
           const e = edited[p] ?? { title:"", description:"", platform_fields:{}, price:null };
           const isOpen = openCards.has(p);
+          const isCustomPrice = customPriced.has(p);
           const fieldConfigs = platformFieldsConfig[p] ?? [];
           const etatField = fieldConfigs.find(f => f.key === "etat" || f.key === "condition");
           const etatVal = etatField ? (e.platform_fields?.[etatField.key] ?? "") : "";
@@ -1035,13 +1088,29 @@ function StepGeneration({ generating, generateError, platformListings, processed
                   )}
 
                   <div>
-                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{t("fieldSalePriceLabel")}</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+                      <span style={{ fontSize:11, color:T.mute2, fontWeight:600 }}>{t("fieldSalePriceLabel")}</span>
+                      {isCustomPrice && (
+                        <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:10, fontWeight:700, color:T.tealDeep, background:"rgba(47,158,144,0.12)", borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap" }}>
+                            {lang === "en" ? "Custom price" : "Prix personnalisé"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => resetPlatformPrice(p)}
+                            style={{ background:"none", border:"none", padding:0, fontSize:10.5, fontWeight:700, color:T.mute, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline" }}
+                          >
+                            {lang === "en" ? "Reset" : "Rétablir"}
+                          </button>
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="number"
                       value={e.price ?? ""}
-                      onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], price: ev.target.value === "" ? null : Number(ev.target.value) } }))}
+                      onChange={ev => applyPlatformPrice(p, ev.target.value)}
                       placeholder="—"
-                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:14, fontWeight:700, fontFamily:"inherit", outline:"none", background:T.chip, color:T.tealDeep, boxSizing:"border-box" }}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${isCustomPrice ? T.teal : T.border}`, fontSize:14, fontWeight:700, fontFamily:"inherit", outline:"none", background:T.chip, color:T.tealDeep, boxSizing:"border-box" }}
                     />
                   </div>
                 </div>
@@ -1299,6 +1368,9 @@ export default function ListingPreviewScreen({
 
   // Prix (depuis Lens ou DB)
   const [price, setPrice] = useState(null);
+  // Plateformes dont le prix a été édité individuellement : le champ central ne
+  // les écrase plus (2026-07-14).
+  const [customPriced, setCustomPriced] = useState(() => new Set());
 
   // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
@@ -2319,6 +2391,10 @@ export default function ListingPreviewScreen({
             onRetry={handleGeneratePlatforms}
             noteOverride={noteSharedOverride}
             lang={lang}
+            price={price}
+            setPrice={setPrice}
+            customPriced={customPriced}
+            setCustomPriced={setCustomPriced}
           />
         )}
         {step === 3 && (
