@@ -14,12 +14,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const PACKAGE_NAME = "app.fillsell.app";
 
-// Packs validés (grille 2026-07-06) : montants crédités par product id.
+// Montants CRÉDITÉS par product id (iOS / Android). Doit rester aligné avec
+// src/components/coinPacks.js (affichage) et create-checkout-session (web).
+//
+// ⚠️ 2026-07-14 : le SKU app.fillsell.coins.1150 crédite désormais 1300 Pépites,
+// pas 1150 — prix inchangé (49,99 €). Le nom du SKU garde « 1150 » car il est
+// déjà enregistré chez Apple et Google : on ne renomme pas un SKU en production.
+// Motif : à 1150, la remise réelle (12,9 %) égalait celle du pack 460, le gros
+// pack n'apportait donc rien. À 1300 elle passe à 22,9 %.
 const COIN_PRODUCTS: Record<string, number> = {
   "app.fillsell.coins.100": 100,
   "app.fillsell.coins.220": 220,
   "app.fillsell.coins.460": 460,
-  "app.fillsell.coins.1150": 1150,
+  "app.fillsell.coins.1150": 1300,
 };
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {

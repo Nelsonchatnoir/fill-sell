@@ -14,13 +14,19 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
 // généralisée aux 15 fonctions restantes. La PROD n'a jamais été affectée.
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
-// Packs de pièces (grille 2026-07-06) — price IDs Stripe à créer dans le
-// dashboard puis renseigner dans les secrets edge functions.
+// Packs de pièces — le PRIX vient du price ID Stripe (secret), la QUANTITÉ
+// créditée est celle-ci : elle part en metadata.coins et c'est stripe-webhook
+// qui l'applique via credit_purchased_coins. Doit rester alignée avec
+// src/components/coinPacks.js et validate-coin-purchase.
+//
+// ⚠️ 2026-07-14 : coins_1150 crédite désormais 1300 Pépites (prix Stripe
+// INCHANGÉ, 49,99 € — aucun price ID à recréer). La clé garde « 1150 » car elle
+// correspond au SKU des stores, déjà enregistré.
 const COIN_PACKS: Record<string, { envKey: string; coins: number }> = {
   coins_100:  { envKey: "STRIPE_PRICE_COINS_100",  coins: 100 },
   coins_220:  { envKey: "STRIPE_PRICE_COINS_220",  coins: 220 },
   coins_460:  { envKey: "STRIPE_PRICE_COINS_460",  coins: 460 },
-  coins_1150: { envKey: "STRIPE_PRICE_COINS_1150", coins: 1150 },
+  coins_1150: { envKey: "STRIPE_PRICE_COINS_1150", coins: 1300 },
 };
 
 const supabaseAdmin = createClient(
