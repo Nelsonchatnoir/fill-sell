@@ -31,6 +31,12 @@ export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
+// Minimum de photos exigé pour publier — c'est le minimum de VINTED sur les
+// marques premium (VINTED_MIN_PHOTOS, chrome-extension/content-scripts/vinted.js).
+// Jusqu'ici l'extension COMPLÉTAIT à 3 en dupliquant la dernière photo, faute de
+// mieux. On le demande désormais à la source : de vraies photos, pas des copies.
+const MIN_PHOTOS = 3;
+
 // ── Champs partagés taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──────
 // UNE valeur source par champ (canonicalisée côté generate-listing), deux
 // cartes distinctes :
@@ -574,6 +580,16 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
           </button>
         )}
       </div>
+
+      {/* Minimum 3 photos : exigence Vinted (marques premium), rappelée ici
+          plutôt que subie à la publication. */}
+      {count > 0 && count < MIN_PHOTOS && (
+        <div style={{ marginTop:-8, marginBottom:16, fontSize:12.5, fontWeight:600, color:T.amber }}>
+          {lang === "en"
+            ? `Add at least ${MIN_PHOTOS} photos to continue (${count}/${MIN_PHOTOS}).`
+            : `Ajoute au moins ${MIN_PHOTOS} photos pour continuer (${count}/${MIN_PHOTOS}).`}
+        </div>
+      )}
 
       <div style={{ position:"relative" }}>
         <input
@@ -2419,12 +2435,12 @@ export default function ListingPreviewScreen({
 
   function ctaLabel() {
     if (step === 0) {
-      if (uploading)        return t("ctaUploading");
-      if (photoCount === 0) return t("ctaAddAtLeastOnePhoto");
+      if (uploading)              return t("ctaUploading");
+      if (photoCount < MIN_PHOTOS) return minPhotosLabel;
       return tpl("ctaContinuePhotos", { n:photoCount });
     }
     if (step === 1) {
-      if (!photos.length) return t("ctaAddAtLeastOnePhoto");
+      if (photos.length < MIN_PHOTOS) return minPhotosLabel;
       return t("ctaGenerateListings");
     }
     if (step === 2) {
@@ -2439,9 +2455,17 @@ export default function ListingPreviewScreen({
     return "";
   }
 
+  // Minimum 3 photos (2026-07-14) : c'est le minimum imposé par VINTED sur les
+  // marques premium (cf. VINTED_MIN_PHOTOS dans chrome-extension/vinted.js, qui
+  // DUPLIQUAIT jusqu'ici la dernière photo pour l'atteindre — un pansement).
+  // On le demande à la source plutôt que de fabriquer de fausses photos.
+  const minPhotosLabel = lang === "en"
+    ? `Add at least ${MIN_PHOTOS} photos to continue`
+    : `Ajoute au moins ${MIN_PHOTOS} photos pour continuer`;
+
   const ctaDisabled =
-    (step === 0 && (photoCount === 0 || uploading)) ||
-    (step === 1 && (photos.length === 0 || selected.size === 0)) ||
+    (step === 0 && (photoCount < MIN_PHOTOS || uploading)) ||
+    (step === 1 && (photos.length < MIN_PHOTOS || selected.size === 0)) ||
     (step === 2 && (generatingPlatforms || !platformListings)) ||
     (step === 3 && (publishChips.length === 0 || publishing));
 
