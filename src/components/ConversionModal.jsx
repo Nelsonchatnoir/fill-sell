@@ -8,9 +8,9 @@ import { supabase } from '../lib/supabase';
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
 // 2026-07-14, avec CORRECTION des valeurs : la BASE fait autorité, jamais le
 // design. Divergences relevées et corrigées (vérifiées le 2026-07-14) :
-//   • le design annonçait 600 Pépites/mois pour Pro → la base en donne 800
-//     (coin_config.monthly_grant_pro ; la migration qui abaisse à 600 est
-//     volontairement NON appliquée, cf. 20260707100000_lens_coins_config.sql).
+//   • Pépites/mois Pro : la base dit encore 800 (valeur réellement créditée),
+//     mais la cible produit est 600 — on AFFICHE 600 via DISPLAY_GRANT_PRO,
+//     seul écart assumé entre l'affichage et la base (voir la constante).
 //   • le design étiquetait « Annonce avancée : 12 Pépites » → 12 est le coût de
 //     la retouche LÉGÈRE (price_ia_light). Origine = 3, avancée = 35.
 //   • le design promettait « Lens illimité » en Pro → FAUX : Lens coûte des
@@ -54,6 +54,21 @@ const COIN_CONFIG_FALLBACK = {
   monthly_grant_premium: 150,
   monthly_grant_pro: 800,
 };
+
+// ⚠️⚠️ EXCEPTION ASSUMÉE — Pépites/mois Pro AFFICHÉES en avance sur la base.
+// La base dit encore 800 (coin_config.monthly_grant_pro) : c'est la valeur que
+// grant_monthly_coins crédite RÉELLEMENT aujourd'hui, et il ne faut surtout pas
+// y toucher. La vraie valeur cible est 600, portée par la migration
+// 20260707100000_lens_coins_config.sql, VOLONTAIREMENT non appliquée : elle est
+// gatée avec le déploiement de lens-analysis (Lens payant en Pépites).
+// L'appliquer maintenant casserait l'accès Lens des utilisateurs actuels.
+// On affiche donc 600 dans les modales — et uniquement là, jamais dans la
+// logique de crédit.
+// ➡️ À RETIRER une fois la migration appliquée en prod : supprimer cette
+//    constante et relire monthly_grant_pro depuis coin_config comme pour le
+//    Premium (le code de lecture est déjà en place, il suffit de repasser
+//    grantPro sur K.monthly_grant_pro).
+const DISPLAY_GRANT_PRO = 600;
 
 // Prix des abonnements — ils vivent chez Stripe / Apple / Google, pas en base.
 // Vérifiés côté Stripe le 2026-07-14 : « Standard Plan » 1299 c, « FillSell Pro
@@ -385,9 +400,12 @@ export default function ConversionModal({
 
   const K = cfg || COIN_CONFIG_FALLBACK;
   const lensCost  = K.price_lens_overflow;
-  const grantPrem = K.monthly_grant_premium;
-  const grantPro  = K.monthly_grant_pro;
-  // Estimation d'analyses Lens permises par le grant mensuel — CALCULÉE.
+  const grantPrem = K.monthly_grant_premium;      // lu en base (150)
+  // Pro : constante d'affichage (600), PAS K.monthly_grant_pro (800) — cf.
+  // DISPLAY_GRANT_PRO plus haut. Le crédit réel reste piloté par la base.
+  const grantPro  = DISPLAY_GRANT_PRO;
+  // Estimation d'analyses Lens permises par le grant mensuel — CALCULÉE, donc
+  // recalculée d'elle-même sur 600 (600 ÷ 6 = 100 analyses, et non 133).
   const lensPerMonth = (grant) => (lensCost > 0 ? Math.floor(grant / lensCost) : 0);
   const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
 
