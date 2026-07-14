@@ -785,27 +785,12 @@ const VOICE_EXAMPLES_FR_RAW = [
   { text: "Combien j'ai vendu ce mois-ci ?",                     tag: "Stats",   cls: "query" },
   { text: "Quel est mon bénéfice total ?",                       tag: "Stats",   cls: "query" },
 ];
-const VOICE_EXAMPLES_EN_RAW = [
-  { text: "Add a black Zara jacket size M at €15",               tag: "Add",   cls: "add"   },
-  { text: "New item: iPhone 13 128GB, paid €320",                tag: "Add",   cls: "add"   },
-  { text: "I bought a beige Longchamp bag for €25",              tag: "Add",   cls: "add"   },
-  { text: "Add a MacBook Air 2020 at €450",                      tag: "Add",   cls: "add"   },
-  { text: "I sold my Levi's 501 jeans for €40",                  tag: "Sell",  cls: "sell"  },
-  { text: "Sold the iPhone 12 for €280 on Leboncoin",            tag: "Sell",  cls: "sell"  },
-  { text: "Add a batch of 5 t-shirts at €3 each",                tag: "Add",   cls: "add"   },
-  { text: "Move the MacBook to the living room box",             tag: "Stock", cls: "query" },
-  { text: "How much did I sell this month?",                     tag: "Stats", cls: "query" },
-  { text: "What's my total profit?",                             tag: "Stats", cls: "query" },
-];
+// Seule la liste FR sert encore : elle alimente TEXTAREA_PLACEHOLDERS (rotation du
+// placeholder de la zone vocale). Le pendant EN et le getRotatingExamples local ne
+// servaient qu'au VoiceTicker de l'ancien état vide — StockTab utilise, lui, le
+// getRotatingExamples exporté par utils/shared.js.
 const VOICE_EXAMPLES = VOICE_EXAMPLES_FR_RAW;
-const VOICE_EXAMPLES_EN = VOICE_EXAMPLES_EN_RAW;
 
-function getRotatingExamples(currency, lang) {
-  const sym = CURRENCY_SYMBOLS[currency] || '€';
-  const raw = lang === 'en' ? VOICE_EXAMPLES_EN_RAW : VOICE_EXAMPLES_FR_RAW;
-  if (sym === '€') return raw;
-  return raw.map(e => ({ ...e, text: e.text.replace(/€/g, sym) }));
-}
 function getRotatingDealPlaceholders(currency, lang) {
   const sym = CURRENCY_SYMBOLS[currency] || '€';
   const raw = lang === 'en' ? DEAL_PLACEHOLDERS_EN : DEAL_PLACEHOLDERS_FR;
@@ -1139,52 +1124,6 @@ function AvgDaysChart({filtered, items, lang}) {
           })}
         </div>
       )}
-    </div>
-  );
-}
-
-function VoiceTicker({ lang = 'fr', currency = 'EUR' }) {
-  const [idx, setIdx] = useState(0);
-  const [text, setText] = useState("");
-  const stateRef = useRef({ char: 0, mode: "type" });
-
-  useEffect(() => {
-    stateRef.current = { char: 0, mode: "type" };
-    setText("");
-    let alive = true;
-    let timer;
-    const examples = getRotatingExamples(currency, lang);
-    const tick = () => {
-      if (!alive) return;
-      const cur = examples[idx];
-      const s = stateRef.current;
-      if (s.mode === "type") {
-        s.char++;
-        setText(cur.text.slice(0, s.char));
-        if (s.char >= cur.text.length) { s.mode = "hold"; timer = setTimeout(tick, 1800); return; }
-        timer = setTimeout(tick, 32 + Math.random() * 30);
-      } else if (s.mode === "hold") {
-        s.mode = "erase";
-        timer = setTimeout(tick, 30);
-      } else {
-        s.char -= 3;
-        setText(cur.text.slice(0, Math.max(0, s.char)));
-        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % examples.length); }
-        else { timer = setTimeout(tick, 14); }
-      }
-    };
-    tick();
-    return () => { alive = false; clearTimeout(timer); };
-  }, [idx, lang, currency]);
-
-  const examples = getRotatingExamples(currency, lang);
-  const cur = examples[idx % examples.length];
-  return (
-    <div className="voice-ticker">
-      <span className="vt-quote">«</span>
-      <span className="vt-text">{text}</span>
-      <span className="vt-cursor" />
-      <span className={`vt-tag ${cur.cls}`}>{cur.tag}</span>
     </div>
   );
 }
@@ -5917,7 +5856,7 @@ export default function App({ loginOnly = false }){
             delSale={delSale}
             resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
-            triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
+            triggerCheckout={triggerCheckout}
             openUpgradeModal={openUpgradeModal}
             setTab={setTab}
             EmptyStateDashboard={EmptyStateDashboard}

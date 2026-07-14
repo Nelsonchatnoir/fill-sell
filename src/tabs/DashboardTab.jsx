@@ -61,7 +61,7 @@ const DashboardTab = memo(function DashboardTab({
   tm, salesForKpis, totalM,
   selectedRange, setSelectedRange,
   delSale, resetStep, setResetStep, handleReset,
-  fabTriggerRef, triggerCheckout, handleIAPPurchase, openUpgradeModal, setTab,
+  fabTriggerRef, triggerCheckout, openUpgradeModal, setTab,
   EmptyStateDashboard,
 }) {
   const { t, tpl } = useTranslation(lang);
