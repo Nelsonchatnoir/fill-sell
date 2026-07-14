@@ -29,6 +29,7 @@ import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton,
 import CoinStoreModal from './components/CoinStoreModal';
 import PepiteIcon from './components/PepiteIcon';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
+import PlanBadge from './components/PlanBadge';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from './components/voice/tokens';
 import VoiceResultCard from './components/voice/VoiceResultCard';
@@ -4055,7 +4056,9 @@ export default function App({ loginOnly = false }){
           ):!isPremium&&isNative?(
             <button onClick={()=>openUpgradeModal()} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
-            <button onClick={()=>setShowPremiumModal(true)} className="tb-premium" style={{cursor:"pointer",border:"none",padding:0,background:"none",fontFamily:"inherit"}}>⭐ Premium</button>
+            // Pro passe devant Premium : isPro vient de profiles.is_pro, isPremium
+            // de l'expression complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
+            <PlanBadge isPremium={isPremium} isPro={isPro} onClick={()=>setShowPremiumModal(true)} />
           ):null}
           <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
         </div>
@@ -4629,7 +4632,11 @@ export default function App({ loginOnly = false }){
             <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
               <Eyebrow>{t('monCompte')}</Eyebrow>
               <div style={{fontSize:13,fontWeight:600,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
-              {isPremium&&<div style={{fontSize:12,color:UI.tealDeep,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
+              {isPremium&&(
+                <div style={{marginTop:8}}>
+                  <PlanBadge isPremium={isPremium} isPro={isPro} />
+                </div>
+              )}
             </div>
 
             {/* Pépites de publication */}

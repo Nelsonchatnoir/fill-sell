@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import PepiteIcon from './PepiteIcon';
+import PlanBadge from './PlanBadge';
 
 // ConversionModal — modale de conversion unique (fusion de l'ex-UpgradeModal).
 // Vend Premium et/ou Pro selon le tier courant, avec contexte réel (jauge de
@@ -302,14 +303,15 @@ export default function ConversionModal({
           {/* Jauge de quota (donnée réelle) */}
           {gauge && <QuotaGauge {...gauge} />}
 
-          {/* Carte "plan actuel" collapsée pour les Premium */}
-          {isPremium && !isPro && (
+          {/* Carte "plan actuel" collapsée — Premium ET Pro (le Pro n'avait rien
+              avant : plus rien à lui vendre, donc aucun rappel de son palier). */}
+          {isPremium && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
               background: C.paper, border: `1px solid ${C.border}`, borderRadius: 13,
               padding: '10px 14px',
             }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.tealDeep }}>⭐ Premium</span>
+              <PlanBadge isPremium={isPremium} isPro={isPro} />
               <span style={{ fontSize: 11, fontWeight: 600, color: C.mute }}>
                 — {fr ? 'ton plan actuel' : 'your current plan'}
               </span>
