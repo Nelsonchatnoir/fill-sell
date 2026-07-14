@@ -413,6 +413,26 @@ function visibleFields(fieldConfigs, icon, values) {
   );
 }
 
+// ── Défaut d'état ─────────────────────────────────────────────────────────────
+// Filet structurel (2026-07-14), pas un choix produit : l'état manquait parfois
+// de bout en bout (l'IA ne le renvoie pas, l'analyse Lens non plus, la ligne de
+// stock saisie à la main n'en a pas) et partait vide → champ obligatoire non
+// rempli sur les 4 plateformes.
+//
+// "Très bon état" est le SEUL libellé écrit à l'identique dans la liste fermée
+// des 4 plateformes (Beebs écrit ses états avec une virgule — "Neuf, avec
+// étiquette" — mais pas celui-ci). C'est aussi le milieu de gamme : il ne
+// survend jamais l'article (contrairement à Neuf) et ne le brade pas.
+// Il est TOUJOURS résolu dans les options de la plateforme visée : on n'envoie
+// jamais un libellé absent de sa propre liste.
+const DEFAULT_CONDITION = "Très bon état";
+const isConditionKey = k => k === "etat" || k === "condition";
+
+function defaultConditionFor(field) {
+  if (!field || field.type !== "select") return DEFAULT_CONDITION;
+  return findMatchingOption(DEFAULT_CONDITION, field.options ?? []) || DEFAULT_CONDITION;
+}
+
 function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   const result = {};
   for (const field of fieldConfigs) {
@@ -441,6 +461,11 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
     result[field.key] = lensVal
       ? (field.type === "select" ? (findMatchingOption(lensVal, field.options) || "") : lensVal)
       : "";
+    // Aucune source n'a donné l'état (IA, Lens, ligne de stock) — ou en a donné
+    // un que la plateforme ne connaît pas : défaut. L'utilisateur voit la valeur
+    // dans le select et peut la changer avant de publier.
+    if (isConditionKey(field.key) && !result[field.key])
+      result[field.key] = defaultConditionFor(field);
   }
   return result;
 }
@@ -2368,6 +2393,13 @@ export default function ListingPreviewScreen({
 
       const rows = [...selected].map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
+        // Dernier filet avant l'insert du job : un état vidé à la main (ou un
+        // `edited` venant d'un chemin qui n'est pas passé par
+        // mergeFieldsWithLens) ne part JAMAIS vide vers l'extension.
+        for (const field of platformFieldsConfig[platform] ?? []) {
+          if (isConditionKey(field.key) && !String(pf[field.key] ?? "").trim())
+            pf[field.key] = defaultConditionFor(field);
+        }
         if (platform === "leboncoin") {
           const icon = resolveArticleIcon({ initialListing, edited, pf });
           const lbcPath = getLbcCategoryPath(icon);
