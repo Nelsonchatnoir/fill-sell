@@ -5,7 +5,7 @@ import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } fr
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
-import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -3749,6 +3749,26 @@ export default function App({ loginOnly = false }){
     if(isNative){
       initIAP().then(product=>{ if(mounted) setIapProduct(product); });
     }
+    // Filet de rattrapage achat interrompu (iOS) : Transaction.updates relivre
+    // au lancement les consumables payés mais jamais validés (app tuée entre
+    // purchaseProduct et validate-coin-purchase). On rejoue la validation —
+    // idempotente côté RPC — avant de finish. Session pas encore restaurée →
+    // on jette : la transaction reste en file pour le prochain lancement.
+    let coinRecoveryHandle=null;
+    if(isNative&&Capacitor.getPlatform()==='ios'){
+      listenCoinTransactionUpdates(async(tx)=>{
+        const{data:{session:rcSess}}=await supabase.auth.getSession();
+        const rcToken=rcSess?.access_token;
+        if(!rcToken) throw new Error('session absente — nouvel essai au prochain lancement');
+        const r=await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${rcToken}`,'apikey':supabaseAnonKey},
+          body:JSON.stringify({platform:'ios',productId:tx.productIdentifier,receipt:tx.receipt}),
+        });
+        const body=await r.json().catch(()=>({}));
+        if(!r.ok||body.error) throw new Error(body.error||`HTTP ${r.status}`);
+      }).then(h=>{coinRecoveryHandle=h;}).catch(e=>console.error('[IAP] listener rattrapage:',e?.message));
+    }
     const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       const u=session?.user??null;
       setUser(u);
@@ -3758,7 +3778,7 @@ export default function App({ loginOnly = false }){
         fetchAll(u.id);
       }else{setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
     });
-    return()=>{ mounted=false; subscription.unsubscribe(); };
+    return()=>{ mounted=false; subscription.unsubscribe(); coinRecoveryHandle?.remove?.(); };
   },[]);
 
   // ── Refetch au retour de visibilité (2026-07-13) ────────────────────────────
@@ -5493,7 +5513,7 @@ export default function App({ loginOnly = false }){
         const errBody=await r.json().catch(()=>({}));
         // Quota mensuel épuisé ET pas assez de pièces pour l'analyse hors quota
         if(errBody.error==='insufficient_coins'){
-          setConversionModal({open:true,trigger:'lens',coinPrice:errBody.price??9,coinBalance:errBody.balance??0});
+          setConversionModal({open:true,trigger:'lens',coinPrice:errBody.price??6,coinBalance:errBody.balance??0});
           return;
         }
         // quota_exceeded ne subsiste que pour le frein journalier Premium (10/j)

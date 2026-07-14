@@ -6,6 +6,41 @@ export const PRODUCT_IDS = {
   pro: 'app.fillsell.pro.sub',            // Pro 29,99 €/mois
 };
 
+// Packs consumables — mêmes ids que CoinStoreModal et validate-coin-purchase.
+export const COIN_PRODUCT_IDS = [
+  'app.fillsell.coins.100',
+  'app.fillsell.coins.220',
+  'app.fillsell.coins.460',
+  'app.fillsell.coins.1150',
+];
+
+// Filet de rattrapage iOS : si l'app meurt entre purchaseProduct et la
+// validation serveur, l'achat est payé mais jamais crédité — la transaction
+// consumable reste NON FINALISÉE dans la file StoreKit et Transaction.updates
+// la relivre au lancement suivant via l'événement `transactionUpdated`
+// (iOS uniquement, ne fire jamais sur Android). On rejoue alors la validation
+// serveur (credit_purchased_coins est idempotent sur apple:<transaction_id>,
+// un rejeu répond already_credited sans double crédit) PUIS on finish la
+// transaction via acknowledgePurchase — jamais l'inverse : une transaction
+// finie avant validation réussie serait définitivement perdue. Si la
+// validation échoue (offline, pas encore de session), on laisse la
+// transaction en file : StoreKit la relivrera au prochain lancement.
+export const listenCoinTransactionUpdates = (validate) =>
+  NativePurchases.addListener('transactionUpdated', async (tx) => {
+    if (!COIN_PRODUCT_IDS.includes(tx?.productIdentifier)) return;
+    if (!tx?.receipt) {
+      console.warn('[IAP] transactionUpdated sans receipt — rattrapage impossible:', tx?.transactionId);
+      return;
+    }
+    try {
+      await validate(tx);
+      await NativePurchases.acknowledgePurchase({ purchaseToken: String(tx.transactionId) });
+      console.log('[IAP] transaction consumable rattrapée et finalisée:', tx.transactionId);
+    } catch (e) {
+      console.error('[IAP] rattrapage échoué (transaction laissée en file):', tx?.transactionId, e?.message);
+    }
+  });
+
 export const initIAP = async () => {
   try {
     const { products } = await NativePurchases.getProducts({
