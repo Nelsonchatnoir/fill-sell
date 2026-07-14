@@ -353,6 +353,49 @@ function findMatchingOption(raw, options) {
   return candidates[0].value;
 }
 
+// ── Pertinence des champs par catégorie réelle (2026-07-14) ──────────────────
+// getPlatformFieldsConfig est STATIQUE par plateforme : Vinted affichait ses 9
+// champs à tout le monde, d'où « Espace de stockage » demandé sur un t-shirt.
+// On filtre L'AFFICHAGE seulement — jamais mergeFieldsWithLens ni les
+// platform_fields envoyés à l'extension (retirer une clé des données casserait
+// la publication). Le prédicat est DÉRIVÉ des tables déjà en place
+// (getLbcCategoryPath, indexée par l'icône detectObjectIcon, celle-là même que
+// missingSharedFields utilise) : aucun nouveau mapping catégorie→champs.
+function isFieldRelevant(key, icon) {
+  const path = getLbcCategoryPath(icon);
+  const root = path?.[0] ?? null;
+  const leaf = path?.[1] ?? null;
+  // Porté (taille) : mêmes feuilles que la garde taille de missingSharedFields.
+  const wearable = root === "Mode" && (leaf === "Vêtements" || leaf === "Chaussures");
+  // Mode au sens large (genre / rayon) : vêtements, chaussures, sacs, montres…
+  const fashion = root === "Mode";
+  const electronics = root === "Électronique";
+  const toys = root === "Loisirs" && leaf === "Jeux & Jouets";
+  const baby = getLbcBabyEquipment(icon) != null;
+
+  switch (key) {
+    case "taille":   return wearable;
+    case "genre":
+    case "univers":  return fashion;
+    case "modele":
+    case "stockage": return electronics;
+    case "age":      return toys || baby;
+    // matiere : bloquante uniquement sur la mode (cf. materialGuardApplies) —
+    // ailleurs on ne la demande que si l'IA a trouvé une valeur (cf. appelant).
+    case "matiere":  return fashion;
+    default:         return true;   // etat, couleur, marque, categorie… : partout
+  }
+}
+
+// Filtre d'affichage : garde un champ s'il est pertinent OU s'il porte déjà une
+// valeur (ne jamais cacher une donnée que l'IA a trouvée et que l'utilisateur
+// pourrait vouloir corriger).
+function visibleFields(fieldConfigs, icon, values) {
+  return fieldConfigs.filter(f =>
+    isFieldRelevant(f.key, icon) || String(values?.[f.key] ?? "").trim() !== ""
+  );
+}
+
 function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   const result = {};
   for (const field of fieldConfigs) {
@@ -838,7 +881,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang,
-  price, setPrice, customPriced, setCustomPriced }) {
+  price, setPrice, customPriced, setCustomPriced, articleIcon = "📦" }) {
   const { t } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -984,7 +1027,14 @@ function StepGeneration({ generating, generateError, platformListings, processed
           const e = edited[p] ?? { title:"", description:"", platform_fields:{}, price:null };
           const isOpen = openCards.has(p);
           const isCustomPrice = customPriced.has(p);
-          const fieldConfigs = platformFieldsConfig[p] ?? [];
+          // Champs AFFICHÉS = pertinents pour la catégorie réelle de l'article,
+          // ou déjà remplis. Les données envoyées à l'extension, elles, restent
+          // complètes (mergeFieldsWithLens n'est pas filtré).
+          const fieldConfigs = visibleFields(
+            platformFieldsConfig[p] ?? [],
+            articleIcon,
+            e.platform_fields ?? {}
+          );
           const etatField = fieldConfigs.find(f => f.key === "etat" || f.key === "condition");
           const etatVal = etatField ? (e.platform_fields?.[etatField.key] ?? "") : "";
           const summaryParts = [
@@ -1776,6 +1826,18 @@ export default function ListingPreviewScreen({
   // Exception taille×Leboncoin (2026-07-11) : LBC ne bloque sur la taille
   // QUE pour Mode>Chaussures (Pointure obligatoire, shoe_size) — même
   // détection icône→getLbcCategoryPath que le bloc LBC de handlePublish.
+  // Icône de l'article — MÊME résolution que missingSharedFields et que les
+  // mappings catalogue (source FR, jamais la copie eBay anglaise). Sert au
+  // filtrage d'affichage des champs par catégorie (chantier 2).
+  const articleIcon = useMemo(() => {
+    const src = edited.leboncoin ?? edited.vinted ?? edited.ebay ?? edited.beebs ?? null;
+    return resolveArticleIcon({
+      initialListing,
+      edited,
+      pf: src?.platform_fields ?? {},
+    });
+  }, [edited, initialListing]);
+
   const missingSharedFields = useMemo(() => {
     // Même résolution d'icône que les mappings catalogue (resolveArticleIcon) :
     // source française et stable, jamais la copie eBay (anglaise).
@@ -2395,6 +2457,7 @@ export default function ListingPreviewScreen({
             setPrice={setPrice}
             customPriced={customPriced}
             setCustomPriced={setCustomPriced}
+            articleIcon={articleIcon}
           />
         )}
         {step === 3 && (
