@@ -2,9 +2,10 @@ import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import { UI } from '../components/ui';
 import {
-  formatCurrency, fmtp, getMargeColor,
-  getTypeStyle, typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
+  formatCurrency, fmtp,
+  typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
 } from '../utils/shared';
 
@@ -33,12 +34,36 @@ const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue'
 // clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
 const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs'};
 
+// ── État vide — design « Ventes Empty State » (Claude Design, projet e47b36df,
+// intégré le 2026-07-14). ⚠️ TOUTES les valeurs de cet écran sont des EXEMPLES
+// EN DUR : l'utilisateur n'a rien vendu, aucun de ces chiffres ne doit jamais
+// être branché sur ses vraies données. Les libellés « Aperçu » et « Avec
+// Fill & Sell » sont là pour lever toute ambiguïté — ne pas les retirer.
 const TICKER_SALES = [
-  { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       sell:42,   margin:27,  marginPct:64 },
-  { title:'iPhone 12 Pro 128Go', marque:'Apple',   type:'High-Tech',  sell:380,  margin:100, marginPct:26 },
-  { title:'Sac Kelly Hermès',    marque:'Hermès',  type:'Luxe',       sell:1240, margin:420, marginPct:34 },
-  { title:'Lot Pokémon x20',     marque:'Pokémon', type:'Collection', sell:95,   margin:90,  marginPct:95 },
-  { title:'Guitare Yamaha F310', marque:'Yamaha',  type:'Musique',    sell:120,  margin:55,  marginPct:46 },
+  { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       icon:'🧥', sell:42,   margin:27,  date:'14 juil', dateEn:'Jul 14' },
+  { title:'iPhone 12 Pro 128Go',  marque:'Apple',   type:'High-Tech',  icon:'📱', sell:380,  margin:100, date:'12 juil', dateEn:'Jul 12' },
+  { title:'Sac Kelly Hermès',     marque:'Hermès',  type:'Luxe',       icon:'👜', sell:1240, margin:420, date:'9 juil',  dateEn:'Jul 9' },
+  { title:'Lot Pokémon x20',      marque:'Pokémon', type:'Collection', icon:'🎴', sell:95,   margin:90,  date:'6 juil',  dateEn:'Jul 6' },
+  { title:'Guitare Yamaha F310',  marque:'Yamaha',  type:'Musique',    icon:'🎸', sell:120,  margin:55,  date:'2 juil',  dateEn:'Jul 2' },
+];
+
+// Les 3 mini-stats de l'aperçu : ordres de grandeur TYPES, jamais les siens.
+const PREVIEW_STATS = [
+  {
+    tile: UI.teal,
+    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>,
+    labelFr:'Marge moy.', labelEn:'Avg margin', valueFr:'~45 %', valueEn:'~45%',
+  },
+  {
+    tile: UI.amber,
+    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>,
+    labelFr:'Délai vente', labelEn:'Sale time', valueFr:'~4 jours', valueEn:'~4 days',
+  },
+  {
+    tile: UI.tealDeep,
+    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
+    labelFr:'Meilleure vente', labelEn:'Best sale', valueFr:'+420 €', valueEn:'+€420',
+  },
 ];
 
 function SalesTicker({ lang, fmt, setTab }) {
@@ -80,90 +105,113 @@ function SalesTicker({ lang, fmt, setTab }) {
   }, [idx]);
 
   const s  = TICKER_SALES[idx];
-  const ts = getTypeStyle(s.type);
-  const mc = getMargeColor(s.marginPct);
+  const fr = lang !== 'en';
 
   return (
-    <div style={{marginBottom:8}}>
-      <div style={{fontSize:11,fontWeight:700,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
-        {lang==='fr'?'APERÇU — À QUOI ÇA RESSEMBLE':'PREVIEW — WHAT IT LOOKS LIKE'}
-      </div>
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      <style>{`@keyframes vt-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        @media (prefers-reduced-motion:reduce){.vt-anim{animation:none !important}}`}</style>
 
-      <div style={{background:'#fff',borderRadius:12,border:'1px solid rgba(0,0,0,0.06)',borderLeft:`3px solid ${ts.border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.04)',overflow:'hidden',marginBottom:10}}>
-        <div style={{padding:'12px 14px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease,transform 0.45s ease'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:'#10201B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:4}}>
-                {s.title}
+      {/* Aperçu — carrousel d'une vente d'exemple */}
+      <div className="vt-anim" style={{display:'flex',flexDirection:'column',gap:12,animation:'vt-rise 0.5s ease both'}}>
+        <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.12em',color:'#A39D8E',textAlign:'center'}}>
+          {fr?'Aperçu — à quoi ça ressemble':'Preview — what it looks like'}
+        </div>
+
+        <div style={{position:'relative',background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:16,boxShadow:'0 6px 18px -12px rgba(16,32,27,0.16)',overflow:'hidden'}}>
+          <div style={{padding:'14px 15px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease, transform 0.45s ease'}}>
+            <span style={{position:'absolute',top:11,right:13,fontSize:12,color:'#C7C2B4'}}>✎</span>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:44,height:44,borderRadius:13,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:21,background:UI.canvas,border:'1px solid #E3DFD3'}}>
+                {s.icon}
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                <span style={{background:'#E7F3F0',color:'#1B6E62',borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:'1px solid #BFE0D9'}}>
-                  {marqueLabel(s.marque,lang)}
-                </span>
-                <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'2px 8px',fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>
-                  {ts.emoji} {typeLabel(s.type,lang)}
-                </span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>
+                  <span style={{fontSize:14.5,fontWeight:700,color:UI.ink}}>{s.title}</span>
+                  <span style={{fontSize:13,fontWeight:500,color:'#B7B2A4'}}> · </span>
+                  <span style={{fontSize:13,fontWeight:500,color:UI.mute}}>{marqueLabel(s.marque,lang)}</span>
+                </div>
+                <div style={{fontSize:12,fontWeight:500,color:UI.mute,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {soldWord(s.title,lang)} <span style={{fontWeight:600,color:'#5C6560'}}>{fmt(s.sell)}</span> · {typeLabel(s.type,lang)}
+                </div>
+              </div>
+              <div style={{textAlign:'right',flexShrink:0}}>
+                <div style={{fontSize:15,fontWeight:700,color:UI.tealDeep}}>+{fmt(s.margin)}</div>
+                <div style={{fontSize:10,fontWeight:500,color:'#A6A192',marginTop:3}}>{fr?s.date:s.dateEn}</div>
               </div>
             </div>
-            <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:'#10201B'}}>{fmt(s.sell)}</div>
-              <div style={{fontWeight:700,fontSize:13,color:mc,marginTop:1}}>+{fmt(s.margin)}</div>
-            </div>
           </div>
-          <div style={{marginTop:10,height:2,background:'#F2F0E9',borderRadius:2,overflow:'hidden'}}>
-            <div style={{height:'100%',background:ts.border,width:`${progress*100}%`}}/>
+          <div style={{height:2,background:UI.canvas,overflow:'hidden'}}>
+            <div style={{height:'100%',background:UI.teal,width:`${(progress*100).toFixed(1)}%`}}/>
           </div>
         </div>
-      </div>
 
-      <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:18}}>
-        {TICKER_SALES.map((sale,i)=>{
-          const dts=getTypeStyle(sale.type);
-          return <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?dts.border:'#E5E7EB',transition:'background 0.3s ease'}}/>;
-        })}
-      </div>
-
-      <div style={{textAlign:'center',marginBottom:16}}>
-        <div style={{fontSize:18,fontWeight:700,color:'#10201B',letterSpacing:'-0.02em',marginBottom:6}}>
-          {lang==='fr'?"Tes profits t'attendent":"Your profits are waiting"}
-        </div>
-        <div style={{fontSize:13,color:'#A3A9A6',fontWeight:500,lineHeight:1.5,maxWidth:240,margin:'0 auto'}}>
-          {lang==='fr'?'Enregistre tes achats et ventes pour voir tes gains en temps réel.':'Log your buys and sells to track your profits in real time.'}
+        <div style={{display:'flex',justifyContent:'center',gap:6}}>
+          {TICKER_SALES.map((_,i)=>(
+            <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?UI.teal:'#D8D2C4',transition:'background 0.3s ease'}}/>
+          ))}
         </div>
       </div>
 
+      {/* Accroche */}
+      <div className="vt-anim" style={{textAlign:'center',animation:'vt-rise 0.5s ease 0.05s both'}}>
+        <div style={{fontSize:21,fontWeight:700,letterSpacing:'-0.02em',color:UI.ink}}>
+          {fr?"Tes profits t'attendent":'Your profits are waiting'}
+        </div>
+        <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:250,margin:'8px auto 0'}}>
+          {fr?'Enregistre tes achats et ventes pour voir tes gains en temps réel.':'Log your buys and sells to track your profits in real time.'}
+        </div>
+      </div>
+
+      {/* CTA principal — ouvre le Stock (ajout d'article) */}
       <button
+        className="vt-anim"
         onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
-        style={{width:'100%',padding:'14px',background:'linear-gradient(120deg,#2F9E90,#1B6E62)',color:'#fff',border:'none',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontFamily:'inherit',boxShadow:'0 10px 24px -8px rgba(47,158,144,0.28)'}}
-        onMouseDown={e=>e.currentTarget.style.transform='scale(0.97)'}
-        onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
-        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
+        style={{width:'100%',padding:16,border:'none',borderRadius:999,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+          fontFamily:'inherit',fontSize:14.5,fontWeight:700,color:'#fff',
+          background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:'0 12px 26px -10px rgba(47,158,144,0.5)',
+          animation:'vt-rise 0.5s ease 0.1s both'}}
       >
-        + {lang==='fr'?'Ajouter un article':'Add an item'}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        {fr?'Ajouter un article':'Add an item'}
       </button>
 
-      <div style={{marginTop:16}}>
-        <div style={{fontSize:11,fontWeight:700,color:'#A3A9A6',textTransform:'uppercase',letterSpacing:'0.08em',textAlign:'center',marginBottom:10}}>
-          {lang==='fr'?'AVEC FILL & SELL':'WITH FILL & SELL'}
+      {/* Mini-stats d'EXEMPLE — jamais les données de l'utilisateur */}
+      <div className="vt-anim" style={{animation:'vt-rise 0.5s ease 0.15s both'}}>
+        <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.12em',color:'#A39D8E',textAlign:'center',marginBottom:8}}>
+          {fr?'Avec Fill & Sell':'With Fill & Sell'}
         </div>
-        <div style={{fontSize:13,fontWeight:700,color:'#10201B',textAlign:'center',marginBottom:10}}>
-          {lang==='fr'?'Ce que tu vas pouvoir suivre':'What you\'ll be able to track'}
+        <div style={{fontSize:13.5,fontWeight:700,color:UI.ink,textAlign:'center',marginBottom:12}}>
+          {fr?'Ce que tu vas pouvoir suivre':"What you'll be able to track"}
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
-          {[
-            {icon:'📈',label:lang==='fr'?'Marge moy.':'Avg margin',value:'~45%'},
-            {icon:'⚡',label:lang==='fr'?'Délai vente':'Sale time',value:lang==='fr'?'~4 jours':'~4 days'},
-            {icon:'🏆',label:lang==='fr'?'Meilleure vente':'Best sale',value:'ex: +420€'},
-          ].map((c,i)=>(
-            <div key={i} style={{background:'#F0FDFB',border:'1px solid rgba(13,148,136,0.18)',borderRadius:12,padding:'10px 8px',textAlign:'center'}}>
-              <div style={{fontSize:18,marginBottom:4}}>{c.icon}</div>
-              <div style={{fontSize:10,fontWeight:700,color:'#6B7A75',marginBottom:4,lineHeight:1.2}}>{c.label}</div>
-              <div style={{fontSize:15,fontWeight:700,color:'#1B6E62',letterSpacing:'-0.02em',marginBottom:2}}>{c.value}</div>
-              <div style={{fontSize:9,color:'#A3A9A6',fontWeight:500}}>{lang==='fr'?'sur tes ventes':'on your sales'}</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+          {PREVIEW_STATS.map((c,i)=>(
+            <div key={i} style={{background:'rgba(47,158,144,0.07)',border:'1px solid rgba(47,158,144,0.18)',borderRadius:16,padding:'14px 8px',textAlign:'center'}}>
+              <div style={{width:34,height:34,borderRadius:11,background:c.tile,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 9px'}}>
+                {c.icon}
+              </div>
+              <div style={{fontSize:9.5,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.04em',color:UI.mute2,lineHeight:1.2,marginBottom:6}}>
+                {fr?c.labelFr:c.labelEn}
+              </div>
+              <div style={{fontSize:17,fontWeight:700,letterSpacing:'-0.02em',color:UI.tealDeep,marginBottom:3}}>
+                {fr?c.valueFr:c.valueEn}
+              </div>
+              <div style={{fontSize:9,fontWeight:500,color:'#A6A192'}}>{fr?'sur tes ventes':'on your sales'}</div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* CTA secondaire — Stats avancées, accessible même sans aucune vente */}
+      <button
+        onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
+        style={{width:'100%',padding:15,border:'none',borderRadius:999,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:9,
+          fontFamily:'inherit',fontSize:14,fontWeight:700,color:'#fff',
+          background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:'0 10px 24px -10px rgba(47,158,144,0.45)',marginTop:2}}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+        {fr?'Voir mes stats avancées':'See my advanced stats'}
+      </button>
     </div>
   );
 }
@@ -242,7 +290,11 @@ const VentesTab = memo(function VentesTab({
       })()}
 
       {sales.length===0?(
-        <div>
+        // Condition d'affichage inchangée : cet écran ne sort QUE si l'utilisateur
+        // n'a réellement aucune vente. Le padding bas laisse passer le FAB micro
+        // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
+        // grille de mini-stats finissaient sous le bouton en fin de scroll.
+        <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'calc(env(safe-area-inset-bottom,0px) + 96px)'}}>
           <SalesTicker lang={lang} fmt={fmt} setTab={setTab}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore}/>)}
