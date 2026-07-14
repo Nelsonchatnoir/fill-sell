@@ -605,7 +605,8 @@ function StepUpload({ previews, removable, onAdd, onRemove, notes, setNotes, mic
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang }) {
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang,
+  onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = 5;
@@ -806,6 +807,68 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onPhotoClick, photoOpt
               ? "Objet fidèle (logo, couleurs, défauts) — seul le fond change. Sur un vêtement, les faux plis sont légèrement défroissés."
               : "Item kept faithful (logo, colors, flaws) — only the background changes. On a garment, storage creases are lightly smoothed."}
           </p>
+        </div>
+      )}
+
+      {/* ── Analyse photo optionnelle (2026-07-14) ──────────────────────────
+          Même moteur que Lens (edge lens-analysis) : deux entrées, un seul
+          moteur. Le débit des Pépites, le quota et le 402 sont gérés côté
+          serveur par spend_coins_for_lens — aucun chemin de paiement recodé.
+          Jamais proposée si l'article vient DÉJÀ de Lens : il a déjà ses
+          attributs et son prix, la payer deux fois n'aurait aucun sens. */}
+      {photos.length > 0 && !analysisHidden && (
+        <div style={{ marginBottom:16, background:T.paper, border:`1px solid ${T.border}`, borderRadius:16, padding:"14px 15px" }}>
+          {analysisResult ? (
+            <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+              <span style={{ fontSize:16, lineHeight:1.2 }}>✅</span>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:T.ink }}>
+                  {lang === "en" ? "Photos analyzed" : "Photos analysées"}
+                </div>
+                <div style={{ fontSize:12, color:T.mute, marginTop:2, lineHeight:1.45 }}>
+                  {[
+                    analysisResult.marque,
+                    analysisResult.taille_estimee,
+                    analysisResult.matiere,
+                    analysisResult.prix_vente_suggere != null
+                      ? (lang === "en" ? `suggested ${analysisResult.prix_vente_suggere} €` : `prix conseillé ${analysisResult.prix_vente_suggere} €`)
+                      : null,
+                  ].filter(Boolean).join(" · ") || (lang === "en" ? "Fields filled in" : "Champs pré-remplis")}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:13, fontWeight:700, color:T.ink, marginBottom:3 }}>
+                {lang === "en" ? "Let the AI read your photos" : "Laisse l'IA lire tes photos"}
+              </div>
+              <div style={{ fontSize:12, color:T.mute, lineHeight:1.45, marginBottom:10 }}>
+                {lang === "en"
+                  ? "It identifies the brand, size, material and suggests a resale price — the fields below are then pre-filled."
+                  : "Elle identifie la marque, la taille, la matière et propose un prix de revente — les champs sont ensuite pré-remplis."}
+              </div>
+              {analysisError && (
+                <div style={{ fontSize:12, fontWeight:600, color:"#B0645A", marginBottom:8 }}>{analysisError}</div>
+              )}
+              <button
+                onClick={onAnalyze}
+                disabled={analyzing}
+                style={{
+                  width:"100%", padding:"12px", borderRadius:12, border:`1.5px solid ${T.tealDeep}`,
+                  background:"none", color:T.tealDeep, fontSize:13, fontWeight:700, fontFamily:"inherit",
+                  cursor: analyzing ? "not-allowed" : "pointer", opacity: analyzing ? 0.6 : 1,
+                  display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6,
+                }}
+              >
+                {analyzing
+                  ? (lang === "en" ? "Analyzing…" : "Analyse en cours…")
+                  : <>
+                      {lang === "en" ? "Analyze my photos" : "Analyser mes photos"}
+                      {analysisCost != null && <> · <PepiteIcon size={13} /> {analysisCost}</>}
+                    </>}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1421,6 +1484,14 @@ export default function ListingPreviewScreen({
   // Plateformes dont le prix a été édité individuellement : le champ central ne
   // les écrase plus (2026-07-14).
   const [customPriced, setCustomPriced] = useState(() => new Set());
+  // ── Analyse photo optionnelle (chantier 3) ────────────────────────────────
+  // photoAnalysis porte la réponse brute de lens-analysis. Elle complète
+  // initialListing SANS le remplacer : le contrat (prix_vente_suggere +
+  // canonical_fields taille/couleur/matiere/marque) est celui que le stepper
+  // consomme déjà depuis Lens — on le REMPLIT, on ne le change pas.
+  const [photoAnalysis, setPhotoAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
 
   // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
@@ -1510,8 +1581,12 @@ export default function ListingPreviewScreen({
         .eq("id", invId)
         .single()
         .then(({ data }) => {
-          const dbPrice = data?.prix_vente ?? data?.prix_achat ?? null;
-          const finalPrice = initialListing?.prix_vente_suggere ?? dbPrice;
+          // ⚠️ Plus AUCUN repli sur prix_achat (2026-07-14) : un article ajouté
+          // au stock sans prix de vente retombait sur son prix d'ACHAT, et
+          // partait donc en ligne à marge nulle. Sans analyse et sans prix
+          // saisi, le champ reste VIDE — le garde-fou de publication (≥ 1 €,
+          // commit c85548b) empêche toute annonce sans prix.
+          const finalPrice = initialListing?.prix_vente_suggere ?? data?.prix_vente ?? null;
           if (finalPrice != null) setPrice(finalPrice);
         });
     } else if (initialListing?.prix_vente_suggere != null) {
@@ -1645,6 +1720,53 @@ export default function ListingPreviewScreen({
     }
   }
 
+  // ── Analyse photo optionnelle — MÊME edge function que Lens ───────────────
+  // On envoie les URLs déjà uploadées (bucket listing-photos) : aucun ré-upload.
+  // lens-analysis débite les Pépites elle-même (spend_coins_for_lens) et renvoie
+  // 402 { error:"insufficient_coins", price, balance } — on rebranche ce 402 sur
+  // la ConversionModal existante (trigger 'lens'), comme le fait déjà l'onglet
+  // Lens. Aucun chemin de paiement nouveau.
+  async function handleAnalyzePhotos() {
+    if (!photos.length || analyzing) return;
+    setAnalyzing(true);
+    setAnalysisError("");
+    try {
+      // Même client supabase que le reste du stepper (prop), donc mêmes en-têtes
+      // d'auth. Le 402 arrive dans fnErr.context (FunctionsHttpError) — comme
+      // pour le 402 de generate-listing, functions.invoke ne lit pas le body.
+      const { data: res, error: fnErr } = await supabase.functions.invoke("lens-analysis", {
+        body: {
+          urls: photos,
+          description: initialListing?.description || initialListing?.titre || null,
+          prixAchat: initialListing?.prix_achat ?? null,
+          lang,
+        },
+      });
+      if (fnErr) {
+        let err = null;
+        try { err = await fnErr.context?.json(); } catch { /* body non-JSON */ }
+        if (err?.error === "insufficient_coins") {
+          setQuotaModal({
+            open: true, trigger: "lens", targetTiers: ["premium","pro"],
+            coinPrice: err.price ?? coinPrices?.lens_overflow ?? null,
+            coinBalance: err.balance ?? coinBalance,
+          });
+          return;
+        }
+        throw new Error(err?.error || fnErr.message || t("genericError"));
+      }
+      if (res?.error) throw new Error(res.error);
+      setPhotoAnalysis(res);
+      refreshWallet();
+      // Prix par défaut : la valeur de marché estimée, jamais le prix d'achat.
+      if (res?.prix_vente_suggere != null) setPrice(res.prix_vente_suggere);
+    } catch (e) {
+      setAnalysisError(e.message || t("genericError"));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   // ── Ajouter / supprimer photos step 1 ────────────────────────────────────
   async function handleAddMorePhotos(files) {
     const toAdd = files.slice(0, 5 - photos.length);
@@ -1673,15 +1795,28 @@ export default function ListingPreviewScreen({
     setPlatformError("");
     try {
       const platforms = [...selected];
+      // Source des champs : l'analyse photo (si elle a eu lieu) complète
+      // initialListing. Elle ne l'ÉCRASE que là où l'article n'avait rien —
+      // une valeur venant de Lens ou saisie par l'utilisateur reste prioritaire.
+      const src = {
+        titre:       initialListing?.titre       ?? photoAnalysis?.titre       ?? "",
+        marque:      initialListing?.marque      ?? photoAnalysis?.marque      ?? null,
+        description: initialListing?.description ?? photoAnalysis?.description ?? null,
+        categorie:   initialListing?.categorie   ?? photoAnalysis?.categorie   ?? null,
+        taille:      initialListing?.taille_estimee ?? initialListing?.taille ?? photoAnalysis?.taille_estimee ?? null,
+        couleur:     initialListing?.couleur     ?? photoAnalysis?.couleur     ?? null,
+        matiere:     initialListing?.matiere     ?? photoAnalysis?.matiere     ?? null,
+        prixVente:   price ?? initialListing?.prix_vente_suggere ?? photoAnalysis?.prix_vente_suggere ?? null,
+      };
       // Tant que l'article n'est pas en stock (invId absent), on envoie ses infos
       // directement plutôt qu'un inventaire_id qui n'existe pas encore.
       const itemData = invId ? null : {
-        titre:       initialListing?.titre       || "",
-        marque:      initialListing?.marque       || null,
-        description: initialListing?.description || null,
-        type:        initialListing?.categorie    || null,
+        titre:       src.titre,
+        marque:      src.marque,
+        description: src.description,
+        type:        src.categorie,
         statut:      "stock",
-        prix_vente:  price ?? initialListing?.prix_vente_suggere ?? null,
+        prix_vente:  src.prixVente,
       };
       const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
         body: {
@@ -1690,11 +1825,12 @@ export default function ListingPreviewScreen({
           // article) : le serveur les injecte comme contraintes dans les 4
           // prompts et les réplique après génération (Sujet 4) —
           // l'inventaire n'a pas ces colonnes, seul le client les connaît.
+          // Même contrat que Lens — l'analyse photo le remplit, ne le change pas.
           canonical_fields: {
-            taille:  initialListing?.taille_estimee ?? initialListing?.taille ?? null,
-            couleur: initialListing?.couleur ?? null,
-            matiere: initialListing?.matiere ?? null,
-            marque:  initialListing?.marque  ?? null,
+            taille:  src.taille,
+            couleur: src.couleur,
+            matiere: src.matiere,
+            marque:  src.marque,
           },
           photos,
           platforms,
@@ -2438,6 +2574,14 @@ export default function ListingPreviewScreen({
             onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
             lang={lang}
+            onAnalyze={handleAnalyzePhotos}
+            analyzing={analyzing}
+            analysisResult={photoAnalysis}
+            analysisError={analysisError}
+            analysisCost={coinPrices?.lens_overflow ?? null}
+            // Article venant de Lens : il a déjà prix et attributs → on ne
+            // propose PAS une seconde analyse payante pour le même article.
+            analysisHidden={initialListing?.prix_vente_suggere != null || initialListing?.taille_estimee != null}
           />
         )}
         {step === 2 && (
@@ -2500,8 +2644,8 @@ export default function ListingPreviewScreen({
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
-          coinBalance={coinBalance}
-          coinPrice={coinPriceFor(photoOption)}
+          coinBalance={quotaModal.coinBalance ?? coinBalance}
+          coinPrice={quotaModal.coinPrice ?? coinPriceFor(photoOption)}
           onUseCoins={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
         />
       )}
