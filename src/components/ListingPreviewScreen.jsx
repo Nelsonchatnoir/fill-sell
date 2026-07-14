@@ -1254,25 +1254,26 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
 // ── Toggle piste + rond (teal quand ON) ──────────────────────────────────────
 
-function StockToggle({ checked, onChange, label, hint }) {
+function StockToggle({ checked, onChange, label, hint, disabled = false }) {
   return (
     <div style={{
       display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-      background:T.card, border:`1px solid ${T.border}`, borderRadius:16,
-      padding:14, marginBottom:20,
+      background: disabled ? T.paper : T.card, border:`1px solid ${T.border}`, borderRadius:16,
+      padding:14, marginBottom:20, opacity: disabled ? 0.75 : 1,
     }}>
       <div style={{ minWidth:0 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:T.ink }}>{label}</div>
+        <div style={{ fontSize:14, fontWeight:600, color: disabled ? T.mute2 : T.ink }}>{label}</div>
         {hint && <div style={{ fontSize:12, color:T.mute2, marginTop:2, lineHeight:1.4 }}>{hint}</div>}
       </div>
       <button
         role="switch"
         aria-checked={checked}
-        onClick={() => onChange(!checked)}
+        disabled={disabled}
+        onClick={() => !disabled && onChange(!checked)}
         style={{
           flexShrink:0, width:44, height:26, borderRadius:999, border:"none", padding:3,
-          background: checked ? T.teal : "#D8D2C4",
-          cursor:"pointer", position:"relative", transition:"background 0.2s",
+          background: disabled ? "#CFCABA" : checked ? T.teal : "#D8D2C4",
+          cursor: disabled ? "not-allowed" : "pointer", position:"relative", transition:"background 0.2s",
         }}
       >
         <span style={{
@@ -1287,7 +1288,7 @@ function StockToggle({ checked, onChange, label, hint }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
@@ -1314,6 +1315,20 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
           onChange={setAddToStock}
           label={t("stepPublishAddToStockLabel")}
           hint={addToStock ? t("stepPublishAddToStockHintOn") : t("stepPublishAddToStockHintOff")}
+        />
+      )}
+
+      {/* Article venant du Stock : le toggle n'a aucun sens (il y est déjà).
+          Il était jusqu'ici purement ABSENT — on l'affiche désormais grisé et
+          coché, pour que l'utilisateur voie que la question est réglée plutôt
+          que de se demander où est passée l'option. */}
+      {stockLocked && (
+        <StockToggle
+          checked
+          disabled
+          onChange={() => {}}
+          label={t("stepPublishAddToStockLabel")}
+          hint={lang === "en" ? "Already in your stock" : "Déjà dans ton stock"}
         />
       )}
 
@@ -1478,6 +1493,10 @@ export default function ListingPreviewScreen({
   // n'a pas encore été ajouté au stock (switch "Ajouter au stock" à l'étape Publier).
   const [invId, setInvId] = useState(inventaireId || null);
   const canToggleStock = typeof createStockItem === "function" && !invId && !alreadyInStock;
+  // Provenance de l'article : invId est posé quand on publie DEPUIS le Stock
+  // (StockTab passe inventaireId) ; alreadyInStock l'est par Lens quand l'article
+  // a déjà été ajouté. Dans les deux cas il est déjà en stock → toggle verrouillé.
+  const stockLocked = !!invId || alreadyInStock;
   const [addToStock, setAddToStock] = useState(true);
   const [prixAchatSaisi, setPrixAchatSaisi] = useState("");
 
@@ -2636,6 +2655,7 @@ export default function ListingPreviewScreen({
             publishError={publishError}
             lang={lang}
             canToggleStock={canToggleStock}
+            stockLocked={stockLocked}
             addToStock={addToStock}
             setAddToStock={setAddToStock}
             prixAchatSaisi={prixAchatSaisi}
