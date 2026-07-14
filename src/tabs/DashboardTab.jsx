@@ -167,8 +167,7 @@ const DashboardTab = memo(function DashboardTab({
           <EmptyStateDashboard
             lang={lang}
             onTryVoice={()=>fabTriggerRef.current?.()}
-            onAddManual={()=>{setTab(1); localStorage.setItem('tab',1);}}
-            onPremium={()=>isNative?handleIAPPurchase():openUpgradeModal()}
+            onOpenLens={()=>{setTab(2); localStorage.setItem('tab',2);}}
           />
         </div>
       ):(

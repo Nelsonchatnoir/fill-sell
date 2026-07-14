@@ -28,6 +28,7 @@ import DashboardTab from './tabs/DashboardTab';
 import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 import CoinStoreModal from './components/CoinStoreModal';
 import PepiteIcon from './components/PepiteIcon';
+import PlatformLogo from './components/platform-logos/PlatformLogo';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -1188,39 +1189,146 @@ function VoiceTicker({ lang = 'fr', currency = 'EUR' }) {
   );
 }
 
-function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium }) {
+// État vide du Dashboard — design Claude Design « Dashboard Empty State »
+// (projet e47b36df, 2026-07-14). Header / FAB / nav bar restent ceux de l'app.
+// Logos plateformes : PlatformLogo (vraies icônes d'app), pas les pastilles
+// lettrées de la maquette. Le bloc Lens navigue vers l'onglet Lens (tab 2)
+// via le même mécanisme que la nav bar (onOpenLens branché sur setTab).
+function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
+  const fr = lang !== 'en';
+  const MicSvg = ({ size=34, stroke="#fff" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+  );
+  const CARDS = [
+    {
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12h-6"/><path d="M12 16h-2"/></svg>,
+      titleFr:"Enregistre tes ventes", titleEn:"Log your sales",
+      descFr:"Dis « vendu 25 € », ta marge se calcule toute seule.", descEn:"Say “sold for €25” — your margin computes itself.",
+    },
+    {
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>,
+      titleFr:"Suis tes stats", titleEn:"Track your stats",
+      descFr:"Profit net, marges et évolution du mois, en un coup d'œil.", descEn:"Net profit, margins and monthly trend, at a glance.",
+    },
+    {
+      icon:<MicSvg size={20} stroke="currentColor"/>,
+      titleFr:"Ajoute ton stock à la voix", titleEn:"Add your stock by voice",
+      descFr:"Dis « pull Zara taille M, 15 € », c'est ajouté et classé.", descEn:"Say “Zara sweater size M, €15” — added and sorted.",
+    },
+    {
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
+      titleFr:"Vendu quelque part, retiré partout", titleEn:"Sold somewhere, removed everywhere",
+      descFr:"Vendu sur Vinted ? Retiré de Leboncoin, eBay et Beebs aussitôt.", descEn:"Sold on Vinted? Removed from Leboncoin, eBay and Beebs right away.",
+    },
+  ];
   return (
-    <div className="empty-hero">
-      <div className="empty-hero-art">🎙️</div>
-      <h1>{lang==='en' ? "Talk, the AI does the rest." : "Parle, l'IA fait le reste."}</h1>
-      <p>
-        {lang==='en'
-          ? <><>No forms, no tutorial. </><b>You talk, the AI understands.</b></>
-          : <><>Pas de formulaire, pas de tutoriel. </><b>Tu parles, l'IA comprend.</b></>
-        }
-      </p>
-      <VoiceTicker lang={lang}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,width:"100%",marginTop:4}}>
-        {[
-          {ico:"🎙️",titleFr:"Ajoute et classe ton stock",titleEn:"Add and organize your stock",descFr:"Marque, catégorie, emplacement, lieu d'achat — tout extrait de ta voix",descEn:"Brand, category, location, purchase place — all extracted from your voice"},
-          {ico:"📦",titleFr:"Retrouve n'importe quel article",titleEn:"Find any item instantly",descFr:"Où j'ai mis mon iPhone ? → réponse instantanée",descEn:"Where did I put my iPhone? → instant answer"},
-          {ico:"💰",titleFr:"Enregistre tes ventes",titleEn:"Log your sales",descFr:"Dis juste le prix et la plateforme — les profits se calculent seuls",descEn:"Just say the price and platform — profits are calculated automatically"},
-          {ico:"📊",titleFr:"Analyse tes performances",titleEn:"Analyze your performance",descFr:"Marge, délai de vente, meilleurs articles — demande, tu reçois",descEn:"Margin, sell time, best items — just ask, you'll get the answer"},
-        ].map((c,i)=>(
-          <div key={i} style={{background:"var(--background-secondary,#F6F7F7)",borderRadius:12,padding:"0.65rem 0.9rem",display:"flex",flexDirection:"column",gap:4}}>
-            <div style={{fontSize:20,lineHeight:1}}>{c.ico}</div>
-            <div style={{fontWeight:700,fontSize:12,color:"var(--text-primary,#1A1A1A)",lineHeight:1.3}}>{lang==='en'?c.titleEn:c.titleFr}</div>
-            <div style={{fontSize:11,color:"var(--text-secondary,#6B7280)",lineHeight:1.4}}>{lang==='en'?c.descEn:c.descFr}</div>
+    <div style={{display:"flex",flexDirection:"column",gap:20,fontFamily:"'Space Grotesk',sans-serif"}}>
+      <style>{`
+        @keyframes fsPulse{0%{transform:scale(1);opacity:.4}100%{transform:scale(2.05);opacity:0}}
+        @keyframes fsScan{0%,100%{transform:translateY(-44px)}50%{transform:translateY(44px)}}
+      `}</style>
+
+      {/* Hero micro — badge stock vide + exemple + mini-input vocal */}
+      <section style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:26,padding:"30px 22px 22px",textAlign:"center",position:"relative",overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.04), 0 12px 30px rgba(16,32,27,0.05)"}}>
+        <div style={{position:"absolute",top:-46,left:"50%",transform:"translateX(-50%)",width:240,height:190,background:"radial-gradient(ellipse at center,rgba(47,158,144,0.14),transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{position:"relative",zIndex:1}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 11px",borderRadius:999,background:"rgba(232,149,109,0.16)",marginBottom:18}}>
+            <span style={{width:6,height:6,borderRadius:99,background:UI.amber}}/>
+            <span style={{fontWeight:700,fontSize:10.5,letterSpacing:"0.1em",color:"#C46A3E",whiteSpace:"nowrap"}}>{fr?"STOCK VIDE · À TOI DE JOUER":"EMPTY STOCK · YOUR MOVE"}</span>
+          </div>
+          <div style={{position:"relative",width:80,height:80,margin:"0 auto 20px"}}>
+            <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite"}}/>
+            <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite",animationDelay:"1.3s"}}/>
+            <div style={{position:"relative",width:80,height:80,borderRadius:24,background:`linear-gradient(150deg,${UI.teal},${UI.tealDeep})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 10px 24px rgba(27,110,98,0.35)"}}>
+              <MicSvg/>
+            </div>
+          </div>
+          <h1 style={{margin:0,fontWeight:700,fontSize:27,lineHeight:1.15,letterSpacing:"-0.02em",color:UI.ink}}>{fr?"Parle, l'IA fait le reste.":"Talk, the AI does the rest."}</h1>
+          <p style={{margin:"12px auto 0",maxWidth:284,fontSize:15,lineHeight:1.5,color:UI.mute,fontWeight:400}}>
+            {fr
+              ? <>Dis « J'ai payé ce jean 8 € » — l'IA l'ajoute, le classe et le range. <span style={{color:UI.tealDeep,fontWeight:600}}>Zéro formulaire.</span></>
+              : <>Say “I paid €8 for these jeans” — the AI adds, sorts and stores it. <span style={{color:UI.tealDeep,fontWeight:600}}>Zero forms.</span></>
+            }
+          </p>
+          <div
+            onClick={onTryVoice}
+            role="button"
+            style={{display:"flex",alignItems:"center",gap:10,marginTop:20,background:UI.canvas,border:`1px solid ${UI.border}`,borderRadius:16,padding:"15px 14px",cursor:"pointer"}}
+          >
+            <span style={{fontWeight:700,fontSize:22,color:UI.teal,lineHeight:0.6}}>«</span>
+            <span style={{flex:1,textAlign:"left",fontStyle:"italic",fontWeight:500,fontSize:15,color:"#6E6A5E"}}>{fr?"J'ai vendu mon…":"I sold my…"}</span>
+            <span style={{fontWeight:700,fontSize:10,letterSpacing:"0.08em",color:"#C46A3E",background:"rgba(232,149,109,0.18)",padding:"5px 9px",borderRadius:8}}>{fr?"VENDRE":"SELL"}</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Bandeau plateformes — vraies icônes d'app (PlatformLogo) */}
+      <div style={{textAlign:"center",padding:"2px 4px 0"}}>
+        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"PUBLIÉ AUTOMATIQUEMENT SUR":"AUTOMATICALLY PUBLISHED ON"}</p>
+        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
+          {["vinted","leboncoin","ebay","beebs"].map(p=>(
+            <span key={p} style={{display:"inline-flex",borderRadius:10,boxShadow:"0 2px 6px rgba(16,32,27,0.09)"}}>
+              <PlatformLogo platform={p} size={36}/>
+            </span>
+          ))}
+        </div>
+        <p style={{margin:"12px auto 0",maxWidth:288,fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>
+          {fr?"Une annonce, publiée partout. Vendu ? Ton stock, tes ventes et tes marges se mettent à jour tout seuls.":"One listing, published everywhere. Sold? Your stock, sales and margins update on their own."}
+        </p>
+      </div>
+
+      {/* Bloc Lens — cliquable, navigue vers l'onglet Lens (même mécanisme que la nav) */}
+      <section
+        onClick={onOpenLens}
+        role="button"
+        style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:26,overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.04), 0 12px 30px rgba(16,32,27,0.05)",cursor:"pointer"}}
+      >
+        <div style={{position:"relative",height:152,background:"linear-gradient(150deg,#123027,#1B6E62)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{position:"absolute",top:12,left:12,display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:8,background:"rgba(255,255,255,0.16)",fontWeight:700,fontSize:10,letterSpacing:"0.12em",color:"#fff"}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/></svg>
+            LENS
+          </span>
+          <div style={{position:"relative",width:104,height:104}}>
+            <span style={{position:"absolute",top:0,left:0,width:22,height:22,borderTop:"3px solid #8CE0D4",borderLeft:"3px solid #8CE0D4",borderTopLeftRadius:8}}/>
+            <span style={{position:"absolute",top:0,right:0,width:22,height:22,borderTop:"3px solid #8CE0D4",borderRight:"3px solid #8CE0D4",borderTopRightRadius:8}}/>
+            <span style={{position:"absolute",bottom:0,left:0,width:22,height:22,borderBottom:"3px solid #8CE0D4",borderLeft:"3px solid #8CE0D4",borderBottomLeftRadius:8}}/>
+            <span style={{position:"absolute",bottom:0,right:0,width:22,height:22,borderBottom:"3px solid #8CE0D4",borderRight:"3px solid #8CE0D4",borderBottomRightRadius:8}}/>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,255,255,0.32)"}}>
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
+            </div>
+            <span style={{position:"absolute",left:-12,right:-12,top:"50%",height:2,background:"linear-gradient(90deg,transparent,#8CE0D4,transparent)",boxShadow:"0 0 12px #8CE0D4",animation:"fsScan 2.8s ease-in-out infinite"}}/>
+          </div>
+          <span style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",fontWeight:600,fontSize:11,color:"rgba(255,255,255,0.68)",letterSpacing:"0.03em"}}>{fr?"Vise un article à analyser":"Point at an item to analyze"}</span>
+        </div>
+        <div style={{padding:"20px 22px 22px"}}>
+          <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Bon deal ou pas ? Lens tranche.":"Good deal or not? Lens decides."}</h2>
+          <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
+            {fr
+              ? <>Prends un article en photo : l'IA l'identifie, estime <span style={{color:UI.tealDeep,fontWeight:600}}>son prix de revente</span> et la meilleure plateforme, puis note le deal sur 10.</>
+              : <>Snap a photo of an item: the AI identifies it, estimates <span style={{color:UI.tealDeep,fontWeight:600}}>its resale price</span> and the best platform, then rates the deal out of 10.</>
+            }
+          </p>
+          <button
+            onClick={(e)=>{e.stopPropagation();onOpenLens?.();}}
+            style={{marginTop:18,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:15,border:"none",borderRadius:16,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,fontFamily:"inherit",boxShadow:"0 8px 20px rgba(27,110,98,0.3)",cursor:"pointer"}}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l1.9 5.1L19 9l-5.1 1.9L12 16l-1.9-5.1L5 9l5.1-1.9z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
+            {fr?"Analyser avec l'IA":"Analyze with AI"}
+          </button>
+        </div>
+      </section>
+
+      {/* Grille 2x2 — 4 promesses produit */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        {CARDS.map((c,i)=>(
+          <div key={i} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:20,padding:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:"rgba(47,158,144,0.12)",display:"flex",alignItems:"center",justifyContent:"center",color:UI.tealDeep,marginBottom:12}}>
+              {c.icon}
+            </div>
+            <h3 style={{margin:0,fontWeight:700,fontSize:14.5,color:UI.ink}}>{fr?c.titleFr:c.titleEn}</h3>
+            <p style={{margin:"6px 0 0",fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>{fr?c.descFr:c.descEn}</p>
           </div>
         ))}
-      </div>
-      <div className="empty-hero-cta-stack">
-        <PrimaryButton onClick={onTryVoice}>
-          🎙️ {lang==='en' ? 'Try voice AI' : 'Essayer le vocal IA'}
-        </PrimaryButton>
-        <SecondaryButton onClick={onAddManual}>
-          ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
-        </SecondaryButton>
       </div>
     </div>
   );
