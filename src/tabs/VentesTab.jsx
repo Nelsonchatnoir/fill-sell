@@ -119,8 +119,9 @@ function SalesTicker({ lang, fmt, setTab }) {
         </div>
 
         <div style={{position:'relative',background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:16,boxShadow:'0 6px 18px -12px rgba(16,32,27,0.16)',overflow:'hidden'}}>
+          {/* Pas de crayon ici non plus : l'aperçu doit ressembler aux vraies
+              cartes, qui n'en ont plus depuis le 2026-07-14. */}
           <div style={{padding:'14px 15px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease, transform 0.45s ease'}}>
-            <span style={{position:'absolute',top:11,right:13,fontSize:12,color:'#C7C2B4'}}>✎</span>
             <div style={{display:'flex',alignItems:'center',gap:12}}>
               <div style={{width:44,height:44,borderRadius:13,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:21,background:UI.canvas,border:'1px solid #E3DFD3'}}>
                 {s.icon}
@@ -309,7 +310,8 @@ const VentesTab = memo(function VentesTab({
               // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer la vente.
               <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
                 <div className="row in-swipe" onClick={()=>setEditItem({...s,frais:0,sell:s.sell??""})}>
-                  <span className="edit-affordance">✎</span>
+                  {/* Icône crayon retirée le 2026-07-14 (comme sur le Stock) :
+                      la carte entière est déjà cliquable pour éditer. */}
                   <div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>
                   <div className="left">
                     <div className="title-line">

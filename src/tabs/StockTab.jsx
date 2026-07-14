@@ -906,7 +906,6 @@ const StockTab = memo(function StockTab({
                       const {loc:_loc,rest:_desc}=parseLocDesc(it.description);
                       return(
                         <div key={i} className="row">
-                          <span className="edit-affordance">✎</span>
                           <div className={`cat-tile ${catClass(it.categorie)}`}>{detectObjectIcon(it.nom,it.description,it.categorie)}</div>
                           <div className="left">
                             <div className="title-line">
@@ -978,8 +977,10 @@ const StockTab = memo(function StockTab({
                   return(
                     // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
                     <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
+                      {/* Tap sur la carte = éditer (l'icône crayon a été retirée le
+                          2026-07-14 : toute la ligne est cliquable, l'affordance
+                          était redondante et venait coller le prix). */}
                       <div className="row in-swipe" onClick={openEdit}>
-                        <span className="edit-affordance">✎</span>
                         <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
                         <div className="left">
                           <div className="title-line">

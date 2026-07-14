@@ -526,8 +526,8 @@ ${s} .row{
   position:relative;
 }
 ${s} .row.in-swipe{padding:0;border:none;border-radius:0;background:transparent;flex:1;min-width:0;cursor:pointer;}
-${s} .edit-affordance{position:absolute;top:8px;right:8px;font-size:10px;color:var(--mute);opacity:.5;}
-${s} .row.in-swipe .edit-affordance{top:-4px;right:-6px;}
+/* .edit-affordance (icône crayon) supprimée le 2026-07-14 : la carte entière est
+   cliquable pour éditer, l'icône était redondante et se collait au prix. */
 ${s} .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
 ${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`${s} .${catClass(type)}{background:${color};}`).join('\n')}
 ${s} .left{min-width:0;}

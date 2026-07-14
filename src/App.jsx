@@ -2760,7 +2760,7 @@ export default function App({ loginOnly = false }){
         setTimeout(()=>setToast({visible:false,message:''}),4000);
         return;
       }
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
@@ -2784,9 +2784,11 @@ export default function App({ loginOnly = false }){
       margin_pct:mgp,
       description:editItem.description||null,
       quantite:qty,
+      // Même colonne que l'intention vocale inventory_move (moveToLocation).
+      emplacement:editItem.emplacement?.trim()||null,
     }).eq('id',editItem.id);
     if(!error){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -4411,6 +4413,10 @@ export default function App({ loginOnly = false }){
                   <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:(parseInt(p.quantite)||1)+1}))} style={{width:52,height:"100%",border:"none",background:"transparent",fontSize:22,fontWeight:300,color:"#6B7280",cursor:"pointer",touchAction:"manipulation",flexShrink:0}}>+</button>
                 </div>
               </div>
+              {/* Emplacement — MÊME donnée que le badge 📦 des cartes de stock et
+                  que l'intention vocale inventory_move : colonne inventaire.emplacement
+                  (cf. vaActions.moveToLocation). Aucun champ parallèle créé. */}
+              <Field label={lang==='fr'?"Emplacement (optionnel)":"Location (optional)"} value={editItem.emplacement||""} set={v=>setEditItem(p=>({...p,emplacement:v}))} placeholder={lang==='fr'?"Ex: Étagère salon, Carton 3...":"Ex: Living room shelf, Box 3..."} icon="📦"/>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
                 <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
