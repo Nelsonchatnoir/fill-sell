@@ -4661,6 +4661,15 @@ export default function App({ loginOnly = false }){
                     :`${coinWallet?.included_balance??0} included · ${coinWallet?.purchased_balance??0} purchased`}
                 </span>
               </div>
+              {/* Recharger : ouvre la boutique DÉJÀ montée (coinStoreOpen), la même
+                  que celle des modales de conversion. Toujours proposée, quel que
+                  soit le solde — on n'attend pas d'être bloqué pour recharger. */}
+              <button
+                onClick={()=>setCoinStoreOpen(true)}
+                style={{marginTop:12,width:"100%",padding:"11px 0",borderRadius:999,border:"none",fontFamily:"inherit",fontSize:13.5,fontWeight:600,color:"#fff",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:"0 8px 20px rgba(47,158,144,0.24)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}
+              >
+                <PepiteIcon size={16} /> {lang==='fr'?'Recharger mes Pépites':'Top up my Nuggets'}
+              </button>
               {coinHistory.length>0&&(
                 <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${UI.border}`,display:"flex",flexDirection:"column",gap:5}}>
                   {coinHistory.map((h,i)=>(
