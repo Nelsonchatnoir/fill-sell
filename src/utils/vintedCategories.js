@@ -1,8 +1,12 @@
 // Mapping icône objet (detectObjectIcon) + genre → chemin catalogue Vinted.
 //
-// Lot 1 : Mode ADULTES uniquement (Femme/Homme). Enfant et Mixte retournent
-// null → le job part sans platform_fields.categoryPath et l'extension le
-// marque "failed" avec un message explicite (fallback volontaire, validé).
+// Lot 1 : Mode adultes (Femme/Homme). Lot enfant (2026-07-15, chantier
+// « trou tailles ») : Fille/Garçon résolvent les branches réelles
+// Enfants > Vêtements pour filles/garçons (table MODE_ENFANT). Bébé,
+// Enfant (unisexe) et Mixte retournent null — l'arbre Vinted est genré
+// fille/garçon de bout en bout, aucun rayon enfant unisexe (vérifié) → le
+// job part sans platform_fields.categoryPath et l'extension le marque
+// "failed" avec un message explicite (fallback volontaire, validé).
 //
 // Chemins construits à partir d'un relevé exhaustif par navigation réelle du
 // catalogue Vinted (Femmes > Vêtements/Chaussures/Sacs/Accessoires et
@@ -179,6 +183,86 @@ const MODE_ADULTE = {
   // ajouter si besoin). La puériculture (👶💺🍼📟, non genrée, racine
   // Enfants) est mappée côté HORS_MODE depuis la scission de l'icône 👶
   // en juillet 2026.
+};
+
+// ── Mode ENFANT (2026-07-15, chantier « trou tailles bébé/enfant ») ─────────
+// Rayon réel : Enfants > Vêtements pour filles / Vêtements pour garçons —
+// chemins pris dans l'arbre archivé du FORMULAIRE (docs/
+// vinted-catalog-tree.txt L463-699), mêmes règles que MODE_ADULTE (feuilles
+// terminales, libellés exacts, défauts documentés). Relevé DOM du
+// 2026-07-15 : les feuilles par type (T-shirts, Chemises…) portent TOUTE la
+// grille de tailles enfant (« Prématuré, jusqu'à 44cm » → « 16 ans /
+// 176 cm ») — pas besoin de router les tailles mois vers la branche « Bébé
+// filles/garçons » (réservée aux types spécifiquement bébé : bodies,
+// grenouillères — aucune icône dédiée aujourd'hui).
+//
+// ⚠️ Pas de clé "Bébé" ni "Enfant" : l'arbre Vinted est genré fille/garçon
+// de bout en bout (AUCUNE branche enfant unisexe, vérifié sur l'arbre
+// complet). Un genre Bébé/Enfant retourne null → même fallback explicite
+// que le reste du fichier (vintedGenreRequired → l'utilisateur tranche
+// Fille/Garçon dans le stepper), jamais un rayon deviné.
+//
+// ⚠️ Pièges de libellés RÉELS de l'arbre (ne pas « corriger ») :
+//   - fille « Pulls à capuche & sweatshirts » (esperluette) vs garçon
+//     « Pulls à capuche et sweatshirts » (« et ») — même piège que
+//     Chapeaux F/H côté adulte ;
+//   - garçon « Nœuds papillon et cravattes » avec DEUX t (sic, crawl) ;
+//   - pyjamas : branche « Pyjamas et chemises de nuit » côté fille,
+//     « Pyjamas » tout court côté garçon.
+const FI = ["Enfants", "Vêtements pour filles"];
+const GA = ["Enfants", "Vêtements pour garçons"];
+const MODE_ENFANT = {
+  // ── Chaussures (grille pointures nues « 15 et moins » → 40, relevée) ──────
+  // DÉFAUT ASSUMÉ 👟 : Baskets a 3 sous-feuilles (à scratch/à lacets/sans
+  // lacets) — « à lacets » pris comme dominant revente.
+  "👟": { Fille: [...FI, "Chaussures", "Baskets", "Baskets à lacets"], Garçon: [...GA, "Chaussures", "Baskets", "Baskets à lacets"] },
+  "👢": { Fille: [...FI, "Chaussures", "Bottes", "Bottines"], Garçon: [...GA, "Chaussures", "Bottes", "Bottines"] },
+  // Chaussures à talons : existe côté fille (feuille directe), pas côté garçon.
+  "👠": { Fille: [...FI, "Chaussures", "Chaussures à talons"], Garçon: null },
+  "🩴": { Fille: [...FI, "Chaussures", "Sandales, claquettes et tongs", "Sandales"], Garçon: [...GA, "Chaussures", "Sandales, claquettes et tongs", "Sandales"] },
+  "🥿": { Fille: [...FI, "Chaussures", "Chaussons et pantoufles"], Garçon: [...GA, "Chaussures", "Chaussons et pantoufles"] },
+  "⛸️": { Fille: [...FI, "Chaussures", "Chaussures de sport", "Patins à roulettes et rollers"], Garçon: [...GA, "Chaussures", "Chaussures de sport", "Patins à roulettes et rollers"] },
+
+  // ── Vêtements ─────────────────────────────────────────────────────────────
+  // DÉFAUT ASSUMÉ 👗 : Robes n'a que courtes/longues — courtes dominant.
+  "👗": { Fille: [...FI, "Robes", "Robes courtes"], Garçon: null },
+  // Même défaut Doudounes que l'adulte (regex manteau/veste très large).
+  "🧥": { Fille: [...FI, "Vêtements d'extérieur", "Vestes", "Doudounes"], Garçon: [...GA, "Vêtements d'extérieur", "Vestes", "Doudounes"] },
+  "👔": { Fille: [...FI, "Chemises et t-shirts", "Chemises"], Garçon: [...GA, "Chemises et t-shirts", "Chemises"] },
+  "👕": { Fille: [...FI, "Chemises et t-shirts", "T-shirts"], Garçon: [...GA, "Chemises et t-shirts", "T-shirts"] },
+  "🧶": { Fille: [...FI, "Pulls & sweats", "Pulls à capuche & sweatshirts"], Garçon: [...GA, "Pulls & sweats", "Pulls à capuche et sweatshirts"] },
+  "👖": { Fille: [...FI, "Pantalons et shorts", "Autres"], Garçon: [...GA, "Pantalons et shorts", "Autres"] },
+  "🩳": { Fille: [...FI, "Pantalons et shorts", "Shorts et pantacourts"], Garçon: [...GA, "Pantalons et shorts", "Shorts et pantacourts"] },
+  // Natation : fille 1 pièce/2 pièces (1 pièce dominant enfant), garçon
+  // feuille directe « Maillots de bain ».
+  "👙": { Fille: [...FI, "Équipements de natation", "Maillot de bain 1 pièce"], Garçon: [...GA, "Équipements de natation", "Maillots de bain"] },
+  "🧦": { Fille: [...FI, "Sous-vêtements", "Chaussettes"], Garçon: [...GA, "Sous-vêtements", "Chaussettes"] },
+  // DÉFAUT ASSUMÉ 🩲 (regex pyjama/sous-vêtements) : pyjama dominant.
+  "🩲": { Fille: [...FI, "Pyjamas et chemises de nuit", "Pyjamas deux pièces"], Garçon: [...GA, "Pyjamas", "Pyjamas deux pièces"] },
+  "🥼": { Fille: [...FI, "Vêtements d'extérieur", "Vestes", "Blazers"], Garçon: [...GA, "Vêtements d'extérieur", "Vestes", "Blazers"] },
+  "🤵": { Fille: [...FI, "Tenues de soirée"], Garçon: [...GA, "Tenues de soirée"] },
+
+  // ── Sacs (une seule feuille « Sacs et sacs à dos » par genre — pas de
+  // granularité sac à main/banane/voyage côté enfant) ───────────────────────
+  "👜": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
+  "👛": { Fille: [...FI, "Accessoires", "Porte-monnaie"], Garçon: [...GA, "Accessoires", "Porte-monnaie"] },
+  "🎒": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
+  "🎽": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
+  "🧳": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
+  "👝": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
+
+  // ── Accessoires ───────────────────────────────────────────────────────────
+  "🧣": { Fille: [...FI, "Accessoires", "Écharpes et châles"], Garçon: [...GA, "Accessoires", "Écharpes et châles"] },
+  "🧤": { Fille: [...FI, "Accessoires", "Gants"], Garçon: [...GA, "Accessoires", "Gants"] },
+  "🧢": { Fille: [...FI, "Accessoires", "Casquettes et chapeaux"], Garçon: [...GA, "Accessoires", "Casquettes et chapeaux"] },
+  // DÉFAUT ASSUMÉ léger : pas de feuille Lunettes ni Montres côté enfant
+  // (vérifié dans les deux listes Accessoires) → bac générique.
+  "🕶️": { Fille: [...FI, "Accessoires", "Autres accessoires"], Garçon: [...GA, "Accessoires", "Autres accessoires"] },
+  "⌚": { Fille: [...FI, "Accessoires", "Autres accessoires"], Garçon: [...GA, "Accessoires", "Autres accessoires"] },
+  // Bijoux : feuille réelle côté fille uniquement.
+  "💍": { Fille: [...FI, "Accessoires", "Bijoux"], Garçon: [...GA, "Accessoires", "Autres accessoires"] },
+  "🪢": { Fille: [...FI, "Accessoires", "Ceintures"], Garçon: [...GA, "Accessoires", "Ceintures"] },
+  "🎀": { Fille: null, Garçon: [...GA, "Accessoires", "Nœuds papillon et cravattes"] },
 };
 
 // Catégories SANS niveau genre. Racines réelles du FORMULAIRE (juillet
@@ -597,7 +681,12 @@ export function getVintedCategoryPath(icon, genre) {
   // confirmées : Maison/Électronique/Divertissement/Loisirs et collections/
   // Sport), donc pas besoin d'attendre platform_fields.genre pour elles.
   if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) return HORS_MODE[icon];
-  const entry = MODE_ADULTE[icon];
-  if (!entry || !genre) return null;
-  return entry[genre] ?? null;
+  // Adulte (Femme/Homme) puis enfant (Fille/Garçon, 2026-07-15) : les deux
+  // tables sont disjointes par genre, jamais de substitution croisée.
+  // Bébé/Enfant/Mixte ne résolvent rien → null (fallback explicite,
+  // vintedGenreRequired fait trancher Fille/Garçon dans le stepper).
+  const adulte = MODE_ADULTE[icon];
+  const enfant = MODE_ENFANT[icon];
+  if ((!adulte && !enfant) || !genre) return null;
+  return adulte?.[genre] ?? enfant?.[genre] ?? null;
 }

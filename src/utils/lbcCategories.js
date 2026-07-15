@@ -172,3 +172,49 @@ const LBC_BABY_EQUIPMENT = {
 export function getLbcBabyEquipment(icon) {
   return LBC_BABY_EQUIPMENT[icon] ?? null;
 }
+
+// ── Famille > Vêtements bébé (2026-07-15, chantier tailles enfant) ──────────
+// Relevé DOM réel (docs/sizes-baby-child-raw.txt) : la catégorie expose
+// Genre (facultatif), Produit* (OBLIGATOIRE), Taille (facultative,
+// « Prématuré / 44 cm » → « 36 mois / 98 cm »), Marque, Couleur, État.
+// C'est LA feuille des vêtements 0-36 mois — la grille Univers-enfant de
+// Mode > Vêtements démarre à 3 ans. Le routage (taille en mois → cette
+// feuille) est fait par handlePublish via lbcChildSizeCategory ; ici on ne
+// donne que le Produit* attendu, dans les libellés EXACTS du dropdown :
+//   Bodies | T-shirt & brassières | Bermudas & Shorts | Pantalons | Jeans |
+//   Dors-bien & Pyjamas | Pull & Gilets | Robes & Jupes | Manteaux & Vestes |
+//   Legging & collants | Déguisements | Ensembles & Combinaisons | Bonnets |
+//   Maillots de bain | Lot de vêtement | Chaussons | Mouffles | Accessoires |
+//   Autre
+// Défauts « Autre » assumés : pas de produit Chemises (👔) ni Chaussettes
+// (le produit le plus proche de 🧦, « Legging & collants », ne couvre que
+// les collants — la regex 🧦 est dominée par les chaussettes) ni costume
+// (🤵) ni blazer (🥼).
+const LBC_BABY_CLOTHING_PRODUCT = {
+  "👕": "T-shirt & brassières",
+  "👔": "Autre",
+  "🧶": "Pull & Gilets",
+  "👖": "Pantalons",
+  "🩳": "Bermudas & Shorts",
+  "👗": "Robes & Jupes",
+  "🧥": "Manteaux & Vestes",
+  "🧦": "Autre",
+  "🩲": "Dors-bien & Pyjamas",
+  "👙": "Maillots de bain",
+  "🥿": "Chaussons",
+  "🧤": "Mouffles",
+  "🧢": "Bonnets",
+  "🥼": "Autre",
+  "🤵": "Autre",
+};
+
+/**
+ * @param {string} icon — emoji retourné par detectObjectIcon
+ * @returns {string|null} libellé EXACT du Produit* de Famille > Vêtements
+ *   bébé, ou null si l'icône n'est pas un vêtement couvert (le routage bébé
+ *   ne doit alors PAS s'appliquer — un jouet ou une poussette relèvent
+ *   d'Équipement bébé / Jeux & Jouets, pas de Vêtements bébé)
+ */
+export function getLbcBabyClothingProduct(icon) {
+  return LBC_BABY_CLOTHING_PRODUCT[icon] ?? null;
+}

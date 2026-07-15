@@ -8,13 +8,13 @@ import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
-import { getLbcCategoryPath, getLbcBabyEquipment } from "../utils/lbcCategories";
+import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
-  isChildGenre, toPlatformChildSize,
+  isChildGenre, toPlatformChildSize, lbcChildSizeCategory,
 } from "../utils/childSizes";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -2463,10 +2463,45 @@ export default function ListingPreviewScreen({
             pf.univers = babyEquip.univers;
             pf.lbcProduit = babyEquip.produit;
           }
+          // ── Vêtements/chaussures ENFANT (2026-07-15) — relevé DOM réel :
+          // LBC a DEUX foyers de tailles enfant STRUCTURÉES (l'assertion
+          // historique « pas de champ Taille côté LBC » était fausse) :
+          //   - Famille > Vêtements bébé : Prématuré → 36 mois, Produit*
+          //     OBLIGATOIRE — seule feuille à porter la grille 0-36 mois ;
+          //   - Mode > Vêtements : grille enfant 3 → 18 ans SEULEMENT si
+          //     Univers = Enfant/Fille/Garçon. Un Univers adulte poserait la
+          //     grille ADULTE en silence (seul risque résiduel identifié par
+          //     le relevé) → on FORCE l'Univers depuis le genre détecté.
+          // Le genre vient de la copie LBC elle-même (univers IA), sinon des
+          // copies sœurs du même run, sinon de l'auto-résolution.
+          const childGenre = [
+            pf.univers,
+            edited.vinted?.platform_fields?.genre,
+            edited.beebs?.platform_fields?.genre,
+            edited.ebay?.platform_fields?.genre,
+            autoGenre,
+          ].find(g => isChildGenre(g)) ?? null;
+          const sizeRoute = lbcChildSizeCategory(pf.taille); // "bebe" | "mode" | null
+          const babyClothingProduct = getLbcBabyClothingProduct(icon);
+          if (babyClothingProduct && lbcPath?.[0] === "Mode" &&
+              (sizeRoute === "bebe" || (!sizeRoute && childGenre === "Bébé"))) {
+            // Taille en mois (ou article Bébé sans taille exploitable) sur un
+            // article d'habillement : la vraie feuille est Vêtements bébé.
+            // Pas d'Univers sur cette feuille (relevé : Genre facultatif,
+            // Produit*, Taille) — le filet Mixte ci-dessous ne s'applique pas.
+            pf.lbcCategoryPath = ["Famille", "Vêtements bébé"];
+            pf.lbcProduit = babyClothingProduct;
+          } else if (childGenre && lbcPath?.[0] === "Mode") {
+            // Fille/Garçon/Enfant sont des valeurs RÉELLES du dropdown
+            // Univers (relevé 2026-07-15) ; « Bébé » n'y existe pas → Enfant
+            // (cas chaussures/accessoires bébé restés sur le rayon Mode).
+            pf.univers = childGenre === "Bébé" ? "Enfant" : childGenre;
+          }
           // Univers obligatoire sur le rayon Mode LBC ("Veuillez choisir un
           // univers de vêtement"). Contrairement à Vinted, LBC a un rayon
           // Mixte → filet sans friction quand l'IA n'a pas tranché.
-          if (!pf.univers && lbcPath?.[0] === "Mode") pf.univers = "Mixte";
+          if (!pf.univers && lbcPath?.[0] === "Mode" &&
+              pf.lbcCategoryPath?.[1] !== "Vêtements bébé") pf.univers = "Mixte";
         }
         if (platform === "vinted") {
           // Chemin catalogue Vinted calculé à l'insert : icône objet (mêmes

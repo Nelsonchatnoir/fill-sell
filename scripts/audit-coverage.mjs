@@ -79,7 +79,10 @@ const icons = [...new Set([
 // codé ne se résout pas sur une feuille du crawl).
 const PLATFORMS = {
   vinted: {
-    genres: ["Femme", "Homme", ""],
+    // Fille/Garçon ajoutés le 2026-07-15 (table MODE_ENFANT) ; Bébé/Enfant
+    // restent audités pour vérifier qu'ils retournent bien null (l'arbre
+    // Vinted n'a aucun rayon enfant unisexe).
+    genres: ["Femme", "Homme", "Fille", "Garçon", "Bébé", "Enfant", ""],
     get: (icon, g) => getVintedCategoryPath(icon, g),
     tree: vintedTree,
   },
