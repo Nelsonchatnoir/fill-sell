@@ -238,9 +238,19 @@ function getPlatformFieldsConfig(t) {
   // Genre : valeurs FR canoniques ("Femme"/"Homme"/…) — clés du mapping
   // catégorie Vinted (src/utils/vintedCategories.js), remplies par l'IA
   // (generate-listing) et corrigeables ici avant publication.
+  // Fille/Garçon ajoutés le 2026-07-16 (bug réel : job vinted parti avec
+  // genre "Enfant" → « Catégorie vinted non résolue » — l'arbre Vinted n'a
+  // AUCUN rayon enfant unisexe, seules les clés Fille/Garçon de MODE_ENFANT
+  // résolvent, et le select ne permettait même pas de les choisir). Cette
+  // liste sert aussi à l'Univers Leboncoin, où Fille/Garçon sont également
+  // des valeurs réelles du formulaire (relevé 2026-07-15). "Enfant" reste
+  // affichable (l'IA peut le produire, eBay a un vrai rayon unisexe) mais
+  // le bandeau vintedGenreRequired signale qu'il ne résout rien sur Vinted.
   const gender = [
     { value:"Femme",  label:t("genderWoman") },
     { value:"Homme",  label:t("genderMan") },
+    { value:"Fille",  label:t("genderGirl") },
+    { value:"Garçon", label:t("genderBoy") },
     { value:"Enfant", label:t("genderChild") },
     { value:"Mixte",  label:t("genderUnisex") },
   ];
@@ -1512,7 +1522,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
@@ -1575,6 +1585,16 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
       {publishError && (
         <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, fontSize:13, color:"#B91C1C", marginBottom:12 }}>
           {publishError}
+        </div>
+      )}
+
+      {/* Signal AVANT publication (2026-07-16) : le genre de la copie Vinted
+          ne résout aucun rayon (ex. « Enfant » — Vinted n'a que Femme/Homme/
+          Fille/Garçon). Sans ce bandeau, le job partait et échouait côté
+          extension avec « Catégorie vinted non résolue ». */}
+      {vintedGenreBlocked && (
+        <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
+          {t("vintedGenreRequired")}
         </div>
       )}
 
@@ -2341,6 +2361,24 @@ export default function ListingPreviewScreen({
     return axes;
   }, [edited]);
 
+  // ── Signal AVANT publication : genre Vinted sans rayon (2026-07-16) ───────
+  // Bug réel : job vinted parti avec genre "Enfant" → « Catégorie vinted non
+  // résolue » APRÈS le clic Publier (échec extension), sans aucun signal en
+  // amont. Un genre EXPLICITE qui ne résout aucun chemin (Enfant/Bébé sur un
+  // article de mode, ou Femme sur une icône Homme-seulement) est respecté par
+  // l'auto-résolution (choix explicite sacré) : il partira à l'échec à coup
+  // sûr. On l'affiche donc AVANT, dans StepPublish. Vide/Mixte restent hors
+  // du signal : l'auto-résolution du genre s'en charge au moment du publish.
+  const vintedGenreBlocked = useMemo(() => {
+    if (!selected.has("vinted") || !edited.vinted) return false;
+    const pf = edited.vinted.platform_fields ?? {};
+    const icon = resolveArticleIcon({ initialListing, edited, pf });
+    if (!vintedGenreRequired(icon)) return false;
+    const g = pf.genre;
+    if (!g || g === "Mixte") return false;
+    return !getVintedCategoryPath(icon, g);
+  }, [selected, edited, initialListing]);
+
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
@@ -3016,6 +3054,7 @@ export default function ListingPreviewScreen({
             sharedFields={sharedFields}
             onSharedFieldChange={setSharedField}
             sharedChildAxes={sharedChildAxes}
+            vintedGenreBlocked={vintedGenreBlocked}
           />
         )}
       </div>

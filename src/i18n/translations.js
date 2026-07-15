@@ -245,7 +245,7 @@ export const translations = {
     genderGirl:"Fille",
     genderBoy:"Garçon",
     genderBaby:"Bébé",
-    vintedGenreRequired:"Vinted range cet article en rayon Femme ou Homme (pas de rayon Mixte). Choisis le genre dans les champs Vinted avant de publier.",
+    vintedGenreRequired:"Vinted n'a pas de rayon pour le genre choisi : ses rayons sont Femme, Homme, Fille et Garçon (ni Enfant unisexe, ni Mixte). Pour un article enfant, choisis Fille ou Garçon dans les champs Vinted — sinon le job Vinted échouera.",
     fieldPackageFormatLabel:"Format colis",
 
     sizeGroupGarmentLetter:"Vêtement (lettre)",
@@ -528,7 +528,7 @@ export const translations = {
     genderGirl:"Girl",
     genderBoy:"Boy",
     genderBaby:"Baby",
-    vintedGenreRequired:"Vinted lists this item under Women or Men (there is no Unisex section). Pick a gender in the Vinted fields before publishing.",
+    vintedGenreRequired:"Vinted has no section for the selected gender: its sections are Women, Men, Girls and Boys (no unisex Kids, no Unisex). For a kids item, pick Fille or Garçon in the Vinted fields — otherwise the Vinted job will fail.",
     fieldPackageFormatLabel:"Package format",
 
     sizeGroupGarmentLetter:"Garment (letter)",
