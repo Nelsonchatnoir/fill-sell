@@ -89,6 +89,26 @@ export function isChildGenre(genre) {
   return CHILD_GENRES.includes(genre);
 }
 
+/**
+ * Axes de taille enfant COHÉRENTS avec le genre (2026-07-15, bug réel :
+ * cat eBay 51581 « Robes Fille 2-16 ans » requêtée avec une taille en mois
+ * → garde pré-publication bloquée en boucle). Convention retail française,
+ * qui est AUSSI le découpage des catégories eBay (le plus strict des 4) :
+ *   Bébé                 → tailles en MOIS (rayons « Bébé : vêtements »)
+ *   Fille/Garçon/Enfant  → tailles en ANS (rayons « 2-16 ans »)
+ * Les pointures ne dépendent pas du genre (l'appelant les garde toujours).
+ * Un article en « N mois » dont le genre est Fille/Garçon est un
+ * DÉSALIGNEMENT : le bon geste est genre → Bébé, pas une taille ans forcée.
+ * @returns {{months: boolean, years: boolean}|null} null si genre non enfant
+ */
+export function childAxesForGenre(genre) {
+  if (genre === "Bébé") return { months: true, years: false };
+  if (genre === "Fille" || genre === "Garçon" || genre === "Enfant") {
+    return { months: false, years: true };
+  }
+  return null;
+}
+
 // ── Parsing d'une valeur canonique ───────────────────────────────────────────
 const MONTH_BY_VALUE = new Map(CHILD_MONTH_SIZES.map((e) => [e.value.toLowerCase(), e]));
 const YEAR_BY_VALUE = new Map(CHILD_YEAR_SIZES.map((e) => [e.value.toLowerCase(), e]));

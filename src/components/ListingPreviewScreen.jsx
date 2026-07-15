@@ -14,7 +14,7 @@ import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategori
 import { getPlatformSupport } from "../utils/platformCompat";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
-  isChildGenre, toPlatformChildSize, lbcChildSizeCategory,
+  isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
 } from "../utils/childSizes";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -206,8 +206,11 @@ function getPlatformFieldsConfig(t) {
   // « EU 31 ») — jamais les libellés plateforme (« 6-9 mois / 68 cm ») : la
   // conversion vers le libellé exact de chaque plateforme se fait à l'insert
   // du job (handlePublish), comme pour le reste du chantier. Ces groupes ne
-  // s'affichent que quand le genre de l'article est enfant (childGroups est
-  // fusionné aux groupes adultes au rendu, conditionnellement au genre).
+  // s'affichent que quand le genre de l'article est enfant, et FILTRÉS PAR
+  // AXE selon ce genre (`axis` + childAxesForGenre — bug réel du 2026-07-15 :
+  // taille en mois proposée sous genre Fille → catégorie eBay 51581
+  // « Robes Fille 2-16 ans » sans aucune valeur mois → garde bloquée en
+  // boucle). Bébé → mois ; Fille/Garçon/Enfant → ans ; pointures toujours.
   const childMonthOptions = CHILD_MONTH_SIZES.map(e => ({ value:e.value, label:e.value }));
   const childYearOptions  = CHILD_YEAR_SIZES.map(e => ({ value:e.value, label:e.value }));
   const childShoeOptions  = [];
@@ -215,9 +218,9 @@ function getPlatformFieldsConfig(t) {
     childShoeOptions.push({ value:`EU ${n}`, label:`EU ${n}` });
   }
   const childSizeGroups = [
-    { groupLabel:t("sizeGroupChildMonths"), options:childMonthOptions },
-    { groupLabel:t("sizeGroupChildYears"),  options:childYearOptions },
-    { groupLabel:t("sizeGroupChildShoe"),   options:childShoeOptions },
+    { axis:"months", groupLabel:t("sizeGroupChildMonths"), options:childMonthOptions },
+    { axis:"years",  groupLabel:t("sizeGroupChildYears"),  options:childYearOptions },
+    { axis:"shoes",  groupLabel:t("sizeGroupChildShoe"),   options:childShoeOptions },
   ];
   const size = [
     ...sizeLetterOptions, ...sizeNumericOptions, ...sizeShoeOptions,
@@ -1381,12 +1384,17 @@ function StepGeneration({ generating, generateError, platformListings, processed
                       {fieldConfigs.map((field, fi) => {
                         const val = e.platform_fields?.[field.key] ?? "";
                         // Tailles enfant (2026-07-15) : les groupes du
-                        // référentiel enfant (mois/ans/pointures EU) ne
-                        // s'affichent que si le genre de CETTE copie est
-                        // enfant (genre Vinted/eBay/Beebs, univers Leboncoin).
-                        const fieldGroups = field.childGroups &&
-                          (isChildGenre(e.platform_fields?.genre) || isChildGenre(e.platform_fields?.univers))
-                          ? [...field.childGroups, ...field.groups]
+                        // référentiel enfant ne s'affichent que si le genre
+                        // de CETTE copie est enfant (genre Vinted/eBay/Beebs,
+                        // univers Leboncoin), et FILTRÉS PAR AXE selon ce
+                        // genre : Bébé → mois, Fille/Garçon/Enfant → ans,
+                        // pointures toujours (cf. childAxesForGenre — un axe
+                        // incohérent avec le genre finit hors des
+                        // allowedValues de la catégorie eBay, garde bloquée).
+                        const copyChildAxes = childAxesForGenre(e.platform_fields?.genre)
+                          ?? childAxesForGenre(e.platform_fields?.univers);
+                        const fieldGroups = field.childGroups && copyChildAxes
+                          ? [...field.childGroups.filter(g => g.axis === "shoes" || copyChildAxes[g.axis]), ...field.groups]
                           : field.groups;
                         const isLastOdd = fi === fieldConfigs.length - 1 && fieldConfigs.length % 2 !== 0;
                         const onChange = nv => {
@@ -1504,7 +1512,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildGenre = false }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
@@ -1583,12 +1591,13 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
             {missingSharedFields.map((key, fi) => {
               const field = sharedFieldCfg[key];
               const val = sharedFields[key] ?? "";
-              // Tailles enfant (2026-07-15) : le référentiel enfant (mois/ans/
-              // pointures EU) n'apparaît que si un genre enfant est détecté
-              // sur au moins une copie (prop calculée par le parent sur
-              // `edited` — genre Vinted/eBay/Beebs, univers Leboncoin).
-              const fieldGroups = field.childGroups && sharedChildGenre
-                ? [...field.childGroups, ...field.groups]
+              // Tailles enfant (2026-07-15) : le référentiel enfant
+              // n'apparaît que si un genre enfant est détecté sur au moins
+              // une copie, et filtré par AXE (union des axes des genres des
+              // copies — prop sharedChildAxes calculée par le parent) :
+              // Bébé → mois, Fille/Garçon/Enfant → ans, pointures toujours.
+              const fieldGroups = field.childGroups && sharedChildAxes
+                ? [...field.childGroups.filter(g => g.axis === "shoes" || sharedChildAxes[g.axis]), ...field.groups]
                 : field.groups;
               const isLastOdd = fi === missingSharedFields.length - 1 && missingSharedFields.length % 2 !== 0;
               return (
@@ -2313,13 +2322,24 @@ export default function ListingPreviewScreen({
     });
   }, [sharedFields, selected, edited, initialListing]);
 
-  // Genre enfant détecté sur au moins une copie (genre Vinted/eBay/Beebs,
-  // univers Leboncoin) : débloque les groupes de tailles enfant du champ
-  // partagé Taille dans l'encart inline de StepPublish (2026-07-15).
-  const sharedChildGenre = useMemo(() =>
-    Object.values(edited ?? {}).some(c =>
-      isChildGenre(c?.platform_fields?.genre) || isChildGenre(c?.platform_fields?.univers)),
-    [edited]);
+  // Axes de tailles enfant du champ partagé Taille (encart inline de
+  // StepPublish) : UNION des axes autorisés par les genres enfant des
+  // copies (childAxesForGenre — Bébé → mois, Fille/Garçon/Enfant → ans).
+  // null si aucune copie n'a de genre enfant → groupes adultes seuls.
+  // L'union (et non l'intersection) parce que les genres peuvent diverger
+  // entre copies (Vinted n'a pas de genre Bébé, sa copie dit Fille quand
+  // eBay/Beebs disent Bébé) — le filtrage strict par copie reste fait dans
+  // l'éditeur de chaque copie.
+  const sharedChildAxes = useMemo(() => {
+    let axes = null;
+    for (const c of Object.values(edited ?? {})) {
+      const a = childAxesForGenre(c?.platform_fields?.genre)
+        ?? childAxesForGenre(c?.platform_fields?.univers);
+      if (!a) continue;
+      axes = { months: (axes?.months ?? false) || a.months, years: (axes?.years ?? false) || a.years };
+    }
+    return axes;
+  }, [edited]);
 
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
@@ -2687,20 +2707,42 @@ export default function ListingPreviewScreen({
         // publication qu'eBay aurait acceptée). FREE_TEXT + liste > 200 ou
         // liste vide → la présence suffit, comme avant ce patch.
         const CLOSED_LIST_MAX = 200;
-        const missing = ebayRequiredFull.filter(aspect => {
+        // Deux cas DISTINCTS depuis le 2026-07-15 (bug réel : taille en mois
+        // sur la catégorie 51581 « Robes Fille 2-16 ans » — le message
+        // unique « Complète ce(s) champ(s) » laissait croire à un champ
+        // VIDE alors que la valeur était REMPLIE mais hors de la liste de
+        // la catégorie, et le restait à chaque re-saisie du même axe) :
+        //   - champ vide            → message « complète » historique ;
+        //   - valeur hors liste     → message dédié citant la valeur
+        //     refusée + des exemples acceptés (les valeurs d'ÂGE de la
+        //     liste d'abord quand la saisie est une taille d'âge), + astuce
+        //     d'alignement genre↔axe pour les tailles mois/ans.
+        const missingEmpty = [];
+        const invalidMessages = [];
+        for (const aspect of ebayRequiredFull) {
           const known = knownAspects.find(k => k.labels.includes(aspect.name));
-          if (!known) return false; // pas de mapping → canal unfilledRequired de l'extension
+          if (!known) continue; // pas de mapping → canal unfilledRequired de l'extension
           const val = String(known.value() ?? "").trim();
-          if (!val) return true;
+          if (!val) { missingEmpty.push(aspect.name); continue; }
           const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
           const closedList = allowed.length &&
             (allowed.length <= CLOSED_LIST_MAX || aspect.mode === "SELECTION_ONLY");
-          if (!closedList) return false;
-          return !allowed.some(v => normFuzzy(v) === normFuzzy(val));
-        }).map(a => a.name);
-        if (missing.length) {
-          throw new Error(tpl("stepPublishEbayRequiredMissing", { fields: missing.join(", ") }));
+          if (!closedList) continue;
+          if (allowed.some(v => normFuzzy(v) === normFuzzy(val))) continue;
+          const ageLike = /\b(mois|ans)\b/i.test(val);
+          const preferred = ageLike ? allowed.filter(v => /\b(mois|ans)\b/i.test(v)) : [];
+          const sample = (preferred.length ? preferred : allowed).slice(0, 4).join(", ");
+          invalidMessages.push(
+            tpl("stepPublishEbayValueNotAllowed", { name: aspect.name, value: val, sample }) +
+            (ageLike ? ` ${t("stepPublishEbayAxisHint")}` : "")
+          );
         }
+        const guardMessages = [];
+        if (missingEmpty.length) {
+          guardMessages.push(tpl("stepPublishEbayRequiredMissing", { fields: missingEmpty.join(", ") }));
+        }
+        guardMessages.push(...invalidMessages);
+        if (guardMessages.length) throw new Error(guardMessages.join(" "));
       }
       // Débit des pièces + insertion des jobs en UNE transaction serveur :
       // prix et user imposés côté serveur (coin_config + auth.uid()), insert
@@ -2973,7 +3015,7 @@ export default function ListingPreviewScreen({
             missingSharedFields={missingSharedFields}
             sharedFields={sharedFields}
             onSharedFieldChange={setSharedField}
-            sharedChildGenre={sharedChildGenre}
+            sharedChildAxes={sharedChildAxes}
           />
         )}
       </div>
