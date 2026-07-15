@@ -241,8 +241,13 @@
   color: var(--lp-muted); max-width: 520px; margin: 0 0 30px;
 }
 .lp-hero__ctas { display: flex; gap: 13px; flex-wrap: wrap; align-items: center; }
-.lp-hero__trust { display: flex; align-items: center; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
-.lp-hero__trust span { font-weight: 500; font-size: 13.5px; color: var(--lp-dim); }
+/* La ligne de confiance passe souvent sur 2 lignes sur iPhone : avec
+   align-items:center la gemme se centrait sur le bloc de 2 lignes et « flottait »
+   au-dessus du texte. On aligne la gemme sur la PREMIÈRE ligne (flex-start) et on
+   la descend de 2px pour l'optiquement centrer sur cette ligne. */
+.lp-hero__trust { display: flex; align-items: flex-start; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+.lp-hero__trust > svg { flex-shrink: 0; margin-top: 2px; }
+.lp-hero__trust span { font-weight: 500; font-size: 13.5px; line-height: 1.4; color: var(--lp-dim); }
 /* Badges officiels App Store / Google Play, calés sur la même hauteur de bouton.
    Apple sert un SVG détouré (126.5x40) : à 48px de haut, le bouton fait 48px.
    Google sert un PNG 646x250 dont le bouton ne fait que 192px de haut — 29px de
@@ -543,11 +548,17 @@
 /* ── Retouche photo (section) ───────────────────────────────── */
 .lp-photo { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 .lp-photo__col { display: flex; flex-direction: column; align-items: center; gap: 9px; }
-.lp-photo__shot { position: relative; width: 132px; height: 154px; border-radius: 16px; overflow: hidden; }
+/* Les deux photos avant/après doivent être géométriquement IDENTIQUES pour que le
+   t-shirt soit à la même taille et hauteur. Sous box-sizing:border-box (global,
+   App.css), une bordure présente sur --clean SEULEMENT rétrécissait sa zone image
+   à 130×152 (vs 132×154 pour --raw sans bordure) et la décalait de 1px → object-
+   fit:cover redimensionnait le t-shirt. Bordure commune sur la base = zone image
+   identique (130×152) des deux côtés. --clean garde juste son fond + son ombre. */
+.lp-photo__shot { position: relative; width: 132px; height: 154px; border-radius: 16px; overflow: hidden; border: 1px solid var(--lp-line); }
 .lp-photo__shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .lp-photo__shot--raw img { filter: saturate(0.65) brightness(0.88) contrast(0.92); }
 .lp-photo__shot--clean {
-  background: linear-gradient(160deg, #FFFFFF, #EEF3F1); border: 1px solid var(--lp-line);
+  background: linear-gradient(160deg, #FFFFFF, #EEF3F1);
   box-shadow: 0 12px 26px -14px rgba(16, 32, 27, 0.35);
 }
 .lp-photo__shot--clean img { filter: saturate(1.1) contrast(1.08) brightness(1.05); }
