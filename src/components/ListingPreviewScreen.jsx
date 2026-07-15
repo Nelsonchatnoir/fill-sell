@@ -2462,6 +2462,61 @@ export default function ListingPreviewScreen({
     });
   }, [ebayRequiredPreview, edited]);
 
+  // Résolution IA ciblée des obligatoires SANS source (2026-07-16, même
+  // philosophie que resolve_genre : micro-appel jamais bloquant, null si non
+  // déductible). Une seule tentative par catégorie — les aspects toujours
+  // manquants après ce passage relèvent du fallback UI (Phase 3), jamais
+  // d'une valeur devinée.
+  const aspectsResolvedFor = useRef(null);
+  useEffect(() => {
+    const missing = (ebayRequiredStatus ?? []).filter(a => a.state === "missing").map(a => a.name);
+    if (!missing.length || !ebayPreviewCategoryId) return;
+    if (aspectsResolvedFor.current === ebayPreviewCategoryId) return;
+    aspectsResolvedFor.current = ebayPreviewCategoryId;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("ebay_item_aspects")
+          .select("aspects")
+          .eq("category_id", String(ebayPreviewCategoryId))
+          .limit(1)
+          .maybeSingle();
+        const details = (data?.aspects ?? [])
+          .filter(a => missing.includes(a?.name))
+          .map(a => ({ name: a.name, allowedValues: (a.allowedValues ?? []).slice(0, 60) }));
+        if (!details.length) return;
+        const src = edited.ebay ?? {};
+        const { data: res } = await supabase.functions.invoke("generate-listing", {
+          body: {
+            resolve_aspects: true,
+            aspects: details,
+            item_data: {
+              titre:       src.title || initialListing?.titre || "",
+              marque:      src.platform_fields?.marque || initialListing?.marque || null,
+              description: src.description || initialListing?.description || null,
+              type:        initialListing?.categorie || null,
+            },
+          },
+        });
+        const values = res?.aspects && typeof res.aspects === "object" ? res.aspects : {};
+        const clean = Object.fromEntries(Object.entries(values).filter(([k, v]) =>
+          missing.includes(k) && typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"));
+        if (!Object.keys(clean).length) return;
+        setEdited(prev => prev.ebay ? {
+          ...prev,
+          ebay: {
+            ...prev.ebay,
+            platform_fields: {
+              ...prev.ebay.platform_fields,
+              ebayAspects: { ...(prev.ebay.platform_fields?.ebayAspects ?? {}), ...clean },
+            },
+          },
+        } : prev);
+      } catch { /* micro-appel de secours : jamais bloquant */ }
+    })();
+  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, initialListing]);
+
+
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;

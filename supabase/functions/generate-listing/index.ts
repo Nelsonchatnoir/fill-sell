@@ -356,6 +356,72 @@ serve(async (req) => {
       }
       return json({ genre: null });
     }
+
+    // ── Mode ciblé "resolve_aspects" (2026-07-16, chantier champs obligatoires) ──
+    // Micro-appel de secours, même philosophie que resolve_genre : quand la
+    // preview B1 de ListingPreviewScreen identifie des aspects eBay
+    // OBLIGATOIRES sans source app (audit Phase 0 : Nom de parfum, Volume,
+    // Numéro de pièce fabricant, Hauteur/Largeur, Teinte…), on demande à
+    // l'IA de les extraire du CONTEXTE — jamais deviner. Réponse :
+    // { aspects: { "<nom exact>": "valeur" } } — les aspects non déductibles
+    // sont ABSENTS/null, le fallback UI (Phase 3) prend le relais.
+    // Entrée : body.aspects = [{ name, allowedValues?: string[] }] (≤ 12).
+    if (body.resolve_aspects === true) {
+      const it = item_data ?? {};
+      const wanted = (Array.isArray(body.aspects) ? body.aspects : [])
+        .filter((a: { name?: unknown }) => a && typeof a.name === "string")
+        .slice(0, 12);
+      const ctx = [
+        it.marque && `Marque: ${it.marque}`,
+        it.titre && `Article: ${it.titre}`,
+        it.type && `Type: ${it.type}`,
+        it.description && `Description: ${it.description}`,
+      ].filter(Boolean).join("\n");
+      if (!ctx || !wanted.length) return json({ aspects: {} });
+      const lines = wanted.map((a: { name: string; allowedValues?: string[] }) => {
+        const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
+        return `- "${a.name}"${allowed.length ? ` — valeurs eBay (suggestions, saisie libre acceptée) : ${allowed.join(" | ")}` : " — texte libre"}`;
+      }).join("\n");
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 400,
+            system:
+              `Tu extrais des caractéristiques produit eBay depuis le contexte d'une annonce d'occasion. RÈGLE ABSOLUE : ne JAMAIS inventer — une valeur doit être lisible ou strictement déductible du contexte, sinon null. Préfère une valeur de la liste eBay quand elle correspond. Cas particuliers : "Numéro de pièce fabricant" → "Ne s'applique pas" (valeur standard eBay pour un objet d'occasion sans référence fabricant visible dans le contexte) ; "Volume" → format eBay ("50 ml", jamais "50ml") ; dimensions (Hauteur/Largeur/Longueur/Dimensions) → UNIQUEMENT si des mesures chiffrées figurent dans le contexte, avec l'unité ("80 cm"). Retourne UNIQUEMENT du JSON valide: {"aspects":{"<nom exact de l'aspect>":"valeur ou null"}}`,
+            messages: [{ role: "user", content: `Aspects à renseigner :\n${lines}\n\nContexte article :\n${ctx}` }],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text: string = data.content?.[0]?.text ?? "";
+          const m = text.match(/\{[\s\S]*\}/);
+          if (m) {
+            const parsed = JSON.parse(m[0]);
+            const raw = parsed?.aspects && typeof parsed.aspects === "object" ? parsed.aspects : {};
+            const wantedNames = new Set(wanted.map((a: { name: string }) => a.name));
+            const out: Record<string, string> = {};
+            for (const [k, v] of Object.entries(raw)) {
+              if (!wantedNames.has(k)) continue; // jamais de clé hors demande
+              const s = typeof v === "string" ? v.trim() : "";
+              if (s && s.toLowerCase() !== "null") out[k] = s;
+            }
+            return json({ aspects: out });
+          }
+        } else {
+          console.error("[generate-listing] resolve_aspects:", await res.text());
+        }
+      } catch (e) {
+        console.error("[generate-listing] resolve_aspects exception:", e);
+      }
+      return json({ aspects: {} });
+    }
     // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
     // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur absente, inconnue
     // ou legacy ("ia", "ia_multi", "ia_simple", …) retombe sur "original" : jamais de retouche
