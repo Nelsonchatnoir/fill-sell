@@ -1522,7 +1522,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
@@ -1619,6 +1619,38 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
               </span>
             ))}
           </div>
+          {/* Fallback UI générique (Phase 3) : saisie inline des obligatoires
+              sans source — select quand la liste eBay est courte (≤ 30),
+              texte libre sinon (FREE_TEXT accepté par eBay, la garde valide
+              les listes fermées au publish). Les valeurs venues de
+              resolve_aspects (source "generic") restent éditables ici. */}
+          {onEbayAspectChange && ebayRequiredStatus.some(a => a.state === "missing" || a.source === "generic") && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
+              {ebayRequiredStatus.filter(a => a.state === "missing" || a.source === "generic").map(a => (
+                <div key={a.name}>
+                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
+                  {a.allowedValues?.length > 0 && a.allowedValues.length <= 30 ? (
+                    <select
+                      value={a.value ?? ""}
+                      onChange={ev => onEbayAspectChange(a.name, ev.target.value)}
+                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: a.value ? T.ink : T.mute }}
+                    >
+                      <option value="">—</option>
+                      {a.allowedValues.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={a.value ?? ""}
+                      onChange={ev => onEbayAspectChange(a.name, ev.target.value)}
+                      placeholder="—"
+                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2274,6 +2306,21 @@ export default function ListingPreviewScreen({
       return next;
     });
   }
+  // Fallback UI générique (Phase 3, 2026-07-16) : saisie manuelle d'un
+  // aspect obligatoire eBay sans source — écrit dans pf.ebayAspects de la
+  // copie eBay (même canal que resolve_aspects ; garde + ebay.js le lisent).
+  function setEbayAspect(name, value) {
+    setEdited(prev => prev.ebay ? {
+      ...prev,
+      ebay: {
+        ...prev.ebay,
+        platform_fields: {
+          ...prev.ebay.platform_fields,
+          ebayAspects: { ...(prev.ebay.platform_fields?.ebayAspects ?? {}), [name]: value },
+        },
+      },
+    } : prev);
+  }
   // Édition manuelle d'UNE copie plateforme : le lien casse pour cette copie
   // seulement (les autres restent synchronisées sur la source).
   function noteSharedOverride(platform, key) {
@@ -2431,10 +2478,12 @@ export default function ListingPreviewScreen({
           .limit(1)
           .maybeSingle();
         if (!alive) return;
-        const names = (data?.aspects ?? [])
+        // Objets complets {name, allowedValues} : les allowedValues nourrissent
+        // resolve_aspects (échantillon) ET le fallback UI (select ≤ 30 options).
+        const req = (data?.aspects ?? [])
           .filter(a => a?.required === true && a?.name)
-          .map(a => a.name);
-        setEbayRequiredPreview(names.length ? names : null);
+          .map(a => ({ name: a.name, allowedValues: (a.allowedValues ?? []).slice(0, 200) }));
+        setEbayRequiredPreview(req.length ? req : null);
       } catch { if (alive) setEbayRequiredPreview(null); }
     })();
     return () => { alive = false; };
@@ -2453,12 +2502,15 @@ export default function ListingPreviewScreen({
       { labels: ["Capacité de stockage"], get: () => pf.stockage },
     ];
     const PREFILLED_BY_EBAY = ["Département", "Type", "Style"];
-    return ebayRequiredPreview.map(name => {
+    return ebayRequiredPreview.map(({ name, allowedValues }) => {
       const src = sources.find(s => s.labels.includes(name));
-      if (src && String(src.get() ?? "").trim()) return { name, state: "ok" };
-      if (String(pf.ebayAspects?.[name] ?? "").trim()) return { name, state: "ok" };
-      if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled" };
-      return { name, state: "missing" };
+      if (src && String(src.get() ?? "").trim()) return { name, state: "ok", allowedValues };
+      const generic = String(pf.ebayAspects?.[name] ?? "").trim();
+      // source:"generic" : valeur venue de resolve_aspects/du fallback UI —
+      // reste ÉDITABLE dans l'encart (contrairement aux champs dédiés).
+      if (generic) return { name, state: "ok", source: "generic", value: generic, allowedValues };
+      if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled", allowedValues };
+      return { name, state: "missing", value: "", allowedValues };
     });
   }, [ebayRequiredPreview, edited]);
 
@@ -2475,14 +2527,10 @@ export default function ListingPreviewScreen({
     aspectsResolvedFor.current = ebayPreviewCategoryId;
     (async () => {
       try {
-        const { data } = await supabase
-          .from("ebay_item_aspects")
-          .select("aspects")
-          .eq("category_id", String(ebayPreviewCategoryId))
-          .limit(1)
-          .maybeSingle();
-        const details = (data?.aspects ?? [])
-          .filter(a => missing.includes(a?.name))
+        // allowedValues déjà portées par la preview (même fetch) : pas de
+        // relecture de la table.
+        const details = (ebayRequiredStatus ?? [])
+          .filter(a => missing.includes(a.name))
           .map(a => ({ name: a.name, allowedValues: (a.allowedValues ?? []).slice(0, 60) }));
         if (!details.length) return;
         const src = edited.ebay ?? {};
@@ -3204,6 +3252,7 @@ export default function ListingPreviewScreen({
             sharedChildAxes={sharedChildAxes}
             vintedGenreBlocked={vintedGenreBlocked}
             ebayRequiredStatus={ebayRequiredStatus}
+            onEbayAspectChange={setEbayAspect}
           />
         )}
       </div>
