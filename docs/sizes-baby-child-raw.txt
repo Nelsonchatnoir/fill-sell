@@ -1,0 +1,295 @@
+RELEVÉ BRUT — GRILLES DE TAILLES BÉBÉ / ENFANT / ADO
+Étape A du plan « trou tailles bébé/enfant ». Lecture seule (navigation +
+lecture des dropdowns des formulaires de vente). Aucune publication.
+Date du relevé : 2026-07-15
+Branche : feat/merge-chrome-extension-into-v2 @ f1b7416
+
+═══════════════════════════════════════════════════════════════════════
+0. SYNTHÈSE CROSS-PLATEFORME (pour arbitrage Étape B/C/D)
+═══════════════════════════════════════════════════════════════════════
+AXE 1 — MOIS (bébé) :
+  LBC bébé   : Prématuré/44 → 36 mois/98 cm (chaîne "mois / cm")
+  Beebs      : Prématuré → 24 mois (chaîne "N mois (X-Y cm)")
+  Vinted     : Prématuré → 24-36 mois (chaîne "N-N mois / NN cm")
+  eBay bébé  : "1 mois"…"24 mois" + cm nus 50-98 (2 systèmes mélangés)
+AXE 2 — ANS (enfant) :
+  Vinted     : 3 ans/98 → 16 ans/176 (chaîne "N ans / NN cm")
+  Beebs      : 3 → 10 ans puis 12/14/16 (chaîne "N ans (X-Y cm)")
+  LBC Mode/Enfant : 3 ans/98 → 16 ans/176 + "18 ans / 182 cm +"
+  eBay enfant: lettres 2XS-4XL + cm nus 62-176 + "2 ans".."16 ans" (3 sys.)
+AXE 3 — POINTURES (EU nues) :
+  Vinted 15→40 │ Beebs 15→41 │ eBay EU 15→40 (+ demi/tiers pointures)
+  LBC : pas de champ pointure enfant structuré relevé (via desc./Mode).
+
+OBLIGATOIRE (bloque la publi si absent) : eBay Taille + Pointure EU
+(required=true). Les 3 autres : taille facultative.
+
+FORMAT : partout (sauf pointures + eBay), la taille enfant est une CHAÎNE
+COMBINÉE âge+cm → un nombre nu n'est JAMAIS égal en exact, mais est contenu
+comme mot ("3" ⊂ "3 ans / 98 cm") → garde anti-fuzzy Étape D nécessaire.
+eBay + pointures = nombres nus purs (56, 92, 128, 15..41) → collision
+directe avec tailles adulte (34-52) et entre elles.
+
+LEBONCOIN — l'hypothèse "pas de champ taille" du code (generate-listing
+L45-51) est FAUSSE : LBC a des tailles structurées (bébé 0-36 mois +
+Mode/Univers=Enfant 3-18 ans). Le vrai enjeu LBC = poser Univers=Enfant.
+═══════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════
+1. VINTED  (formulaire de vente /items/new → Enfants > Vêtements)
+═══════════════════════════════════════════════════════════════════════
+Source : dropdown "Taille" du vrai formulaire de vente, extrait par JS
+(labels bruts des options). Compte connecté, lecture seule, rien publié.
+
+Arbre navigué : Enfants > Vêtements pour filles > {Chemises et t-shirts >
+T-shirts} et > {Chaussures > Chaussures bébé}. Note structurelle : sous
+"Vêtements pour filles" il y a une branche SÉPARÉE "Bébé filles" + les
+branches par type (Chaussures, Vêtements d'extérieur, Pulls & sweats,
+Chemises et t-shirts, …). Même structure côté "Vêtements pour garçons".
+
+--- GRILLE VÊTEMENTS (leaf T-shirts fille) : header "Tailles enfants et
+    bébés" — format COMBINÉ "âge / cm" en une seule chaîne. 24 valeurs :
+  Prématuré, jusqu'à 44cm
+  Naissance / 44 cm
+  Jusqu'à 1 mois / 50 cm
+  1-3 mois / 56 cm
+  3-6 mois / 62 cm
+  6-9 mois / 68 cm
+  9-12 mois / 74 cm
+  12-18 mois / 80 cm
+  18-24 mois / 86 cm
+  24-36 mois / 92 cm
+  3 ans / 98 cm
+  4 ans / 104 cm
+  5 ans / 110 cm
+  6 ans / 116 cm
+  7 ans / 122 cm
+  8 ans / 128 cm
+  9 ans / 134 cm
+  10 ans / 140 cm
+  11 ans / 146 cm
+  12 ans / 152 cm
+  13 ans / 158 cm
+  14 ans / 164 cm
+  15 ans / 170 cm
+  16 ans / 176 cm
+  → Cette liste est PARTAGÉE par tous les leaves vêtements du rayon enfant
+    (body, pyjama, t-shirt… = même "size group"). Un seul type relevé mais
+    le groupe est le même (confirmé par la structure Vinted item_upload).
+  → IMPORTANT : la valeur est UNE chaîne combinée ("9-12 mois / 74 cm",
+    "3 ans / 98 cm"). Un nombre nu "3" ne l'égale JAMAIS (exact) mais
+    "3 ans / 98 cm" CONTIENT le mot "3" → risque fuzzy-inverse (cf. Étape D).
+
+--- GRILLE CHAUSSURES (leaf "Chaussures bébé") : pointures NUES (EU),
+    header "Tailles". 26 valeurs :
+  15 et moins, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+  31, 32, 33, 34, 35, 36, 37, 38, 39, 40
+  → ⚠️ NOMBRES NUS. Recouvrent 34-40 avec les tailles NUMÉRIQUES vêtement
+    ADULTE (34-52) du stepper → collision fuzzy possible (Étape D).
+    Une pointure "36" enfant vs une taille vêtement "36" adulte.
+
+═══════════════════════════════════════════════════════════════════════
+2. BEEBS  (formulaire /fr/listing → Mode → Bébé / Fille / Garçon)
+═══════════════════════════════════════════════════════════════════════
+Source : dropdown "Taille" du vrai formulaire de vente Beebs, extrait JS.
+Compte connecté, lecture seule, rien publié (bouton "Mettre en vente"
+jamais cliqué).
+
+Arbre Mode = 5 rayons RÉELS confirmés : Femme | Homme | Fille | Garçon |
+Bébé (aucun "Enfant", aucun "Mixte" — cohérent avec beebsGender du code).
+
+Sous-catégories relevées :
+  Bébé   > Vêtements (bébé) > {Tenues de fêtes, Lots de bodies, Lots de
+           vêtements, Lots de pantalons et bas, Bodies, Manteaux et
+           combipilotes, Pulls gilets et sweats, …}, Nuit et pyjamas (bébé),
+           Accessoires (bébé), Chaussures (bébé)[leaf]
+  Fille  > Vêtements (fille) >, Pyjamas (fille)[leaf], Accessoires (fille) >,
+           Chaussures (fille) >
+  Garçon > Vêtements (garçon) >, Pyjamas (garçon)[leaf], Accessoires (garçon) >,
+           Chaussures (garçon) >
+
+--- GRILLE VÊTEMENTS : UNE SEULE liste partagée, IDENTIQUE sur les 3 rayons
+    (relevée sur Bodies(bébé), Pyjamas(fille), Pyjamas(garçon) → byte-for-byte
+    identique). Format COMBINÉ "âge (fourchette cm)". 20 valeurs :
+  Prématuré (- de 45 cm)
+  Naissance - 0 mois (45-50 cm)
+  1 mois (50-54 cm)
+  3 mois (54-60 cm)
+  6 mois (60-66 cm)
+  9 mois (67-74 cm)
+  12 mois (74-80 cm)
+  18 mois (80-86 cm)
+  24 mois (86-94 cm)
+  3 ans (94-102 cm)
+  4 ans (102-108 cm)
+  5 ans (108-116 cm)
+  6 ans (116-123 cm)
+  7 ans (123-128 cm)
+  8 ans (123-128 cm)     ← (sic) même fourchette cm que 7 ans, quirk data Beebs
+  9 ans (128-132 cm)
+  10 ans (128-140 cm)
+  12 ans (140-152 cm)    ← pas de 11 ans
+  14 ans (152-164 cm)    ← pas de 13 ans
+  16 ans (164-176 cm)    ← pas de 15 ans
+  → NB : pas de granularité 3-6/6-9/9-12 mois (Beebs = pas fixes 1/3/6/9/12/18/24
+    mois). Au-delà de 10 ans, saut en années paires (12/14/16).
+  → Comme Vinted : valeur = chaîne combinée. Un "3" nu n'égale rien mais
+    "3 ans (94-102 cm)" contient le mot "3" → risque fuzzy-inverse (Étape D).
+
+--- GRILLE CHAUSSURES BEEBS — RELEVÉ 2026-07-15 ---
+Chaussures (garçon) leaves : Chaussures plates | Baskets | Bottes et
+bottines | Bottes de pluie | Chaussons | Chaussures de sport | …
+Sur leaf "Baskets (garçon)" le champ devient "Pointure" (≠ "Taille"),
+valeurs POINTURES NUES (EU) :
+  15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+  32, 33, 34, 35, 36, 37, 38, 39, 40, 41
+  → nombres nus, comme Vinted (15→40) et eBay (Pointure EU 15→40). Beebs
+    partageant ses taxonomies entre rayons, la liste est très probablement
+    identique sur Bébé/Fille (relevé fait sur Garçon uniquement).
+  → ⚠️ collision fuzzy pointure↔taille adulte (34-41), cf. Étape D.
+
+═══════════════════════════════════════════════════════════════════════
+3. LEBONCOIN  (/deposer-une-annonce → titre → "Famille > Vêtements bébé")
+═══════════════════════════════════════════════════════════════════════
+Source : vrai flow de dépôt LBC. Titre saisi "Body bébé 6 mois manches
+longues" (produit générique, AUCUNE donnée perso), catégorie suggérée
+sélectionnée. Formulaire lu, JAMAIS soumis (bouton final jamais atteint).
+Compte connecté, lecture seule.
+
+Suggestions de catégorie renvoyées par LBC pour un titre bébé :
+  • Famille > Vêtements bébé   ← choisie
+  • Mode > Vêtements            (catégorie mode générale = ADULTE/tous âges)
+  • Famille > Équipement bébé
+
+★★★ DÉCOUVERTE MAJEURE — CONTREDIT L'HYPOTHÈSE DU CODE ★★★
+generate-listing/index.ts (L45-51) affirme : « le formulaire Leboncoin
+n'a PAS de champ Taille structuré (volontaire, il n'existe pas côté LBC) ».
+=> FAUX pour la catégorie "Famille > Vêtements bébé" : elle EXPOSE un champ
+   "Taille" structuré (dropdown), en plus de Genre et Produit structurés.
+   → À réévaluer avant tout code Étape C/B côté LBC : on peut REMPLIR une
+     taille bébé correcte au lieu de la noyer dans la description.
+
+Champs du formulaire "Vêtements bébé" (astérisque = obligatoire) :
+  - Genre        (facultatif)  → Fille | Garçon | Mixte | Autres
+  - Produit*     (OBLIGATOIRE) → auto-détecté "Bodies" depuis le titre.
+        Valeurs : Bodies | T-shirt & brassières | Bermudas & Shorts |
+        Pantalons | Jeans | Dors-bien & Pyjamas | Pull & Gilets |
+        Robes & Jupes | Manteaux & Vestes | Legging & collants |
+        Déguisements | Ensembles & Combinaisons | Bonnets | Maillots de
+        bain | Lot de vêtement | Chaussons | Mouffles | Accessoires | Autre
+  - Taille       (facultatif)  → auto-rempli "6 mois / 68 cm" depuis le titre.
+        Format COMBINÉ "mois / cm". 10 valeurs, PLAFONNÉ À 36 MOIS :
+          Prématuré / 44 cm
+          0 mois / 50 cm
+          1 mois / 56 cm
+          3 mois / 62 cm
+          6 mois / 68 cm
+          9 mois / 74 cm
+          12 mois / 80 cm
+          18 mois / 86 cm
+          24 mois / 92 cm
+          36 mois / 98 cm
+  - Marque       (facultatif)  → longue liste (Absorba, Aden+Anaïs, Adidas…)
+  - Couleur, État
+
+--- LBC "Mode > Vêtements" (enfant > 3 ans) — RELEVÉ 2026-07-15 ---
+Titre testé "Manteau garçon 8 ans bleu" (brouillon bébé purgé via "Quitter
+sans enregistrer" pour repartir propre). Suggestions : Mode > Vêtements |
+Famille > Vêtements bébé | Loisirs > Sport & Plein air. "Mode > Vêtements"
+choisi.
+
+★★★ LE RISQUE "TAILLE ADULTE EN SILENCE" EST LARGEMENT REFUTÉ ★★★
+"Mode > Vêtements" a un champ "Univers*" (OBLIGATOIRE) et LBC a AUTO-détecté
+depuis le titre :
+   Univers = Enfant │ (Style/genre) Garçon │ Type = Manteaux & Vestes
+   Taille = "8 ans / 128 cm" │ Couleur = Bleu / Ciel
+=> Quand l'Univers est un univers ENFANT, la grille Taille est une grille
+   ENFANT (ans / cm), PAS S/M/L adulte.
+
+Univers* — valeurs : Femme | Maternité | Homme | Enfant | Fille | Garçon |
+   Unisexe.
+Taille (Univers enfant) — format COMBINÉ "ans / cm", 15 valeurs :
+   3 ans / 98 cm │ 4 ans / 104 │ 5 ans / 110 │ 6 ans / 116 │ 7 ans / 122
+   8 ans / 128 │ 9 ans / 134 │ 10 ans / 140 │ 11 ans / 146 │ 12 ans / 152
+   13 ans / 158 │ 14 ans / 164 │ 15 ans / 170 │ 16 ans / 176 │ 18 ans / 182 cm +
+
+COUVERTURE LBC COMPLÈTE (2 catégories complémentaires, tailles structurées) :
+   • Famille > Vêtements bébé   → 0-36 mois (Prématuré/44 → 36 mois/98)
+   • Mode > Vêtements (Univers=Enfant/Fille/Garçon) → 3-18 ans (ans/cm)
+
+⚠️ VRAI RISQUE RÉSIDUEL (ramené, mais réel) : la grille enfant n'apparaît
+   QUE SI l'Univers est enfant. Ici LBC l'a déduit du mot "8 ans" dans le
+   titre. Si notre titre/attributs LLM ne signalent PAS clairement l'enfant,
+   l'Univers peut défaulter sur Femme/Homme → Taille adulte. Le risque n'est
+   donc plus "LBC n'a pas de champ" mais "il faut que leboncoin.js POSE
+   explicitement Univers=Enfant/Fille/Garçon (depuis genre) AVANT de choisir
+   la Taille". C'est un point d'implémentation Étape C, pas une fatalité data.
+
+═══════════════════════════════════════════════════════════════════════
+4. EBAY  (dump SQL prod ebay_item_aspects — via Supabase MCP, 2026-07-15)
+═══════════════════════════════════════════════════════════════════════
+Source : SELECT réel sur public.ebay_item_aspects (prod, marketplace
+EBAY_FR), aspects filtrés sur taille/pointure/âge. allowedValues = valeurs
+officielles API Taxonomy eBay. required=true → aspect OBLIGATOIRE.
+
+═══ VÊTEMENTS ═══ aspect "Taille" (required=true partout). 3 profils :
+
+--- PROFIL A "Taille BÉBÉ" (mix cm-nu + mois) — catégories :
+    Bas Bébé 260020, Hauts/T-shirts Bébé 260031, Maillots Bébé 260030,
+    Manteaux Bébé 260023, Pulls Bébé 260029, Robes Bébé 260021.
+    Valeurs (léger écart de bornes cm selon la feuille, sinon identiques) :
+      cm nus : 50 / 56 / 62 / 68 / 74 / 80 / 86 / 92 / 98
+      + labels : Bébé prématuré, Naissance, 1 mois, 3 mois, 6 mois,
+                 9 mois, 12 mois, 18 mois, 24 mois, Taille unique
+    (260031 s'arrête à 92 ; 260020/260021/260023 vont à 98 ; 260029/260030
+     incluent 50. ~17-18 valeurs.)
+
+--- PROFIL B "Taille ENFANT (2-16 ans)" — 59 valeurs, IDENTIQUE sur :
+    Fille : Robes 51581, Manteaux 51580, Hauts 260965, Pulls 51582,
+            Pantalons 51568, Shorts 15648, Maillots 51567, Pyjamas 99735
+    Garçon: Manteaux 51933, Hauts 260966, Pulls 51946, Pantalons 51920,
+            Shorts 15615, Maillots 51919, Pyjamas 84544
+    Enfant unisexe : Manteaux 155201, Hauts 155199, Pulls 175657,
+            Pantalons 175654, Shorts 175655, Maillots 175653
+    Valeurs (3 systèmes MÉLANGÉS dans une seule liste) :
+      lettres : 2XS, XS, S, M, L, XL, 2XL, 3XL, 4XL
+      cm nus  : 62, 68, 74, 80, 86, 92, 98, 104, 110, 116, 122, 128, 134,
+                140, 146, 152, 158, 164, 170, 176
+      ans     : 2 ans, 2-3 ans, 3 ans, 3-4 ans, 4 ans, 4-5 ans, 5 ans,
+                5-6 ans, 6 ans … 15 ans, 15-16 ans, 16 ans
+      + Taille unique
+    (Maillots enfant démarrent à 74 cm au lieu de 62 → 57 valeurs.)
+
+--- ASPECTS TAILLE SECONDAIRES (required=false) sur bas de corps :
+    "Tour de taille" (Pantalons/Shorts/Robes Fille-Garçon-Enfant) :
+       ~91 valeurs en "NN in" et "NN cm" (25 in → 72 in ; 50 cm → 105 cm).
+    "Type de taille" (Maillots) : Regular | Plus | Slim
+       (Maillots Garçon 51919 : Regular | Slim | Grande taille enfant).
+
+═══ CHAUSSURES ═══ aspect "Pointure EU" (required=true) + AU/UK/US (facult.)
+
+--- Pointure EU BÉBÉ (Chaussures Bébé 147285) — 18 valeurs :
+      Naissance, 15, 16, 17, 18, 19, 20, 21, 22, 23, 23,5, 24, 25, 25,5,
+      26, 26,5, 27, 27 1/3
+    + "Pointure AU" (facult.) inclut des tranches d'âge :
+      Naissance, 0-6 mois, 6-12 mois, 12-18 mois, 18-24 mois, puis 0 → 9
+    + Largeur (H/M/N/W), Style de tige (Bas…Cuissarde).
+
+--- Pointure EU ENFANT/FILLE/GARÇON (155202, 57974, 57929) — 55 valeurs :
+      15, 16, 17 … 27, 27 1/3, 27,5, 28, 28 1/3 … 40  (demi-pointures +
+      fractions 1/3 et 2/3 : "30 2/3", "34 2/3", "38 2/3", etc.)
+    + AU/UK/US (facult., 1 → 13,5), Largeur (A…EEEEEE/M/N/R/W), Style tige.
+
+★ POINTS CLÉS POUR L'IMPLÉMENTATION :
+  • eBay est la SEULE plateforme qui expose la Taille/Pointure enfant comme
+    aspect OBLIGATOIRE (required=true) → un mapping enfant sans taille valide
+    = publication refusée. C'est la contrainte la plus dure des 4.
+  • eBay MÉLANGE 3 systèmes (lettres + cm-nu + ans) dans un seul dropdown
+    "Taille" enfant. Le référentiel Étape B doit pouvoir émettre l'un OU
+    l'autre selon ce qu'eBay accepte pour la feuille.
+  • ⚠️ FUZZY (Étape D) : eBay regorge de NOMBRES NUS valides — cm (56,62,
+    68…176), pointures (15…40), et "Taille unique". Un "92" est une Taille
+    cm bébo/enfant ET une "92 cm" de Tour de taille. Surface de collision
+    fuzzy énorme → la garde doit être stricte sur les champs taille eBay.
+  • Bornes : bébé eBay va à 24 mois / ~98 cm (cohérent LBC 36 mois près) ;
+    enfant eBay 2→16 ans. Pointures EU 15→40 (comme Vinted).

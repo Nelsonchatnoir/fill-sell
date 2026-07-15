@@ -12,6 +12,10 @@ import { getLbcCategoryPath, getLbcBabyEquipment } from "../utils/lbcCategories"
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
+import {
+  CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
+  isChildGenre, toPlatformChildSize,
+} from "../utils/childSizes";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -197,7 +201,28 @@ function getPlatformFieldsConfig(t) {
     { groupLabel:t("sizeGroupGarmentNumeric"), options:sizeNumericOptions },
     { groupLabel:t("sizeGroupShoe"),           options:sizeShoeOptions },
   ];
-  const size = [...sizeLetterOptions, ...sizeNumericOptions, ...sizeShoeOptions];
+  // ── Tailles ENFANT (2026-07-15, chantier « trou tailles bébé/enfant ») ────
+  // Valeurs CANONIQUES du référentiel childSizes.js (« 6 mois », « 8 ans »,
+  // « EU 31 ») — jamais les libellés plateforme (« 6-9 mois / 68 cm ») : la
+  // conversion vers le libellé exact de chaque plateforme se fait à l'insert
+  // du job (handlePublish), comme pour le reste du chantier. Ces groupes ne
+  // s'affichent que quand le genre de l'article est enfant (childGroups est
+  // fusionné aux groupes adultes au rendu, conditionnellement au genre).
+  const childMonthOptions = CHILD_MONTH_SIZES.map(e => ({ value:e.value, label:e.value }));
+  const childYearOptions  = CHILD_YEAR_SIZES.map(e => ({ value:e.value, label:e.value }));
+  const childShoeOptions  = [];
+  for (let n = CHILD_SHOE_EU_MIN; n <= CHILD_SHOE_EU_MAX; n++) {
+    childShoeOptions.push({ value:`EU ${n}`, label:`EU ${n}` });
+  }
+  const childSizeGroups = [
+    { groupLabel:t("sizeGroupChildMonths"), options:childMonthOptions },
+    { groupLabel:t("sizeGroupChildYears"),  options:childYearOptions },
+    { groupLabel:t("sizeGroupChildShoe"),   options:childShoeOptions },
+  ];
+  const size = [
+    ...sizeLetterOptions, ...sizeNumericOptions, ...sizeShoeOptions,
+    ...childMonthOptions, ...childYearOptions, ...childShoeOptions,
+  ];
   const packageFormat = [
     { value:"Lettre",           label:t("packageLetter") },
     { value:"Petit colis",      label:t("packageSmall") },
@@ -267,7 +292,7 @@ function getPlatformFieldsConfig(t) {
   return {
     vinted: [
       { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
-      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
+      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
       { key:"genre",     label:t("fieldGenderLabel"),    type:"select", options: gender },
       { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
       { key:"modele",    label:t("fieldModelLabel"),     type:"text" },
@@ -283,7 +308,7 @@ function getPlatformFieldsConfig(t) {
       // pointure" bloque l'aperçu — relevé campagne 2026-07-08). Sans cette
       // entrée, mergeFieldsWithLens jette la taille générée par l'IA (même
       // piège que l'univers, documenté plus bas).
-      { key:"taille",       label:t("fieldSizeLabel"),          type:"select", options: size, groups: sizeGroups },
+      { key:"taille",       label:t("fieldSizeLabel"),          type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
       { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormat },
       // Univers (rayon Mode LBC) : mêmes libellés que le genre Vinted, mapping
       // 1:1 vérifié (docs/leboncoin-form-survey.md) — LBC a un rayon Mixte.
@@ -304,7 +329,7 @@ function getPlatformFieldsConfig(t) {
     // (même piège que celui documenté pour l'univers Leboncoin ci-dessus).
     beebs: [
       { key:"etat",   label:t("fieldConditionLabel"), type:"select", options: beebsCondition },
-      { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
+      { key:"taille", label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
       { key:"genre",  label:t("fieldGenderLabel"),    type:"select", options: beebsGender },
       { key:"marque", label:t("fieldBrandLabel"),     type:"text" },
       // matiere + couleur (2026-07-09) : consommés par beebs.js depuis
@@ -328,7 +353,7 @@ function getPlatformFieldsConfig(t) {
     // doux à la publication comme Vinted).
     ebay: [
       { key:"etat",    label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
-      { key:"taille",  label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups },
+      { key:"taille",  label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
       { key:"genre",   label:t("fieldGenderLabel"),    type:"select", options: ebayGender },
       { key:"marque",  label:t("fieldBrandLabel"),     type:"text" },
       { key:"modele",  label:t("fieldModelLabel"),     type:"text" },
@@ -1355,6 +1380,14 @@ function StepGeneration({ generating, generateError, platformListings, processed
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
                       {fieldConfigs.map((field, fi) => {
                         const val = e.platform_fields?.[field.key] ?? "";
+                        // Tailles enfant (2026-07-15) : les groupes du
+                        // référentiel enfant (mois/ans/pointures EU) ne
+                        // s'affichent que si le genre de CETTE copie est
+                        // enfant (genre Vinted/eBay/Beebs, univers Leboncoin).
+                        const fieldGroups = field.childGroups &&
+                          (isChildGenre(e.platform_fields?.genre) || isChildGenre(e.platform_fields?.univers))
+                          ? [...field.childGroups, ...field.groups]
+                          : field.groups;
                         const isLastOdd = fi === fieldConfigs.length - 1 && fieldConfigs.length % 2 !== 0;
                         const onChange = nv => {
                           // Champ partagé édité à la main sur CETTE plateforme :
@@ -1376,8 +1409,8 @@ function StepGeneration({ generating, generateError, platformListings, processed
                                 style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: val ? T.ink : T.mute }}
                               >
                                 <option value="">—</option>
-                                {field.groups
-                                  ? field.groups.map(g => (
+                                {fieldGroups
+                                  ? fieldGroups.map(g => (
                                       <optgroup key={g.groupLabel} label={g.groupLabel}>
                                         {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                       </optgroup>
@@ -1471,7 +1504,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildGenre = false }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
@@ -1550,6 +1583,13 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
             {missingSharedFields.map((key, fi) => {
               const field = sharedFieldCfg[key];
               const val = sharedFields[key] ?? "";
+              // Tailles enfant (2026-07-15) : le référentiel enfant (mois/ans/
+              // pointures EU) n'apparaît que si un genre enfant est détecté
+              // sur au moins une copie (prop calculée par le parent sur
+              // `edited` — genre Vinted/eBay/Beebs, univers Leboncoin).
+              const fieldGroups = field.childGroups && sharedChildGenre
+                ? [...field.childGroups, ...field.groups]
+                : field.groups;
               const isLastOdd = fi === missingSharedFields.length - 1 && missingSharedFields.length % 2 !== 0;
               return (
                 <div key={key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
@@ -1561,8 +1601,8 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
                       style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: val ? T.ink : T.mute }}
                     >
                       <option value="">—</option>
-                      {field.groups
-                        ? field.groups.map(g => (
+                      {fieldGroups
+                        ? fieldGroups.map(g => (
                             <optgroup key={g.groupLabel} label={g.groupLabel}>
                               {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </optgroup>
@@ -2273,6 +2313,14 @@ export default function ListingPreviewScreen({
     });
   }, [sharedFields, selected, edited, initialListing]);
 
+  // Genre enfant détecté sur au moins une copie (genre Vinted/eBay/Beebs,
+  // univers Leboncoin) : débloque les groupes de tailles enfant du champ
+  // partagé Taille dans l'encart inline de StepPublish (2026-07-15).
+  const sharedChildGenre = useMemo(() =>
+    Object.values(edited ?? {}).some(c =>
+      isChildGenre(c?.platform_fields?.genre) || isChildGenre(c?.platform_fields?.univers)),
+    [edited]);
+
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
@@ -2497,6 +2545,24 @@ export default function ListingPreviewScreen({
           if (categoryPath) pf.beebsCategoryPath = categoryPath;
           if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
           if (lbcAddress) pf.adresse = lbcAddress;
+        }
+        // ── Tailles ENFANT (2026-07-15) : conversion canonique → libellé
+        // EXACT de la plateforme (référentiel childSizes.js, relevé DOM réel
+        // docs/sizes-baby-child-raw.txt). Les copies affichées gardent la
+        // canonique (« 6 mois ») ; seul le JOB porte le libellé plateforme
+        // (« 3-6 mois / 62 cm » Vinted, « 6 mois (60-66 cm) » Beebs…) pour
+        // que les cascades des content scripts matchent en EXACT — la garde
+        // anti-nombre-nu des scripts interdit désormais le fuzzy numérique
+        // sur les champs taille. Placée APRÈS les blocs plateforme : le genre
+        // auto-résolu (autoGenre) doit déjà être posé — les pointures ne
+        // convertissent que sur genre enfant (« EU 38 » existe en adulte).
+        // null (pas d'équivalent exact, ex. « 18 ans » hors LBC) → canonique
+        // conservée : échec de cascade VISIBLE plutôt que taille fausse.
+        if (pf.taille) {
+          const converted = toPlatformChildSize(pf.taille, platform, {
+            isChildGenre: isChildGenre(pf.genre) || isChildGenre(pf.univers),
+          });
+          if (converted) pf.taille = converted;
         }
         return {
           user_id:         userId,
@@ -2872,6 +2938,7 @@ export default function ListingPreviewScreen({
             missingSharedFields={missingSharedFields}
             sharedFields={sharedFields}
             onSharedFieldChange={setSharedField}
+            sharedChildGenre={sharedChildGenre}
           />
         )}
       </div>

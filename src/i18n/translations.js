@@ -249,6 +249,9 @@ export const translations = {
     sizeGroupGarmentLetter:"Vêtement (lettre)",
     sizeGroupGarmentNumeric:"Vêtement (numérique)",
     sizeGroupShoe:"Chaussures",
+    sizeGroupChildMonths:"Bébé (mois)",
+    sizeGroupChildYears:"Enfant (ans)",
+    sizeGroupChildShoe:"Pointures enfant (EU)",
 
     conditionNewWithTag:"Neuf avec étiquette",
     conditionNewWithoutTag:"Neuf sans étiquette",
@@ -527,6 +530,9 @@ export const translations = {
     sizeGroupGarmentLetter:"Garment (letter)",
     sizeGroupGarmentNumeric:"Garment (numeric)",
     sizeGroupShoe:"Shoes",
+    sizeGroupChildMonths:"Baby (months)",
+    sizeGroupChildYears:"Kids (years)",
+    sizeGroupChildShoe:"Kids shoe sizes (EU)",
 
     conditionNewWithTag:"New with tag",
     conditionNewWithoutTag:"New without tag",
