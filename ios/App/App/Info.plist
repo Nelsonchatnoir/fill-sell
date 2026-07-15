@@ -21,7 +21,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>2.1</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<!-- Scheme custom app.fillsell.app:// — pendant iOS de l'intent-filter
 	     Android (AndroidManifest.xml). Sert UNIQUEMENT au retour OAuth Google
 	     (app.fillsell.app://callback?code=…) ouvert dans SFSafariViewController
