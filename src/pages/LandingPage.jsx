@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { track } from '../analytics/analytics';
@@ -215,12 +215,43 @@ const FAQ = {
 };
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
-const Pepite = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 64 64" style={{ flexShrink: 0 }} aria-hidden="true">
-    <path d="M32 4 L48 16 L54 30 L44 56 L32 60 L20 56 L10 30 L16 16 Z" fill="url(#lpPep)" />
-    <path d="M32 4 L48 16 L32 24 L16 16 Z" fill="#fff" opacity="0.35" />
-  </svg>
-);
+/* Le dégradé est inliné dans CHAQUE SVG (id unique via useId) : iOS/WebKit ne
+   résout pas un fill="url(#id)" pointant vers un <defs> logé dans un <svg
+   width=0 height=0> séparé — la gemme sortait alors sans remplissage. */
+const Pepite = ({ size = 16 }) => {
+  const gid = 'pep-' + useId().replace(/:/g, '');
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" style={{ flexShrink: 0 }} aria-hidden="true">
+      <defs>
+        <linearGradient id={gid} x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#F0B860" />
+          <stop offset="45%" stopColor="#E8956D" />
+          <stop offset="100%" stopColor="#2F9E90" />
+        </linearGradient>
+      </defs>
+      <path d="M32 4 L48 16 L54 30 L44 56 L32 60 L20 56 L10 30 L16 16 Z" fill={`url(#${gid})`} />
+      <path d="M32 4 L48 16 L32 24 L16 16 Z" fill="#fff" opacity="0.35" />
+    </svg>
+  );
+};
+
+/* Étoile/couronne dorée des chips Premium & Pro : même correctif iOS que Pepite
+   — dégradé doré inliné, id unique. `path` reçu en prop (étoile ou couronne). */
+const GoldGlyph = ({ size = 14, d }) => {
+  const gid = 'gold-' + useId().replace(/:/g, '');
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ position: 'relative' }} aria-hidden="true">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FBE9A6" />
+          <stop offset="0.5" stopColor="#E7B84C" />
+          <stop offset="1" stopColor="#C79433" />
+        </linearGradient>
+      </defs>
+      <path d={d} fill={`url(#${gid})`} strokeLinejoin="round" />
+    </svg>
+  );
+};
 
 const Check = ({ color = '#2F9E90', size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
@@ -241,6 +272,16 @@ const Arrow = ({ w = 46, h = 24 }) => (
   <svg width={w} height={h} viewBox="0 0 46 24" fill="none" stroke="#2F9E90" strokeWidth="2"
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M2 12h40" /><path d="M34 5l8 7-8 7" />
+  </svg>
+);
+
+/* Flèche des CTA : SVG plein en currentColor, au lieu du caractère « → » brut
+   qui rendait différemment sur iOS (police système / présentation emoji). */
+const CtaArrow = ({ size = 17 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+    style={{ flexShrink: 0, verticalAlign: 'middle' }}>
+    <path d="M5 12h14" /><path d="M13 6l6 6-6 6" />
   </svg>
 );
 
@@ -337,22 +378,6 @@ export default function LandingPage() {
 
   return (
     <div className="lp-root">
-      {/* Dégradés partagés par les icônes SVG de la page */}
-      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
-        <defs>
-          <linearGradient id="lpPep" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#F0B860" />
-            <stop offset="45%" stopColor="#E8956D" />
-            <stop offset="100%" stopColor="#2F9E90" />
-          </linearGradient>
-          <linearGradient id="lpGold" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#FBE9A6" />
-            <stop offset="0.5" stopColor="#E7B84C" />
-            <stop offset="1" stopColor="#C79433" />
-          </linearGradient>
-        </defs>
-      </svg>
-
       {/* ══════════ NAV ══════════ */}
       <header className="lp-nav">
         <div className="lp-nav__inner">
@@ -408,7 +433,7 @@ export default function LandingPage() {
 
             <div className="lp-hero__ctas">
               <button className="lp-btn lp-btn--grad" onClick={() => startSignup('free')}>
-                {t.ctaStart} <span style={{ fontSize: 17 }}>→</span>
+                {t.ctaStart} <CtaArrow size={17} />
               </button>
             </div>
 
@@ -605,7 +630,7 @@ export default function LandingPage() {
                   <PlatformLogo platform="vinted" size={16} />
                   Vinted
                 </span>
-                <span className="lp-card__sold-arr">→</span>
+                <span className="lp-card__sold-arr"><CtaArrow size={14} /></span>
                 {/* Les 3 autres, retirées : logos réels, désaturés et barrés. */}
                 <span className="lp-card__sold-off">
                   {PLATFORMS.filter((p) => p.key !== 'vinted').map((p) => (
@@ -874,9 +899,7 @@ export default function LandingPage() {
               <div className="lp-plan__flag">{t.popular}</div>
               <div className="lp-plan__chip lp-plan__chip--premium">
                 <span className="lp-plan__shine" />
-                <svg width="14" height="14" viewBox="0 0 24 24" style={{ position: 'relative' }}>
-                  <path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.9l1.2-6.6L2.5 9.9l6.6-.9z" fill="url(#lpGold)" />
-                </svg>
+                <GoldGlyph size={14} d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.9l1.2-6.6L2.5 9.9l6.6-.9z" />
                 <span className="lp-plan__chip-label">Premium</span>
               </div>
               <div className="lp-plan__price"><b>{t.priceP}</b><span>{t.perMonth}</span></div>
@@ -895,9 +918,7 @@ export default function LandingPage() {
             <div className="lp-plan lp-plan--pro lp-reveal">
               <div className="lp-plan__chip lp-plan__chip--pro">
                 <span className="lp-plan__shine lp-plan__shine--gold" />
-                <svg width="15" height="15" viewBox="0 0 24 24" style={{ position: 'relative' }}>
-                  <path d="M3 8l4.5 3L12 4l4.5 7L21 8l-1.8 10.5H4.8L3 8z" fill="url(#lpGold)" strokeLinejoin="round" />
-                </svg>
+                <GoldGlyph size={15} d="M3 8l4.5 3L12 4l4.5 7L21 8l-1.8 10.5H4.8L3 8z" />
                 <span className="lp-plan__chip-label lp-plan__chip-label--gold">Pro</span>
               </div>
               <div className="lp-plan__price"><b>{t.pricePro}</b><span>{t.perMonth}</span></div>
@@ -957,7 +978,7 @@ export default function LandingPage() {
           <h2 className="lp-final__title">{t.ctaTitle}</h2>
           <p className="lp-final__body">{t.ctaBody}</p>
           <button className="lp-final__cta" onClick={() => startSignup('free')}>
-            {t.ctaBtn} <span style={{ fontSize: 18 }}>→</span>
+            {t.ctaBtn} <CtaArrow size={18} />
           </button>
         </div>
       </section>
