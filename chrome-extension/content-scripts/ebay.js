@@ -782,7 +782,21 @@ function dumpSpecificRow(labelBtn) {
 function readAspectDisplayValue(labelBtn) {
   const field = labelBtn.closest('[class*="summary__attributes--field"]');
   const display = field?.querySelector('[class*="summary__attributes--value"] [class*="textual-display"]');
-  return (display?.textContent ?? "").trim().replace(/^Tendances$/i, "");
+  const staticVal = (display?.textContent ?? "").trim().replace(/^Tendances$/i, "");
+  if (staticVal) return staticVal;
+  // ⚠️ VARIANTE « PILLS » (autopsiée sur le VRAI job du 2026-07-15,
+  // catégorie 51581 Robes Fille, aspect Département) : ni bouton-valeur
+  // (se-expand-button/fake-menu-button — specificRow retourne null), ni
+  // texte statique — la ligne expose des boutons
+  // `button.summary__attributes--pill` (« Fille », « Enfant unisexe ») et
+  // la valeur est la pill ACTIVE (`summary__attributes--pill-active`).
+  // eBay avait PRÉ-SÉLECTIONNÉ « Fille » depuis la catégorie genrée, mais
+  // le lecteur ne connaissait pas cette variante → « Département lu VIDE »
+  // → publication bloquée à tort sur un champ en réalité rempli. Aucune
+  // pill active → champ réellement vide, on retourne "" comme avant.
+  const scope = field ?? labelBtn.closest("li, .se-field, .field");
+  const activePill = scope?.querySelector('button[class*="summary__attributes--pill-active"]');
+  return (activePill?.textContent ?? "").trim();
 }
 
 // ── Constat des obligatoires non remplis (2026-07-11) ───────────────────────
