@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
 
 // Valide un achat IAP CONSUMABLE (pack de pièces) et crédite le wallet via
 // credit_purchased_coins (idempotent sur la ref de transaction store).
@@ -28,6 +29,75 @@ const COIN_PRODUCTS: Record<string, number> = {
   "app.fillsell.coins.460": 460,
   "app.fillsell.coins.1150": 1300,
 };
+
+// ── Vérification JWS StoreKit 2 (App Store Server API v2) ────────────────────
+// Sur appareil réel, le plugin ne fournit souvent qu'un `jwsRepresentation`
+// (transaction signée), pas le reçu classique. On le vérifie cryptographiquement,
+// avec le MÊME helper éprouvé que apple-iap-webhook (copié tel quel volontairement
+// plutôt que partagé : chaque edge function se déploie isolément). Toute anomalie
+// lève → l'appelant doit traiter la requête comme falsifiée.
+//
+// SHA-256 du fingerprint de l'Apple Root CA - G3 (valide 2014–2039).
+const APPLE_ROOT_CA_G3_SHA256 = "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179";
+
+function b64ToUint8(b64: string): Uint8Array {
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+function b64urlToUint8(b64url: string): Uint8Array {
+  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64.padEnd(b64.length + (4 - (b64.length % 4)) % 4, "=");
+  return b64ToUint8(padded);
+}
+function toHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function verifyAndDecodeJWS(jws: string): Promise<Record<string, unknown>> {
+  const parts = jws.split(".");
+  if (parts.length !== 3) throw new Error("Invalid JWS format");
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  const header = JSON.parse(
+    new TextDecoder().decode(b64urlToUint8(headerB64))
+  ) as { alg?: string; x5c?: string[] };
+  if (header.alg !== "ES256") throw new Error(`Unexpected JWS algorithm: ${header.alg}`);
+
+  const x5c = header.x5c;
+  if (!Array.isArray(x5c) || x5c.length < 2) {
+    throw new Error("x5c must contain at least 2 certificates");
+  }
+
+  // x5c uses standard base64 (not base64url)
+  const certs = x5c.map((b64) => new x509.X509Certificate(b64ToUint8(b64)));
+  const leaf = certs[0];
+  const root = certs[certs.length - 1];
+
+  // 1 — empreinte du root CA == Apple Root CA G3
+  const rootHex = toHex(await root.getThumbprint("SHA-256"));
+  if (rootHex !== APPLE_ROOT_CA_G3_SHA256) {
+    throw new Error(`Root CA fingerprint mismatch: got ${rootHex}`);
+  }
+  // 2 — chaîne de certificats : chaque cert signé par le suivant
+  for (let i = 0; i < certs.length - 1; i++) {
+    const valid = await certs[i].verify({ publicKey: certs[i + 1] });
+    if (!valid) throw new Error(`Certificate chain broken at position ${i}`);
+  }
+  // 3 — signature JWS avec la clé publique du leaf (ECDSA P-256)
+  const leafKey = await crypto.subtle.importKey(
+    "spki", leaf.publicKey.rawData,
+    { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]
+  );
+  const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const valid = await crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    leafKey, b64urlToUint8(signatureB64), signingInput
+  );
+  if (!valid) throw new Error("JWS signature verification failed");
+
+  return JSON.parse(new TextDecoder().decode(b64urlToUint8(payloadB64)));
+}
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {
   const res = await fetch(url, {
@@ -101,30 +171,56 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { platform, productId, receipt, purchaseToken } = await req.json();
+    const { platform, productId, receipt, jwsRepresentation, purchaseToken } = await req.json();
     const coins = COIN_PRODUCTS[productId as string];
     if (!coins) return json({ error: "unknown_product", productId }, 400);
 
     let ref: string | null = null;
 
     if (platform === "ios") {
-      if (!receipt) return json({ error: "missing_receipt" }, 400);
-      let appleData = await verifyWithApple(receipt, "https://buy.itunes.apple.com/verifyReceipt");
-      // 21007 = reçu sandbox envoyé en prod → retenter sur sandbox
-      if (appleData.status === 21007) {
-        appleData = await verifyWithApple(receipt, "https://sandbox.itunes.apple.com/verifyReceipt");
+      if (receipt) {
+        // ── Chemin LEGACY : reçu App Store classique (verifyReceipt) ──
+        let appleData = await verifyWithApple(receipt, "https://buy.itunes.apple.com/verifyReceipt");
+        // 21007 = reçu sandbox envoyé en prod → retenter sur sandbox
+        if (appleData.status === 21007) {
+          appleData = await verifyWithApple(receipt, "https://sandbox.itunes.apple.com/verifyReceipt");
+        }
+        if (appleData.status !== 0) {
+          return json({ error: "apple_validation_failed", status: appleData.status }, 400);
+        }
+        // Consumable : chercher la transaction la plus récente du produit dans le reçu
+        const inApp: any[] = appleData.receipt?.in_app ?? [];
+        const matches = inApp
+          .filter((t) => t.product_id === productId)
+          .sort((a, b) => Number(b.purchase_date_ms ?? 0) - Number(a.purchase_date_ms ?? 0));
+        const tx = matches[0];
+        if (!tx?.transaction_id) return json({ error: "product_not_in_receipt", productId }, 400);
+        ref = `apple:${tx.transaction_id}`;
+      } else if (jwsRepresentation) {
+        // ── Chemin StoreKit 2 : transaction signée JWS (App Store Server API v2) ──
+        // Le transaction_id extrait est IDENTIQUE à celui du reçu legacy pour le
+        // même achat → la réf idempotente apple:<txid> reste cohérente entre les
+        // deux chemins (pas de double crédit si un achat repasse par l'autre voie).
+        let tx: Record<string, unknown>;
+        try {
+          tx = await verifyAndDecodeJWS(jwsRepresentation as string);
+        } catch (e) {
+          const m = e instanceof Error ? e.message : String(e);
+          console.error("[validate-coin-purchase] JWS invalide:", m);
+          return json({ error: "jws_validation_failed" }, 400);
+        }
+        if (tx.bundleId !== PACKAGE_NAME) {
+          return json({ error: "bundle_mismatch", bundleId: tx.bundleId }, 400);
+        }
+        if (tx.productId !== productId) {
+          return json({ error: "product_mismatch", productId: tx.productId }, 400);
+        }
+        const transactionId = tx.transactionId as string | undefined;
+        if (!transactionId) return json({ error: "jws_no_transaction_id" }, 400);
+        ref = `apple:${transactionId}`;
+      } else {
+        return json({ error: "missing_receipt" }, 400);
       }
-      if (appleData.status !== 0) {
-        return json({ error: "apple_validation_failed", status: appleData.status }, 400);
-      }
-      // Consumable : chercher la transaction la plus récente du produit dans le reçu
-      const inApp: any[] = appleData.receipt?.in_app ?? [];
-      const matches = inApp
-        .filter((t) => t.product_id === productId)
-        .sort((a, b) => Number(b.purchase_date_ms ?? 0) - Number(a.purchase_date_ms ?? 0));
-      const tx = matches[0];
-      if (!tx?.transaction_id) return json({ error: "product_not_in_receipt", productId }, 400);
-      ref = `apple:${tx.transaction_id}`;
     } else if (platform === "android") {
       if (!purchaseToken) return json({ error: "missing_purchase_token" }, 400);
       const accessToken = await getGoogleAccessToken();
