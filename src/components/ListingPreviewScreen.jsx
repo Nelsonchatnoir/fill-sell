@@ -1522,7 +1522,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null }) {
   const { t } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
@@ -1595,6 +1595,30 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
       {vintedGenreBlocked && (
         <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
           {t("vintedGenreRequired")}
+        </div>
+      )}
+
+      {/* B1 (2026-07-16) : la liste COMPLÈTE des obligatoires eBay de la
+          catégorie résolue, AVANT le clic Publier — plus de « Longueur de
+          la robe » découverte via l'échec du job. Présence seule (la
+          validation allowedValues reste à la garde du publish). */}
+      {ebayRequiredStatus && ebayRequiredStatus.length > 0 && (
+        <div style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
+          <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>{t("stepPublishEbayRequiredTitle")}</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {ebayRequiredStatus.map(({ name, state }) => (
+              <span key={name} style={{
+                padding:"3px 9px", borderRadius:10, fontSize:12,
+                background: state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : "#FEF2F2",
+                border: `1px solid ${state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : "#FECACA"}`,
+                color: state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : "#B91C1C",
+              }}>
+                {state === "ok" ? "✓ " : state === "missing" ? "✗ " : ""}{name}
+                {state === "prefilled" ? ` — ${t("stepPublishEbayAspectPrefilled")}` : ""}
+                {state === "missing" ? ` — ${t("stepPublishEbayAspectMissing")}` : ""}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2379,6 +2403,64 @@ export default function ListingPreviewScreen({
     return !getVintedCategoryPath(icon, g);
   }, [selected, edited, initialListing]);
 
+  // ── Aspects obligatoires eBay AVANT publication (B1, 2026-07-16) ──────────
+  // Cas réel déclencheur : « Longueur de la robe » (obligatoire sur Robes,
+  // AUCUNE source app) n'apparaissait qu'APRÈS le clic Publier, via l'échec
+  // du job. Dès que la catégorie eBay est résolue, on lit ses aspects
+  // required=true (même table que la garde) et on les affiche avec leur état.
+  // Présence seule ici (la validation contre allowedValues reste à la garde
+  // du publish, plus stricte) ; Département/Type/Style sont marqués
+  // « pré-remplis par eBay » — vérifié en session réelle, eBay les pose
+  // depuis la catégorie/le titre (Département en pills pré-actives).
+  const ebayPreviewCategoryId = useMemo(() => {
+    if (!selected.has("ebay") || !edited.ebay) return null;
+    const pf = edited.ebay.platform_fields ?? {};
+    const icon = resolveArticleIcon({ initialListing, edited, pf });
+    return getEbayCategoryId(icon, pf.genre) ?? null;
+  }, [selected, edited, initialListing]);
+  const [ebayRequiredPreview, setEbayRequiredPreview] = useState(null);
+  useEffect(() => {
+    if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("ebay_item_aspects")
+          .select("aspects")
+          .eq("category_id", String(ebayPreviewCategoryId))
+          .limit(1)
+          .maybeSingle();
+        if (!alive) return;
+        const names = (data?.aspects ?? [])
+          .filter(a => a?.required === true && a?.name)
+          .map(a => a.name);
+        setEbayRequiredPreview(names.length ? names : null);
+      } catch { if (alive) setEbayRequiredPreview(null); }
+    })();
+    return () => { alive = false; };
+  }, [ebayPreviewCategoryId]);
+  const ebayRequiredStatus = useMemo(() => {
+    if (!ebayRequiredPreview || !edited.ebay) return null;
+    const pf = edited.ebay.platform_fields ?? {};
+    // Mêmes correspondances que la garde du publish + Modèle/Capacité de
+    // stockage (remplis par ebay.js depuis les champs High-Tech).
+    const sources = [
+      { labels: ["Marque"], get: () => pf.marque },
+      { labels: ["Taille", "Pointure EU", "Pointure"], get: () => pf.taille },
+      { labels: ["Couleur"], get: () => pf.colors?.[0] || pf.couleur },
+      { labels: ["Matière", "Matériau", "Matériaux"], get: () => pf.matiere },
+      { labels: ["Modèle"], get: () => pf.modele },
+      { labels: ["Capacité de stockage"], get: () => pf.stockage },
+    ];
+    const PREFILLED_BY_EBAY = ["Département", "Type", "Style"];
+    return ebayRequiredPreview.map(name => {
+      const src = sources.find(s => s.labels.includes(name));
+      if (src && String(src.get() ?? "").trim()) return { name, state: "ok" };
+      if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled" };
+      return { name, state: "missing" };
+    });
+  }, [ebayRequiredPreview, edited]);
+
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
@@ -3055,6 +3137,7 @@ export default function ListingPreviewScreen({
             onSharedFieldChange={setSharedField}
             sharedChildAxes={sharedChildAxes}
             vintedGenreBlocked={vintedGenreBlocked}
+            ebayRequiredStatus={ebayRequiredStatus}
           />
         )}
       </div>
