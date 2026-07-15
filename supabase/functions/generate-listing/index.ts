@@ -376,6 +376,12 @@ serve(async (req) => {
         it.titre && `Article: ${it.titre}`,
         it.type && `Type: ${it.type}`,
         it.description && `Description: ${it.description}`,
+        // attributs_visibles de lens-analysis (Phase 2) : valeurs LUES sur
+        // l'article en photo (nom de parfum, volume, MPN, dimensions…) —
+        // la source la plus fiable pour ces aspects. Absent tant que
+        // lens-analysis n'est pas redéployée (gated).
+        it.attributs && typeof it.attributs === "object" && Object.keys(it.attributs).length &&
+          `Attributs lus sur l'article (photos): ${JSON.stringify(it.attributs)}`,
       ].filter(Boolean).join("\n");
       if (!ctx || !wanted.length) return json({ aspects: {} });
       const lines = wanted.map((a: { name: string; allowedValues?: string[] }) => {

@@ -2495,6 +2495,9 @@ export default function ListingPreviewScreen({
               marque:      src.platform_fields?.marque || initialListing?.marque || null,
               description: src.description || initialListing?.description || null,
               type:        initialListing?.categorie || null,
+              // attributs_visibles de lens-analysis (Phase 2) — null tant
+              // que la fonction n'est pas redéployée (deploy gated).
+              attributs:   initialListing?.attributs_visibles ?? null,
             },
           },
         });
