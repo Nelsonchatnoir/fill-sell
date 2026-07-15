@@ -42,12 +42,18 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
     // docs/leboncoin-form-survey.md) et n'a jamais été relevée ailleurs. Le
     // handler rapproche la valeur par cascade fuzzy et remonte un warning si
     // rien ne matche — on ne fige pas une liste qu'on n'a pas crawlée.
-    // Taille dans la DESCRIPTION (2026-07-11) : le formulaire Leboncoin n'a
-    // pas de champ Taille structuré (volontaire, il n'existe pas côté LBC) et
-    // ce schéma n'en a jamais eu — l'IA ne la produisait donc nulle part, et
-    // l'acheteur d'un vêtement n'avait AUCUN moyen de connaître la taille
-    // sans écrire au vendeur. La consigne ci-dessous demande la taille en
-    // texte libre dans la description, sans toucher au schéma JSON.
+    // Taille Leboncoin — CORRECTIF 2026-07-15 : l'affirmation du 2026-07-11
+    // (« le formulaire Leboncoin n'a pas de champ Taille structuré ») est
+    // FAUSSE. Relevé DOM réel (docs/sizes-baby-child-raw.txt) : la catégorie
+    // Famille > Vêtements bébé expose un champ Taille structuré
+    // (« Prématuré / 44 cm » → « 36 mois / 98 cm ») et Mode > Vêtements
+    // expose Univers* + Taille dont la grille DÉPEND de l'Univers
+    // (Enfant/Fille/Garçon → « 3 ans / 98 cm » … « 18 ans / 182 cm + » ;
+    // univers adulte → grille adulte). La consigne « taille dans la
+    // description » ci-dessous reste VOLONTAIREMENT : la taille en clair
+    // aide l'acheteur quel que soit le champ, et le remplissage du champ
+    // structuré relève de leboncoin.js (chantier tailles enfant), pas de ce
+    // prompt.
     system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état, le format colis, la marque et la matière depuis le contexte article. Si l'article est un vêtement, une chaussure ou un accessoire porté (où une taille a du sens) ET SEULEMENT si sa taille est réellement lisible ou déductible du contexte article (étiquette, mention dans le titre ou la description), mentionne-la EXPLICITEMENT dans le texte de la description (ex: "Taille M", "Pointure 38") — Leboncoin n'a pas de champ Taille, la description est le seul endroit où l'acheteur peut la lire. Si aucune taille ne figure dans le contexte, n'écris strictement RIEN sur la taille : n'invente JAMAIS une taille ("Taille M" sans source dans le contexte est une erreur grave), pas de placeholder non plus. Aucune mention de taille non plus si elle ne s'applique pas à l'objet (électronique, déco, jouet...). Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Leboncoin — "État neuf" et "État satisfaisant", jamais "Neuf" ni "État correct"). Pour "univers" (rayon Mode/accessoires), choisis la cible de l'article: pour TOUT article de mode (vêtement, chaussure, accessoire, montre, sac, bijou), réponds TOUJOURS une valeur — jamais null — en tranchant Femme/Homme/Enfant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle), et "Mixte" (rayon accepté par Leboncoin) seulement si aucun signal n'existe. null est réservé aux objets hors mode. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Pour "matiere", donne la matière DOMINANTE de l'article en un seul mot courant (ex: "Acier", "Cuir", "Coton", "Plastique", "Bois") — jamais de valeur composée ("Résine et acier" est invalide, choisis la dominante) ; null si la matière ne s'applique pas ou n'est pas déductible. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"État neuf|Très bon état|Bon état|État satisfaisant|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini","univers":"Femme|Homme|Enfant|Mixte|null","marque":"...ou null","matiere":"...ou null"}}`,
   },
   beebs: {
