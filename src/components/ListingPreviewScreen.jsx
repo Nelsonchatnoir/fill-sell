@@ -2447,8 +2447,8 @@ export default function ListingPreviewScreen({
     const sources = [
       { labels: ["Marque"], get: () => pf.marque },
       { labels: ["Taille", "Pointure EU", "Pointure"], get: () => pf.taille },
-      { labels: ["Couleur"], get: () => pf.colors?.[0] || pf.couleur },
-      { labels: ["Matière", "Matériau", "Matériaux"], get: () => pf.matiere },
+      { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], get: () => pf.colors?.[0] || pf.couleur },
+      { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], get: () => pf.matiere },
       { labels: ["Modèle"], get: () => pf.modele },
       { labels: ["Capacité de stockage"], get: () => pf.stockage },
     ];
@@ -2456,6 +2456,7 @@ export default function ListingPreviewScreen({
     return ebayRequiredPreview.map(name => {
       const src = sources.find(s => s.labels.includes(name));
       if (src && String(src.get() ?? "").trim()) return { name, state: "ok" };
+      if (String(pf.ebayAspects?.[name] ?? "").trim()) return { name, state: "ok" };
       if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled" };
       return { name, state: "missing" };
     });
@@ -2803,11 +2804,14 @@ export default function ListingPreviewScreen({
         const pfE = ebayRow.platform_fields;
         // Valeurs telles que l'EXTENSION les enverra (mêmes transformations
         // que ebay.js : strip "EU " sur la taille, colors[0] prioritaire).
+        // Alias Mode (audit Phase 0) : monture/extérieure/doublure = nos
+        // couleur/matière — mêmes listes que ebay.js, la garde doit juger
+        // exactement ce que l'extension enverra.
         const knownAspects = [
           { labels: ["Marque"], value: () => pfE.marque },
           { labels: ["Taille", "Pointure EU", "Pointure"], value: () => String(pfE.taille ?? "").replace(/^EU\s*/i, "") },
-          { labels: ["Couleur"], value: () => pfE.colors?.[0] || pfE.couleur },
-          { labels: ["Matière", "Matériau", "Matériaux"], value: () => pfE.matiere },
+          { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], value: () => pfE.colors?.[0] || pfE.couleur },
+          { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], value: () => pfE.matiere },
         ];
         // Même normalisation que normalizeFuzzy de ebay.js — la garde doit
         // accepter exactement ce que l'extension rapprochera au remplissage.
@@ -2841,8 +2845,12 @@ export default function ListingPreviewScreen({
         const invalidMessages = [];
         for (const aspect of ebayRequiredFull) {
           const known = knownAspects.find(k => k.labels.includes(aspect.name));
-          if (!known) continue; // pas de mapping → canal unfilledRequired de l'extension
-          const val = String(known.value() ?? "").trim();
+          // Canal générique (chantier champs obligatoires) : pf.ebayAspects
+          // porte les obligatoires sans champ dédié (resolve_aspects +
+          // fallback UI) — validés ici comme les champs connus.
+          const genericVal = String(pfE.ebayAspects?.[aspect.name] ?? "").trim();
+          if (!known && !genericVal) continue; // pas de source → canal unfilledRequired de l'extension
+          const val = known ? String(known.value() ?? "").trim() || genericVal : genericVal;
           if (!val) { missingEmpty.push(aspect.name); continue; }
           const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
           const closedList = allowed.length &&

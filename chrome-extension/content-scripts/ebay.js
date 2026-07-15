@@ -485,12 +485,39 @@ async function fillListingForm(job) {
   if (taille) {
     await fillSpecificTracked(["Taille", "Pointure EU", "Pointure"], taille);
   }
+  // Variantes de labels Mode (audit Phase 0 du 2026-07-16, docs/
+  // ebay-required-aspects-audit.md) : 21 des 24 trous Mode sont des ALIAS
+  // d'aspects dont la donnée existe déjà — « Couleur de la monture »
+  // (lunettes), « Couleur extérieure » (sacs à main) sont notre couleur ;
+  // « Matière de la couche extérieure » (chaussures), « Matière doublure
+  // externe » (manteaux), « Matière extérieure » (sacs) sont notre matière.
+  // fillSpecificSafe s'arrête au PREMIER label trouvé sur la page : une
+  // catégorie n'expose jamais deux de ces variantes à la fois (vérifié dans
+  // le référentiel — aucune catégorie ne requiert Couleur ET Couleur de la
+  // monture).
   const couleur = fields.colors?.[0] || fields.couleur;
   if (couleur) {
-    await fillSpecificTracked(["Couleur"], couleur);
+    await fillSpecificTracked(["Couleur", "Couleur de la monture", "Couleur extérieure"], couleur);
   }
   if (fields.matiere) {
-    await fillSpecificTracked(["Matière", "Matériau", "Matériaux"], fields.matiere);
+    await fillSpecificTracked(
+      ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"],
+      fields.matiere
+    );
+  }
+
+  // ── Aspects génériques (chantier champs obligatoires, 2026-07-16) ─────────
+  // pf.ebayAspects = { "<nom d'aspect eBay exact>": "valeur" } — posé par
+  // l'app (mode resolve_aspects de generate-listing + fallback UI) pour les
+  // obligatoires SANS champ dédié (Nom de parfum, Volume, Hauteur, Numéro de
+  // pièce fabricant…). Remplissage par le même chemin vérifié que les champs
+  // connus (chip → toggles/pills → menu → saisie libre FREE_TEXT).
+  if (fields.ebayAspects && typeof fields.ebayAspects === "object") {
+    for (const [aspectName, aspectValue] of Object.entries(fields.ebayAspects)) {
+      const v = String(aspectValue ?? "").trim();
+      if (!v || v.toLowerCase() === "null") continue;
+      await fillSpecificTracked([aspectName], v);
+    }
   }
 
   // ── État ──────────────────────────────────────────────────────────────────
