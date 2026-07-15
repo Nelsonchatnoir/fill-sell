@@ -241,13 +241,15 @@
   color: var(--lp-muted); max-width: 520px; margin: 0 0 30px;
 }
 .lp-hero__ctas { display: flex; gap: 13px; flex-wrap: wrap; align-items: center; }
-/* La ligne de confiance passe souvent sur 2 lignes sur iPhone : avec
-   align-items:center la gemme se centrait sur le bloc de 2 lignes et « flottait »
-   au-dessus du texte. On aligne la gemme sur la PREMIÈRE ligne (flex-start) et on
-   la descend de 2px pour l'optiquement centrer sur cette ligne. */
-.lp-hero__trust { display: flex; align-items: flex-start; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+/* La phrase passe sur 2 lignes sur iPhone. AVEC flex-wrap:wrap, le <span>
+   (flex-basis auto = très large) ne tenait pas à côté de la gemme et basculait
+   ENTIÈREMENT sur la ligne suivante → gemme seule sur sa ligne, texte dessous.
+   Sans flex-wrap (nowrap), la gemme et le span restent sur la même ligne flex :
+   le span rétrécit (flex-shrink + min-width:0) et enroule son texte À CÔTÉ de la
+   gemme, qui reste alignée sur la 1re ligne (flex-start + 2px de nudge optique). */
+.lp-hero__trust { display: flex; align-items: flex-start; gap: 10px; margin-top: 24px; }
 .lp-hero__trust > svg { flex-shrink: 0; margin-top: 2px; }
-.lp-hero__trust span { font-weight: 500; font-size: 13.5px; line-height: 1.4; color: var(--lp-dim); }
+.lp-hero__trust span { font-weight: 500; font-size: 13.5px; line-height: 1.4; color: var(--lp-dim); min-width: 0; }
 /* Badges officiels App Store / Google Play, calés sur la même hauteur de bouton.
    Apple sert un SVG détouré (126.5x40) : à 48px de haut, le bouton fait 48px.
    Google sert un PNG 646x250 dont le bouton ne fait que 192px de haut — 29px de
