@@ -391,7 +391,10 @@ async function fillListingForm(job) {
       '#size, [data-testid="category-size-single-grid-input"]',
       '[data-testid^="size-group-"]',
       String(fields.taille).replace(/^EU\s*/i, ""),
-      warnings
+      warnings,
+      // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
+      // 98 cm » par contenance, ni « 36 mois » l'option adulte « 36 ».
+      { sizeField: true }
     );
   }
   if (fields.etat) {
@@ -1119,7 +1122,18 @@ function containsAsWords(hay, needle) {
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
 }
 
-function findOptionCascade(root, optionSelector, text) {
+// ── Garde anti-nombre-nu (2026-07-15, chantier tailles enfant) ──────────────
+// Sur un champ TAILLE uniquement (opts.sizeField) : la grille enfant Vinted
+// est une chaîne combinée qui CONTIENT des nombres nus (« 3 ans / 98 cm » ⊃
+// « 3 ») et les tailles adultes/pointures sont des nombres nus CONTENUS dans
+// ces chaînes. Sans garde, la cascade peut poser une taille FAUSSE en
+// silence dans les deux sens. Règle : pour un nombre nu, seul l'EXACT fait
+// foi (l'exact-par-segment « M / 38 / 10 » reste un exact) — tout match par
+// CONTENANCE dont le côté contenu est purement numérique est rejeté (champ
+// laissé vide avec warning, jamais faux). Les autres champs sont inchangés.
+const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+
+function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
     .filter((o) => o.norm);
@@ -1132,9 +1146,11 @@ function findOptionCascade(root, optionSelector, text) {
   );
   if (exact) return { ...exact, stage: "exact" };
 
+  const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
+
   const optionInTarget = (t) =>
     options
-      .filter((o) => containsAsWords(t, o.norm))
+      .filter((o) => containsAsWords(t, o.norm) && sizeGuardOk(o.norm))
       .sort((a, b) => b.norm.length - a.norm.length)[0];
 
   // 2. option contenue dans la valeur (mots entiers, option la plus longue)
@@ -1145,7 +1161,7 @@ function findOptionCascade(root, optionSelector, text) {
   // courte = la plus proche de la valeur) : "unique" → "Taille unique"
   const targetInOption = (t) =>
     options
-      .filter((o) => containsAsWords(o.norm, t))
+      .filter((o) => containsAsWords(o.norm, t) && sizeGuardOk(t))
       .sort((a, b) => a.norm.length - b.norm.length)[0];
   const inverse = targetInOption(target);
   if (inverse) return { ...inverse, stage: "fuzzy-inverse" };
@@ -1155,6 +1171,7 @@ function findOptionCascade(root, optionSelector, text) {
   const components = target.split(/\s+et\s+|[,&+/]/).map((c) => c.trim()).filter(Boolean);
   if (components.length > 1) {
     for (const comp of components) {
+      if (sizeField && PURE_NUMBER_RE.test(comp)) continue; // fragment numérique nu : jamais fiable pour une taille
       const compExact = options.find((o) => o.norm === comp);
       if (compExact) return { ...compExact, stage: "composant" };
       const compFuzzy = optionInTarget(comp) || targetInOption(comp);
@@ -1164,11 +1181,11 @@ function findOptionCascade(root, optionSelector, text) {
   return null;
 }
 
-async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000) {
+async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000, opts = {}) {
   const start = Date.now();
   let lastOptions = [];
   while (Date.now() - start < timeoutMs) {
-    const found = findOptionCascade(document, optionSelector, text);
+    const found = findOptionCascade(document, optionSelector, text, opts);
     if (found) return found;
     lastOptions = Array.from(document.querySelectorAll(optionSelector))
       .map((o) => o.textContent.trim()).filter(Boolean);
@@ -1254,10 +1271,10 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
 // matching en cascade ET jamais bloquante — un libellé IA sans équivalent
 // Vinted saute le champ avec un warning au lieu de faire échouer le job
 // entier (le champ restera vide, corrigeable à la main avant publication).
-async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings) {
+async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings, opts = {}) {
   try {
     await openDropdown(triggerSelector);
-    const match = await waitForOptionCascade(optionSelector, rawText);
+    const match = await waitForOptionCascade(optionSelector, rawText, 5000, opts);
     await humanPause(); // temps de "lecture" de la liste avant le clic
     match.el.click();
     await humanPause();

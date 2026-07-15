@@ -825,6 +825,11 @@ function computeUnfilledRequired(fields, filledSpecifics, warnings = []) {
 
 async function fillSpecificSafe(labels, rawValue, warnings) {
   const fieldName = labels[0].toLowerCase();
+  // Champ taille/pointure : active la garde anti-nombre-nu de la cascade
+  // (cf. findOptionCascade). Calculé sur les labels DEMANDÉS (["Taille",
+  // "Pointure EU", "Pointure"]) — « Type de taille »/« Tour de taille » ne
+  // passent jamais par cette liste.
+  const sizeField = labels.some((l) => /^(taille|pointure)/i.test(l));
   try {
     await dismissLightboxes();
     const found = findSpecificLabelButton(labels);
@@ -881,7 +886,7 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     // jamais le fait d'avoir cliqué. La 2e pose ignore la chip et passe par
     // le menu, le chemin le plus explicite.
     for (let attempt = 1; attempt <= 2; attempt++) {
-      await setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip: attempt > 1 });
+      await setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip: attempt > 1, sizeField });
       // 8 s : l'onglet de travail est caché, le commit React qui affiche la
       // valeur est différé par le throttling (observé en session réelle
       // 2026-07-12 : toggle Taille cliqué → valeur "M" visible ~1-2 s plus
@@ -916,7 +921,7 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
 // seule : la vérification par relecture vit dans fillSpecificSafe. Jette sur
 // les cas sans issue (option absente du référentiel de la page, menu pas
 // ouvert), que la relance ne réparerait pas.
-async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip = false } = {}) {
+async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip = false, sizeField = false } = {}) {
   // Fast-path 1 : chip "Fréquemment sélectionnées" qui matche exactement —
   // un clic, pas de menu, pas de frappe (précieux aussi parce que l'onglet
   // de travail est en arrière-plan : les timers y sont bridés à 1 s).
@@ -937,7 +942,7 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
   // toggles, pas de dropdown.
   const toggles = [...anatomy.row.querySelectorAll("button.se-toggle-button-group__toggle-button, .toggle-button")];
   if (toggles.length) {
-    const match = findOptionCascade(anatomy.row, "button.se-toggle-button-group__toggle-button, .toggle-button", String(rawValue));
+    const match = findOptionCascade(anatomy.row, "button.se-toggle-button-group__toggle-button, .toggle-button", String(rawValue), { sizeField });
     if (!match) {
       throw new Error(
         `option "${rawValue}" absente du groupe de toggles. Options: ` +
@@ -1018,11 +1023,14 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
   }
 
   const optionSelector = '[role="menuitemradio"], [role="menuitemcheckbox"], .menu__item';
-  let match = findOptionCascade(menu, optionSelector, String(rawValue));
-  if (!match && search) {
+  let match = findOptionCascade(menu, optionSelector, String(rawValue), { sizeField });
+  if (!match && search && !sizeField) {
     // Aucune option : valeur libre — eBay matérialise la saisie comme
     // première entrée du menu une fois tapée ; on re-scanne sans filtre
     // de cascade (n'importe quelle option contenant la saisie exacte).
+    // JAMAIS pour une taille (sizeField) : les listes Taille/Pointure sont
+    // fermées, et « 36 » tapé s'inclurait dans « 36 mois » — précisément la
+    // collision que la garde anti-nombre-nu interdit.
     const typed = [...menu.querySelectorAll(optionSelector)]
       .find((o) => normalizeFuzzy(o.textContent).includes(normalizeFuzzy(String(rawValue))));
     if (typed) match = { el: typed, label: typed.textContent.trim(), stage: "saisie-libre" };
@@ -1342,7 +1350,17 @@ function containsAsWords(hay, needle) {
 // que l'option "L" existait. Un exact = la valeur ENTIÈRE de l'option, rien
 // d'autre ; si "L" n'existe pas, les stages fuzzy prennent le relais (avec
 // warning, donc jamais en silence).
-function findOptionCascade(root, optionSelector, text) {
+// ── Garde anti-nombre-nu (2026-07-15, chantier tailles enfant) ──────────────
+// Sur un champ TAILLE/POINTURE uniquement (opts.sizeField) : les listes eBay
+// mélangent nombres nus (cm 62-176, pointures 15-40) et libellés d'âge
+// (« 2 ans », « 24 mois ») dans le MÊME dropdown — la surface de collision
+// est la plus grande des 4 plateformes. Sans garde, un « 3 » matcherait
+// « 3 ans » (contenance) et « 36 mois » matcherait le cm nu « 36 ». Règle :
+// pour un nombre nu, seul l'EXACT fait foi — contenance à côté contenu
+// purement numérique rejetée. Champs non taille strictement inchangés.
+const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+
+function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
     .filter((o) => o.norm);
@@ -1352,19 +1370,22 @@ function findOptionCascade(root, optionSelector, text) {
   const exact = options.find((o) => o.norm === target);
   if (exact) return { ...exact, stage: "exact" };
 
+  const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
+
   const optionInTarget = (t) =>
-    options.filter((o) => containsAsWords(t, o.norm)).sort((a, b) => b.norm.length - a.norm.length)[0];
+    options.filter((o) => containsAsWords(t, o.norm) && sizeGuardOk(o.norm)).sort((a, b) => b.norm.length - a.norm.length)[0];
   const fuzzy = optionInTarget(target);
   if (fuzzy) return { ...fuzzy, stage: "fuzzy" };
 
   const targetInOption = (t) =>
-    options.filter((o) => containsAsWords(o.norm, t)).sort((a, b) => a.norm.length - b.norm.length)[0];
+    options.filter((o) => containsAsWords(o.norm, t) && sizeGuardOk(t)).sort((a, b) => a.norm.length - b.norm.length)[0];
   const inverse = targetInOption(target);
   if (inverse) return { ...inverse, stage: "fuzzy-inverse" };
 
   const components = target.split(/\s+et\s+|[,&+/]/).map((c) => c.trim()).filter(Boolean);
   if (components.length > 1) {
     for (const comp of components) {
+      if (sizeField && PURE_NUMBER_RE.test(comp)) continue; // fragment numérique nu : jamais fiable pour une taille
       const compExact = options.find((o) => o.norm === comp);
       if (compExact) return { ...compExact, stage: "composant" };
       const compFuzzy = optionInTarget(comp) || targetInOption(comp);

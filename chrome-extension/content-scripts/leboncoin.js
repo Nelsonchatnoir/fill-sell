@@ -352,7 +352,10 @@ async function fillListingForm(job) {
       "taille",
       'label[for$="_size"], label[for="clothing_st"]',
       String(fields.taille).replace(/^EU\s*/i, ""),
-      warnings
+      warnings,
+      // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
+      // 98 cm » par contenance, ni « 36 » l'option « 36 mois / 98 cm ».
+      { sizeField: true }
     );
   }
   if (fields.marque) {
@@ -614,7 +617,7 @@ function findCriterionInput(labelSelector) {
 
 // Cascade v2 (portée de vinted.js) + jamais bloquant. skipIfPrefilled : ne pas
 // écraser un critère que Leboncoin a déjà déduit du titre.
-async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false } = {}) {
+async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false } = {}) {
   try {
     const input = findCriterionInput(labelSelector);
     if (!input) {
@@ -631,7 +634,7 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     const menu = document.getElementById(input.getAttribute("aria-controls"));
     const optionSelector = 'li, [role="option"], button';
     const scope = menu || document;
-    const match = findOptionCascade(scope, optionSelector, rawValue);
+    const match = findOptionCascade(scope, optionSelector, rawValue, { sizeField });
     if (!match) {
       const available = [...scope.querySelectorAll(optionSelector)]
         .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 30);
@@ -1170,9 +1173,22 @@ function containsAsWords(hay, needle) {
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
 }
 
+// ── Garde anti-nombre-nu (2026-07-15, chantier tailles enfant) ──────────────
+// Sur un champ TAILLE/POINTURE uniquement (opts.sizeField) : les grilles
+// enfant LBC sont des chaînes combinées qui CONTIENNENT des nombres nus
+// (« 3 ans / 98 cm » ⊃ « 3 », « 36 mois / 98 cm » ⊃ « 36 ») et les
+// tailles adultes/pointures sont des nombres nus contenus dans ces chaînes.
+// Sans garde, la cascade peut poser une taille FAUSSE en silence dans les
+// deux sens — y compris via le filet singulier/pluriel (« 36 » matchait
+// « 36 mois » une fois « mois » singularisé en « moi »). Règle : pour un
+// nombre nu, seul l'EXACT fait foi (segment de grille compris) — contenance
+// à côté contenu purement numérique rejetée, filet singulier/pluriel
+// désactivé (aucun sens pour une taille). Champs non taille inchangés.
+const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+
 // Cascade v2 identique à vinted.js : exact → option⊂valeur (la plus longue) →
 // valeur⊂option (la plus courte) → composants (et/,/&/+) → null.
-function findOptionCascade(root, optionSelector, text) {
+function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
     .filter((o) => o.norm);
@@ -1184,19 +1200,22 @@ function findOptionCascade(root, optionSelector, text) {
   );
   if (exact) return { ...exact, stage: "exact" };
 
+  const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
+
   const optionInTarget = (t) =>
-    options.filter((o) => containsAsWords(t, o.norm)).sort((a, b) => b.norm.length - a.norm.length)[0];
+    options.filter((o) => containsAsWords(t, o.norm) && sizeGuardOk(o.norm)).sort((a, b) => b.norm.length - a.norm.length)[0];
   const fuzzy = optionInTarget(target);
   if (fuzzy) return { ...fuzzy, stage: "fuzzy" };
 
   const targetInOption = (t) =>
-    options.filter((o) => containsAsWords(o.norm, t)).sort((a, b) => a.norm.length - b.norm.length)[0];
+    options.filter((o) => containsAsWords(o.norm, t) && sizeGuardOk(t)).sort((a, b) => a.norm.length - b.norm.length)[0];
   const inverse = targetInOption(target);
   if (inverse) return { ...inverse, stage: "fuzzy-inverse" };
 
   const components = target.split(/\s+et\s+|[,&+/]/).map((c) => c.trim()).filter(Boolean);
   if (components.length > 1) {
     for (const comp of components) {
+      if (sizeField && PURE_NUMBER_RE.test(comp)) continue; // fragment numérique nu : jamais fiable pour une taille
       const compExact = options.find((o) => o.norm === comp);
       if (compExact) return { ...compExact, stage: "composant" };
       const compFuzzy = optionInTarget(comp) || targetInOption(comp);
@@ -1210,6 +1229,9 @@ function findOptionCascade(root, optionSelector, text) {
   // final de chaque mot (normalizeFuzzy a déjà réduit à [a-z0-9]). Ce stage
   // ne s'exécute que là où la cascade échouait déjà (aucun impact sur les
   // matchs existants) — ajouté pour Équipement bébé (Produit*, 2026-07-09).
+  // DÉSACTIVÉ sur les champs taille : « mois » singularisé devient « moi »
+  // et un « 36 » nu matcherait « 36 mois » (garde anti-nombre-nu ci-dessus).
+  if (sizeField) return null;
   const singularize = (s) => s.replace(/([a-z]{2,})s\b/g, "$1");
   const targetSing = singularize(target);
   if (targetSing) {

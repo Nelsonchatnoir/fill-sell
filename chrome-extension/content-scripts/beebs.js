@@ -420,8 +420,8 @@ async function fillListingForm(job) {
   // selon la catégorie — jamais les deux en même temps, on tente les deux et
   // le champ absent est ignoré silencieusement par selectDropdownValue.
   if (fields.taille) {
-    await selectDropdownValue("Pointure", String(fields.taille).replace(/^EU\s*/i, ""), warnings, unfilledRequired);
-    await selectDropdownValue("Taille", fields.taille, warnings, unfilledRequired);
+    await selectDropdownValue("Pointure", String(fields.taille).replace(/^EU\s*/i, ""), warnings, unfilledRequired, { sizeField: true });
+    await selectDropdownValue("Taille", fields.taille, warnings, unfilledRequired, { sizeField: true });
   }
 
   if (fields.etat) await selectDropdownValue("État", fields.etat, warnings, unfilledRequired);
@@ -749,7 +749,20 @@ function optionLabel(el) {
 // même temps — chercher globalement faisait matcher la valeur d'un champ sur
 // les options d'un autre (relevé du 2026-07-09 : 16 boutons visibles à la
 // fois, 10 d'Âge + 6 de Matière).
-function findOptionCascade(els, text) {
+// ── Garde anti-nombre-nu (2026-07-15, chantier tailles enfant) ──────────────
+// Sur un champ TAILLE/POINTURE uniquement (opts.sizeField) : les grilles
+// enfant sont des chaînes combinées qui CONTIENNENT des nombres nus
+// (« 3 ans (94-102 cm) » ⊃ « 3 ») et les tailles adultes/pointures sont des
+// nombres nus CONTENUS dans ces chaînes (« 36 » ⊂ « 36 mois »). Sans garde,
+// la cascade peut poser une taille FAUSSE en silence dans les deux sens.
+// Règle : pour un nombre nu, seul l'EXACT fait foi — tout match par
+// CONTENANCE dont le côté contenu est purement numérique est rejeté (le
+// champ reste alors vide avec warning, jamais faux). « EU 31 » garde son
+// chemin : exact après retrait du préfixe, borné à l'exact. Les champs non
+// taille sont strictement inchangés.
+const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+
+function findOptionCascade(els, text, { sizeField = false } = {}) {
   const options = Array.from(els)
     .map((el) => {
       const label = optionLabel(el);
@@ -762,19 +775,30 @@ function findOptionCascade(els, text) {
   const exact = options.find((o) => o.norm === target);
   if (exact) return { ...exact, stage: "exact" };
 
+  // Pointure « EU 31 » → option « 31 » : exact après préfixe, PAS du fuzzy.
+  if (sizeField) {
+    const stripped = target.replace(/^(?:eu|pointure)\s+/, "");
+    if (stripped !== target) {
+      const exactStripped = options.find((o) => o.norm === stripped);
+      if (exactStripped) return { ...exactStripped, stage: "exact-pointure" };
+    }
+  }
+  const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
+
   const optionInTarget = (t) =>
-    options.filter((o) => containsAsWords(t, o.norm)).sort((a, b) => b.norm.length - a.norm.length)[0];
+    options.filter((o) => containsAsWords(t, o.norm) && sizeGuardOk(o.norm)).sort((a, b) => b.norm.length - a.norm.length)[0];
   const fuzzy = optionInTarget(target);
   if (fuzzy) return { ...fuzzy, stage: "fuzzy" };
 
   const targetInOption = (t) =>
-    options.filter((o) => containsAsWords(o.norm, t)).sort((a, b) => a.norm.length - b.norm.length)[0];
+    options.filter((o) => containsAsWords(o.norm, t) && sizeGuardOk(t)).sort((a, b) => a.norm.length - b.norm.length)[0];
   const inverse = targetInOption(target);
   if (inverse) return { ...inverse, stage: "fuzzy-inverse" };
 
   const components = target.split(/\s+et\s+|[,&+/]/).map((c) => c.trim()).filter(Boolean);
   if (components.length > 1) {
     for (const comp of components) {
+      if (sizeField && PURE_NUMBER_RE.test(comp)) continue; // fragment numérique nu : jamais fiable pour une taille
       const compExact = options.find((o) => o.norm === comp);
       if (compExact) return { ...compExact, stage: "composant" };
       const compFuzzy = optionInTarget(comp) || targetInOption(comp);
@@ -843,7 +867,7 @@ async function closePanel(trigger) {
  *   réussi à lui donner une valeur. Un job ne doit jamais se déclarer réussi
  *   en laissant un champ obligatoire vide (cf. background.js).
  */
-async function selectDropdownValue(labelText, rawText, warnings, unfilledRequired = []) {
+async function selectDropdownValue(labelText, rawText, warnings, unfilledRequired = [], { sizeField = false } = {}) {
   const field = findField(labelText);
   if (!field) return; // champ non affiché pour cette catégorie : rien à signaler
   const { trigger, required } = field;
@@ -858,7 +882,7 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
     return;
   }
 
-  let match = findOptionCascade(options, rawText);
+  let match = findOptionCascade(options, rawText, { sizeField });
 
   // Repli "Autre" : la liste des matières est PAR CATÉGORIE et ne contient pas
   // toutes les matières du monde (Figurines : Plastique | Bois | Caoutchouc |
@@ -867,7 +891,9 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
   // laisser vide un champ obligatoire. On ne l'invente pas : on ne le prend
   // que s'il figure dans les options relevées à l'écran.
   let usedFallback = false;
-  if (!match) {
+  // Jamais de repli « Autre » pour une TAILLE : poser « Autre » à la place
+  // d'une taille absente serait une valeur fausse, pas un bac générique.
+  if (!match && !sizeField) {
     const autre = options.find((el) => normalizeFuzzy(optionLabel(el)) === "autre");
     if (autre) {
       match = { el: autre, label: optionLabel(autre), stage: "repli-autre" };
