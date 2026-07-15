@@ -325,16 +325,24 @@ async function fillListingForm(job) {
     if (!ok) unfilledRequired.push("univers");
   }
   if (fields.lbcProduit) {
-    // Produit* (Équipement bébé, label for="baby_equipment_type") : critère
-    // OBLIGATOIRE dont les options dépendent de l'univers — d'où le passage
-    // APRÈS fillUnivers. Le combobox peut n'être (ré)injecté qu'une fois
-    // l'univers posé : attente courte, puis saisie non bloquante (un échec
-    // remonte en warning et le Continuer raté le transforme en relevé
-    // correctif listant les options réelles). Critère introuvable → warning
-    // EXPLICITE, jamais silencieux (même leçon que l'univers, 2026-07-06).
-    const produitLabel = await waitFor(() => document.querySelector('label[for$="_type"]'), 5000);
+    // Produit* : critère OBLIGATOIRE dont les options dépendent de
+    // l'univers — d'où le passage APRÈS fillUnivers. Le combobox peut
+    // n'être (ré)injecté qu'une fois l'univers posé : attente courte, puis
+    // saisie non bloquante (un échec remonte en warning et le Continuer
+    // raté le transforme en relevé correctif listant les options réelles).
+    // Critère introuvable → warning EXPLICITE, jamais silencieux (même
+    // leçon que l'univers, 2026-07-06).
+    // ⚠️ Le suffixe du label VARIE par catégorie (relevés réels) :
+    //   - Équipement bébé  : for="baby_equipment_type"     → [for$="_type"]
+    //   - Vêtements bébé   : for="baby_clothing_category"  → AUTRE suffixe !
+    // Bug réel du 2026-07-15 (robe salopette, job publié « CHAMPS
+    // MANQUANTS : produit ») : lbcProduit="Robes & Jupes" était bien posé
+    // par l'app, mais [for$="_type"] ne matche pas baby_clothing_category
+    // → timeout 5 s → champ jamais rempli. Relevé DOM du 2026-07-16.
+    const PRODUIT_LABEL_SELECTOR = 'label[for$="_type"], label[for="baby_clothing_category"]';
+    const produitLabel = await waitFor(() => document.querySelector(PRODUIT_LABEL_SELECTOR), 5000);
     if (produitLabel) {
-      const ok = await fillCriterionSafe("produit", 'label[for$="_type"]', fields.lbcProduit, warnings, { skipIfPrefilled: true });
+      const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true });
       if (!ok) unfilledRequired.push("produit");
     } else {
       const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
@@ -348,9 +356,14 @@ async function fillListingForm(job) {
     // pointure" bloque l'aperçu — relevé campagne 2026-07-08, for="shoe_size").
     // Sur Vêtements le critère taille s'appelle "clothing_st" (relevé) et
     // n'est pas obligatoire. Préfixe EU retiré comme sur Vinted/eBay.
+    // Sur Famille > Vêtements bébé, la Taille s'appelle "baby_age" (relevé
+    // DOM 2026-07-16, découvert avec le bug Produit* de la même feuille) —
+    // sans cette entrée, la grille 0-36 mois n'était JAMAIS remplie quand
+    // le titre ne portait pas la taille (l'auto-détection LBC ne se
+    // déclenche que depuis le titre).
     await fillCriterionSafe(
       "taille",
-      'label[for$="_size"], label[for="clothing_st"]',
+      'label[for$="_size"], label[for="clothing_st"], label[for="baby_age"]',
       String(fields.taille).replace(/^EU\s*/i, ""),
       warnings,
       // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
