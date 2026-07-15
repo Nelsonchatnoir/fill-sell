@@ -2179,7 +2179,7 @@ export default function App({ loginOnly = false }){
         const r=await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`,{
           method:'POST',
           headers:{'Content-Type':'application/json','Authorization':`Bearer ${rcToken}`,'apikey':supabaseAnonKey},
-          body:JSON.stringify({platform:'ios',productId:tx.productIdentifier,receipt:tx.receipt}),
+          body:JSON.stringify({platform:'ios',productId:tx.productIdentifier,receipt:tx.receipt,jwsRepresentation:tx.jwsRepresentation}),
         });
         const body=await r.json().catch(()=>({}));
         if(!r.ok||body.error) throw new Error(body.error||`HTTP ${r.status}`);

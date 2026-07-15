@@ -28,8 +28,11 @@ export const COIN_PRODUCT_IDS = [
 export const listenCoinTransactionUpdates = (validate) =>
   NativePurchases.addListener('transactionUpdated', async (tx) => {
     if (!COIN_PRODUCT_IDS.includes(tx?.productIdentifier)) return;
-    if (!tx?.receipt) {
-      console.warn('[IAP] transactionUpdated sans receipt — rattrapage impossible:', tx?.transactionId);
+    // StoreKit 2 : Transaction.updates ne fournit qu'un `jwsRepresentation`, pas
+    // le reçu classique — on accepte donc l'un OU l'autre. Ne bailler que si les
+    // deux manquent (sinon le rattrapage était neutralisé sur appareil réel).
+    if (!tx?.receipt && !tx?.jwsRepresentation) {
+      console.warn('[IAP] transactionUpdated sans receipt ni jws — rattrapage impossible:', tx?.transactionId);
       return;
     }
     try {
@@ -95,10 +98,14 @@ export const purchaseCoins = async (productId, appAccountToken = undefined) => {
     console.log('[IAP] purchaseCoins options:', JSON.stringify(purchaseOptions));
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     console.log('[IAP] purchaseCoins result:', JSON.stringify(result));
-    return { receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
+    // iOS StoreKit 2 : sur appareil réel (TestFlight/App Store), le reçu classique
+    // (appStoreReceiptURL) est fréquemment absent — le plugin ne fournit alors que
+    // `jwsRepresentation`. On remonte les DEUX : validate-coin-purchase valide le
+    // reçu legacy s'il existe, sinon le JWS (App Store Server API v2).
+    return { receipt: result?.receipt ?? null, jwsRepresentation: result?.jwsRepresentation ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
   } catch (e) {
     console.error('[IAP] purchaseCoins error — code:', e?.code, 'message:', e?.message);
-    if (e?.code === 'USER_CANCELLED') return { receipt: null, purchaseToken: null, cancelled: true };
+    if (e?.code === 'USER_CANCELLED') return { receipt: null, jwsRepresentation: null, purchaseToken: null, cancelled: true };
     throw e;
   }
 };

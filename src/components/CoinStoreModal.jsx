@@ -35,7 +35,7 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
         const r = await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "apikey": supabaseAnonKey },
-          body: JSON.stringify({ platform, productId: pack.product, receipt: res.receipt, purchaseToken: res.purchaseToken }),
+          body: JSON.stringify({ platform, productId: pack.product, receipt: res.receipt, jwsRepresentation: res.jwsRepresentation, purchaseToken: res.purchaseToken }),
         });
         const body = await r.json();
         if (!r.ok || body.error) throw new Error(body.error || `HTTP ${r.status}`);
