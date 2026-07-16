@@ -1,7 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
+// ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
+// casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
+// equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
+// chemin « Oui, enregistrer la vente » était cassé depuis toujours en local. Passe
+// généralisée aux 15 fonctions restantes. La PROD n'a jamais été affectée.
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
 const SYSTEM_FR = `Tu es un extracteur de données ultra-précis pour une app de revente (Vinted, eBay, Leboncoin).
 Tu reçois un texte libre en français ou anglais décrivant des achats ou ventes —

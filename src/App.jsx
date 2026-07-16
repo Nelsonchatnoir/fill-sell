@@ -1,8 +1,11 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
-import { initIAP, purchasePremium, restorePurchases, PRODUCT_IDS } from './lib/iap';
+import { Browser } from '@capacitor/browser';
+import { App as CapacitorApp } from '@capacitor/app';
+import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -22,8 +25,17 @@ import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
+import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
+import CoinStoreModal from './components/CoinStoreModal';
+import PepiteIcon from './components/PepiteIcon';
+import PlatformLogo from './components/platform-logos/PlatformLogo';
+import PlanBadge from './components/PlanBadge';
+import BrandMark from './components/BrandMark';
+import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
+import { VOICE_KIT_CSS } from './components/voice/tokens';
+import VoiceResultCard from './components/voice/VoiceResultCard';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
-ChartJS.defaults.font.family = "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif";
+ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
 import './App.redesign.css';
 
@@ -271,10 +283,10 @@ function CurrencyOnboardingModal({lang,onConfirm}){
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
       <div style={{background:'#fff',borderRadius:24,padding:'20px',maxWidth:400,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',maxHeight:'88vh',display:'flex',flexDirection:'column'}}>
         <div style={{fontSize:24,textAlign:'center',marginBottom:4}}>💱</div>
-        <div style={{fontSize:18,fontWeight:900,textAlign:'center',marginBottom:3,color:'#0D0D0D',letterSpacing:'-0.02em'}}>
+        <div style={{fontSize:18,fontWeight:700,textAlign:'center',marginBottom:3,color:UI.ink,letterSpacing:'-0.02em'}}>
           {lang==='en'?'Choose your currency':'Choisissez votre devise'}
         </div>
-        <div style={{fontSize:11,color:'#6B7280',textAlign:'center',marginBottom:12}}>
+        <div style={{fontSize:11,color:UI.mute2,textAlign:'center',marginBottom:12}}>
           {lang==='en'?'Display only — no conversion.':'Affichage uniquement, aucune conversion.'}
         </div>
         <input placeholder={lang==='en'?'Search: USD, Dollar…':'Rechercher : EUR, Euro…'} value={search} onChange={e=>setSearch(e.target.value)}
@@ -285,13 +297,13 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             if(!items||items.length===0) return null;
             return(
               <div key={reg}>
-                <div style={{fontSize:9,fontWeight:800,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
+                <div style={{fontSize:9,fontWeight:700,color:UI.mute,textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:5,marginBottom:4}}>
                   {items.map(c=>(
                     <button key={c.code} onClick={()=>setSelected(c.code)}
-                      style={{padding:'7px 4px',borderRadius:9,border:selected===c.code?'2px solid #1D9E75':'1px solid rgba(0,0,0,0.09)',background:selected===c.code?'#F0FBF7':'#FAFAFA',cursor:'pointer',transition:'all 0.1s',fontFamily:'inherit',textAlign:'center',lineHeight:1.25}}>
-                      <div style={{fontSize:11,fontWeight:800,color:selected===c.code?'#1D9E75':'#111'}}>{c.code}</div>
-                      <div style={{fontSize:10,color:selected===c.code?'#1D9E75':'#6B7280'}}>{c.sym}</div>
+                      style={{padding:'7px 4px',borderRadius:11,border:selected===c.code?`1.5px solid ${UI.teal}`:`1px solid ${UI.border}`,background:selected===c.code?'#E7F3F0':UI.chip,cursor:'pointer',transition:'all 0.1s',fontFamily:'inherit',textAlign:'center',lineHeight:1.25}}>
+                      <div style={{fontSize:11,fontWeight:700,color:selected===c.code?UI.tealDeep:UI.ink}}>{c.code}</div>
+                      <div style={{fontSize:10,color:selected===c.code?UI.tealDeep:UI.mute2}}>{c.sym}</div>
                     </button>
                   ))}
                 </div>
@@ -300,7 +312,7 @@ function CurrencyOnboardingModal({lang,onConfirm}){
           })}
         </div>
         <div style={{marginTop:12,flexShrink:0}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#6B7280',marginBottom:6}}>{lang==='en'?"What's your name? (optional)":"Comment tu t'appelles ? (optionnel)"}</div>
+          <div style={{fontSize:11,fontWeight:700,color:UI.mute2,marginBottom:6}}>{lang==='en'?"What's your name? (optional)":"Comment tu t'appelles ? (optionnel)"}</div>
           <input
             value={usernameInput}
             onChange={e=>setUsernameInput(e.target.value.slice(0,30))}
@@ -309,10 +321,9 @@ function CurrencyOnboardingModal({lang,onConfirm}){
             style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:10}}
           />
         </div>
-        <button onClick={()=>onConfirm(selected,usernameInput.trim())}
-          style={{marginTop:0,width:'100%',padding:'13px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
+        <PrimaryButton onClick={()=>onConfirm(selected,usernameInput.trim())} style={{flexShrink:0}}>
           {selected} {CURRENCY_SYMBOLS[selected]} — {lang==='en'?'Confirm':'Confirmer'}
-        </button>
+        </PrimaryButton>
       </div>
     </div>
   );
@@ -324,10 +335,9 @@ function UsernameOnboardingInput({lang,onConfirm}){
       <input value={val} onChange={e=>setVal(e.target.value.slice(0,30))} maxLength={30}
         placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
         style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
-      <button onClick={()=>onConfirm(val.trim())}
-        style={{width:'100%',padding:'14px',background:'#1D9E75',border:'none',borderRadius:13,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}}>
+      <PrimaryButton onClick={()=>onConfirm(val.trim())}>
         {lang==='en'?"Let's go !":"C'est parti !"}
-      </button>
+      </PrimaryButton>
     </>
   );
 }
@@ -467,7 +477,17 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
-function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', slotsRemaining=null, onOpenModal=null }){
+// Libellés des mouvements du ledger de Pépites (Settings)
+const COIN_KIND_LABELS={
+  grant_monthly:{fr:'Pépites du mois',en:'Monthly Nuggets'},
+  purchase:{fr:'Pack acheté',en:'Pack purchased'},
+  spend_publish:{fr:'Publication',en:'Publish'},
+  spend_lens:{fr:'Analyse Lens',en:'Lens scan'},
+  refund:{fr:'Remboursement',en:'Refund'},
+  admin:{fr:'Ajustement',en:'Adjustment'},
+};
+
+function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', onOpenModal=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
   const { t: tb } = useTranslation(lang);
@@ -497,30 +517,27 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   }
 
   if(compact){
-    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#1D9E75");
-    const bgHover=onDark?"rgba(255,255,255,0.3)":"#0F6E56";
-    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#1D9E75");
+    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#2F9E90");
+    const bgHover=onDark?"rgba(255,255,255,0.3)":"#1B6E62";
+    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#2F9E90");
     const col=onDark?"#fff":"#fff";
     const brd=onDark?"1px solid rgba(255,255,255,0.4)":"none";
     return(
       <button onClick={onOpenModal??handleCheckout} disabled={loading}
-        style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:800,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
+        style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:700,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">🔥 7j</span><span className="premium-full">{slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'🔥 7j gratuits →':'🔥 7 days free →'):(lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →')}</span></>}
+        {loading ? "..." : <><span className="premium-short">🔥 7j</span><span className="premium-full">{lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →'}</span></>}
       </button>
     );
   }
 
   return(
-    <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      {slotsRemaining!==null&&slotsRemaining>0&&(
-        <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
-      )}
+    <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (slotsRemaining!==null&&slotsRemaining>0?(lang==='fr'?'✨ Devenir Founder · 9,99€/mois — 7j gratuits':'✨ Become a Founder · €9.99/mo — 7 days free'):(lang==='fr'?'✨ Passer Premium · 14,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €14.99/mo — 7 days free'))}
+        label={loading ? tb('redirection') : (lang==='fr'?'✨ Passer Premium · 12,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €12.99/mo — 7 days free')}
         disabled={loading}
         sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
@@ -528,17 +545,14 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   );
 }
 
-function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, slotsRemaining=null }) {
+function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
   return (
-    <div style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
-      {slotsRemaining!==null&&slotsRemaining>0&&(
-        <div style={{fontSize:11,fontWeight:700,color:"#92400E"}}>{lang==='fr'?'Prix réservé aux premiers utilisateurs':'Price reserved for early users'}</div>
-      )}
-      <div style={{fontSize:11,fontWeight:800,background:"rgba(29,158,117,0.08)",color:"#0F6E56",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(29,158,117,0.18)"}}>
+    <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
         🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
       </div>
       {iapProduct&&(
-        <div style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>
+        <div style={{fontSize:11,color:UI.mute,fontWeight:600}}>
           {lang==='fr'?'puis ':'then '}{iapProduct.priceString} / {lang==='fr'?'mois':'month'}
         </div>
       )}
@@ -548,12 +562,12 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
         disabled={iapLoading}
         sub={iapProduct
           ?(lang==='fr'?`puis ${iapProduct.priceString}/mois · Sans engagement.`:`then ${iapProduct.priceString}/month · No commitment.`)
-          :(lang==='fr'?'puis 9,99€/mois · Sans engagement.':'then €9.99/month · No commitment.')}
+          :(lang==='fr'?'puis 12,99€/mois · Sans engagement.':'then €12.99/month · No commitment.')}
       />
       <button
         onClick={onRestore}
         disabled={iapLoading}
-        style={{background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
+        style={{background:"transparent",border:"none",color:UI.mute,fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}
       >
         {lang==='fr'?'Restaurer mes achats':'Restore purchases'}
       </button>
@@ -564,15 +578,10 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
 function CtaPremium({ onClick, label = "✨ Commencer l'essai gratuit →", disabled, sub }) {
   return (
     <>
-      <button
-        className="cta-premium"
-        onClick={onClick}
-        disabled={disabled}
-        style={disabled ? {opacity:0.7,cursor:"not-allowed"} : undefined}
-      >
+      <PremiumButton onClick={onClick} disabled={disabled}>
         {label}
-      </button>
-      <div className="cta-premium-sub">
+      </PremiumButton>
+      <div style={{fontSize:12,color:UI.mute,fontWeight:500,marginTop:2}}>
         {sub || "Puis 9,99 €/mois — annulable à tout moment"}
       </div>
     </>
@@ -596,8 +605,8 @@ const Empty=({text="Aucune donnée"})=>(
 const Kpi=({label,value,sub,color,icon})=>(
   <div className="kpi" style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
     {icon&&<div style={{fontSize:18,marginBottom:4}}>{icon}</div>}
-    <div style={{fontSize:10,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
-    <div style={{fontSize:22,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
+    <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:700,color:"#0D0D0D",letterSpacing:"-0.03em",lineHeight:1}}>{value}</div>
     {sub&&<div style={{fontSize:10,fontWeight:700,color:color||"#6B7280",marginTop:4}}>{sub}</div>}
   </div>
 );
@@ -781,27 +790,12 @@ const VOICE_EXAMPLES_FR_RAW = [
   { text: "Combien j'ai vendu ce mois-ci ?",                     tag: "Stats",   cls: "query" },
   { text: "Quel est mon bénéfice total ?",                       tag: "Stats",   cls: "query" },
 ];
-const VOICE_EXAMPLES_EN_RAW = [
-  { text: "Add a black Zara jacket size M at €15",               tag: "Add",   cls: "add"   },
-  { text: "New item: iPhone 13 128GB, paid €320",                tag: "Add",   cls: "add"   },
-  { text: "I bought a beige Longchamp bag for €25",              tag: "Add",   cls: "add"   },
-  { text: "Add a MacBook Air 2020 at €450",                      tag: "Add",   cls: "add"   },
-  { text: "I sold my Levi's 501 jeans for €40",                  tag: "Sell",  cls: "sell"  },
-  { text: "Sold the iPhone 12 for €280 on Leboncoin",            tag: "Sell",  cls: "sell"  },
-  { text: "Add a batch of 5 t-shirts at €3 each",                tag: "Add",   cls: "add"   },
-  { text: "Move the MacBook to the living room box",             tag: "Stock", cls: "query" },
-  { text: "How much did I sell this month?",                     tag: "Stats", cls: "query" },
-  { text: "What's my total profit?",                             tag: "Stats", cls: "query" },
-];
+// Seule la liste FR sert encore : elle alimente TEXTAREA_PLACEHOLDERS (rotation du
+// placeholder de la zone vocale). Le pendant EN et le getRotatingExamples local ne
+// servaient qu'au VoiceTicker de l'ancien état vide — StockTab utilise, lui, le
+// getRotatingExamples exporté par utils/shared.js.
 const VOICE_EXAMPLES = VOICE_EXAMPLES_FR_RAW;
-const VOICE_EXAMPLES_EN = VOICE_EXAMPLES_EN_RAW;
 
-function getRotatingExamples(currency, lang) {
-  const sym = CURRENCY_SYMBOLS[currency] || '€';
-  const raw = lang === 'en' ? VOICE_EXAMPLES_EN_RAW : VOICE_EXAMPLES_FR_RAW;
-  if (sym === '€') return raw;
-  return raw.map(e => ({ ...e, text: e.text.replace(/€/g, sym) }));
-}
 function getRotatingDealPlaceholders(currency, lang) {
   const sym = CURRENCY_SYMBOLS[currency] || '€';
   const raw = lang === 'en' ? DEAL_PLACEHOLDERS_EN : DEAL_PLACEHOLDERS_FR;
@@ -1107,7 +1101,7 @@ function AvgDaysChart({filtered, items, lang}) {
 
   return (
     <div style={card}>
-      <div style={{fontSize:12,fontWeight:800,color:'#0D0D0D',marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:'#0D0D0D',marginBottom:14}}>
         {lang==='en'?'⏱ Avg. days to sell by category':'⏱ Délai moy. vente par catégorie'}
       </div>
       {catDays.length===0?(
@@ -1127,7 +1121,7 @@ function AvgDaysChart({filtered, items, lang}) {
                 <div style={{flex:1,height:8,background:'#F3F4F6',borderRadius:99,overflow:'hidden'}}>
                   <div style={{width:`${pct}%`,height:'100%',background:ts.color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
                 </div>
-                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:800,color:'#0D0D0D',textAlign:'right'}}>
+                <div style={{width:32,flexShrink:0,fontSize:11,fontWeight:700,color:'#0D0D0D',textAlign:'right'}}>
                   {avg}{lang==='en'?'d':'j'}
                 </div>
               </div>
@@ -1139,195 +1133,152 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-function VoiceTicker({ lang = 'fr', currency = 'EUR' }) {
-  const [idx, setIdx] = useState(0);
-  const [text, setText] = useState("");
-  const stateRef = useRef({ char: 0, mode: "type" });
-
-  useEffect(() => {
-    stateRef.current = { char: 0, mode: "type" };
-    setText("");
-    let alive = true;
-    let timer;
-    const examples = getRotatingExamples(currency, lang);
-    const tick = () => {
-      if (!alive) return;
-      const cur = examples[idx];
-      const s = stateRef.current;
-      if (s.mode === "type") {
-        s.char++;
-        setText(cur.text.slice(0, s.char));
-        if (s.char >= cur.text.length) { s.mode = "hold"; timer = setTimeout(tick, 1800); return; }
-        timer = setTimeout(tick, 32 + Math.random() * 30);
-      } else if (s.mode === "hold") {
-        s.mode = "erase";
-        timer = setTimeout(tick, 30);
-      } else {
-        s.char -= 3;
-        setText(cur.text.slice(0, Math.max(0, s.char)));
-        if (s.char <= 0) { s.char = 0; s.mode = "type"; setIdx(i => (i + 1) % examples.length); }
-        else { timer = setTimeout(tick, 14); }
-      }
-    };
-    tick();
-    return () => { alive = false; clearTimeout(timer); };
-  }, [idx, lang, currency]);
-
-  const examples = getRotatingExamples(currency, lang);
-  const cur = examples[idx % examples.length];
-  return (
-    <div className="voice-ticker">
-      <span className="vt-quote">«</span>
-      <span className="vt-text">{text}</span>
-      <span className="vt-cursor" />
-      <span className={`vt-tag ${cur.cls}`}>{cur.tag}</span>
-    </div>
+// État vide du Dashboard — design Claude Design « Dashboard Empty State »
+// (projet e47b36df, 2026-07-14). Header / FAB / nav bar restent ceux de l'app.
+// Logos plateformes : PlatformLogo (vraies icônes d'app), pas les pastilles
+// lettrées de la maquette. Le bloc Lens navigue vers l'onglet Lens (tab 2)
+// via le même mécanisme que la nav bar (onOpenLens branché sur setTab).
+function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
+  const fr = lang !== 'en';
+  const MicSvg = ({ size=34, stroke="#fff" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
   );
-}
-
-function VoiceZone({ lang = 'fr', currency = 'EUR' }) {
-  const { t } = useTranslation(lang);
+  const CARDS = [
+    {
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12h-6"/><path d="M12 16h-2"/></svg>,
+      titleFr:"Enregistre tes ventes", titleEn:"Log your sales",
+      descFr:"Dis « vendu 25 € », ta marge se calcule toute seule.", descEn:"Say “sold for €25” — your margin computes itself.",
+    },
+    {
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>,
+      titleFr:"Suis tes stats", titleEn:"Track your stats",
+      descFr:"Profit net, marges et évolution du mois, en un coup d'œil.", descEn:"Net profit, margins and monthly trend, at a glance.",
+    },
+    {
+      icon:<MicSvg size={20} stroke="currentColor"/>,
+      titleFr:"Ajoute ton stock à la voix", titleEn:"Add your stock by voice",
+      descFr:"Dis « pull Zara taille M, 15 € », c'est ajouté et classé.", descEn:"Say “Zara sweater size M, €15” — added and sorted.",
+    },
+    {
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
+      titleFr:"Vendu quelque part, retiré partout", titleEn:"Sold somewhere, removed everywhere",
+      descFr:"Vendu sur Vinted ? Retiré de Leboncoin, eBay et Beebs aussitôt.", descEn:"Sold on Vinted? Removed from Leboncoin, eBay and Beebs right away.",
+    },
+  ];
   return (
-    <div className="voice-zone">
-      <div className="vz-prompt">
-        {t('voiceZonePrompt')} <b>{t('voiceZoneHint')}</b>
+    <div style={{display:"flex",flexDirection:"column",gap:20,fontFamily:"'Space Grotesk',sans-serif"}}>
+      <style>{`
+        @keyframes fsPulse{0%{transform:scale(1);opacity:.4}100%{transform:scale(2.05);opacity:0}}
+        @keyframes fsScan{0%,100%{transform:translateY(-44px)}50%{transform:translateY(44px)}}
+      `}</style>
+
+      {/* Hero micro — badge stock vide + exemple + mini-input vocal */}
+      <section style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:26,padding:"30px 22px 22px",textAlign:"center",position:"relative",overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.04), 0 12px 30px rgba(16,32,27,0.05)"}}>
+        <div style={{position:"absolute",top:-46,left:"50%",transform:"translateX(-50%)",width:240,height:190,background:"radial-gradient(ellipse at center,rgba(47,158,144,0.14),transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{position:"relative",zIndex:1}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 11px",borderRadius:999,background:"rgba(232,149,109,0.16)",marginBottom:18}}>
+            <span style={{width:6,height:6,borderRadius:99,background:UI.amber}}/>
+            <span style={{fontWeight:700,fontSize:10.5,letterSpacing:"0.1em",color:"#C46A3E",whiteSpace:"nowrap"}}>{fr?"STOCK VIDE · À TOI DE JOUER":"EMPTY STOCK · YOUR MOVE"}</span>
+          </div>
+          <div style={{position:"relative",width:80,height:80,margin:"0 auto 20px"}}>
+            <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite"}}/>
+            <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite",animationDelay:"1.3s"}}/>
+            <div style={{position:"relative",width:80,height:80,borderRadius:24,background:`linear-gradient(150deg,${UI.teal},${UI.tealDeep})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 10px 24px rgba(27,110,98,0.35)"}}>
+              <MicSvg/>
+            </div>
+          </div>
+          <h1 style={{margin:0,fontWeight:700,fontSize:27,lineHeight:1.15,letterSpacing:"-0.02em",color:UI.ink}}>{fr?"Parle, l'IA fait le reste.":"Talk, the AI does the rest."}</h1>
+          <p style={{margin:"12px auto 0",maxWidth:284,fontSize:15,lineHeight:1.5,color:UI.mute,fontWeight:400}}>
+            {fr
+              ? <>Dis « J'ai payé ce jean 8 € » — l'IA l'ajoute, le classe et le range. <span style={{color:UI.tealDeep,fontWeight:600}}>Zéro formulaire.</span></>
+              : <>Say “I paid €8 for these jeans” — the AI adds, sorts and stores it. <span style={{color:UI.tealDeep,fontWeight:600}}>Zero forms.</span></>
+            }
+          </p>
+          <div
+            onClick={onTryVoice}
+            role="button"
+            style={{display:"flex",alignItems:"center",gap:10,marginTop:20,background:UI.canvas,border:`1px solid ${UI.border}`,borderRadius:16,padding:"15px 14px",cursor:"pointer"}}
+          >
+            <span style={{fontWeight:700,fontSize:22,color:UI.teal,lineHeight:0.6}}>«</span>
+            <span style={{flex:1,textAlign:"left",fontStyle:"italic",fontWeight:500,fontSize:15,color:"#6E6A5E"}}>{fr?"J'ai vendu mon…":"I sold my…"}</span>
+            <span style={{fontWeight:700,fontSize:10,letterSpacing:"0.08em",color:"#C46A3E",background:"rgba(232,149,109,0.18)",padding:"5px 9px",borderRadius:8}}>{fr?"VENDRE":"SELL"}</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Bandeau plateformes — vraies icônes d'app (PlatformLogo) */}
+      <div style={{textAlign:"center",padding:"2px 4px 0"}}>
+        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"PUBLIÉ AUTOMATIQUEMENT SUR":"AUTOMATICALLY PUBLISHED ON"}</p>
+        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
+          {["vinted","leboncoin","ebay","beebs"].map(p=>(
+            <span key={p} style={{display:"inline-flex",borderRadius:10,boxShadow:"0 2px 6px rgba(16,32,27,0.09)"}}>
+              <PlatformLogo platform={p} size={36}/>
+            </span>
+          ))}
+        </div>
+        <p style={{margin:"12px auto 0",maxWidth:288,fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>
+          {fr?"Une annonce, publiée partout. Vendu ? Ton stock, tes ventes et tes marges se mettent à jour tout seuls.":"One listing, published everywhere. Sold? Your stock, sales and margins update on their own."}
+        </p>
       </div>
-      <VoiceTicker lang={lang} currency={currency} />
-    </div>
-  );
-}
 
-function EmptyStateDashboard({ lang, onTryVoice, onAddManual, onPremium, slotsRemaining=null }) {
-  return (
-    <div className="empty-hero">
-      <div className="empty-hero-art">🎙️</div>
-      <h1>{lang==='en' ? "Talk, the AI does the rest." : "Parle, l'IA fait le reste."}</h1>
-      <p>
-        {lang==='en'
-          ? <><>No forms, no tutorial. </><b>You talk, the AI understands.</b></>
-          : <><>Pas de formulaire, pas de tutoriel. </><b>Tu parles, l'IA comprend.</b></>
-        }
-      </p>
-      <VoiceTicker lang={lang}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,width:"100%",marginTop:4}}>
-        {[
-          {ico:"🎙️",titleFr:"Ajoute et classe ton stock",titleEn:"Add and organize your stock",descFr:"Marque, catégorie, emplacement, lieu d'achat — tout extrait de ta voix",descEn:"Brand, category, location, purchase place — all extracted from your voice"},
-          {ico:"📦",titleFr:"Retrouve n'importe quel article",titleEn:"Find any item instantly",descFr:"Où j'ai mis mon iPhone ? → réponse instantanée",descEn:"Where did I put my iPhone? → instant answer"},
-          {ico:"💰",titleFr:"Enregistre tes ventes",titleEn:"Log your sales",descFr:"Dis juste le prix et la plateforme — les profits se calculent seuls",descEn:"Just say the price and platform — profits are calculated automatically"},
-          {ico:"📊",titleFr:"Analyse tes performances",titleEn:"Analyze your performance",descFr:"Marge, délai de vente, meilleurs articles — demande, tu reçois",descEn:"Margin, sell time, best items — just ask, you'll get the answer"},
-        ].map((c,i)=>(
-          <div key={i} style={{background:"var(--background-secondary,#F6F7F7)",borderRadius:12,padding:"0.65rem 0.9rem",display:"flex",flexDirection:"column",gap:4}}>
-            <div style={{fontSize:20,lineHeight:1}}>{c.ico}</div>
-            <div style={{fontWeight:700,fontSize:12,color:"var(--text-primary,#1A1A1A)",lineHeight:1.3}}>{lang==='en'?c.titleEn:c.titleFr}</div>
-            <div style={{fontSize:11,color:"var(--text-secondary,#6B7280)",lineHeight:1.4}}>{lang==='en'?c.descEn:c.descFr}</div>
+      {/* Bloc Lens — cliquable, navigue vers l'onglet Lens (même mécanisme que la nav) */}
+      <section
+        onClick={onOpenLens}
+        role="button"
+        style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:26,overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.04), 0 12px 30px rgba(16,32,27,0.05)",cursor:"pointer"}}
+      >
+        <div style={{position:"relative",height:152,background:"linear-gradient(150deg,#123027,#1B6E62)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{position:"absolute",top:12,left:12,display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:8,background:"rgba(255,255,255,0.16)",fontWeight:700,fontSize:10,letterSpacing:"0.12em",color:"#fff"}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/></svg>
+            LENS
+          </span>
+          <div style={{position:"relative",width:104,height:104}}>
+            <span style={{position:"absolute",top:0,left:0,width:22,height:22,borderTop:"3px solid #8CE0D4",borderLeft:"3px solid #8CE0D4",borderTopLeftRadius:8}}/>
+            <span style={{position:"absolute",top:0,right:0,width:22,height:22,borderTop:"3px solid #8CE0D4",borderRight:"3px solid #8CE0D4",borderTopRightRadius:8}}/>
+            <span style={{position:"absolute",bottom:0,left:0,width:22,height:22,borderBottom:"3px solid #8CE0D4",borderLeft:"3px solid #8CE0D4",borderBottomLeftRadius:8}}/>
+            <span style={{position:"absolute",bottom:0,right:0,width:22,height:22,borderBottom:"3px solid #8CE0D4",borderRight:"3px solid #8CE0D4",borderBottomRightRadius:8}}/>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,255,255,0.32)"}}>
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
+            </div>
+            <span style={{position:"absolute",left:-12,right:-12,top:"50%",height:2,background:"linear-gradient(90deg,transparent,#8CE0D4,transparent)",boxShadow:"0 0 12px #8CE0D4",animation:"fsScan 2.8s ease-in-out infinite"}}/>
+          </div>
+          <span style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",fontWeight:600,fontSize:11,color:"rgba(255,255,255,0.68)",letterSpacing:"0.03em"}}>{fr?"Vise un article à analyser":"Point at an item to analyze"}</span>
+        </div>
+        <div style={{padding:"20px 22px 22px"}}>
+          <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Bon deal ou pas ? Lens tranche.":"Good deal or not? Lens decides."}</h2>
+          <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
+            {fr
+              ? <>Prends un article en photo : l'IA l'identifie, estime <span style={{color:UI.tealDeep,fontWeight:600}}>son prix de revente</span> et la meilleure plateforme, puis note le deal sur 10.</>
+              : <>Snap a photo of an item: the AI identifies it, estimates <span style={{color:UI.tealDeep,fontWeight:600}}>its resale price</span> and the best platform, then rates the deal out of 10.</>
+            }
+          </p>
+          <button
+            onClick={(e)=>{e.stopPropagation();onOpenLens?.();}}
+            style={{marginTop:18,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:15,border:"none",borderRadius:16,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,fontFamily:"inherit",boxShadow:"0 8px 20px rgba(27,110,98,0.3)",cursor:"pointer"}}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l1.9 5.1L19 9l-5.1 1.9L12 16l-1.9-5.1L5 9l5.1-1.9z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
+            {fr?"Analyser avec l'IA":"Analyze with AI"}
+          </button>
+        </div>
+      </section>
+
+      {/* Grille 2x2 — 4 promesses produit */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        {CARDS.map((c,i)=>(
+          <div key={i} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:20,padding:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:"rgba(47,158,144,0.12)",display:"flex",alignItems:"center",justifyContent:"center",color:UI.tealDeep,marginBottom:12}}>
+              {c.icon}
+            </div>
+            <h3 style={{margin:0,fontWeight:700,fontSize:14.5,color:UI.ink}}>{fr?c.titleFr:c.titleEn}</h3>
+            <p style={{margin:"6px 0 0",fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>{fr?c.descFr:c.descEn}</p>
           </div>
         ))}
       </div>
-      <div className="empty-hero-cta-stack">
-        <button className="cta-premium" onClick={onTryVoice}>
-          🎙️ {lang==='en' ? 'Try voice AI' : 'Essayer le vocal IA'}
-        </button>
-        <button className="empty-hero-secondary" onClick={onAddManual}>
-          ➕ {lang==='en' ? 'Add manually' : 'Ajouter manuellement'}
-        </button>
-      </div>
     </div>
   );
 }
 
-function UpgradeModal({ lang, slotsRemaining, onClose, onCheckout }) {
-  const isFounder = slotsRemaining !== null && slotsRemaining > 0;
-  const FREE_F  = lang==='en'
-    ? ['20 items in stock maximum','Dashboard & stats','Margin calculator with AI analysis','Sales history','🎙️ AI voice · 5 commands/day','📸 Lens · 3/day · visual estimate only']
-    : ['20 articles en stock maximum','Dashboard & stats','Calculateur de marge avec analyse IA','Historique des ventes','🎙️ IA vocale · 5 commandes/jour','📸 Lens · 3/jour · estimation visuelle uniquement'];
-  const PREM_F = lang==='en'
-    ? ['Unlimited stock','🎙️ AI voice · Unlimited','📸 Lens Pro · 10/day · live market price','Advanced AI-powered stats','Import / Export Excel','Priority support']
-    : ['Stock illimité','🎙️ IA vocale · Illimité','📸 Lens Pro · 10/jour · prix marché en direct','Stats avancées analysées par IA','Import / Export Excel','Support prioritaire'];
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:10000,display:'flex',alignItems:'flex-end'}} onClick={onClose}>
-      <style>{`@keyframes slideUpModal{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
-      <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxHeight:'90vh',overflowY:'auto',animation:'slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)',WebkitOverflowScrolling:'touch'}}>
-        {/* Header */}
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 20px 14px',borderBottom:'1px solid rgba(0,0,0,0.07)',position:'sticky',top:0,background:'#fff',zIndex:1}}>
-          <div style={{fontSize:18,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',fontFamily:'inherit'}}>
-            {lang==='en'?'Level up':'Passe au niveau supérieur'}
-          </div>
-          <button onClick={onClose} style={{background:'#F3F4F6',border:'none',borderRadius:99,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,cursor:'pointer',color:'#6B7280',flexShrink:0}}>✕</button>
-        </div>
-        {/* Cards */}
-        <div style={{padding:'16px 16px 0'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            {/* Free */}
-            <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.1)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0}}>
-              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'#1D9E75',marginBottom:6}}>
-                {lang==='en'?'Free':'Gratuit'}
-              </div>
-              <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#0D0D0D',marginBottom:6,fontFamily:'inherit'}}>
-                {lang==='en'?'To get started':'Pour démarrer'}
-              </div>
-              <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#0D0D0D',fontFamily:'inherit'}}>0 €</span>
-                <span style={{fontSize:11,fontWeight:700,color:'#9CA3AF'}}>{lang==='en'?'/ forever':'/ toujours'}</span>
-              </div>
-              <div style={{fontSize:11,fontWeight:600,color:'#6B7280',marginBottom:12,lineHeight:1.4}}>
-                {lang==='en'?'Everything to track your first sales.':'Tout pour suivre tes premières ventes.'}
-              </div>
-              <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
-                {FREE_F.map((f,i)=>(
-                  <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'#374151'}}>
-                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(29,158,117,0.12)',color:'#1D9E75',fontSize:9,fontWeight:900,marginTop:1}}>✓</span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            {/* Premium/Founder */}
-            <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',borderRadius:16,padding:'16px 14px',display:'flex',flexDirection:'column',gap:0,position:'relative',overflow:'hidden',color:'#fff'}}>
-              <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.18),transparent 55%)',borderRadius:16,pointerEvents:'none'}}/>
-              <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:9,fontWeight:800,color:'#fff',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
-                {isFounder?`🔥 ${lang==='fr'?'Prix Founder':'Founder Price'}`:(lang==='en'?'⭐ Most popular':'⭐ Le plus populaire')}
-              </div>
-              <div style={{fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.85)',marginBottom:6,marginTop:24}}>Premium</div>
-              <div style={{fontSize:18,fontWeight:900,letterSpacing:'-0.02em',color:'#fff',marginBottom:6,fontFamily:'inherit'}}>
-                {lang==='en'?'To go further':'Pour aller plus loin'}
-              </div>
-              <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:4}}>
-                <span style={{fontSize:30,fontWeight:900,letterSpacing:'-0.04em',lineHeight:1,color:'#fff',fontFamily:'inherit'}}>{isFounder?'9,99 €':'14,99 €'}</span>
-                <span style={{fontSize:11,fontWeight:700,opacity:0.85}}>{lang==='en'?'/ mo':'/ mois'}</span>
-              </div>
-              {isFounder&&<div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.9)',marginBottom:6}}>{lang==='en'?'Price reserved for early users':'Prix réservé aux premiers utilisateurs'}</div>}
-              <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.22)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:800,color:'#fff',marginBottom:isFounder?6:10,alignSelf:'flex-start'}}>
-                🎁 {lang==='en'?'7 days free · No charge today':'7 jours gratuits'}
-              </div>
-              <ul style={{listStyle:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:7}}>
-                {PREM_F.map((f,i)=>(
-                  <li key={i} style={{display:'flex',alignItems:'flex-start',gap:7,fontSize:11,fontWeight:600,lineHeight:1.35,color:'rgba(255,255,255,0.95)'}}>
-                    <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:17,height:17,borderRadius:'50%',background:'rgba(255,255,255,0.25)',color:'#fff',fontSize:9,fontWeight:900,marginTop:1}}>✓</span>
-                    {i<4?<strong>{f}</strong>:f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-        {/* Footer */}
-        <div style={{padding:'16px 16px',display:'flex',flexDirection:'column',gap:10}}>
-          <button onClick={onCheckout} style={{width:'100%',padding:'15px',background:isFounder?'linear-gradient(135deg,#E53E3E,#F97316)':'#1D9E75',color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:'inherit',boxShadow:isFounder?'0 4px 16px rgba(229,62,62,0.35)':'0 4px 14px rgba(29,158,117,0.3)',letterSpacing:'-0.01em'}}>
-            {isFounder
-              ?(lang==='en'?'✨ Become a Founder · €9.99/mo — 7 days free':'✨ Devenir Founder · 9,99€/mois — 7j gratuits')
-              :(lang==='en'?'✨ Upgrade to Premium · €14.99/mo — 7 days free':'✨ Passer Premium · 14,99€/mois — 7j gratuits')
-            }
-          </button>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'#9CA3AF',fontSize:13,fontWeight:600,cursor:'pointer',padding:'4px',fontFamily:'inherit'}}>
-            {lang==='en'?'Continue for free':'Continuer en gratuit'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PremiumWelcomeModal({ lang, isFounder, onClose }) {
+function PremiumWelcomeModal({ lang, onClose }) {
   const PERKS = lang === 'en'
     ? [
         { icon: '🎙️', label: 'AI Voice — Unlimited' },
@@ -1343,9 +1294,7 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
         { icon: '📊', label: 'Stats avancées analysées par IA' },
         { icon: '📤', label: 'Import / Export Excel' },
       ];
-  const title = isFounder
-    ? (lang === 'en' ? 'Welcome, Founder!' : 'Bienvenue, Founder !')
-    : (lang === 'en' ? 'Welcome to FillSell Premium' : 'Bienvenue dans FillSell Premium');
+  const title = lang === 'en' ? 'Welcome to FillSell Premium' : 'Bienvenue dans FillSell Premium';
   const subtitle = lang === 'en'
     ? 'Your benefits are active right now'
     : 'Tes avantages sont actifs dès maintenant';
@@ -1358,30 +1307,25 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
         @keyframes crownPop{0%{transform:scale(0) rotate(-15deg)}60%{transform:scale(1.2) rotate(6deg)}100%{transform:scale(1) rotate(0deg)}}
       `}</style>
       <div onClick={e=>e.stopPropagation()} style={{background:'#F2F2EE',borderRadius:28,width:'100%',maxWidth:360,overflow:'hidden',boxShadow:'0 24px 60px rgba(0,0,0,0.25)',animation:'welcomeCardIn 0.35s cubic-bezier(0.22,1,0.36,1)'}}>
-        <div style={{background:'linear-gradient(135deg,#3EACA0,#E8956D)',padding:'32px 24px 28px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+        <div style={{background:'linear-gradient(135deg,#2F9E90,#E8956D)',padding:'32px 24px 28px',textAlign:'center',position:'relative',overflow:'hidden'}}>
           <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 20% 0%,rgba(255,255,255,0.2),transparent 55%)',pointerEvents:'none'}}/>
           <div style={{fontSize:44,lineHeight:1,marginBottom:12,display:'inline-block',animation:'crownPop 0.5s cubic-bezier(0.22,1,0.36,1) 0.2s both'}}>
-            {isFounder?'👑':'⭐'}
+            ⭐
           </div>
-          {isFounder&&(
-            <div style={{display:'flex',justifyContent:'center',marginBottom:10}}>
-              <span style={{background:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.5)',borderRadius:99,padding:'4px 12px',fontSize:10,fontWeight:800,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase'}}>🔥 Founder</span>
-            </div>
-          )}
-          <div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",fontSize:22,fontWeight:900,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
+          <div style={{fontSize:22,fontWeight:600,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
           <div style={{fontSize:13,color:'rgba(255,255,255,0.88)',fontWeight:600}}>{subtitle}</div>
         </div>
         <div style={{padding:'20px 20px 0',display:'flex',flexDirection:'column',gap:8}}>
           {PERKS.map(({icon,label},i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(62,172,160,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(47,158,144,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
               <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
-              <span style={{fontSize:13,fontWeight:700,color:'#0D0D0D',lineHeight:1.3,flex:1}}>{label}</span>
-              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#3EACA0,#2DD4BF)',color:'#fff',fontSize:10,fontWeight:900}}>✓</span>
+              <span style={{fontSize:13,fontWeight:700,color:UI.ink,lineHeight:1.3,flex:1}}>{label}</span>
+              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(120deg,#2F9E90,#1B6E62)',color:'#fff',fontSize:10,fontWeight:700}}>✓</span>
             </div>
           ))}
         </div>
-        <div style={{padding:'20px'}}>
-          <button onClick={onClose} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#3EACA0,#E8956D)',border:'none',borderRadius:16,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",boxShadow:'0 4px 16px rgba(62,172,160,0.4)',letterSpacing:'-0.01em'}}>{cta}</button>
+        <div style={{padding:20}}>
+          <PremiumButton onClick={onClose}>{cta}</PremiumButton>
         </div>
       </div>
     </div>
@@ -1389,25 +1333,12 @@ function PremiumWelcomeModal({ lang, isFounder, onClose }) {
 }
 
 function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
-  const { t } = useTranslation(lang);
   if (isRes) return null;
   return (
-    <div className="fab-wrap">
-      <div className="fab-orbit" aria-hidden="true">
-        <svg viewBox="0 0 120 120">
-          <defs>
-            <path
-              id="fabOrbitPath"
-              d="M 60,60 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"
-            />
-          </defs>
-          <text>
-            <textPath href="#fabOrbitPath" startOffset="0">
-              {t('fabOrbit')}
-            </textPath>
-          </text>
-        </svg>
-      </div>
+    <div className="fab-new">
+      <span className="pulse-ring"/>
+      <span className="pulse-ring"/>
+      <span className="pulse-ring"/>
       {isThink && (
         <div className="fab-think-toast">
           {lang === 'en' ? 'Thinking' : 'Je réfléchis'}
@@ -1415,20 +1346,19 @@ function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
         </div>
       )}
       <button
-        className={"fab-vocal" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
+        className={"fab-new-btn" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
         onClick={onClick}
         disabled={isThink}
         aria-label="Parler à l'IA"
         style={{touchAction:'manipulation'}}
       >
         {isThink
-          ? <span style={{fontSize:22}}>⏳</span>
+          ? <span style={{fontSize:19}}>⏳</span>
           : isRec
             ? <span className="fab-icon-blink">🎙️</span>
             : <span>🎙️</span>
         }
       </button>
-      {!isThink&&<div className="fab-tooltip">{lang === 'en' ? 'Talk to your AI' : 'Parle à ton IA'}</div>}
     </div>
   );
 }
@@ -1461,7 +1391,7 @@ const CAT_COLORS_MAP={
 };
 
 
-function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,setConversionModal}){
+function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,setConversionModal,hideFab=false}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const vaStreamRef=useRef(null);
@@ -1472,6 +1402,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   const [vaEdits,setVaEdits]=useState({});
   const [lastPriceAdviceData,setLastPriceAdviceData]=useState(null);
   const [voiceToast,setVoiceToast]=useState('');
+  // Phrase transcrite, affichée en tête du drawer (« J'ai entendu … »). Elle
+  // existait déjà côté client mais n'était jamais montrée : c'est ce qui rend
+  // l'IA lisible quand elle se trompe. Aucun coût serveur.
+  const [vaTranscript,setVaTranscript]=useState('');
   const showVoiceToast=(msg)=>{setVoiceToast(msg);setTimeout(()=>setVoiceToast(''),2000);};
   const SURL=supabaseUrl;
 
@@ -1489,8 +1423,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       vaStreamRef.current=null;
     };
   },[]);
-  const fmt=(amount,dec=null)=>formatCurrency(amount,currency,dec);
-  const sym=CURRENCY_SYMBOLS[currency]||currency;
+  // Le formatage monétaire et le rendu des cartes vivent désormais dans
+  // components/voice/VoiceResultCard — VoiceAssistant ne garde que la capture
+  // audio, l'appel IA et l'état du drawer.
 
   function resetVA(){
     clearTimeout(autoCloseRef.current);
@@ -1499,7 +1434,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     vaMediaRef.current=null;vaChunksRef.current=[];
     vaStreamRef.current?.getTracks().forEach(t=>t.stop());
     vaStreamRef.current=null;
-    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});
+    setVaStep("");setVaResults([]);setVaError(null);setVaEdits({});setVaTranscript('');
   }
 
   useEffect(()=>{
@@ -1564,6 +1499,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const{text,error:tErr}=tJson;
           if(tErr)throw new Error(tErr);
           if(!text?.trim())throw new Error(lang==="en"?"No speech detected":"Aucune parole détectée");
+          setVaTranscript(text.trim());
           // Follow-up "ajoute le au stock" after a price_advice
           const tlFU=text.toLowerCase();
           const ADD_FU=lang==="en"
@@ -1652,1733 +1588,86 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   const isThink=vaStep==="thinking";
   const isRes=vaStep==="results";
 
+  // ── Rendu ────────────────────────────────────────────────────────────────
+  // Le drawer s'ouvre À LA FIN de l'enregistrement (état "thinking"), pas à
+  // l'appui micro : pendant que l'utilisateur parle, le FAB reste seul maître
+  // (inchangé). Le même sheet se remplit ensuite de cartes — aucune fermeture
+  // /réouverture entre les deux (design validé 2026-07-14).
+  const drawerOpen = isThink || vaResults.length > 0;
+  const voiceLeft = VOICE_FREE_LIMIT - voiceUsedToday;
+
+  const ctx = {
+    lang, currency, items, actions,
+    replaceResult,
+    edits: vaEdits,
+    setEdits: setVaEdits,
+  };
+
   return(
     <>
-      <style>{`
-        @keyframes va-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
-        @keyframes va-pulse{0%,100%{box-shadow:0 0 0 0 rgba(229,62,62,0.5),0 4px 20px rgba(229,62,62,0.35)}50%{box-shadow:0 0 0 12px rgba(229,62,62,0),0 4px 20px rgba(229,62,62,0.35)}}
-        @keyframes va-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-        @keyframes va-w1{0%,100%{height:4px}50%{height:16px}}
-        @keyframes va-w2{0%,100%{height:8px}50%{height:24px}}
-        @keyframes va-w3{0%,100%{height:12px}50%{height:32px}}
-        @keyframes va-w4{0%,100%{height:6px}50%{height:20px}}
-        @keyframes va-w5{0%,100%{height:10px}50%{height:28px}}
-        @keyframes va-w6{0%,100%{height:5px}50%{height:18px}}
-        @keyframes va-w7{0%,100%{height:9px}50%{height:22px}}
-        @keyframes va-fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes va-slidein{from{transform:translateY(100%)}to{transform:translateY(0)}}
-      `}</style>
+      <style>{VOICE_KIT_CSS}</style>
 
-      {/* FAB */}
-      <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />
+      {/* FAB — hors périmètre du redesign, comportement inchangé */}
+      {!hideFab && <FabVocal onClick={handleFabClick} isRec={isRec} isThink={isThink} isRes={isRes} lang={lang} />}
 
-      {/* Voice remaining pill (free users, 1-2 left only) */}
-      {!isPremium&&!isRec&&!isThink&&!isRes&&(()=>{
-        const r=VOICE_FREE_LIMIT-voiceUsedToday;
-        if(r<=2&&r>0)return(
-          <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:r===1?"#FEE2E2":"#FEF3C7",color:r===1?"#DC2626":"#D97706",borderRadius:20,padding:"5px 14px",zIndex:999,fontSize:12,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
-            {r===1?(lang==='fr'?'⚠️ Dernier vocal du jour !':'⚠️ Last voice today!'):(lang==='fr'?`🎙️ ${r} vocaux restants`:`🎙️ ${r} voices left`)}
-          </div>
-        );
-        return null;
-      })()}
-
-      {/* Voice gate toast */}
-      <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.8)",color:"#fff",borderRadius:"20px",padding:"10px 20px",fontSize:"14px",fontWeight:500,zIndex:9999,opacity:voiceToast?1:0,transition:"opacity 0.3s ease",pointerEvents:"none",whiteSpace:"nowrap"}}>
-        {voiceToast}
-      </div>
-
-      {/* Error bubble */}
-      {vaError&&vaStep===""&&(
-        <div style={{position:"fixed",bottom:"calc(env(safe-area-inset-bottom,0px) + 130px)",left:"50%",transform:"translateX(-50%)",background:"#1A1A1A",color:"#fff",borderRadius:12,padding:"10px 18px",boxShadow:"0 4px 20px rgba(0,0,0,0.25)",zIndex:999,fontSize:13,fontWeight:700,whiteSpace:"nowrap",animation:"va-fadein 0.2s ease",pointerEvents:"none"}}>
-          {vaError}
-        </div>
+      {/* Pastille de quota (Free, 1-2 vocaux restants) */}
+      {!isPremium&&!isRec&&!isThink&&!isRes&&voiceLeft<=2&&voiceLeft>0&&(
+        <FloatingBubble tone={voiceLeft===1?'negative':'amber'}>
+          {voiceLeft===1
+            ?(lang==='fr'?'⚠️ Dernier vocal du jour !':'⚠️ Last voice today!')
+            :(lang==='fr'?`🎙️ ${voiceLeft} vocaux restants`:`🎙️ ${voiceLeft} voices left`)}
+        </FloatingBubble>
       )}
 
-      {/* Results drawer */}
-      {vaResults.length>0&&(
-        <div ref={drawerRef}
-          onTouchStart={e=>{
-            swipeRef.current.startY=e.touches[0].clientY;
-            swipeRef.current.active=(drawerRef.current?.scrollTop??0)===0;
-          }}
-          onTouchMove={e=>{
-            if(!swipeRef.current.active)return;
-            const dy=e.touches[0].clientY-swipeRef.current.startY;
-            if(dy>0&&drawerRef.current){drawerRef.current.style.transition="none";drawerRef.current.style.transform=`translateY(${dy}px)`;}
-          }}
-          onTouchEnd={e=>{
-            if(!swipeRef.current.active)return;
-            const dy=e.changedTouches[0].clientY-swipeRef.current.startY;
-            if(dy>60){resetVA();}
-            else if(drawerRef.current){drawerRef.current.style.transition="transform 0.2s ease";drawerRef.current.style.transform="translateY(0)";}
-          }}
-          style={{position:"fixed",bottom:0,left:0,right:0,maxHeight:"min(70vh,700px)",overflowY:"auto",background:"#fff",borderRadius:"20px 20px 0 0",borderTop:"0.5px solid rgba(0,0,0,0.08)",padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)",zIndex:1001,boxShadow:"0 -8px 40px rgba(0,0,0,0.12)",animation:"va-slidein 0.3s ease"}}>
-          {/* Header */}
-          <div style={{display:"flex",alignItems:"center",marginBottom:16}}>
-            <div style={{flex:1,display:"flex",justifyContent:"center"}}>
-              <div style={{width:36,height:4,background:"rgba(0,0,0,0.12)",borderRadius:99}}/>
-            </div>
-            <button onClick={resetVA} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:28,height:28,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",color:"#6B7280",flexShrink:0}}>✕</button>
-          </div>
+      {/* Toast (IA indisponible, quota) */}
+      {voiceToast&&<FloatingBubble tone="ink" bottom={90}>{voiceToast}</FloatingBubble>}
 
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {vaResults.map((result,idx)=>{
-              const{intent,status,data,message,taskData}=result||{};
+      {/* Erreur micro / transcription */}
+      {vaError&&vaStep===""&&(
+        <FloatingBubble tone="danger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+          {vaError}
+        </FloatingBubble>
+      )}
 
-              if(intent==="deal_score"&&!taskData?.prix_vente) return null;
-
-              if(status==="error"||intent==="unknown"){
-                if(message?.startsWith("SESSION_EXPIRED:")){
-                  return(<div key={idx} style={{background:"#FFF7ED",borderRadius:12,padding:"12px 14px",border:"1px solid #FED7AA"}}><div style={{fontSize:13,color:"#C2410C",fontWeight:700}}>{lang==="en"?"Session expired":"Session expirée"}</div><div style={{fontSize:12,color:"#9A3412",marginTop:2}}>{lang==="en"?"Reload the app and try again":"Recharge l'app et réessaie"}</div><button onClick={()=>window.location.reload()} style={{marginTop:8,padding:"7px 14px",background:"#EA580C",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Reload":"Recharger"}</button></div>);
-                }
-                return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}><div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div></div>);
-              }
-
-              if(status==="success"&&intent==="inventory_add"){
-                const cat=data?.type||taskData?.categorie||taskData?.type;
-                const ts=cat?getTypeStyle(cat):null;
-                const qAdded=(data?.quantite||taskData?.quantite)>1?(data?.quantite||taskData?.quantite):null;
-                const marque=normalizeMarque(data?.marque||taskData?.marque||null)||null;
-                const nom=data?.title||data?.nom||taskData?.nom;
-                // taskData.prix_achat est propre à cette tâche et n'est jamais partagé avec
-                // une autre (contrairement à data, qui peut référencer l'objet d'un article
-                // déjà ajouté plus tôt dans le même batch en cas de doublon détecté) — on le
-                // priorise pour plus de robustesse, en gardant data en repli si absent.
-                const prix=taskData?.prix_achat??data?.buy??data?.prix_achat;
-                const desc=data?.description||taskData?.description||null;
-                return(
-                  <div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:16}}>✅</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {lang==="en"?"added":"ajouté"}{prix?` · ${fmt(prix)}`:""}{qAdded?` · ×${qAdded}`:""}</div>
-                      {desc&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:500,marginTop:2,opacity:0.85}}>{desc}</div>}
-                      <div className="vr-pills" style={{marginTop:4}}>
-                        {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
-                        {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
-                        {(data?.plateforme||taskData?.plateforme)&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {data?.plateforme||taskData?.plateforme}</span>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="inventory_search"){
-                const found=data?.items||[];
-                const anyFormOpen=vaEdits[idx]?.sellOpen!=null||vaEdits[idx]?.deleteOpen!=null||vaEdits[idx]?.editOpen!=null;
-                const CATS=["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"];
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12,paddingBottom:10,borderBottom:"1px solid rgba(0,0,0,0.06)"}}>{lang==="en"?"Search":"Résultats"} ({found.length})</div>
-                    {found.length===0?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>):(
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {found.map((item,i)=>{
-                          const isSellOpen=vaEdits[idx]?.sellOpen===i;
-                          const sellPrice=vaEdits[idx]?.sellPrice??"";
-                          const sellFees=vaEdits[idx]?.sellFees??"";
-                          const sellQty=vaEdits[idx]?.sellQty??1;
-                          const sellPrixMode=vaEdits[idx]?.sellPrixMode??"total";
-                          const sellFeesMode=vaEdits[idx]?.sellFeesMode??"total";
-                          const isDeleteOpen=vaEdits[idx]?.deleteOpen===i;
-                          const isEditOpen=vaEdits[idx]?.editOpen===i;
-                          const ef=vaEdits[idx]?.editFields||{};
-                          const isSold=item.statut==="vendu"||item.statut==="sold";
-                          const nom=item.titre||item.title||item.nom||"";
-                          const inputSt={fontSize:16,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"};
-                          const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
-                          const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
-                          return(
-                            <div key={i} style={{paddingBottom:12,borderBottom:i<found.length-1?"1px solid rgba(0,0,0,0.04)":"none",paddingTop:6}}>
-                              {/* LIGNE 1 : nom + prix */}
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</div>
-                                <div style={{flexShrink:0,textAlign:"right"}}>
-                                  {isSold?(
-                                    <>
-                                      <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{fmt(item.buy||item.prix_achat||0)}</div>
-                                      <div style={{fontSize:13,fontWeight:700,color:"#1D9E75"}}>{(item.sell||item.prix_vente)?fmt(item.sell||item.prix_vente):"?"}</div>
-                                    </>
-                                  ):(
-                                    <div style={{fontSize:13,fontWeight:700,color:"#F9A26C"}}>{fmt(item.buy||item.prix_achat||0)}</div>
-                                  )}
-                                </div>
-                              </div>
-                              {/* LIGNE 2 : pills */}
-                              <div className="vr-pills" style={{marginTop:4}}>
-                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                {(item.type||item.categorie)&&(item.type||item.categorie)!=="Autre"&&(()=>{const ts2=getTypeStyle(item.type||item.categorie);return<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type||item.categorie,lang)}</span>;})()}
-                                {item.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {item.emplacement}</span>}
-                                {(item.quantite||item.qty)>1&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>×{item.quantite||item.qty}</span>}
-                                {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
-                              </div>
-                              {(item.description||item.desc)&&<div style={{fontSize:11,color:"#6B7280",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description||item.desc}</div>}
-                              {/* LIGNE 3 : date + boutons */}
-                              {!anyFormOpen&&(
-                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,gap:8}}>
-                                  <div style={{fontSize:10,color:"#A3A9A6",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                    {isSold
-                                      ?(item.date_vente?`${lang==="en"?"sold on ":"vendu le "}${fmtDate(item.date_vente)}`:"")
-                                      :(item.date_ajout?`${lang==="en"?"in stock since ":"en stock depuis le "}${fmtDate(item.date_ajout)}${days!==null?` (${days}${lang==="en"?"d":"j"})`:""}`:"")}
-                                  </div>
-                                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                                    {!isSold&&(
-                                      <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:i,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
-                                        style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                                        {lang==="en"?"Mark as sold":"Marquer vendu"}
-                                      </button>
-                                    )}
-                                    {isSold&&<span style={{fontSize:10,fontWeight:700,color:"#1D9E75"}}>{lang==="en"?"✓ sold":"✓ vendu"}</span>}
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:i,editFields:{nom,prix_achat:item.prix_achat||item.buy||"",marque:item.marque||item.brand||"",type:item.type||item.categorie||""}}}))}
-                                      style={{fontSize:10,fontWeight:700,color:"#1D9E75",border:"1px solid #1D9E75",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
-                                      ✏️
-                                    </button>
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{deleteOpen:i}}))}
-                                      style={{fontSize:10,fontWeight:700,color:"#E53E3E",border:"1px solid #E53E3E",borderRadius:6,padding:"3px 7px",background:"transparent",cursor:"pointer",fontFamily:"inherit"}}>
-                                      ✕
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Sell form */}
-                              {isSellOpen&&(
-                                <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
-                                  {(item.quantite||1)>1&&(
-                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                      <span style={{fontSize:11,color:"#6B7280",flex:1}}>{lang==="en"?"Qty to sell":"Qté à vendre"}</span>
-                                      <input type="number" min={1} max={item.quantite} value={sellQty}
-                                        onFocus={e=>e.target.select()}
-                                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellQty:Math.max(1,Math.min(parseInt(e.target.value)||1,item.quantite))}}))}
-                                        style={{width:60,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",textAlign:"center",fontFamily:"inherit"}}/>
-                                      <span style={{fontSize:11,color:"#A3A9A6"}}>/ {item.quantite}</span>
-                                    </div>
-                                  )}
-                                  {sellQty>1&&(
-                                    <>
-                                      <div style={{display:"flex",gap:4}}>
-                                        {["total","unit"].map(m=>(
-                                          <button key={m} onClick={()=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrixMode:m}}))}
-                                            style={{flex:1,padding:"3px 0",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid #1D9E75",background:sellPrixMode===m?"#1D9E75":"transparent",color:sellPrixMode===m?"#fff":"#1D9E75",cursor:"pointer",fontFamily:"inherit"}}>
-                                            {m==="total"?(lang==="en"?"Total price":"Prix total"):(lang==="en"?"Per unit":"Par unité")}
-                                          </button>
-                                        ))}
-                                      </div>
-                                      <div style={{display:"flex",gap:4}}>
-                                        {["total","unit"].map(m=>(
-                                          <button key={m} onClick={()=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellFeesMode:m}}))}
-                                            style={{flex:1,padding:"3px 0",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid #F9A26C",background:sellFeesMode===m?"#F9A26C":"transparent",color:sellFeesMode===m?"#fff":"#F9A26C",cursor:"pointer",fontFamily:"inherit"}}>
-                                            {m==="total"?(lang==="en"?"Fees on total":"Frais total"):(lang==="en"?"Fees/unit":"Frais/unité")}
-                                          </button>
-                                        ))}
-                                      </div>
-                                      {parseFloat(sellPrice)>0&&<div style={{fontSize:10,color:"#6B7280",textAlign:"center"}}>{sellPrixMode==="total"?`= ${fmt(parseFloat(sellPrice)/sellQty)}/${lang==='en'?'unit':'unité'}`:`= ${fmt(parseFloat(sellPrice)*sellQty)} total`}</div>}
-                                    </>
-                                  )}
-                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                    <div style={{display:"flex",gap:6,flex:1}}>
-                                      <input type="number" value={sellPrice} autoFocus
-                                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellPrice:e.target.value}}))}
-                                        placeholder={lang==="en"?"Sale price (€)":"Prix de vente (€)"}
-                                        style={{flex:2,fontSize:12,fontWeight:600,border:"1px solid #1D9E75",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                                      <input type="number" value={sellFees}
-                                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],sellFees:e.target.value}}))}
-                                        placeholder={lang==="en"?"Fees (€)":"Frais (€)"}
-                                        style={{flex:1,fontSize:12,fontWeight:600,border:"1px solid rgba(0,0,0,0.15)",borderRadius:7,padding:"5px 8px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                                    </div>
-                                    <button onClick={async()=>{
-                                      const pv=parseFloat(sellPrice)||0;
-                                      const pf=parseFloat(sellFees)||0;
-                                      const qty=Math.max(1,Math.min(parseInt(sellQty)||1,item.quantite||1));
-                                      const svUnit=sellPrixMode==="total"&&qty>1?pv/qty:pv;
-                                      const sfUnit=sellFeesMode==="total"&&qty>1?pf/qty:pf;
-                                      if(svUnit>0){
-                                        await actions.confirmSellDirect(item,svUnit,sfUnit,qty);
-                                        await actions.fetchAll();
-                                      }
-                                      setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}));
-                                    }} style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1D9E75",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                                      {lang==="en"?"✓ Sold":"✓ Vendu"}
-                                    </button>
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{sellOpen:null,sellPrice:"",sellFees:"",sellQty:1,sellPrixMode:"total",sellFeesMode:"total"}}))}
-                                      style={{fontSize:11,color:"#6B7280",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                                      ✕
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Delete confirm */}
-                              {isDeleteOpen&&(
-                                <div style={{background:"#FFF5F5",borderRadius:8,padding:"10px 12px",marginTop:6,border:"1px solid #FCA5A5"}}>
-                                  <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>
-                                    {lang==="en"?`Delete "${nom}"?`:`Supprimer "${nom}" ?`}
-                                  </div>
-                                  <div style={{display:"flex",gap:6}}>
-                                    <button onClick={()=>{
-                                      actions.deleteItem(item.id);
-                                      replaceResult(idx,{...result,data:{...data,items:data.items.filter((_,j)=>j!==i)}});
-                                      setVaEdits(prev=>({...prev,[idx]:{deleteOpen:null}}));
-                                    }} style={{flex:1,padding:"6px",background:"#E53E3E",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                                      {lang==="en"?"Delete":"Supprimer"}
-                                    </button>
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{deleteOpen:null}}))}
-                                      style={{flex:1,padding:"6px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,fontSize:12,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
-                                      {lang==="en"?"Cancel":"Annuler"}
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Edit form */}
-                              {isEditOpen&&(
-                                <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
-                                  <div style={{display:"flex",gap:6}}>
-                                    <input value={ef.nom??nom}
-                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,nom:e.target.value}}}))}
-                                      placeholder={lang==="en"?"Name":"Nom"}
-                                      style={{...inputSt,flex:2}}/>
-                                    <input type="number" value={ef.prix_achat??item.prix_achat??item.buy??""}
-                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,prix_achat:e.target.value}}}))}
-                                      placeholder={`${lang==="en"?"Price":"Prix"} ${sym}`}
-                                      style={{...inputSt,flex:1}}/>
-                                  </div>
-                                  <div style={{display:"flex",gap:6}}>
-                                    <input value={ef.marque??item.marque??item.brand??""}
-                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,marque:e.target.value}}}))}
-                                      placeholder={lang==="en"?"Brand":"Marque"}
-                                      style={{...inputSt,flex:1}}/>
-                                    <select value={ef.type??item.type??item.categorie??""}
-                                      onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editFields:{...ef,type:e.target.value}}}))}
-                                      style={{...inputSt,flex:1}}>
-                                      <option value="">{lang==="en"?"Category":"Catégorie"}</option>
-                                      {CATS.map(c=><option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                  </div>
-                                  <div style={{display:"flex",gap:6}}>
-                                    <button onClick={async()=>{
-                                      try{
-                                        const fields={
-                                          titre:ef.nom!=null?ef.nom:nom,
-                                          prix_achat:parseFloat(ef.prix_achat)||item.prix_achat||0,
-                                          marque:ef.marque!=null?ef.marque||null:item.marque||null,
-                                          type:ef.type||item.type||null,
-                                        };
-                                        await actions.updateItem(item.id,fields);
-                                        replaceResult(idx,{...result,data:{...data,items:data.items.map((it,j)=>j===i?{...it,...fields}:it)}});
-                                        actions.fetchAll();
-                                        setVaEdits(prev=>({...prev,[idx]:{editOpen:null,editFields:{}}}));
-                                      }catch(e){setVaEdits(prev=>({...prev,[idx]:{...prev[idx],editError:e.message}}));}
-                                    }} style={{flex:1,padding:"6px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                                      ✓ {lang==="en"?"Save":"Sauvegarder"}
-                                    </button>
-                                    <button onClick={()=>setVaEdits(prev=>({...prev,[idx]:{editOpen:null,editFields:{}}}))}
-                                      style={{flex:1,padding:"6px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:7,fontSize:12,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
-                                      {lang==="en"?"Cancel":"Annuler"}
-                                    </button>
-                                  </div>
-                                  {vaEdits[idx]?.editError&&<div style={{fontSize:11,color:"#E53E3E"}}>{vaEdits[idx].editError}</div>}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="analytics_query"){
-                const aqIsProfit=taskData?.type==="profit";
-                const aqV=data?.value??0;
-                // Granularité réelle de la période pour adapter le commentaire
-                const aqGran=(()=>{
-                  const p=data?.periode;
-                  if(p==="week")return"week";
-                  if(p==="month")return"month";
-                  if(p==="custom"){
-                    const df=taskData?.date_from,dt=taskData?.date_to;
-                    if(df&&dt){
-                      if(df===dt)return"day";
-                      const diffDays=Math.round((new Date(dt)-new Date(df))/86400000);
-                      if(diffDays<=7)return"week";
-                      if(diffDays<=31)return"month";
-                      return"period"; // période longue > 31 jours
-                    }
-                  }
-                  return"day";
-                })();
-                const aqComment=aqIsProfit?(()=>{
-                  if(aqGran==="week"){
-                    if(aqV>50)return lang==="en"?"Great week 🔥":"Super semaine 🔥";
-                    if(aqV>10)return lang==="en"?"Good week 👍":"Bonne semaine 👍";
-                    if(aqV>0)return lang==="en"?"Slow week 😊":"Petite semaine 😊";
-                    if(aqV===0)return lang==="en"?"Empty week 💪":"Semaine blanche 💪";
-                    return lang==="en"?"Week in the red 😬":"Semaine dans le rouge 😬";
-                  }
-                  if(aqGran==="month"){
-                    if(aqV>50)return lang==="en"?"Great month 🔥":"Super mois 🔥";
-                    if(aqV>10)return lang==="en"?"Good month 👍":"Bon mois 👍";
-                    if(aqV>0)return lang==="en"?"Slow month 😊":"Petit mois 😊";
-                    if(aqV===0)return lang==="en"?"Empty month 💪":"Mois blanc 💪";
-                    return lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬";
-                  }
-                  // période longue (> 31 jours) — commentaire neutre
-                  if(aqGran==="period"){
-                    if(aqV>50)return lang==="en"?"Great period 🔥":"Belle période 🔥";
-                    if(aqV>10)return lang==="en"?"Good period 👍":"Bonne période 👍";
-                    if(aqV>0)return lang==="en"?"Slow period 😊":"Petite période 😊";
-                    if(aqV===0)return lang==="en"?"Empty period 💪":"Période blanche 💪";
-                    return lang==="en"?"Period in the red 😬":"Période dans le rouge 😬";
-                  }
-                  // day (défaut)
-                  if(aqV>50)return lang==="en"?"Great day 🔥":"Bonne journée 🔥";
-                  if(aqV>10)return lang==="en"?"Not bad 👍":"Pas mal du tout 👍";
-                  if(aqV>0)return lang==="en"?"Small win 😊":"Petit gain 😊";
-                  if(aqV===0)return lang==="en"?"Nothing today 💪":"Rien aujourd'hui 💪";
-                  return lang==="en"?"In the red 😬":"Dans le rouge 😬";
-                })():null;
-                // Label de période lisible
-                const aqPeriode=(()=>{
-                  const p=data?.periode;
-                  if(!p||p==="all")return null;
-                  if(p==="today")return lang==="en"?"Today":"Aujourd'hui";
-                  if(p==="week")return lang==="en"?"Last 7 days":"7 derniers jours";
-                  if(p==="month")return lang==="en"?"Last 30 days":"30 derniers jours";
-                  if(p==="year")return lang==="en"?"This year":"Cette année";
-                  if(p==="custom"){
-                    const df=taskData?.date_from,dt=taskData?.date_to;
-                    const fD=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit"}):"";
-                    if(df&&dt&&df===dt)return fD(df);
-                    if(df&&dt)return`${fD(df)} – ${fD(dt)}`;
-                    return null;
-                  }
-                  return p;
-                })();
-                return(
-                  <div key={idx} className="vr-profit-card">
-                    <div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginBottom:6}}>{data?.label}</div>
-                    <div style={{fontSize:32,fontWeight:900,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
-                    {aqPeriode&&<div style={{fontSize:11,color:"#D1D5DB",marginTop:4}}>{aqPeriode}</div>}
-                    {aqComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{aqComment}</div>}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="analytics_best"&&data?.byCategory){
-                const entries=Object.entries(data.byCategory);
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>{lang==="en"?"Best by category":"Meilleur par catégorie"}</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                      {entries.map(([cat,s],i)=>(
-                        <div key={i} style={{background:"#F5F6F5",borderRadius:10,padding:"10px 12px"}}>
-                          <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{cat}</div>
-                          <div style={{fontSize:12,fontWeight:700,color:"#0D0D0D",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title||s.titre}</div>
-                          <div style={{fontSize:13,fontWeight:800,color:"#1D9E75"}}>+{fmt(Math.round((s.margin??s.benefice??s.prix_vente-s.prix_achat)*100)/100)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="analytics_best"){
-                const top=data?.items||[];
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Top</div>
-                    {top.map((s,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<top.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{i+1}. {s.title||s.titre}</div>
-                        <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmt(Math.round((s.margin||s.benefice||0)*100)/100)}</div><div style={{fontSize:10,color:"#A3A9A6"}}>{Math.round((s.marginPct||s.margin_pct||0)*10)/10}%</div></div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="analytics_dormant"){
-                const dormant=data?.items||[];
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{lang==="en"?"Dormant":"Dormants"} ({dormant.length})</div>
-                    {dormant.slice(0,6).map((item,i)=>{
-                      const d=Math.floor((Date.now()-new Date(item.date_achat||item.created_at||item.date))/86400000);
-                      return(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<Math.min(dormant.length,6)-1?"1px solid rgba(0,0,0,0.04)":"none"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{item.title||item.titre}</div><span style={{background:"#FFF4EE",color:"#F9A26C",border:"1px solid #FDDCB5",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>{d}j</span></div>);
-                    })}
-                    {dormant.length>6&&<div style={{fontSize:11,color:"#A3A9A6",textAlign:"center",marginTop:4}}>+{dormant.length-6} {lang==="en"?"more":"autres"}</div>}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="analytics_date"){
-                const dateItems=data?.items||[];
-                const adType=taskData?.type||"all";
-                const adDate=taskData?.date||"";
-                const fmtDs=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit"}):"";
-                const dateLabel=fmtDs(adDate);
-                // Header selon type achats/ventes
-                const adHeader=(()=>{
-                  const n=dateItems.length;
-                  if(adType==="bought")return lang==="en"?`Bought on ${dateLabel} (${n})`:`Acheté le ${dateLabel} (${n})`;
-                  if(adType==="sold")return lang==="en"?`Sold on ${dateLabel} (${n})`:`Vendu le ${dateLabel} (${n})`;
-                  return lang==="en"?`On ${dateLabel} (${n})`:`Le ${dateLabel} (${n})`;
-                })();
-                // Message état vide
-                const adEmpty=(()=>{
-                  if(adType==="bought")return lang==="en"?"Nothing bought that day 🙂":"Rien acheté ce jour-là 🙂";
-                  if(adType==="sold")return lang==="en"?"Nothing sold that day 🙂":"Rien vendu ce jour-là 🙂";
-                  return lang==="en"?"Nothing recorded that day 🙂":"Rien enregistré ce jour-là 🙂";
-                })();
-                return(
-                  <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
-                      {adType==="bought"?"🛒":adType==="sold"?"💸":"📅"} {adHeader}
-                    </div>
-                    {dateItems.length===0
-                      ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{adEmpty}</div>
-                      :<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {dateItems.map((item,i)=>{
-                          const isSold=item._type==="sold";
-                          const nomItem=item.title||item.titre||"—";
-                          const catItem=item.type||item.categorie||"Autre";
-                          const tsItem=catItem?getTypeStyle(catItem):null;
-                          const marqueItem=item.marque||"";
-                          const empItem=item.emplacement||"";
-                          const prixA=item.buy||item.prix_achat||0;
-                          const prixV=item.sell||item.prix_vente||0;
-                          const ben=item.margin??item.benefice??0;
-                          return(
-                            <div key={i} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",
-                              padding:"7px 0",borderBottom:i<dateItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                              <div style={{flex:1,minWidth:0,marginRight:10}}>
-                                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",
-                                  textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{nomItem}</div>
-                                <div className="vr-pills" style={{marginTop:3}}>
-                                  {marqueItem&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,
-                                    padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>
-                                    {marqueItem}</span>}
-                                  {tsItem&&catItem&&catItem!=="Autre"&&<span style={{background:tsItem.bg,color:tsItem.color,
-                                    borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,
-                                    border:`1px solid ${tsItem.border}`}}>{tsItem.emoji} {typeLabel(catItem,lang)}</span>}
-                                  {empItem&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,
-                                    padding:"3px 9px",fontSize:11,fontWeight:600}}>📍 {empItem}</span>}
-                                </div>
-                              </div>
-                              <div style={{textAlign:"right",flexShrink:0}}>
-                                {isSold?(
-                                  <>
-                                    <div style={{fontSize:12,fontWeight:700,color:"#1D9E75"}}>{fmt(prixV)}</div>
-                                    <div style={{fontSize:11,color:"#A3A9A6",textDecoration:"line-through"}}>{fmt(prixA)}</div>
-                                    <div style={{fontSize:11,fontWeight:700,color:ben>=0?"#1D9E75":"#E53E3E"}}>
-                                      {ben>=0?"+":""}{fmt(Math.round(ben*100)/100)}</div>
-                                  </>
-                                ):(
-                                  <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{fmt(prixA)}</div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    }
-                  </div>
-                );
-              }
-
-              // ── Vente de lot à prix groupé (plusieurs articles, un seul prix total) ──
-              if(status==="pending_confirmation"&&intent==="inventory_sell_lot"){
-                const hasEarlierPendingLot=vaResults.slice(0,idx).some(
-                  r=>(r?.intent==="inventory_sell"||r?.intent==="inventory_sell_lot")&&r?.status==="pending_confirmation"
-                );
-                if(hasEarlierPendingLot){
-                  return(
-                    <div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"10px 14px",border:"1px solid #E5E7EB",opacity:0.45}}>
-                      <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>
-                        ⏳ {lang==="en"?"Waiting for previous sale confirmation…":"En attente de la confirmation précédente…"}
-                      </div>
-                    </div>
-                  );
-                }
-
-                const lotItems=taskData?.items||[];
-                const lotTotal=taskData?.lotTotal||0;
-                const pendingI=lotItems.findIndex(it=>it.resolution===null);
-                const lotPhase=pendingI===-1?"recap":"matching";
-
-                if(lotPhase==="matching"){
-                  const cur=lotItems[pendingI];
-                  const mi=cur?.matchedItem;
-                  const miTs=mi?getTypeStyle(mi.type):null;
-                  return(
-                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div style={{fontSize:11,fontWeight:800,color:"#92400E"}}>
-                        🛍️ {lang==="en"?`Lot sale — item ${pendingI+1}/${lotItems.length}`:`Vente de lot — article ${pendingI+1}/${lotItems.length}`}
-                      </div>
-                      <div>
-                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{cur?.nom||"Article"}</div>
-                        {cur?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{cur.marque}</span>}
-                      </div>
-                      {mi?(
-                        <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
-                          <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{mi.title}</div>
-                          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                            {mi.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{mi.marque}</span>}
-                            {miTs&&mi.type&&mi.type!=="Autre"&&<span style={{background:miTs.bg,color:miTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${miTs.border}`}}>{miTs.emoji} {mi.type}</span>}
-                          </div>
-                          <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(mi.buy+(mi.purchaseCosts||0))}</div>
-                        </div>
-                      ):(
-                        <div style={{fontSize:12,color:"#92400E",fontStyle:"italic"}}>{lang==="en"?"No match in stock — will be created as a new item":"Aucun article correspondant en stock — sera créé comme nouvel article"}</div>
-                      )}
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>{
-                          const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"stock",item:mi}}:it);
-                          replaceResult(idx,{...result,taskData:{...taskData,items:next}});
-                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✓ {lang==="en"?"Add stock item to lot":"Ajouter cet article du stock au lot"}
-                        </button>
-                        <button onClick={()=>{
-                          const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"new"}}:it);
-                          replaceResult(idx,{...result,taskData:{...taskData,items:next}});
-                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          ➕ {lang==="en"?"Create new item":"Créer un nouvel article"}
-                        </button>
-                      </div>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"8px",background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Cancel lot":"Annuler le lot"}
-                      </button>
-                    </div>
-                  );
-                }
-
-                // lotPhase === "recap"
-                const defaultPrice=lotItems.length?Math.round((lotTotal/lotItems.length)*100)/100:0;
-                const linePrice=(i)=>{
-                  const v=vaEdits[idx]?.lotPrices?.[i];
-                  return (v!=null&&v!=="")?(parseFloat(v)||0):defaultPrice;
-                };
-                const liveTotal=lotItems.reduce((sum,_it,i)=>sum+linePrice(i),0);
-                return(
-                  <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
-                      🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""} sold`:`Lot de ${lotItems.length} article${lotItems.length>1?"s":""} vendu${lotItems.length>1?"s":""}`}{" — "}{fmt(lotTotal)}
-                    </div>
-                    <div style={{fontSize:11,color:"#6B7280",marginBottom:12}}>
-                      {lang==="en"?"Current total":"Total actuel"} : {fmt(liveTotal)}
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
-                      {lotItems.map((it,i)=>{
-                        const label=it.resolution?.source==="stock"?(it.resolution.item?.title||it.nom):it.nom;
-                        const its=it.categorie&&it.categorie!=="Autre"?getTypeStyle(it.categorie):null;
-                        return(
-                          <div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:6}}>
-                              <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{label}</div>
-                              <span style={{fontSize:10,fontWeight:700,color:it.resolution?.source==="stock"?"#1D9E75":"#7C3AED",background:it.resolution?.source==="stock"?"#E8F5F0":"#EDE9FE",borderRadius:99,padding:"2px 7px",flexShrink:0}}>
-                                {it.resolution?.source==="stock"?(lang==="en"?"from stock":"du stock"):(lang==="en"?"new":"nouveau")}
-                              </span>
-                            </div>
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
-                              {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
-                              {its&&<span style={{background:its.bg,color:its.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${its.border}`}}>{its.emoji} {typeLabel(it.categorie,lang)}</span>}
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              <input type="number" value={vaEdits[idx]?.lotPrices?.[i]??defaultPrice}
-                                onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],lotPrices:{...prev[idx]?.lotPrices,[i]:e.target.value}}}))}
-                                style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                              <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          for(let i=0;i<lotItems.length;i++){
-                            const it=lotItems[i];
-                            const price=linePrice(i);
-                            if(it.resolution?.source==="stock"&&it.resolution.item){
-                              await actions.confirmSellDirect(it.resolution.item,price,0,1,it.plateforme||null);
-                            }else{
-                              await actions.addDirectSale({nom:it.nom,marque:it.marque,type:it.categorie,description:it.description,prix_vente:price,prix_achat:null,quantite_vendue:1,plateforme:it.plateforme||null});
-                            }
-                          }
-                          replaceResult(idx,{...result,status:"success",message:lang==="en"?`Lot of ${lotItems.length} items sold`:`Lot de ${lotItems.length} articles vendu`});
-                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"13px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm lot":"Confirmer le lot"}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="pending_confirmation"&&intent==="inventory_sell"){
-                // ── BUG 1 : file FIFO — on n'affiche qu'une seule card pending à la fois ──
-                // Si un inventory_sell (ou un lot inventory_sell_lot) en attente existe avant
-                // cet index, on masque celui-ci jusqu'à ce que le précédent soit résolu.
-                const hasEarlierPending=vaResults.slice(0,idx).some(
-                  r=>(r?.intent==="inventory_sell"||r?.intent==="inventory_sell_lot")&&r?.status==="pending_confirmation"
-                );
-                if(hasEarlierPending){
-                  return(
-                    <div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"10px 14px",border:"1px solid #E5E7EB",opacity:0.45}}>
-                      <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>
-                        ⏳ {lang==="en"?"Waiting for previous sale confirmation…":"En attente de la confirmation précédente…"}
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── Cas no_match : article absent du stock → card "Vente directe" ──
-                if(taskData?.no_match&&!taskData?.price_ambiguous){
-                  const pvDirect=parseFloat(taskData?.prix_vente)||0;
-                  const dmCat=taskData?.categorie||taskData?.type||null;
-                  const dmTs=dmCat?getTypeStyle(dmCat):null;
-                  const dmDesc=taskData?.description||null;
-                  const{loc:dmLoc,rest:dmDescRest}=parseLocDesc(dmDesc);
-                  return(
-                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
-                      <div>
-                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{taskData?.nom||"Article"}</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:dmDescRest||dmLoc?6:0}}>
-                          <span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700}}>
-                            {lang==="en"?"Direct sale":"Vente directe"}
-                          </span>
-                          {taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{taskData.marque}</span>}
-                          {dmTs&&dmCat!=="Autre"&&<span style={{background:dmTs.bg,color:dmTs.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${dmTs.border}`}}>{dmTs.emoji} {typeLabel(dmCat,lang)}</span>}
-                        </div>
-                        {dmDescRest&&<div style={{fontSize:12,color:"#4B5563",fontWeight:500,fontStyle:"italic",lineHeight:1.4,marginBottom:dmLoc?3:0}}>{dmDescRest}</div>}
-                        {dmLoc&&<div style={{fontSize:12,color:"#6B7280",fontWeight:500,lineHeight:1.4}}>📍 {dmLoc}</div>}
-                      </div>
-                      <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Cost":"Achat"} —</span>
-                        <span style={{color:"#D1D5DB"}}>→</span>
-                        <span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sale":"Vente"} {pvDirect>0?`${pvDirect.toFixed(2).replace(".",",")} €`:"—"}</span>
-                      </div>
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>{
-                          // Vente directe confirmée : insertion sans article inventaire
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCat,description:dmDesc,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
-                          ✓ {lang==="en"?"Add sale":"Ajouter la vente"}
-                        </button>
-                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── Cas conflit : marque correcte mais type d'article différent ──
-                // ex : "pince plate Facom" trouvée comme "pinces coupantes Facom"
-                if(taskData?.conflict&&taskData?.candidates?.length>0){
-                  // On prend le premier candidat (score le plus élevé retourné par l'IA)
-                  const cfItem=items.find(i=>String(i.id)===String(taskData.candidates[0]?.id)&&i.statut!=="vendu");
-                  const cfPv=parseFloat(taskData?.prix_vente)||0;
-                  const cfTs=cfItem?getTypeStyle(cfItem.type):null;
-                  return(
-                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                          <span style={{fontSize:14}}>⚠️</span>
-                          <span style={{fontWeight:800,fontSize:13,color:"#92400E"}}>
-                            {lang==="en"?"Similar item found — not identical":"Article similaire trouvé — pas identique"}
-                          </span>
-                        </div>
-                        {cfItem&&(
-                          <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
-                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cfItem.title}</div>
-                            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                              {cfItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{cfItem.marque}</span>}
-                              {cfTs&&cfItem.type&&cfItem.type!=="Autre"&&<span style={{background:cfTs.bg,color:cfTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${cfTs.border}`}}>{cfTs.emoji} {cfItem.type}</span>}
-                            </div>
-                            <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(cfItem.buy+(cfItem.purchaseCosts||0))}</div>
-                          </div>
-                        )}
-                        <div style={{fontSize:12,color:"#92400E",fontWeight:700,marginTop:8}}>
-                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
-                        </div>
-                      </div>
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>{
-                          if(!cfItem){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
-                          // Oui : markSold sur l'article trouvé
-                          actions.confirmSellDirect(cfItem,cfPv,taskData?.frais||0,taskData?.quantite_vendue||1,taskData?.plateforme||null)
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✓ {lang==="en"?"Yes, that's it":"Oui, c'est ça"}
-                        </button>
-                        <button onClick={()=>{
-                          // Non : vente directe sans associer l'article du stock
-                          const dmCatCf=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatCf,description:taskData?.description,prix_vente:taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✗ {lang==="en"?"No, direct sale":"Non, vente directe"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── Cas price_conflict : article trouvé (nom/marque/type) mais le prix d'achat
-                // dicté diffère trop de celui déjà en stock → laisser l'utilisateur trancher,
-                // sans jamais matcher en silence ni écraser le prix dicté par celui du stock.
-                if(taskData?.price_conflict&&taskData?.candidates?.length>0){
-                  const pcItem=items.find(i=>String(i.id)===String(taskData.candidates[0]?.id)&&i.statut!=="vendu");
-                  const pcPv=parseFloat(taskData?.prix_vente)||0;
-                  const pcTs=pcItem?getTypeStyle(pcItem.type):null;
-                  const pcPa=parseFloat(taskData?.prix_achat)||0;
-                  return(
-                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                          <span style={{fontSize:14}}>⚠️</span>
-                          <span style={{fontWeight:800,fontSize:13,color:"#92400E"}}>
-                            {lang==="en"?"Similar item found — purchase price differs":"Article similaire trouvé — prix d'achat différent"}
-                          </span>
-                        </div>
-                        {pcItem&&(
-                          <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
-                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{pcItem.title}</div>
-                            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                              {pcItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{pcItem.marque}</span>}
-                              {pcTs&&pcItem.type&&pcItem.type!=="Autre"&&<span style={{background:pcTs.bg,color:pcTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${pcTs.border}`}}>{pcTs.emoji} {pcItem.type}</span>}
-                            </div>
-                            <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>
-                              {lang==="en"?"Bought (in stock)":"Achat (en stock)"} {fmt(pcItem.buy+(pcItem.purchaseCosts||0))} — {lang==="en"?"just said":"prix dicté"} {fmt(pcPa)}
-                            </div>
-                          </div>
-                        )}
-                        <div style={{fontSize:12,color:"#92400E",fontWeight:700,marginTop:8}}>
-                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
-                        </div>
-                      </div>
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>{
-                          if(!pcItem){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});return;}
-                          // Oui : c'est bien l'article du stock — on garde SON prix d'achat réel
-                          actions.confirmSellDirect(pcItem,pcPv,taskData?.frais||0,taskData?.quantite_vendue||1,taskData?.plateforme||null)
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✓ {lang==="en"?"Yes, that's it":"Oui, c'est ça"}
-                        </button>
-                        <button onClick={()=>{
-                          // Non : nouvelle vente directe distincte, avec le prix d'achat dicté par l'utilisateur
-                          const dmCatPc=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatPc,description:taskData?.description||null,prix_vente:taskData?.prix_vente,prix_achat:taskData?.prix_achat,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✗ {lang==="en"?"No, direct sale":"Non, vente directe"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── Cas ambiguïté : plusieurs candidats, l'utilisateur choisit ──
-                if(taskData?.candidates?.length>0){
-                  return(
-                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
-                        <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>
-                          {lang==="en"?"Which item do you mean?":"Quel article veux-tu dire ?"}
-                        </div>
-                        {taskData?.prix_vente!=null&&<div style={{fontWeight:800,fontSize:14,color:"#1D9E75",flexShrink:0}}>{lang==="en"?"Sale":"Vendu"} {fmt(taskData.prix_vente)}</div>}
-                      </div>
-                      {taskData.candidates.map((c,ci)=>{
-                        // Même normalisation String() que pour matched_id
-                        const cItem=items.find(i=>String(i.id)===String(c.id));
-                        if(!cItem)return null;
-                        const ts2=getTypeStyle(cItem.type);
-                        return(
-                          <button key={ci} onClick={()=>{
-                            // Résoudre l'ambiguïté : on réinjecte le result avec l'ID sélectionné
-                            replaceResult(idx,{...result,taskData:{...taskData,candidates:null,matched_id:c.id}});
-                          }} style={{textAlign:"left",padding:"10px 12px",borderRadius:10,border:"1.5px solid #E5E7EB",background:"#F9FAFB",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",gap:4}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
-                              <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cItem.title}</div>
-                              {cItem.buy>0&&<div style={{fontWeight:700,fontSize:12,color:"#6B7280",flexShrink:0}}>{fmt(cItem.buy)}</div>}
-                            </div>
-                            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                              {cItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{cItem.marque}</span>}
-                              {cItem.type&&cItem.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {cItem.type}</span>}
-                              {cItem.emplacement&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {cItem.emplacement}</span>}
-                            </div>
-                            {cItem.description&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,fontStyle:"italic"}}>{cItem.description}</div>}
-                          </button>
-                        );
-                      })}
-                      {/* Bouton "Aucun de ces articles" — vente directe si aucun candidat ne correspond */}
-                      <button onClick={()=>{
-                        const anyMatchCat=taskData?.categorie||taskData?.type||null;
-                        actions.addDirectSale({
-                          nom:taskData?.nom,
-                          marque:taskData?.marque,
-                          type:anyMatchCat,
-                          description:taskData?.description,
-                          prix_vente:taskData?.prix_vente,
-                          quantite_vendue:taskData?.quantite_vendue,
-                          plateforme:taskData?.plateforme||null,
-                        })
-                          .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                          .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                      }} style={{padding:"10px 12px",background:"#F0FDF4",border:"1.5px solid #9FE1CB",borderRadius:10,color:"#1D9E75",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                        ➕ {lang==="en"?"None of these — create sale anyway":"Aucun de ces articles — créer la vente quand même"}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  );
-                }
-
-                // ── Ambiguïté de prix : total vs unitaire sur vente multi-articles ──
-                if(taskData?.price_ambiguous&&taskData?.prix_mentionne>0&&taskData?.quantite_vendue>1){
-                  const pm=parseFloat(taskData.prix_mentionne)||0;
-                  const qva=taskData.quantite_vendue;
-                  const unitIfTotal=taskData._unitIfTotal??Math.round((pm/qva)*100)/100;
-                  const totalIfUnit=taskData._totalIfUnit??Math.round(pm*qva*100)/100;
-                  const artLabel=(taskData.nom||"article")+(taskData.marque?" "+taskData.marque:"");
-                  const _ambById=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu"):null;
-                  const foundAmb=taskData?.no_match?null:(_ambById||(()=>{const q=(taskData?.nom||"").toLowerCase().trim();const mb=(taskData?.marque||"").toLowerCase().trim();return q?items.find(i=>{if(i.statut==="vendu")return false;const t=(i.title||"").toLowerCase().trim();const im=(i.marque||"").toLowerCase().trim();if(mb&&im&&im!==mb)return false;return t.includes(q)||q.includes(t);}):null;})());
-                  return(
-                    <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <span style={{fontSize:16}}>🤔</span>
-                        <span style={{fontWeight:800,fontSize:14,color:"#92400E"}}>
-                          {lang==="en"?`${qva}× ${artLabel} — total or each?`:`${qva}× ${artLabel} — total ou pièce ?`}
-                        </span>
-                      </div>
-                      <div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>
-                        {lang==="en"
-                          ?`You mentioned ${fmt(pm)}. How should it be recorded?`
-                          :`Tu as mentionné ${fmt(pm)}. Comment enregistrer ?`}
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                        <button onClick={()=>{
-                          const uPrice=unitIfTotal;
-                          if(foundAmb){
-                            actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                          }else{
-                            const dmC=taskData?.categorie||taskData?.type||null;
-                            actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
-                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                          }
-                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                          {lang==="en"
-                            ?`✓ ${fmt(pm)} total → ${fmt(unitIfTotal)}/item`
-                            :`✓ ${fmt(pm)} au total → ${fmt(unitIfTotal)}/pièce`}
-                        </button>
-                        <button onClick={()=>{
-                          const uPrice=pm;
-                          if(foundAmb){
-                            actions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                          }else{
-                            const dmC=taskData?.categorie||taskData?.type||null;
-                            actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmC,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null})
-                              .then(()=>replaceResult(idx,{...result,status:"success",_resolvedPrix:uPrice,taskData:{...result.taskData,prix_vente:uPrice},data:{...result.data,prix_vente:uPrice},message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                              .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                          }
-                        }} style={{padding:"13px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                          {lang==="en"
-                            ?`${fmt(pm)}/item → ${fmt(totalIfUnit)} total`
-                            :`${fmt(pm)}/pièce → ${fmt(totalIfUnit)} au total`}
-                        </button>
-                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── Cas normal : article identifié (matched_id) ou à confirmer ──
-                const sellPv=vaEdits[idx]?.prix_vente??taskData?.prix_vente??null;
-                const qv=taskData?.quantite_vendue||1;
-                // Priorité à matched_id fourni par l'IA ; fallback keyword si absent.
-                // String() normalise les deux côtés : Supabase retourne bigint en number,
-                // mais l'IA peut retourner l'id en string → comparaison stricte échouerait.
-                const found=taskData?.matched_id
-                  ?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu")
-                  :items.find(i=>{if(i.statut==="vendu")return false;const q=(taskData?.nom||"").toLowerCase().trim();const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
-                const pv=parseFloat(sellPv)||0;
-                const sf=parseFloat(taskData?.frais)||0;
-                // Aligné sur voiceEngine.js (case inventory_sell, exécution directe) : le prix
-                // d'achat dicté par l'utilisateur prime sur celui de l'article stock matché s'il
-                // est présent. Dans l'immense majorité des ventes (aucun prix d'achat redicté),
-                // taskData.prix_achat est absent et le comportement reste identique à avant.
-                const dictatedPa=taskData?.prix_achat!=null&&taskData?.prix_achat!==""?parseFloat(taskData.prix_achat):null;
-                const buyU=dictatedPa!=null&&!isNaN(dictatedPa)?dictatedPa:(found?(found.buy+(found.purchaseCosts||0)):0);
-                const mgU=pv-buyU-sf;
-                const mgpU=pv>0?(mgU/pv)*100:0;
-                const ts=found?getTypeStyle(found.type):null;
-                const dCat=!found?(taskData?.categorie||detectType(taskData?.nom||"",taskData?.marque||"")):null;
-                const dTs=dCat?getTypeStyle(dCat):null;
-                const daysInStock=found&&(found.date_ajout||found.date)?Math.floor((Date.now()-new Date(found.date_ajout||found.date).getTime())/(1000*60*60*24)):null;
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
-                    {/* Article header */}
-                    <div>
-                      <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
-                        {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
-                        {!found&&taskData?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{normalizeMarque(taskData.marque)}</span>}
-                        {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
-                        {dTs&&dCat&&dCat!=="Autre"&&<span style={{background:dTs.bg,color:dTs.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${dTs.border}`}}>{dTs.emoji} {typeLabel(dCat,lang)}</span>}
-                        {daysInStock!==null&&<span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:600}}>{daysInStock}j en stock</span>}
-                      </div>
-                      {found?.description&&<div style={{fontSize:11,color:"#6B7280",marginTop:5,fontStyle:"italic"}}>{found.description}</div>}
-                    </div>
-                    {/* Prix achat → vente */}
-                    <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(buyU)}</span>
-                      <span style={{color:"#D1D5DB",fontWeight:400}}>→</span>
-                      {pv>0
-                        ?<span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
-                        :<span style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Price to confirm":"Prix à confirmer"}</span>
-                      }
-                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:900,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)} <span style={{fontSize:11,fontWeight:600,opacity:0.8}}>({fmtp(mgpU)})</span></span>}
-                    </div>
-                    {/* Champ prix si absent */}
-                    {!taskData?.prix_vente&&(
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <input type="number" value={vaEdits[idx]?.prix_vente??""}
-                          onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],prix_vente:parseFloat(e.target.value)||0}}))}
-                          placeholder={lang==="en"?"Sell price (€)":"Prix de vente (€)"}
-                          style={{flex:1,fontSize:14,fontWeight:700,border:"1.5px solid #1D9E75",borderRadius:10,padding:"10px 12px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",outline:"none"}}/>
-                      </div>
-                    )}
-                    {/* Boutons — si un article stock est identifié, toujours proposer le choix
-                        explicite matcher/créer (jamais de matching silencieux). Sans match,
-                        comportement inchangé : bouton unique de confirmation. */}
-                    {found?(
-                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                        <div style={{fontSize:12,color:"#6B7280",fontWeight:700}}>
-                          {lang==="en"?"Is this the right item?":"C'est bien cet article ?"}
-                        </div>
-                        <button onClick={()=>{
-                          actions.confirmSellDirect(found,sellPv,taskData?.frais||0,qv,taskData?.plateforme||null)
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)",textAlign:"left"}}>
-                          ✓ {lang==="en"?`Yes — confirm sale of ${found.title}`:`Oui — confirmer la vente de ${found.title}`}
-                        </button>
-                        <button onClick={()=>{
-                          const dmCatN=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,prix_achat:taskData?.prix_achat,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{padding:"13px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.15)",borderRadius:12,color:"#374151",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                          ➕ {lang==="en"?"No — create a separate sale":"Non — créer une vente séparée"}
-                        </button>
-                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px",background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✕ {lang==="en"?"Cancel":"Annuler"}
-                        </button>
-                      </div>
-                    ):(
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>{
-                          const dmCatN=taskData?.categorie||taskData?.type||null;
-                          actions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:dmCatN,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null})
-                            .then(()=>replaceResult(idx,{...result,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                            .catch(e=>replaceResult(idx,{...result,status:"error",message:e.message}));
-                        }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(29,158,117,0.3)"}}>
-                          ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
-                        </button>
-                        <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              if(status==="pending_confirmation"&&intent==="inventory_delete"){
-                const _dq=(taskData?.nom||"").toLowerCase();
-                const _dItem=items.find(i=>(i.title||"").toLowerCase().includes(_dq)&&_dq);
-                const _dTs=_dItem?getTypeStyle(_dItem.type||_dItem.categorie):null;
-                const _dDesc=(_dItem?.description||_dItem?.desc||"").trim();
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"18px",border:"1px solid #FCA5A5",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>
-                      🗑️ {lang==="en"?"Delete":"Supprimer"}
-                    </div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:_dItem?8:14}}>
-                      {_dItem?_dItem.title:(taskData?.nom||"?")}
-                    </div>
-                    {_dItem&&(
-                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
-                        {(_dItem.type||_dItem.categorie)&&(_dItem.type||_dItem.categorie)!=="Autre"&&_dTs&&<span style={{background:_dTs.bg,color:_dTs.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${_dTs.border}`}}>{_dTs.emoji} {typeLabel(_dItem.type||_dItem.categorie,lang)}</span>}
-                        {_dItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{_dItem.marque}</span>}
-                        {_dDesc&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>{_dDesc.slice(0,30)}{_dDesc.length>30?"…":""}</span>}
-                        {_dItem.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {_dItem.emplacement}</span>}
-                      </div>
-                    )}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        const _f=items.find(i=>(i.title||"").toLowerCase().includes((taskData?.nom||"").toLowerCase())&&taskData?.nom);
-                        if(_f){await actions.deleteItemForce(_f.id);replaceResult(idx,{...result,status:"success",message:lang==="en"?"Deleted":"Supprimé"});}
-                        else replaceResult(idx,{...result,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
-                      }} style={{flex:1,padding:"10px",background:"#E53E3E",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Delete":"Supprimer"}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="pending_confirmation"&&intent==="inventory_add"){
-                const confMarque=taskData?.marque||null;
-                const rawNom=taskData?.nom??"";
-                const nomSansMar=confMarque&&rawNom?rawNom.replace(new RegExp('(^|\\s)'+confMarque.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\s|$)','gi'),' ').replace(/\s+/g,' ').trim():rawNom;
-                const editNom=vaEdits[idx]?.nom??nomSansMar;
-                const editPrix=vaEdits[idx]?.prix??taskData?.prix_achat??"";
-                const confCat=taskData?.categorie||null;
-                const confTs=confCat?getTypeStyle(confCat):null;
-                const confDesc=taskData?.description||null;
-                const confEmplacement=taskData?.emplacement||null;
-                const {loc:confLoc,rest:confDescRest}=parseLocDesc(confDesc);
-                return(
-                  <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
-                    {(confMarque||(confTs&&confCat!=="Autre"))&&(
-                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                        {confMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{confMarque}</span>}
-                        {confTs&&confCat!=="Autre"&&<span style={{background:confTs.bg,color:confTs.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${confTs.border}`}}>{confTs.emoji} {typeLabel(confCat,lang)}</span>}
-                      </div>
-                    )}
-                    {confDescRest&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:confLoc?4:8,fontStyle:"italic",lineHeight:1.4}}>{confDescRest}</div>}
-                    {confLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:confEmplacement?4:8,lineHeight:1.4}}>📍 {confLoc}</div>}
-                    {confEmplacement&&<div style={{marginBottom:8}}><span style={{background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,border:"1px solid #E5E7EB"}}>📦 {confEmplacement}</span></div>}
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                      <input value={editNom}
-                        onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
-                        placeholder={lang==="en"?"Name":"Nom"}
-                        style={{fontSize:13,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%"}}/>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <input type="number" value={editPrix}
-                          onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],prix:parseFloat(e.target.value)||0}}))}
-                          placeholder={lang==="en"?"Buy price":"Prix achat"}
-                          style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
-                      </div>
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          await actions.addItem({...taskData,nom:editNom,prix_achat:editPrix||taskData?.prix_achat});
-                          replaceResult(idx,{...result,status:"success",data:{nom:editNom,prix_achat:editPrix,marque:confMarque,type:confCat,description:confDesc},message:lang==="en"?"Item added":"Article ajouté"});
-                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm":"Confirmer"}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="pending_confirmation"&&intent==="inventory_lot"){
-                const lotItems=data?.items||[];
-                const lotTotal=data?.lotTotal||0;
-                const prixMoyen=lotItems.length>0?lotTotal/lotItems.length:0;
-                return(
-                  <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    {/* En-tête lot */}
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
-                      🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
-                    </div>
-                    {lotItems.length>1&&(
-                      <div style={{fontSize:11,color:"#6B7280",marginBottom:12}}>
-                        {lang==="en"?"Avg.":"Moy."} {fmt(prixMoyen)} {lang==="en"?"/ item":"/ article"}
-                      </div>
-                    )}
-                    {/* Un article = même présentation que la card inventory_add */}
-                    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
-                      {lotItems.map((item,i)=>{
-                        const editNom=vaEdits[idx]?.[i]?.nom??item.nom;
-                        const editPrix=vaEdits[idx]?.[i]?.prix??item.prix_estime_lot;
-                        const _ts=item.categorie&&item.categorie!=="Autre"?getTypeStyle(item.categorie):null;
-                        const {loc:itemLoc,rest:itemDescRest}=parseLocDesc(item.description||null);
-                        return(
-                          <div key={i} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                            {/* Pills marque + catégorie */}
-                            {(item.marque||_ts)&&(
-                              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>}
-                                {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
-                              </div>
-                            )}
-                            {/* Description (taille, couleur, état) */}
-                            {itemDescRest&&<div style={{fontSize:11,color:"#4B5563",fontWeight:500,marginBottom:itemLoc?4:item.emplacement?4:8,fontStyle:"italic",lineHeight:1.4}}>{itemDescRest}</div>}
-                            {/* Lieu d'achat */}
-                            {itemLoc&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:item.emplacement?4:8,lineHeight:1.4}}>📍 {itemLoc}</div>}
-                            {/* Emplacement de rangement */}
-                            {item.emplacement&&<div style={{fontSize:11,color:"#6B7280",fontWeight:500,marginBottom:8,lineHeight:1.4}}>📦 {item.emplacement}</div>}
-                            {/* Inputs nom + prix */}
-                            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                              <input value={editNom}
-                                onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],nom:e.target.value}}}))}
-                                placeholder={lang==="en"?"Name":"Nom"}
-                                style={{fontSize:13,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%",boxSizing:"border-box"}}/>
-                              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                <input type="number" value={editPrix}
-                                  onChange={e=>setVaEdits(prev=>({...prev,[idx]:{...prev[idx],[i]:{...prev[idx]?.[i],prix:parseFloat(e.target.value)||0}}}))}
-                                  placeholder={lang==="en"?"Buy price":"Prix achat"}
-                                  style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                                <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {/* Boutons lot */}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          const toAdd=lotItems.map((item,i)=>({
-                            ...item,
-                            nom:vaEdits[idx]?.[i]?.nom??item.nom,
-                            prix_achat:vaEdits[idx]?.[i]?.prix??item.prix_estime_lot,
-                            marque:item.marque||null,
-                            description:item.description||null,
-                            emplacement:item.emplacement||null,
-                            plateforme:item.plateforme||null,
-                          }));
-                          for(const item of toAdd) await actions.addItem(item);
-                          replaceResult(idx,{...result,status:"success",message:lang==="en"?`${toAdd.length} items added`:`${toAdd.length} articles ajoutés`});
-                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?`Confirm (${lotItems.length})`:`Confirmer (${lotItems.length})`}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==="en"?"Cancel":"Annuler"}</button>
-                    </div>
-                  </div>
-                );
-              }
-
-              /* ── Ranger un article dans un emplacement (inventory_move) ── */
-              if(status==="pending_confirmation"&&intent==="inventory_move"){
-                const moveItems=data?.items||[];
-                const moveEmp=data?.emplacement||taskData?.emplacement||"";
-                const moveArticle=taskData?.article||"";
-
-                // Article introuvable dans le stock
-                if(data?.notFound){
-                  return(
-                    <div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"14px",border:"1px solid #FCA5A5"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#E53E3E",marginBottom:6}}>
-                        🔍 {lang==="en"?"Item not found":"Article introuvable"}
-                      </div>
-                      <div style={{fontSize:12,color:"#6B7280",marginBottom:10}}>
-                        {lang==="en"
-                          ?`I couldn't find "${moveArticle}" in your stock.`
-                          :`Je n'ai pas trouvé "${moveArticle}" dans ton stock.`}
-                      </div>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"8px 14px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Close":"Fermer"}
-                      </button>
-                    </div>
-                  );
-                }
-
-                // Article déjà rangé à cet emplacement
-                if(data?.alreadyHere){
-                  return(
-                    <div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#1D9E75",marginBottom:6}}>
-                        📦 {lang==="en"?"Already stored here!":"Déjà rangé ici !"}
-                      </div>
-                      <div style={{fontSize:12,color:"#6B7280",marginBottom:10}}>
-                        {moveItems[0]?(moveItems[0].title||moveItems[0].titre||moveItems[0].nom||"")+" ":""}{lang==="en"?`is already at ${moveEmp}.`:`est déjà sur ${moveEmp}.`}
-                      </div>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"8px 14px",background:"transparent",border:"1.5px solid #9FE1CB",borderRadius:10,color:"#1D9E75",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Close":"Fermer"}
-                      </button>
-                    </div>
-                  );
-                }
-
-                // Card de confirmation : liste des articles + ancien → nouvel emplacement
-                const _multiMove=moveItems.length>1;
-                const _selIds=data?.selectedIds||(moveItems.map(i=>i.id));
-                return(
-                  <div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>
-                      📦 {lang==="en"?"Store here?":"Ranger ici ?"}
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                      {moveItems.map((item,i)=>{
-                        const _cat=item.type||item.categorie||null;
-                        const _ts=_cat&&_cat!=="Autre"?getTypeStyle(_cat):null;
-                        const prevEmp=item.emplacement||null;
-                        const itemName=item.title||item.titre||item.nom||"";
-                        const _checked=_selIds.includes(item.id);
-                        return(
-                          <div key={i}
-                            onClick={_multiMove?()=>{
-                              const next=_checked?_selIds.filter(id=>id!==item.id):[..._selIds,item.id];
-                              replaceResult(idx,{...result,data:{...data,selectedIds:next}});
-                            }:undefined}
-                            role={_multiMove?"button":undefined}
-                            style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:`1px solid ${_multiMove&&!_checked?"#E5E7EB":"#BFDBFE"}`,opacity:_multiMove&&!_checked?0.55:1,cursor:_multiMove?"pointer":"default"}}>
-                            {_multiMove&&(
-                              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                                <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${_checked?"#1D9E75":"#D1D5DB"}`,background:_checked?"#1D9E75":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                                  {_checked&&<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                                </div>
-                                <span style={{fontSize:12,color:_checked?"#0D0D0D":"#9CA3AF",fontWeight:600}}>{itemName}</span>
-                              </div>
-                            )}
-                            {(item.marque||_ts)&&(
-                              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
-                                {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(_cat,lang)}</span>}
-                              </div>
-                            )}
-                            {!_multiMove&&<div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{itemName}</div>}
-                            {item.description&&<div style={{fontSize:11,color:"#6B7280",marginBottom:4,fontStyle:"italic"}}>{item.description}</div>}
-                            <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                              <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
-                              <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>
-                              <span style={{color:"#1D4ED8",fontWeight:700}}>{moveEmp}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          const _toMove=_multiMove?moveItems.filter(i=>_selIds.includes(i.id)):moveItems;
-                          if(_toMove.length===0){replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"});return;}
-                          const ids=_toMove.map(i=>i.id);
-                          await actions.moveToLocation(ids,moveEmp);
-                          replaceResult(idx,{...result,status:"success",message:
-                            lang==="en"
-                              ?`✅ Stored! ${_toMove.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
-                              :`✅ Rangé ! ${_toMove.map(i=>i.title||i.titre||i.nom).join(", ")} → ${moveEmp}`
-                          });
-                        }catch(e){replaceResult(idx,{...result,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm":"Confirmer"}{_multiMove&&_selIds.length<moveItems.length?` (${_selIds.length})`:``}
-                      </button>
-                      <button onClick={()=>replaceResult(idx,{...result,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="pending_confirmation"&&intent==="inventory_update"){
-                return(<div key={idx} style={{background:"#FFFBEB",borderRadius:12,padding:"14px",border:"1px solid #FDE68A"}}><div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{lang==="en"?"Update:":"Mise à jour :"} {taskData?.nom} · {taskData?.field} → {taskData?.value}</div><div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"Manual update required":"Mise à jour manuelle requise"}</div></div>);
-              }
-
-              if(status==="success"&&intent==="deal_score"){
-                const{score,label,profitNet,margePercent,pills,dataQuality}=data||{};
-                const sc=score>=8?"#1D9E75":score>=6.5?"#4ECDC4":score>=5?"#F9A26C":"#E53E3E";
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <div style={{fontSize:36,fontWeight:900,color:sc,letterSpacing:"-0.04em",lineHeight:1}}>{score}</div>
-                      <div>
-                        <div style={{fontSize:13,fontWeight:800,color:sc}}>{label}</div>
-                        <div style={{fontSize:11,color:"#A3A9A6"}}>{lang==="en"?"out of 10":"sur 10"}</div>
-                      </div>
-                    </div>
-                    <div style={{display:"flex",gap:20,marginBottom:10}}>
-                      <div>
-                        <div style={{fontSize:20,fontWeight:900,color:profitNet>=0?"#1D9E75":"#E53E3E"}}>{profitNet>0?"+":""}{fmt(profitNet)}</div>
-                        <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Net profit":"Bénéfice net"}</div>
-                      </div>
-                      <div>
-                        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D"}}>{margePercent}%</div>
-                        <div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"Margin":"Marge"}</div>
-                      </div>
-                    </div>
-                    {pills?.length>0&&(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-                        {pills.slice(0,2).map((p,i)=>(
-                          <span key={i} style={{background:"#E8F5F0",color:"#0F6E56",border:"1px solid #9FE1CB",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700}}>{p}</span>
-                        ))}
-                      </div>
-                    )}
-                    {dataQuality==="low"&&(
-                      <div style={{fontSize:10,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Based on limited data":"Basé sur peu de données"}</div>
-                    )}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="inventory_sell"){
-                const svUnit=parseFloat(String(result._resolvedPrix??data?.prix_vente??taskData?.prix_vente??0).replace(",","."))||0;
-                const sfUnit=parseFloat(String(taskData?.frais??0).replace(",","."))||0;
-                const qv=Math.max(1,(data?.quantite_vendue||taskData?.quantite_vendue||1));
-                const nom=data?.nom||taskData?.nom||"";
-                const soldItem=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)):null;
-                const marque=normalizeMarque(soldItem?.marque||data?.marque||taskData?.marque||null)||null;
-                const type=soldItem?.type||data?.categorie||taskData?.categorie||detectType(nom,data?.marque||taskData?.marque||"")||null;
-                const ts=type?getTypeStyle(type):null;
-                const cogs=soldItem?(soldItem.buy+(soldItem.purchaseCosts||0)):parseFloat(String(data?.prix_achat??taskData?.prix_achat??0).replace(",","."))||0;
-                const mgUnit=svUnit>0?svUnit-cogs-sfUnit:null;
-                const mgpUnit=svUnit>0&&cogs>0&&mgUnit!=null?(mgUnit/cogs)*100:null;
-                const totalSell=svUnit*qv;
-                const totalProfit=mgUnit!=null?mgUnit*qv:null;
-                const benefUnit=svUnit-cogs;
-                const totalBenef=benefUnit*qv;
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid #9FE1CB",boxShadow:"0 1px 4px rgba(29,158,117,0.1)",display:"flex",flexDirection:"column",gap:10}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                      <span style={{fontSize:15}}>✅</span>
-                      <span style={{fontSize:12,fontWeight:800,color:"#0F6E56",textTransform:"uppercase",letterSpacing:"0.06em"}}>{lang==="en"?"Sale registered":"Vente enregistrée"}</span>
-                    </div>
-                    <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D"}}>{nom||"Article"}</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                      {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
-                      {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
-                      {ts&&type&&type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {type}</span>}
-                      {(taskData?.plateforme||data?.plateforme||soldItem?.plateforme)&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #C4B5FD"}}>🏪 {taskData?.plateforme||data?.plateforme||soldItem?.plateforme}</span>}
-                    </div>
-                    <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-                      <div>
-                        <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{lang==="en"?"Sold for":"Prix de vente"}</div>
-                        <div style={{fontSize:20,fontWeight:900,color:"#0D0D0D"}}>{fmt(totalSell)}</div>
-                      </div>
-                      {cogs>0&&<>
-                        <div style={{width:1,alignSelf:"stretch",background:"#C6F0E0",borderRadius:1}}/>
-                        <div style={{textAlign:"right"}}>
-                          <div style={{fontSize:10,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{lang==="en"?"Net profit":"Profit net"}</div>
-                          <div style={{fontSize:20,fontWeight:900,color:totalBenef>=0?"#1D9E75":"#EF4444"}}>{totalBenef>0?"+":""}{fmt(totalBenef)}</div>
-                          {mgpUnit!=null&&<div style={{fontSize:11,fontWeight:700,color:totalBenef>=0?"#1D9E75":"#EF4444",opacity:0.7,marginTop:1}}>{fmtp(mgpUnit)}</div>}
-                        </div>
-                      </>}
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="query_stats"&&(data?.metric==="best_sales"||data?.metric==="worst_sales")){
-                const sItems=data?.items||[];
-                const isWorst=data?.metric==="worst_sales";
-                const lim=data?.limit??sItems.length;
-                const title=isWorst
-                  ?(lim===1?(lang==="en"?"Worst sale":"Pire vente"):(lang==="en"?`${lim} worst sales`:`${lim} pires ventes`))
-                  :(lim===1?(lang==="en"?"Best sale":"Meilleure vente"):(lang==="en"?`Top ${lim} sales`:`Top ${lim} ventes`));
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>{isWorst?"📉":"🏆"} {title}</div>
-                    {sItems.length===0
-                      ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No sales yet":"Aucune vente"}</div>
-                      :sItems.map((s,i)=>{
-                        const profit=Math.round((s._sortVal??s.margin??s.benefice??0)*100)/100;
-                        return(
-                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<sItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                            <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D"}}>{lim>1?`${i+1}. `:""}{s.title||s.titre||s.nom}</div>
-                            <div style={{fontSize:12,fontWeight:700,color:profit>=0?"#1D9E75":"#E53E3E"}}>{profit>0?"+":""}{fmt(profit)}</div>
-                          </div>
-                        );
-                      })
-                    }
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="query_stats"&&data?.metric==="stock_by_period"){
-                const sbpItems=data?.items||[];
-                const fmtDate=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {lang==="en"?"In stock":"En stock"} ({data?.count??sbpItems.length})</div>
-                    {sbpItems.length===0
-                      ?<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items":"Aucun article"}</div>
-                      :sbpItems.map((item,i)=>{
-                        const days=item.date_ajout?Math.floor((Date.now()-new Date(item.date_ajout))/86400000):null;
-                        return(
-                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:i<sbpItems.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                            <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title||item.titre}</div>
-                            <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                              <div style={{fontSize:12,fontWeight:700,color:"#F9A26C"}}>{fmt(item.buy||item.prix_achat||0)}</div>
-                              {item.date_ajout&&<div style={{fontSize:10,color:"#A3A9A6"}}>{lang==="en"?"since ":"depuis le "}{fmtDate(item.date_ajout)}{days!==null?` (${days}${lang==="en"?"d":"j"})`:""}</div>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="query_stats"&&(data?.metric==="profit_mois"||data?.metric==="marge_moyenne"||data?.metric==="stock_immobilise"||data?.metric==="stock_count")){
-                const metricEmoji={profit_mois:"💰",marge_moyenne:"📊",stock_immobilise:"🔒",stock_count:"📦"};
-                const metricTitle={
-                  profit_mois:lang==="en"?`Profit – ${data?.monthName}`:`Bénéfice – ${data?.monthName}`,
-                  marge_moyenne:lang==="en"?"Avg margin":"Marge moyenne",
-                  stock_immobilise:lang==="en"?"Locked capital":"Stock immobilisé",
-                  stock_count:lang==="en"?"Items in stock":"Articles en stock",
-                };
-                const isCurrency=data?.metric!=="marge_moyenne"&&data?.metric!=="stock_count";
-                const suffix=isCurrency?"":data?.metric==="stock_count"?"":"%";
-                const val=data?.value??0;
-                const valColor=data?.metric==="stock_immobilise"?"#F9A26C":val>=0?"#1D9E75":"#E53E3E";
-                const displayVal=isCurrency?(val>0?"+":"")+fmt(val):val+suffix;
-                const qsComment=data?.metric==="profit_mois"
-                  ?(val>50?(lang==="en"?"Great month 🔥":"Super mois 🔥")
-                    :val>10?(lang==="en"?"Good month 👍":"Bon mois 👍")
-                    :val>0?(lang==="en"?"Slow month 😊":"Petit mois 😊")
-                    :val===0?(lang==="en"?"Empty month 💪":"Mois blanc 💪")
-                    :(lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬"))
-                  :null;
-                return(
-                  <div key={idx} className="vr-profit-card">
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",marginBottom:8}}>{metricEmoji[data?.metric]} {metricTitle[data?.metric]}</div>
-                    <div style={{fontSize:28,fontWeight:900,color:valColor,letterSpacing:"-0.03em"}}>{displayVal}</div>
-                    {data?.metric==="stock_immobilise"&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{data?.count} {lang==="en"?"item(s) in stock":"article(s) en stock"}</div>}
-                    {qsComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{qsComment}</div>}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="platform_stats"){
-                const metric=data?.metric;
-                if(data?.empty){
-                  return(
-                    <div key={idx} style={{background:"#EDE9FE",borderRadius:12,padding:"14px 16px",border:"1px solid #C4B5FD"}}>
-                      <div style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>🏪 {message}</div>
-                    </div>
-                  );
-                }
-                const isStock=metric==="most_invest";
-                const medals=["🥇","🥈","🥉"];
-                const metricLabel={best_sell:lang==="en"?"Best platform 🏆":"Meilleure plateforme 🏆",worst_sell:lang==="en"?"Worst platform ⚠️":"Pire plateforme ⚠️",by_name:"🏪 Stats",most_invest:lang==="en"?"Most invested 📦":"Plus investi 📦",ranking:lang==="en"?"Platform ranking 🏅":"Classement plateformes 🏅"}[metric]||"🏪";
-                const highlight=isStock?data?.most:data?.best||data?.worst||data?.found||null;
-                const ranked=data?.ranked||null;
-                const fmtP=n=>`${(Math.round((n||0)*10)/10).toFixed(1)}%`;
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>{metricLabel}</div>
-                    {highlight&&metric!=="ranking"&&(
-                      <div style={{background:"#EDE9FE",borderRadius:10,padding:"10px 12px",marginBottom:metric==="by_name"?8:0}}>
-                        <div style={{fontSize:14,fontWeight:800,color:"#7C3AED"}}>🏪 {highlight.plateforme}</div>
-                        {isStock?(
-                          <div style={{fontSize:12,color:"#5B21B6",marginTop:3}}>{highlight.count} {lang==="en"?(highlight.count>1?"items":"item"):(highlight.count>1?"articles":"article")} · {fmt(highlight.invested)}</div>
-                        ):(
-                          <div style={{fontSize:12,color:"#5B21B6",marginTop:3}}>{highlight.count} {lang==="en"?(highlight.count>1?"sales":"sale"):(highlight.count>1?"ventes":"vente")} · {fmt(highlight.revenue)} CA · {fmtP(highlight.avgMargin)} {lang==="en"?"margin":"marge"}</div>
-                        )}
-                      </div>
-                    )}
-                    {metric==="by_name"&&data?.found&&(
-                      <div style={{background:"#F9FAFB",borderRadius:10,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Revenue":"CA"}</span><span style={{fontSize:12,fontWeight:800,color:"#0D0D0D"}}>{fmt(data.found.revenue)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Profit":"Bénéfice"}</span><span style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmt(data.found.profit)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Avg margin":"Marge moy."}</span><span style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmtP(data.found.avgMargin)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280"}}>{lang==="en"?"Sales":"Ventes"}</span><span style={{fontSize:12,fontWeight:800,color:"#0D0D0D"}}>{data.found.count}</span></div>
-                      </div>
-                    )}
-                    {metric==="ranking"&&ranked&&ranked.length>0&&(
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {ranked.slice(0,5).map((p,i)=>(
-                          <div key={p.plateforme} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",background:"#F9FAFB",borderRadius:8}}>
-                            <span style={{fontSize:12,fontWeight:700,color:"#374151"}}>{medals[i]||`#${i+1}`} {p.plateforme}</span>
-                            <div style={{textAlign:"right"}}>
-                              <div style={{fontSize:12,fontWeight:800,color:"#1D9E75"}}>{fmt(p.profit)}</div>
-                              <div style={{fontSize:10,color:"#6B7280"}}>{p.count} {lang==="en"?(p.count>1?"sales":"sale"):(p.count>1?"ventes":"vente")}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="off_topic"){
-                return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(0,0,0,0.08)"}}><div style={{fontSize:13,fontWeight:600,color:"#6B7280",lineHeight:1.5}}>{message}</div></div>);
-              }
-
-              if(status==="success"&&intent==="location_items"){
-                const locItems=data?.items||[];
-                const locEmp=data?.emplacement||taskData?.emplacement||"";
-                // Agréger les articles identiques (même titre + marque)
-                const locGrouped=(()=>{
-                  const map=new Map();
-                  for(const item of locItems){
-                    const key=`${(item.title||"").toLowerCase()}||${(item.marque||"").toLowerCase()}`;
-                    if(map.has(key)){
-                      const g=map.get(key);
-                      g.qty+=(item.quantite||1);
-                      g.totalVal+=(item.quantite||1)*(item.prix_achat||item.buy||0);
-                    } else {
-                      map.set(key,{...item,qty:(item.quantite||1),totalVal:(item.quantite||1)*(item.prix_achat||item.buy||0)});
-                    }
-                  }
-                  return [...map.values()];
-                })();
-                const totalQty=locGrouped.reduce((s,g)=>s+g.qty,0);
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
-                    {locGrouped.length===0
-                      ?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>)
-                      :(<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          {locGrouped.map((item,i)=>{
-                            const ts2=item.type?getTypeStyle(item.type):null;
-                            return(
-                              <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 0",borderBottom:i<locGrouped.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                                <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                    {item.title}{item.qty>1?<span style={{color:"#A3A9A6",fontWeight:600}}> ×{item.qty}</span>:null}
-                                  </div>
-                                  <div className="vr-pills" style={{marginTop:2}}>
-                                    {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                    {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
-                                  </div>
-                                </div>
-                                <div style={{fontSize:13,fontWeight:700,color:"#F9A26C",flexShrink:0,textAlign:"right"}}>
-                                  {fmt(item.totalVal)}
-                                  {item.qty>1&&<div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"tied up":"immobilisés"}</div>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>)
-                    }
-                  </div>
-                );
-              }
-
-              /* Rendu "où j'ai rangé X" — affichage riche avec pills */
-              if(status==="success"&&intent==="inventory_location"){
-                const locTitle=data?.title||taskData?.nom||"";
-                const locEmp=data?.emplacement||null;
-                const locMarque=data?.marque||null;
-                const locType=data?.type||null;
-                const locDesc=data?.description||null;
-                const locVille=data?.ville||null;
-                const locQte=data?.quantite||null;
-                const tsLoc=locType?getTypeStyle(locType):null;
-                return(
-                  <div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
-                      📦 {lang==="en"?"Stored here":"Rangé ici"}
-                    </div>
-                    <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
-                    {(locEmp||locMarque||tsLoc||locQte>1)&&(
-                      <div className="vr-pills">
-                        {locEmp&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {locEmp}</span>}
-                        {locMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{locMarque}</span>}
-                        {tsLoc&&locType&&locType!=="Autre"&&<span style={{background:tsLoc.bg,color:tsLoc.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${tsLoc.border}`}}>{tsLoc.emoji} {typeLabel(locType,lang)}</span>}
-                        {/* Pill quantité — fond orange clair, même style que le stock */}
-                        {locQte>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{locQte}</span>}
-                      </div>
-                    )}
-                    {/* Description tronquée sur 1 ligne */}
-                    {locDesc&&<div style={{fontSize:12,color:"#6B7280",marginTop:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{locDesc}</div>}
-                    {locVille&&<div style={{fontSize:12,color:"#A3A9A6",marginTop:4}}>📍 {locVille}</div>}
-                    {!locEmp&&<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic",marginTop:6}}>{lang==="en"?"No location saved 🙂":"Aucun emplacement enregistré 🙂"}</div>}
-                  </div>
-                );
-              }
-
-              if(status==="success"&&intent==="business_advice"){
-                const raw=data?.analysis||message||"";
-                // Découpe le texte en lignes et rend le markdown inline (**bold**)
-                const renderInline=(line)=>{
-                  const parts=line.split(/(\*\*[^*]+\*\*)/g);
-                  return parts.map((p,i)=>
-                    p.startsWith("**")&&p.endsWith("**")
-                      ?<strong key={i} style={{color:"#0D0D0D",fontWeight:800}}>{p.slice(2,-2)}</strong>
-                      :<span key={i}>{p}</span>
-                  );
-                };
-                const lines=raw.split("\n");
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:14,border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",overflow:"hidden",animation:"va-fadein 0.3s ease"}}>
-                    {/* Header */}
-                    <div style={{background:"linear-gradient(135deg,#1D9E75 0%,#0F6E56 100%)",padding:"14px 16px",display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:18}}>📊</span>
-                      <span style={{fontSize:13,fontWeight:800,color:"#fff",letterSpacing:"0.04em"}}>
-                        {lang==="en"?"Business Analysis":"Analyse de ton business"}
-                      </span>
-                    </div>
-                    {/* Corps — rendu ligne par ligne */}
-                    <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:2}}>
-                      {lines.map((line,li)=>{
-                        const trimmed=line.trim();
-                        if(!trimmed) return <div key={li} style={{height:6}}/>;
-                        // Titre de section (## emoji Titre)
-                        if(trimmed.startsWith("##")){
-                          const title=trimmed.replace(/^##\s*/,"");
-                          return(
-                            <div key={li} style={{fontSize:12,fontWeight:800,color:"#1D9E75",letterSpacing:"0.05em",marginTop:li===0?0:10,marginBottom:3,textTransform:"uppercase"}}>
-                              {title}
-                            </div>
-                          );
-                        }
-                        // Bullet point (• ou *)
-                        if(trimmed.startsWith("•")||trimmed.startsWith("-")){
-                          const content=trimmed.replace(/^[•\-]\s*/,"");
-                          return(
-                            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",paddingLeft:4}}>
-                              <span style={{color:"#1D9E75",fontWeight:800,marginTop:1,flexShrink:0}}>•</span>
-                              <span style={{fontSize:13,color:"#374151",lineHeight:1.6,fontWeight:500}}>{renderInline(content)}</span>
-                            </div>
-                          );
-                        }
-                        // Ligne normale
-                        return(
-                          <div key={li} style={{fontSize:13,color:"#4B5563",lineHeight:1.65,fontWeight:500}}>
-                            {renderInline(trimmed)}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              }
-
-              if(status==="success"&&(intent==="price_advice"||intent==="price_question"||intent==="buy_advice")){
-                const label=intent==="buy_advice"
-                  ?(lang==="en"?"🛒 Buy Analysis":"🛒 Analyse achat")
-                  :(lang==="en"?"💰 Price Advice":"💰 Conseil prix");
-                const raw=data?.analysis||message||"";
-                return(
-                  <div key={idx} style={{background:"#fff",borderRadius:12,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:11,fontWeight:800,color:"#1D9E75",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>{label}</div>
-                    <div style={{fontSize:13,color:"#0D0D0D",lineHeight:1.7,fontWeight:500,whiteSpace:"pre-wrap"}}>{raw.replace(/\*\*/g,"").replace(/\*/g,"")}</div>
-                  </div>
-                );
-              }
-
-              if(status==="success"){
-                return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB"}}><div style={{fontSize:13,fontWeight:600,color:"#0F6E56"}}>✅ {message}</div></div>);
-              }
-
-              return null;
-            })}
-          </div>
-        </div>
+      {/* Drawer — traitement puis résultats, dans le même sheet */}
+      {drawerOpen&&(
+        <VoiceSheet
+          lang={lang}
+          transcript={vaResults.length>0?vaTranscript:null}
+          onClose={vaResults.length>0?resetVA:null}
+          sheetRef={drawerRef}
+          swipeHandlers={vaResults.length>0?{
+            onTouchStart:e=>{
+              swipeRef.current.startY=e.touches[0].clientY;
+              swipeRef.current.active=(drawerRef.current?.scrollTop??0)===0;
+            },
+            onTouchMove:e=>{
+              if(!swipeRef.current.active)return;
+              const dy=e.touches[0].clientY-swipeRef.current.startY;
+              if(dy>0&&drawerRef.current){drawerRef.current.style.transition="none";drawerRef.current.style.transform=`translateY(${dy}px)`;}
+            },
+            onTouchEnd:e=>{
+              if(!swipeRef.current.active)return;
+              const dy=e.changedTouches[0].clientY-swipeRef.current.startY;
+              if(dy>60){resetVA();}
+              else if(drawerRef.current){drawerRef.current.style.transition="transform 0.2s ease";drawerRef.current.style.transform="translateY(0)";}
+            },
+          }:{}}
+        >
+          {vaResults.length===0
+            ?<VoiceThinking lang={lang}/>
+            :vaResults.map((result,idx)=>(
+              <VoiceResultCard
+                key={idx}
+                result={result}
+                idx={idx}
+                allResults={vaResults}
+                ctx={ctx}
+              />
+            ))
+          }
+        </VoiceSheet>
       )}
     </>
   );
@@ -3431,13 +1720,18 @@ export default function App({ loginOnly = false }){
   const emailRef=useRef(null);
   const passwordRef=useRef(null);
   const [isSigningIn,setIsSigningIn]=useState(false);
+  const [isSigningUp,setIsSigningUp]=useState(false);
+  const [isSendingReset,setIsSendingReset]=useState(false);
+  const [showPassword,setShowPassword]=useState(false);
+  const [emailConfirm,setEmailConfirm]=useState("");
   const [loginError,setLoginError]=useState("");
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
-  const [slotsRemaining,setSlotsRemaining]=useState(null);
-  const [showUpgradeModal,setShowUpgradeModal]=useState(false);
+  const [isPro,setIsPro]=useState(false);
+  const [lensInventaireId,setLensInventaireId]=useState(null);
+  const [listingStepperOpen,setListingStepperOpen]=useState(false);
   const [aiCache,setAiCache]=useState({});
   const [iapProduct,setIapProduct]=useState(null);
   const [iapLoading,setIapLoading]=useState(false);
@@ -3451,14 +1745,46 @@ export default function App({ loginOnly = false }){
   const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
   const [showUsernameOnboarding,setShowUsernameOnboarding]=useState(false);
   const [username,setUsername]=useState('');
+  // Bandeau retrait cross-plateforme (Phase B, 2026-07-11) : jobs frères d'un
+  // article VENDU encore en ligne ailleurs — flag platform_fields.
+  // pending_removal posé par l'orchestration serveur (sale-orchestration.ts).
+  // Le clic "Retirer" arme des jobs action='delete' (semi-auto : jamais de
+  // suppression sans ce clic).
+  const [pendingRemovals,setPendingRemovals]=useState([]);
+  // Annonces constatées HORS LIGNE sans preuve de vente (Phase B, 2026-07-12) :
+  // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
+  const [unavailableListings,setUnavailableListings]=useState([]);
+  const [confirmingSale,setConfirmingSale]=useState(null);
+  // Annonces que l'extension n'ARRIVE PLUS À VÉRIFIER (2026-07-13) : après 4
+  // lectures indéterminées d'affilée (page anti-bot, format inattendu), elle
+  // cesse d'insister et pose platform_fields.check_unresolved. RIEN de destructif
+  // n'en découle — mais sans ce bandeau, l'annonce cessait d'être surveillée SANS
+  // que personne ne le sache. C'est le trou que ce bandeau ferme : l'extension
+  // continue de retenter une fois par jour, et si ça dure, on te le DIT.
+  const [unverifiableListings,setUnverifiableListings]=useState([]);
+  // Prix de vente confirmé par l'utilisateur, par job (pré-rempli avec le prix
+  // de mise en ligne, MODIFIABLE : la vente a pu être négociée).
+  const [salePriceDraft,setSalePriceDraft]=useState({});
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  const [coinWallet,setCoinWallet]=useState(null);
+  const [coinHistory,setCoinHistory]=useState([]);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
-  const [premiumWelcomeIsFounder,setPremiumWelcomeIsFounder]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
-  const [conversionModal,setConversionModal]=useState({open:false,trigger:'lens'});
+  const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
+  const [coinStoreOpen,setCoinStoreOpen]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
+  // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
+  // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
+  // le bien ?", non pré-rempli depuis le compte LBC — vérifié), saisie une fois
+  // ici. Stockée en 3 champs structurés (rue / code_postal / ville) et recomposée
+  // en une string unique `adresse` (espaces, sans virgule — cf. fillAddress dans
+  // content-scripts/leboncoin.js) injectée dans platform_fields.adresse des jobs.
+  const [settingsLbcRue,setSettingsLbcRue]=useState('');
+  const [settingsLbcCp,setSettingsLbcCp]=useState('');
+  const [settingsLbcVille,setSettingsLbcVille]=useState('');
+  const [settingsLbcAddressSaving,setSettingsLbcAddressSaving]=useState(false);
   const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
@@ -3514,7 +1840,9 @@ export default function App({ loginOnly = false }){
   const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
   const [lensUsedToday,setLensUsedToday]=useState(0);
   const [voiceUsedToday,setVoiceUsedToday]=useState(0);
-  const LENS_FREE_LIMIT=3;
+  // Quota Lens Free : 5 analyses par MOIS (le plafond journalier a été retiré,
+  // cf. lens-analysis). Le compteur affiché est mensuel.
+  const LENS_FREE_LIMIT=5;
   useEffect(()=>{
     const _id=setInterval(()=>{
       setLensPlaceholderFade(false);
@@ -3567,7 +1895,8 @@ export default function App({ loginOnly = false }){
     localStorage.setItem('fs_currency',code);
     if(user?.id) await supabase.rpc('set_profile_currency',{p_currency:code});
   }
-  async function triggerCheckout(){
+  // product : undefined → abonnement Premium standard ; 'pro' → abonnement Pro 29,99 €
+  async function triggerCheckout(product){
     try{
       let{data:{session}}=await supabase.auth.getSession();
       if(!session){
@@ -3580,11 +1909,11 @@ export default function App({ loginOnly = false }){
         return;
       }
       const token=session.access_token;
-      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email})});
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product==='pro'?{product:'pro'}:{})})});
       const body=await res.json();
       const{url,error}=body;
       if(error)throw new Error(error);
-      track('begin_checkout', { currency: 'EUR', value: 9.99 });
+      track('begin_checkout', { currency: 'EUR', value: product==='pro'?29.99:12.99 });
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
     }catch(e){
@@ -3593,11 +1922,15 @@ export default function App({ loginOnly = false }){
     }
   }
 
-  async function handleIAPPurchase(){
-    console.log('[IAP] handleIAPPurchase started — slotsRemaining:',slotsRemaining,'platform:',platform);
+  // tier : 'pro' → abonnement Pro (app.fillsell.pro.sub) ; toute autre valeur
+  // (undefined, event de clic…) → Premium standard. Comparaison stricte voulue.
+  async function handleIAPPurchase(tier){
+    const isProPurchase=tier==='pro';
+    console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isProPurchase?'pro':'premium');
     setIapLoading(true);
-    const productId=slotsRemaining>0?PRODUCT_IDS.sub:PRODUCT_IDS.standard;
-    const isFounderProduct=productId===PRODUCT_IDS.sub;
+    // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
+    // Il reste référencé dans restorePurchases pour les Founders existants.
+    const productId=isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
     try{
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id);
       if(cancelled) return;
@@ -3605,7 +1938,7 @@ export default function App({ loginOnly = false }){
         // Android : succès Play Billing côté client → écriture directe + sauvegarde du token
         // Le webhook Google Play gère les renouvellements ; le token ici couvre le 1er achat
         const updates={is_premium:true};
-        if(isFounderProduct) updates.is_founder=true;
+        if(isProPurchase) updates.is_pro=true;
         if(purchaseToken){updates.google_purchase_token=purchaseToken;updates.google_product_id=productId;}
         await supabase.from('profiles').update(updates).eq('id',user.id);
       } else {
@@ -3617,10 +1950,9 @@ export default function App({ loginOnly = false }){
           if(data?.is_premium){confirmed=true;break;}
         }
         if(!confirmed) throw new Error('Premium not confirmed by server');
-        if(isFounderProduct) await supabase.from('profiles').update({is_founder:true}).eq('id',user.id);
       }
       setIsPremium(true);
-      setPremiumWelcomeIsFounder(isFounderProduct);
+      if(isProPurchase) setIsPro(true);
       setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
@@ -3628,8 +1960,7 @@ export default function App({ loginOnly = false }){
         const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
         if(data?.is_premium){
           setIsPremium(true);
-          setPremiumWelcomeIsFounder(isFounderProduct);
-          setShowPremiumWelcome(true);
+              setShowPremiumWelcome(true);
           return;
         }
       }catch{}
@@ -3641,7 +1972,6 @@ export default function App({ loginOnly = false }){
 
   async function handleIAPRestore(){
     setIapLoading(true);
-    const isFounderProduct=slotsRemaining>0;
     try{
       const {isPremium,receipt,purchaseToken,productId}=await restorePurchases('button');
       if(isPremium){
@@ -3654,8 +1984,7 @@ export default function App({ loginOnly = false }){
           await supabase.from('profiles').update(updates).eq('id',user.id);
         }
         setIsPremium(true);
-        setPremiumWelcomeIsFounder(isFounderProduct);
-        setShowPremiumWelcome(true);
+          setShowPremiumWelcome(true);
       }else{
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -3666,8 +1995,7 @@ export default function App({ loginOnly = false }){
         const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
         if(data?.is_premium){
           setIsPremium(true);
-          setPremiumWelcomeIsFounder(isFounderProduct);
-          setShowPremiumWelcome(true);
+              setShowPremiumWelcome(true);
           return;
         }
       }catch{}
@@ -3676,17 +2004,42 @@ export default function App({ loginOnly = false }){
     }finally{setIapLoading(false);}
   }
 
-  async function fetchAll(uid){
-    setLoading(true);
-    const FC_KEY='fs_founder_config';const FC_TTL=5*60*1000;
-    let fcPromise;
-    try{const c=JSON.parse(localStorage.getItem(FC_KEY)||'null');if(c&&Date.now()-c.ts<FC_TTL)fcPromise=Promise.resolve({data:c.data,error:null});}catch{}
-    if(!fcPromise)fcPromise=supabase.from('founder_config').select('slots_total,slots_used').eq('id',1).single().then(r=>{if(!r.error&&r.data)try{localStorage.setItem(FC_KEY,JSON.stringify({ts:Date.now(),data:r.data}));}catch{}return r;});
-    const [v,i,p,fc]=await Promise.all([
+  // Checkout direct d'un tier ('premium'|'pro') : log + tracking + IAP/Stripe.
+  function startTierCheckout(tier){
+    const pro=tier==='pro';
+    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
+    trackTikTokEvent("InitiateCheckout",user?.email,pro?29.99:12.99);
+    if(pro){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}
+    else{isNative?handleIAPPurchase():triggerCheckout();}
+  }
+  // Ex-UpgradeModal, fusionnée dans ConversionModal : un tier explicite part
+  // directement en checkout, sans tier on ouvre la modale de conversion.
+  function openUpgradeModal(tier,trigger='generic'){
+    if(tier==='pro'||tier==='premium'){startTierCheckout(tier);return;}
+    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});
+    setConversionModal({open:true,trigger});
+  }
+
+  // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
+  // visibilité, poll sentinelle) ne doivent pas faire clignoter le spinner —
+  // les données se remplacent en place, sans état de chargement visible.
+  async function fetchAll(uid,{silencieux=false}={}){
+    // GARDE (2026-07-13) : sans uid, chaque requête ci-dessous part en
+    // `user_id=eq.undefined` et revient en 400 — une dizaine d'erreurs, un
+    // refetch entièrement raté, et des états (bandeaux, stock, profil) qui
+    // restent silencieusement vides. Vécu sur confirmSaleFromBanner, qui
+    // appelait `fetchAll()` sans argument. On échoue BRUYAMMENT plutôt que de
+    // marteler la base avec des UUID invalides.
+    if(!uid){
+      console.error("[fetchAll] appelé sans user id — refetch annulé (aucune requête envoyée). C'est un bug d'appelant.");
+      setLoading(false);
+      return;
+    }
+    if(!silencieux) setLoading(true);
+    const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username').eq('id',uid).maybeSingle(),
-      fcPromise,
+      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -3697,7 +2050,11 @@ export default function App({ loginOnly = false }){
     console.log('[fetchAll] premium fields from Supabase:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_founder:p.data?.is_founder,has_apple:!!p.data?.apple_original_transaction_id,has_google:!!p.data?.google_purchase_token}, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
+      setIsPro(p.data?.is_pro===true);
       setUsername(p.data?.username||'');
+      setSettingsLbcRue(p.data?.platform_settings?.leboncoin?.rue||'');
+      setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
+      setSettingsLbcVille(p.data?.platform_settings?.leboncoin?.ville||'');
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
       const confirmed=!!localStorage.getItem('fs_currency_confirmed');
@@ -3714,18 +2071,89 @@ export default function App({ loginOnly = false }){
           setShowCurrencyOnboarding(true);
         }
       }
-      if(!p.data?.username&&!localStorage.getItem('fs_username_asked')&&confirmed){
-        setShowUsernameOnboarding(true);
+      if(!p.data?.username){
+        // Nom fourni par le provider OAuth (Google le renvoie à chaque connexion,
+        // Apple seulement à la toute première) : Supabase le garde dans
+        // user_metadata — on le PERSISTE dans profiles à la première entrée pour
+        // ne plus jamais dépendre de la réponse du provider, et la modale pseudo
+        // ne s'affiche alors pas. getSession = lecture locale, pas d'appel réseau.
+        const{data:{session:authSession}}=await supabase.auth.getSession();
+        const meta=authSession?.user?.user_metadata||{};
+        const providerName=String(meta.full_name||meta.name||'').trim().slice(0,30);
+        if(providerName){
+          const{error:unErr}=await supabase.rpc('set_profile_username',{p_username:providerName});
+          if(!unErr){setUsername(providerName);localStorage.setItem('fs_username_asked','1');}
+        } else if(!localStorage.getItem('fs_username_asked')&&confirmed){
+          setShowUsernameOnboarding(true);
+        }
       }
     }
-    if(!fc.error&&fc.data) setSlotsRemaining(Math.max(0,20-fc.data.slots_used));
+    // Annonces à retirer (article vendu, frères encore live) — voir le bandeau.
+    const{data:pendingRem}=await supabase.from('cross_post_jobs')
+      .select('id, platform, title, inventaire_id, listing_url, platform_fields')
+      .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
+      .contains('platform_fields',{pending_removal:true});
+    setPendingRemovals(pendingRem||[]);
+
+    // Annonces DISPARUES sans preuve de vente (2026-07-12) : le poll de
+    // l'extension a constaté qu'elles ne sont plus en ligne, mais AUCUNE preuve
+    // de vente n'a été trouvée (supprimée ? expirée ? vendue sans validation sur
+    // la plateforme ?). Rien n'a été écrit en compta : c'est l'utilisateur qui
+    // tranche via le bandeau. Une disparition n'est jamais une vente.
+    const{data:unavail}=await supabase.from('cross_post_jobs')
+      .select('id, platform, title, price, inventaire_id, listing_url, platform_fields')
+      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .not('platform_fields->>unavailable_since','is',null);
+    setUnavailableListings(unavail||[]);
+
+    // Annonces INVÉRIFIABLES depuis plus de 2 jours (2026-07-13). L'extension
+    // retente une fois par jour et se répare toute seule si la cause disparaît
+    // (bot-shield levé, onglet rouvert) — on n'alerte donc pas au premier jour.
+    // Mais au-delà, c'est à toi de trancher : l'annonce est peut-être toujours en
+    // ligne et plus personne ne la surveille. On ne conclut RIEN à ta place, on
+    // te donne le lien.
+    const{data:unverif}=await supabase.from('cross_post_jobs')
+      .select('id, platform, title, listing_url, platform_fields')
+      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .not('platform_fields->>check_unresolved_since','is',null);
+    const seuil=Date.now()-2*24*60*60*1000;
+    setUnverifiableListings((unverif||[]).filter(j=>{
+      const t=Date.parse(j.platform_fields?.check_unresolved_since??'');
+      return Number.isFinite(t)&&t<seuil;
+    }));
+
     setLoading(false);
     setAppLoading(false);
-    const lensCount=await checkAndResetDaily(supabase,uid,'lens_count_today','lens_count_date');
-    setLensUsedToday(lensCount);
+    // Quota Lens : usage_logs est LA source de vérité (comptée côté serveur par
+    // check_and_log_usage). Le quota inclus étant désormais MENSUEL (free 5,
+    // premium 120, pro 250), le compteur affiché l'est aussi — borne = début de
+    // mois UTC, comme date_trunc('month') côté serveur. (Le nom lensUsedToday
+    // est historique : il contient le compteur du MOIS.)
+    const lensMonthStart=new Date();lensMonthStart.setUTCDate(1);lensMonthStart.setUTCHours(0,0,0,0);
+    const{count:lensCount}=await supabase.from('usage_logs')
+      .select('id',{count:'exact',head:true})
+      .eq('user_id',uid).eq('feature','lens')
+      .gte('created_at',lensMonthStart.toISOString());
+    setLensUsedToday(lensCount||0);
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
   }
+
+  // Solde + derniers mouvements de pièces, rechargés à chaque ouverture des
+  // réglages ET de la modale de conversion : celle-ci affiche le vrai solde
+  // (« Tu es en Free · X Pépites »), il ne doit jamais être vide faute d'avoir
+  // ouvert les réglages avant. L'historique ne sert qu'aux réglages.
+  useEffect(()=>{
+    const ouvert=showSettings||conversionModal.open;
+    if(!ouvert||!user)return;
+    (async()=>{
+      const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance').eq('user_id',user.id).maybeSingle();
+      setCoinWallet(w??{included_balance:0,purchased_balance:0});
+      if(!showSettings)return;
+      const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(5);
+      setCoinHistory(h??[]);
+    })();
+  },[showSettings,conversionModal.open,user]);
 
   useEffect(()=>{
     let mounted=true;
@@ -3737,6 +2165,26 @@ export default function App({ loginOnly = false }){
     if(isNative){
       initIAP().then(product=>{ if(mounted) setIapProduct(product); });
     }
+    // Filet de rattrapage achat interrompu (iOS) : Transaction.updates relivre
+    // au lancement les consumables payés mais jamais validés (app tuée entre
+    // purchaseProduct et validate-coin-purchase). On rejoue la validation —
+    // idempotente côté RPC — avant de finish. Session pas encore restaurée →
+    // on jette : la transaction reste en file pour le prochain lancement.
+    let coinRecoveryHandle=null;
+    if(isNative&&Capacitor.getPlatform()==='ios'){
+      listenCoinTransactionUpdates(async(tx)=>{
+        const{data:{session:rcSess}}=await supabase.auth.getSession();
+        const rcToken=rcSess?.access_token;
+        if(!rcToken) throw new Error('session absente — nouvel essai au prochain lancement');
+        const r=await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${rcToken}`,'apikey':supabaseAnonKey},
+          body:JSON.stringify({platform:'ios',productId:tx.productIdentifier,receipt:tx.receipt,jwsRepresentation:tx.jwsRepresentation}),
+        });
+        const body=await r.json().catch(()=>({}));
+        if(!r.ok||body.error) throw new Error(body.error||`HTTP ${r.status}`);
+      }).then(h=>{coinRecoveryHandle=h;}).catch(e=>console.error('[IAP] listener rattrapage:',e?.message));
+    }
     const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       const u=session?.user??null;
       setUser(u);
@@ -3746,8 +2194,64 @@ export default function App({ loginOnly = false }){
         fetchAll(u.id);
       }else{setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
     });
-    return()=>{ mounted=false; subscription.unsubscribe(); };
+    return()=>{ mounted=false; subscription.unsubscribe(); coinRecoveryHandle?.remove?.(); };
   },[]);
+
+  // ── Refetch au retour de visibilité (2026-07-13) ────────────────────────────
+  // L'extension écrit en base pendant que l'app est OUVERTE (retraits
+  // cross-plateforme terminés, sale_signal posés, statuts de jobs) et rien ne
+  // relisait ces états tant que l'utilisateur n'agissait pas : les bandeaux
+  // n'apparaissaient qu'après un F5 manuel (vécu : vente Vinted confirmée,
+  // retraits eBay/LBC réussis en tâche de fond, app muette). Revenir sur
+  // l'onglet/la fenêtre déclenche désormais un fetchAll silencieux (aucun
+  // spinner), au plus un toutes les 30 s.
+  const derniereVisibiliteRef=useRef(0);
+  useEffect(()=>{
+    if(!user?.id) return;
+    const onVisible=()=>{
+      if(document.visibilityState!=='visible') return;
+      const maintenant=Date.now();
+      if(maintenant-derniereVisibiliteRef.current<30_000) return;
+      derniereVisibiliteRef.current=maintenant;
+      fetchAll(user.id,{silencieux:true});
+    };
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>document.removeEventListener('visibilitychange',onVisible);
+  },[user?.id]);
+
+  // ── Poll sentinelle des jobs (2026-07-13) ───────────────────────────────────
+  // Pendant que l'app est VISIBLE : une seule petite requête toutes les 45 s
+  // sur cross_post_jobs (statuts + marqueurs de bandeaux extraits du JSON) ;
+  // fetchAll complet UNIQUEMENT si l'empreinte a changé — zéro martèlement
+  // quand rien ne bouge, et le bandeau de retrait apparaît en ≤ 45 s quand
+  // l'extension termine un retrait en tâche de fond, sans F5 ni changement
+  // d'onglet. ⚠️ Pas de colonne updated_at sur cross_post_jobs (vérifié en
+  // base, aucun trigger non plus) : l'empreinte porte sur les champs qui
+  // pilotent réellement les bandeaux et les chips, pas sur un horodatage.
+  const empreinteJobsRef=useRef(null);
+  useEffect(()=>{
+    if(!user?.id) return;
+    empreinteJobsRef.current=null; // nouvel utilisateur = nouvelle référence
+    let arret=false;
+    const sonde=async()=>{
+      if(document.visibilityState!=='visible') return;
+      const {data,error}=await supabase.from('cross_post_jobs')
+        .select('id,status,last_checked_at,sale_signal:platform_fields->>sale_signal,unavailable_since:platform_fields->>unavailable_since,pending_removal:platform_fields->>pending_removal,check_unresolved_since:platform_fields->>check_unresolved_since')
+        .eq('user_id',user.id)
+        .order('created_at',{ascending:false})
+        .limit(80);
+      if(arret||error||!data) return;
+      const empreinte=JSON.stringify(data);
+      if(empreinteJobsRef.current===null){ empreinteJobsRef.current=empreinte; return; } // 1re lecture = référence, pas de refetch
+      if(empreinte!==empreinteJobsRef.current){
+        empreinteJobsRef.current=empreinte;
+        fetchAll(user.id,{silencieux:true});
+      }
+    };
+    sonde();
+    const t=setInterval(sonde,45_000);
+    return()=>{arret=true;clearInterval(t);};
+  },[user?.id]);
 
 
   const buy=parseFloat(cBuy)||0;
@@ -3813,8 +2317,8 @@ export default function App({ loginOnly = false }){
   const mData=buildChartData(sales,selectedRange);
   const hasData=sales.length>0;
 
-  const _f={family:"'Nunito', -apple-system, sans-serif",size:11};
-  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'800'}};
+  const _f={family:"'Space Grotesk', -apple-system, sans-serif",size:11};
+  const _tip={backgroundColor:'#ffffff',titleColor:'#A3A9A6',borderColor:'rgba(0,0,0,0.08)',borderWidth:1,padding:12,cornerRadius:10,displayColors:false,titleFont:{..._f,size:11,weight:'700'},bodyFont:{..._f,size:14,weight:'700'}};
   const _scales=(unit)=>({
     x:{grid:{display:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f}},
     y:{grid:{color:'#E5E7EB',drawTicks:false},border:{display:false},ticks:{color:'#A3A9A6',font:_f,padding:8,callback:unit==='€'?v=>fmt(v,0):v=>v+unit}},
@@ -3863,8 +2367,7 @@ export default function App({ loginOnly = false }){
   const avgM=totalR>0?(totalM/totalR)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
-  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>;return C;},[slotsRemaining]);
-  const BoundEmptyState=useMemo(()=>{const C=(props)=><EmptyStateDashboard {...props} slotsRemaining={slotsRemaining}/>;return C;},[slotsRemaining]);
+  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal()}/>;return C;},[user]);
   function searchMatch(item,query){
     if(!query.trim())return true;
     const q=query.toLowerCase().trim();
@@ -3957,7 +2460,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:avSess}}=await supabase.auth.getSession();
     const avToken=avSess?.access_token;
     for(const item of voiceParsed.items){
-      if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
+      if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const qty=Math.max(1,item.quantite||1);
       const isVente=voiceParsed.action==='vente';
       const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
@@ -4024,7 +2527,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:ntSess}}=await supabase.auth.getSession();
     const ntToken=ntSess?.access_token;
     for(const item of lotDistributed.items){
-      if(!isPremium&&insertedCount>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);break;}
+      if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
@@ -4045,7 +2548,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);return;}
+    if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
@@ -4068,6 +2571,91 @@ export default function App({ loginOnly = false }){
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
     setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
+  }
+
+  // ── Retrait cross-plateforme (Phase B, 2026-07-11) ─────────────────────────
+  // Arme les jobs action='delete' pour les annonces frères encore en ligne
+  // d'un article vendu (insert direct : RLS "Users manage own cross_post_jobs",
+  // aucune Pépite débitée — ce n'est pas une publication). Le flag
+  // pending_removal est levé pour que le bandeau disparaisse ; l'extension
+  // exécutera les suppressions à son prochain cycle (30 min max), en
+  // DELETE_DRY_RUN tant que les 3 validations réelles n'ont pas eu lieu.
+  async function armRemovals(group){
+    if(!group.length)return;
+    const rows=group.map(j=>({
+      user_id:user.id,inventaire_id:j.inventaire_id,platform:j.platform,
+      action:'delete',status:'pending',photo_option:'original',
+      title:j.title,listing_url:j.listing_url,platform_fields:{},
+    }));
+    const{error}=await supabase.from('cross_post_jobs').insert(rows);
+    if(error){console.error('[armRemovals] insert:',error.message);return;}
+    for(const j of group){
+      // .select() après update : les updates silencieusement bloqués par RLS
+      // ont déjà été vécus sur profiles — on vérifie que la ligne revient.
+      await supabase.from('cross_post_jobs')
+        .update({platform_fields:{...(j.platform_fields||{}),pending_removal:false}})
+        .eq('id',j.id).select('id');
+    }
+    setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)));
+    track('arm_removals',{count:group.length});
+  }
+
+  // ── Annonce hors ligne : l'utilisateur tranche. TOUJOURS. ──────────────────
+  // (Phase B, décision produit 2026-07-12) Le poll ne fait que POSER UN DRAPEAU,
+  // sur les 4 plateformes — y compris Vinted, dont la preuve de vente est
+  // pourtant fiable. Motif : le prix réel peut différer du prix affiché
+  // (négociation), et un vendeur à volume ne repasserait jamais corriger — la
+  // marge resterait fausse en silence, pour toujours.
+  // CETTE FONCTION EST LE SEUL CHEMIN QUI ÉCRIT UNE VENTE EN BASE
+  // (check-listing-status → orchestrateSale : vente, inventaire, marges,
+  // annulation des frères, proposition de retrait).
+  async function confirmSaleFromBanner(job){
+    // Prix confirmé : la saisie de l'utilisateur si elle est valide, sinon le
+    // prix pré-rempli. C'est LUI qui devient prix_vente côté serveur
+    // (négociation, remise main propre marchandée…).
+    const saisi=parseFloat(String(salePriceDraft[job.id]??'').replace(',','.'));
+    // Défaut = ce que montre le champ : prix lu sur la page si la plateforme
+    // l'expose (Vinted), sinon prix de mise en ligne.
+    const defaut=Number(job.platform_fields?.detected_price??job.price)||0;
+    const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
+    if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
+    setConfirmingSale(job.id);
+    try{
+      const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id,price:prix}});
+      if(error)throw error;
+      setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
+      track('confirm_sale_banner',{platform:job.platform});
+      // ⚠️ user.id OBLIGATOIRE (2026-07-13). Cet appel était `fetchAll()` — sans
+      // argument. fetchAll(uid) prend l'utilisateur en PARAMÈTRE : uid valait donc
+      // `undefined`, et TOUTES les requêtes du refetch partaient en
+      // `user_id=eq.undefined` → 10 erreurs 400 (« invalid input syntax for type
+      // uuid: 'undefined' »), y compris celle qui construit le bandeau de retrait
+      // des annonces frères. D'où le bandeau qui n'apparaissait qu'après un F5 :
+      // ce n'était pas un défaut de rafraîchissement, c'était le refetch qui
+      // échouait entièrement.
+      await fetchAll(user.id); // vente + inventaire + bandeau de retrait des frères
+    }catch(e){
+      console.error('[confirmSaleFromBanner]',e?.message??e);
+      setToast({visible:true,message:t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }finally{
+      setConfirmingSale(null);
+    }
+  }
+
+  // « Non, je l'ai retirée » : pas une vente. Le job est clos (l'annonce
+  // n'existe plus) et le drapeau levé — aucune ligne de vente, aucun inventaire
+  // touché. Le bandeau ne réapparaîtra pas.
+  async function dismissUnavailable(job){
+    const pf={...(job.platform_fields||{})};
+    delete pf.unavailable_since;
+    const{error}=await supabase.from('cross_post_jobs')
+      .update({status:'cancelled',platform_fields:pf,
+               error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
+      .eq('id',job.id).select('id');
+    if(error){console.error('[dismissUnavailable]',error.message);return;}
+    setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
+    track('dismiss_unavailable',{platform:job.platform});
   }
 
   function markSold(item){
@@ -4173,7 +2761,7 @@ export default function App({ loginOnly = false }){
         setTimeout(()=>setToast({visible:false,message:''}),4000);
         return;
       }
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:null,plateforme:null};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
@@ -4197,9 +2785,11 @@ export default function App({ loginOnly = false }){
       margin_pct:mgp,
       description:editItem.description||null,
       quantite:qty,
+      // Même colonne que l'intention vocale inventory_move (moveToLocation).
+      emplacement:editItem.emplacement?.trim()||null,
     }).eq('id',editItem.id);
     if(!error){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -4687,6 +3277,8 @@ export default function App({ loginOnly = false }){
       if (data?.session) {
         const u = data.session.user;
         setUser(u);
+        // Splash pendant le chargement des données — évite le flash d'app vide
+        setAppLoading(true);
         await fetchAll(u.id);
         navigate('/app');
       }
@@ -4706,7 +3298,75 @@ export default function App({ loginOnly = false }){
     }
   };
 
+  // OAuth navigateur (Apple web / Google) — flux PKCE, générique par provider.
+  // Web/desktop : redirection pleine page vers le provider, retour sur
+  //   /auth/callback?code=… (AuthCallback échange le code puis route vers /app).
+  // Android natif : skipBrowserRedirect + @capacitor/browser (Custom Tab), le
+  //   provider redirige vers app.fillsell.app://callback (intent-filter du
+  //   manifest) et l'écouteur appUrlOpen ci-dessous échange le code — dans la
+  //   MÊME webview que l'initiation, où vit le code_verifier PKCE.
+  // iOS natif n'utilise pas ce chemin : Apple y passe par le plugin natif
+  //   AppleSignIn (signInWithIdToken), voir handleAppleSignIn.
+  const handleOAuthSignIn = async (provider) => {
+    const { data: { session: existingSession } } = await supabase.auth.getSession();
+    if (existingSession) { navigate('/app'); return; }
+    setLoginError("");
+    try {
+      if (isNative) {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: 'app.fillsell.app://callback', skipBrowserRedirect: true },
+        });
+        if (error) throw error;
+        if (data?.url) await Browser.open({ url: data.url });
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        });
+        if (error) throw error;
+        // Redirection pleine page imminente — rien à faire ici.
+      }
+    } catch (e) {
+      console.error(`OAuth ${provider} error:`, e);
+      setLoginError(e.message || 'Erreur de connexion');
+    }
+  };
+
+  // Retour du deep link OAuth natif (app.fillsell.app://callback?code=…).
+  // Android ET iOS (2026-07-12) : @capacitor/app est désormais synchronisé sur
+  // les deux plateformes, et le scheme est déclaré côté iOS dans Info.plist
+  // (CFBundleURLTypes) comme il l'est côté Android (intent-filter).
+  // Ne concerne QUE Google : Sign in with Apple sur iOS reste le plugin natif
+  // (handleAppleSignIn, signInWithIdToken) et ne passe jamais par ici — le
+  // filtre sur app.fillsell.app://callback ignore de toute façon le reste.
+  useEffect(() => {
+    if (!isNative) return;
+    const subPromise = CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
+      if (!url?.startsWith('app.fillsell.app://callback')) return;
+      try { await Browser.close(); } catch { /* Custom Tab déjà fermé */ }
+      const m = url.match(/[?&]code=([^&#]+)/);
+      if (!m) return; // annulation ou erreur provider : on reste sur le login
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(decodeURIComponent(m[1]));
+        if (error) throw error;
+        if (data?.session) {
+          setUser(data.session.user);
+          setAppLoading(true); // splash pendant fetchAll, comme handleAppleSignIn
+          await fetchAll(data.session.user.id);
+          navigate('/app');
+        }
+      } catch (e) {
+        console.error('OAuth deep link error:', e);
+        setLoginError(e.message || 'Erreur de connexion');
+      }
+    });
+    return () => { subPromise.then(s => s.remove()).catch(() => {}); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleLogin(){
+    if(isSigningIn||isSigningUp)return;
     setLoginError("");
     if(!emailRef.current?.value||!passwordRef.current?.value){setLoginError("Remplis email et mot de passe");return;}
     setIsSigningIn(true);
@@ -4714,30 +3374,49 @@ export default function App({ loginOnly = false }){
       const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
       if(error){setLoginError(error.message);return;}
       track('login', { method: 'email' });
+      // Splash jusqu'à la fin de fetchAll (lancé par SIGNED_IN) — évite le flash d'app vide
+      setAppLoading(true);
       navigate("/app");
     }catch(e){setLoginError(e.message);}finally{setIsSigningIn(false);}
   }
 
   async function handleForgot(){
+    if(isSendingReset)return;
     const _lt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
-    if(!email){setForgotMsg(_lt==='en'?"Enter your email above.":"Saisis ton email ci-dessus.");return;}
+    // Ref en priorité (valeur réelle du champ, couvre l'autofill), state en secours
+    const emailVal=(emailRef.current?.value||email).trim();
+    if(!emailVal){setForgotMsg(_lt==='en'?"Enter your email above.":"Saisis ton email ci-dessus.");return;}
     setForgotMsg("");
-    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://fillsell.app/reset-password"});
-    if(error){setForgotMsg(_lt==='en'?`Error: ${error.message}`:`Erreur : ${error.message}`);return;}
-    setForgotMsg(_lt==='en'?"📧 Email sent! Check your inbox.":"📧 Email envoyé ! Vérifie ta boîte mail.");
+    setIsSendingReset(true);
+    try{
+      const{error}=await supabase.auth.resetPasswordForEmail(emailVal,{redirectTo:"https://fillsell.app/reset-password"});
+      if(error){setForgotMsg(_lt==='en'?`Error: ${error.message}`:`Erreur : ${error.message}`);return;}
+      setForgotMsg(_lt==='en'?"📧 Email sent! Check your inbox.":"📧 Email envoyé ! Vérifie ta boîte mail.");
+    }catch(e){setForgotMsg(_lt==='en'?`Error: ${e.message}`:`Erreur : ${e.message}`);}finally{setIsSendingReset(false);}
   }
 
   async function handleSignup(){
+    if(isSigningIn||isSigningUp)return;
     const emailVal=emailRef.current?.value;
     const passwordVal=passwordRef.current?.value;
     const _slt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');
     if(!emailVal||!passwordVal){alert(_slt==='en'?"Fill in your email and password":"Remplis email et mot de passe");return;}
-    const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
-    if(error){alert(error.message);return;}
-    track('sign_up', { method: 'email' });
-    trackTikTokEvent("CompleteRegistration", emailVal);
-    if(data?.session) navigate("/app");
-    else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
+    setLoginError("");
+    // Double vérification de l'email — bloque avant tout appel Supabase
+    if(emailVal.trim()!==emailConfirm.trim()){setLoginError(_slt==='en'?"Emails don't match":"Les emails ne correspondent pas");return;}
+    setIsSigningUp(true);
+    try{
+      const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
+      if(error){alert(error.message);return;}
+      track('sign_up', { method: 'email' });
+      trackTikTokEvent("CompleteRegistration", emailVal);
+      if(data?.session){
+        // Splash jusqu'à la fin de fetchAll — évite le flash d'app vide
+        setAppLoading(true);
+        navigate("/app");
+      }
+      else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
+    }catch(e){alert(e.message);}finally{setIsSigningUp(false);}
   }
 
   async function handleLogout(){
@@ -4779,11 +3458,11 @@ export default function App({ loginOnly = false }){
   }
 
   const TABS_MOBILE=[
-    {icon:"📊",label:lang==='fr'?"Tableau":"Board",idx:0},
-    {icon:"🤖",label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
-    {icon:"📸",label:"Lens",idx:2},
-    {icon:"📋",label:lang==='fr'?"Ventes":"Sales",idx:3},
-    {icon:"📈",label:"Stats",idx:4},
+    {Icon:BarChart3,   label:lang==='fr'?"Tableau":"Board",idx:0},
+    {Icon:Bot,         label:lang==='fr'?"Stock IA":"AI Stock",idx:1},
+    {Icon:Aperture,    label:"Lens",idx:2},
+    {Icon:ClipboardList,label:lang==='fr'?"Ventes":"Sales",idx:3},
+    {Icon:LineChart,   label:"Stats",idx:4},
   ];
 
   const headerStats=[
@@ -4793,16 +3472,9 @@ export default function App({ loginOnly = false }){
   ];
 
   if(authLoading||appLoading)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",flexDirection:"column",gap:24}}>
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
-        <img src="/icon_1024x1024.png" alt="FillSell" style={{width:72,height:72,borderRadius:18,objectFit:"cover",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}/>
-        <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:"-0.02em"}}>FillSell</div>
-      </div>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        {[0,1,2].map(i=>(
-          <span key={i} style={{width:8,height:8,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"inline-block",animation:`fs-dot 1.2s ease-in-out ${i*0.2}s infinite`}}/>
-        ))}
-      </div>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:UI.canvas,flexDirection:"column",gap:20}}>
+      <img src="/icon_1024x1024.png" alt="FillSell" style={{width:64,height:64,borderRadius:16,objectFit:"cover",boxShadow:"0 8px 24px rgba(16,32,27,0.12)"}}/>
+      <Loader size={32} thickness={3}/>
     </div>
   );
 
@@ -4810,55 +3482,100 @@ export default function App({ loginOnly = false }){
   const loginTexts=loginLang==='en'?{
     subtitle:"Sign in to continue",login:"Sign in",signup:"Create my account",
     forgot:"Forgot your password?",forgotBtn:"Send reset link",
-    forgotMsg:"Enter your email above.",back:"← Back"
+    forgotMsg:"Enter your email above.",back:"← Back",
+    confirmEmail:"Confirm your email"
   }:{
     subtitle:"Connecte-toi pour continuer",login:"Se connecter",signup:"Créer mon compte",
     forgot:"Mot de passe oublié ?",forgotBtn:"Envoyer le lien de réinitialisation",
-    forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour"
+    forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour",
+    confirmEmail:"Confirme ton email"
   };
 
-  if(!authLoading&&!isSigningIn&&(!user||loginOnly))return(
-    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:"linear-gradient(135deg,#4ECDC4 0%,#F9A26C 100%)",overflow:"hidden",boxSizing:"border-box"}}>
-      <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,background:"none",border:"none",color:"rgba(255,255,255,0.85)",fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>←</button>
-      <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,boxShadow:"0 24px 64px rgba(0,0,0,0.2)",boxSizing:"border-box"}}>
-        <div style={{textAlign:"center",marginBottom:20}}>
-          <img src="/logo.png" style={{height:52,marginBottom:12,objectFit:"contain"}} alt="FillSell"/>
-          <div style={{fontSize:15,color:C.sub,fontWeight:500}}>{loginTexts.subtitle}</div>
+  if(!authLoading&&(!user||loginOnly))return(
+    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflow:"hidden",boxSizing:"border-box"}}>
+      <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,width:36,height:36,borderRadius:"50%",background:UI.card,border:`1px solid ${UI.border}`,color:UI.ink,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>←</button>
+      <div style={{background:UI.card,borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.10)",boxSizing:"border-box"}}>
+        <div style={{textAlign:"center",marginBottom:22}}>
+          <img src="/logo.png" style={{height:48,marginBottom:14,objectFit:"contain"}} alt="FillSell"/>
+          <div style={{fontSize:14.5,color:UI.mute2,fontWeight:500}}>{loginTexts.subtitle}</div>
         </div>
-        <div style={{display:"flex",background:"rgba(0,0,0,0.05)",borderRadius:99,padding:3,marginBottom:18}}>
-          <button onClick={()=>setAuthMode('login')} style={{flex:1,padding:"9px 12px",borderRadius:99,border:"none",fontSize:14,fontWeight:700,cursor:"pointer",background:authMode==='login'?"#3EACA0":"transparent",color:authMode==='login'?"#fff":"#6B7280",transition:"all 0.15s"}}>
-            {loginTexts.login}
-          </button>
-          <button onClick={()=>setAuthMode('signup')} style={{flex:1,padding:"9px 12px",borderRadius:99,border:"none",fontSize:14,fontWeight:700,cursor:"pointer",background:authMode==='signup'?"#3EACA0":"transparent",color:authMode==='signup'?"#fff":"#6B7280",transition:"all 0.15s"}}>
-            {loginTexts.signup}
-          </button>
+        <div style={{marginBottom:20}}>
+          <SegmentedPills
+            options={['login','signup']}
+            value={authMode}
+            onChange={m=>{setAuthMode(m);setLoginError("");}}
+            labelFn={m=>m==='login'?loginTexts.login:loginTexts.signup}
+          />
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {isNative&&platform==='ios'&&(
-            <div style={{marginBottom:16}}>
-              <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:12,padding:"14px 16px",fontSize:16,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
-                <span style={{fontSize:20}}>&#63743;</span>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Fournisseurs (maj 2026-07-12) :
+              - iOS natif  : Apple via plugin natif (signInWithIdToken) — EN PREMIER,
+                             comme l'exige Apple — PUIS Google (OAuth via
+                             SFSafariViewController + deep link app.fillsell.app://callback).
+                             Guideline 4.8 respectée : Sign in with Apple est proposé.
+              - Web/desktop: Apple (OAuth PKCE → /auth/callback) + Google.
+              - Android    : Google (OAuth via Custom Tab + même deep link). */}
+          <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+            {isNative&&platform==='ios'&&(
+              <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
+                <span style={{fontSize:19}}>&#63743;</span>
                 {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
               </button>
-              <div style={{textAlign:"center",color:"#999",fontSize:13,marginTop:12}}>
-                {lang==='fr'?'— ou —':'— or —'}
-              </div>
+            )}
+            {!isNative&&(
+              <button onClick={()=>handleOAuthSignIn('apple')} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
+                {/* Logo Apple en SVG inline (comme le G Google) : le glyphe U+F8FF
+                    n'existe que dans les fontes Apple — carré vide ailleurs. */}
+                <svg width="15" height="18" viewBox="0 0 814 1000" aria-hidden="true">
+                  <path fill="#fff" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
+                </svg>
+                {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
+              </button>
+            )}
+            {/* Google : web/desktop, Android et iOS. Sur iOS il est rendu APRÈS le
+                bouton Apple ci-dessus, qui reste l'option native et prioritaire. */}
+            {(
+              <button onClick={()=>handleOAuthSignIn('google')} style={{width:"100%",backgroundColor:UI.card,color:UI.ink,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,cursor:"pointer",fontFamily:"inherit"}}>
+                {/* Logo Google officiel (G quadricolore) */}
+                <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                {lang==='fr'?'Se connecter avec Google':'Sign in with Google'}
+              </button>
+            )}
+            <div style={{textAlign:"center",color:UI.mute,fontSize:12.5,marginTop:2}}>
+              {lang==='fr'?'— ou —':'— or —'}
             </div>
-          )}
+          </div>
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
-            style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+            onChange={e=>setEmail(e.target.value)}
+            style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+          {!forgotMode&&authMode==='signup'&&(
+            <input type="email" placeholder={loginTexts.confirmEmail} value={emailConfirm}
+              onChange={e=>setEmailConfirm(e.target.value)}
+              style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+          )}
           {!forgotMode&&(
             <>
-              <input type="password" placeholder="Mot de passe" ref={passwordRef} defaultValue=""
-                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-                style={{padding:"13px 16px",borderRadius:12,border:"1px solid rgba(0,0,0,0.12)",fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-              <button onClick={authMode==='login'?handleLogin:handleSignup}
-                style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
-                {authMode==='login'?loginTexts.login:loginTexts.signup}
-              </button>
-              {loginError&&<div style={{fontSize:13,textAlign:"center",color:C.red,fontWeight:600}}>{loginError}</div>}
+              <div style={{position:"relative",width:"100%"}}>
+                <input type={showPassword?"text":"password"} placeholder="Mot de passe" ref={passwordRef} defaultValue=""
+                  onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                  style={{padding:"13px 16px",paddingRight:46,borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
+                <button type="button" onClick={()=>setShowPassword(s=>!s)}
+                  aria-label={showPassword?"Masquer le mot de passe":"Afficher le mot de passe"}
+                  style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",padding:4,cursor:"pointer",color:UI.mute2,display:"flex",alignItems:"center"}}>
+                  {showPassword?<EyeOff size={18}/>:<Eye size={18}/>}
+                </button>
+              </div>
+              <PrimaryButton onClick={authMode==='login'?handleLogin:handleSignup} disabled={isSigningIn||isSigningUp} style={{padding:14}}>
+                {(isSigningIn||isSigningUp)?<Loader size={19} thickness={2}/>:(authMode==='login'?loginTexts.login:loginTexts.signup)}
+              </PrimaryButton>
+              {loginError&&<div style={{fontSize:13,textAlign:"center",color:UI.negative,fontWeight:600}}>{loginError}</div>}
               <div style={{textAlign:"center"}}>
-                <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:C.teal,cursor:"pointer",textDecoration:"underline"}}>
+                <span onClick={()=>{setForgotMode(true);setForgotMsg("");}} style={{fontSize:13,color:UI.teal,cursor:"pointer",textDecoration:"underline"}}>
                   {loginTexts.forgot}
                 </span>
               </div>
@@ -4866,17 +3583,16 @@ export default function App({ loginOnly = false }){
           )}
           {forgotMode&&(
             <>
-              <button onClick={handleForgot}
-                style={{padding:"14px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",boxShadow:"0 4px 16px rgba(62,172,160,0.35)"}}>
-                {loginTexts.forgotBtn}
-              </button>
+              <PrimaryButton onClick={handleForgot} disabled={isSendingReset} style={{padding:14}}>
+                {isSendingReset?<Loader size={19} thickness={2}/>:loginTexts.forgotBtn}
+              </PrimaryButton>
               {forgotMsg&&(
-                <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?C.teal:C.red,fontWeight:600}}>
+                <div style={{fontSize:13,textAlign:"center",color:forgotMsg.startsWith("📧")?UI.tealDeep:UI.negative,fontWeight:600}}>
                   {forgotMsg}
                 </div>
               )}
               <div style={{textAlign:"center"}}>
-                <span onClick={()=>{setForgotMode(false);setForgotMsg("");}} style={{fontSize:13,color:C.sub,cursor:"pointer"}}>
+                <span onClick={()=>{setForgotMode(false);setForgotMsg("");}} style={{fontSize:13,color:UI.mute2,cursor:"pointer"}}>
                   {loginTexts.back}
                 </span>
               </div>
@@ -4889,8 +3605,10 @@ export default function App({ loginOnly = false }){
 
   const vaActions={
     addItem:async(data)=>{
-      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
-      const b=parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0;
+      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
+      // prix_achat explicitement null (et aucune estimation de lot) = prix réellement inconnu,
+      // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
+      const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);
       const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
       const _cleanDesc=(desc,nom,marque)=>{if(!desc)return null;let s=desc;const _strip=(w)=>{if(!w)return;s=s.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'gi'),'').trim();};_strip(nom);_strip(marque);s=s.replace(/\s+/g,' ').replace(/^[,\s]+|[,\s]+$/g,'').trim();return s||null;};
@@ -5171,18 +3889,11 @@ export default function App({ loginOnly = false }){
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
-    if(!isPremium){
-      const count=await checkAndResetDaily(supabase,user.id,'lens_count_today','lens_count_date');
-      if(count>=LENS_FREE_LIMIT){
-        setConversionModal({open:true,trigger:'lens'});
-        return;
-      }
-      await supabase.from('profiles')
-        .update({lens_count_today:count+1,lens_count_date:new Date().toISOString().split('T')[0]})
-        .eq('id',user.id);
-      setLensUsedToday(count+1);
-    }
-    setLensLoading(true);setLensResult(null);setLensAdded(false);
+    // Quota : plus de pré-check ni d'incrément client (profiles.lens_count_today).
+    // Le serveur (lens-analysis → check_and_log_usage sur usage_logs) est l'unique
+    // autorité : son 429 quota_exceeded est géré plus bas, et le compteur affiché
+    // est resynchronisé après chaque succès.
+    setLensLoading(true);setLensResult(null);setLensAdded(false);setLensInventaireId(null);
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
     const catProfit={};
@@ -5218,6 +3929,12 @@ export default function App({ loginOnly = false }){
       });
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
+        // Quota mensuel épuisé ET pas assez de pièces pour l'analyse hors quota
+        if(errBody.error==='insufficient_coins'){
+          setConversionModal({open:true,trigger:'lens',coinPrice:errBody.price??6,coinBalance:errBody.balance??0});
+          return;
+        }
+        // quota_exceeded ne subsiste que pour le frein journalier Premium (10/j)
         if(errBody.error==='quota_exceeded'){
           if(isPremium){
             setLensPremiumLimitReached(true);
@@ -5231,6 +3948,8 @@ export default function App({ loginOnly = false }){
       const result=await r.json();
       if(result.error)throw new Error(result.error);
       setLensResult(result);
+      // Miroir du log serveur qui vient d'être écrit dans usage_logs
+      setLensUsedToday(prev=>prev+1);
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
@@ -5257,6 +3976,30 @@ export default function App({ loginOnly = false }){
     });
   }
 
+  async function saveLensItemForListing(prixAchatSaisi){
+    if(lensInventaireId)return lensInventaireId;
+    if(!lensResult?.titre||lensResult.est_vendu)return null;
+    try{
+      const saisi=prixAchatSaisi!=null&&prixAchatSaisi!==""?parseFloat(String(prixAchatSaisi).replace(",","."))||null:null;
+      const mapped=await vaActions.addItem({
+        nom:lensResult.titre||"Article",
+        marque:lensResult.marque||null,
+        categorie:lensResult.categorie||"Autre",
+        description:lensResult.description||(lensDesc.trim()||null),
+        // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
+        prix_achat:saisi??lensResult.prix_achat_reel??null,
+        prix_vente:lensResult.prix_vente_suggere||null,
+        quantite:1,
+      });
+      setLensInventaireId(mapped.id);
+      if(!lensAdded)setLensAdded(true);
+      return mapped.id;
+    }catch(e){
+      console.error('[saveLensItemForListing]',e);
+      return null;
+    }
+  }
+
   async function addLensItem(){
     if(!lensResult?.titre||lensAdded)return;
     try{
@@ -5280,15 +4023,17 @@ export default function App({ loginOnly = false }){
         if(se)throw new Error(se.message);
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }else{
-        await vaActions.addItem({
+        const _lensItem=await vaActions.addItem({
           nom,
           marque:lensResult.marque||null,
           categorie:lensResult.categorie||"Autre",
           description:lensResult.description||(lensDesc.trim()||null),
-          prix_achat:lensResult.prix_achat_reel||lensResult.prix_achat_suggere||0,
+          // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
+          prix_achat:lensResult.prix_achat_reel??null,
           prix_vente:lensResult.prix_vente_suggere||null,
           quantite:1,
         });
+        setLensInventaireId(_lensItem.id);
       }
       setLensAdded(true);
     }catch(e){
@@ -5299,27 +4044,34 @@ export default function App({ loginOnly = false }){
   return(
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
 
+      {/* Garde d'orientation (P2) : visible UNIQUEMENT en paysage sur téléphone
+          (piloté par la media query .rotate-guard). Couvre l'app pour éviter le
+          layout desktop cassé / l'écran blanc en paysage web. */}
+      <div className="rotate-guard" aria-hidden="true">
+        <div style={{fontSize:44,lineHeight:1}}>📱</div>
+        <div style={{fontSize:17,fontWeight:700,color:"#10201B"}}>{t('rotateToPortraitTitle')}</div>
+        <div style={{fontSize:13,color:"#6B7A75",maxWidth:280,lineHeight:1.5}}>{t('rotateToPortraitSubtitle')}</div>
+      </div>
+
       <div className="topbar">
-        <button onClick={()=>{setTab(0);localStorage.setItem('tab','0');}} className="tb-logo">
-          <img src="/icon_1024x1024.png" alt="FillSell" className="logo-mobile" style={{width:30,height:30,borderRadius:9,objectFit:"cover",flexShrink:0}}/>
-          <img src="/logo.png" alt="FillSell" className="logo-desktop" style={{height:34,width:"auto",objectFit:"contain",flexShrink:0}}/>
-          <span className="name">FillSell</span>
-        </button>
+        <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
-          <div style={{fontSize:13,fontWeight:900,color:"#0D0D0D",letterSpacing:"-0.02em",lineHeight:1}}>
+          <div style={{fontSize:13,fontWeight:700,color:UI.ink,letterSpacing:"-0.02em",lineHeight:1}}>
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
           </div>
-          <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",marginTop:2,whiteSpace:"nowrap"}}>
+          <div style={{fontSize:10,fontWeight:700,color:UI.mute,marginTop:2,whiteSpace:"nowrap"}}>
             {tm.count} {t('ventesMonth')}
           </div>
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" slotsRemaining={slotsRemaining} onOpenModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}/>
+            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" onOpenModal={()=>openUpgradeModal()}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}} style={{padding:"6px 12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:800,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>openUpgradeModal()} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
           ):isPremium?(
-            <button onClick={()=>setShowPremiumModal(true)} className="tb-premium" style={{cursor:"pointer",border:"none",padding:0,background:"none",fontFamily:"inherit"}}>⭐ Premium</button>
+            // Pro passe devant Premium : isPro vient de profiles.is_pro, isPremium
+            // de l'expression complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
+            <PlanBadge isPremium={isPremium} isPro={isPro} onClick={()=>setShowPremiumModal(true)} />
           ):null}
           <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
         </div>
@@ -5336,9 +4088,9 @@ export default function App({ loginOnly = false }){
               "Stats"
             ].map((tabLabel,i)=>(
               <button key={i} onClick={()=>{setTab(i);localStorage.setItem('tab',i);}}
-                style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?"#1D9E75":"transparent"}`,color:tab===i?"#1D9E75":"#A3A9A6",fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
-                onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color="#5DCAA5";}}
-                onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color="#A3A9A6";}}
+                style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?UI.teal:"transparent"}`,color:tab===i?UI.tealDeep:UI.mute,fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
+                onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color=UI.teal;}}
+                onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color=UI.mute;}}
               >{tabLabel}</button>
             ))}
           </div>
@@ -5347,6 +4099,131 @@ export default function App({ loginOnly = false }){
 
       <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
+        {/* Bandeau retrait cross-plateforme : visible sur tous les onglets tant
+            que des annonces d'un article vendu restent en ligne ailleurs.
+            "Plus tard" masque localement (le flag reste → réapparaît au
+            prochain chargement), "Retirer" arme les jobs delete. */}
+        {pendingRemovals.length>0&&Object.entries(
+          pendingRemovals.reduce((acc,j)=>{
+            const k=String(j.inventaire_id??j.title??j.id);
+            (acc[k]=acc[k]||[]).push(j);return acc;
+          },{})
+        ).map(([k,group])=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const platLabels=group.map(g=>PLAT[g.platform]||g.platform).join(', ');
+          return (
+            <div key={k} style={{background:UI.paper,border:`1px solid ${UI.amber}55`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                <strong>🎉 {lang==='fr'?'Vendu :':'Sold:'} « {group[0].title||(lang==='fr'?'Article':'Item')} »</strong>
+                <br/>
+                {lang==='fr'
+                  ?<>Encore en ligne sur <strong>{platLabels}</strong> — retirer {group.length>1?`ces ${group.length} annonces`:'cette annonce'} ?</>
+                  :<>Still live on <strong>{platLabels}</strong> — remove {group.length>1?`these ${group.length} listings`:'this listing'}?</>}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>armRemovals(group)}
+                  style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?`Retirer (${group.length})`:`Remove (${group.length})`}
+                </button>
+                <button onClick={()=>setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)))}
+                  style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?'Plus tard':'Later'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Annonce hors ligne : on demande TOUJOURS, on n'écrit jamais tout seul.
+            Deux libellés selon la force du signal, un seul comportement — le clic
+            "Oui" est le SEUL chemin qui écrit en base (vente, inventaire, marges).
+            Décision produit 2026-07-12 : même Vinted, dont la preuve de vente est
+            fiable, passe par ici — le prix réel peut différer du prix affiché
+            (négociation) et un vendeur à volume ne corrigerait jamais après coup. */}
+        {unavailableListings.map(job=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const plat=PLAT[job.platform]||job.platform;
+          const busy=confirmingSale===job.id;
+          const pf=job.platform_fields||{};
+          // Preuve positive de vente (Vinted : is_closed + item_closing_action)
+          const vendu=pf.sale_signal==='sold';
+          // Prix pré-rempli : celui lu sur la page si la plateforme l'expose,
+          // sinon le prix de mise en ligne. Modifiable dans les deux cas.
+          const prixDefaut=pf.detected_price??job.price;
+          return (
+            <div key={job.id} style={{background:UI.paper,border:`1px solid ${vendu?UI.teal+'55':UI.border}`,borderLeft:`4px solid ${vendu?UI.teal:UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                <strong>{vendu
+                  ?(lang==='fr'?`🎉 Vendue sur ${plat} !`:`🎉 Sold on ${plat}!`)
+                  :(lang==='fr'?'Annonce plus en ligne':'Listing no longer online')}</strong>
+                <br/>
+                {vendu
+                  ?(lang==='fr'
+                    ?<>« {job.title||'Article'} » — confirme le prix pour l'enregistrer.</>
+                    :<>“{job.title||'Item'}” — confirm the price to record it.</>)
+                  :(lang==='fr'
+                    ?<>« {job.title||'Article'} » n'est plus en ligne sur <strong>{plat}</strong>. Vendue ?</>
+                    :<>“{job.title||'Item'}” is no longer online on <strong>{plat}</strong>. Sold?</>)}
+              </div>
+              {/* Prix éditable : la vente a pu être négociée (offre acceptée,
+                  marchandage en remise main propre) — même sur Vinted, qui
+                  n'expose PAS le montant d'une offre acceptée. C'est ce montant
+                  qui sera enregistré comme prix_vente. */}
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <label style={{fontSize:13,color:UI.mute2,fontWeight:600}}>
+                  {lang==='fr'?'Prix de vente':'Sale price'}
+                </label>
+                <input type="text" inputMode="decimal" disabled={busy}
+                  value={salePriceDraft[job.id]??(prixDefaut!=null?String(prixDefaut):'')}
+                  onChange={e=>setSalePriceDraft(p=>({...p,[job.id]:e.target.value}))}
+                  style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
+                <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button disabled={busy} onClick={()=>confirmSaleFromBanner(job)}
+                  style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>
+                  {busy?(lang==='fr'?'…':'…'):(lang==='fr'?'Oui, enregistrer la vente':'Yes, record the sale')}
+                </button>
+                <button disabled={busy} onClick={()=>dismissUnavailable(job)}
+                  style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Annonce INVÉRIFIABLE depuis > 2 jours : la surveillance automatique
+            n'aboutit plus (page anti-bot, format inattendu). ⚠️ Bandeau PUREMENT
+            INFORMATIF — aucun bouton destructif, aucune écriture : l'annonce est
+            peut-être parfaitement en ligne. L'extension continue de retenter une
+            fois par jour et le bandeau disparaîtra tout seul dès qu'une lecture
+            aboutira. Le lien permet de vérifier à la main en attendant. */}
+        {unverifiableListings.map(job=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const plat=PLAT[job.platform]||job.platform;
+          const depuis=Math.floor((Date.now()-Date.parse(job.platform_fields?.check_unresolved_since))/86400000);
+          return (
+            <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.mute2}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                <strong>{lang==='fr'?'Vérification impossible':'Cannot verify listing'}</strong>
+                <br/>
+                {lang==='fr'
+                  ?<>Impossible de vérifier l'état de « {job.title||'Article'} » sur <strong>{plat}</strong> depuis {depuis} jour{depuis>1?'s':''}. L'annonce est peut-être toujours en ligne — <strong>rien n'a été modifié</strong>. On réessaie chaque jour ; en attendant, tu peux vérifier toi-même.</>
+                  :<>Could not check “{job.title||'Item'}” on <strong>{plat}</strong> for {depuis} day{depuis>1?'s':''}. The listing may well still be online — <strong>nothing was changed</strong>. We keep retrying daily; meanwhile you can check yourself.</>}
+              </div>
+              {job.listing_url&&(
+                <div>
+                  <a href={job.listing_url} target="_blank" rel="noopener noreferrer"
+                    style={{display:"inline-block",padding:"9px 18px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:13.5,fontWeight:600,textDecoration:"none",fontFamily:"inherit"}}>
+                    {lang==='fr'?`Ouvrir l'annonce ${plat}`:`Open the ${plat} listing`}
+                  </a>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
         {tab===0&&(
           <DashboardTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} username={username}
@@ -5354,19 +4231,16 @@ export default function App({ loginOnly = false }){
             stock={stock} stockVal={stockVal} stockQty={stockQty}
             tm={tm} salesForKpis={salesForKpis} totalM={totalM}
             selectedRange={selectedRange} setSelectedRange={setSelectedRange}
-            delSale={delSale}
-            resetStep={resetStep} setResetStep={setResetStep} handleReset={handleReset}
             fabTriggerRef={fabTriggerRef}
-            triggerCheckout={triggerCheckout} handleIAPPurchase={handleIAPPurchase}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={openUpgradeModal}
             setTab={setTab}
-            EmptyStateDashboard={BoundEmptyState}
+            EmptyStateDashboard={EmptyStateDashboard}
           />
         )}
 
         {tab===1&&(
           <StockTab
-            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative}
+            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             iapProduct={iapProduct} iapLoading={iapLoading}
             stock={stock} sold={sold}
@@ -5377,7 +4251,7 @@ export default function App({ loginOnly = false }){
             voiceParsed={voiceParsed} setVoiceParsed={setVoiceParsed}
             voiceZoneResults={voiceZoneResults} setVoiceZoneResults={setVoiceZoneResults}
             voiceZoneOpen={voiceZoneOpen} setVoiceZoneOpen={setVoiceZoneOpen}
-            vaActions={vaActions}
+            vaActions={vaActions} vaStep={vaStep}
             voiceText={voiceText} setVoiceText={setVoiceText}
             voiceLoading={voiceLoading} voicePlaceholderIdx={voicePlaceholderIdx}
             voiceError={voiceError}
@@ -5428,11 +4302,11 @@ export default function App({ loginOnly = false }){
             importRef={importRef}
             listRef={listRef}
             scrollRef={scrollRef}
+            fabTriggerRef={fabTriggerRef}
             PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
-            VoiceZone={VoiceZone}
-            slotsRemaining={slotsRemaining}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
+            openUpgradeModal={openUpgradeModal}
+            onStepperOpenChange={setListingStepperOpen}
           />
         )}
 
@@ -5452,10 +4326,14 @@ export default function App({ loginOnly = false }){
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
-            slotsRemaining={slotsRemaining}
+            openUpgradeModal={openUpgradeModal}
             lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
             lensPremiumLimitReached={lensPremiumLimitReached}
+            isPro={isPro}
+            supabase={supabase}
+            saveLensItemForListing={saveLensItemForListing}
+            lensInventaireId={lensInventaireId}
+            onStepperOpenChange={setListingStepperOpen}
           />
         )}
 
@@ -5468,10 +4346,9 @@ export default function App({ loginOnly = false }){
             showAllSales={showAllSales} setShowAllSales={setShowAllSales}
             iapProduct={iapProduct} iapLoading={iapLoading}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
-            delSale={delSale} setTab={setTab}
+            delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={()=>{setShowUpgradeModal(true);if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});}}
-            slotsRemaining={slotsRemaining}
+            openUpgradeModal={openUpgradeModal}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
@@ -5486,8 +4363,8 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"88vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
-              <button onClick={()=>setEditItem(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
+              <IconButton onClick={()=>setEditItem(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Field label={lang==='fr'?"Nom":"Name"} value={editItem.title} set={v=>setEditItem(p=>({...p,title:v}))} placeholder="Ex: Air Max 90..." icon="🏷️"/>
@@ -5542,6 +4419,10 @@ export default function App({ loginOnly = false }){
                   <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:(parseInt(p.quantite)||1)+1}))} style={{width:52,height:"100%",border:"none",background:"transparent",fontSize:22,fontWeight:300,color:"#6B7280",cursor:"pointer",touchAction:"manipulation",flexShrink:0}}>+</button>
                 </div>
               </div>
+              {/* Emplacement — MÊME donnée que le badge 📦 des cartes de stock et
+                  que l'intention vocale inventory_move : colonne inventaire.emplacement
+                  (cf. vaActions.moveToLocation). Aucun champ parallèle créé. */}
+              <Field label={lang==='fr'?"Emplacement (optionnel)":"Location (optional)"} value={editItem.emplacement||""} set={v=>setEditItem(p=>({...p,emplacement:v}))} placeholder={lang==='fr'?"Ex: Étagère salon, Carton 3...":"Ex: Living room shelf, Box 3..."} icon="📦"/>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
                 <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
@@ -5555,12 +4436,12 @@ export default function App({ loginOnly = false }){
               </div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
-              <button onClick={handleEditSave} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>
+              <PrimaryButton onClick={handleEditSave} style={{flex:1,width:"auto"}}>
                 {lang==='fr'?"💾 Enregistrer":"💾 Save"}
-              </button>
-              <button onClick={()=>setEditItem(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              </PrimaryButton>
+              <SecondaryButton onClick={()=>setEditItem(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {t('annuler')}
-              </button>
+              </SecondaryButton>
             </div>
           </div>
         </>
@@ -5572,8 +4453,8 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setSellModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>💰 {t('marquerVendu')}</div>
-              <button onClick={()=>setSellModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>💰 {t('marquerVendu')}</div>
+              <IconButton onClick={()=>setSellModal(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -5623,12 +4504,12 @@ export default function App({ loginOnly = false }){
               </label>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
-              <button onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,padding:"13px",background:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"#E5E7EB":`linear-gradient(135deg,${C.teal},${C.peach})`,color:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0?"not-allowed":"pointer",transition:"all 0.2s"}}>
+              <PrimaryButton onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,width:"auto"}}>
                 {t('confirmer')} ✓
-              </button>
-              <button onClick={()=>setSellModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              </PrimaryButton>
+              <SecondaryButton onClick={()=>setSellModal(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {t('annuler')}
-              </button>
+              </SecondaryButton>
             </div>
           </div>
         </>
@@ -5640,8 +4521,8 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>setImportModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(90vw,540px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"80vh",overflowY:"auto"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>📥 {lang==='fr'?"Confirmer l'import":"Confirm import"}</div>
-              <button onClick={()=>setImportModal(null)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub}}>✕</button>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>📥 {lang==='fr'?"Confirmer l'import":"Confirm import"}</div>
+              <IconButton onClick={()=>setImportModal(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
 
             {/* ÉTAPE 6 : Mapping détecté */}
@@ -5743,12 +4624,12 @@ export default function App({ loginOnly = false }){
             {importMsg&&<div style={{fontSize:12,color:C.red,marginBottom:12}}>{importMsg}</div>}
 
             <div style={{display:"flex",gap:10}}>
-              <button onClick={handleImportConfirm} disabled={importLoading} style={{flex:1,padding:"13px",background:`linear-gradient(135deg,${C.teal},${C.peach})`,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:importLoading?"not-allowed":"pointer",opacity:importLoading?0.7:1,transition:"all 0.2s"}}>
+              <PrimaryButton onClick={handleImportConfirm} disabled={importLoading} style={{flex:1,width:"auto"}}>
                 {importLoading?(lang==='fr'?"Import en cours...":"Importing..."):(lang==='fr'?"Importer les données →":"Import data →")}
-              </button>
-              <button onClick={()=>setImportModal(null)} style={{padding:"13px 20px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              </PrimaryButton>
+              <SecondaryButton onClick={()=>setImportModal(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {lang==='fr'?'Annuler':'Cancel'}
-              </button>
+              </SecondaryButton>
             </div>
           </div>
         </>
@@ -5757,37 +4638,75 @@ export default function App({ loginOnly = false }){
       {/* ── SETTINGS DRAWER ── */}
       {showSettings&&(
         <>
-          <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:384,padding:24,boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(16,32,27,0.45)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:UI.card,borderRadius:24,width:"100%",maxWidth:384,padding:24,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.18)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{t('parametres')}</div>
-              <button onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:C.sub,flexShrink:0}}>✕</button>
+              <div style={{fontSize:16,fontWeight:700,color:UI.ink}}>{t('parametres')}</div>
+              <IconButton onClick={()=>{setShowSettings(false);setDeleteStep(0);}} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
 
             {/* Profil */}
-            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{t('monCompte')}</div>
-              <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
-              {isPremium&&<div style={{fontSize:12,color:C.teal,fontWeight:600,marginTop:5}}>⭐ {t('abonnementPremium')}</div>}
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow>{t('monCompte')}</Eyebrow>
+              <div style={{fontSize:13,fontWeight:600,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
+              {isPremium&&(
+                <div style={{marginTop:8}}>
+                  <PlanBadge isPremium={isPremium} isPro={isPro} />
+                </div>
+              )}
+            </div>
+
+            {/* Pépites de publication */}
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow>{lang==='fr'?'Mes Pépites':'My Nuggets'}</Eyebrow>
+              <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:22,fontWeight:700,color:UI.ink,display:"inline-flex",alignItems:"center",gap:7}}><PepiteIcon size={24} /> {(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)}</span>
+                <span style={{fontSize:11,color:UI.mute,fontWeight:600}}>
+                  {lang==='fr'
+                    ?`${coinWallet?.included_balance??0} incluses · ${coinWallet?.purchased_balance??0} achetées`
+                    :`${coinWallet?.included_balance??0} included · ${coinWallet?.purchased_balance??0} purchased`}
+                </span>
+              </div>
+              {/* Recharger : ouvre la boutique DÉJÀ montée (coinStoreOpen), la même
+                  que celle des modales de conversion. Toujours proposée, quel que
+                  soit le solde — on n'attend pas d'être bloqué pour recharger. */}
+              <button
+                onClick={()=>setCoinStoreOpen(true)}
+                style={{marginTop:12,width:"100%",padding:"11px 0",borderRadius:999,border:"none",fontFamily:"inherit",fontSize:13.5,fontWeight:600,color:"#fff",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:"0 8px 20px rgba(47,158,144,0.24)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}
+              >
+                <PepiteIcon size={16} /> {lang==='fr'?'Recharger mes Pépites':'Top up my Nuggets'}
+              </button>
+              {coinHistory.length>0&&(
+                <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${UI.border}`,display:"flex",flexDirection:"column",gap:5}}>
+                  {coinHistory.map((h,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:UI.mute2}}>
+                      <span>{COIN_KIND_LABELS[h.kind]?.[lang==='fr'?'fr':'en']??h.kind} · {new Date(h.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}</span>
+                      <span style={{fontWeight:700,color:h.delta>=0?UI.tealDeep:UI.negative}}>{h.delta>=0?`+${h.delta}`:h.delta}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Pseudo */}
-            <div style={{background:C.rowBg,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>{lang==='fr'?'Mon pseudo':'My username'}</div>
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Mon pseudo':'My username'}</Eyebrow>
               <div style={{display:"flex",gap:8}}>
                 <input
                   value={settingsPseudoInput}
                   onChange={e=>setSettingsPseudoInput(e.target.value.slice(0,30))}
                   placeholder={lang==='fr'?'Prénom ou pseudo…':'First name or nickname…'}
-                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:600,color:C.text,background:"#fff",outline:"none",fontFamily:"inherit"}}
+                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0}}
                 />
                 <button
                   onClick={async()=>{
                     setSettingsPseudoSaving(true);
                     const val=settingsPseudoInput.trim();
-                    const{error}=await supabase.from('profiles').update({username:val}).eq('id',user.id);
+                    // .select() : sans lui, un update filtré par RLS (0 ligne) ne
+                    // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
+                    const{data:upd,error}=await supabase.from('profiles').update({username:val}).eq('id',user.id).select('username');
                     setSettingsPseudoSaving(false);
-                    if(error){
+                    if(error||!upd?.length){
                       setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'});
                     }else{
                       setUsername(val);
@@ -5796,52 +4715,128 @@ export default function App({ loginOnly = false }){
                     setTimeout(()=>setToast({visible:false,message:''}),3000);
                   }}
                   disabled={settingsPseudoSaving}
-                  style={{padding:"8px 14px",borderRadius:10,border:"none",background:C.teal,color:"#fff",fontSize:13,fontWeight:700,cursor:settingsPseudoSaving?"not-allowed":"pointer",opacity:settingsPseudoSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                  style={{padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:settingsPseudoSaving?"not-allowed":"pointer",opacity:settingsPseudoSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
                 >
                   {settingsPseudoSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
                 </button>
               </div>
             </div>
 
+            {/* Adresse de remise Leboncoin — requise par le wizard LBC à chaque
+                dépôt (non pré-remplie depuis le compte LBC, vérifié) ; l'extension
+                la tape dans l'autocomplete et choisit la 1re suggestion. Saisie en
+                3 champs (rue / code postal / ville), recomposée en string unique
+                à l'enregistrement. */}
+            {(()=>{
+              const cpValid=/^\d{5}$/.test(settingsLbcCp.trim());
+              const cpTouched=settingsLbcCp.trim().length>0;
+              const cpError=cpTouched&&!cpValid;
+              const inputStyle=(err)=>({width:"100%",boxSizing:"border-box",padding:"8px 12px",borderRadius:10,border:`1px solid ${err?UI.negative:UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0});
+              return (
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+              <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Adresse de remise Leboncoin':'Leboncoin pickup address'}</Eyebrow>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <input
+                  value={settingsLbcRue}
+                  onChange={e=>setSettingsLbcRue(e.target.value.slice(0,120))}
+                  placeholder={lang==='fr'?'Rue — ex : 12 rue de la Paix':'Street — e.g. 12 rue de la Paix'}
+                  style={inputStyle(false)}
+                />
+                <div style={{display:"flex",gap:8}}>
+                  <input
+                    value={settingsLbcCp}
+                    onChange={e=>setSettingsLbcCp(e.target.value.replace(/\D/g,'').slice(0,5))}
+                    inputMode="numeric"
+                    placeholder={lang==='fr'?'Code postal':'Postal code'}
+                    style={{...inputStyle(cpError),flex:"0 0 110px"}}
+                  />
+                  <input
+                    value={settingsLbcVille}
+                    onChange={e=>setSettingsLbcVille(e.target.value.slice(0,80))}
+                    placeholder={lang==='fr'?'Ville':'City'}
+                    style={{...inputStyle(false),flex:1}}
+                  />
+                </div>
+                {cpError&&(
+                  <div style={{fontSize:11,color:UI.negative,fontWeight:600}}>
+                    {lang==='fr'?'Le code postal doit contenir 5 chiffres.':'Postal code must be 5 digits.'}
+                  </div>
+                )}
+                <button
+                  onClick={async()=>{
+                    setSettingsLbcAddressSaving(true);
+                    const rue=settingsLbcRue.trim();
+                    const cp=settingsLbcCp.trim();
+                    const ville=settingsLbcVille.trim();
+                    // String unique attendue par le handler (content-scripts/leboncoin.js) :
+                    // jointure par espaces, sans virgule — l'autocomplete LBC (type
+                    // Google Places) matche mieux "12 rue de la paix 69001 lyon" que la
+                    // même chaîne ponctuée (cf. commentaire fillAddress).
+                    const adresse=[rue,cp,ville].filter(Boolean).join(' ');
+                    // Lecture-fusion-écriture : platform_settings est partagé entre
+                    // plateformes, ne jamais écraser les clés des autres.
+                    const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
+                    const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),rue,code_postal:cp,ville,adresse}};
+                    // .select() : sans lui, un update filtré par RLS (0 ligne) ne
+                    // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
+                    const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('platform_settings');
+                    setSettingsLbcAddressSaving(false);
+                    const failed=error||!upd?.length;
+                    setToast({visible:true,message:failed?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
+                    setTimeout(()=>setToast({visible:false,message:''}),3000);
+                  }}
+                  disabled={settingsLbcAddressSaving||cpError}
+                  style={{alignSelf:"flex-start",padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:(settingsLbcAddressSaving||cpError)?"not-allowed":"pointer",opacity:(settingsLbcAddressSaving||cpError)?0.6:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                >
+                  {settingsLbcAddressSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
+                </button>
+              </div>
+              <div style={{fontSize:11,color:UI.mute,marginTop:8,lineHeight:1.4}}>
+                {lang==='fr'?'Utilisée pour le champ « adresse du bien » lors de la publication automatique sur Leboncoin. Jamais affichée sur l\'annonce.':'Used for the "item address" field when auto-publishing on Leboncoin. Never shown on the listing.'}
+              </div>
+            </div>
+              );
+            })()}
+
             {/* Désabonnement — visible uniquement si premium */}
             {isPremium&&(
               <div style={{marginBottom:12}}>
                 {platform==='ios'?(
                   /* iOS IAP : géré par Apple */
-                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
+                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.6}}>
                     ⭐ {lang==='fr'
                       ? 'Pour gérer votre abonnement, allez dans Réglages → Apple ID → Abonnements.'
                       : 'To manage your subscription, go to Settings → Apple ID → Subscriptions.'}
                   </div>
                 ):platform==='android'?(
                   /* Android IAP : géré par Google Play */
-                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.6}}>
+                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.6}}>
                     ⭐ {lang==='fr'
-                      ? <span>Pour gérer votre abonnement, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:"#276749",textDecoration:"underline"}}>ouvrez vos abonnements Google Play</a>.</span>
-                      : <span>To manage your subscription, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:"#276749",textDecoration:"underline"}}>open your Google Play subscriptions</a>.</span>}
+                      ? <span>Pour gérer votre abonnement, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:UI.tealDeep,textDecoration:"underline"}}>ouvrez vos abonnements Google Play</a>.</span>
+                      : <span>To manage your subscription, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:UI.tealDeep,textDecoration:"underline"}}>open your Google Play subscriptions</a>.</span>}
                   </div>
                 ):(cancelAtPeriodEnd||cancelMsg)?(
-                  <div style={{background:"#F0FFF4",border:"1px solid #9AE6B4",borderRadius:12,padding:"12px 14px",fontSize:13,color:"#276749",fontWeight:600,lineHeight:1.5}}>
+                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.5}}>
                     ✅ {cancelMsg||(lang==='fr'
                       ? `Abonnement annulé. Tu gardes l'accès premium jusqu'au${cancelPeriodEnd?` ${cancelPeriodEnd}`:" la fin de la période"}.`
                       : `Subscription cancelled. You keep premium access until${cancelPeriodEnd?` ${cancelPeriodEnd}`:" the end of the period"}.`)}
                   </div>
                 ):cancelStep===0?(
-                  <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:"1.5px solid rgba(232,149,109,0.6)",borderRadius:12,color:C.peach,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(232,149,109,0.06)"}
+                  <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:`1.5px solid ${UI.amber}99`,borderRadius:999,color:UI.amber,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}
+                    onMouseEnter={e=>e.currentTarget.style.background=`${UI.amber}0F`}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                   >
                     <span>📭</span> {t('seDesabonner')}
                   </button>
                 ):(
-                  <div style={{background:"rgba(232,149,109,0.08)",border:"1.5px solid rgba(232,149,109,0.4)",borderRadius:12,padding:"14px"}}>
-                    <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}}>{lang==='fr'?'Confirmer la résiliation ?':'Confirm cancellation?'}</div>
-                    <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>{lang==='fr'?'Tu conserveras l\'accès Premium jusqu\'à la fin de ta période en cours. Aucun remboursement au prorata.':'You will keep Premium access until the end of your current period. No prorated refund.'}</div>
+                  <div style={{background:`${UI.amber}14`,border:`1.5px solid ${UI.amber}66`,borderRadius:12,padding:"14px"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:UI.ink,marginBottom:10}}>{lang==='fr'?'Confirmer la résiliation ?':'Confirm cancellation?'}</div>
+                    <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>{lang==='fr'?'Tu conserveras l\'accès Premium jusqu\'à la fin de ta période en cours. Aucun remboursement au prorata.':'You will keep Premium access until the end of your current period. No prorated refund.'}</div>
                     <div style={{display:"flex",gap:8}}>
-                      <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:C.peach,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
+                      <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:UI.amber,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
                         {cancelLoading?"...":(lang==='fr'?'Confirmer':'Confirm')}
                       </button>
-                      <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
+                      <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
                         {lang==='fr'?'Annuler':'Cancel'}
                       </button>
                     </div>
@@ -5853,8 +4848,8 @@ export default function App({ loginOnly = false }){
             {/* Restaurer les achats — iOS non-premium uniquement */}
             {isNative&&!isPremium&&(
               <button onClick={handleIAPRestore} disabled={iapLoading}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"transparent",border:"none",color:C.text,fontSize:"inherit",fontFamily:"inherit",cursor:iapLoading?"not-allowed":"pointer",transition:"background 0.15s",marginBottom:2,textAlign:"left",opacity:iapLoading?0.6:1}}
-                onMouseEnter={e=>{if(!iapLoading)e.currentTarget.style.background=C.rowBg;}}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"transparent",border:"none",color:UI.ink,fontSize:"inherit",fontFamily:"inherit",cursor:iapLoading?"not-allowed":"pointer",transition:"background 0.15s",marginBottom:2,textAlign:"left",opacity:iapLoading?0.6:1}}
+                onMouseEnter={e=>{if(!iapLoading)e.currentTarget.style.background=UI.chip;}}
                 onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
               >
                 <span style={{fontSize:18,flexShrink:0}}>🔄</span>
@@ -5863,20 +4858,34 @@ export default function App({ loginOnly = false }){
             )}
 
             {/* Support */}
-            <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=C.rowBg}
+            <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >
               <span style={{fontSize:18,flexShrink:0}}>💬</span>
               <div>
                 <div style={{fontSize:14,fontWeight:600}}>{t('support')}</div>
-                <div style={{fontSize:12,color:C.sub}}>support@fillsell.app</div>
+                <div style={{fontSize:12,color:UI.mute2}}>support@fillsell.app</div>
               </div>
             </a>
 
+            {/* Extension Chrome — desktop uniquement (pas de sens sur l'app native) */}
+            {!isNative&&(
+              <a href="/extension" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
+                onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              >
+                <span style={{fontSize:18,flexShrink:0}}>🧩</span>
+                <div>
+                  <div style={{fontSize:14,fontWeight:600}}>{lang==='fr'?'Extension Chrome':'Chrome extension'}</div>
+                  <div style={{fontSize:12,color:UI.mute2}}>{lang==='fr'?'Publier depuis ton navigateur':'Publish from your browser'}</div>
+                </div>
+              </a>
+            )}
+
             {/* Mentions légales */}
-            <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:C.text,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=C.rowBg}
+            <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >
               <span style={{fontSize:18,flexShrink:0}}>📄</span>
@@ -5884,24 +4893,17 @@ export default function App({ loginOnly = false }){
             </a>
 
             {/* Langue */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:C.rowBg,borderRadius:12,marginBottom:12}}>
-              <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('langue')}</span>
-              <div style={{display:"flex",gap:6}}>
-                {['fr','en'].map(l=>(
-                  <button key={l} onClick={()=>{track('change_language',{language:l});setLang(l);}}
-                    style={{padding:"5px 12px",borderRadius:99,border:"none",fontSize:12,fontWeight:800,cursor:"pointer",transition:"all 0.15s",background:lang===l?"#1D9E75":"rgba(0,0,0,0.06)",color:lang===l?"#fff":"#6B7280"}}>
-                    {l.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,marginBottom:12}}>
+              <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('langue')}</span>
+              <SegmentedPills options={['fr','en']} value={lang} onChange={l=>{track('change_language',{language:l});setLang(l);}} labelFn={l=>l.toUpperCase()} />
             </div>
 
             {/* Devise */}
-            <div style={{background:C.rowBg,borderRadius:12,marginBottom:12,padding:"14px 16px"}}>
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,marginBottom:12,padding:"14px 16px"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontWeight:700,fontSize:14,color:C.text}}>{t('devise')}</span>
+                <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('devise')}</span>
                 <select value={currency} onChange={e=>saveCurrency(e.target.value)}
-                  style={{padding:"6px 10px",borderRadius:10,border:"1px solid rgba(0,0,0,0.12)",fontSize:13,fontWeight:700,color:C.text,background:"#fff",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+                  style={{padding:"6px 10px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:700,color:UI.ink,background:UI.card,cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
                   {['Europe','America','Africa','Asia/Pacific'].map(reg=>(
                     <optgroup key={reg} label={reg==='America'&&lang!=='en'?'Amériques':reg==='Africa'&&lang!=='en'?'Afrique':reg==='Asia/Pacific'?lang==='en'?'Asia & Pacific':'Asie & Pacifique':reg}>
                       {CURRENCIES_LIST.filter(c=>c.reg===reg).map(c=>(
@@ -5911,62 +4913,62 @@ export default function App({ loginOnly = false }){
                   ))}
                 </select>
               </div>
-              <div style={{fontSize:11,color:"#9CA3AF",marginTop:8,lineHeight:1.4}}>
+              <div style={{fontSize:11,color:UI.mute,marginTop:8,lineHeight:1.4}}>
                 {lang==='en'?'⚠️ Changing currency does not convert your existing data.':'⚠️ Changer la devise ne convertit pas vos données existantes.'}
               </div>
             </div>
 
             {/* Déconnexion */}
-            <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${C.red}88`,borderRadius:12,color:C.red,fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(229,62,62,0.06)"}
+            <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${UI.negative}88`,borderRadius:999,color:UI.negative,fontSize:14,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${UI.negative}0F`}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             >{t('seDeconnecter')}</button>
 
             {/* Suppression de compte */}
-            <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid rgba(0,0,0,0.07)"}}>
+            <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${UI.border}`}}>
               {deleteStep===0&&(
                 <button onClick={()=>setDeleteStep(1)}
-                  style={{width:"100%",padding:"11px",background:"transparent",border:"none",borderRadius:12,color:"#9CA3AF",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.color=C.red}
-                  onMouseLeave={e=>e.currentTarget.style.color="#9CA3AF"}
+                  style={{width:"100%",padding:"11px",background:"transparent",border:"none",borderRadius:12,color:UI.mute,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.color=UI.negative}
+                  onMouseLeave={e=>e.currentTarget.style.color=UI.mute}
                 >
                   {lang==='fr'?'Supprimer mon compte':'Delete my account'}
                 </button>
               )}
               {deleteStep===1&&(
-                <div style={{background:C.redLight,border:`1.5px solid ${C.red}44`,borderRadius:12,padding:"14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>
+                <div style={{background:`${UI.negative}0F`,border:`1.5px solid ${UI.negative}44`,borderRadius:12,padding:"14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:UI.negative,marginBottom:6}}>
                     {lang==='fr'?'Êtes-vous sûr ?':'Are you sure?'}
                   </div>
-                  <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>
+                  <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>
                     {lang==='fr'?'Cette action est irréversible.':'This action is irreversible.'}
                   </div>
                   <div style={{display:"flex",gap:8}}>
-                    <button onClick={()=>setDeleteStep(2)} style={{flex:1,padding:"9px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    <button onClick={()=>setDeleteStep(2)} style={{flex:1,padding:"9px",background:UI.negative,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
                       {lang==='fr'?'Continuer':'Continue'}
                     </button>
-                    <button onClick={()=>setDeleteStep(0)} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                    <button onClick={()=>setDeleteStep(0)} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                       {lang==='fr'?'Annuler':'Cancel'}
                     </button>
                   </div>
                 </div>
               )}
               {deleteStep===2&&(
-                <div style={{background:C.redLight,border:`2px solid ${C.red}`,borderRadius:12,padding:"14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>
+                <div style={{background:`${UI.negative}0F`,border:`2px solid ${UI.negative}`,borderRadius:12,padding:"14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:UI.negative,marginBottom:6}}>
                     {lang==='fr'?'Confirmation finale':'Final confirmation'}
                   </div>
-                  <div style={{fontSize:12,color:C.sub,marginBottom:12,lineHeight:1.5}}>
+                  <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>
                     {lang==='fr'
                       ?'Toutes vos données seront supprimées définitivement. Cette action ne peut pas être annulée.'
                       :'All your data will be permanently deleted. This action cannot be undone.'}
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <button onClick={handleDeleteAccount} disabled={deleteLoading}
-                      style={{flex:1,padding:"9px",background:C.red,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,cursor:deleteLoading?"not-allowed":"pointer",opacity:deleteLoading?0.7:1}}>
+                      style={{flex:1,padding:"9px",background:UI.negative,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:deleteLoading?"not-allowed":"pointer",opacity:deleteLoading?0.7:1}}>
                       {deleteLoading?"...":(lang==='fr'?'Supprimer définitivement':'Delete permanently')}
                     </button>
-                    <button onClick={()=>setDeleteStep(0)} disabled={deleteLoading} style={{flex:1,padding:"9px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                    <button onClick={()=>setDeleteStep(0)} disabled={deleteLoading} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                       {lang==='fr'?'Annuler':'Cancel'}
                     </button>
                   </div>
@@ -5975,20 +4977,20 @@ export default function App({ loginOnly = false }){
             </div>
 
             {/* Réinitialisation inventaire — discrète, tout en bas */}
-            <div style={{marginTop:8,paddingTop:12,borderTop:"1px solid rgba(0,0,0,0.05)",textAlign:"center"}}>
+            <div style={{marginTop:8,paddingTop:12,borderTop:`1px solid ${UI.border}`,textAlign:"center"}}>
               {resetStep===0&&(
                 <button onClick={handleReset}
-                  style={{background:"none",border:"none",color:"#D1D5DB",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 8px",borderRadius:8,transition:"color 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.color="#9CA3AF"}
-                  onMouseLeave={e=>e.currentTarget.style.color="#D1D5DB"}
+                  style={{background:"none",border:"none",color:UI.mute,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 8px",borderRadius:8,transition:"color 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.color=UI.negative}
+                  onMouseLeave={e=>e.currentTarget.style.color=UI.mute}
                 >{lang==='fr'?'Réinitialiser l\'inventaire':'Reset inventory'}</button>
               )}
               {resetStep===1&&(
                 <div>
-                  <div style={{fontSize:12,color:"#9CA3AF",marginBottom:8}}>{lang==='fr'?'⚠️ Supprimer tout le stock et les ventes ?':'⚠️ Delete all stock and sales?'}</div>
+                  <div style={{fontSize:12,color:UI.mute,marginBottom:8}}>{lang==='fr'?'⚠️ Supprimer tout le stock et les ventes ?':'⚠️ Delete all stock and sales?'}</div>
                   <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-                    <button onClick={handleReset} style={{padding:"5px 14px",background:"none",border:"1px solid #D1D5DB",borderRadius:8,color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Confirmer':'Confirm'}</button>
-                    <button onClick={()=>setResetStep(0)} style={{padding:"5px 14px",background:"none",border:"1px solid #D1D5DB",borderRadius:8,color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Annuler':'Cancel'}</button>
+                    <button onClick={handleReset} style={{padding:"5px 14px",background:"none",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Confirmer':'Confirm'}</button>
+                    <button onClick={()=>setResetStep(0)} style={{padding:"5px 14px",background:"none",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Annuler':'Cancel'}</button>
                   </div>
                 </div>
               )}
@@ -5996,7 +4998,7 @@ export default function App({ loginOnly = false }){
 
             {/* Signaler un bug */}
             <button onClick={()=>{setShowBugReport(true);setBugMessage("");}}
-              style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:"#9CA3AF",marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
+              style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:UI.mute,marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
             >
               🐛 {lang==='fr'?'Signaler un bug':'Report a bug'}
             </button>
@@ -6008,19 +5010,31 @@ export default function App({ loginOnly = false }){
         </>
       )}
 
-      {/* ── CONVERSION MODAL (limit reached for Lens / Voice) ── */}
+      {/* ── CONVERSION MODAL (fusion ex-UpgradeModal : vocal, Lens, publish, stock, générique) ── */}
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={()=>{console.log('[ConversionModal] onUpgrade called — trigger:',conversionModal.trigger,'isNative:',isNative);setConversionModal(m=>({...m,open:false}));trackTikTokEvent("InitiateCheckout",user?.email,9.99);isNative?handleIAPPurchase():triggerCheckout();}}
+        onUpgrade={(tier)=>{setConversionModal(m=>({...m,open:false}));startTierCheckout(tier);}}
         trigger={conversionModal.trigger}
-        founderSpotsLeft={slotsRemaining}
         lang={lang}
+        isPremium={isPremium}
+        isPro={isPro}
+        itemCount={items.filter(i=>i.statut!=='vendu').length}
+        coinBalance={conversionModal.coinBalance??(coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null)}
+        coinPrice={conversionModal.coinPrice??null}
+        onUseCoins={conversionModal.coinPrice!=null?()=>{setConversionModal(m=>({...m,open:false}));setCoinStoreOpen(true);}:null}
+      />
+
+      <CoinStoreModal
+        open={coinStoreOpen}
+        onClose={()=>setCoinStoreOpen(false)}
+        lang={lang}
+        supabase={supabase}
       />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
-        <PremiumWelcomeModal lang={lang} isFounder={premiumWelcomeIsFounder} onClose={()=>setShowPremiumWelcome(false)}/>
+        <PremiumWelcomeModal lang={lang} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
       {/* ── PREMIUM ADVANTAGES MODAL ── */}
@@ -6032,8 +5046,8 @@ export default function App({ loginOnly = false }){
             <div style={{textAlign:"center",marginBottom:20}}>
               <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:99,margin:"0 auto 20px"}}/>
               <div style={{fontSize:26,marginBottom:6}}>⭐</div>
-              <div style={{fontSize:20,fontWeight:800,color:"#0D0D0D"}}>FillSell Premium</div>
-              <div style={{fontSize:13,color:"#6B7280",marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
+              <div style={{fontSize:20,fontWeight:700,color:UI.ink}}>FillSell Premium</div>
+              <div style={{fontSize:13,color:UI.mute2,marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
             </div>
             {/* Avantages */}
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
@@ -6044,15 +5058,15 @@ export default function App({ loginOnly = false }){
                 {icon:"📊",fr:"Stats avancées & analyse business",en:"Advanced stats & business insights"},
                 {icon:"⚡",fr:"Support prioritaire",en:"Priority support"},
               ].map(({icon,fr,en},i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#F0FDF8",borderRadius:12,border:"1px solid rgba(29,158,117,0.15)"}}>
+                <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#E7F3F0",borderRadius:12,border:"1px solid rgba(47,158,144,0.15)"}}>
                   <span style={{fontSize:17,flexShrink:0}}>{icon}</span>
-                  <span style={{fontSize:13,fontWeight:600,color:"#0F4C3A"}}>{lang==='fr'?fr:en}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:UI.tealDeep}}>{lang==='fr'?fr:en}</span>
                 </div>
               ))}
             </div>
             {/* VS Excel */}
-            <div style={{background:"linear-gradient(135deg,rgba(29,158,117,0.07),rgba(249,162,108,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(29,158,117,0.12)"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>
+            <div style={{background:"linear-gradient(135deg,rgba(47,158,144,0.07),rgba(232,149,109,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(47,158,144,0.12)"}}>
+              <div style={{fontSize:13,fontWeight:700,color:UI.ink,marginBottom:10}}>
                 {lang==='fr'?'💪 FillSell vs Excel ?':'💪 FillSell vs Excel?'}
               </div>
               {[
@@ -6068,10 +5082,7 @@ export default function App({ loginOnly = false }){
               ))}
             </div>
             {/* Fermer */}
-            <button onClick={()=>setShowPremiumModal(false)} style={{width:"100%",padding:"13px",background:"#F1F5F9",border:"none",borderRadius:14,color:"#374151",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"background 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="#E2E8F0"}
-              onMouseLeave={e=>e.currentTarget.style.background="#F1F5F9"}
-            >{lang==='fr'?'Fermer':'Close'}</button>
+            <SecondaryButton onClick={()=>setShowPremiumModal(false)}>{lang==='fr'?'Fermer':'Close'}</SecondaryButton>
           </div>
           </div>
           <style>{`@keyframes slideUpPm{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
@@ -6083,7 +5094,7 @@ export default function App({ loginOnly = false }){
         <>
           <div onClick={()=>setDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,400px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
-            <div style={{fontSize:16,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>
+            <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>
               {lang==='fr'?'🗑️ Supprimer':'🗑️ Delete'}
             </div>
             {deleteConfirm.type==='soldItem'&&(
@@ -6105,9 +5116,9 @@ export default function App({ loginOnly = false }){
                     await supabase.from('inventaire').delete().eq('id',deleteConfirm.item.id);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:"#F3F4F6",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,color:"#0D0D0D",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                  }} style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     {lang==='fr'?'📦 Supprimer l\'article uniquement':'📦 Delete item only'}
-                    <div style={{fontSize:11,fontWeight:400,color:"#6B7280",marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
+                    <div style={{fontSize:11,fontWeight:400,color:UI.mute2,marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
                   </button>
                   <button onClick={async()=>{
                     const title=deleteConfirm.item?.title?.toLowerCase().trim();
@@ -6116,13 +5127,13 @@ export default function App({ loginOnly = false }){
                     if(matchingSale)await supabase.from('ventes').delete().eq('id',matchingSale.id);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:"#FFF5F5",border:"1px solid #FCA5A5",borderRadius:12,fontSize:13,fontWeight:700,color:"#E53E3E",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     {lang==='fr'?'🗑️ Supprimer et annuler le profit':'🗑️ Delete and remove profit'}
-                    <div style={{fontSize:11,fontWeight:400,color:"#E53E3E",opacity:0.8,marginTop:2}}>{lang==='fr'?'Supprime aussi la vente associée':'Also removes the associated sale'}</div>
+                    <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>{lang==='fr'?'Supprime aussi la vente associée':'Also removes the associated sale'}</div>
                   </button>
-                  <button onClick={()=>setDeleteConfirm(null)} style={{width:"100%",padding:"10px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                  <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
                     {lang==='fr'?'Annuler':'Cancel'}
-                  </button>
+                  </SecondaryButton>
                 </div>
               </>
             )}
@@ -6139,12 +5150,12 @@ export default function App({ loginOnly = false }){
                     await supabase.from('ventes').delete().eq('id',deleteConfirm.sale.id);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
-                  }} style={{flex:1,padding:"12px",background:"#E53E3E",border:"none",borderRadius:12,fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+                  }} style={{flex:1,padding:"12px",background:UI.negative,border:"none",borderRadius:999,fontSize:13,fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
                     {lang==='fr'?'Confirmer':'Confirm'}
                   </button>
-                  <button onClick={()=>setDeleteConfirm(null)} style={{flex:1,padding:"12px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,fontSize:13,fontWeight:600,color:"#6B7280",cursor:"pointer",fontFamily:"inherit"}}>
+                  <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{flex:1,width:"auto",padding:12}}>
                     {lang==='fr'?'Annuler':'Cancel'}
-                  </button>
+                  </SecondaryButton>
                 </div>
               </>
             )}
@@ -6154,14 +5165,45 @@ export default function App({ loginOnly = false }){
 
       <Toast message={toast.message} visible={toast.visible}/>
 
-      <div className="bnav">
-        {TABS_MOBILE.map(tm=>(
-          <button key={tm.idx} onClick={()=>{setTab(tm.idx);localStorage.setItem('tab',tm.idx);}} className={"bnav-item "+(tab===tm.idx?"on":"")}>
-            <span className="ic">{tm.icon}</span>
-            <span className="lbl">{tm.label}</span>
-            <span className="ind"/>
-          </button>
-        ))}
+      <div className="bnav" style={{ position:"fixed", bottom:0, left:0, right:0, justifyContent:"center", zIndex:50, paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 14px)" }}>
+        <div style={{ position:"relative", display:"flex", alignItems:"flex-end", gap:4, padding:"10px 10px 10px", borderRadius:26, background:"rgba(255,255,255,0.72)", backdropFilter:"blur(18px) saturate(1.6)", WebkitBackdropFilter:"blur(18px) saturate(1.6)", border:"1px solid #E7E3D8", boxShadow:"0 12px 32px rgba(16,32,27,0.10), 0 2px 8px rgba(16,32,27,0.05)" }}>
+          {TABS_MOBILE.map(tm=>{
+            const { Icon } = tm;
+            const isActive = tab===tm.idx;
+            const isLens = tm.idx===2;
+            const onClick = ()=>{setTab(tm.idx);localStorage.setItem('tab',tm.idx);};
+
+            if (isLens) {
+              return (
+                <button key={tm.idx} onClick={onClick} style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"center", width:60, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:"inherit" }}>
+                  <span style={{
+                    position:"absolute", top:-26, width:52, height:52, borderRadius:"50%",
+                    background:"linear-gradient(155deg,#2F9E90,#1B6E62)",
+                    boxShadow: isActive ? "0 8px 22px rgba(47,158,144,0.45), 0 0 0 5px #F6F5F1" : "0 6px 16px rgba(47,158,144,0.32), 0 0 0 5px #F6F5F1",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    transition:"transform 0.2s ease",
+                    transform: isActive ? "scale(1.04)" : "scale(1)",
+                  }}>
+                    <Icon size={22} color="#FFFFFF" strokeWidth={1.9} />
+                  </span>
+                  <span style={{ height:30 }} />
+                  <span style={{ fontSize:10, fontWeight:600, color: isActive ? "#2F9E90" : "#8A8578" }}>{tm.label}</span>
+                </button>
+              );
+            }
+
+            return (
+              <button key={tm.idx} onClick={onClick} style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:4, padding:"4px 0", width:60, background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+                <div style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", width:34, height:30 }}>
+                  {isActive && <span style={{ position:"absolute", inset:0, borderRadius:12, background:"rgba(47,158,144,0.10)" }} />}
+                  <Icon size={17} color={isActive ? "#2F9E90" : "#A6A192"} strokeWidth={isActive ? 2.1 : 1.7} />
+                </div>
+                <span style={{ fontSize:10, fontWeight:500, color: isActive ? "#2F9E90" : "#8A8578" }}>{tm.label}</span>
+                {isActive && <span style={{ position:"absolute", bottom:-3, width:3, height:3, borderRadius:"50%", background:"#2F9E90" }} />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <VoiceAssistant
@@ -6179,6 +5221,7 @@ export default function App({ loginOnly = false }){
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
         setConversionModal={setConversionModal}
+        hideFab={listingStepperOpen || tab===1}
       />
 
 
@@ -6187,8 +5230,8 @@ export default function App({ loginOnly = false }){
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:10000,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowBugReport(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"24px 20px 32px",animation:"slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <div style={{fontSize:16,fontWeight:800,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
-              <button onClick={()=>setShowBugReport(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",color:"#6B7280",flexShrink:0}}>✕</button>
+              <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
+              <IconButton onClick={()=>setShowBugReport(false)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <textarea
               value={bugMessage}
@@ -6196,7 +5239,7 @@ export default function App({ loginOnly = false }){
               placeholder={lang==='fr'?'Décris le problème rencontré...':'Describe the issue...'}
               style={{width:"100%",minHeight:100,borderRadius:10,border:"1px solid #E5E7EB",padding:10,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",color:"#111827"}}
             />
-            <button
+            <PrimaryButton
               onClick={async()=>{
                 if(!bugMessage.trim())return;
                 setBugSending(true);
@@ -6216,25 +5259,17 @@ export default function App({ loginOnly = false }){
                 }finally{setBugSending(false);}
               }}
               disabled={bugSending||!bugMessage.trim()}
-              style={{width:"100%",marginTop:12,padding:"13px",background:bugSending||!bugMessage.trim()?"#E5E7EB":"#1D9E75",color:bugSending||!bugMessage.trim()?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:bugSending||!bugMessage.trim()?"not-allowed":"pointer",fontFamily:"inherit",transition:"all 0.2s"}}
+              style={{marginTop:12}}
             >
               {bugSending?"...":(lang==='fr'?'Envoyer →':'Send →')}
-            </button>
-            <button onClick={()=>setShowBugReport(false)} style={{display:"block",width:"100%",marginTop:12,background:"none",border:"none",color:"#9CA3AF",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:4}}>
+            </PrimaryButton>
+            <button onClick={()=>setShowBugReport(false)} style={{display:"block",width:"100%",marginTop:12,background:"none",border:"none",color:UI.mute,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:4}}>
               {lang==='fr'?'Annuler':'Cancel'}
             </button>
           </div>
         </div>
       )}
 
-      {showUpgradeModal&&(
-        <UpgradeModal
-          lang={lang}
-          slotsRemaining={slotsRemaining}
-          onClose={()=>setShowUpgradeModal(false)}
-          onCheckout={()=>{setShowUpgradeModal(false);trackTikTokEvent("InitiateCheckout",user?.email,9.99);isNative?handleIAPPurchase():triggerCheckout();}}
-        />
-      )}
       {showCurrencyOnboarding&&(
         <CurrencyOnboardingModal lang={lang} onConfirm={async(code,uname)=>{
           await saveCurrency(code);
@@ -6247,7 +5282,7 @@ export default function App({ loginOnly = false }){
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
           <div style={{background:'#fff',borderRadius:24,padding:'32px 28px',maxWidth:360,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',textAlign:'center'}}>
             <div style={{fontSize:36,marginBottom:12}}>👋</div>
-            <div style={{fontSize:20,fontWeight:900,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
+            <div style={{fontSize:20,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
               {lang==='en'?"What's your name?":"Comment tu t'appelles ?"}
             </div>
             <div style={{fontSize:13,color:'#6B7280',marginBottom:20}}>

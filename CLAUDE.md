@@ -1,7 +1,13 @@
 # FillSell — Instructions Claude
 
+## Format des réponses
+
+Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ```) pour faciliter le copier-coller. Diagnostics, rapports, récapitulatifs, listes de changements — tout doit être dans un bloc.
+
 ## Git
-- Toujours push sur `main` directement.
+- **Migrations Supabase** : toujours appliquées directement en prod (comportement normal et irréversible).
+- **Code applicatif** (React, Edge Functions, extension Chrome) : toujours sur une branche feature, jamais sur `main` avant validation complète et tests OK.
+- Pour les hotfixes urgents uniquement : push direct sur `main` autorisé.
 
 ## Déploiement des Edge Functions
 
@@ -25,10 +31,12 @@ Ne pas utiliser de query param ni de header `Authorization` dans pg_net — seul
 
 ## Premium detection
 
-Ne jamais utiliser `is_premium` seul. Toujours vérifier :
+Ne jamais utiliser `is_premium` seul, mais ne jamais l'omettre non plus (un Premium standard Stripe web n'a ni token Apple/Google ni `is_founder`). Expression complète, identique partout (App.jsx, voice-transcribe, voice-intent, lens-analysis, generate-listing) :
 ```sql
-apple_original_transaction_id IS NOT NULL OR google_purchase_token IS NOT NULL OR is_founder = true
+is_premium = true OR is_pro = true OR is_founder = true
+  OR apple_original_transaction_id IS NOT NULL OR google_purchase_token IS NOT NULL
 ```
+`is_founder` n'est plus un tier : c'est un marqueur de prix legacy (9,99 €/mois grandfathered) pour les ~100 anciens comptes Founder, désormais des Premium comme les autres.
 
 ## apple-iap-webhook
 

@@ -185,7 +185,7 @@ export function parseLocDesc(desc) {
 export function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
   if(/louis.?vuitton|\blv\b|gucci|hermès|hermes|chanel|dior|prada|balenciaga|givenchy|saint.?laurent|\bysl\b|burberry|versace|fendi|celine|céline|bottega.?veneta|valentino|moncler|off.?white|alexander.?mcqueen|vivienne.?westwood|rolex|omega|cartier|tag.?heuer|breitling|patek|audemars|richard.?mille|\biwc\b|birkin|kelly|speedy|neverfull|louboutin|jimmy.?choo|manolo|stone.?island|canada.?goose|ralph.?lauren|lacoste|tommy|boss|armani/i.test(t)) return 'Luxe';
-  if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|gant|lunette|bijou|collier|bracelet|bague|montre|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset/i.test(t)) return 'Mode';
+  if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset/iu.test(t)) return 'Mode';
   if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,12}voiture)|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?midi|pédale.?(?:effet|guitare|basse)|table.?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|\bbasse\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
   if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|pc|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|ram|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
   if(/perceuse|visseuse|meuleuse|ponceuse|scie.?(?:circulaire|sauteuse|cloche)?|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
@@ -227,6 +227,371 @@ export function getTypeStyle(type){
 
 export const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 export const getCatBorder = type => getTypeStyle(type).border;
+
+// ── Design 2026 (Lens / navbar) : tuiles de catégorie ──
+// Pastels désaturés dans l'esprit canvas #EDEAE0 / paper #F6F5F1.
+// Une couleur par catégorie — deux articles de même catégorie = même tuile.
+export const CAT_TILE_COLORS = {
+  'Mode':           '#FBEAE2',
+  'Luxe':           '#F5EBD7',
+  'High-Tech':      '#E5E9F3',
+  'Maison':         '#E6EFEA',
+  'Électroménager': '#E3F0F0',
+  'Jouets':         '#FAF0D7',
+  'Livres':         '#F0E8DB',
+  'Sport':          '#E2EEF6',
+  'Auto-Moto':      '#E9E9E3',
+  'Beauté':         '#EFE6F0',
+  'Musique':        '#EAE5F2',
+  'Collection':     '#F6E9DE',
+  'Jardin':         '#E7F0E2',
+  'Bricolage':      '#F1E9DD',
+  'Multimédia':     '#E8E4EE',
+  'Autre':          '#ECEBE6',
+};
+export function getCatTileColor(type){
+  if(CAT_TILE_COLORS[type]) return CAT_TILE_COLORS[type];
+  const key=Object.keys(CAT_TILE_COLORS).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  return key?CAT_TILE_COLORS[key]:CAT_TILE_COLORS['Autre'];
+}
+// Slug CSS de la catégorie (classe .cat-mode, .cat-hightech, .cat-electromenager...)
+export const catClass = type => 'cat-'+((type||'autre').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,''));
+
+// ── Icône par type précis d'objet (même pattern que detectType : mots-clés
+// dans titre + description, du plus spécifique au plus générique — l'ordre compte).
+const OBJECT_ICON_RULES = [
+  // Désambiguïsations prioritaires (avant les règles génériques)
+  [/basket.?ball|panier.?de.?basket/i, '🏀'],
+  [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
+  [/casque.?(?:vélo|ski|snow)/i, '⛑️'],
+  [/tondeuse.?(?:à.?)?(?:barbe|cheveux)|rasoir|épilateur/i, '🪒'],
+  // Contexte sport : doit passer avant les règles génériques sac (👜) et
+  // lunettes (🕶️) — feuilles Vinted dédiées (Sacs de sport, genré ;
+  // Sports nautiques > Natation > Lunettes de natation).
+  [/sac.?de.?(?:sport|gym|fitness)/i, '🎽'],
+  [/lunettes?.?de.?(?:natation|piscine)/i, '🥽'],
+  [/sac.?à.?dos|backpack|cartable/i, '🎒'],
+  [/batterie.?externe|powerbank|chargeur|câble|adaptateur|\bhub\b|\bdock\b/i, '🔌'],
+  [/tapis.?de.?course|vélo.?d.?appartement|rameur|elliptique/i, '🏃'],
+  [/clavier.?(?:midi|maître)|piano|synthé|synthétiseur/i, '🎹'],
+  [/voiture.?miniature|hot.?wheels|majorette/i, '🏎️'],
+  [/machine.?à.?laver|lave.?linge|sèche.?linge|lave.?vaisselle/i, '🧺'],
+  [/machine.?à.?café|cafetière|nespresso|senseo|dolce.?gusto|expresso/i, '☕'],
+  [/carte.?(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner)|booster/i, '🃏'],
+  [/maillot.?de.?bain|bikini|monokini/i, '👙'],
+  [/jeu.?de.?société|monopoly|\buno\b/i, '🎲'],
+  // ── Désambiguïsations ajoutées le 2026-07-09 (mission mapping complet) —
+  // chacune doit gagner sur une règle générique plus bas (indiquée) ─────────
+  [/télécommandé|voiture.?rc\b/i, '🚁'],                                        // avant 🚗 voiture
+  [/déguisement|panoplie\b|costume.?de.?(?:pirate|princesse|sorci|clown|halloween|super.?héros)/i, '🎭'], // avant 🤵/👔 costume
+  [/montre.?connectée|smart.?watch|apple.?watch|galaxy.?watch|garmin|fitbit|amazfit/i, '⏱️'],  // avant ⌚ montre
+  [/enceinte.?connectée|google.?home|amazon.?echo|\balexa\b|homepod|assistant.?vocal/i, '📡'], // avant 🔊 enceinte
+  [/liseuse|kindle|\bkobo\b/i, '📇'],                                           // avant 📚 livre
+  [/collier.?(?:pour.?)?(?:chien|chat)|gamelle|croquettes?\b|litière|griffoir|arbre.?à.?chat|laisse\b/i, '🐕'], // avant 💍 collier
+  [/chausson|pantoufle|charentaise/i, '🥿'],                                    // avant 👟 chaussure
+  [/sac.?banane|banane.?(?:eastpak|nike|adidas)|fanny.?pack|bum.?bag/i, '👝'],  // avant 👜 sac
+  [/housse.?de.?couette|parure.?de.?lit|taie.?d.?oreiller|drap.?housse|\bdraps?\b/i, '🛌'],    // avant 🛏️ lit (scission literie/meuble)
+  [/lit.?à.?barreaux|berceau|cododo|table.?à.?langer|réducteur.?de.?lit|\btoise\b/i, '🚼'],    // avant 🛏️ lit et 🪑 chaise
+  [/fer.?à.?repasser|défroisseur|centrale.?vapeur|table.?à.?repasser/i, '🧼'],
+  [/machine.?à.?coudre|surjeteuse/i, '🧵'],
+  [/plongée|\btuba\b|\bpalmes\b/i, '🤿'],                                       // avant 🕶️/👟 (masque, palmes)
+  [/paddle|kayak|wakeboard|kitesurf|skimboard|ski.?nautique/i, '🏄'],           // avant 🎿 ski
+  [/équitation|équestre|cravache|licol|tapis.?de.?selle|étriers?\b/i, '🐴'],
+  [/billard|snooker|pétanque|fléchette|bowling|frisbee/i, '🎱'],
+  // Mode / Luxe
+  [/basket|sneaker|chaussure|jordan|air.?max|air.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
+  [/botte|bottine|\bboots?\b/i, '👢'],
+  // \btalons?\b : "pantalon" CONTIENT "talon" — sans la boundary stricte,
+  // tout titre "Pantalon ..." partait sur Chaussures à talons (bug prod).
+  [/\btalons?\b|escarpin|ballerine|compensée|louboutin/i, '👠'],
+  [/sandale|tong\b|claquette|mule\b/i, '🩴'],
+  [/\bsacs?\b|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
+  [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
+  [/valise|bagage/i, '🧳'],
+  // (?:^|[^-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
+  // "wardrobe" — sinon un t-shirt dont la description dit "à avoir dans sa
+  // garde-robe" devient une robe et le mapping Vinted part sur le mauvais rayon.
+  [/(?:^|[^-\w])robe\b|jupe/i, '👗'],
+  // 🥼/🤵/🎀 scindés de 🧥/👔 (2026-07-09) : blazer/tailleur, costume et
+  // cravate ont chacun leur branche Vinted dédiée (Blazers et tailleurs,
+  // Costumes et blazers, Accessoires > Cravates et nœuds papillons) — le
+  // T4 "Pantalon de costume → Chemises" venait de "costume" logé dans 👔.
+  [/blazer|tailleur\b/i, '🥼'],
+  [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|polaire\b/i, '🧥'],
+  [/cravate|n[œo]e?ud.?papillon/i, '🎀'],
+  [/costume|smoking\b/i, '🤵'],
+  [/chemise|blouse\b/i, '👔'],
+  // Scindé de 👕 : pull/sweat/hoodie/cardigan vivent chez Vinted sous une
+  // branche "Sweats et pulls" entièrement différente de "Hauts et t-shirts"
+  // (voir vintedCategories.js) — un seul et même mot-clé ne peut plus servir
+  // de proxy fiable au chemin catalogue, d'où l'icône dédiée.
+  [/pull|sweat|hoodie|cardigan|gilet(?!.{0,4}(?:de.?costume|jaune|de.?sécurité))/i, '🧶'],
+  [/t.?shirt|tee.?shirt|débardeur|polo\b|\btop\b|tunique|\bbodys?\b/i, '👕'],
+  // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
+  // matcherait sinon en premier).
+  [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
+  [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
+  // Lingerie/nuit (2026-07-09) : branche Vinted dédiée des deux côtés
+  // (Lingerie et pyjamas / Sous-vêtements et chaussettes) — backlog T3.
+  [/lingerie|soutien.?gorge|nuisette|pyjama|peignoir|tenue.?de.?nuit|caleçon|\bboxers?\b|\bslips?\b|culotte(?!.{0,10}cheval)/i, '🩲'],
+  [/chaussette|collant/i, '🧦'],
+  [/écharpe|foulard|châle|snood/i, '🧣'],
+  // ⚠️ FRONTIÈRES UNICODE, PAS \b (2026-07-12) — bug « Gants » du run réel.
+  // /gant/ sans frontière matche « élé-GANT- », adjectif omniprésent dans les
+  // descriptions générées par l'IA : le Xiaomi Redmi Note 10 est ainsi parti sur
+  // Vinted en « Hommes > Accessoires > Gants » (categoryPath du job, vérifié en
+  // base), et une enceinte, une chaise ou un vase « élégants » y seraient partis
+  // aussi.
+  // ⚠️ \b NE SUFFIT PAS et c'est le piège dans le piège : en JS, \b est ASCII —
+  // le « é » n'est pas un caractère de mot, donc \bgant matche ENCORE dans
+  // « élégant » (frontière entre « é » et « g »). D'où les lookarounds Unicode
+  // explicites ci-dessous, avec le drapeau /u.
+  [/(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])(?!\s*de\s*boxe)|(?<![\p{L}\p{N}])mitaines?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])moufles?(?![\p{L}\p{N}])/iu, '🧤'],
+  [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
+  [/lunette|solaire|sunglass/i, '🕶️'],
+  // Même piège, deux fois : /montre/ matchait le VERBE (« ce casque montre une
+  // isolation… ») et « dé-MONTRE- ». Substantif exigé, tournures verbales exclues.
+  [/(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s+(?:qu|que|comment|bien|aussi|des|une?|le|la|les|son|sa|ses)\b)|watch|rolex|omega|swatch/iu, '⌚'],
+  // /bague/ sans frontière matchait « BAGUEtte ».
+  [/bijou|collier|bracelet|(?<![\p{L}\p{N}])bagues?(?![\p{L}\p{N}])|boucle.?d.?oreille|pendentif|broche/iu, '💍'],
+  // Accessoires ajoutés le 2026-07-09 (backlog T3) — feuilles Vinted réelles.
+  [/ceinture(?!.{0,10}(?:lombaire|à.?outils|de.?sécurité))/i, '🪢'],
+  [/parapluie|ombrelle/i, '☂️'],
+  [/porte.?cl[ée]s?\b/i, '🗝️'],
+  // High-Tech
+  [/iphone|smartphone|téléphone|galaxy|\bpixel\b|xiaomi|oneplus/i, '📱'],
+  [/macbook|laptop|ordinateur.?portable|notebook|chromebook/i, '💻'],
+  [/\bpc\b|imac|ordinateur|écran|moniteur/i, '🖥️'],
+  // 📲 scindé de 📱 (2026-07-09, T4) : feuille dédiée Électronique >
+  // Tablettes, liseuses et accessoires > Tablettes.
+  [/tablette(?!.{0,4}de.?chocolat)|ipad|galaxy.?tab/i, '📲'],
+  [/écouteur|airpods?|earbud|casque|headphone/i, '🎧'],
+  [/enceinte|haut.?parleur|speaker|barre.?de.?son|soundbar/i, '🔊'],
+  [/console|playstation|\bps[2-5]\b|xbox|nintendo|switch|game.?boy|manette|jeu.?vidéo/i, '🎮'],
+  // télé(?![a-zà-ÿ]) et non télé\b : \b est ASCII-only en JS, donc "télé"
+  // suivi d'une lettre matchait quand même ("télécommande" → Téléviseurs).
+  [/\btv\b|télé(?![a-zà-ÿ])|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
+  [/appareil.?photo|caméra|camera|reflex|gopro|objectif|caméscope/i, '📷'],
+  [/drone/i, '🛸'],
+  [/imprimante|scanner/i, '🖨️'],
+  [/clavier/i, '⌨️'],
+  [/souris/i, '🖱️'],
+  // Maison
+  [/canapé|sofa|fauteuil|banquette|pouf/i, '🛋️'],
+  [/chaise|tabouret|\bbanc\b/i, '🪑'],
+  [/\blit\b|matelas|sommier|couette|drap|parure/i, '🛏️'],
+  [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
+  [/miroir/i, '🪞'],
+  [/bougie|photophore/i, '🕯️'],
+  [/cadre|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],
+  [/plante|cache.?pot|jardinière/i, '🪴'],
+  [/vase\b/i, '🏺'],
+  [/assiette|\bbol\b|tasse|\bmug\b|verre|carafe|vaisselle/i, '🍽️'],
+  [/casserole|poêle|cocotte|marmite|ustensile/i, '🍳'],
+  // Maison — textiles/déco/papeterie/animaux/fêtes (2026-07-09, backlog T3) :
+  // toutes ces branches existent réellement (Maison > Textiles/Décoration/
+  // Fournitures de bureau/Animaux/Célébrations et fêtes — arbre archivé).
+  [/rideau|voilage|\bstores?\b/i, '🪟'],
+  [/coussin(?!.{0,14}(?:allaitement|grossesse))|plaid\b|jeté.?de.?(?:lit|canapé)/i, '🪶'],
+  [/\btapis\b(?!.?(?:de.?)?(?:course|yoga|souris|selle|sol|éveil|bain|jeu))/i, '🟫'],
+  [/nappe\b|napperon|linge.?de.?table/i, '📜'],
+  [/horloge|pendule\b|réveil/i, '🕰️'],
+  [/no[eë]l|guirlande.?de.?sapin|boule.?de.?sapin|crèche\b/i, '🎄'],
+  [/stylo|papeterie|carnet|bloc.?notes?|surligneur|crayon(?!.{0,12}(?:lèvres|yeux|sourcils))|calculatrice|agenda\b|trousse(?!.{0,4}(?:de.?toilette|à.?maquillage))/i, '🖋️'],
+  // Électroménager
+  [/bouilloire|théière/i, '🫖'],
+  [/aspirateur|roomba|nettoyeur.?vapeur/i, '🧹'],
+  [/frigo|réfrigérateur|congélateur/i, '🧊'],
+  [/\bfour\b|micro.?onde/i, '♨️'],
+  [/mixeur|blender|robot.?(?:cuisine|pâtissier)|thermomix|batteur.?électrique/i, '🥣'],
+  [/grille.?pain|toaster/i, '🍞'],
+  [/friteuse|airfryer/i, '🍟'],
+  [/sèche.?cheveux|lisseur|boucleur/i, '💇'],
+  // Climatisation / chauffage d'appoint (2026-07-09) : feuilles réelles sous
+  // Maison > Entretien de la maison > Chauffage, climatisation et ventilation.
+  [/ventilateur|climatiseur|purificateur.?d.?air|humidificateur|déshumidificateur/i, '🌀'],
+  [/radiateur|chauffage.?d.?appoint|convecteur|bain.?d.?huile/i, '🌡️'],
+  // Bricolage
+  [/perceuse|visseuse|tournevis|perforateur/i, '🪛'],
+  [/scie|tronçonneuse|élagueuse/i, '🪚'],
+  [/marteau|maillet|\bmasse\b/i, '🔨'],
+  [/échelle|escabeau/i, '🪜'],
+  [/peinture|rouleau.?peinture|pinceau/i, '🖌️'],
+  [/\bvis\b|boulon|cheville|clou\b/i, '🔩'],
+  [/mètre.?ruban|niveau.?(?:laser|à.?bulle)/i, '📏'],
+  [/clé.?(?:plate|allen|molette|mixte|dynamométrique)|pince|étau|serre.?joint/i, '🔧'],
+  // Jardin
+  [/tondeuse|débroussailleuse|scarificateur/i, '🌱'],
+  [/taille.?haie|sécateur|cisaille/i, '✂️'],
+  [/barbecue|plancha|\bbbq\b/i, '🔥'],
+  [/salon.?de.?jardin|parasol|transat/i, '⛱️'],
+  // Sport
+  [/vélo|\bvtt\b|bicyclette/i, '🚲'],
+  [/trottinette/i, '🛴'],
+  [/skate|longboard/i, '🛹'],
+  [/roller|patin/i, '⛸️'],
+  [/\bskis?\b|snowboard/i, '🎿'],
+  [/ballon|football/i, '⚽'],
+  [/tennis|raquette|badminton|squash/i, '🎾'],
+  [/golf/i, '⛳'],
+  [/haltère|kettlebell|musculation|fitness/i, '🏋️'],
+  [/boxe|\bmma\b/i, '🥊'],
+  [/tente|camping|sac.?de.?couchage|duvet/i, '⛺'],
+  [/pêche|moulinet|waders/i, '🎣'],
+  [/yoga|pilates/i, '🧘'],
+  // Auto-Moto
+  [/moto\b/i, '🏍️'],
+  [/scooter/i, '🛵'],
+  [/pneu|jante|\broue\b/i, '🛞'],
+  [/voiture|automobile|autoradio|pare.?choc|rétroviseur/i, '🚗'],
+  // Beauté
+  [/parfum|eau.?de.?(?:toilette|parfum)|cologne/i, '🌸'],
+  [/rouge.?à.?lèvre|gloss|lipstick|mascara|palette|fard|eyeliner|fond.?de.?teint|blush|maquillage/i, '💄'],
+  [/vernis|manucure/i, '💅'],
+  [/crème|sérum|lotion|shampooing|gel.?douche|savon|\bsoin\b/i, '🧴'],
+  // Musique
+  [/guitare|stratocaster|telecaster|les.?paul|ukulélé/i, '🎸'],
+  [/violon|violoncelle|contrebasse/i, '🎻'],
+  [/batterie(?!.{0,12}(?:voiture|moto|vélo|externe))|cymbale|caisse.?claire/i, '🥁'],
+  [/trompette|saxophone|clarinette|flûte/i, '🎺'],
+  [/vinyle|vinyl|platine|33.?tours|45.?tours/i, '💿'],
+  // Médias physiques (2026-07-09, backlog T3) : Divertissement > Vidéo (DVD/
+  // Blu-ray/VHS) et > Musique (CD/Cassettes audio) — 📀 AVANT 💽 pour que
+  // "cassette vidéo" parte en Vidéo, "cassette" seule = audio par défaut.
+  [/\bdvd\b|blu.?ray|\bvhs\b|cassette.?vidéo|laserdisc/i, '📀'],
+  [/\bcd\b|\bk7\b|cassette|minidisc/i, '💽'],
+  [/harmonica/i, '🎼'],
+  [/micro(?:phone)?\b/i, '🎤'],
+  // Jouets
+  [/lego|duplo|kapla|jeu.?de.?construction/i, '🧱'],
+  [/peluche|doudou/i, '🧸'],
+  [/poupée|barbie|poupon/i, '🪆'],
+  [/puzzle/i, '🧩'],
+  // playmobil : aucune feuille Vinted dédiée (0 hit dans l'arbre, vérifié
+  // 2026-07-09) — rangé avec les figurines ("Sets de jeux" = feuille sœur).
+  [/figurine|funko|playmobil/i, '🦸'],
+  // Livres
+  [/manga|\bbd\b|bande.?dessinée|comics/i, '📖'],
+  [/livre|roman|encyclopédie|dictionnaire/i, '📚'],
+  [/magazine|revue\b/i, '📰'],
+  // Collection
+  [/timbre/i, '📮'],
+  [/monnaie|numismat|pièce.?de.?monnaie/i, '🪙'],
+  // Puériculture — scindée en 4 icônes (juillet 2026) : l'ancienne 👶 unique
+  // conflatait poussette/siège auto/biberon/babyphone, quatre branches
+  // catalogue différentes sur les 3 plateformes (un babyphone partait en
+  // "Poussettes"). ⚠️ Conflations puériculture RESTANTES, hors de ces regex :
+  // "transat" (bébé) part sur ⛱️ salon de jardin, "chaise haute" sur 🪑
+  // chaise, "lit parapluie" sur 🛏️ lit — à scinder si le volume le justifie.
+  [/poussette|landaus?\b/i, '👶'],
+  [/siège.?auto/i, '💺'],
+  [/biberon/i, '🍼'],
+  [/babyphone|baby.?phone|écoute.?bébé/i, '📟'],
+];
+// Icône par défaut si aucun mot-clé ne matche : celle de la catégorie.
+const CAT_DEFAULT_ICONS = {
+  'Mode':'👗','Luxe':'💎','High-Tech':'📱','Maison':'🏠','Électroménager':'⚡',
+  'Jouets':'🧸','Livres':'📚','Sport':'⚽','Auto-Moto':'🚗','Beauté':'💄',
+  'Musique':'🎵','Collection':'🏆','Multimédia':'📺','Jardin':'🌿','Bricolage':'🔧','Autre':'📦',
+};
+export function detectObjectIcon(titre, description, type){
+  const t=((titre||'')+' '+(description||'')).toLowerCase();
+  for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
+  if(CAT_DEFAULT_ICONS[type]) return CAT_DEFAULT_ICONS[type];
+  const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  return key?CAT_DEFAULT_ICONS[key]:CAT_DEFAULT_ICONS['Autre'];
+}
+
+// ── Design 2026 (Lens / navbar) : CSS des cards de liste (maquette validée).
+// Partagé entre StockTab (.stock-v2) et VentesTab (.ventes-v2) — même tokens,
+// même structure row [tuile | infos | droite], mêmes filtres à pastilles.
+export function buildCardCss(scope){
+  const s='.'+scope;
+  return `
+${s}{
+  --canvas:#EDEAE0;
+  --paper:#F6F5F1;
+  --ink:#10201B;
+  --teal:#2F9E90;
+  --teal-deep:#1B6E62;
+  --amber:#E8956D;
+  --mute:#8A8578;
+  --border:#E7E3D8;
+  font-family:'Space Grotesk',sans-serif;
+}
+${s} .row{
+  background:#fff;border-radius:16px;
+  padding:11px 12px;border:1px solid var(--border);
+  display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+  position:relative;
+}
+${s} .row.in-swipe{padding:0;border:none;border-radius:0;background:transparent;flex:1;min-width:0;cursor:pointer;}
+/* .edit-affordance (icône crayon) supprimée le 2026-07-14 : la carte entière est
+   cliquable pour éditer, l'icône était redondante et se collait au prix. */
+${s} .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`${s} .${catClass(type)}{background:${color};}`).join('\n')}
+${s} .left{min-width:0;}
+${s} .title-line{display:flex;align-items:center;gap:6px;}
+${s} .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .brand-dot{width:3px;height:3px;border-radius:50%;background:var(--mute);opacity:.7;flex-shrink:0;}
+${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
+${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .meta .hl{color:var(--ink);}
+/* ⚠️⚠️ AUCUN BACKTICK DANS CE FICHIER — tout ce CSS est un template literal JS.
+   Un backtick posé ici (j'avais écrit .left entre backticks, à la mode Markdown)
+   TERMINE la chaîne : buildCardCss se casse en plein milieu et l'app entière
+   part en écran blanc (« .left is not a function »). Et vite build ne le voit
+   PAS : le fichier reste syntaxiquement valide, il ne veut simplement plus rien
+   dire. Citer un sélecteur ? Guillemets français, jamais de backtick.
+
+   flex-wrap OBLIGATOIRE (2026-07-13). Sans lui, la rangée de pastilles ne
+   pouvait PAS passer à la ligne : chaque pastille a un contenu de largeur
+   irréductible (min-width auto), donc au-delà de 3-4 pastilles la rangée
+   débordait de la colonne de gauche et venait passer SOUS les boutons de la
+   colonne de droite — c'est le chevauchement « En ligne » / « Republier ».
+   La 5e pastille (« En ligne ») n'a fait que révéler le défaut, elle ne l'a pas
+   créé : 4 plateformes suffisaient déjà à serrer la carte sur mobile. */
+${s} .icons{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;min-width:0;}
+${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;flex:0 0 auto;white-space:nowrap;}
+${s} .ic-vinted{background:#09B584;}
+${s} .ic-leboncoin{background:#EA5B0C;}
+${s} .ic-beebs{background:#FF6B35;}
+${s} .ic-ebay{background:#0064D2;}
+${s} .ic-plateforme{background:var(--teal-deep);}
+${s} .ic-pending{background:var(--amber);}
+${s} .ic-loc{background:var(--mute);}
+/* « En ligne » : un STATUT, pas une plateforme. Il ouvre la rangée, et se
+   distingue par sa FORME (chip clair cerclé de teal + point) plutôt que par une
+   6e couleur pleine : cinq aplats saturés côte à côte rendaient la carte
+   illisible. Teal du design system (pas de nouvelle teinte), poids 700 max.
+   ⚠️ white-space:nowrap est porté par .micon : sans lui, « En ligne » se cassait
+   en « En » / « ligne » quand la place manquait (constaté sur la 1re carte). */
+${s} .ic-online{background:rgba(47,158,144,.12);color:var(--teal-deep);box-shadow:inset 0 0 0 1px rgba(47,158,144,.40);}
+${s} .ic-online .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);flex:0 0 auto;}
+/* Plateformes : LOGOS et non plus noms écrits. « Leboncoin » + « Beebs » en toutes
+   lettres débordaient la carte en largeur mobile quel que soit le CSS — quatre
+   logos de 18 px tiennent dans la place d'un seul nom. Aucun socle ni cadre ici :
+   PlatformLogo fournit déjà l'icône carrée (socle blanc pour vinted/ebay, icône
+   d'app pleine pour beebs/leboncoin). */
+${s} .plogo{display:flex;align-items:center;flex:0 0 auto;line-height:0;}
+${s} .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+${s} .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
+${s} .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
+${s} .btn-stack{display:flex;flex-direction:column;gap:4px;width:78px;}
+${s} .btn-publier{font-size:11.5px;font-weight:700;color:#fff;text-align:center;background:linear-gradient(155deg,var(--teal),var(--teal-deep));padding:6px 0;border-radius:9px;border:none;cursor:pointer;font-family:inherit;}
+/* Déjà en ligne : « Republier » reste accessible (ajouter une plateforme) mais
+   n'appelle plus l'action principale — l'aplat plein disait « il te reste à
+   publier » sur un article déjà publié. */
+${s} .btn-publier.is-online{background:transparent;color:var(--teal-deep);border:1px solid var(--teal);font-weight:600;padding:5px 0;}
+${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 0;border-radius:9px;cursor:pointer;font-family:inherit;}
+${s} .cat-filters{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;}
+${s} .cat-filters::-webkit-scrollbar{display:none;}
+${s} .fpill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;flex-shrink:0;cursor:pointer;font-family:inherit;transition:all 0.15s;}
+${s} .fpill.active{background:var(--ink);border-color:var(--ink);color:#fff;}
+${s} .fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(16,32,27,0.10);}
+`;
+}
 
 const TYPE_LABELS_EN={'High-Tech':'High-Tech','Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 export function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}

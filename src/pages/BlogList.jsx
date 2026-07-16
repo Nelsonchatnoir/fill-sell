@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { posts } from '../blog/posts';
-import '../pages/landing.css';
 import './blog.css';
 
 function useSEO({ title, description }) {

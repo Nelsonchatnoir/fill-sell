@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>FillSell</title>
+  <style>
+    /* Space Grotesk bundlée en local (woff2 variable, subset latin) — CSP MV3,
+       aucun chargement externe. Source : Google Fonts (OFL). */
+    @font-face {
+      font-family: "Space Grotesk";
+      font-style: normal;
+      font-weight: 300 700;
+      font-display: swap;
+      src: url("assets/space-grotesk.woff2") format("woff2");
+    }
+
+    /* ── Design tokens FillSell (identiques à src/components/ui.jsx) ── */
+    :root {
+      --canvas: #EDEAE0;
+      --paper:  #F6F5F1;
+      --ink:    #10201B;
+      --teal:   #2F9E90;
+      --teal-deep: #1B6E62;
+      --amber:  #E8956D;
+      --card:   #FFFFFF;
+      --chip:   #F2F0E9;
+      /* séparateurs = ink à faible opacité */
+      --line:   rgba(16,32,27,0.10);
+      --ink-50: rgba(16,32,27,0.50);
+      --ink-35: rgba(16,32,27,0.35);
+      --ink-15: rgba(16,32,27,0.15);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      width: 380px;
+      margin: 0;
+      padding: 14px 14px 12px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Poids max 700 imposé */
+    b, strong { font-weight: 700; }
+
+    .eyebrow {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-50);
+      margin: 0 0 8px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .brand-logo {
+      width: 32px; height: 32px; border-radius: 9px;
+      flex-shrink: 0; object-fit: cover; display: block;
+      background: var(--card); border: 1px solid var(--line);
+    }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+    .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+    .brand-sub {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--ink-50); margin-top: 2px;
+    }
+    .acct {
+      margin-left: auto;
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 11px; border-radius: 999px;
+      background: var(--paper); border: 1px solid var(--line);
+      font-size: 12px; font-weight: 600; color: var(--ink);
+      cursor: default; transition: background 0.15s, border-color 0.15s;
+    }
+    .acct .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .acct.on   .dot { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.18); }
+    .acct.off  { cursor: pointer; color: var(--teal-deep); border-color: rgba(47,158,144,0.45); }
+    .acct.off  .dot { background: var(--amber); }
+    .acct.off:hover { background: rgba(47,158,144,0.08); }
+
+    /* ── Carte "Annonce prête" ── */
+    .section { margin-bottom: 14px; }
+    .listing {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 16px; padding: 12px;
+    }
+    .listing-thumb {
+      width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0;
+      object-fit: cover; background: var(--chip);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+    }
+    .listing-body { min-width: 0; flex: 1; }
+    .listing-title {
+      font-size: 14px; font-weight: 600; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+    .listing-meta { display: flex; align-items: center; gap: 8px; }
+    .listing-price { font-size: 15px; font-weight: 700; color: var(--teal-deep); }
+    .tag {
+      font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--ink-50);
+      background: var(--chip); border-radius: 999px; padding: 3px 8px;
+    }
+
+    /* État vide */
+    .empty {
+      background: var(--paper); border: 1px dashed var(--ink-15);
+      border-radius: 16px; padding: 22px 16px; text-align: center;
+    }
+    .empty-emoji { font-size: 26px; }
+    .empty-title { font-size: 13.5px; font-weight: 600; margin: 8px 0 3px; }
+    .empty-sub { font-size: 12px; color: var(--ink-50); line-height: 1.45; }
+
+    /* ── "Diffuser sur" : liste + trait de flux ── */
+    .flow { position: relative; }
+    /* le trait vertical teal, signature du popup */
+    .flow::before {
+      content: "";
+      position: absolute; left: 17px; top: 20px; bottom: 20px; width: 2px;
+      background: linear-gradient(var(--teal), var(--teal-deep));
+      opacity: 0.30; border-radius: 2px;
+    }
+    .prow {
+      position: relative;
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 8px 9px 40px;
+      border-radius: 12px;
+      transition: background 0.15s;
+    }
+    .prow + .prow { margin-top: 2px; }
+    .prow.actionable:hover { background: var(--chip); }
+    .prow.dim { opacity: 0.5; }
+    /* noeud sur la ligne de flux */
+    .pnode {
+      position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--canvas); box-sizing: border-box;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .pnode.ready   { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.16); }
+    .pnode.connect { background: var(--paper); border: 2px solid var(--amber); }
+    .pnode.soon    { background: var(--paper); border: 2px dashed var(--ink-35); }
+    .pnode.none    { background: var(--paper); border: 2px solid var(--ink-15); }
+    .pnode.done    { background: var(--teal-deep); box-shadow: 0 0 0 3px rgba(47,158,144,0.20); }
+    .pnode.busy    { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.12); }
+    .pnode.err     { background: var(--amber); box-shadow: 0 0 0 3px rgba(232,149,109,0.20); }
+
+    .plogo {
+      width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+      object-fit: cover; display: block;
+      background: var(--card); border: 1px solid var(--line);
+    }
+    .pname { font-size: 13.5px; font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
+    .pstate { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+    /* case à cocher custom */
+    .check {
+      width: 20px; height: 20px; border-radius: 6px; cursor: pointer;
+      border: 2px solid var(--ink-35); background: var(--card);
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.18s, border-color 0.18s, transform 0.1s;
+    }
+    .check:hover { border-color: var(--teal); }
+    .check:active { transform: scale(0.92); }
+    .check.on { background: var(--teal); border-color: var(--teal); }
+    .check svg { width: 12px; height: 12px; opacity: 0; transition: opacity 0.15s; }
+    .check.on svg { opacity: 1; }
+
+    /* bouton "Se connecter" amber */
+    .connect-btn {
+      font-family: inherit; font-size: 11.5px; font-weight: 600;
+      color: var(--amber); background: rgba(232,149,109,0.10);
+      border: 1px solid rgba(232,149,109,0.55); border-radius: 999px;
+      padding: 5px 11px; cursor: pointer; transition: background 0.15s;
+    }
+    .connect-btn:hover { background: rgba(232,149,109,0.18); }
+
+    .badge-soft {
+      font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
+      color: var(--ink-50); background: var(--chip);
+      border-radius: 999px; padding: 4px 9px;
+    }
+    .status-ok  { font-size: 12px; font-weight: 600; color: var(--teal-deep); display: flex; align-items: center; gap: 5px; }
+    .status-err { font-size: 11.5px; font-weight: 600; color: var(--amber); max-width: 130px;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-run { font-size: 12px; font-weight: 600; color: var(--teal-deep); display: flex; align-items: center; gap: 6px; }
+
+    .spinner {
+      width: 13px; height: 13px; border-radius: 50%;
+      border: 2px solid rgba(47,158,144,0.25); border-top-color: var(--teal);
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .icon-check { width: 14px; height: 14px; }
+
+    /* ── CTA ── */
+    .cta {
+      width: 100%; font-family: inherit;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--ink); color: var(--canvas);
+      border: none; border-radius: 14px; padding: 14px 0;
+      font-size: 14.5px; font-weight: 700; cursor: pointer;
+      margin-top: 4px;
+      transition: transform 0.1s, box-shadow 0.2s, opacity 0.2s;
+      box-shadow: 0 8px 20px rgba(16,32,27,0.18);
+    }
+    .cta:hover:not(:disabled) { box-shadow: 0 10px 26px rgba(16,32,27,0.26); }
+    .cta:active:not(:disabled) { transform: translateY(1px); }
+    .cta:disabled { opacity: 0.42; cursor: not-allowed; box-shadow: none; }
+    .cta-count {
+      font-size: 12px; font-weight: 700; color: var(--canvas);
+      background: rgba(255,255,255,0.16); border-radius: 999px;
+      min-width: 20px; height: 20px; padding: 0 6px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+    }
+    .queue { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-50); font-weight: 600; }
+    .queue .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+    .history {
+      font-size: 12px; font-weight: 600; color: var(--teal-deep);
+      background: none; border: none; cursor: pointer; font-family: inherit;
+      padding: 2px 0; transition: opacity 0.15s;
+    }
+    .history:hover { opacity: 0.7; }
+
+    .hidden { display: none !important; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation-duration: 0.001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <img id="brand-logo" class="brand-logo" src="assets/fillsell-logo.png" alt="FillSell" />
+    <div class="brand-text">
+      <span class="brand-name">FillSell</span>
+      <span class="brand-sub">Cross-post</span>
+    </div>
+    <button id="acct" class="acct off" type="button">
+      <span class="dot"></span>
+      <span id="acct-label">Se connecter</span>
+    </button>
+  </div>
+
+  <!-- Annonce prête -->
+  <div class="section">
+    <p class="eyebrow">Annonce prête</p>
+    <div id="listing-card"><!-- rendu par popup.js --></div>
+  </div>
+
+  <!-- Diffuser sur -->
+  <div class="section">
+    <p class="eyebrow">Diffuser sur</p>
+    <div id="flow" class="flow"><!-- rendu par popup.js --></div>
+  </div>
+
+  <!-- CTA -->
+  <button id="cta" class="cta" type="button" disabled>
+    <span id="cta-label">Publier maintenant</span>
+    <span id="cta-count" class="cta-count hidden">0</span>
+  </button>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="queue"><span class="dot"></span><span id="queue-label">0 en file</span></div>
+    <button id="history" class="history" type="button">Historique</button>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

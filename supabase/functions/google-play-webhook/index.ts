@@ -7,7 +7,8 @@ const supabaseAdmin = createClient(
 );
 
 const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
-const PREMIUM_PRODUCT_IDS = ["app.fillsell.premium.sub", "app.fillsell.premium.standard"];
+const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
+const PREMIUM_PRODUCT_IDS = ["app.fillsell.premium.sub", "app.fillsell.premium.standard", PRO_PRODUCT_ID];
 
 // Génère un JWT signé avec le service account Google pour appeler l'API Publisher
 async function getGoogleAccessToken(): Promise<string> {
@@ -123,6 +124,8 @@ serve(async (req) => {
 
     const update: Record<string, unknown> = { is_premium: isPremium };
     if (isPremium && subscriptionId === FOUNDER_PRODUCT_ID) update.is_founder = true;
+    // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
+    if (subscriptionId === PRO_PRODUCT_ID) update.is_pro = isPremium;
 
     const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
     if (error) {
@@ -130,6 +133,16 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500, headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // Pièces incluses au 1er achat et à chaque renouvellement (idempotent par mois)
+    if (isPremium) {
+      const grantTier = subscriptionId === PRO_PRODUCT_ID ? "pro" : "premium";
+      const { error: grantErr } = await supabaseAdmin.rpc("grant_monthly_coins", {
+        p_user_id: userId,
+        p_tier: grantTier,
+      });
+      if (grantErr) console.error("[google-play-webhook] grant_monthly_coins:", grantErr.message);
     }
 
     console.log(`[google-play-webhook] type=${notificationType} product=${subscriptionId} → userId=${userId} is_premium=${isPremium} is_founder=${update.is_founder ?? false}`);

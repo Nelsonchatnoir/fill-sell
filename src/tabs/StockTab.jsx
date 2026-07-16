@@ -1,25 +1,242 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
+import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import VoiceResultCard from '../components/voice/VoiceResultCard';
+import { Btn } from '../components/voice/VoiceKit';
+import { VOICE_KIT_CSS } from '../components/voice/tokens';
+import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
-  getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType, normalizeMarque,
+  getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
+  getCatTileColor, catClass, detectObjectIcon, buildCardCss,
 } from '../utils/shared';
+
+// ── Design 2026 (Lens / navbar) — liste des articles en stock ──
+// Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
+// CSS partagé avec VentesTab via buildCardCss (src/utils/shared.js).
+const STOCK_CSS = buildCardCss('stock-v2');
+
+// ── Redesign zone de saisie IA (haut StockTab) — eyebrow + toggle Écrire/Parler ──
+const STOCK_TOP_CSS = `
+.stock-top-v2{
+  --canvas:#EDEAE0;
+  --paper:#F6F5F1;
+  --ink:#10201B;
+  --teal:#2F9E90;
+  --teal-deep:#1B6E62;
+  --amber:#E8956D;
+  --mute:#8A8578;
+  --border:#E7E3D8;
+  font-family:'Space Grotesk',sans-serif;
+}
+.stock-top-v2 .eyebrow{
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  color:var(--mute);
+}
+.stock-top-v2 .eyebrow-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:2px 4px 14px;
+}
+.stock-top-v2 .eyebrow-status{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--teal-deep);
+  white-space:nowrap;
+}
+.stock-top-v2 .status-dot{
+  width:6px; height:6px;
+  border-radius:50%;
+  background:var(--amber);
+  box-shadow:0 0 0 3px rgba(232,149,109,0.18);
+  flex-shrink:0;
+}
+.stock-top-v2 .mode-toggle{
+  display:flex;
+  background:var(--canvas);
+  border-radius:11px;
+  padding:3px;
+  margin-bottom:14px;
+}
+.stock-top-v2 .mode-btn{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:9px;
+  border-radius:9px;
+  border:none;
+  background:transparent;
+  font-family:inherit;
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--mute);
+  cursor:pointer;
+}
+.stock-top-v2 .mode-btn.active{
+  background:var(--paper);
+  color:var(--ink);
+  box-shadow:0 2px 6px -2px rgba(16,32,27,0.15);
+}
+.stock-top-v2 .voice-state{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:26px 0 18px;
+  gap:14px;
+}
+.stock-top-v2 .voice-orb-wrap{
+  position:relative;
+  width:72px; height:72px;
+  display:flex; align-items:center; justify-content:center;
+  margin:0 auto;
+}
+.stock-top-v2 .pulse-ring{
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  border:1.5px solid var(--teal);
+  opacity:0;
+  animation:stvPulseRing 2.2s cubic-bezier(0.2,0.6,0.35,1) infinite;
+  pointer-events:none;
+}
+.stock-top-v2 .pulse-ring:nth-child(2){ animation-delay:0.7s; }
+.stock-top-v2 .pulse-ring:nth-child(3){ animation-delay:1.4s; }
+@keyframes stvPulseRing{
+  0%{ transform:scale(0.72); opacity:0.55; }
+  100%{ transform:scale(1.55); opacity:0; }
+}
+.stock-top-v2 .voice-orb{
+  position:relative;
+  z-index:2;
+  width:60px; height:60px;
+  border-radius:50%;
+  background:linear-gradient(155deg, var(--teal) 0%, var(--teal-deep) 100%);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff;
+  font-size:22px;
+  box-shadow:0 8px 20px -6px rgba(27,110,98,0.5), inset 0 1px 1px rgba(255,255,255,0.25);
+  border:none;
+  cursor:pointer;
+  transition:transform 0.15s ease;
+}
+.stock-top-v2 .voice-orb:active{ transform:scale(0.94); }
+.stock-top-v2 .voice-orb.thinking{ opacity:0.85; cursor:not-allowed; }
+@media (prefers-reduced-motion: reduce){
+  .stock-top-v2 .pulse-ring{ animation:none !important; opacity:0; }
+}
+.stock-top-v2 .voice-hint{
+  font-size:12.5px;
+  color:var(--mute);
+  font-weight:500;
+}
+.stock-top-v2 .hint-row{
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  margin-bottom:16px;
+}
+.stock-top-v2 .hint-icon{
+  color:var(--teal);
+  font-size:13px;
+  line-height:1.5;
+  flex-shrink:0;
+}
+.stock-top-v2 .hint-text{
+  font-size:12.5px;
+  color:var(--mute);
+  line-height:1.5;
+}
+.stock-top-v2 .cta{
+  width:100%;
+  padding:14px;
+  border-radius:13px;
+  border:none;
+  font-family:inherit;
+  font-weight:700;
+  font-size:14.5px;
+  letter-spacing:-0.005em;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition:all 0.15s ease;
+  background:#D8D4C6;
+  color:#A19C8C;
+  cursor:not-allowed;
+}
+.stock-top-v2 .cta.active{
+  background:var(--teal-deep);
+  color:#fff;
+  box-shadow:0 8px 20px -8px rgba(27,110,98,0.55);
+  cursor:pointer;
+}
+.stock-top-v2 .examples-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  padding:14px 0 2px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--mute);
+  cursor:pointer;
+  background:none;
+  border:none;
+  width:100%;
+  font-family:inherit;
+}
+.stock-top-v2 .examples-toggle svg{ transition:transform 0.15s ease; }
+.stock-top-v2 .examples-panel{
+  margin-top:10px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.stock-top-v2 .example-chip{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:10px 12px;
+  border-radius:11px;
+  background:var(--canvas);
+  font-size:12.5px;
+  color:var(--ink);
+  opacity:0.85;
+  border:none;
+  font-family:inherit;
+  cursor:pointer;
+  text-align:left;
+  width:100%;
+}
+`;
 
 const StockTab = memo(function StockTab({
   // Config
-  lang, currency, isPremium, isNative, items, user, voiceUsedToday,
+  lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
   iapProduct, iapLoading,
   // Computed lists
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
   voiceStep, setVoiceStep, voiceParsed, setVoiceParsed,
   voiceZoneResults, setVoiceZoneResults, voiceZoneOpen, setVoiceZoneOpen,
-  vaActions,
+  vaActions, vaStep,
   voiceText, setVoiceText, voiceLoading, voicePlaceholderIdx, voiceError,
   // Manual form state
   showManualForm, setShowManualForm, manualMode, setManualMode,
@@ -35,7 +252,7 @@ const StockTab = memo(function StockTab({
   filterType, setFilterType, filterMarque, setFilterMarque,
   filterMarqueSold, setFilterMarqueSold,
   search, setSearch, soldShowAll, setSoldShowAll,
-  showAllStock, setShowAllStock, expandedStockId, setExpandedStockId,
+  showAllStock, setShowAllStock,
   pillsExpandedSold, setPillsExpandedSold, pillsExpandedStock, setPillsExpandedStock,
   importMsg,
   // Handlers
@@ -44,652 +261,230 @@ const StockTab = memo(function StockTab({
   handleImportFile, handleExport, handleIAPPurchase, handleIAPRestore,
   triggerCheckout,
   // Refs
-  importRef, listRef, scrollRef,
+  importRef, listRef, scrollRef, fabTriggerRef,
   // Injected components (defined in App.jsx)
-  PremiumBanner, IAPUpgradeBlock, VoiceZone,
-  slotsRemaining, openUpgradeModal,
+  PremiumBanner, IAPUpgradeBlock,
+  openUpgradeModal, onStepperOpenChange,
 }) {
   const { t, tpl } = useTranslation(lang);
+  const isMobile = useIsMobile(); // P4 : réactif (grille desktop ↔ liste mobile)
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
-  const sym = CURRENCY_SYMBOLS[currency] || "€";
   const [zoneEdits, setZoneEdits] = useState({});
+  const [publishItem, setPublishItem] = useState(null);
+  const [jobsByInventaire, setJobsByInventaire] = useState({});
+  const [voiceInputMode, setVoiceInputMode] = useState('write');
+  const [examplesOpen, setExamplesOpen] = useState(false);
+
+  // ⚠️ RAFRAÎCHISSEMENT (2026-07-13) — sans lui, le Stock MENTAIT.
+  // La publication est faite par l'EXTENSION, dans son coin, plusieurs minutes
+  // après le clic : elle passe les jobs en "published" en base, mais cette liste
+  // n'était lue QU'UNE FOIS, au montage (deps [user?.id]). Rien ne la relisait
+  // jamais — l'article restait affiché comme non publié jusqu'au prochain
+  // rechargement complet de l'app (bug remonté par Nico : « Publier » toujours
+  // actif alors que les 4 plateformes étaient en ligne).
+  // On relit donc : au retour sur l'onglet (le cas réel — on part surveiller la
+  // publication ailleurs, on revient), et à intervalle régulier tant que l'app
+  // est visible. Pas de realtime : le projet n'en utilise nulle part, et une
+  // relecture de quelques lignes toutes les 20 s est sans effet mesurable.
+  //
+  // "processing" est dans le filtre, et ce n'est pas un détail : c'est le statut
+  // porté PENDANT la publication. Sans lui, l'article ne montrait NI « En
+  // cours… » ni ses plateformes tant que l'extension travaillait — il avait
+  // simplement l'air de n'avoir jamais été publié.
+  useEffect(() => {
+    if (!user?.id) return;
+    let annule = false;
+
+    const relire = async () => {
+      const { data } = await supabase
+        .from("cross_post_jobs")
+        .select("id, inventaire_id, platform, status")
+        .eq("user_id", user.id)
+        .eq("action", "publish")
+        .in("status", ["pending", "processing", "published"]);
+      if (annule || !data) return;
+      const map = {};
+      for (const job of data) {
+        if (!map[job.inventaire_id]) map[job.inventaire_id] = [];
+        map[job.inventaire_id].push(job);
+      }
+      setJobsByInventaire(map);
+    };
+
+    relire();
+    const onVisible = () => { if (document.visibilityState === "visible") relire(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") relire();
+    }, 20000);
+
+    return () => {
+      annule = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
+  }, [user?.id]);
+
+  // Mode dégradé (Phase B) : plateformes en pause → badge « En pause » sur les
+  // jobs en attente concernés. Lecture TOLÉRANTE, jamais bloquante.
+  const [pausedPlatforms, setPausedPlatforms] = useState([]);
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    const lire = async () => {
+      try {
+        const { data } = await supabase.from("platform_health").select("platform").eq("paused", true);
+        if (alive) setPausedPlatforms((data ?? []).map(h => h.platform));
+      } catch { /* jamais bloquant */ }
+    };
+    lire();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") lire(); }, 60000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user?.id]);
+  const pausedSet = new Set(pausedPlatforms);
+
+  const pendingTotal = Object.values(jobsByInventaire).flat()
+    .filter(j => j.status === "pending").length;
+
   function replaceZoneResult(idx, patch) {
     setVoiceZoneResults(prev => prev.map((r, i) => i === idx ? {...r, ...patch} : r));
   }
 
   return (
     <>
-      <div className="ai-zone-header" onClick={()=>setVoiceZoneOpen(v=>!v)}
-        style={{cursor:"pointer",userSelect:"none"}}>
-        <div className="ico-wrap">🤖</div>
-        <div style={{flex:1}}><div className="t">{lang==='en'?'AI Stock':'Stock IA'}</div><div className="d">{lang==='en'?'Manage your inventory with AI':'Gérez votre inventaire avec l\'IA'}</div></div>
-        <div style={{fontSize:14,color:"#94A3B8",transition:"transform 0.2s",transform:voiceZoneOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
+      <style>{STOCK_TOP_CSS}</style>
+      <style>{VOICE_KIT_CSS}</style>
+      <div className="stock-top-v2">
+        <div className="eyebrow-row">
+          <div className="eyebrow">{lang==='en'?'AI Stock':'Stock IA'}</div>
+          {pendingTotal>0&&(
+            <div className="eyebrow-status">
+              <span className="status-dot"/>
+              {lang==='en'?`${pendingTotal} being posted`:`${pendingTotal} en cours de dépôt`}
+            </div>
+          )}
+        </div>
       </div>
-      <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
-        <div style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+      <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
+        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Voice Capture (collapsible) ── */}
           {voiceZoneOpen&&(<>
           {voiceStep==="done"&&voiceZoneResults.length>0?(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {voiceZoneResults.map((r,idx)=>{
-                const{intent,status,data,message,taskData}=r||{};
-
-                // ── Error / Unknown ──
-                if(status==="error"||intent==="unknown"){
-                  return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{message||(lang==="en"?"Didn't understand, try again":"Je n'ai pas compris, réessaie")}</div>
-                  </div>);
-                }
-
-                // ── Analytics query — big number card ──
-                if(status==="success"&&intent==="analytics_query"){
-                  const aqV=data?.value??0;
-                  const aqIsProfit=taskData?.type==="profit";
-                  const aqGran=(()=>{const p=data?.periode;if(p==="week")return"week";if(p==="month")return"month";if(p==="custom"){const df=taskData?.date_from,dt=taskData?.date_to;if(df&&dt){if(df===dt)return"day";const d=Math.round((new Date(dt)-new Date(df))/86400000);if(d<=7)return"week";if(d<=31)return"month";return"period";}}return"day";})();
-                  const aqComment=aqIsProfit?(()=>{const v=aqV;if(aqGran==="week"){if(v>50)return lang==="en"?"Great week 🔥":"Super semaine 🔥";if(v>10)return lang==="en"?"Good week 👍":"Bonne semaine 👍";if(v>0)return lang==="en"?"Slow week 😊":"Petite semaine 😊";if(v===0)return lang==="en"?"Empty week 💪":"Semaine blanche 💪";return lang==="en"?"Week in the red 😬":"Semaine dans le rouge 😬";}if(aqGran==="month"){if(v>50)return lang==="en"?"Great month 🔥":"Super mois 🔥";if(v>10)return lang==="en"?"Good month 👍":"Bon mois 👍";if(v>0)return lang==="en"?"Slow month 😊":"Petit mois 😊";if(v===0)return lang==="en"?"Empty month 💪":"Mois blanc 💪";return lang==="en"?"Month in the red 😬":"Mois dans le rouge 😬";}if(aqGran==="period"){if(v>50)return lang==="en"?"Great period 🔥":"Belle période 🔥";if(v>10)return lang==="en"?"Good period 👍":"Bonne période 👍";if(v>0)return lang==="en"?"Slow period 😊":"Petite période 😊";if(v===0)return lang==="en"?"Empty period 💪":"Période blanche 💪";return lang==="en"?"Period in the red 😬":"Période dans le rouge 😬";}if(v>50)return lang==="en"?"Great day 🔥":"Bonne journée 🔥";if(v>10)return lang==="en"?"Not bad 👍":"Pas mal du tout 👍";if(v>0)return lang==="en"?"Small win 😊":"Petit gain 😊";if(v===0)return lang==="en"?"Nothing today 💪":"Rien aujourd'hui 💪";return lang==="en"?"In the red 😬":"Dans le rouge 😬";})():null;
-                  const aqPeriode=(()=>{const p=data?.periode;if(!p||p==="all")return null;if(p==="today")return lang==="en"?"Today":"Aujourd'hui";if(p==="week")return lang==="en"?"Last 7 days":"7 derniers jours";if(p==="month")return lang==="en"?"Last 30 days":"30 derniers jours";if(p==="year")return lang==="en"?"This year":"Cette année";if(p==="custom"){const df=taskData?.date_from,dt=taskData?.date_to;const fD=d=>d?new Date(d).toLocaleDateString(lang==="en"?"en-GB":"fr-FR",{day:"2-digit",month:"2-digit"}):"";if(df&&dt&&df===dt)return fD(df);if(df&&dt)return`${fD(df)} – ${fD(dt)}`;return null;}return p;})();
-                  return(<div key={idx} className="vr-profit-card">
-                    <div style={{fontSize:12,fontWeight:600,color:"#A3A9A6",marginBottom:6}}>{data?.label}</div>
-                    <div style={{fontSize:32,fontWeight:900,color:aqV<0?"#E53E3E":"#1D9E75",letterSpacing:"-0.03em"}}>{fmt(aqV)}</div>
-                    {aqPeriode&&<div style={{fontSize:11,color:"#D1D5DB",marginTop:4}}>{aqPeriode}</div>}
-                    {aqComment&&<div style={{fontSize:14,fontWeight:700,color:"#0D0D0D",marginTop:8}}>{aqComment}</div>}
-                  </div>);
-                }
-
-                // ── AI advice cards (price_advice, buy_advice, business_advice) ──
-                if(status==="success"&&["price_advice","buy_advice","business_advice","deal_score"].includes(intent)){
-                  const aiLabel=intent==="price_advice"?`💡 ${lang==='fr'?"Conseil prix":"Price advice"}`:intent==="buy_advice"?`🛒 ${lang==='fr'?"Conseil achat":"Buy advice"}`:intent==="deal_score"?`⭐ Deal`:`💼 ${lang==='fr'?"Analyse":"Analysis"}`;
-                  return(<div key={idx} style={{background:"#F0F9FF",borderRadius:12,padding:"12px 14px",border:"1px solid #BAE6FD"}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"#0369A1",marginBottom:6}}>{aiLabel}</div>
-                    <div style={{fontSize:13,color:"#0F172A",lineHeight:1.55}}>{taskData?.reply||taskData?.analysis||message||"✓"}</div>
-                  </div>);
-                }
-
-                // ── Pending: inventory_add ──
-                if(status==="pending_confirmation"&&intent==="inventory_add"){
-                  const confMarque=taskData?.marque||null;
-                  const rawNom=taskData?.nom??"";
-                  const nomSansMar=confMarque&&rawNom?rawNom.replace(new RegExp('(^|\\s)'+confMarque.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\s|$)','gi'),' ').replace(/\s+/g,' ').trim():rawNom;
-                  const editNom=zoneEdits[idx]?.nom??nomSansMar;
-                  const editPrix=zoneEdits[idx]?.prix??taskData?.prix_achat??"";
-                  const confCat=taskData?.categorie||null;
-                  const confTs=confCat?getTypeStyle(confCat):null;
-                  return(<div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#15803D",marginBottom:8}}>➕ {lang==="en"?"New item":"Nouvel article"}</div>
-                    {(confMarque||(confTs&&confCat!=="Autre"))&&(
-                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                        {confMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{confMarque}</span>}
-                        {confTs&&confCat!=="Autre"&&<span style={{background:confTs.bg,color:confTs.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${confTs.border}`}}>{confTs.emoji} {typeLabel(confCat,lang)}</span>}
-                      </div>
-                    )}
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                      <input value={editNom} onChange={e=>setZoneEdits(prev=>({...prev,[idx]:{...prev[idx],nom:e.target.value}}))}
-                        placeholder={lang==="en"?"Name":"Nom"}
-                        style={{fontSize:13,fontWeight:600,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",width:"100%",boxSizing:"border-box"}}/>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <input type="number" value={editPrix} onChange={e=>setZoneEdits(prev=>({...prev,[idx]:{...prev[idx],prix:parseFloat(e.target.value)||0}}))}
-                          placeholder={lang==="en"?"Buy price":"Prix achat"}
-                          style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                        <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
-                      </div>
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{await vaActions.addItem({...taskData,nom:editNom,prix_achat:editPrix||taskData?.prix_achat});
-                        replaceZoneResult(idx,{...r,status:"success",data:{nom:editNom,prix_achat:editPrix,marque:confMarque,type:confCat},message:lang==="en"?"Item added":"Article ajouté"});}
-                        catch(e){replaceZoneResult(idx,{...r,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm":"Confirmer"}
-                      </button>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  </div>);
-                }
-
-                // ── BUG 1 (App.jsx) répliqué ici : file FIFO — une seule card pending à la
-                // fois, pour inventory_sell ET inventory_sell_lot (mêmes clés vaResults/idx).
-                if((intent==="inventory_sell"||intent==="inventory_sell_lot")&&status==="pending_confirmation"){
-                  const hasEarlierPending=voiceZoneResults.slice(0,idx).some(
-                    rr=>(rr?.intent==="inventory_sell"||rr?.intent==="inventory_sell_lot")&&rr?.status==="pending_confirmation"
-                  );
-                  if(hasEarlierPending){
-                    return(<div key={idx} style={{background:"#F9FAFB",borderRadius:12,padding:"10px 14px",border:"1px solid #E5E7EB",opacity:0.45}}>
-                      <div style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>⏳ {lang==="en"?"Waiting for previous sale confirmation…":"En attente de la confirmation précédente…"}</div>
-                    </div>);
-                  }
-                }
-
-                // ── Vente de lot à prix groupé (plusieurs articles, un seul prix total) ──
-                if(status==="pending_confirmation"&&intent==="inventory_sell_lot"){
-                  const lotItems=taskData?.items||[];
-                  const lotTotal=taskData?.lotTotal||0;
-                  const pendingI=lotItems.findIndex(it=>it.resolution===null);
-                  const lotPhase=pendingI===-1?"recap":"matching";
-
-                  if(lotPhase==="matching"){
-                    const cur=lotItems[pendingI];
-                    const mi=cur?.matchedItem;
-                    const miTs=mi?getTypeStyle(mi.type):null;
-                    return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div style={{fontSize:11,fontWeight:800,color:"#92400E"}}>
-                        🛍️ {lang==="en"?`Lot sale — item ${pendingI+1}/${lotItems.length}`:`Vente de lot — article ${pendingI+1}/${lotItems.length}`}
-                      </div>
-                      <div>
-                        <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{cur?.nom||"Article"}</div>
-                        {cur?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{cur.marque}</span>}
-                      </div>
-                      {mi?(
-                        <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
-                          <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{mi.title}</div>
-                          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                            {mi.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{mi.marque}</span>}
-                            {miTs&&mi.type&&mi.type!=="Autre"&&<span style={{background:miTs.bg,color:miTs.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${miTs.border}`}}>{miTs.emoji} {mi.type}</span>}
-                          </div>
-                          <div style={{fontSize:12,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(mi.buy+(mi.purchaseCosts||0))}</div>
-                        </div>
-                      ):(
-                        <div style={{fontSize:12,color:"#92400E",fontStyle:"italic"}}>{lang==="en"?"No match in stock — will be created as a new item":"Aucun article correspondant en stock — sera créé comme nouvel article"}</div>
-                      )}
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>{
-                          const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"stock",item:mi}}:it);
-                          replaceZoneResult(idx,{...r,taskData:{...taskData,items:next}});
-                        }} style={{flex:1,padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✓ {lang==="en"?"Add stock item to lot":"Ajouter cet article du stock"}
-                        </button>
-                        <button onClick={()=>{
-                          const next=lotItems.map((it,i)=>i===pendingI?{...it,resolution:{source:"new"}}:it);
-                          replaceZoneResult(idx,{...r,taskData:{...taskData,items:next}});
-                        }} style={{flex:1,padding:"12px",background:"transparent",border:"1.5px solid #F59E0B",borderRadius:12,color:"#92400E",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          ➕ {lang==="en"?"Create new item":"Créer un nouvel article"}
-                        </button>
-                      </div>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"8px",background:"transparent",border:"none",color:"#9CA3AF",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Cancel lot":"Annuler le lot"}
-                      </button>
-                    </div>);
-                  }
-
-                  // lotPhase === "recap"
-                  const defaultPrice=lotItems.length?Math.round((lotTotal/lotItems.length)*100)/100:0;
-                  const linePrice=(i)=>{
-                    const v=zoneEdits[idx]?.lotPrices?.[i];
-                    return (v!=null&&v!=="")?(parseFloat(v)||0):defaultPrice;
-                  };
-                  const liveTotal=lotItems.reduce((sum,_it,i)=>sum+linePrice(i),0);
-                  return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:2}}>
-                      🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""} sold`:`Lot de ${lotItems.length} article${lotItems.length>1?"s":""} vendu${lotItems.length>1?"s":""}`}{" — "}{fmt(lotTotal)}
-                    </div>
-                    <div style={{fontSize:11,color:"#6B7280",marginBottom:12}}>
-                      {lang==="en"?"Current total":"Total actuel"} : {fmt(liveTotal)}
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
-                      {lotItems.map((it,i)=>{
-                        const label=it.resolution?.source==="stock"?(it.resolution.item?.title||it.nom):it.nom;
-                        const its=it.categorie&&it.categorie!=="Autre"?getTypeStyle(it.categorie):null;
-                        return(<div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:6}}>
-                            <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{label}</div>
-                            <span style={{fontSize:10,fontWeight:700,color:it.resolution?.source==="stock"?"#1D9E75":"#7C3AED",background:it.resolution?.source==="stock"?"#E8F5F0":"#EDE9FE",borderRadius:99,padding:"2px 7px",flexShrink:0}}>
-                              {it.resolution?.source==="stock"?(lang==="en"?"from stock":"du stock"):(lang==="en"?"new":"nouveau")}
-                            </span>
-                          </div>
-                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
-                            {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
-                            {its&&<span style={{background:its.bg,color:its.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${its.border}`}}>{its.emoji} {typeLabel(it.categorie,lang)}</span>}
-                          </div>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <input type="number" value={zoneEdits[idx]?.lotPrices?.[i]??defaultPrice}
-                              onChange={e=>setZoneEdits(prev=>({...prev,[idx]:{...prev[idx],lotPrices:{...prev[idx]?.lotPrices,[i]:e.target.value}}}))}
-                              style={{flex:1,fontSize:13,fontWeight:700,border:"1px solid rgba(0,0,0,0.12)",borderRadius:8,padding:"8px 10px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff"}}/>
-                            <span style={{fontSize:13,color:"#6B7280",fontWeight:600,flexShrink:0}}>{sym}</span>
-                          </div>
-                        </div>);
-                      })}
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          for(let i=0;i<lotItems.length;i++){
-                            const it=lotItems[i];
-                            const price=linePrice(i);
-                            if(it.resolution?.source==="stock"&&it.resolution.item){
-                              await vaActions.confirmSellDirect(it.resolution.item,price,0,1,it.plateforme||null);
-                            }else{
-                              await vaActions.addDirectSale({nom:it.nom,marque:it.marque,type:it.categorie,description:it.description,prix_vente:price,prix_achat:null,quantite_vendue:1,plateforme:it.plateforme||null});
-                            }
-                          }
-                          replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?`Lot of ${lotItems.length} items sold`:`Lot de ${lotItems.length} articles vendu`});
-                        }catch(e){replaceZoneResult(idx,{...r,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"13px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm lot":"Confirmer le lot"}
-                      </button>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})} style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                    </div>
-                  </div>);
-                }
-
-                // ── Pending: inventory_sell ──
-                if(status==="pending_confirmation"&&intent==="inventory_sell"){
-                  // Candidates (ambiguity: multiple items match)
-                  if(taskData?.candidates?.length>0&&!taskData?.conflict){
-                    return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
-                        <div style={{fontWeight:800,fontSize:14,color:"#0D0D0D"}}>{lang==="en"?"Which item?":"Quel article ?"}</div>
-                        {taskData?.prix_vente!=null&&<div style={{fontWeight:800,fontSize:14,color:"#1D9E75",flexShrink:0}}>{fmt(taskData.prix_vente)}</div>}
-                      </div>
-                      {taskData.candidates.map((c,ci)=>{
-                        const cItem=items.find(i=>String(i.id)===String(c.id));
-                        if(!cItem)return null;
-                        const ts2=getTypeStyle(cItem.type);
-                        return(<button key={ci} onClick={()=>replaceZoneResult(idx,{...r,taskData:{...taskData,candidates:null,matched_id:c.id}})}
-                          style={{textAlign:"left",padding:"10px 12px",borderRadius:10,border:"1.5px solid #E5E7EB",background:"#F9FAFB",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",gap:4}}>
-                          <div style={{fontWeight:700,fontSize:13,color:"#0D0D0D"}}>{cItem.title}</div>
-                          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                            {cItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{cItem.marque}</span>}
-                            {cItem.type&&cItem.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {cItem.type}</span>}
-                          </div>
-                        </button>);
-                      })}
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>);
-                  }
-                  // Price ambiguity (total vs per unit)
-                  if(taskData?.price_ambiguous&&taskData?.prix_mentionne>0&&taskData?.quantite_vendue>1){
-                    const pm=parseFloat(taskData.prix_mentionne)||0;
-                    const qva=taskData.quantite_vendue;
-                    const unitIfTotal=taskData._unitIfTotal??Math.round((pm/qva)*100)/100;
-                    const totalIfUnit=taskData._totalIfUnit??Math.round(pm*qva*100)/100;
-                    const foundAmb=taskData?.matched_id?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu"):null;
-                    const doSell=(uPrice)=>{
-                      const fn=foundAmb
-                        ?vaActions.confirmSellDirect(foundAmb,uPrice,taskData?.frais||0,qva,taskData?.plateforme||null)
-                        :vaActions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:taskData?.categorie||null,description:taskData?.description||null,prix_vente:uPrice,quantite_vendue:qva,plateforme:taskData?.plateforme||null});
-                      fn.then(()=>replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?"Sale recorded":"Vente enregistrée"}))
-                        .catch(e=>replaceZoneResult(idx,{...r,status:"error",message:e.message}));
-                    };
-                    return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1.5px solid #F59E0B",display:"flex",flexDirection:"column",gap:12}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"#92400E"}}>🤔 {qva}× {taskData.nom||"article"} — {lang==="en"?"total or each?":"total ou pièce ?"}</div>
-                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                        <button onClick={()=>doSell(unitIfTotal)} style={{padding:"12px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                          {lang==="en"?`✓ ${fmt(pm)} total → ${fmt(unitIfTotal)}/item`:`✓ ${fmt(pm)} au total → ${fmt(unitIfTotal)}/pièce`}
-                        </button>
-                        <button onClick={()=>doSell(pm)} style={{padding:"12px",background:"#F9FAFB",color:"#0D0D0D",border:"1.5px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                          {lang==="en"?`${fmt(pm)}/item → ${fmt(totalIfUnit)} total`:`${fmt(pm)}/pièce → ${fmt(totalIfUnit)} au total`}
-                        </button>
-                        <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                          style={{padding:"10px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                      </div>
-                    </div>);
-                  }
-                  // Normal case (matched_id or keyword) + conflict case
-                  const sellPv=zoneEdits[idx]?.prix_vente??taskData?.prix_vente??null;
-                  const qv=taskData?.quantite_vendue||1;
-                  const found=taskData?.matched_id
-                    ?items.find(i=>String(i.id)===String(taskData.matched_id)&&i.statut!=="vendu")
-                    :items.find(i=>{if(i.statut==="vendu")return false;const q=(taskData?.nom||"").toLowerCase().trim();const t=(i.title||"").toLowerCase().trim();return q&&(t.includes(q)||q.includes(t));});
-                  const pv=parseFloat(sellPv)||0;
-                  const sf=parseFloat(taskData?.frais)||0;
-                  const buyU=found?(found.buy+(found.purchaseCosts||0)):0;
-                  const mgU=pv-buyU-sf;
-                  const ts=found?getTypeStyle(found.type):null;
-                  return(<div key={idx} style={{background:"#fff",borderRadius:14,padding:"16px",border:"1px solid rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",gap:12}}>
-                    <div>
-                      <div style={{fontWeight:800,fontSize:15,color:"#0D0D0D",marginBottom:6}}>{found?.title||taskData?.nom||"Article"}</div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                        {qv>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:800}}>×{qv}</span>}
-                        {found?.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{found.marque}</span>}
-                        {ts&&found?.type&&found.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {found.type}</span>}
-                      </div>
-                    </div>
-                    <div style={{background:"#F9FAFB",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:13,color:"#6B7280",fontWeight:600}}>{lang==="en"?"Bought":"Achat"} {fmt(buyU)}</span>
-                      <span style={{color:"#D1D5DB"}}>→</span>
-                      {pv>0?<span style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{lang==="en"?"Sell":"Vente"} {fmt(pv)}</span>
-                        :<span style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"Price to confirm":"Prix à confirmer"}</span>}
-                      {pv>0&&<span style={{marginLeft:"auto",fontWeight:900,fontSize:15,color:mgU>=0?"#1D9E75":"#EF4444"}}>{mgU>=0?"+":""}{fmt(mgU)}</span>}
-                    </div>
-                    {!taskData?.prix_vente&&(
-                      <input type="number" value={zoneEdits[idx]?.prix_vente??""}
-                        onChange={e=>setZoneEdits(prev=>({...prev,[idx]:{...prev[idx],prix_vente:parseFloat(e.target.value)||0}}))}
-                        placeholder={lang==="en"?"Sell price":"Prix de vente"}
-                        style={{fontSize:14,fontWeight:700,border:"1.5px solid #1D9E75",borderRadius:10,padding:"10px 12px",fontFamily:"inherit",color:"#0D0D0D",background:"#fff",outline:"none",width:"100%",boxSizing:"border-box"}}/>
-                    )}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>{
-                        const fn=found
-                          ?vaActions.confirmSellDirect(found,sellPv,sf,qv,taskData?.plateforme||null)
-                          :vaActions.addDirectSale({nom:taskData?.nom,marque:taskData?.marque,type:taskData?.categorie||null,description:taskData?.description||null,prix_vente:sellPv||taskData?.prix_vente,quantite_vendue:taskData?.quantite_vendue,plateforme:taskData?.plateforme||null});
-                        fn.then(()=>replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?"Sale registered":"Vente enregistrée"}))
-                          .catch(e=>replaceZoneResult(idx,{...r,status:"error",message:e.message}));
-                      }} style={{flex:1,padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm sale":"Confirmer la vente"}
-                      </button>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"13px 16px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:12,color:"#6B7280",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                    </div>
-                  </div>);
-                }
-
-                // ── Pending: inventory_delete ──
-                if(status==="pending_confirmation"&&intent==="inventory_delete"){
-                  const dq=(taskData?.nom||"").toLowerCase();
-                  const dItem=taskData?.matched_id
-                    ?items.find(i=>String(i.id)===String(taskData.matched_id))
-                    :items.find(i=>(i.title||"").toLowerCase().includes(dq)&&dq);
-                  const dTs=dItem?getTypeStyle(dItem.type||dItem.categorie):null;
-                  return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"18px",border:"1px solid #FCA5A5"}}>
-                    <div style={{fontSize:14,fontWeight:800,color:"#0D0D0D",marginBottom:10}}>🗑️ {lang==="en"?"Delete":"Supprimer"}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:dItem?8:14}}>{dItem?dItem.title:(taskData?.nom||"?")}</div>
-                    {dItem&&(
-                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
-                        {(dItem.type||dItem.categorie)&&(dItem.type||dItem.categorie)!=="Autre"&&dTs&&<span style={{background:dTs.bg,color:dTs.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${dTs.border}`}}>{dTs.emoji} {typeLabel(dItem.type||dItem.categorie,lang)}</span>}
-                        {dItem.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{dItem.marque}</span>}
-                        {dItem.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {dItem.emplacement}</span>}
-                      </div>
-                    )}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        const f=dItem||items.find(i=>(i.title||"").toLowerCase().includes((taskData?.nom||"").toLowerCase())&&taskData?.nom);
-                        if(f){await vaActions.deleteItemForce(f.id);replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?"Deleted":"Supprimé"});}
-                        else replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Item not found":"Article non trouvé"});
-                      }} style={{flex:1,padding:"10px",background:"#E53E3E",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Delete":"Supprimer"}
-                      </button>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  </div>);
-                }
-
-                // ── Pending: inventory_lot ──
-                if(status==="pending_confirmation"&&intent==="inventory_lot"){
-                  const lotItems=data?.items||[];
-                  const lotTotal=data?.lotTotal||0;
-                  return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:8}}>
-                      🛍️ {lang==="en"?`Lot of ${lotItems.length} item${lotItems.length>1?"s":""}`:(`Lot de ${lotItems.length} article${lotItems.length>1?"s":""}`)}{" — "}{fmt(lotTotal)}
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
-                      {lotItems.map((item,i)=>{
-                        const _ts=item.categorie&&item.categorie!=="Autre"?getTypeStyle(item.categorie):null;
-                        return(<div key={i} style={{background:"#F0FDF4",borderRadius:8,padding:"8px 10px",border:"1px solid #86EFAC"}}>
-                          <div style={{fontWeight:700,fontSize:12,color:"#0D0D0D"}}>{item.nom}</div>
-                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3,alignItems:"center"}}>
-                            {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                            {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(item.categorie,lang)}</span>}
-                            {item.prix_estime_lot&&<span style={{color:"#6B7280",fontSize:10,fontWeight:600,marginLeft:"auto"}}>{fmt(item.prix_estime_lot)}</span>}
-                          </div>
-                        </div>);
-                      })}
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          for(const item of lotItems){await vaActions.addItem({...item,nom:item.nom,prix_achat:item.prix_estime_lot});}
-                          replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?`${lotItems.length} items added`:`${lotItems.length} articles ajoutés`});
-                        }catch(e){replaceZoneResult(idx,{...r,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm lot":"Confirmer le lot"}
-                      </button>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  </div>);
-                }
-
-                // ── Pending: inventory_move ──
-                if(status==="pending_confirmation"&&intent==="inventory_move"){
-                  const moveItems=data?.items||[];
-                  const moveEmp=data?.emplacement||taskData?.emplacement||"";
-                  if(data?.notFound){
-                    return(<div key={idx} style={{background:"#FFF5F5",borderRadius:12,padding:"14px",border:"1px solid #FCA5A5"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#E53E3E",marginBottom:6}}>🔍 {lang==="en"?"Item not found":"Article introuvable"}</div>
-                      <div style={{fontSize:12,color:"#6B7280",marginBottom:10}}>{lang==="en"?`Couldn't find "${taskData?.article||"?"}" in your stock.`:`Je n'ai pas trouvé "${taskData?.article||"?"}" dans ton stock.`}</div>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"8px 14px",background:"transparent",border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Close":"Fermer"}
-                      </button>
-                    </div>);
-                  }
-                  if(data?.alreadyHere){
-                    return(<div key={idx} style={{background:"#F0FDF4",borderRadius:12,padding:"14px",border:"1px solid #86EFAC"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#1D9E75",marginBottom:6}}>📦 {lang==="en"?"Already stored here!":"Déjà rangé ici !"}</div>
-                      <div style={{fontSize:12,color:"#6B7280",marginBottom:10}}>{moveItems[0]?(moveItems[0].title||moveItems[0].nom||"")+" ":""}{lang==="en"?`is already at ${moveEmp}.`:`est déjà sur ${moveEmp}.`}</div>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"8px 14px",background:"transparent",border:"1.5px solid #9FE1CB",borderRadius:10,color:"#1D9E75",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✕ {lang==="en"?"Close":"Fermer"}
-                      </button>
-                    </div>);
-                  }
-                  return(<div key={idx} style={{background:"#EFF6FF",borderRadius:12,padding:"14px",border:"1px solid #93C5FD"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#1D4ED8",marginBottom:10}}>📦 {lang==="en"?"Store here?":"Ranger ici ?"}</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                      {moveItems.map((item,i)=>{
-                        const _cat=item.type||item.categorie||null;
-                        const _ts=_cat&&_cat!=="Autre"?getTypeStyle(_cat):null;
-                        const prevEmp=item.emplacement||null;
-                        const itemName=item.title||item.titre||item.nom||"";
-                        return(<div key={i} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid #BFDBFE"}}>
-                          <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",marginBottom:4}}>{itemName}</div>
-                          {(item.marque||_ts)&&(<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
-                            {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                            {_ts&&<span style={{background:_ts.bg,color:_ts.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${_ts.border}`}}>{_ts.emoji} {typeLabel(_cat,lang)}</span>}
-                          </div>)}
-                          <div style={{fontSize:12,color:"#6B7280",display:"flex",alignItems:"center",gap:5}}>
-                            <span>📦 {prevEmp||(lang==="en"?"None":"Aucun")}</span>
-                            <span style={{color:"#1D4ED8",fontWeight:800}}>→</span>
-                            <span style={{color:"#1D4ED8",fontWeight:700}}>{moveEmp}</span>
-                          </div>
-                        </div>);
-                      })}
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={async()=>{
-                        try{
-                          await vaActions.moveToLocation(moveItems.map(i=>i.id),moveEmp);
-                          replaceZoneResult(idx,{...r,status:"success",message:lang==="en"?`✅ Stored! ${moveItems.map(i=>i.title||i.nom).join(", ")} → ${moveEmp}`:`✅ Rangé ! ${moveItems.map(i=>i.title||i.nom).join(", ")} → ${moveEmp}`});
-                        }catch(e){replaceZoneResult(idx,{...r,status:"error",message:e.message});}
-                      }} style={{flex:1,padding:"10px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ {lang==="en"?"Confirm":"Confirmer"}
-                      </button>
-                      <button onClick={()=>replaceZoneResult(idx,{...r,status:"error",message:lang==="en"?"Cancelled":"Annulé"})}
-                        style={{padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.12)",borderRadius:10,color:"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==="en"?"Cancel":"Annuler"}
-                      </button>
-                    </div>
-                  </div>);
-                }
-
-                // ── Generic pending fallback ──
-                if(status==="pending_confirmation"){
-                  return(<div key={idx} style={{background:"#FFF7ED",borderRadius:12,padding:"12px 14px",border:"1px solid #FED7AA"}}>
-                    <div style={{fontSize:13,color:"#C2410C",fontWeight:600}}>{lang==="en"?"Needs confirmation":"Nécessite confirmation"}{taskData?.nom?` — ${taskData.nom}`:""}</div>
-                  </div>);
-                }
-
-                // ── Success: inventory_move ──
-                if(status==="success"&&intent==="inventory_move"){
-                  const moveEmpS=data?.emplacement||taskData?.emplacement||"";
-                  const movedItems=data?.items||[];
-                  const movedNames=movedItems.length>0?movedItems.map(i=>i.title||i.titre||i.nom).filter(Boolean).join(", "):(data?.nom||taskData?.nom||"");
-                  return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:16}}>📦</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#0F6E56",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{movedNames}</div>
-                      <div style={{fontSize:11,fontWeight:600,color:"#1D9E75",marginTop:2}}>→ {moveEmpS}</div>
-                    </div>
-                  </div>);
-                }
-
-                // ── Success: location_items (liste des articles dans un emplacement) ──
-                if(status==="success"&&intent==="location_items"){
-                  const locItems=data?.items||[];
-                  const locEmp=data?.emplacement||taskData?.emplacement||"";
-                  const locGrouped=(()=>{
-                    const map=new Map();
-                    for(const item of locItems){
-                      const key=`${(item.title||"").toLowerCase()}||${(item.marque||"").toLowerCase()}`;
-                      if(map.has(key)){const g=map.get(key);g.qty+=(item.quantite||1);g.totalVal+=(item.quantite||1)*(item.prix_achat||item.buy||0);}
-                      else map.set(key,{...item,qty:(item.quantite||1),totalVal:(item.quantite||1)*(item.prix_achat||item.buy||0)});
-                    }
-                    return [...map.values()];
-                  })();
-                  const totalQty=locGrouped.reduce((s,g)=>s+g.qty,0);
-                  return(<div key={idx} style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(0,0,0,0.08)"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>📦 {locEmp} — {totalQty} {lang==="en"?"item(s)":"article(s)"}</div>
-                    {locGrouped.length===0
-                      ?(<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic"}}>{lang==="en"?"No items found":"Aucun article trouvé"}</div>)
-                      :(<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          {locGrouped.map((item,i)=>{
-                            const ts2=item.type?getTypeStyle(item.type):null;
-                            return(<div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 0",borderBottom:i<locGrouped.length-1?"1px solid rgba(0,0,0,0.04)":"none"}}>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:13,fontWeight:700,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                  {item.title}{item.qty>1?<span style={{color:"#A3A9A6",fontWeight:600}}> ×{item.qty}</span>:null}
-                                </div>
-                                <div className="vr-pills" style={{marginTop:2}}>
-                                  {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{item.marque}</span>}
-                                  {ts2&&item.type&&item.type!=="Autre"&&<span style={{background:ts2.bg,color:ts2.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts2.border}`}}>{ts2.emoji} {typeLabel(item.type,lang)}</span>}
-                                </div>
-                              </div>
-                              <div style={{fontSize:13,fontWeight:700,color:"#F9A26C",flexShrink:0,textAlign:"right"}}>
-                                {fmt(item.totalVal)}
-                                {item.qty>1&&<div style={{fontSize:10,color:"#A3A9A6",fontWeight:600}}>{lang==="en"?"tied up":"immobilisés"}</div>}
-                              </div>
-                            </div>);
-                          })}
-                        </div>)
-                    }
-                  </div>);
-                }
-
-                // ── Success: inventory_location (où est rangé X ?) ──
-                if(status==="success"&&intent==="inventory_location"){
-                  const locTitle=data?.title||taskData?.nom||"";
-                  const locEmp=data?.emplacement||null;
-                  const locMarque=data?.marque||null;
-                  const locType=data?.type||null;
-                  const locDesc=data?.description||null;
-                  const locQte=data?.quantite||null;
-                  const tsLoc=locType?getTypeStyle(locType):null;
-                  return(<div key={idx} className="vr-profit-card" style={{textAlign:"left"}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>
-                      📦 {lang==="en"?"Stored here":"Rangé ici"}
-                    </div>
-                    <div style={{fontSize:15,fontWeight:800,color:"#0D0D0D",marginBottom:8}}>{locTitle}</div>
-                    {(locEmp||locMarque||tsLoc||locQte>1)&&(
-                      <div className="vr-pills">
-                        {locEmp&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {locEmp}</span>}
-                        {locMarque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{locMarque}</span>}
-                        {tsLoc&&locType&&locType!=="Autre"&&<span style={{background:tsLoc.bg,color:tsLoc.color,borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:`1px solid ${tsLoc.border}`}}>{tsLoc.emoji} {typeLabel(locType,lang)}</span>}
-                        {locQte>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 9px",fontSize:11,fontWeight:700,border:"1px solid rgba(249,162,108,0.3)"}}>×{locQte}</span>}
-                      </div>
-                    )}
-                    {locDesc&&<div style={{fontSize:12,color:"#6B7280",marginTop:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{locDesc}</div>}
-                    {!locEmp&&<div style={{fontSize:13,color:"#A3A9A6",fontStyle:"italic",marginTop:6}}>{lang==="en"?"No location saved 🙂":"Aucun emplacement enregistré 🙂"}</div>}
-                  </div>);
-                }
-
-                // ── Success: inventory actions ──
-                const nom=data?.title||data?.nom||taskData?.nom||"";
-                const prix=data?.buy??data?.prix_achat??taskData?.prix_achat;
-                const prixV=data?.sell??data?.prix_vente??taskData?.prix_vente;
-                const cat=data?.type||taskData?.categorie||taskData?.type;
-                const ts=cat?getTypeStyle(cat):null;
-                const marque=normalizeMarque(data?.marque||taskData?.marque||null)||null;
-                const desc=data?.description||taskData?.description||null;
-                const ICONS={inventory_add:"✅",inventory_sell:"💰",inventory_move:"📍",inventory_delete:"🗑️",inventory_update:"✏️",inventory_lot:"📦"};
-                const LABELS={
-                  inventory_add:lang==='fr'?"ajouté":"added",
-                  inventory_sell:lang==='fr'?"vendu":"sold",
-                  inventory_move:lang==='fr'?`déplacé → ${taskData?.emplacement||"?"}`:`moved → ${taskData?.emplacement||"?"}`,
-                  inventory_delete:lang==='fr'?"supprimé":"deleted",
-                  inventory_update:lang==='fr'?"modifié":"updated",
-                  inventory_lot:lang==='fr'?"lot ajouté":"lot added",
-                };
-                const icon=ICONS[intent]||"✓";
-                const label=LABELS[intent]||message||"";
-                const priceStr=intent==="inventory_sell"&&prixV?` · ${fmt(prixV)}`:prix?` · ${fmt(prix)}`:"";
-                return(<div key={idx} style={{background:"#E8F5F0",borderRadius:12,padding:"12px 14px",border:"1px solid #9FE1CB",display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:16}}>{icon}</span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0F6E56"}}>{nom} {label}{priceStr}</div>
-                    {desc&&<div style={{fontSize:11,color:"#1D9E75",fontWeight:500,marginTop:2,opacity:0.85}}>{desc}</div>}
-                    {(marque||(ts&&cat!=="Autre"))&&(
-                      <div className="vr-pills" style={{marginTop:4}}>
-                        {marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #9FE1CB"}}>{marque}</span>}
-                        {ts&&cat!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(cat,lang)}</span>}
-                      </div>
-                    )}
-                  </div>
-                </div>);
-              })}
-              <button onClick={resetVoiceFlow} style={{width:"100%",padding:"10px",background:"transparent",color:"#6B7280",border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                {lang==='fr'?"✗ Recommencer":"✗ Start over"}
-              </button>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {/* ⚠️ Ces cartes étaient dupliquées ici (~570 lignes) avec des styles
+                  divergents de celles du drawer. Elles montent désormais LE composant
+                  partagé VoiceResultCard — même rendu, même logique, une seule source
+                  de vérité (unification du 2026-07-14). */}
+              {voiceZoneResults.map((r,idx)=>(
+                <VoiceResultCard
+                  key={idx}
+                  result={r}
+                  idx={idx}
+                  allResults={voiceZoneResults}
+                  ctx={{
+                    lang, currency, items,
+                    actions:vaActions,
+                    replaceResult:replaceZoneResult,
+                    edits:zoneEdits,
+                    setEdits:setZoneEdits,
+                  }}
+                />
+              ))}
+              <Btn kind="ghost" onClick={resetVoiceFlow} style={{width:"100%"}}>
+                {lang==='fr'?"Recommencer":"Start over"}
+              </Btn>
             </div>
           ):voiceStep==="error"?(
             <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",padding:"8px 0"}}>
-              <div style={{fontSize:13,color:"#E53E3E",fontWeight:600,textAlign:"center"}}>{voiceError}</div>
-              <button onClick={resetVoiceFlow} style={{padding:"10px 20px",background:"#FEF2F2",color:"#E53E3E",border:"1px solid #FCA5A5",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              <div style={{fontSize:13,color:"#B0645A",fontWeight:600,textAlign:"center"}}>{voiceError}</div>
+              <button onClick={resetVoiceFlow} style={{padding:"10px 20px",background:"#F3E6E3",color:"#B0645A",border:"1px solid #D9A69C",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {lang==='fr'?"Réessayer":"Try again"}
               </button>
             </div>
           ):(
-            <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
-              {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7280",textAlign:"center",lineHeight:1.4}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
-              <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
-                placeholder={getRotatingExamples(currency,lang)[voicePlaceholderIdx]?.text}
-                rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
-              <div style={{width:"100%",fontSize:11,color:"#9CA3AF",lineHeight:1.5,padding:"0 2px"}}>
-                {t('stockIaHint')}
+            <div style={{display:"flex",flexDirection:"column"}}>
+              <div className="mode-toggle">
+                <button type="button" className={"mode-btn"+(voiceInputMode==="write"?" active":"")} onClick={()=>setVoiceInputMode("write")}>
+                  ✎ {lang==='fr'?"Écrire":"Write"}
+                </button>
+                <button type="button" className={"mode-btn"+(voiceInputMode==="speak"?" active":"")} onClick={()=>setVoiceInputMode("speak")}>
+                  🎙 {lang==='fr'?"Parler":"Speak"}
+                </button>
               </div>
-              {!voiceText&&(()=>{
-                const FIXED_EX=lang==='fr'?[
-                  {text:"Ajoute une veste Zara taille M à 8€",icon:"➕"},
-                  {text:"J'ai vendu mes Air Max 90 à 45€",icon:"💰"},
-                  {text:"Quels sont mes articles les plus rentables ?",icon:"📊"},
-                ]:[
-                  {text:"Add a Zara jacket size M for £8",icon:"➕"},
-                  {text:"I sold my Air Max 90 for £45",icon:"💰"},
-                  {text:"What are my most profitable items?",icon:"📊"},
-                ];
-                return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:4}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>
-                    {lang==='fr'?"Exemples":"Examples"}
-                  </div>
-                  {FIXED_EX.map((ex,i)=>(
-                    <button key={i} onClick={()=>setVoiceText(ex.text)}
-                      style={{fontSize:12,padding:"8px 12px",borderRadius:8,border:"1px solid #E5E7EB",background:"#F8FAFC",cursor:"pointer",color:"#374151",fontFamily:"inherit",lineHeight:1.4,textAlign:"left",display:"flex",gap:8,alignItems:"flex-start",width:"100%"}}>
-                      <span style={{flexShrink:0,opacity:0.7}}>{ex.icon}</span>
-                      <span>{ex.text}</span>
+
+              {voiceInputMode==="write"?(<>
+                {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7A75",textAlign:"center",lineHeight:1.4,marginBottom:8}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
+                <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
+                  placeholder={getRotatingExamples(currency,lang)[voicePlaceholderIdx]?.text}
+                  rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
+              </>):(
+                <div className="voice-state">
+                  <div className="voice-orb-wrap">
+                    <span className="pulse-ring"/>
+                    <span className="pulse-ring"/>
+                    <span className="pulse-ring"/>
+                    <button type="button"
+                      className={"voice-orb"+(vaStep==="thinking"?" thinking":"")}
+                      onClick={()=>fabTriggerRef?.current?.()}
+                      disabled={vaStep==="thinking"}
+                    >
+                      {vaStep==="thinking"?"⏳":"🎙"}
                     </button>
-                  ))}
-                </div>);
+                  </div>
+                  <div className="voice-hint">
+                    {vaStep==="recording"?(lang==='fr'?"Je t'écoute…":"Listening…")
+                      :vaStep==="thinking"?(lang==='fr'?"Je réfléchis…":"Thinking…")
+                      :(lang==='fr'?"Appuie et parle":"Tap and speak")}
+                  </div>
+                </div>
+              )}
+
+              <div className="hint-row">
+                <span className="hint-icon">✦</span>
+                <span className="hint-text">{lang==='fr'?"Plus tu détailles, plus l'IA est précise.":"The more you detail, the more accurate the AI is."}</span>
+              </div>
+
+              {voiceInputMode==="write"&&!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:12}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:12}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
+
+              {voiceInputMode==="write"&&(
+                <button className={"cta"+((!voiceText.trim()||voiceLoading)?"":" active")} onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}>
+                  ✦ {lang==='fr'?"Analyser":"Analyze"}
+                </button>
+              )}
+
+              <div className="examples-toggle" onClick={()=>setExamplesOpen(v=>!v)}>
+                {lang==='fr'?"Voir des exemples":"See examples"}
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{transform:examplesOpen?"rotate(180deg)":"rotate(0deg)"}}>
+                  <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </div>
+              {examplesOpen&&(()=>{
+                const FIXED_EX=lang==='fr'?[
+                  {text:"Veste Zara M, 8€",icon:"➕"},
+                  {text:"Vendu mes Air Max 90, 45€",icon:"💰"},
+                  {text:"Mes articles les plus rentables ?",icon:"📊"},
+                ]:[
+                  {text:"Zara jacket M, £8",icon:"➕"},
+                  {text:"Sold my Air Max 90, £45",icon:"💰"},
+                  {text:"My most profitable items?",icon:"📊"},
+                ];
+                return(
+                  <div className="examples-panel">
+                    {FIXED_EX.map((ex,i)=>(
+                      <button key={i} type="button" className="example-chip" onClick={()=>{setVoiceText(ex.text);setVoiceInputMode("write");setExamplesOpen(false);}}>
+                        <span>{ex.icon}</span>
+                        <span>{ex.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
               })()}
-              {!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:4}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:4}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
-              <button onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}
-                style={{width:"100%",padding:"12px",background:!voiceText.trim()||voiceLoading?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:!voiceText.trim()||voiceLoading?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:!voiceText.trim()||voiceLoading?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
-                {lang==='fr'?"✨ Analyser":"✨ Analyze"}
-              </button>
             </div>
           )}
           </>)}
           {/* ── Toggle formulaire manuel ── */}
           <button onClick={()=>setShowManualForm(v=>!v)}
-            style={{width:"100%",padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all 0.15s"}}
+            style={{width:"100%",padding:"10px 14px",background:"transparent",border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7A75",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all 0.15s"}}
             onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}
           >
@@ -698,10 +493,10 @@ const StockTab = memo(function StockTab({
           {showManualForm&&(<>
           {/* ── Mode toggle ── */}
           <div style={{display:"flex",background:"rgba(0,0,0,0.05)",borderRadius:99,padding:3}}>
-            <button onClick={()=>{setManualMode("single");setLotDistributed(null);}} style={{flex:1,padding:"7px 12px",borderRadius:99,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",background:manualMode==="single"?"#1D9E75":"transparent",color:manualMode==="single"?"#fff":"#6B7280",transition:"all 0.15s",fontFamily:"inherit"}}>
+            <button onClick={()=>{setManualMode("single");setLotDistributed(null);}} style={{flex:1,padding:"7px 12px",borderRadius:99,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",background:manualMode==="single"?"#1B6E62":"transparent",color:manualMode==="single"?"#fff":"#6B7A75",transition:"all 0.15s",fontFamily:"inherit"}}>
               {lang==='fr'?"Article seul":"Single item"}
             </button>
-            <button onClick={()=>setManualMode("lot")} style={{flex:1,padding:"7px 12px",borderRadius:99,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",background:manualMode==="lot"?"#1D9E75":"transparent",color:manualMode==="lot"?"#fff":"#6B7280",transition:"all 0.15s",fontFamily:"inherit"}}>
+            <button onClick={()=>setManualMode("lot")} style={{flex:1,padding:"7px 12px",borderRadius:99,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",background:manualMode==="lot"?"#1B6E62":"transparent",color:manualMode==="lot"?"#fff":"#6B7A75",transition:"all 0.15s",fontFamily:"inherit"}}>
               Lot
             </button>
           </div>
@@ -709,11 +504,11 @@ const StockTab = memo(function StockTab({
           {items.length===0?(
             <div style={{textAlign:"center",padding:"6px 0 10px",animation:"fadeIn 0.4s ease"}}>
               <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#0E7C5F,#34D399)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 12px",boxShadow:"0 4px 16px rgba(29,158,117,0.3)"}}>📦</div>
-              <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:6}}>{lang==='en'?'Add your first item':'Ajoute ton premier article'}</div>
+              <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{lang==='en'?'Add your first item':'Ajoute ton premier article'}</div>
               <div style={{fontSize:12,color:C.sub,lineHeight:1.6,maxWidth:220,margin:"0 auto"}}>{lang==='en'?'Name + buy price is enough to start tracking your profit.':'Nom + prix d\'achat suffit pour commencer à suivre tes marges.'}</div>
             </div>
           ):(
-            <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
+            <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
           )}
           <div>
             <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon="🏷️"/>
@@ -727,7 +522,7 @@ const StockTab = memo(function StockTab({
           </div>
           <div>
             <select value={iType} onChange={e=>setIType(e.target.value)}
-              style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
+              style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#10201B":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
               <option value="">{(iTitle||iMarque)?(lang==='fr'?`🤖 Détecté : ${detectType(iTitle,iMarque)}`:`🤖 Detected: ${typeLabel(detectType(iTitle,iMarque),lang)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
               <option value="Mode">👗 {typeLabel('Mode',lang)}</option>
               <option value="High-Tech">📱 High-Tech</option>
@@ -756,11 +551,11 @@ const StockTab = memo(function StockTab({
             {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Frais liés à l'achat : livraison, réparation...":"Purchase-side costs: shipping, repair..."}</div>}
           </div>
           <div>
-            <label onClick={()=>setIAlreadySold(v=>!v)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"12px 14px",background:iAlreadySold?"#E8F5F0":"#F9FAFB",borderRadius:12,border:`1.5px solid ${iAlreadySold?"#1D9E75":"rgba(0,0,0,0.1)"}`,transition:"all 0.2s",userSelect:"none"}}>
-              <div style={{width:36,height:20,borderRadius:10,background:iAlreadySold?"#1D9E75":"#D1D5DB",transition:"background 0.2s",position:"relative",flexShrink:0}}>
+            <label onClick={()=>setIAlreadySold(v=>!v)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"12px 14px",background:iAlreadySold?"#E7F3F0":"#F9FAFB",borderRadius:12,border:`1.5px solid ${iAlreadySold?"#1B6E62":"rgba(0,0,0,0.1)"}`,transition:"all 0.2s",userSelect:"none"}}>
+              <div style={{width:36,height:20,borderRadius:10,background:iAlreadySold?"#1B6E62":"#D1D5DB",transition:"background 0.2s",position:"relative",flexShrink:0}}>
                 <div style={{position:"absolute",top:2,left:iAlreadySold?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
               </div>
-              <span style={{fontSize:13,fontWeight:700,color:iAlreadySold?"#1D9E75":"#6B7280"}}>{lang==='fr'?'Déjà vendu ?':'Already sold?'}</span>
+              <span style={{fontSize:13,fontWeight:700,color:iAlreadySold?"#1B6E62":"#6B7A75"}}>{lang==='fr'?'Déjà vendu ?':'Already sold?'}</span>
             </label>
           </div>
           {iAlreadySold&&(
@@ -772,7 +567,7 @@ const StockTab = memo(function StockTab({
                 <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
                 <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={iRememberSellingFees} onChange={e=>setIRememberSellingFees(e.target.checked)} style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
-                  <span style={{fontSize:12,color:"#6B7280",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais de vente':'Remember selling fees'}</span>
+                  <span style={{fontSize:12,color:"#6B7A75",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais de vente':'Remember selling fees'}</span>
                 </label>
               </div>
             </>
@@ -808,7 +603,7 @@ const StockTab = memo(function StockTab({
             </div>
           )}
           {!isPremium&&items.length>=20&&!isNative
-            ? <PremiumBanner userEmail={user?.email} slotsRemaining={slotsRemaining} onOpenModal={openUpgradeModal}/>
+            ? <PremiumBanner userEmail={user?.email} onOpenModal={openUpgradeModal}/>
             : !isPremium&&items.length>=20&&isNative
             ? null
             : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
@@ -816,7 +611,7 @@ const StockTab = memo(function StockTab({
               </button>
           }
           {isNative&&!isPremium&&items.length>=20&&(
-            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} slotsRemaining={slotsRemaining}/>
+            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore}/>
           )}
           {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
             <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
@@ -855,7 +650,7 @@ const StockTab = memo(function StockTab({
                         onBlur={e=>e.currentTarget.style.borderColor="rgba(0,0,0,0.1)"}
                       />
                       {lotManualItems.length>2&&(
-                        <button onClick={()=>{setLotManualItems(prev=>prev.filter((_,idx)=>idx!==i));setLotDistributed(null);}} style={{background:"#FEF2F2",color:"#E53E3E",border:"1px solid #FCA5A5",borderRadius:8,padding:"8px 10px",fontSize:13,cursor:"pointer",fontFamily:"inherit",flexShrink:0,lineHeight:1}}>×</button>
+                        <button onClick={()=>{setLotManualItems(prev=>prev.filter((_,idx)=>idx!==i));setLotDistributed(null);}} style={{background:"#F3E6E3",color:"#B0645A",border:"1px solid #D9A69C",borderRadius:8,padding:"8px 10px",fontSize:13,cursor:"pointer",fontFamily:"inherit",flexShrink:0,lineHeight:1}}>×</button>
                       )}
                     </div>
                     {lotDistributed?.items?.[i]&&(
@@ -863,24 +658,24 @@ const StockTab = memo(function StockTab({
                         <input type="number" value={lotDistributed.items[i].prix_estime_lot} onChange={e=>{const v=parseFloat(e.target.value)||0;setLotDistributed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:64,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:16,fontFamily:"inherit",outline:"none",fontWeight:700,color:C.green}}/>
                         <span style={{fontSize:12,color:C.label}}>€</span>
                         {lotDistributed.items[i].categorie&&(()=>{const ts=getTypeStyle(lotDistributed.items[i].categorie);return <span style={{background:ts.bg,color:ts.color,border:`1px solid ${ts.border}`,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700}}>{ts.emoji} {typeLabel(lotDistributed.items[i].categorie,lang)}</span>;})()}
-                        {lotDistributed.items[i].marque&&<span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>{lotDistributed.items[i].marque}</span>}
+                        {lotDistributed.items[i].marque&&<span style={{fontSize:11,color:"#6B7A75",fontWeight:600}}>{lotDistributed.items[i].marque}</span>}
                       </div>
                     )}
                   </div>
                 ))}
               </div>
-              <button onClick={()=>{setLotManualItems(prev=>[...prev,{nom:""}]);setLotDistributed(null);}} style={{padding:"8px",background:"transparent",border:"1px dashed rgba(0,0,0,0.2)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7280",cursor:"pointer",fontFamily:"inherit",width:"100%",transition:"all 0.15s"}}
+              <button onClick={()=>{setLotManualItems(prev=>[...prev,{nom:""}]);setLotDistributed(null);}} style={{padding:"8px",background:"transparent",border:"1px dashed rgba(0,0,0,0.2)",borderRadius:10,fontSize:13,fontWeight:700,color:"#6B7A75",cursor:"pointer",fontFamily:"inherit",width:"100%",transition:"all 0.15s"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}
               >+ {lang==='fr'?"Ajouter un article":"Add item"}</button>
               <button onClick={handleLotDistribute} disabled={lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())}
-                style={{width:"100%",padding:"13px",background:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#E5E7EB":"linear-gradient(135deg,#4ECDC4,#1D9E75)",color:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#9CA3AF":"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"not-allowed":"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>
+                style={{width:"100%",padding:"14px",background:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#DCEEEA":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#8FB5AE":"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"not-allowed":"pointer",boxShadow:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"none":"0 10px 24px -8px rgba(47,158,144,0.28)",transition:"all 0.2s",fontFamily:"inherit"}}>
                 {lotDistributing?(lang==='fr'?"⏳ Répartition en cours...":"⏳ Distributing..."):(lang==='fr'?"✨ Répartir automatiquement":"✨ Auto distribute")}
               </button>
               {lotDistributed&&(
                 <>
-                  <div style={{fontSize:12,color:"#6B7280",textAlign:"center",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée — modifiable":"Estimated split — editable"}</div>
-                  <button onClick={addLotToInventory} style={{width:"100%",padding:"13px",background:"#1D9E75",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?"✓ Ajouter le lot à l'inventaire":"✓ Add lot to inventory"}</button>
+                  <div style={{fontSize:12,color:"#6B7A75",textAlign:"center",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée — modifiable":"Estimated split — editable"}</div>
+                  <button onClick={addLotToInventory} style={{width:"100%",padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)",fontFamily:"inherit"}}>{lang==='fr'?"✓ Ajouter le lot à l'inventaire":"✓ Add lot to inventory"}</button>
                 </>
               )}
             </div>
@@ -888,30 +683,29 @@ const StockTab = memo(function StockTab({
           </>)}
         </div>
 
-        <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
-
-          <VoiceZone lang={lang} currency={currency}/>
+        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
+          <style>{STOCK_CSS}</style>
 
           {/* ── Barre Import / Export ── */}
           {isPremium?(
             <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               <div style={{flex:1,fontSize:13,fontWeight:700,color:C.text}}>{t('outilsPremium')}</div>
               <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
-              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:C.tealLight,color:C.teal,border:`1px solid ${C.teal}44`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#C6EBE9"}
-                onMouseLeave={e=>e.currentTarget.style.background=C.tealLight}
+              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9044",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
+                onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
               >📥 {t('importer')}</button>
-              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#EDF2F7",color:C.sub,border:"1px solid rgba(0,0,0,0.1)",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#E2E8F0"}
-                onMouseLeave={e=>e.currentTarget.style.background="#EDF2F7"}
+              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
+                onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
               >📤 {t('exporter')}</button>
               {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
             </div>
           ):(
             <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});openUpgradeModal();}}}
-              style={{background:"linear-gradient(135deg,#1D9E7508,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
-              <div style={{fontSize:14,fontWeight:800,color:"#111827"}}>{t('importExcel')}</div>
-              <div style={{fontSize:11,color:"#6B7280",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
+              style={{background:"linear-gradient(135deg,#1B6E6208,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
+              <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>{t('importExcel')}</div>
+              <div style={{fontSize:11,color:"#6B7A75",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
               {!isNative&&<PremiumBanner userEmail={user?.email} compact/>}
             </div>
           )}
@@ -921,7 +715,7 @@ const StockTab = memo(function StockTab({
             <span style={{fontSize:14,flexShrink:0}}>🔍</span>
             <input value={search} onChange={e=>setSearch(e.target.value)}
               placeholder={lang==='fr'?"Rechercher...":"Search..."}
-              style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#0D0D0D"}}/>
+              style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#10201B"}}/>
             {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
           </div>
           {(()=>{
@@ -930,14 +724,13 @@ const StockTab = memo(function StockTab({
             // sans article en stock ne doit plus s'afficher, même si elle a des ventes passées.
             const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||stock.some(i=>i.type===tp));
             return presentTypes.length>1&&(
-              <div className="filter-row">
+              <div className="cat-filters">
                 {presentTypes.map(tp=>{
-                  const ts=tp==="Tous"?{bg:"#F0FDF4",color:"#1D9E75",border:"#6EE7B7",emoji:""}:getTypeStyle(tp);
                   const isActive=filterType===tp;
                   return(
-                    <button key={tp} onClick={()=>setFilterType(tp)}
-                      style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:`1px solid ${isActive?ts.color:ts.border}`,background:isActive?ts.color:ts.bg,color:isActive?"#fff":ts.color,whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s",fontFamily:"inherit"}}>
-                      {tp==="Tous"?(lang==='en'?'All':tp):`${ts.emoji} ${typeLabel(tp,lang)}`}
+                    <button key={tp} className={`fpill${isActive?" active":""}`} onClick={()=>setFilterType(tp)}>
+                      <span className="fdot" style={{background:tp==="Tous"?"linear-gradient(155deg,#2F9E90,#1B6E62)":getCatTileColor(tp)}}/>
+                      {tp==="Tous"?(lang==='en'?'All':'Tous'):typeLabel(tp,lang)}
                     </button>
                   );
                 })}
@@ -949,22 +742,22 @@ const StockTab = memo(function StockTab({
           {false&&<div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('vendus')}</div>
-                {window.innerWidth<768&&(()=>{const _b=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedSold(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedSold?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
+                <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('vendus')}</div>
+                {isMobile&&(()=>{const _b=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedSold(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedSold?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
               </div>
-              <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:soldQty??sold.length})}</div>
+              <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:soldQty??sold.length})}</div>
             </div>
             {(()=>{
               const _slAll=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
               const marquesFiltreesParType=["Toutes",..._slAll.filter(b=>b.toLowerCase()!=="sans marque"),..._slAll.filter(b=>b.toLowerCase()==="sans marque")];
               if(marquesFiltreesParType.length<=1) return null;
-              const _mob=window.innerWidth<768;
+              const _mob=isMobile;
               const _open=!_mob||pillsExpandedSold;
               return(
                 <div style={{marginBottom:12}}>
                   {!_open&&(
                     <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>setFilterMarqueSold("Toutes")} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarqueSold==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarqueSold==="Toutes"?"#fff":"#6B7280"}}>
+                      <button onClick={()=>setFilterMarqueSold("Toutes")} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarqueSold==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarqueSold==="Toutes"?"#fff":"#6B7A75"}}>
                         {filterMarqueSold==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(filterMarqueSold,lang)}
                       </button>
                     </div>
@@ -973,8 +766,8 @@ const StockTab = memo(function StockTab({
                     {marquesFiltreesParType.map(m=>(
                       <button key={m} onClick={()=>setFilterMarqueSold(m)}
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
-                          background:filterMarqueSold===m?"#1D9E75":"#F3F4F6",
-                          color:filterMarqueSold===m?"#fff":"#6B7280"}}>
+                          background:filterMarqueSold===m?"#1B6E62":"#F2F0E9",
+                          color:filterMarqueSold===m?"#fff":"#6B7A75"}}>
                         {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
                       </button>
                     ))}
@@ -984,7 +777,7 @@ const StockTab = memo(function StockTab({
             })()}
             {sold.length===0?(
               <div style={{position:"relative"}}>
-                <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
+                <span style={{position:"absolute",top:-6,right:0,background:"#F2F0E9",color:"#8A8578",fontSize:9,fontWeight:700,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E7E3D8"}}>
                   {lang==='en'?'Preview':'Exemple'}
                 </span>
                 <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.55,pointerEvents:"none",userSelect:"none"}}>
@@ -994,15 +787,15 @@ const StockTab = memo(function StockTab({
                       <div key={i} className="skeleton-item-row" style={{background:"#fff",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",borderLeft:`3px solid ${getCatBorder(sk.type)}`}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                            <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D"}}>{sk.title}</div>
-                            <span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #9FE1CB"}}>{sk.marque}</span>
+                            <div style={{fontWeight:700,fontSize:14,color:"#10201B"}}>{sk.title}</div>
+                            <span style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #BFE0D9"}}>{sk.marque}</span>
                             <span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(sk.type,lang)}</span>
                           </div>
                           <div style={{fontSize:11,color:"#A3A9A6",marginTop:2}}>{t('skeletonAchat')} {fmt(sk.buy)} → {t('skeletonVente')} {fmt(sk.sell)}</div>
                         </div>
                         <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
-                          <div style={{fontWeight:900,fontSize:18,color:getMargeColor(sk.marginPct)}}>+{fmt(sk.margin)}</div>
-                          <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{Math.round(sk.marginPct)}%</div>
+                          <div style={{fontWeight:700,fontSize:18,color:getMargeColor(sk.marginPct)}}>+{fmt(sk.margin)}</div>
+                          <div style={{fontSize:11,color:"#6B7A75",marginTop:1}}>{Math.round(sk.marginPct)}%</div>
                         </div>
                       </div>
                     );
@@ -1019,23 +812,23 @@ const StockTab = memo(function StockTab({
                     <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          {qty>1&&<span style={{background:"#1D9E75",color:"#fff",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>×{qty}</span>}
-                          {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
+                          <div style={{fontWeight:700,fontSize:14,color:"#10201B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                          {qty>1&&<span style={{background:"#1B6E62",color:"#fff",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700,flexShrink:0}}>×{qty}</span>}
+                          {item.marque&&<span style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #BFE0D9"}}>{marqueLabel(item.marque,lang)}</span>}
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
                         </div>
                         <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
                       </div>
                       <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
-                        <div style={{fontWeight:900,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
-                        <div style={{fontSize:11,color:"#6B7280",marginTop:1}}>{fmtp(item.marginPct)}</div>
+                        <div style={{fontWeight:700,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
+                        <div style={{fontSize:11,color:"#6B7A75",marginTop:1}}>{fmtp(item.marginPct)}</div>
                       </div>
                     </SwipeRow>
                   );
                 })}
                 {soldFiltre.length>10&&!soldShowAll&&(
-                  <button onClick={()=>setSoldShowAll(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
+                  <button onClick={()=>setSoldShowAll(true)} style={{width:"100%",padding:"10px",background:"#F2F0E9",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7A75",cursor:"pointer",marginTop:4}}>
                     {lang==='fr'?`Voir plus (${soldFiltre.length-10} articles)`:`Show more (${soldFiltre.length-10} items)`}
                   </button>
                 )}
@@ -1045,19 +838,19 @@ const StockTab = memo(function StockTab({
           </div>}
 
           {/* ── EN STOCK ── */}
-          <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#0D0D0D"}}>{t('enStockLabel')}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('enStockLabel')}</div>
                 {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
-                {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1D9E75":"#F3F4F6",color:filterMarque==="Toutes"?"#fff":"#6B7280"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7280",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
+                {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
               </div>
               {(()=>{
                 // Reflète le filtre actif (catégorie/marque/recherche) au lieu du total global :
                 // même formule que stockQty/stockVal (App.jsx) mais appliquée à stockFiltre.
                 const _fQty=stockFiltre.reduce((a,i)=>a+(i.quantite||1),0);
                 const _fVal=stockFiltre.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
-                return <div style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
+                return <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
               })()}
             </div>
             {(()=>{
@@ -1072,8 +865,8 @@ const StockTab = memo(function StockTab({
                     {marquesStockFiltreesParType.map(m=>(
                       <button key={m} onClick={()=>setFilterMarque(m)}
                         style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
-                          background:filterMarque===m?"#1D9E75":"#F3F4F6",
-                          color:filterMarque===m?"#fff":"#6B7280"}}>
+                          background:filterMarque===m?"#1B6E62":"#F2F0E9",
+                          color:filterMarque===m?"#fff":"#6B7A75"}}>
                         {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
                       </button>
                     ))}
@@ -1088,20 +881,20 @@ const StockTab = memo(function StockTab({
                 <div style={{background:"#F0FDFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(13,148,136,0.15)"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
                     <div style={{minWidth:0}}>
-                      <div style={{fontSize:10,fontWeight:800,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
                         {lang==='fr'?'APERÇU DE TON FUTUR STOCK':'PREVIEW OF YOUR FUTURE STOCK'}
                       </div>
-                      <div style={{fontSize:13,fontWeight:600,color:"#0D0D0D",lineHeight:1.3,fontFamily:"inherit"}}>
+                      <div style={{fontSize:13,fontWeight:600,color:"#10201B",lineHeight:1.3,fontFamily:"inherit"}}>
                         {lang==='fr'?"L'IA classe tout automatiquement":"AI classifies everything automatically"}
                       </div>
                     </div>
                     <div style={{display:"flex",gap:8,flexShrink:0}}>
                       <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-                        <div style={{fontSize:17,fontWeight:900,color:"#0D0D0D",lineHeight:1}}>{SKELETON_ITEMS.length}</div>
+                        <div style={{fontSize:17,fontWeight:700,color:"#10201B",lineHeight:1}}>{SKELETON_ITEMS.length}</div>
                         <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'articles':'items'}</div>
                       </div>
                       <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-                        <div style={{fontSize:17,fontWeight:900,color:"#F9A26C",lineHeight:1}}>{fmt(SKELETON_ITEMS.reduce((a,s)=>a+s.buy,0))}</div>
+                        <div style={{fontSize:17,fontWeight:700,color:"#F9A26C",lineHeight:1}}>{fmt(SKELETON_ITEMS.reduce((a,s)=>a+s.buy,0))}</div>
                         <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'investi':'invested'}</div>
                       </div>
                     </div>
@@ -1119,7 +912,7 @@ const StockTab = memo(function StockTab({
 
                 {/* 3. Liste enrichie — badge EXEMPLE conservé */}
                 <div style={{position:"relative"}}>
-                  <span style={{position:"absolute",top:-6,right:0,background:"#F3F4F6",color:"#9CA3AF",fontSize:9,fontWeight:800,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E5E7EB"}}>
+                  <span style={{position:"absolute",top:-6,right:0,background:"#F2F0E9",color:"#8A8578",fontSize:9,fontWeight:700,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E7E3D8"}}>
                     {lang==='en'?'Preview':'Exemple'}
                   </span>
                   <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.72,pointerEvents:"none",userSelect:"none"}}>
@@ -1130,19 +923,33 @@ const StockTab = memo(function StockTab({
                       {nom:"Sac Kelly Hermès",     marque:"Hermès",  categorie:"Luxe",       buy:125, quantite:1,  description:"Authentique, sangles légèrement usées, acheté à Dépôt-vente",                emplacement:"Vitrine luxe"},
                       {nom:"Jean Levis 501",       marque:"Levis",   categorie:"Mode",       buy:15,  quantite:1,  description:"Taille 32, bleu délavé, vintage 90s, acheté à Facebook Marketplace",          emplacement:"Étagère bureau"},
                     ].map((it,i)=>{
-                      const ts=getTypeStyle(it.categorie);
                       const {loc:_loc,rest:_desc}=parseLocDesc(it.description);
                       return(
-                        <div key={i} style={{background:"#fff",borderRadius:12,padding:"10px 14px",border:"1px solid rgba(0,0,0,0.06)",borderLeft:`3px solid ${ts.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                            <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.nom}</div>
-                            {it.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{it.marque}</span>}
-                            {it.categorie&&it.categorie!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(it.categorie,lang)}</span>}
-                            {it.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{it.quantite}</span>}
+                        <div key={i} className="row">
+                          <div className={`cat-tile ${catClass(it.categorie)}`}>{detectObjectIcon(it.nom,it.description,it.categorie)}</div>
+                          <div className="left">
+                            <div className="title-line">
+                              <span className="title">{it.nom}</span>
+                              {it.marque&&(<><span className="brand-dot"/><span className="brandname">{it.marque}</span></>)}
+                              {it.quantite>1&&<span className="qty-badge">×{it.quantite}</span>}
+                            </div>
+                            <div className="meta">
+                              {(_desc||_loc)&&(<><span className="hl">{_desc||_loc}</span>{" · "}</>)}
+                              {typeLabel(it.categorie,lang)}
+                            </div>
+                            {it.emplacement&&(
+                              <div className="icons">
+                                <div className="micon ic-loc">📦 {it.emplacement}</div>
+                              </div>
+                            )}
                           </div>
-                          {(_desc||_loc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_desc}{_desc&&_loc?" · ":""}{_loc&&`📍 ${_loc}`}</div>}
-                          {it.emplacement&&<span style={{display:"inline-block",marginTop:4,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {it.emplacement}</span>}
-                          <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(it.buy*(it.quantite||1))}</span></div>
+                          <div className="right">
+                            <div className="price">{fmt(it.buy*(it.quantite||1))}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
+                            <div className="btn-stack">
+                              <div className="btn-publier">{lang==='fr'?'Publier':'Publish'}</div>
+                              <div className="btn-vendre">{lang==='fr'?'Vendre':'Sell'}</div>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -1153,7 +960,7 @@ const StockTab = memo(function StockTab({
                 <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
                   <button
                     onClick={()=>scrollRef.current?.scrollTo({top:0,behavior:"smooth"})}
-                    style={{width:"100%",padding:"13px",background:"#0F6E56",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",boxShadow:"0 4px 14px rgba(15,110,86,0.3)"}}
+                    style={{width:"100%",padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
                     onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                     onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
                     onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
@@ -1162,7 +969,7 @@ const StockTab = memo(function StockTab({
                   </button>
                   <button
                     onClick={()=>{setShowManualForm(true);scrollRef.current?.scrollTo({top:0,behavior:"smooth"});}}
-                    style={{background:"none",border:"none",cursor:"pointer",fontSize:13,fontWeight:700,color:"#6B7280",padding:"4px",fontFamily:"inherit",textDecoration:"underline",textDecorationColor:"rgba(107,114,128,0.35)"}}
+                    style={{background:"none",border:"none",cursor:"pointer",fontSize:13,fontWeight:700,color:"#6B7A75",padding:"4px",fontFamily:"inherit",textDecoration:"underline",textDecorationColor:"rgba(107,114,128,0.35)"}}
                   >
                     + {lang==='fr'?'Ajouter manuellement':'Add manually'}
                   </button>
@@ -1172,42 +979,89 @@ const StockTab = memo(function StockTab({
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {stockVisible.map(item=>{
-                  const ts=getTypeStyle(item.type);
-                  const isExpanded=expandedStockId===item.id;
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
+                  const invested=item.buy*(item.quantite||1)+(item.purchaseCosts||0);
+                  const jobs=jobsByInventaire[item.id]||[];
+                  // ⚠️ dédoublonnage (2026-07-13) : un article REPUBLIÉ crée un
+                  // NOUVEAU job pour la même plateforme, sans clore l'ancien —
+                  // deux jobs "published" leboncoin coexistent donc en base pour
+                  // la même et unique annonce (même listing_url, vérifié). Sans
+                  // ce Set, la pastille Leboncoin s'affichait DEUX FOIS.
+                  const published=[...new Set(jobs.filter(j=>j.status==="published").map(j=>j.platform))];
+                  // "processing" = publication en cours côté extension : même
+                  // affichage « En cours… » que pending (pour le vendeur, c'est
+                  // le même moment ; la nuance est purement interne).
+                  const hasPending=jobs.some(j=>j.status==="pending"||j.status==="processing");
+                  // Job en attente sur une plateforme EN PAUSE (maintenance) :
+                  // badge dédié « reprise auto » plutôt que le simple « En cours ».
+                  const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
+                  const enLigne=published.length>0;
+                  const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
-                  <div key={item.id}>
-                    <SwipeRow onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`,borderBottomLeftRadius:isExpanded?0:12,borderBottomRightRadius:isExpanded?0:12}}>
-                      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setExpandedStockId(isExpanded?null:item.id)}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <div style={{fontWeight:700,fontSize:14,color:"#0D0D0D",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          {item.marque&&<span style={{background:"#E8F5F0",color:"#1D9E75",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #9FE1CB"}}>{marqueLabel(item.marque,lang)}</span>}
-                          {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
-                          {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
-                          {item.quantite>1&&<span style={{background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid rgba(249,162,108,0.3)"}}>×{item.quantite}</span>}
+                    // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
+                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
+                      {/* Tap sur la carte = éditer (l'icône crayon a été retirée le
+                          2026-07-14 : toute la ligne est cliquable, l'affordance
+                          était redondante et venait coller le prix). */}
+                      <div className="row in-swipe" onClick={openEdit}>
+                        <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
+                        <div className="left">
+                          <div className="title-line">
+                            <span className="title">{item.title}</span>
+                            {item.marque&&(<><span className="brand-dot"/><span className="brandname">{marqueLabel(item.marque,lang)}</span></>)}
+                            {(item.quantite||1)>1&&<span className="qty-badge">×{item.quantite}</span>}
+                          </div>
+                          <div className="meta">
+                            {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
+                            {typeLabel(item.type||"Autre",lang)}
+                          </div>
+                          {(enLigne||hasPending||item.plateforme||item.emplacement)&&(
+                            <div className="icons">
+                              {/* Statut explicite : les pastilles de plateformes disaient OÙ,
+                                  jamais QUE l'article est en ligne — d'où la confusion avec
+                                  un article jamais publié. */}
+                              {enLigne&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
+                              {/* LOGOS, pas les noms écrits : « Leboncoin » + « Beebs » en
+                                  toutes lettres débordaient la carte en largeur mobile, quel
+                                  que soit le CSS. Un logo carré de 18 px règle le problème à
+                                  la racine. title= garde le nom accessible au survol/lecteur
+                                  d'écran. */}
+                              {published.map(p=>(
+                                <span key={p} className="plogo" title={PLATFORM_LABELS[p]||p}>
+                                  <PlatformLogo platform={p} size={18}/>
+                                </span>
+                              ))}
+                              {hasPending&&!hasPausedPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
+                              {/* Maintenance (Phase B) : plateforme en pause,
+                                  ton neutre, rassurant, aucune action requise. */}
+                              {hasPausedPending&&<div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>⏸ {t("stockJobPausedBadge")}</div>}
+                              {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
+                              {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
+                            </div>
+                          )}
                         </div>
-                        {!isExpanded&&(_itemDesc||_itemLoc)&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{_itemDesc}{_itemDesc&&_itemLoc?" · ":""}{_itemLoc&&`📍 ${_itemLoc}`}</div>}
-                        {item.emplacement&&<span style={{display:"inline-block",marginTop:4,background:"#F3F4F6",color:"#6B7280",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,border:"1px solid #E5E7EB"}}>📦 {item.emplacement}</span>}
-                        <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Investi':'Invested'} <span style={{color:"#F9A26C",fontWeight:700}}>{fmt(item.buy*(item.quantite||1)+(item.purchaseCosts||0))}</span></div>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                        <button onClick={(e)=>{e.stopPropagation();markSold(item);}} style={{background:"#E8F5F0",color:"#1D9E75",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{lang==='fr'?'Vendre':'Sell'}</button>
-                        <span onClick={e=>{e.stopPropagation();setExpandedStockId(isExpanded?null:item.id);}} style={{color:"#D1D5DB",fontSize:16,cursor:"pointer",userSelect:"none",display:"inline-block",transition:"transform 0.2s ease",transform:isExpanded?"rotate(90deg)":"rotate(0deg)"}}>›</span>
+                        <div className="right">
+                          <div className="price">{fmt(invested)}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
+                          <div className="btn-stack">
+                            {/* Déjà en ligne : le bouton reste (on peut vouloir ajouter une
+                                plateforme) mais il ne dit plus « Publier » — il disait à
+                                l'utilisateur qu'il RESTAIT quelque chose à faire, alors que
+                                l'annonce était en ligne. */}
+                            {isPro&&(
+                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}}>
+                                {enLigne?(lang==='fr'?'Republier':'Republish'):(lang==='fr'?'Publier':'Publish')}
+                              </button>
+                            )}
+                            <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
+                              {lang==='fr'?'Vendre':'Sell'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </SwipeRow>
-                    <div style={{maxHeight:isExpanded?"200px":"0",overflow:"hidden",transition:"max-height 0.25s ease"}}>
-                      <div style={{padding:"10px 14px 12px",background:"#F9FAFB",borderLeft:`3px solid ${getCatBorder(item.type)}`,borderRight:"1px solid rgba(0,0,0,0.06)",borderBottom:"1px solid rgba(0,0,0,0.06)",borderRadius:"0 0 12px 12px"}}>
-                        {_itemDesc&&<div style={{fontSize:12,color:"#4B5563",lineHeight:1.5,marginBottom:(_itemLoc||item.emplacement||item.date)?4:0}}>{_itemDesc}</div>}
-                        {_itemLoc&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:(item.emplacement||item.date)?4:0}}>📍 {_itemLoc}</div>}
-                        {item.emplacement&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.4,marginBottom:item.date?4:0}}>📦 {item.emplacement}</div>}
-                        {item.date&&<div style={{fontSize:11,color:"#A3A9A6"}}>{lang==='fr'?'Ajouté le':'Added'} {new Date(item.date).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>}
-                        {!_itemDesc&&!_itemLoc&&!item.emplacement&&!item.date&&<div style={{fontSize:12,color:"#A3A9A6",fontStyle:"italic"}}>{lang==='fr'?'Aucun détail supplémentaire':'No additional details'}</div>}
-                      </div>
-                    </div>
-                  </div>
-                );})}
+                  );})}
                 {stockFiltre.length>10&&!showAllStock&&(
-                  <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F3F4F6",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7280",cursor:"pointer",marginTop:4}}>
+                  <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F2F0E9",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7A75",cursor:"pointer",marginTop:4}}>
                     {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                   </button>
                 )}
@@ -1217,6 +1071,42 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       </div>
+      {/* initialListing depuis la ligne inventaire : sans lui, platformSupport
+          calculait detectObjectIcon(undefined) → 📦 → 4 plateformes "unmapped",
+          chips grisées et CTA "Générer" mort (bug du 2026-07-11). Mêmes clés que
+          le lensResult du flux Lens ; les champs Lens absents (prix_vente_suggere,
+          taille_estimee, etat_estime…) restent undefined → les fallbacks invId du
+          stepper (prix DB…) s'appliquent comme avant. initialPhotos : photos déjà
+          connues de l'article (format inventaire.photos [{type,url}], mêmes
+          fallbacks que la relecture cross_post_jobs du stepper) — vide → étape
+          upload comme avant. */}
+      {publishItem&&(
+        <ListingPreviewScreen
+          inventaireId={publishItem.id}
+          userId={user.id}
+          initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
+            .map(p=>p?.url||p?.original||p?.enhanced||p?.bg_removed)
+            .filter(Boolean)}
+          initialListing={{
+            titre:       publishItem.titre       ?? null,
+            description: publishItem.description ?? null,
+            categorie:   publishItem.type        ?? null,
+            marque:      publishItem.marque      ?? null,
+            // Prix connu de la ligne inventaire (2026-07-13, job 3d194668) :
+            // pré-remplissage SYNCHRONE de la carte — le fallback DB du
+            // stepper existe mais arrive en async, et surtout il ne couvre
+            // pas ce que la ligne sait déjà. prix_vente est désormais tenu à
+            // jour à chaque publication (fix bd9a516).
+            prix_vente_suggere: publishItem.prix_vente ?? publishItem.prix_achat ?? null,
+          }}
+          onClose={()=>{setPublishItem(null);onStepperOpenChange?.(false);}}
+          supabase={supabase}
+          lang={lang}
+          isPremium={isPremium}
+          isPro={isPro}
+          onUpgrade={openUpgradeModal}
+        />
+      )}
     </>
   );
 });

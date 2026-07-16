@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#0F172A", sub: "#475569", label: "#94A3B8", border: "rgba(0,0,0,0.06)" };
 
@@ -63,8 +63,8 @@ const css = `
   }
 `;
 
-const Section = ({ icon, title, children }) => (
-  <div className="legal-card">
+const Section = ({ icon, title, id, children }) => (
+  <div className="legal-card" id={id} style={id ? { scrollMarginTop: 84 } : undefined}>
     <div className="legal-h2">
       <span>{icon}</span>
       {title}
@@ -80,6 +80,7 @@ const privacyTexts = {
     collectedTitle: "Données collectées :",
     collected: [
       "Adresse email (création de compte et authentification)",
+      "Identifiant de connexion tierce (Sign in with Apple / Google, optionnel)",
       "Contenu utilisateur (inventaire, ventes, descriptions)",
       "Statut d'abonnement (accès premium)",
       "Données techniques (logs de sécurité)",
@@ -101,6 +102,7 @@ const privacyTexts = {
     collectedTitle: "Data collected:",
     collected: [
       "Email address (account creation and authentication)",
+      "Third-party sign-in identifier (Sign in with Apple / Google, optional)",
       "User content (inventory, sales, descriptions)",
       "Subscription status (premium access)",
       "Technical data (security logs)",
@@ -118,11 +120,61 @@ const privacyTexts = {
   },
 };
 
+// Détail technique des droits de l'extension Chrome, aligné 1:1 sur
+// chrome-extension/manifest.json (permissions + host_permissions). Toute
+// modification du manifest doit être répercutée ici pour la soumission Web Store.
+const extensionPermissions = [
+  // permissions (API Chrome)
+  { key: 'storage', scope: 'permissions',
+    fr: "Stocke localement le jeton de session FillSell et les réglages de l'extension (chrome.storage.local). Rien n'est transmis à des tiers.",
+    en: "Stores the FillSell session token and the extension settings locally (chrome.storage.local). Nothing is shared with third parties." },
+  { key: 'alarms', scope: 'permissions',
+    fr: "Planifie une vérification périodique (~30 min) des annonces à publier, du statut des annonces en ligne et des retraits à effectuer, sans garder d'onglet ouvert en continu.",
+    en: "Schedules a periodic check (~30 min) for listings to publish, the status of live listings, and withdrawals to perform, without keeping a tab open continuously." },
+  { key: 'scripting', scope: 'permissions',
+    fr: "Injecte le script d'automatisation sur les pages de la plateforme concernée : remplissage du formulaire à la publication, lecture du statut de l'annonce, retrait après confirmation d'une vente.",
+    en: "Injects the automation script onto the marketplace's pages: form filling at publish time, listing status reading, withdrawal after a confirmed sale." },
+  // host_permissions (accès par domaine)
+  { key: 'https://*.vinted.fr/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur Vinted (domaine français).",
+    en: "Fill the listing form, check the status of published listings, and withdraw them after a confirmed sale, on Vinted (French domain)." },
+  { key: 'https://*.vinted.com/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur Vinted (domaine international .com).",
+    en: "Fill the listing form, check the status of published listings, and withdraw them after a confirmed sale, on Vinted (international .com domain)." },
+  { key: 'https://*.leboncoin.fr/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur Leboncoin.",
+    en: "Fill the listing form, check the status of published listings, and withdraw them after a confirmed sale, on Leboncoin." },
+  { key: 'https://*.ebay.fr/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur eBay (domaine français).",
+    en: "Fill the listing form, check the status of published listings, and withdraw them after a confirmed sale, on eBay (French domain)." },
+  { key: 'https://*.ebay.com/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur eBay (domaine international .com).",
+    en: "Fill the listing form, check the status of published listings, and withdraw them after a confirmed sale, on eBay (international .com domain)." },
+  { key: 'https://*.beebs.app/*', scope: 'host_permissions',
+    fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur Beebs.",
+    en: "Fill the listing form, check the status of published listings, and withdraw them after a confirmed sale, on Beebs." },
+  { key: 'https://fillsell.app/*', scope: 'host_permissions',
+    fr: "Lire la session d'authentification FillSell pour rattacher l'extension au compte de l'utilisateur.",
+    en: "Read the FillSell authentication session to link the extension to the user's account." },
+  { key: 'https://tojihnuawsoohlolangc.supabase.co/*', scope: 'host_permissions',
+    fr: "Appeler le backend FillSell (Supabase) pour récupérer les annonces à publier et remonter leur statut.",
+    en: "Call the FillSell backend (Supabase) to fetch the listings to publish and report their status." },
+];
+
 export default function Legal() {
   const nav = useNavigate();
   const [lang] = useState(() => localStorage.getItem('fs_lang') || 'fr');
   const p = privacyTexts[lang] || privacyTexts.fr;
   const en = lang === 'en';
+
+  // Le scroll natif du navigateur sur #ancre arrive avant le montage React :
+  // les liens du footer (/legal#mentions, /legal#confidentialite) le referaient
+  // à vide. On rejoue la cible une fois les sections rendues.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F5F9", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -152,12 +204,12 @@ export default function Legal() {
             {en ? 'Legal Notice & T&C' : 'Mentions légales & CGU'}
           </h1>
           <p style={{ fontSize: 13, color: C.label }}>
-            {en ? 'Last updated: April 2026' : 'Dernière mise à jour : avril 2026'}
+            {en ? 'Last updated: July 2026' : 'Dernière mise à jour : juillet 2026'}
           </p>
         </div>
 
         {/* 1. Éditeur / Publisher */}
-        <Section icon="🏢" title={en ? '1. Publisher' : '1. Éditeur du site'}>
+        <Section id="mentions" icon="🏢" title={en ? '1. Publisher' : '1. Éditeur du site'}>
           <p className="legal-p">
             {en
               ? <>The website <span className="legal-strong">FillSell</span> (accessible at <span className="legal-strong">fillsell.app</span>) is published by:</>
@@ -187,7 +239,7 @@ export default function Legal() {
         </Section>
 
         {/* 3. CGU / T&C */}
-        <Section icon="📋" title={en ? '3. Terms and Conditions (T&C)' : '3. Conditions générales d\'utilisation (CGU)'}>
+        <Section id="cgu" icon="📋" title={en ? '3. Terms and Conditions (T&C)' : '3. Conditions générales d\'utilisation (CGU)'}>
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.1 Purpose' : '3.1 Objet'}</span><br />
             {en
@@ -253,7 +305,7 @@ export default function Legal() {
         </Section>
 
         {/* 4. RGPD / GDPR */}
-        <Section icon="🔒" title={en ? '4. Personal Data Protection (GDPR)' : '4. Protection des données personnelles (RGPD)'}>
+        <Section id="confidentialite" icon="🔒" title={en ? '4. Personal Data Protection (GDPR)' : '4. Protection des données personnelles (RGPD)'}>
           <p className="legal-p">
             <span className="legal-strong">{en ? '4.1 Data Controller' : '4.1 Responsable du traitement'}</span><br />
             {en
@@ -264,6 +316,9 @@ export default function Legal() {
           <p className="legal-p"><span className="legal-strong">{en ? '4.2 Data Collected' : '4.2 Données collectées'}</span></p>
           <ul className="legal-ul">
             <li>{en ? 'Email address (account creation and authentication)' : 'Adresse email (création de compte et authentification)'}</li>
+            <li><span className="legal-strong">{en ? 'Third-party authentication data (optional):' : 'Données d\'authentification tierce (optionnel) :'}</span> {en
+              ? 'if you choose to sign in with Google or Apple, we receive from the provider your email address and, where available, your profile name, for the sole purposes of creating and authenticating your account. FillSell never receives your Google/Apple password and does not access any other data from those accounts (contacts, calendar, files…). You can revoke this access at any time from the security settings of your Google or Apple account.'
+              : 'si vous choisissez de vous connecter via Google ou Apple, nous recevons du fournisseur votre adresse email et, le cas échéant, votre nom de profil, aux seules fins de créer et d\'authentifier votre compte. FillSell ne reçoit jamais votre mot de passe Google/Apple et n\'accède à aucune autre donnée de ces comptes (contacts, agenda, fichiers…). Vous pouvez révoquer cet accès à tout moment depuis les réglages de sécurité de votre compte Google ou Apple.'}</li>
             <li>{en ? 'Sales and inventory data entered by the user' : "Données de ventes et d'inventaire saisies par l'utilisateur"}</li>
             <li>{en ? 'Payment data (managed exclusively by Stripe — not stored on our servers)' : 'Données de paiement (gérées exclusivement par Stripe — non stockées sur nos serveurs)'}</li>
             <li>{en ? 'Navigation data (technical logs, IP address)' : 'Données de navigation (logs techniques, adresse IP)'}</li>
@@ -349,6 +404,7 @@ export default function Legal() {
             <li><span className="legal-strong">Supabase</span> — {en ? 'data storage (EU infrastructure)' : 'stockage des données (infrastructure EU)'}</li>
             <li><span className="legal-strong">Vercel</span> — {en ? 'application hosting' : "hébergement de l'application"}</li>
             <li><span className="legal-strong">Stripe</span> — {en ? 'payment processing (PCI-DSS certified)' : 'traitement des paiements (certifié PCI-DSS)'}</li>
+            <li><span className="legal-strong">Google / Apple</span> — {en ? 'identity providers (optional sign-in with Google or Apple)' : 'fournisseurs d\'identité (connexion optionnelle via Google ou Apple)'}</li>
           </ul>
         </Section>
 
@@ -402,6 +458,76 @@ export default function Legal() {
           <p className="legal-p">{p.rights} <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a></p>
           <p className="legal-p">{p.noTrack}</p>
           <p className="legal-p" style={{ fontStyle: "italic", color: "#94A3B8", fontSize: 12.5 }}>{p.compliance}</p>
+        </Section>
+
+        {/* 8. Extension Chrome */}
+        <Section icon="🧩" title={en ? '8. Chrome Extension (cross-post)' : '8. Extension Chrome (cross-post)'}>
+          <p className="legal-p">
+            {en
+              ? <>FillSell offers an optional <span className="legal-strong">Chrome extension</span> that publishes the listings you generate in FillSell onto the marketplaces where you sell (Vinted, Leboncoin, eBay, Beebs), checks their status, and can withdraw them after you confirm a sale (see 8.4). Installing and using it is entirely optional.</>
+              : <>FillSell propose une <span className="legal-strong">extension Chrome</span> optionnelle qui publie les annonces générées dans FillSell sur les plateformes de vente (Vinted, Leboncoin, eBay, Beebs), vérifie leur statut et peut les retirer après confirmation d'une vente (voir 8.4). Son installation et son utilisation sont entièrement facultatives.</>}
+          </p>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.1 Access requested and purpose' : '8.1 Accès demandés et finalités'}</span></p>
+          <ul className="legal-ul">
+            <li><span className="legal-strong">Vinted, Leboncoin, eBay, Beebs :</span> {en ? 'the extension reads and fills the listing forms on these sites only, to publish on your behalf. It runs solely on these pages and does not read your general browsing.' : "l'extension lit et remplit les formulaires de dépôt d'annonce sur ces sites uniquement, afin de publier à votre place. Elle n'agit que sur ces pages et ne lit pas votre navigation générale."}</li>
+            <li><span className="legal-strong">fillsell.app :</span> {en ? 'reads your FillSell session so the extension can act on your account.' : "lit votre session FillSell pour que l'extension puisse agir sur votre compte."}</li>
+            <li><span className="legal-strong">Supabase :</span> {en ? 'communicates with the FillSell backend to fetch the listings to publish and report their status.' : "communique avec le backend FillSell pour récupérer les annonces à publier et remonter leur statut."}</li>
+            <li><span className="legal-strong">{en ? 'Local storage & scheduling:' : 'Stockage local & planification :'}</span> {en ? 'the extension stores your FillSell session and its settings locally in the browser, and periodically checks for new listings to publish.' : "l'extension stocke localement votre session FillSell et ses réglages dans le navigateur, et vérifie périodiquement s'il y a de nouvelles annonces à publier."}</li>
+          </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.2 Data handling' : '8.2 Traitement des données'}</span></p>
+          <ul className="legal-ul">
+            <li>{en ? 'The extension collects no additional personal data beyond what is already processed by the FillSell service.' : "L'extension ne collecte aucune donnée personnelle supplémentaire au-delà de ce qui est déjà traité par le service FillSell."}</li>
+            <li>{en ? 'Your marketplace credentials (Vinted, Leboncoin…) are never read or stored: the extension acts within the session you have already opened in your browser.' : "Vos identifiants des plateformes (Vinted, Leboncoin…) ne sont jamais lus ni stockés : l'extension agit dans la session que vous avez déjà ouverte dans votre navigateur."}</li>
+            <li>{en ? 'The only sensitive item in transit is your FillSell session token (Supabase), kept locally in the browser and used only to authenticate calls to the FillSell backend.' : "La seule donnée sensible en transit est votre jeton de session FillSell (Supabase), conservé localement dans le navigateur et utilisé uniquement pour authentifier les appels au backend FillSell."}</li>
+            <li>{en ? 'No data is sold or shared with third parties; the extension contains no tracking or advertising SDK.' : "Aucune donnée n'est vendue ni partagée avec des tiers ; l'extension ne contient aucun SDK de tracking ou de publicité."}</li>
+          </ul>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.3 Technical breakdown of permissions (Chrome Web Store)' : '8.3 Détail technique des permissions (Chrome Web Store)'}</span></p>
+          <p className="legal-p">
+            {en
+              ? <>Every key declared in the extension's <span className="legal-strong">manifest.json</span> is listed below with its exact justification:</>
+              : <>Chaque clé déclarée dans le <span className="legal-strong">manifest.json</span> de l'extension est listée ci-dessous avec sa justification exacte :</>}
+          </p>
+          <div style={{ overflowX: 'auto', margin: '8px 0 4px', border: `1px solid ${C.border}`, borderRadius: 12 }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520, fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', fontWeight: 800, color: C.text, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{en ? 'Key' : 'Clé'}</th>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', fontWeight: 800, color: C.text, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{en ? 'Section' : 'Section'}</th>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', fontWeight: 800, color: C.text, borderBottom: `1px solid ${C.border}` }}>{en ? 'Justification' : 'Justification'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extensionPermissions.map((row, i) => (
+                  <tr key={row.key} style={{ background: i % 2 ? '#FCFDFE' : '#fff' }}>
+                    <td style={{ padding: '9px 12px', color: C.text, borderBottom: `1px solid ${C.border}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{row.key}</td>
+                    <td style={{ padding: '9px 12px', color: C.sub, borderBottom: `1px solid ${C.border}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, whiteSpace: 'nowrap' }}>{row.scope}</td>
+                    <td style={{ padding: '9px 12px', color: C.sub, borderBottom: `1px solid ${C.border}`, lineHeight: 1.5 }}>{en ? row.en : row.fr}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="legal-p" style={{ fontStyle: 'italic', color: C.label, fontSize: 12.5, marginTop: 8 }}>
+            {en
+              ? 'The extension declares no other permission (no « tabs », « cookies », « history » or « <all_urls> » access).'
+              : "L'extension ne déclare aucune autre permission (pas d'accès « tabs », « cookies », « history » ni « <all_urls> »)."}
+          </p>
+
+          <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.4 Automated listing withdrawal' : '8.4 Retrait automatisé des annonces'}</span></p>
+          <p className="legal-p">
+            {en
+              ? <>When you confirm a sale in FillSell, the extension can automatically withdraw the corresponding listings published on the other platforms (Vinted, Leboncoin, eBay, Beebs), in order to prevent a double sale. This withdrawal is never triggered without your explicit confirmation: you validate the sale in the app; the extension then performs, in your browser and within your open sessions, the same deletion actions you would perform manually (including, where applicable, selecting a reason such as "sold on another platform"). The withdrawal is final as far as the platform is concerned: a withdrawn listing cannot be restored by FillSell. FillSell cannot be held liable for a withdrawal resulting from an erroneous sale confirmation on your part; check the price and the item before confirming.</>
+              : <>Lorsqu'une vente est confirmée <span className="legal-strong">par vous</span> dans FillSell, l'extension peut retirer automatiquement les annonces correspondantes publiées sur les autres plateformes (Vinted, Leboncoin, eBay, Beebs), afin d'éviter une double vente. Ce retrait n'est jamais déclenché sans votre confirmation explicite : c'est vous qui validez la vente dans l'application ; l'extension exécute alors, dans votre navigateur et dans vos sessions ouvertes, les mêmes actions de suppression que celles que vous feriez manuellement (y compris, le cas échéant, la sélection d'un motif tel que « vendu sur une autre plateforme »). Le retrait est définitif au sens de la plateforme concernée : une annonce retirée ne peut pas être restaurée par FillSell. FillSell ne saurait être tenu responsable d'un retrait consécutif à une confirmation de vente erronée de votre part ; vérifiez le prix et l'article avant de confirmer.</>}
+          </p>
+
+          <p className="legal-p" style={{ marginTop: 12 }}>
+            {en
+              ? <>You can remove the extension at any time from <span className="legal-strong">chrome://extensions</span>; this immediately stops all access described above. The rights set out in section 4 (GDPR) apply identically, at <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>.</>
+              : <>Vous pouvez retirer l'extension à tout moment depuis <span className="legal-strong">chrome://extensions</span> ; cela interrompt immédiatement tous les accès décrits ci-dessus. Les droits prévus à la section 4 (RGPD) s'appliquent à l'identique, à <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>.</>}
+          </p>
         </Section>
 
         {/* Contact */}

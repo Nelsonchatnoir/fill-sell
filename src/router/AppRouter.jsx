@@ -6,8 +6,10 @@ import Success from "../pages/Success";
 import Cancel from "../pages/Cancel";
 import Legal from "../pages/Legal";
 import ResetPassword from "../pages/ResetPassword";
+import AuthCallback from "../pages/AuthCallback";
 import BlogList from "../pages/BlogList";
 import BlogPost from "../pages/BlogPost";
+import ExtensionPage from "../pages/ExtensionPage";
 import App from "../App";
 
 // Bloque /login et / si déjà connecté
@@ -48,8 +50,12 @@ export default function AppRouter() {
         <Route path="/cancel" element={<Cancel />} />
         <Route path="/legal" element={<Legal />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        {/* Atterrissage OAuth web (Apple/Google) — pas de garde : la page gère
+            elle-même session présente / code à échanger / erreur provider. */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/blog" element={<BlogList />} />
         <Route path="/blog/:slug" element={<BlogPost />} />
+        <Route path="/extension" element={<RequireAuth><ExtensionPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -1,0 +1,746 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Détection de catégorie de l'app (≈120 règles regex + défauts par catégorie) :
+// UNIQUE source de vérité, importée telle quelle — jamais dupliquée ici.
+// shared.js est un module pur (aucun import, aucune API navigateur), le
+// bundler du CLI Supabase l'embarque au deploy comme n'importe quel import
+// relatif. Même signature que côté app : detectObjectIcon(titre, description, type).
+import { detectObjectIcon } from "../../../src/utils/shared.js";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+// ── Tailles ENFANT (2026-07-15, chantier « trou tailles bébé/enfant ») ──────
+// Les schémas vinted/beebs/ebay acceptent désormais, POUR LES ARTICLES
+// ENFANT uniquement, les valeurs canoniques du référentiel
+// src/utils/childSizes.js : "Prématuré" | "Naissance" | "N mois"
+// (1|3|6|9|12|18|24|36) | "N ans" (2→16, 18 LBC seulement) | "EU N"
+// (pointure 15→41). JAMAIS de nombre nu : "3" est ambigu (3 ans ? pointure ?
+// taille 34 tronquée ?) et c'est précisément ce qui rendait le fuzzy des
+// content scripts dangereux (un "2" matchait "2 ans"). La conversion vers le
+// libellé exact de chaque plateforme ("6-9 mois / 68 cm" Vinted, "6 mois
+// (60-66 cm)" Beebs…) se fait à l'insert du job (handlePublish), pas ici.
+const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
+  vinted: {
+    lang: "fr",
+    // "modele" et "stockage" ajoutés le 2026-07-13 (jobs f69e319c vinted /
+    // c7291bea ebay : échec HTTP 400 Vinted sur model + internal_memory_capacity
+    // et aspects eBay « Modèle »/« Capacité de stockage » vides). AUCUN schéma
+    // ne produisait ces clés pour le High-Tech — la donnée n'existait que dans
+    // le titre. La liste "stockage" est RELEVÉE sur le vrai formulaire Vinted
+    // (catégorie Téléphones portables, 2026-07-13, 20 options), pas inventée.
+    // Le simlockage Vinted n'est PAS généré ici (indéductible d'une photo) :
+    // DÉFAUT ASSUMÉ côté extension — vinted.js pose « Non » (= désimlocké,
+    // sémantique prouvée sur annonces réelles : 4/5 annonces disant
+    // « désimlocké » en description portent sim_lock="Non").
+    system: `Tu es un revendeur professionnel sur Vinted. Ton: conversationnel, chaleureux, quelques emojis 🌟✨, mentionne envoi rapide. Infère taille, matière, état et marque depuis le contexte article. Infère aussi le genre cible de l'article (rayon Vinted) depuis le type d'article, la coupe, la taille et la description: "Femme" (robe, jupe, escarpins, bikini, taille 36/38...), "Homme" (costume, coupe homme...), "Fille" ou "Garçon" (article enfant — Vinted n'a AUCUN rayon enfant unisexe : tranche TOUJOURS Fille/Garçon au moindre signal, couleurs/motifs/coupe/type d'article, jamais "Enfant"). Pour un article de mode (vêtement, chaussure, accessoire, montre, sac, bijou, lunettes), tranche TOUJOURS "Femme" ou "Homme" dès qu'il existe le MOINDRE signal: taille genrée, coupe, style, couleurs/motifs, rayon habituel de la marque ou du modèle (ex: une Casio F-91W se vend rayon Homme). "Mixte" est réservé à deux cas seulement: un article de mode strictement unisexe SANS AUCUN signal exploitable, ou un objet hors mode (électronique, maison, livres, jouets, sport...). Si un champ ne s'applique pas (ex: taille pour un objet), utilise null. Pour "taille", ne devine JAMAIS : donne une taille SEULEMENT si elle est lisible ou déductible du contexte article (étiquette, mention dans le titre ou la description) ; si aucune taille n'est déductible, null — jamais de "M" par défaut. Pour un article ENFANT (genre Enfant, ou bébé/fille/garçon), la taille utilise EXCLUSIVEMENT le référentiel enfant : "Prématuré", "Naissance", "N mois" (1, 3, 6, 9, 12, 18, 24 ou 36) ou "N ans" (2 à 16) pour un vêtement, "EU N" (15 à 41) pour une pointure — JAMAIS un nombre nu ("3" est invalide, écris "3 ans" ; "31" est invalide, écris "EU 31"), jamais une taille lettre adulte (XS-XXL) sur un enfant. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Pour "matiere", choisis EXACTEMENT une valeur de cette liste fermée (celle du formulaire Vinted, identique pour toutes les catégories) ou null — jamais de texte libre ni de valeur composée ("Résine et acier inoxydable" est invalide, choisis la matière DOMINANTE, ex: "Acier") ; null aussi si la matière n'est pas déductible du contexte (ne devine pas): Acier|Acrylique|Alpaga|Argent|Bambou|Bois|Cachemire|Caoutchouc|Carton|Coton|Cuir|Cuir synthétique|Cuir verni|Céramique|Daim|Denim|Dentelle|Duvet|Fausse fourrure|Feutre|Flanelle|Jute|Laine|Latex|Lin|Maille|Mohair|Mousse|Mousseline|Mérinos|Métal|Nylon|Néoprène|Or|Paille|Papier|Peluche|Pierre|Plastique|Polaire|Polyester|Porcelaine|Rotin|Satin|Sequin|Silicone|Soie|Toile|Tulle|Tweed|Velours|Velours côtelé|Verre|Viscose|Élasthanne. Pour "couleur", infère la ou les couleurs de l'article depuis le contexte (titre, description) et choisis 1 ou 2 valeurs EXACTES de cette liste fermée (celle du formulaire Vinted), la dominante en premier, séparées par " et " s'il y en a deux ("Marine et Blanc") — jamais de texte libre ("Bleu marine" est invalide, la liste dit "Marine") ; si aucune couleur n'est déductible du contexte, null (ne devine pas): Noir|Gris|Blanc|Crème|Beige|Abricot|Orange|Corail|Rouge|Bordeaux|Fuchsia|Rose|Violet|Lila|Bleu clair|Bleu|Marine|Turquoise|Menthe|Vert|Vert foncé|Kaki|Marron|Moutarde|Jaune|Argenté|Doré|Multicolore|Transparence. Pour "modele" (appareils électroniques uniquement : téléphone, tablette, console, appareil photo...), donne le nom commercial exact du modèle s'il est déductible du contexte, SANS répéter la marque en préfixe sauf si elle fait partie du nom commercial ("Redmi Note 10 Pro" et non "Xiaomi Redmi Note 10 Pro" ; "iPhone 13" reste "iPhone 13") — c'est le libellé que Vinted liste dans son menu Modèle ; null si non déductible ou hors électronique (ne devine pas). Pour "stockage" (capacité de stockage interne d'un appareil électronique), choisis EXACTEMENT une valeur de cette liste fermée (celle du formulaire Vinted) ou null — convertis les unités anglaises ("128GB" → "128 Go") ; null si non déductible ou sans objet: 256 Mo|512 Mo|1 Go|2 Go|3 Go|4 Go|6 Go|8 Go|10 Go|12 Go|16 Go|32 Go|64 Go|128 Go|256 Go|512 Go|1 To|2 To|3 To|4 To. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|<enfant: Prématuré|Naissance|N mois|N ans|EU N>|null","matiere":"<valeur de la liste>|null","couleur":"<1 ou 2 valeurs de la liste séparées par ' et '>|null","etat":"Très bon état|Bon état|Satisfaisant|Neuf avec étiquette|Neuf sans étiquette","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Mixte","modele":"...ou null","stockage":"<valeur de la liste>|null"}}`,
+  },
+  leboncoin: {
+    lang: "fr",
+    // "marque" et "matiere" ajoutés le 2026-07-09 : le handler leboncoin.js les
+    // remplit depuis toujours (label[for$="_brand"] / [for$="_material"]) mais
+    // NI ce prompt NI la config du stepper LBC ne les produisaient — donc
+    // mergeFieldsWithLens les jetait, et les deux critères restaient vides.
+    // Non bloquant jusqu'ici uniquement parce que Leboncoin les pré-remplit
+    // parfois depuis le titre (observé sur Casio et iPhone) : un titre moins
+    // explicite ne bénéficie pas de ce filet.
+    // ⚠️ "matiere" reste en TEXTE LIBRE, sans liste fermée : contrairement à
+    // Vinted (liste globale), la liste des matières Leboncoin est PAR
+    // CATÉGORIE (19 options sur Montres & Bijoux, cf.
+    // docs/leboncoin-form-survey.md) et n'a jamais été relevée ailleurs. Le
+    // handler rapproche la valeur par cascade fuzzy et remonte un warning si
+    // rien ne matche — on ne fige pas une liste qu'on n'a pas crawlée.
+    // Taille Leboncoin — CORRECTIF 2026-07-15 : l'affirmation du 2026-07-11
+    // (« le formulaire Leboncoin n'a pas de champ Taille structuré ») est
+    // FAUSSE. Relevé DOM réel (docs/sizes-baby-child-raw.txt) : la catégorie
+    // Famille > Vêtements bébé expose un champ Taille structuré
+    // (« Prématuré / 44 cm » → « 36 mois / 98 cm ») et Mode > Vêtements
+    // expose Univers* + Taille dont la grille DÉPEND de l'Univers
+    // (Enfant/Fille/Garçon → « 3 ans / 98 cm » … « 18 ans / 182 cm + » ;
+    // univers adulte → grille adulte). La consigne « taille dans la
+    // description » ci-dessous reste VOLONTAIREMENT : la taille en clair
+    // aide l'acheteur quel que soit le champ, et le remplissage du champ
+    // structuré relève de leboncoin.js (chantier tailles enfant), pas de ce
+    // prompt.
+    system: `Tu es un revendeur professionnel sur Leboncoin. Ton: direct, factuel, prix ferme ou à débattre, modes d'envoi ou remise en main propre. Infère l'état, le format colis, la marque et la matière depuis le contexte article. Si l'article est un vêtement, une chaussure ou un accessoire porté (où une taille a du sens) ET SEULEMENT si sa taille est réellement lisible ou déductible du contexte article (étiquette, mention dans le titre ou la description), mentionne-la EXPLICITEMENT dans le texte de la description (ex: "Taille M", "Pointure 38") — Leboncoin n'a pas de champ Taille, la description est le seul endroit où l'acheteur peut la lire. Si aucune taille ne figure dans le contexte, n'écris strictement RIEN sur la taille : n'invente JAMAIS une taille ("Taille M" sans source dans le contexte est une erreur grave), pas de placeholder non plus. Aucune mention de taille non plus si elle ne s'applique pas à l'objet (électronique, déco, jouet...). Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Leboncoin — "État neuf" et "État satisfaisant", jamais "Neuf" ni "État correct"). Pour "univers" (rayon Mode/accessoires), choisis la cible de l'article: pour TOUT article de mode (vêtement, chaussure, accessoire, montre, sac, bijou), réponds TOUJOURS une valeur — jamais null — en tranchant Femme/Homme dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle) pour un article adulte, "Fille"/"Garçon" pour un article enfant genré ("Enfant" si vraiment unisexe — ces trois univers existent réellement sur le formulaire Leboncoin et débloquent la grille de tailles enfant), et "Mixte" (rayon accepté par Leboncoin) seulement si aucun signal n'existe. null est réservé aux objets hors mode. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Pour "matiere", donne la matière DOMINANTE de l'article en un seul mot courant (ex: "Acier", "Cuir", "Coton", "Plastique", "Bois") — jamais de valeur composée ("Résine et acier" est invalide, choisis la dominante) ; null si la matière ne s'applique pas ou n'est pas déductible. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"etat":"État neuf|Très bon état|Bon état|État satisfaisant|Pour pièces","format_colis":"Lettre|Petit colis|Moyen colis|Grand colis|Très grand colis|Non défini","univers":"Femme|Homme|Enfant|Fille|Garçon|Mixte|null","marque":"...ou null","matiere":"...ou null"}}`,
+  },
+  beebs: {
+    lang: "fr",
+    // "matiere" et "couleur" ajoutés le 2026-07-09 : beebs.js les remplit depuis
+    // toujours (selectDropdownValue "Matière" / "Couleur") mais rien ne les
+    // produisait. Le dry-run réel sur « Figurines » montre "Matière" affichée
+    // SANS le suffixe "(facultatif)" — seul marqueur d'obligation côté Beebs :
+    // le champ est donc potentiellement bloquant sur cette catégorie.
+    // "etat" : liste FERMÉE alignée sur les libellés réels le 2026-07-10.
+    // Beebs écrit ses états AVEC une virgule ("Neuf, sans étiquette") et son
+    // plus bas niveau est "État moyen" — ni "Satisfaisant" ni "État correct"
+    // n'existent. Deux relevés concordants : rayon Mode (campagne 08/07) et
+    // catégorie Figurines (09/07). L'ancienne liste ("Neuf|Très bon état|Bon
+    // état") ne survivait que par l'étage fuzzy de la cascade du handler.
+    // "age" : liste FERMÉE depuis le 2026-07-09, relevée sur la vraie page
+    // (catégorie Figurines). La première version demandait du texte libre :
+    // l'IA a produit "10 ans et plus", qui ne matche aucune option Beebs (les
+    // libellés sont des tranches : "8 ans - 12 ans", "16 ans et +"…) et le
+    // champ, OBLIGATOIRE là-bas, restait vide.
+    // Aucune liste fermée pour matiere/couleur : les listes Beebs n'ont pas été
+    // crawlées, le handler matche en fuzzy.
+    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état, marque, matière et couleur depuis le contexte. Pour "genre" (rayon Beebs, il résout la catégorie): pour TOUT article de mode (vêtement, chaussure, accessoire), réponds TOUJOURS une valeur en tranchant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle): "Femme" ou "Homme" pour un article adulte, "Fille", "Garçon" ou "Bébé" pour un article enfant. Beebs n'a NI rayon Enfant NI rayon Mixte: ne réponds jamais ces valeurs — pour un article enfant unisexe choisis "Bébé" si taille < 3 ans, sinon tranche Fille/Garçon au moindre signal, et null en dernier recours. null aussi pour les objets hors mode. Pour "matiere", donne la matière DOMINANTE en un seul mot courant (ex: "Plastique", "Coton", "Bois", "Métal"), jamais de valeur composée; null si non déductible. Pour "couleur", donne la couleur DOMINANTE en un seul mot courant (ex: "Noir", "Rouge"), jamais deux couleurs; null si non déductible. Pour "age" (tranche d'âge, champ OBLIGATOIRE sur les jouets et figurines), choisis EXACTEMENT une valeur de cette liste fermée (libellés réels du formulaire Beebs) — jamais de texte libre ("10 ans et plus" est invalide, la liste dit "8 ans - 12 ans"): 0-6 mois|6-12 mois|12-24 mois|2 ans - 3 ans|3 ans - 4 ans|4 ans - 6 ans|6 ans - 8 ans|8 ans - 12 ans|12 ans - 16 ans|16 ans et +. Si l'article n'a pas d'âge cible (vêtement adulte, accessoire, objet du quotidien), utilise null. Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Beebs, avec la virgule — "Satisfaisant" et "État correct" n'existent PAS chez Beebs, le plus bas est "État moyen"). Pour "taille", ne devine JAMAIS : donne une taille SEULEMENT si elle est lisible ou déductible du contexte ; si aucune taille n'est déductible, null — jamais de "M" par défaut. Pour un article ENFANT (genre Fille/Garçon/Bébé), la taille utilise EXCLUSIVEMENT le référentiel enfant : "Prématuré", "Naissance", "N mois" (1, 3, 6, 9, 12, 18, 24 ou 36) ou "N ans" (2 à 16) pour un vêtement, "EU N" (15 à 41) pour une pointure — JAMAIS un nombre nu ("3" est invalide, écris "3 ans" ; "31" est invalide, écris "EU 31"), jamais une taille lettre adulte (XS-XXL) sur un enfant. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Si un champ ne s'applique pas, utilise null. Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|<enfant: Prématuré|Naissance|N mois|N ans|EU N>|null","etat":"Neuf, avec étiquette|Neuf, sans étiquette|Très bon état|Bon état|État moyen","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|null","matiere":"...ou null","couleur":"...ou null","age":"<valeur de la liste>|null"}}`,
+  },
+  ebay: {
+    lang: "en",
+    // Clés et valeurs platform_fields en FRANÇAIS : ce sont elles que lisent le
+    // stepper (getPlatformFieldsConfig.ebay : etat/taille/genre/marque/matiere/
+    // couleur) et l'extension (ebay.js). L'ancien schéma anglophone
+    // (size/material/condition/brand) n'était lu par personne depuis le passage
+    // du stepper aux clés FR → mergeFieldsWithLens jetait TOUT, genre compris,
+    // et ebayGenreRequired bloquait systématiquement la résolution de catégorie
+    // (bug du 2026-07-09). "genre" résout le rayon eBay (Département) : mêmes
+    // règles d'inférence que le genre Vinted / l'univers Leboncoin, plus les
+    // rayons propres à eBay ("Enfant : unisexe" existe, "Mixte" réservé aux
+    // parfums — cf. ebayCategories.js).
+    system: `You are a professional reseller writing eBay listings in English. Tone: structured, technical. Infer size, material, condition, color and brand from the item context. For "genre" (the eBay department, it resolves the listing category): for ANY fashion item (clothing, shoes, accessories, watches, bags, jewelry), ALWAYS return a value — decide "Femme" or "Homme" for adult items on the slightest signal (gendered size, cut, style, the model's usual department), "Fille"/"Garçon"/"Bébé" for kids' items, "Enfant" only for genuinely unisex kids' items, "Mixte" ONLY for unisex perfumes. null is reserved for non-fashion items. Use null if a field doesn't apply (e.g. size for a non-clothing item). NEVER guess the size: return a value for "taille" ONLY if the size is stated or clearly deducible from the item context (label, title or description mention); otherwise return null — never default to "M". For a KIDS item (genre Fille/Garçon/Bébé/Enfant), "taille" must use the child referential ONLY, with FRENCH labels ("6 mois", never "6 months"): "Prématuré", "Naissance", "N mois" (1, 3, 6, 9, 12, 18, 24 or 36) or "N ans" (2 to 16) for garments, "EU N" (15 to 41) for shoe sizes — NEVER a bare number ("3" is invalid, write "3 ans"; "31" is invalid, write "EU 31"), never an adult letter size (XS-XXL) on a kids item. Same rule for "matiere", "couleur" and "marque": return null when the value is not deducible from the context (do not guess). For "modele" (electronics only: phone, tablet, console, camera...), give the exact commercial model name when deducible, WITHOUT the brand as a prefix unless it is part of the commercial name ("Redmi Note 10 Pro", not "Xiaomi Redmi Note 10 Pro"; "iPhone 13" stays "iPhone 13") — this is the label eBay's "Modèle" aspect expects; null when not deducible or not an electronic device (do not guess). For "stockage" (internal storage capacity of an electronic device), give the capacity with the French unit exactly as ebay.fr displays it ("128 Go", "512 Go", "1 To" — convert "128GB" to "128 Go"); null when not deducible or not applicable. The platform_fields values must use the exact French labels below (the listing title and description stay in English). Return ONLY valid JSON: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|<enfant: Prématuré|Naissance|N mois|N ans|EU N>|null","matiere":"...ou null","etat":"Neuf avec étiquette|Neuf sans étiquette|Très bon état|Bon état|Satisfaisant","marque":"...ou null","couleur":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|Enfant|Mixte|null","modele":"...ou null","stockage":"...ou null"}}`,
+  },
+  vestiaire: {
+    lang: "fr",
+    system: `Tu es un vendeur sur Vestiaire Collective. Ton: luxueux, précis, descriptif matières et état, style magazine, pas d'emojis. Infère taille, matière, état et marque depuis le contexte — sans JAMAIS deviner : une taille, matière ou marque non lisible et non déductible du contexte = null (jamais de "M" par défaut). Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|null","matiere":"...ou null","etat":"Neuf avec étiquette|Neuf sans étiquette|Excellent état|Très bon état|Bon état","marque":"...ou null"}}`,
+  },
+};
+
+// ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
+// Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
+// uniquement — les codes photo par catégorie n'entrent pas en jeu à ce niveau).
+// Formulé "item" et non "garment" : il s'applique à toutes les catégories.
+const OPENAI_IMG_PROMPT_LIGHT = `Lightly enhance this product photo: adjust white balance and brightness slightly so the item reads clearly, and correct any obvious color cast. Keep everything else exactly as in the original photo — pose, framing, angle, background, and every detail of the item.
+
+Strict constraints — do NOT change:
+- The pose, framing, angle, or camera perspective
+- The background
+- The item's shape, size, color, pattern, material texture, or any detail (logos, stitching, prints, labels, signs of wear)
+- Do not smooth, iron, or flatten anything; do not remove wrinkles, creases, or defects
+- Do not add, remove, or invent any element
+
+This is a fast, subtle brightness/white-balance correction only — nothing else should visibly change.`;
+
+// Règle de réalisme commune à TOUTES les familles du niveau "ia_advanced".
+// La photo doit montrer le VRAI article : améliorer la présentation (lumière,
+// netteté, fond, fidélité couleurs), jamais l'objet lui-même. Un article
+// "parfait" qui ne ressemble pas à ce que l'acheteur reçoit = litige et
+// non-conformité aux règles des plateformes.
+const REALISM_RULES = `Strict realism constraints — non-negotiable:
+- The result must show the exact same item, exactly as it is: same shape, proportions, colors, pattern, material texture, and every detail (logos, stitching, prints, labels, hardware).
+- Never remove or hide defects, stains, scratches, pilling, or signs of wear — the buyer must see the item's true condition.
+- Never artificially smooth, iron, flatten, or "perfect" the item. Natural folds, light creases, and the real drape of the material must stay visible — a real, slightly lived-in look is correct and expected.
+- Keep colors strictly faithful to the original photo — no saturation or tone shift that changes the perceived color.
+- Do not add, remove, or invent any element on or around the item.
+- Do not change the pose, framing, angle, or camera perspective.
+Only the PRESENTATION may improve: lighting, sharpness, white balance, and a cleaner, less distracting background (kept recognizable as the same location).`;
+
+// Familles de retouche "ia_advanced" : un prompt spécialisé par famille de
+// produit, mappé depuis l'icône retournée par detectObjectIcon (les mêmes
+// icônes que les tuiles Stock/Ventes et le mapping catalogue des plateformes).
+// Chaque prompt = intro spécialisée (codes photo de la famille) + REALISM_RULES.
+// Pour ajuster une famille : modifier son intro ; pour déplacer une catégorie :
+// déplacer son icône d'une liste à l'autre. Icône absente de toute liste →
+// famille "default".
+const RETOUCH_FAMILIES: Array<{ family: string; icons: string[]; intro: string }> = [
+  {
+    family: "vetements",
+    icons: ["👗","🥼","🧥","🎀","🤵","👔","🧶","👕","🩳","👖","🩲","🧦","👙","🧣","🧤","🧢","🎭"],
+    // Curseur tissu (2026-07-10) : le 1er recalibrage anti-"repassage vapeur"
+    // laissait les faux plis de stockage (vêtement resté plié en boule) — trop
+    // loin dans l'autre sens. Cible = "présenté pour la vente" : faux plis de
+    // pliage atténués (SEULE exception, explicitement scellée, à la règle
+    // anti-lissage de REALISM_RULES ci-dessous), tombé naturel et micro-plis
+    // de la matière conservés, jamais de surface parfaitement lisse.
+    intro: `Enhance this clothing product photo for a resale listing. Apply soft, natural, window-like lighting (even, no harsh shadows), improve sharpness and color accuracy, and tidy a cluttered background so the garment stands out.
+
+Fabric presentation — aim for "prepared for sale", the way a careful seller would lightly steam and neatly arrange a garment before shooting it: soften the pronounced storage and folding creases (sharp crease lines left by a garment stored folded or crumpled), so it looks cared-for and presentable. This softening of storage creases is the ONLY exception to the no-smoothing rule below. Always preserve the fabric's natural drape and the normal micro-folds of the material: never press it flat, never produce a perfectly smooth, flat, wrinkle-free surface — real fabric always keeps a slight relief, and a fully ironed-looking result reads as fake. The target is "clean and presentable", never "brand-new in shrink-wrap".`,
+  },
+  {
+    family: "chaussures",
+    icons: ["👟","👢","👠","🩴","🥿"],
+    intro: `Enhance this footwear product photo for a resale listing. Apply clean, even lighting that reveals the shoe's materials and stitching, improve sharpness, and neutralize a distracting background so the pair reads clearly (keep the original angle — do not recompose into a different view). Leather grain, fabric texture, and creasing from normal wear must stay exactly as they are.`,
+  },
+  {
+    family: "sacs",
+    icons: ["👜","👛","🧳","🎒","👝","🎽"],
+    intro: `Enhance this bag / leather-goods product photo for a resale listing. Apply soft, even lighting that shows the material's true grain and the hardware, improve sharpness, and clean up a distracting background. The bag's actual shape and structure as photographed must be preserved — do not inflate, restuff, or straighten it, and keep handles, straps, and hardware exactly as they are.`,
+  },
+  {
+    family: "accessoires",
+    icons: ["⌚","💍","🕶️","🪢","☂️","🗝️","💎"],
+    intro: `Enhance this accessory / jewelry product photo for a resale listing. Favor crisp, sharp detail on the item (dial, stones, engravings, textures), with clean neutral lighting and a quieter background so the small item reads clearly. Reflections may be softened slightly but scratches and real wear must remain visible.`,
+  },
+  {
+    family: "hightech",
+    icons: ["📱","💻","🖥️","📲","🎧","🔊","🎮","📺","📷","🛸","🖨️","⌨️","🖱️","🔌","📡","📇","⏱️","🎤","📟"],
+    intro: `Enhance this electronics product photo for a resale listing. Apply clean, neutral, even lighting (no color cast on screens or plastics), improve sharpness, and simplify a cluttered background toward a tidy, uncluttered look. Screen content, stickers, port wear, and surface scratches must remain exactly as photographed.`,
+  },
+  {
+    family: "maison",
+    icons: ["🛋️","🪑","🛏️","🛌","💡","🪞","🕯️","🖼️","🪴","🏺","🍽️","🍳","🪟","🪶","🟫","📜","🕰️","🎄","🖋️","☕","🫖","🧹","🧊","♨️","🥣","🍞","🍟","💇","🌀","🌡️","🧺","🧼","🪒","🪛","🪚","🔨","🪜","🖌️","🔩","📏","🔧","🌱","✂️","🔥","⛱️","🧵","🐕","🏠","⚡","🌿"],
+    intro: `Enhance this home / furniture / appliance product photo for a resale listing. Apply warm, natural interior lighting, improve sharpness and color accuracy, and tidy the surroundings so the item is the clear subject (keep the room recognizable — just cleaner and less distracting). Wood grain, upholstery texture, and marks from normal use must remain exactly as they are.`,
+  },
+  {
+    family: "livres_medias",
+    icons: ["📚","📖","📰","💿","📀","💽","🃏","📮","🪙","🏆"],
+    intro: `Enhance this book / media / collectible product photo for a resale listing. Present the cover or item flat and legible: even, glare-free lighting, strong sharpness on titles and artwork, faithful colors, and a clean background. Edge wear, creases, and aging must remain exactly as photographed — condition is what the buyer is judging.`,
+  },
+  {
+    family: "enfants_jouets",
+    icons: ["🧸","🪆","🧩","🧱","🦸","🎲","🏎️","👶","💺","🍼","🚼","🚁"],
+    intro: `Enhance this toy / baby-gear product photo for a resale listing. Apply bright, friendly, even lighting with accurate colors, improve sharpness, and clean up a cluttered background so the item stands out. Play wear, faded prints, and used-condition details must remain exactly as they are.`,
+  },
+  {
+    family: "sport",
+    icons: ["🚲","🛴","🛹","⛸️","🎿","⚽","🏀","🎾","⛳","🏋️","🥊","⛺","🎣","🧘","🏃","🤿","🏄","🐴","🎱","🥽","🪖","⛑️","🏍️","🛵","🛞","🚗"],
+    intro: `Enhance this sports / outdoor equipment product photo for a resale listing. Apply clear, even lighting that shows the equipment's condition honestly, improve sharpness and color accuracy, and reduce background clutter so the item reads at a glance. Scuffs, dirt traces, and wear from normal use must remain exactly as photographed.`,
+  },
+  {
+    family: "beaute",
+    icons: ["🌸","💄","💅","🧴"],
+    intro: `Enhance this beauty / cosmetics product photo for a resale listing. Favor a clean, bright presentation: neutral even lighting, crisp label legibility, faithful packaging colors, and an uncluttered background. The fill level, seals, and label condition must remain exactly as photographed — never make a used product look new.`,
+  },
+];
+
+// Prompt de repli : toute icône hors familles (instruments 🎸🎻🥁…, 📦 Autre, …).
+const RETOUCH_DEFAULT_INTRO = `Enhance this product photo for a resale listing. Apply soft, natural, even lighting, improve sharpness, white balance, and color accuracy, and tidy a cluttered background so the item is the clear subject.`;
+
+const ICON_TO_RETOUCH = new Map<string, { family: string; prompt: string }>();
+for (const f of RETOUCH_FAMILIES) {
+  const prompt = `${f.intro}\n\n${REALISM_RULES}`;
+  for (const icon of f.icons) ICON_TO_RETOUCH.set(icon, { family: f.family, prompt });
+}
+
+function retouchProfileFor(item: { titre?: string; description?: string; type?: string }) {
+  const icon = detectObjectIcon(item.titre ?? "", item.description ?? "", item.type ?? "");
+  return {
+    icon,
+    ...(ICON_TO_RETOUCH.get(icon) ?? {
+      family: "default",
+      prompt: `${RETOUCH_DEFAULT_INTRO}\n\n${REALISM_RULES}`,
+    }),
+  };
+}
+
+// ── Choix de fond (ia_advanced uniquement) ─────────────────────────────────────
+// Flow "option A" : le fond est choisi AVANT génération, une seule image est
+// produite (un seul appel GPT Image 2, qualité "medium" — jamais de multi-pass
+// ni de "high" qui timeout). "original" (défaut) = aucun remplacement de fond
+// (comportement historique conservé). Étendre = ajouter une entrée ici.
+const BACKGROUND_OPTIONS: Record<string, string> = {
+  white: `New background: a premium seamless white studio sweep (cyclorama), bright and clean, with a subtle soft gradient from pure white behind the product to a very light grey toward the edges, professional e-commerce lighting.`,
+  grey:  `New background: a polished microcement / smooth concrete surface in soft neutral grey, with subtle natural texture and gentle tonal variation, modern industrial-chic feel, soft directional studio light. Understated and premium, not busy.`,
+  beige: `New background: a warm natural linen fabric backdrop with a soft visible woven texture, warmly and evenly lit, refined and tactile.`,
+  wood:  `New background: a pale natural light-oak wood surface with clean visible grain (planks / parquet), warm daylight, calm lifestyle feel.`,
+};
+
+// Clause d'intégrité objet — préfixée à CHAQUE prompt de fond (remplace l'intro
+// famille dans cette passe). Approche prompt-only (pas de masque/segmentation) :
+// /images/edits accepte bien un `mask`, mais le CONSTRUIRE exige une étape de
+// détourage de l'objet (appel segmentation ou 2e passe) — exclue par la
+// contrainte "un seul appel, coût inchangé". La clause porte donc SEULE la
+// garantie que seul le fond (et, pour un vêtement, les faux plis) change.
+//
+// DEUX variantes selon la famille détectée :
+//   - vetements → CLAUSE VÊTEMENT : autorise un défroissage LÉGER des faux plis
+//     de stockage/pliage (rendu "catalogue pro"), stricte sur tout le reste
+//     (couleurs, matière, motifs, logos, défauts, forme, cadrage).
+//   - toute autre famille → CLAUSE STRICTE : objet 100 % intact (inchangée).
+const BG_INTEGRITY_CLAUSE = `Replace ONLY the background of this product photo. The product itself must remain strictly identical to the original: do not redraw, reshape, resize, recolor, clean, repair or beautify it. Preserve exactly its shape, contours, proportions, colors, material and texture, patterns, logos, text, stitching, and every existing defect, stain, scratch, mark or sign of wear. Keep the product in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow beneath the product so it sits believably on the new surface, avoiding any cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
+
+const BG_INTEGRITY_CLAUSE_CLOTHING = `Replace the background of this clothing photo and present the garment as prepared for sale. You MAY lightly soften pronounced storage or folding creases (sharp crease lines from being stored folded or crumpled) so the garment looks cared-for and neatly arranged, but always preserve the fabric's natural drape and normal micro-folds: never press it perfectly flat, never make it look ironed or shrink-wrapped. Apart from softening those storage creases, the garment must remain strictly identical to the original: do not reshape, resize, recolor, repair or embellish it; preserve exactly its colors, material and texture, all patterns, prints, logos, text and stitching, and every existing defect, stain, hole or sign of wear. Keep the garment in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow so it sits believably on the new surface, with no cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS },
+  });
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+      .eq("id", user.id)
+      .single();
+
+    // Ne jamais utiliser is_premium seul, mais ne jamais l'omettre non plus :
+    // un Premium standard Stripe (web) n'a ni token Apple/Google ni is_founder.
+    const isPremium = profile?.is_premium === true
+      || profile?.is_founder === true
+      || profile?.apple_original_transaction_id != null
+      || profile?.google_purchase_token != null
+      || profile?.is_pro === true;
+
+    const body = await req.json();
+    const { inventaire_id, photos, platforms } = body;
+    // item_data: champs de l'article envoyés directement par le client quand aucune ligne
+    // inventaire n'existe encore (switch "ajouter au stock" différé/désactivé) — évite de
+    // dépendre d'une ligne DB qui n'est créée qu'à la publication, voire jamais.
+    const item_data = body.item_data && typeof body.item_data === "object" ? body.item_data : null;
+    // canonical_fields (2026-07-11, Sujet 4) : taille/couleur/matiere/marque
+    // déjà connus du CLIENT (Lens taille_estimee, saisie utilisateur…) —
+    // l'inventaire n'a pas ces colonnes, seul le client peut les fournir.
+    // Quand une valeur est présente, elle est injectée dans itemContext comme
+    // contrainte ET sert de source prioritaire à la canonicalisation
+    // post-génération (voir après le Promise.all).
+    const canonicalIn = body.canonical_fields && typeof body.canonical_fields === "object" ? body.canonical_fields : {};
+    const canonicalProvided: Record<string, string> = {};
+    for (const k of ["taille", "couleur", "matiere", "marque"]) {
+      const v = canonicalIn[k];
+      if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
+    }
+
+    // ── Mode ciblé "resolve_genre" (2026-07-09) ───────────────────────────────
+    // Relance UNIQUEMENT le champ genre avec une instruction stricte. Appelé
+    // par ListingPreviewScreen à la publication quand la génération complète a
+    // laissé genre vide/"Mixte" sur une catégorie qui exige un rayon genré :
+    // le call complet n'est pas déterministe (même article → 4× "Homme" puis
+    // 1× "Mixte", vérifié en DB le 2026-07-09) et la publication ne doit plus
+    // jamais être bloquée pour ça. Pas de check pièces : micro-appel de
+    // secours au sein d'un flux de publication déjà débité par
+    // spend_coins_and_publish. Réponse : { genre: "Femme"|"Homme"|"Fille"|
+    // "Garçon"|"Bébé"|null } — null si contexte vide ou IA indisponible, le
+    // client applique alors son propre défaut.
+    if (body.resolve_genre === true) {
+      const it = item_data ?? {};
+      const ctx = [
+        it.marque && `Marque: ${it.marque}`,
+        it.titre && `Article: ${it.titre}`,
+        it.type && `Type: ${it.type}`,
+        it.description && `Description: ${it.description}`,
+      ].filter(Boolean).join("\n");
+      if (!ctx) return json({ genre: null });
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 50,
+            system: `Tu détermines le rayon (genre cible) d'un article pour un site de revente de mode. Réponds UNIQUEMENT du JSON valide: {"genre":"..."} avec une de ces valeurs EXACTES: Femme, Homme, Fille, Garçon, Bébé. JAMAIS Mixte, JAMAIS Enfant, JAMAIS null — tranche TOUJOURS sur le signal le plus probable, même faible (coupe, taille, style, couleurs, rayon habituel de la marque ou du modèle — ex: une Casio F-91W se vend rayon Homme). Article adulte ou indéterminé → Femme ou Homme. Article manifestement enfant → Fille, Garçon ou Bébé.`,
+            messages: [{ role: "user", content: `Quel rayon pour cet article ?\n${ctx}` }],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text: string = data.content?.[0]?.text ?? "";
+          const m = text.match(/"genre"\s*:\s*"(Femme|Homme|Fille|Garçon|Bébé)"/);
+          return json({ genre: m ? m[1] : null });
+        }
+        console.error("[generate-listing] resolve_genre:", await res.text());
+      } catch (e) {
+        console.error("[generate-listing] resolve_genre exception:", e);
+      }
+      return json({ genre: null });
+    }
+
+    // ── Mode ciblé "resolve_aspects" (2026-07-16, chantier champs obligatoires) ──
+    // Micro-appel de secours, même philosophie que resolve_genre : quand la
+    // preview B1 de ListingPreviewScreen identifie des aspects eBay
+    // OBLIGATOIRES sans source app (audit Phase 0 : Nom de parfum, Volume,
+    // Numéro de pièce fabricant, Hauteur/Largeur, Teinte…), on demande à
+    // l'IA de les extraire du CONTEXTE — jamais deviner. Réponse :
+    // { aspects: { "<nom exact>": "valeur" } } — les aspects non déductibles
+    // sont ABSENTS/null, le fallback UI (Phase 3) prend le relais.
+    // Entrée : body.aspects = [{ name, allowedValues?: string[] }] (≤ 12).
+    if (body.resolve_aspects === true) {
+      const it = item_data ?? {};
+      const wanted = (Array.isArray(body.aspects) ? body.aspects : [])
+        .filter((a: { name?: unknown }) => a && typeof a.name === "string")
+        .slice(0, 12);
+      // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : valeur standard eBay SÛRE
+      // pour les obligatoires sans source, indépendante du contexte article.
+      // Le front les pose déjà côté client (EBAY_ASPECT_DEFAULTS), mais le
+      // contrat resolve_aspects ne doit pas EN dépendre : on les applique ici
+      // aussi, avant l'IA, pour tout appelant. Trou n°1 = MPN (32 catégories).
+      const ASPECT_DEFAULTS: Record<string, string> = {
+        "Numéro de pièce fabricant": "Ne s'applique pas",
+      };
+      const out: Record<string, string> = {};
+      for (const a of wanted) if (ASPECT_DEFAULTS[a.name]) out[a.name] = ASPECT_DEFAULTS[a.name];
+      // On ne demande à l'IA que les aspects SANS défaut déterministe.
+      const askAI = wanted.filter((a: { name: string }) => !ASPECT_DEFAULTS[a.name]);
+      const ctx = [
+        it.marque && `Marque: ${it.marque}`,
+        it.titre && `Article: ${it.titre}`,
+        it.modele && `Modèle: ${it.modele}`,
+        it.matiere && `Matière: ${it.matiere}`,
+        it.couleur && `Couleur: ${it.couleur}`,
+        it.type && `Type: ${it.type}`,
+        it.description && `Description: ${it.description}`,
+        // attributs_visibles de lens-analysis (Phase 2) : valeurs LUES sur
+        // l'article en photo (nom de parfum, volume, MPN, dimensions…) —
+        // la source la plus fiable pour ces aspects. Absent tant que
+        // lens-analysis n'est pas redéployée (gated).
+        it.attributs && typeof it.attributs === "object" && Object.keys(it.attributs).length &&
+          `Attributs lus sur l'article (photos): ${JSON.stringify(it.attributs)}`,
+      ].filter(Boolean).join("\n");
+      // Rien à extraire par l'IA (tout couvert par les défauts, ou pas de
+      // contexte) : on renvoie directement les défauts déterministes.
+      if (!wanted.length || !askAI.length || !ctx) return json({ aspects: out });
+      const lines = askAI.map((a: { name: string; allowedValues?: string[] }) => {
+        const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
+        return `- "${a.name}"${allowed.length ? ` — valeurs eBay (suggestions, saisie libre acceptée) : ${allowed.join(" | ")}` : " — texte libre"}`;
+      }).join("\n");
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 400,
+            system:
+              `Tu extrais des caractéristiques produit eBay depuis le contexte d'une annonce d'occasion. RÈGLE ABSOLUE : ne JAMAIS inventer — une valeur doit être lisible ou strictement déductible du contexte, sinon null. Préfère une valeur de la liste eBay quand elle correspond. Cas particuliers : "Numéro de pièce fabricant" → "Ne s'applique pas" (valeur standard eBay pour un objet d'occasion sans référence fabricant visible dans le contexte) ; "Volume" → format eBay ("50 ml", jamais "50ml") ; dimensions (Hauteur/Largeur/Longueur/Dimensions) → UNIQUEMENT si des mesures chiffrées figurent dans le contexte, avec l'unité ("80 cm"). Retourne UNIQUEMENT du JSON valide: {"aspects":{"<nom exact de l'aspect>":"valeur ou null"}}`,
+            messages: [{ role: "user", content: `Aspects à renseigner :\n${lines}\n\nContexte article :\n${ctx}` }],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text: string = data.content?.[0]?.text ?? "";
+          const m = text.match(/\{[\s\S]*\}/);
+          if (m) {
+            const parsed = JSON.parse(m[0]);
+            const raw = parsed?.aspects && typeof parsed.aspects === "object" ? parsed.aspects : {};
+            // Fusion dans `out` (déjà porteur des défauts déterministes) : l'IA
+            // ne peut renseigner QUE les aspects demandés à l'IA (askAI) —
+            // jamais écraser un défaut déterministe ni inventer une clé.
+            const askNames = new Set(askAI.map((a: { name: string }) => a.name));
+            for (const [k, v] of Object.entries(raw)) {
+              if (!askNames.has(k)) continue; // hors demande IA
+              const s = typeof v === "string" ? v.trim() : "";
+              if (s && s.toLowerCase() !== "null") out[k] = s;
+            }
+            return json({ aspects: out });
+          }
+        } else {
+          console.error("[generate-listing] resolve_aspects:", await res.text());
+        }
+      } catch (e) {
+        console.error("[generate-listing] resolve_aspects exception:", e);
+      }
+      // Échec IA : on renvoie quand même les défauts déterministes déjà posés.
+      return json({ aspects: out });
+    }
+    // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
+    // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur absente, inconnue
+    // ou legacy ("ia", "ia_multi", "ia_simple", …) retombe sur "original" : jamais de retouche
+    // GPT Image payante par défaut — un ancien client obtient ses photos telles quelles.
+    const rawPhotoOption = typeof body.photo_option === "string" ? body.photo_option : "";
+    const photo_option = rawPhotoOption === "ia_advanced" || rawPhotoOption === "ia_light" ? rawPhotoOption : "original";
+    // background: choix de fond, uniquement pris en compte en ia_advanced (voir
+    // BACKGROUND_OPTIONS). Toute valeur absente/inconnue → "original" (aucun
+    // remplacement de fond, comportement historique).
+    const rawBackground = typeof body.background === "string" ? body.background : "";
+    const background = Object.prototype.hasOwnProperty.call(BACKGROUND_OPTIONS, rawBackground) ? rawBackground : "original";
+    // price may be pre-fetched client-side; used as fallback if prix_vente is null in DB
+    const body_price = body.price != null ? Number(body.price) : null;
+
+    if (
+      (!inventaire_id && !item_data) ||
+      !Array.isArray(photos) || photos.length === 0 ||
+      !Array.isArray(platforms) || platforms.length === 0
+    ) {
+      return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
+    }
+
+    // Free : plus de 403 sec — autorisé si le wallet couvre le prix de l'option
+    // demandée (système de pièces). Simple CHECK ici : le débit réel a lieu à la
+    // publication via spend_coins_and_publish. 402 + prix/solde pour piloter l'UI.
+    // Premium/Pro passent sans check (leur quota est géré à la publication).
+    if (!isPremium) {
+      const [{ data: wallet }, { data: priceRow }] = await Promise.all([
+        adminClient.from("coin_wallets").select("included_balance, purchased_balance").eq("user_id", user.id).maybeSingle(),
+        adminClient.from("coin_config").select("value").eq("key", `price_${photo_option}`).single(),
+      ]);
+      const balance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
+      const price = priceRow?.value ?? null;
+      if (price == null || balance < price) {
+        return json({ error: "insufficient_coins", price, balance }, 402);
+      }
+    }
+
+    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null };
+    if (item_data) {
+      item = item_data;
+    } else {
+      const { data, error: itemErr } = await adminClient
+        .from("inventaire")
+        .select("id, titre, marque, description, type, statut, prix_vente")
+        .eq("id", inventaire_id)
+        .single();
+      if (itemErr || !data) return json({ error: "Item not found" }, 404);
+      item = data;
+    }
+
+    const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+    const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
+    const BUCKET = "listing-photos";
+
+    // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
+    let processedPhotos: Array<{ type: string; url: string }>;
+
+    if (photo_option === "original") {
+      processedPhotos = (photos as string[]).map((url, i) => ({
+        type: i === 0 ? "original" : `photo_${i}`,
+        url,
+      }));
+    } else {
+      // GPT Image 2: retouch each photo. Two distinct tiers:
+      // - ia_light: quality "low", prompt limited to brightness/white balance — fast, subtle
+      // - ia_advanced (default): quality "medium", fuller prompt with background cleanup + contrast pop.
+      //   "medium" et non "high" : high ne répond jamais avant la limite wall-clock des Edge
+      //   Functions (~400s, vérifié le 2026-07-06) et retombait silencieusement sur la photo originale.
+      const isLight = photo_option === "ia_light";
+      // ia_advanced : prompt spécialisé selon la famille de produit (détectée
+      // via detectObjectIcon sur titre/description/type — mêmes règles que
+      // l'app). ia_light : prompt générique (luminosité/blancs seulement).
+      const retouch = retouchProfileFor(item);
+      // Fond : uniquement en ia_advanced, valeur connue et != original. Quand un
+      // fond est appliqué, on n'envoie PAS l'intro famille — mais la clause
+      // d'intégrité (VÊTEMENT pour la famille vetements, autorisant un léger
+      // défroissage ; STRICTE sinon, objet 100 % intact) + le fond choisi.
+      // Un SEUL appel image, comme avant.
+      const bgSuffix = !isLight && background !== "original" ? BACKGROUND_OPTIONS[background] : null;
+      let promptToUse: string;
+      if (isLight) {
+        promptToUse = OPENAI_IMG_PROMPT_LIGHT;
+      } else if (bgSuffix) {
+        const bgClause = retouch.family === "vetements" ? BG_INTEGRITY_CLAUSE_CLOTHING : BG_INTEGRITY_CLAUSE;
+        promptToUse = `${bgClause} ${bgSuffix}`;
+        console.log(`[gpt-image] fond appliqué: ${background} (famille ${retouch.family}, icône ${retouch.icon})`);
+      } else {
+        promptToUse = retouch.prompt;
+        console.log(`[gpt-image] famille de retouche: ${retouch.family} (icône ${retouch.icon})`);
+      }
+      const qualityToUse = isLight ? "low" : "medium";
+      const photosToProcess = photos as string[];
+      // Garde-fou coûts : 5 photos max passent en retouche GPT Image par annonce
+      // (base du prix fixe par annonce du système de pièces) ; les photos au-delà
+      // sont conservées telles quelles dans l'annonce.
+      const MAX_RETOUCHED = 5;
+      const ts = Date.now();
+      const results = await Promise.allSettled(
+        photosToProcess.map(async (photoUrl, idx) => {
+          if (idx >= MAX_RETOUCHED) {
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+          const srcRes = await fetch(photoUrl);
+          if (!srcRes.ok) {
+            console.error(`[gpt-image] fetch photo ${idx} failed: ${srcRes.status}`);
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+          const srcBlob = await srcRes.blob();
+
+          const form = new FormData();
+          form.append("model", "gpt-image-2");
+          form.append("prompt", promptToUse);
+          form.append("n", "1");
+          form.append("size", "1024x1024");
+          form.append("quality", qualityToUse);
+          form.append("image[]", srcBlob, "product.jpg");
+
+          const res = await fetch("https://api.openai.com/v1/images/edits", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
+            body: form,
+          });
+
+          console.log(`[gpt-image] photo ${idx} (${photo_option}) status: ${res.status}`);
+
+          if (!res.ok) {
+            console.error(`[gpt-image] photo ${idx} error:`, await res.text());
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+
+          const resData = await res.json();
+          const b64 = resData.data?.[0]?.b64_json;
+          if (!b64) {
+            console.error(`[gpt-image] photo ${idx}: no b64_json in response`);
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const outBlob = new Blob([bytes], { type: "image/png" });
+          const path = `${user.id}/enhanced/${ts}_${idx}.png`;
+
+          const { error: upErr } = await adminClient.storage
+            .from(BUCKET)
+            .upload(path, outBlob, { contentType: "image/png", upsert: true });
+
+          if (upErr) {
+            console.error(`[gpt-image] upload photo ${idx}:`, upErr);
+            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          }
+
+          const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+          console.log(`[gpt-image] photo ${idx} OK → ${url}`);
+          return { type: idx === 0 ? "original" : `enhanced_${idx}`, url };
+        })
+      );
+
+      processedPhotos = results.map((r, i) =>
+        r.status === "fulfilled"
+          ? r.value
+          : { type: i === 0 ? "original" : `photo_${i}`, url: photosToProcess[i] }
+      );
+    }
+
+    // ── Step 3: Claude Haiku — title + description per platform ──────────────
+    // Champs canoniques connus (client) : injectés comme CONTRAINTES — chaque
+    // prompt plateforme doit les recopier tels quels au lieu de ré-inférer
+    // (4 inférences indépendantes divergeaient : taille "M" Vinted/Beebs vs
+    // "L" eBay/LBC sur le même article, job du 2026-07-11 09:56).
+    const canonicalCtx = Object.entries(canonicalProvided).map(
+      ([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v} (valeur CONFIRMÉE — recopie-la TELLE QUELLE dans platform_fields.${k}, ne la ré-infère pas)`
+    );
+    const itemContext = [
+      item.marque && `Marque: ${item.marque}`,
+      item.titre && `Article: ${item.titre}`,
+      item.type && `Type: ${item.type}`,
+      item.description && `Description: ${item.description}`,
+      item.statut && `État: ${item.statut}`,
+      item.prix_vente != null && `Prix: ${item.prix_vente}€`,
+      ...canonicalCtx,
+    ].filter(Boolean).join("\n");
+
+    const fallbackTitle = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "Article";
+    const platformListings: Record<string, { title: string; description: string; platform_fields: Record<string, string | null> }> = {};
+
+    await Promise.all(
+      (platforms as string[]).map(async (platform) => {
+        const cfg = PLATFORM_CFG[platform];
+        if (!cfg) {
+          platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
+          return;
+        }
+
+        const userMsg = cfg.lang === "en"
+          ? `Write a listing for:\n${itemContext}`
+          : `Rédige une annonce pour:\n${itemContext}`;
+
+        try {
+          const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": ANTHROPIC_KEY,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 900,
+              system: cfg.system,
+              messages: [{ role: "user", content: userMsg }],
+            }),
+          });
+
+          if (claudeRes.ok) {
+            const claudeData = await claudeRes.json();
+            const text: string = claudeData.content?.[0]?.text ?? "";
+            const firstBrace = text.indexOf("{");
+            const lastBrace = text.lastIndexOf("}");
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              try {
+                const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+                platformListings[platform] = {
+                  title: String(parsed.title ?? fallbackTitle),
+                  description: String(parsed.description ?? ""),
+                  platform_fields: parsed.platform_fields ?? {},
+                };
+              } catch (parseErr) {
+                console.error(`[generate-listing] JSON parse error ${platform}:`, parseErr);
+              }
+            }
+          } else {
+            console.error(`[generate-listing] claude ${platform}:`, await claudeRes.text());
+          }
+        } catch (e) {
+          console.error(`[generate-listing] claude exception ${platform}:`, e);
+        }
+
+        if (!platformListings[platform]) {
+          platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
+        }
+      })
+    );
+
+    // ── Canonicalisation taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──
+    // Les 4 appels ci-dessus restent indépendants et non déterministes : le
+    // même article peut sortir taille "M" chez Vinted et "L" chez eBay. Une
+    // seule valeur SOURCE par champ, répliquée partout — zéro appel IA en
+    // plus : priorité à la valeur client (canonical_fields), sinon première
+    // réponse non vide dans un ordre FIXE, français d'abord (l'anglais
+    // résiduel d'eBay — "Black" — ne doit jamais devenir la référence).
+    // Chaque plateforme garde ensuite sa propre conversion vers son
+    // vocabulaire local (cascades extension / selects app, inchangés).
+    // La réplication ne pose un champ QUE sur les plateformes qui le
+    // CONSOMMENT réellement. taille inclut leboncoin : son PROMPT n'en a pas
+    // (volontaire, cf. Sujet 3) mais leboncoin.js remplit la Pointure
+    // (critère OBLIGATOIRE sur Mode>Chaussures) depuis fields.taille — la
+    // valeur arrive par la config stepper côté app, pas par la génération.
+    // couleur reste hors Leboncoin (aucun schéma ni handler ne la lit).
+    // ⚠️ Carte de RÉPLICATION ≠ carte de GARDE côté app : la garde
+    // pré-publication ne bloque JAMAIS Leboncoin sur taille/couleur.
+    {
+      const FIELD_PLATFORMS: Record<string, string[]> = {
+        taille:  ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"],
+        couleur: ["vinted", "beebs", "ebay"],
+        matiere: ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"],
+        marque:  ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"],
+      };
+      const PRIORITY = ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"];
+      const clean = (v: unknown): string | null => {
+        const s = typeof v === "string" ? v.trim() : "";
+        return s && s.toLowerCase() !== "null" ? s : null;
+      };
+      for (const [field, consumers] of Object.entries(FIELD_PLATFORMS)) {
+        const canonical = canonicalProvided[field] ??
+          PRIORITY.filter((p) => consumers.includes(p))
+            .map((p) => clean(platformListings[p]?.platform_fields?.[field]))
+            .find(Boolean) ?? null;
+        if (!canonical) continue; // rien de fiable nulle part : le client bloquera/demandera
+        for (const p of consumers) {
+          if (platformListings[p]) platformListings[p].platform_fields[field] = canonical;
+        }
+      }
+    }
+
+    // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
+    return json({
+      photos: processedPhotos,
+      platforms: platformListings,
+      price: item.prix_vente ?? body_price ?? null,
+    });
+
+  } catch (e) {
+    console.error("[generate-listing] unhandled:", e);
+    return json({ error: "Internal server error" }, 500);
+  }
+});

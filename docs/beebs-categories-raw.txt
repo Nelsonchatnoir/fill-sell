@@ -1,0 +1,699 @@
+# Catalogue Beebs — sélecteur de catégorie du formulaire de vente
+#
+# Relevé COMPLET du 9 juillet 2026 (session connectée, beebs.app/fr/listing).
+# Méthode : lecture directe de l état React du composant sélecteur (l arbre
+# entier y est déjà chargé) — AUCUNE requête réseau supplémentaire, aucun
+# clic de navigation par branche. Remplace le relevé partiel du 8 juillet
+# dont la racine Maison était tronquée après "Cuisine".
+#
+# 5 racines, 688 nœuds. Indentation 2 espaces = 1 niveau. Une ligne sans
+# enfant est une feuille sélectionnable.
+
+- Jeux, jouets et loisirs
+  - Cartes, figurines et collectibles
+    - Figurines de collection
+    - Cartes Pokémon
+      - Lots de cartes Pokémon
+      - Cartes Pokémon à l'unité
+      - Boosters Pokémon
+      - Coffrets Pokémon
+      - Sleeves & Classeurs Pokémon
+    - Cartes Panini
+    - Cartes Dragon Ball
+    - Cartes Harry Potter
+    - Cartes One Piece
+    - Cartes Yu-Gi-Oh!
+    - Cartes Magic the Gathering
+    - Autres cartes à collectionner
+  - Figurines
+  - Jeux de construction
+    - LEGO et autres briques
+    - Jeux de construction en bois
+    - Maquettes et modélisme
+    - Autres jeux de construction
+  - Jeux de société
+  - Jeux d'éveil
+    - Mobiles bébé
+    - Hochets
+    - Boîtes à musique
+    - Boîtes à histoires
+    - Balles et ballons
+    - Jouets en bois
+    - Jeux de formes
+    - Jeux de quilles
+    - Jouets d'activité et Montessori
+    - Jouets électroniques pour bébé
+    - Jouets sensoriels
+  - Multimédia
+    - Jeux vidéo
+    - Consoles de jeux
+    - DVD
+    - CD
+    - Accessoires pour consoles
+  - Lots de jouets
+  - Peluches
+  - Doudous
+  - Poupées
+    - Poupées
+    - Poupons et bébés
+    - Accessoires pour poupées et poupons
+  - Jeux électroniques
+    - Jeux musicaux
+    - Ordinateurs pour enfant
+    - Tablettes pour enfant
+    - Autres jeux électroniques
+  - Véhicules
+    - Voitures et autres véhicules
+    - Circuits, pistes et garages
+    - Véhicules télécommandés
+  - Jeux de cartes
+  - Puzzles
+  - Livres
+    - Livres pour bébé
+    - Livres sonores et musicaux
+    - Imagiers et albums illustrés
+    - Livres d'activités
+    - Romans pour enfant
+    - Romans pour adultes
+    - Livres maternité
+    - Mangas
+    - BDs
+    - Livres scolaires et parascolaires
+    - Livres de recettes
+    - Autres livres
+  - Loisirs créatifs
+    - Dessin et coloriage
+      - Feutres
+      - Crayons de couleur
+      - Cahiers de dessin
+    - Peinture
+    - Bijoux et perles
+    - Modelage et sculpture
+    - Instruments de musique
+    - Tabliers d'activité
+    - Autres loisirs créatifs
+  - Jeux éducatifs
+    - Apprendre à lire, écrire & compter
+    - Jeux scientifiques
+  - Jeux d'extérieur et sport
+    - Piscine et plage
+      - Brassards et bouées
+      - Mini-piscines
+      - Jouets de plage et de piscine
+    - Vélos, draisiennes et tricycles
+      - Vélos
+      - Sièges vélos
+      - Tricycles
+      - Draisiennes
+    - Rollers et skates
+    - Trottinettes
+    - Casques et protections
+    - Ballons et jeux de sport
+    - NERF et jeux de tir
+    - Quads, voitures et motos
+    - Cabanes et maisons
+  - Déguisements
+    - Déguisements (femme)
+    - Déguisements (homme)
+    - Déguisements (fille)
+    - Déguisements (garçon)
+    - Déguisements (bébé)
+- Mode
+  - Femme
+    - Vêtements (femme)
+      - Pantalons (femme)
+        - Pantalons courts et chinos (femme)
+        - Pantalons à jambes larges (femme)
+        - Pantalons skinny (femme)
+        - Pantalons ajustés (femme)
+        - Pantacourts (femme)
+        - Pantalons droits (femme)
+        - Sarouels (femme)
+        - Autres pantalons (femme)
+      - Manteaux et vestes (femme)
+        - Manteaux (femme)
+        - Capes et ponchos (femme)
+        - Vestes sans manches (femme)
+        - Vestes (femme)
+      - Pulls et sweats (femme)
+        - Pulls (femme)
+        - Sweats (femme)
+        - Autres pulls et sweats (femme)
+      - T-shirts et tops (femme)
+        - T-shirts (femme)
+        - Tops courts (femme)
+        - Tops épaules dénudées (femme)
+        - Tops peplum (femme)
+        - Tops dos nu (femme)
+        - Débardeurs (femme)
+        - Bodies (femme)
+        - Autres hauts (femme)
+      - Chemises, blouses et tuniques (femme)
+        - Chemises (femme)
+        - Tuniques (femme)
+        - Blouses manches courtes (femme)
+        - Blouses manches 3/4 (femme)
+        - Blouses manches longues (femme)
+      - Jeans (femme)
+        - Jeans boyfriend (femme)
+        - Jeans courts (femme)
+        - Jeans évasés (femme)
+        - Jeans taille haute (femme)
+        - Jeans troués (femme)
+        - Jeans skinny (femme)
+        - Jeans droits (femme)
+        - Autres jeans (femme)
+      - Robes (femme)
+        - Robes courtes (femme)
+        - Robes mi-longues (femme)
+        - Robes longues (femme)
+        - Robes de soirée (femme)
+        - Robes d'été (femme)
+        - Robes casual (femme)
+        - Autres robes (femme)
+      - Combinaisons et salopettes (femme)
+        - Combinaisons (femme)
+        - Combishorts (femme)
+        - Salopettes (femme)
+        - Autres combinaisons et salopettes (femme)
+      - Blazers et tailleurs (femme)
+        - Blazers (femme)
+        - Ensembles tailleur pantalon (femme)
+        - Jupes et robes tailleur (femme)
+        - Pantalons tailleurs (femme)
+        - Autres ensembles et tailleurs (femme)
+      - Jupes (femme)
+        - Jupes courtes (femme)
+        - Jupes mi-longues (femme)
+        - Jupes longues (femme)
+        - Jupes crayon
+        - Jupes en jean (femme)
+        - Autres jupes (femme)
+      - Shorts et bermudas (femme)
+        - Shorts taille basse (femme)
+        - Shorts longueur genou (femme)
+        - Shorts taille haute (femme)
+        - Shorts en jean (femme)
+        - Shorts en dentelle (femme)
+        - Shorts en cuir (femme)
+        - Shorts cargo (femme)
+      - Vêtements de sport (femme)
+        - Hauts et t-shirts de sport (femme)
+        - Sweats de sport (femme)
+        - Brassières de sport (femme)
+        - Leggings (femme)
+        - Survêtements (femme)
+        - Pantalons de sport (femme)
+        - Shorts de sport (femme)
+        - Jupes de sport (femme)
+        - Vêtements d'extérieur (femme)
+        - Autres vêtements de sport (femme)
+      - Maillots de bain (femme)
+        - Maillots de bain 1 pièce (femme)
+        - Maillots de bain 2 pièces (femme)
+        - Autres maillots de bain (femme)
+      - Autres vêtements (femme)
+    - Nuit et pyjamas (femme)
+      - Pyjamas (femme)
+      - Peignoirs (femme)
+    - Maternité
+      - Vêtements (maternité)
+        - T-shirts et chemises (maternité)
+        - Pulls et gilets (maternité)
+        - Manteaux et vestes (maternité)
+        - Pantalons et jeans (maternité)
+        - Jupes (maternité)
+        - Leggings (maternité)
+        - Shorts (maternité)
+        - Robes (maternité)
+        - Combinaisons (maternité)
+        - Maillots de bain (maternité)
+        - Bandeaux (maternité)
+      - Lingerie et nuit (maternité)
+        - Sous-vêtements (maternité)
+        - Pyjamas (maternité)
+        - Chemises de nuit (maternité)
+      - Accessoires (maternité)
+    - Accessoires (femme)
+      - Sacs à main et pochettes (femme)
+        - Sacs à main (femme)
+        - Cartables (femme)
+        - Sacs à bandoulière (femme)
+        - Sacs à dos (femme)
+        - Sacs banane (femme)
+        - Pochettes (femme)
+        - Porte-monnaies (femme)
+        - Sacs polochon (femme)
+        - Sacs de voyage (femme)
+        - Autres sacs (femme)
+      - Bijoux (femme)
+      - Montres (femme)
+      - Écharpes et foulards (femme)
+      - Gants (femme)
+      - Ceintures (femme)
+      - Lunettes de soleil (femme)
+      - Chapeaux et casquettes (femme)
+      - Paréos (femme)
+      - Parapluies
+      - Accessoires de sport (femme)
+      - Porte-clés (femme)
+      - Autres accessoires (femme)
+    - Chaussures (femme)
+      - Bottes (femme)
+      - Baskets (femme)
+      - Sandales et nu-pieds (femme)
+      - Chaussures à talon (femme)
+      - Chaussons (femme)
+      - Chaussures de sport (femme)
+      - Mules et sabots (femme)
+  - Homme
+    - Vêtements (homme)
+      - Pantalons (homme)
+        - Chinos (homme)
+        - Pantalons skinny (homme)
+        - Pantacourts (homme)
+        - Pantalons larges (homme)
+        - Autres pantalons (homme)
+      - T-shirts (homme)
+      - Manteaux et vestes (homme)
+        - Manteaux (homme)
+        - Vestes sans manche (homme)
+        - Vestes (homme)
+        - Ponchos (homme)
+      - Pulls et gilets (homme)
+        - Pulls ras de cou (homme)
+        - Pulls col roulé (homme)
+        - Cardigans et gilets (homme)
+      - Jeans (homme)
+        - Jeans troués (homme)
+        - Jeans skinny (homme)
+        - Jeans slim (homme)
+        - Jeans coupe droite (homme)
+        - Autres jeans (homme)
+      - Sweats (homme)
+        - Sweats à col V (homme)
+        - Sweats longs (homme)
+        - Autres sweats (homme)
+      - Chemises (homme)
+      - Costumes et blazers (homme)
+        - Vestes et blazers (homme)
+        - Pantalons de costume (homme)
+        - Gilets de costume (homme)
+        - Ensembles de costume (homme)
+        - Costumes de mariage (homme)
+        - Autres costumes (homme)
+      - Bermudas et shorts (homme)
+        - Shorts cargo (homme)
+        - Shorts chinos (homme)
+        - Shorts en jean (homme)
+        - Autres shorts (homme)
+      - Vêtements de sport (homme)
+        - Shorts de sport (homme)
+        - Autres vêtements de sport (homme)
+        - Joggings (homme)
+        - Survêtements (homme)
+        - Hauts et t-shirts de sport (homme)
+        - Pulls et sweats de sport (homme)
+        - Vestes de sport (homme)
+        - Pantalons de sport (homme)
+      - Maillots de bain (homme)
+      - Autres vêtements (homme)
+    - Nuit et pyjamas (homme)
+      - Pyjamas (homme)
+      - Peignoirs (homme)
+      - Autres sous-vêtements (homme)
+    - Accessoires (homme)
+      - Gants (homme)
+      - Bijoux (homme)
+      - Montres (homme)
+      - Écharpes et foulards (homme)
+      - Cravates et noeuds papillon (homme)
+      - Sacs et sacoches (homme)
+      - Ceintures (homme)
+      - Lunettes de soleil (homme)
+      - Chapeaux et casquettes (homme)
+      - Parapluies
+      - Accessoires de sport (homme)
+      - Autres accessoires (homme)
+    - Chaussures (homme)
+      - Mocassins et chaussures bateau (homme)
+      - Bottes et bottines (homme)
+      - Baskets (homme)
+      - Sandales (homme)
+      - Chaussures habillées (homme)
+      - Chaussons (homme)
+      - Chaussures de sport (homme)
+      - Espadrilles (homme)
+  - Fille
+    - Vêtements (fille)
+      - Leggings (fille)
+      - Lots de vêtements (fille)
+      - Pantalons et jeans (fille)
+      - T-shirts et débardeurs (fille)
+      - Manteaux et blousons (fille)
+      - Vestes (fille)
+      - Pulls et sweats (fille)
+      - Gilets et cardigans (fille)
+      - Robes (fille)
+      - Chemises et blouses (fille)
+      - Jupes (fille)
+      - Ensembles (fille)
+      - Combinaisons (fille)
+      - Salopettes (fille)
+      - Shorts (fille)
+      - Maillots de bain (fille)
+      - Tenues de fêtes (fille)
+      - Vêtements de sport (fille)
+        - Lots et ensembles de sport (fille)
+        - T-shirts et hauts de sport (fille)
+        - Bas de sport (fille)
+        - Combinaisons de ski (fille)
+        - Bonnets de piscine (fille)
+      - Autres vêtements (fille)
+    - Pyjamas (fille)
+    - Accessoires (fille)
+      - Bonnets, écharpes et gants (fille)
+      - Casquettes, chapeaux et bandeaux (fille)
+      - Sacs à dos (fille)
+      - Bijoux (filles)
+      - Lunettes de soleil (fille)
+      - Serviettes de plage (fille)
+      - Accessoires de sport (fille)
+      - Autres accessoires (fille)
+    - Chaussures (fille)
+      - Chaussures plates (fille)
+      - Baskets (fille)
+      - Bottes et bottines (fille)
+      - Bottes de pluie (fille)
+      - Chaussons (fille)
+      - Chaussures de sport (fille)
+      - Sandales (fille)
+  - Garçon
+    - Vêtements (garçon)
+      - Lots de vêtements (garçon)
+      - Pantalons et jeans (garçon)
+      - T-shirts (garçon)
+      - Manteaux et blousons (garçon)
+      - Vestes (garçon)
+      - Pulls et sweats (garçon)
+      - Gilets (garçon)
+      - Chemises et polos (garçon)
+      - Ensembles (garçon)
+      - Combinaisons (garçon)
+      - Salopettes (garçon)
+      - Shorts (garçon)
+      - Maillots de bain (garçon)
+      - Tenues de fêtes (garçon)
+      - Vêtements de sport (garçon)
+        - Lots et ensembles de sport (garçon)
+        - Maillots de sport et club (garçon)
+        - T-shirts et hauts de sport (garçon)
+        - Bas de sport (garçon)
+        - Combinaisons de ski (garçon)
+        - Bonnets de piscine (garçon)
+      - Autres vêtements (garçon)
+    - Pyjamas (garçon)
+    - Accessoires (garçon)
+      - Bonnets, écharpes et gants (garçon)
+      - Casquettes et chapeaux (garçon)
+      - Sacs à dos (garçon)
+      - Bijoux (garçon)
+      - Lunettes de soleil (garçon)
+      - Serviettes de plage (garçon)
+      - Accessoires de sport (garçon)
+      - Autres accessoires (garçon)
+    - Chaussures (garçon)
+      - Chaussures plates (garçon)
+      - Baskets (garçon)
+      - Bottes et bottines (garçon)
+      - Bottes de pluie (garçon)
+      - Chaussons (garçon)
+      - Chaussures de sport (garçon)
+      - Sandales (garçon)
+  - Bébé
+    - Vêtements (bébé)
+      - Tenues de fêtes (bébé)
+      - Lots de bodies (bébé)
+      - Lots de vêtements (bébé)
+      - Lots de pantalons et bas (bébé)
+      - Bodies (bébé)
+      - Manteaux et combipilotes (bébé)
+      - Pulls, gilets et sweats (bébé)
+      - Robes et jupes (bébé)
+      - Pantalons (bébé)
+      - T-shirts (bébé)
+      - Chemises et blouses (bébé)
+      - Shorts et bloomers (bébé)
+      - Ensembles (bébé)
+      - Combinaisons de bain (bébé)
+    - Nuit et pyjamas (bébé)
+      - Lots de pyjamas (bébé)
+      - Pyjamas (bébé)
+      - Gigoteuses et turbulettes
+      - Nids d'ange
+    - Accessoires (bébé)
+      - Casquettes, chapeaux et bandeaux (bébé)
+      - Bonnets, écharpes et gants (bébé)
+      - Lunettes de soleil (bébé)
+    - Chaussures (bébé)
+- Hygiène et beauté
+  - Couches
+    - Couches jetables
+    - Couches lavables
+    - Couches de bain
+    - Poubelles à couches
+    - Range couches
+  - Soins bébé
+    - Lingettes jetables
+    - Lingettes lavables
+    - Liniment
+    - Crèmes pour change
+    - Soins nez et oreilles
+    - Coupe-ongles
+    - Thermomètres médicaux
+  - Soins visage et corps
+    - Brosses à dent
+    - Cotons
+    - Dentifrice
+    - Gel douche
+    - Shampoing
+    - Démaquillant
+    - Crème corps
+  - Cosmétiques
+    - Lots de cosmétiques
+    - Maquillage
+    - Vernis et soins des ongles
+    - Coffrets beauté
+  - Parfums
+  - Accessoires de beauté
+    - Trousses de toilette
+    - Accessoires de coiffure
+- Puériculture
+  - Poussettes
+    - Poussettes citadines
+    - Poussettes polyvalentes
+    - Poussettes duo
+    - Poussettes trio
+    - Poussettes cannes
+    - Poussettes multiplaces
+    - Poussettes de running
+    - Chancelières
+    - Nacelles
+    - Accessoires de poussettes
+      - Protections pluie
+      - Ombrelles et pare-soleils
+      - Moustiquaires
+      - Adaptateurs
+      - Filets et sacs pour poussettes
+      - Assises et tabliers
+      - Marchepieds pour poussettes
+      - Jouets pour poussettes
+      - Autres accessoires de poussettes
+  - Sièges auto
+    - Sièges auto
+    - Embases de sièges auto
+    - Réhausseurs auto
+    - Accessoires sièges auto
+  - Repas
+    - Alimentation
+      - Lait infantile (neuf)
+        - Lait 1er âge (neuf)
+        - Lait 2ème âge (neuf)
+        - Lait 3ème âge (neuf)
+      - Plats bébé (neuf)
+        - Salé 4 à 6 mois
+        - Repas complet
+      - Desserts bébé (neuf)
+        - Céréales en poudre bébé
+        - Compotes et yaourts
+      - Biscuits et gâteaux
+      - Confiseries
+      - Calendrier de l'avent
+    - Biberons
+      - Biberons
+      - Préparateurs et chauffe-biberons
+      - Tétines pour biberons
+      - Becs
+      - Doseurs
+      - Stérilisateurs
+      - Sèche-biberons
+      - Goupillons
+      - Sacs isothermes pour biberons
+    - Bavoirs et vaisselles
+      - Langes
+      - Bavoirs
+      - Coffrets repas
+      - Assiettes et bols
+      - Tasses et verres
+      - Couverts
+      - Gourdes bébé
+      - Pots
+      - Sets de table
+    - Chaises hautes et réhausseurs
+      - Chaises hautes
+      - Chaises de tables (bébé)
+      - Coussins et housses pour chaises hautes
+      - Réhausseurs
+    - Tétines et anneaux
+      - Tétines et sucettes
+      - Tétines grignoteuses
+      - Attache-tétines
+      - Range-tétines
+      - Anneaux de dentition
+    - Allaitement
+      - Tire-laits
+      - Pots de conservation
+      - Coussins d'allaitement
+      - Coussinets
+      - Coquilles et protections
+      - Couvertures d'allaitement
+  - Éveil
+    - Transats
+    - Balancelles
+    - Parcs bébé
+    - Tapis et matelas de parc
+    - Tours de parc
+    - Tapis d’éveil
+    - Arches
+    - Bascules
+    - Chariots de marche
+    - Porteurs
+    - Trotteurs
+  - Bain et toilette
+    - Tables à langer
+    - Matelas à langer
+    - Baignoires et sièges de bain
+    - Thermomètres de bain
+    - Marchepieds
+    - Linges et gants de toilette
+    - Peignoirs et capes de bain
+    - Protège-carnets de santé
+    - Jouets de bain
+    - Pèse-bébés
+  - Propreté
+    - Pots de toilette
+    - Réducteurs de toilette
+  - Chambre et nuit
+    - Lits et berceaux
+      - Lits bébé
+      - Lits enfant
+      - Berceaux
+      - Co-dodos
+      - Lits parapluie
+    - Matelas et couffins
+      - Literie (bébé)
+      - Matelas pour lit bébé
+      - Matelas pour couffins et berceaux
+      - Couffins
+    - Mobilier chambre bébé
+      - Armoires
+      - Commodes et étagères
+      - Fauteuils, chaises et tabourets
+      - Bureaux enfant
+      - Boites et paniers de rangement
+      - Coffres à jouets
+      - Hamacs
+    - Cale-bébés
+    - Tours de lit
+    - Alèses
+    - Humidificateurs
+    - Babyphones
+      - Babyphones
+      - Babyphones vidéo
+    - Veilleuses
+  - Sortie et promenade
+    - Sacs à langer
+    - Porte-bébés
+      - Porte-bébés multi-positions
+      - Porte-bébés ventraux
+      - Porte-bébés dorsaux
+      - Porte-bébés de randonnée
+      - Accessoires porte-bébés
+    - Echarpes de portage
+  - Sécurité
+    - Barrières d’escalier et de porte
+    - Barrières de lit
+    - Cache-prises
+    - Protections d’angle
+    - Bloque-portes et placards
+    - Sécurité extérieure
+- Maison
+  - Cartables et fournitures scolaires
+    - Cartables
+    - Lots de fournitures scolaires
+    - Trousses
+    - Ecriture et correction
+    - Tracer, couper et coller
+    - Cahiers, feuilles et protections
+    - Agendas et cahiers de texte
+    - Classeurs, trieurs et porte-vues
+    - Calculatrices
+    - Boites à goûter
+  - Petit électroménager
+    - Cuiseurs
+    - Mixeurs
+    - Yaourtières
+    - Machines à café
+    - Appareils de cuisson
+  - Cuisine
+    - Vaisselle et art de la table
+    - Ustensiles de cuisine
+    - Poêles, casseroles et plats
+  - Linge de maison
+    - Linge de lit
+      - Parures de lit
+      - Draps
+      - Housses de couette
+      - Drap-housses
+    - Linge de bain
+    - Linge de table
+    - Autres linges de maison
+  - Meubles
+    - Mobilier de maison
+    - Meubles de rangement
+    - Accessoires de salle de bain
+  - Literie
+    - Couettes
+    - Oreillers
+    - Surmatelas
+  - Décoration
+    - Luminaires
+    - Coussins
+    - Tableaux
+    - Tapis et paillassons
+    - Cadres et affiches
+    - Porte-manteaux et cintres
+    - Décorations murales
+    - Décorations d'anniversaire
+    - Décorations de fêtes
+    - Décorations de naissance et baby shower
+    - Autres décorations
+  - Jardin et bricolage
+    - Mobilier de jardin
+    - Outils de jardin
+    - Perceuses et visseuses
+    - Outillage à main
+    - Quincaillerie
+  - Valises et bagages
+    - Valises (enfant)
+    - Valises (adulte)

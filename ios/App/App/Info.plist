@@ -19,9 +19,28 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.1</string>
+	<string>2.2</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>9</string>
+	<!-- Scheme custom app.fillsell.app:// — pendant iOS de l'intent-filter
+	     Android (AndroidManifest.xml). Sert UNIQUEMENT au retour OAuth Google
+	     (app.fillsell.app://callback?code=…) ouvert dans SFSafariViewController
+	     par @capacitor/browser. Sign in with Apple n'utilise PAS ce chemin :
+	     il passe par le plugin natif (AppleSignInPlugin.swift, identityToken
+	     rendu en process) — aucun conflit possible entre les deux. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.fillsell.app</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app.fillsell.app</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

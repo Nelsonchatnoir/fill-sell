@@ -7,7 +7,27 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost"];
+// ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
+// casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
+// equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
+// chemin « Oui, enregistrer la vente » était cassé depuis toujours en local. Passe
+// généralisée aux 15 fonctions restantes. La PROD n'a jamais été affectée.
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
+
+// Packs de pièces — le PRIX vient du price ID Stripe (secret), la QUANTITÉ
+// créditée est celle-ci : elle part en metadata.coins et c'est stripe-webhook
+// qui l'applique via credit_purchased_coins. Doit rester alignée avec
+// src/components/coinPacks.js et validate-coin-purchase.
+//
+// ⚠️ 2026-07-14 : coins_1150 crédite désormais 1300 Pépites (prix Stripe
+// INCHANGÉ, 49,99 € — aucun price ID à recréer). La clé garde « 1150 » car elle
+// correspond au SKU des stores, déjà enregistré.
+const COIN_PACKS: Record<string, { envKey: string; coins: number }> = {
+  coins_100:  { envKey: "STRIPE_PRICE_COINS_100",  coins: 100 },
+  coins_220:  { envKey: "STRIPE_PRICE_COINS_220",  coins: 220 },
+  coins_460:  { envKey: "STRIPE_PRICE_COINS_460",  coins: 460 },
+  coins_1150: { envKey: "STRIPE_PRICE_COINS_1150", coins: 1300 },
+};
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -41,7 +61,10 @@ serve(async (req) => {
   }
 
   try {
-    const { email } = await req.json();
+    // product : undefined → abonnement Premium standard (comportement historique) ;
+    // "pro" → abonnement Pro 29,99 €/mois ;
+    // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
+    const { email, product } = await req.json();
 
     if (email && authUser.email && email !== authUser.email) {
       return new Response(JSON.stringify({ error: "Email mismatch" }), {
@@ -50,23 +73,55 @@ serve(async (req) => {
     }
     const verifiedEmail = authUser.email ?? email;
 
-    // Determine plan type based on founder slots availability
+    // Programme Founder fermé aux nouveaux (2026-07) : plus de lecture de
+    // founder_config, tout nouveau checkout part sur le plan standard.
+    // Les renouvellements des Founders existants passent par stripe-webhook,
+    // qui reste inchangé.
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: config } = await supabase
-      .from("founder_config")
-      .select("slots_total, slots_used")
-      .eq("id", 1)
-      .single();
 
-    const slotsRemaining = config ? config.slots_total - config.slots_used : 0;
-    const isFounderSlot = slotsRemaining > 0;
-    const priceId = isFounderSlot
-      ? Deno.env.get("STRIPE_PRICE_FOUNDER")!
+    // ── Packs de pièces : paiement one-shot (commission ~3% vs 30% stores) ──
+    // Le crédit est fait par stripe-webhook (checkout.session.completed,
+    // metadata.purchase_type = "coins") via credit_purchased_coins, idempotent
+    // sur stripe:<session.id>.
+    if (typeof product === "string" && COIN_PACKS[product]) {
+      const pack = COIN_PACKS[product];
+      const packPriceId = Deno.env.get(pack.envKey);
+      if (!packPriceId) {
+        return new Response(JSON.stringify({ error: "pack_price_not_configured", pack: product }), {
+          status: 500, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      const { data: packProfile } = await supabase
+        .from("profiles")
+        .select("stripe_customer_id")
+        .eq("email", verifiedEmail)
+        .single();
+      const packSession = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [{ price: packPriceId, quantity: 1 }],
+        success_url: "https://fillsell.app/success",
+        cancel_url: "https://fillsell.app/cancel",
+        ...(packProfile?.stripe_customer_id
+          ? { customer: packProfile.stripe_customer_id }
+          : { customer_email: verifiedEmail || undefined }),
+        metadata: { purchase_type: "coins", coin_pack: product, coins: String(pack.coins), user_id: authUser.id },
+      });
+      return new Response(JSON.stringify({ url: packSession.url }), {
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
+    // ── Abonnements : standard 12,99 € ou Pro 29,99 € ──
+    // Pas d'essai gratuit sur Pro : les 600 pièces mensuelles sont créditées dès
+    // le paiement (un trial serait arbitrable : s'abonner, brûler les pièces, annuler).
+    const isProPlan = product === "pro";
+    const priceId = isProPlan
+      ? Deno.env.get("STRIPE_PRICE_PRO")!
       : Deno.env.get("STRIPE_PRICE_STANDARD")!;
-    const planType = isFounderSlot ? "founder" : "standard";
+    const planType = isProPlan ? "pro" : "standard";
 
     // Réutilise le customer Stripe existant pour bloquer un 2ème trial
     const { data: profile } = await supabase
@@ -88,7 +143,7 @@ serve(async (req) => {
           }
         : {
             customer_email: verifiedEmail || undefined,
-            subscription_data: { trial_period_days: 7, metadata: { plan_type: planType } },
+            subscription_data: { ...(isProPlan ? {} : { trial_period_days: 7 }), metadata: { plan_type: planType } },
           }
       ),
       metadata: { plan_type: planType },

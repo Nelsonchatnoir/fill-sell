@@ -240,74 +240,53 @@ function welcomeHtml(lang: string): string {
   return emailWrapper(content, lang);
 }
 
-function founderHtml(lang: string, premiumCount: number): string {
+// Email J+3 : pitch Premium standard. Ex-founderHtml — le tier Founder est
+// supprimé (2026-07), le checkout ne crée plus que standard/pro ; le type
+// email_logs reste 'founder_plan' pour ne pas casser la déduplication.
+function premiumPlanHtml(lang: string): string {
   const isFr = lang !== "en";
-  const hasSpots = premiumCount < 20;
-  const spotsLeft = Math.max(0, 20 - premiumCount);
-
-  const badge = isFr
-    ? (hasSpots
-        ? `🔥 Il reste <strong>${spotsLeft} place${spotsLeft > 1 ? "s" : ""}</strong> Founder`
-        : `⚡ Places limitées`)
-    : (hasSpots
-        ? `🔥 Only <strong>${spotsLeft} Founder spot${spotsLeft > 1 ? "s" : ""}</strong> left`
-        : `⚡ Limited spots available`);
-
   const content = isFr ? `
-    <div style="background:linear-gradient(135deg,#3EACA0,#2DD4BF);border-radius:12px;
-      padding:14px 20px;margin:0 0 24px;text-align:center;">
-      <p style="margin:0;color:#fff;font-weight:800;font-size:15px;font-family:sans-serif;">
-        ${badge}
-      </p>
-    </div>
     <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
-      Le Founder Plan vous attend 🚀
+      FillSell Premium vous attend 🚀
     </h1>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
       font-family:sans-serif;">
       Débloquez la saisie vocale illimitée, l'analyse photo Lens et toutes les
-      fonctionnalités pro — au meilleur prix, avant la hausse.
+      fonctionnalités pro.
     </p>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Founder Plan inclut</p>
+        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium inclut</p>
       <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.9;font-family:sans-serif;">
         <li>🎙️ Voix illimitée (cap 300/mois · vs 5/jour en gratuit)</li>
         <li>📸 Lens Pro · 10 scans/jour · 120/mois</li>
         <li>📊 Stats avancées &amp; export multi-plateformes</li>
-        <li>⭐ Accès Fondateur — prix bloqué à vie</li>
+        <li>🎁 7 jours gratuits · sans engagement</li>
       </ul>
     </div>
-    ${ctaButton("Je rejoins les Founders")}` : `
-    <div style="background:linear-gradient(135deg,#3EACA0,#2DD4BF);border-radius:12px;
-      padding:14px 20px;margin:0 0 24px;text-align:center;">
-      <p style="margin:0;color:#fff;font-weight:800;font-size:15px;font-family:sans-serif;">
-        ${badge}
-      </p>
-    </div>
+    ${ctaButton("Je passe Premium")}` : `
     <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
-      The Founder Plan is waiting for you 🚀
+      FillSell Premium is waiting for you 🚀
     </h1>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
       font-family:sans-serif;">
-      Unlock unlimited voice input, AI photo analysis and all pro features —
-      at the best price before rates increase.
+      Unlock unlimited voice input, AI photo analysis and all pro features.
     </p>
     <div style="border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Founder Plan includes</p>
+        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium includes</p>
       <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.9;font-family:sans-serif;">
         <li>🎙️ Unlimited voice (300/month cap · vs 5/day on free)</li>
         <li>📸 Lens Pro · 10 scans/day · 120/month</li>
         <li>📊 Advanced stats &amp; multi-platform export</li>
-        <li>⭐ Founder access — price locked for life</li>
+        <li>🎁 7 days free · no commitment</li>
       </ul>
     </div>
-    ${ctaButton("Join the Founders")}`;
+    ${ctaButton("Go Premium")}`;
   return emailWrapper(content, lang);
 }
 
@@ -466,7 +445,7 @@ serve(async (req) => {
   if (testEmail) {
     const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
     if (r1) sent.push(`welcome:${testEmail}`); else errors.push(`welcome:${testEmail}`);
-    const r2 = await sendEmail(testEmail, "Le Founder Plan vous attend 🚀", founderHtml("fr", 0));
+    const r2 = await sendEmail(testEmail, "FillSell Premium vous attend 🚀", premiumPlanHtml("fr"));
     if (r2) sent.push(`founder_plan:${testEmail}`); else errors.push(`founder_plan:${testEmail}`);
     const r3 = await sendEmail(testEmail, "Limite vocale atteinte — passez illimité 🎙️", voiceConversionHtml("fr"));
     if (r3) sent.push(`voice_conversion:${testEmail}`); else errors.push(`voice_conversion:${testEmail}`);
@@ -525,14 +504,6 @@ serve(async (req) => {
   );
   const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
 
-  // ── Founder slots (même source que l'app : founder_config.slots_used) ──────
-  const { data: fcData } = await supabase
-    .from("founder_config")
-    .select("slots_used")
-    .eq("id", 1)
-    .single();
-  const founderPremiumCount = fcData?.slots_used ?? 0;
-
   // ── Date windows (UTC) ────────────────────────────────────────────────────
   const now = new Date();
   const todayUTC = new Date(
@@ -562,19 +533,21 @@ serve(async (req) => {
     }
   }
 
-  // ── Trigger 2: J+3 founder plan (non-premium) ─────────────────────────────
+  // ── Trigger 2: J+3 pitch Premium (non-premium) ────────────────────────────
+  // email_type conservé à 'founder_plan' (nom legacy) : changer le type
+  // renverrait l'email aux comptes qui ont déjà reçu la version Founder.
   for (const user of candidates as any[]) {
     if (user.is_premium) continue;
     if (!registeredOn(user.created_at, dayMinus3)) continue;
     if (alreadySent(user.user_id, "founder_plan")) continue;
     const subject =
       user.lang === "en"
-        ? "Your Founder Plan is waiting 🚀"
-        : "Le Founder Plan vous attend 🚀";
+        ? "FillSell Premium is waiting for you 🚀"
+        : "FillSell Premium vous attend 🚀";
     const ok = await sendEmail(
       user.user_email,
       subject,
-      founderHtml(user.lang, founderPremiumCount)
+      premiumPlanHtml(user.lang)
     );
     if (ok) {
       await logEmail(user.user_id, "founder_plan");

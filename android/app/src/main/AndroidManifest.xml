@@ -23,6 +23,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Deep link OAuth (2026-07-11) : retour du Custom Tab Google/Apple
+                 vers app.fillsell.app://callback?code=… — capté par l'écouteur
+                 appUrlOpen (@capacitor/app) dans App.jsx, qui échange le code
+                 PKCE. launchMode singleTask (ci-dessus) garantit le retour dans
+                 l'instance existante, sans relancer l'app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="app.fillsell.app" android:host="callback" />
+            </intent-filter>
+
         </activity>
 
         <provider
