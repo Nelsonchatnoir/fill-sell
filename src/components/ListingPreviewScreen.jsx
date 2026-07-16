@@ -2743,10 +2743,23 @@ export default function ListingPreviewScreen({
     return keys;
   }, [selected, edited, initialListing]);
 
+  // ⚠️ DÉPENDANCE PAR SIGNATURE, PAS PAR IDENTITÉ (fix boucle 2026-07-16) :
+  // genericCategoryKeys est un OBJET recalculé à chaque rendu (useMemo sur
+  // [selected, edited, initialListing] — edited/initialListing changent
+  // d'identité au fil des rendus du stepper). Dépendre de l'objet faisait
+  // re-tirer l'effet en boucle → setGenericAspectsCatalog → re-rendu →
+  // nouvelle identité → … (72+ requêtes/s vers Supabase, constaté en prod le
+  // 2026-07-16 sur l'étape Publier). La signature JSON est stable PAR VALEUR :
+  // l'effet ne se redéclenche que si les catégories résolues CHANGENT
+  // réellement. Le contraste avec les effets eBay (qui ne bouclaient pas) tient
+  // à leur dépendance à ebayPreviewCategoryId, une valeur primitive.
+  const genericCategoryKeysSig = JSON.stringify(genericCategoryKeys);
   const [genericAspectsCatalog, setGenericAspectsCatalog] = useState({});
   useEffect(() => {
-    const entries = Object.entries(genericCategoryKeys);
-    if (!entries.length) { setGenericAspectsCatalog({}); return; }
+    const entries = Object.entries(JSON.parse(genericCategoryKeysSig));
+    // Garde d'égalité de contenu : ne jamais reposer un {} d'identité neuve si
+    // déjà vide — sinon genericRequiredStatus (dérivé) churne les consommateurs.
+    if (!entries.length) { setGenericAspectsCatalog(prev => (Object.keys(prev).length ? {} : prev)); return; }
     let alive = true;
     (async () => {
       try {
@@ -2760,11 +2773,13 @@ export default function ListingPreviewScreen({
           return [platform, data ?? []];
         }));
         if (!alive) return;
-        setGenericAspectsCatalog(Object.fromEntries(results.filter(([, rows]) => rows.length)));
-      } catch { if (alive) setGenericAspectsCatalog({}); }
+        const next = Object.fromEntries(results.filter(([, rows]) => rows.length));
+        setGenericAspectsCatalog(prev =>
+          JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+      } catch { if (alive) setGenericAspectsCatalog(prev => (Object.keys(prev).length ? {} : prev)); }
     })();
     return () => { alive = false; };
-  }, [genericCategoryKeys]);
+  }, [genericCategoryKeysSig]);
 
   // Valeur déjà portée par un champ dédié de l'app pour un requis du
   // catalogue — mêmes correspondances que ce que les content scripts posent
@@ -2882,7 +2897,10 @@ export default function ListingPreviewScreen({
         } catch { /* micro-appel de secours : jamais bloquant */ }
       })();
     }
-  }, [genericRequiredStatus, genericCategoryKeys, edited, initialListing]);
+    // Deps par SIGNATURE (fix boucle 2026-07-16) : jamais l'objet
+    // genericCategoryKeys/edited/initialListing (identités instables). La garde
+    // genericResolvedFor borne déjà à une tentative par (plateforme, catégorie).
+  }, [genericRequiredStatus, genericCategoryKeysSig]);
 
   // Saisie manuelle d'un requis Vinted/LBC/Beebs — écrit dans le canal
   // générique de la copie plateforme (pf.vintedAspects / lbcAspects /
