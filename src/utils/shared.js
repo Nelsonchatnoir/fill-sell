@@ -494,8 +494,21 @@ const CAT_DEFAULT_ICONS = {
   'Jouets':'🧸','Livres':'📚','Sport':'⚽','Auto-Moto':'🚗','Beauté':'💄',
   'Musique':'🎵','Collection':'🏆','Multimédia':'📺','Jardin':'🌿','Bricolage':'🔧','Autre':'📦',
 };
+// Accessoires fréquemment INCLUS avec un appareil principal — leur simple
+// mention ne doit pas reclasser l'objet (« Nintendo Switch avec dock » reste
+// une console, pas un 🔌 « Batteries externes » ; bug réel 2026-07-16, une
+// console partait en cross-post dans la mauvaise catégorie). On retire les
+// clauses d'INCLUSION (« avec … dock », « + … câble », « livré avec … housse »)
+// AVANT la détection : l'objet PRINCIPAL pilote alors l'icône. Un accessoire
+// vendu SEUL (« Chargeur iPhone », « Dock USB-C ») n'a pas de marqueur
+// d'inclusion → sa mention reste → il est classé 🔌 comme avant.
+const INCLUDED_ACCESSORY_CLAUSE =
+  /\b(?:avec|with|\+|&|inclus|incluse?s?|livré[e]?s?\s+avec|comprend|comprenant|accompagné[e]?\s+de|fourni[e]?s?\s+avec)\b[^,.;:!?]*?\b(?:dock|chargeur|c[âa]ble|adaptateur|\bhub\b|manette|joy-?con|housse|[ée]tui|coque|protection|support|sacoche|pochette)\b[^,.;:!?]*/gi;
+
 export function detectObjectIcon(titre, description, type){
-  const t=((titre||'')+' '+(description||'')).toLowerCase();
+  const raw=((titre||'')+' '+(description||''));
+  // Dé-bruitage des accessoires inclus (cf. INCLUDED_ACCESSORY_CLAUSE).
+  const t=raw.replace(INCLUDED_ACCESSORY_CLAUSE,' ').toLowerCase();
   for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
   if(CAT_DEFAULT_ICONS[type]) return CAT_DEFAULT_ICONS[type];
   const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(type||"").toLowerCase());

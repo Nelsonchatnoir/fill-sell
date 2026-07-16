@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-16-chantier-requis-1C (sonde : attrsConfig Vinted + validationErrors 400 structurés ; catalogue platform_category_aspects alimenté ; failed structuré server_required_fields)";
+  "2026-07-16-ebay-confirm-active-listings (verifyEbaySubmission : 3e preuve = Hub vendeur /sh/lst/active par titre exact — plus de faux négatif → doublon ; + attrsConfig/400/catalogue requis)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -747,7 +747,7 @@ async function processJob(rawJob, accessToken) {
       // en "published" fantôme. Seul le background peut trancher : il survit
       // à la redirection (succès) comme à l'absence de redirection (refus).
       if (job.platform === "ebay") {
-        const verdict = await verifyEbaySubmission(tabId);
+        const verdict = await verifyEbaySubmission(tabId, 20_000, job);
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}`);
           await rearmBounded(accessToken, job, verdict.error);
@@ -1526,7 +1526,7 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
 // Retourne { error, listingUrl } : error non-null = refus/non confirmé ;
 // listingUrl non-null = numéro d'annonce extrait de la preuve (modale ou
 // réponse serveur), à prendre comme listing_url sans repasser par la capture.
-async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
+async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -1584,15 +1584,61 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000) {
     }
     await sleep(1000);
   }
+
+  // ── 3e PREUVE : LES ANNONCES ACTIVES DU VENDEUR (2026-07-16, faux négatif réel)
+  // Les deux sondes ci-dessus (bandeau + réponse serveur) sont FRAGILES : le
+  // bandeau dépend d'un markup qui change et d'un onglet rendu à temps, la
+  // réponse serveur d'un endpoint capté par la sonde. Le 2026-07-16, l'annonce
+  // itm/800354759898 (Switch OLED) était BEL ET BIEN EN LIGNE alors que les
+  // deux ont raté → job « non confirmée », re-armé : au prochain poll il
+  // recréait un DOUBLON (le 3e cas du genre après 800330102796 et 800332793676).
+  // La source de vérité qui, elle, ne ment pas : le Hub vendeur /sh/lst/active
+  // liste l'annonce avec son TITRE EXACT et son lien /itm/. On l'interroge en
+  // DERNIER RECOURS, avant de déclarer l'échec — exactement ce que fait déjà
+  // captureListingUrl pour l'URL, mais ici comme PREUVE de publication.
+  // ⚠️ requireTitle:true impératif (page de LISTE) : ne jamais ramener l'URL
+  // d'une autre annonce (danger listing_url croisée, cf. findListingLinkInPage).
+  if (job?.title) {
+    const viaListings = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
+    if (viaListings) {
+      console.log(`[background] eBay : publication CONFIRMÉE par les annonces actives (${viaListings})`);
+      return { error: null, listingUrl: viaListings };
+    }
+  }
+
   return {
     error:
       `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
       `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
-      "ni d'erreur, et sans réponse serveur portant un numéro d'annonce — job NON marqué publié, " +
-      "il repartira au prochain passage." +
+      "ni d'erreur, sans réponse serveur portant un numéro d'annonce, ET absente des annonces " +
+      "actives du vendeur — job NON marqué publié, il repartira au prochain passage." +
       (await readEbayFailureDiagnostics(tabId)),
     listingUrl: null,
   };
+}
+
+// Dernier recours de confirmation eBay : l'annonce figure-t-elle dans le Hub
+// vendeur (/sh/lst/active) avec NOTRE titre exact ? Navigue l'onglet de travail
+// vers la liste, attend le rendu, cherche le lien /itm/ porté par une carte au
+// titre correspondant (requireTitle:true — jamais l'URL d'une autre annonce).
+// Retourne l'URL /itm/ ou null. À n'appeler qu'APRÈS l'échec des sondes bandeau
+// et réponse serveur : il coûte une navigation et n'a de sens que si l'annonce
+// a pu être créée sans qu'on l'ait vu.
+async function ebayConfirmViaActiveListings(tabId, title) {
+  const listUrl = MY_LISTINGS_URL.ebay;
+  const pattern = LISTING_URL_PATTERNS.ebay;
+  if (!listUrl || !pattern) return null;
+  try {
+    await chrome.tabs.update(tabId, { url: listUrl });
+  } catch { return null; }
+  // Laisse le Hub vendeur se charger (SPA : les cartes arrivent après le HTML).
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    await sleep(1500);
+    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+    if (url) return url.replace(WORK_TAB_FRAGMENT, "");
+  }
+  return null;
 }
 
 // Diagnostic joint au message « non confirmée » (2026-07-13, job 5e3ee1e2) :
