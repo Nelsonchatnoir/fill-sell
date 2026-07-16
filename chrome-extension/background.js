@@ -386,6 +386,11 @@ function updateJobStatus(accessToken, jobId, status, extra = {}) {
   return callEdgeFunction("update-job-status", accessToken, {
     job_id: jobId,
     status,
+    // Estampille de version (handler-watch, 2026-07-16) : quel build de
+    // l'extension a traité ce job — enrichit le diagnostic d'alerte. Écrit
+    // dans la colonne DÉDIÉE cross_post_jobs.handler_build, jamais dans
+    // platform_fields (qu'update-job-status écrase en entier).
+    handler_build: `${FILLSELL_BUILD.split(" (")[0]} · v${chrome.runtime.getManifest().version}`,
     ...safe,
   });
 }

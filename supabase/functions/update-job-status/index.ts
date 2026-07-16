@@ -112,6 +112,12 @@ serve(async (req) => {
       patch.platform_fields = body.platform_fields;
     }
 
+    // Estampille de version du build extension (handler-watch, 2026-07-16) :
+    // colonne dédiée, purement diagnostique, jamais bloquante.
+    if (typeof body.handler_build === "string" && body.handler_build) {
+      patch.handler_build = body.handler_build.slice(0, 120);
+    }
+
     if (status === "published") {
       patch.published_at = new Date().toISOString();
       patch.error = null;
