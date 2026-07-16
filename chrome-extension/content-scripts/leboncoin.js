@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-14-00h30 (opacity retiree du filtre de visibilite)";
+const LEBONCOIN_BUILD = "2026-07-16-chantier-requis-1B-1D (enumeration des criteres label[for] + canal generique lbcAspects + blocage wizard route en needsUser structure avec libelles exacts)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -378,6 +378,20 @@ async function fillListingForm(job) {
     await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
   }
 
+  // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
+  // platform_fields.lbcAspects = { "<clé for= du label>": "valeur" } — posé par
+  // l'app (saisie manuelle du stepper) pour les critères SANS mapping dédié
+  // ci-dessus. La clé est le nom sémantique du label (ex. watches_jewels_type),
+  // stable contrairement aux ids React — relevé form-survey du 05/07.
+  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
+  if (fields.lbcAspects && typeof fields.lbcAspects === "object") {
+    for (const [forKey, value] of Object.entries(fields.lbcAspects)) {
+      const val = String(value ?? "").trim();
+      if (!val || handledForKeys.test(forKey)) continue;
+      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true });
+    }
+  }
+
   // QUANTITÉ (2026-07-12) — critère OBLIGATOIRE sur certaines catégories
   // (constaté sur la chaise ce soir : « Ce champ est requis », le Continuer ne
   // passait jamais à l'aperçu et le job mourait là). Il n'était REMPLI NULLE
@@ -402,6 +416,16 @@ async function fillListingForm(job) {
     }
   }
 
+  // ── Énumération des critères AFFICHÉS (chantier 2026-07-16, 1.B) ───────────
+  // Relevé APRÈS tous les remplissages, AVANT le Continuer : chaque critère
+  // combobox de l'étape 2, avec sa clé sémantique (for=), son libellé humain,
+  // son marqueur requis (astérisque du libellé — motif « Produit* » relevé en
+  // réel) et son état rempli/vide. Nourrit le catalogue cumulatif
+  // platform_category_aspects côté background ; un requis vide ici sera
+  // confirmé (ou infirmé) par la validation du Continuer ci-dessous — LBC
+  // reste le juge, on n'invente aucun blocage en amont.
+  const enumerated = enumerateLbcCriteria();
+
   // Continuer → interstitiel "juste prix" → aperçu final
   const continueBtn = findButtonByExactText("Continuer");
   if (!continueBtn) throw new Error('Bouton "Continuer" introuvable après les critères.');
@@ -412,24 +436,55 @@ async function fillListingForm(job) {
   try {
     bodyArea = await waitForElement("textarea#body, #body", 25000);
   } catch {
-    // Le wizard n'a pas avancé : un critère obligatoire a probablement été
-    // refusé ("Veuillez choisir un univers de vêtement" — cas réel du
-    // 2026-07-06, masqué jusqu'ici par un "Élément introuvable: #body"
-    // opaque). On remonte les messages de validation visibles ET les
-    // warnings accumulés : l'erreur du job sert de relevé correctif.
+    // Le wizard n'a pas avancé : un critère obligatoire a été refusé
+    // ("Veuillez choisir un univers de vêtement" — cas réel du 2026-07-06).
+    // ── Routage 1.D (chantier 2026-07-16) : plus JAMAIS un throw opaque —
+    // les messages de validation sont CORRÉLÉS aux critères énumérés (le
+    // message d'erreur d'un critère vit dans son wrapper, cf.
+    // findVisibleFieldError) et le job part en needsUser STRUCTURÉ : libellé
+    // exact + clé sémantique, que l'app présente en saisie manuelle. Les
+    // requis ainsi PROUVÉS par la validation LBC (source de vérité) partent
+    // aussi au catalogue (required=true), même si leur libellé n'avait pas
+    // d'astérisque.
+    const blockedFields = [];
+    for (const f of enumerated) {
+      const input = findCriterionInput(`label[for="${f.key}"]`);
+      const msg = input ? findVisibleFieldError(input) : null;
+      if (msg) blockedFields.push({ ...f, required: true, message: msg });
+    }
+    // Champs à message d'erreur hors énumération (input quantité, radios…) :
+    // relevé générique en complément, jamais en remplacement.
     const validationMsgs = [...new Set(
       [...document.querySelectorAll('[role="alert"], [aria-live="assertive"], [aria-live="polite"], [class*="error" i]')]
         .filter(isHumanMessageNode)
         .map((el) => el.textContent.trim())
         .filter((t) => t.length <= 200)
     )].slice(0, 5);
-    throw new Error(
-      "Le wizard n'est pas passé à l'aperçu après Continuer" +
-      (validationMsgs.length
-        ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
-        : " (aucun message de validation visible)") +
-      `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`
-    );
+
+    for (const f of blockedFields) {
+      if (!unfilledRequired.includes(f.label)) unfilledRequired.push(f.label);
+      const idx = enumerated.findIndex((e) => e.key === f.key);
+      if (idx >= 0) enumerated[idx] = { ...enumerated[idx], required: true };
+    }
+
+    const details = blockedFields.length
+      ? `Leboncoin exige : ${blockedFields.map((f) => `${f.label} (« ${f.message} »)`).join(", ")}. ` +
+        "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication."
+      : "Le wizard n'est pas passé à l'aperçu après Continuer" +
+        (validationMsgs.length
+          ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
+          : " (aucun message de validation visible)") +
+        `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`;
+
+    return {
+      success: false,
+      needsUser: true,
+      error: details,
+      warnings,
+      unfilledRequired,
+      discoveredRequired: enumerated,
+      serverRequired: blockedFields.map((f) => ({ key: f.key, label: f.label, message: f.message })),
+    };
   }
 
   // ── Étape 4 : aperçu final ───────────────────────────────────────────────
@@ -471,6 +526,7 @@ async function fillListingForm(job) {
       error: addressResult.error,
       warnings,
       unfilledRequired,
+      discoveredRequired: enumerated,
     };
   }
 
@@ -488,7 +544,7 @@ async function fillListingForm(job) {
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning.",
       unfilledRequired.length ? `\n⚠️ Champs OBLIGATOIRES non remplis: ${unfilledRequired.join(", ")}` : ""
     );
-    return { success: true, dryRun: true, warnings, unfilledRequired };
+    return { success: true, dryRun: true, warnings, unfilledRequired, discoveredRequired: enumerated };
   }
 
   // ── Publication LIVE (job live_run uniquement) ─────────────────────────────
@@ -500,7 +556,7 @@ async function fillListingForm(job) {
   // gratuit explicite ("Déposer sans booster…") est requis, sinon needsUser.
   const finalContinue = findButtonByExactText("Continuer");
   if (!finalContinue) {
-    return { success: false, needsUser: true, error: "LIVE : Continuer final introuvable sur l'aperçu.", warnings, unfilledRequired };
+    return { success: false, needsUser: true, error: "LIVE : Continuer final introuvable sur l'aperçu.", warnings, unfilledRequired, discoveredRequired: enumerated };
   }
   console.log("[leboncoin] 🚀 LIVE — Continuer final (« je confirme l'exactitude »)");
   await humanPause(1200, 2400);
@@ -534,7 +590,7 @@ async function fillListingForm(job) {
   await humanPause(1000, 2000);
   realClick(freeCta);
   await sleep(4000);
-  return { success: true, listingUrl: null, warnings, unfilledRequired };
+  return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
 // ── Catégorie ────────────────────────────────────────────────────────────────
@@ -616,6 +672,37 @@ function findSuggestionRadio(root, leaf) {
 // ── Critères (combobox à menu, IDs instables → label[for] sémantique) ──────
 
 // label[for="condition"] ou label[for$="_material"] → wrapper → input combobox.
+// Relevé de TOUS les critères combobox affichés à l'étape 2 (chantier champs
+// obligatoires, 2026-07-16). Clé = attribut for du label (nom sémantique
+// stable, ex. watches_jewels_brand — les ids React :form-field-_r_X_ sont
+// inutilisables, relevé form-survey 05/07). Requis = astérisque en fin de
+// libellé (motif « Produit* » relevé en réel sur Équipement bébé) — marqueur
+// INDICATIF : la validation du Continuer reste le juge (elle promeut
+// required=true via le routage needsUser). Vide = combobox sans valeur.
+function enumerateLbcCriteria() {
+  const out = [];
+  const seen = new Set();
+  for (const label of document.querySelectorAll("label[for]")) {
+    const key = label.getAttribute("for") || "";
+    // ids React dynamiques et champs de base (titre/prix/adresse) exclus :
+    // on ne relève que les critères sémantiques de l'étape 2.
+    if (!key || seen.has(key) || /^:|^(subject|body|price_cents|location|photo-input)$/.test(key)) continue;
+    const input = findCriterionInput(`label[for="${CSS.escape(key)}"]`);
+    if (!input) continue; // pas un combobox de critère
+    seen.add(key);
+    const text = (label.textContent || "").trim();
+    out.push({
+      key,
+      label: text.replace(/\s*\*\s*$/, "").trim() || key,
+      required: /\*\s*$/.test(text),
+      inputType: "combobox",
+      filled: Boolean(String(input.value ?? "").trim()),
+      source: "dom",
+    });
+  }
+  return out;
+}
+
 function findCriterionInput(labelSelector) {
   const label = document.querySelector(labelSelector);
   if (!label) return null;
