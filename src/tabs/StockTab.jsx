@@ -1,5 +1,6 @@
 import { memo, useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
@@ -266,6 +267,7 @@ const StockTab = memo(function StockTab({
   openUpgradeModal, onStepperOpenChange,
 }) {
   const { t, tpl } = useTranslation(lang);
+  const isMobile = useIsMobile(); // P4 : réactif (grille desktop ↔ liste mobile)
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
@@ -363,7 +365,7 @@ const StockTab = memo(function StockTab({
           )}
         </div>
       </div>
-      <div style={window.innerWidth>=768?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
+      <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Voice Capture (collapsible) ── */}
           {voiceZoneOpen&&(<>
@@ -741,7 +743,7 @@ const StockTab = memo(function StockTab({
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('vendus')}</div>
-                {window.innerWidth<768&&(()=>{const _b=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedSold(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedSold?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
+                {isMobile&&(()=>{const _b=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];return _b.length>0&&(<button onClick={()=>setPillsExpandedSold(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedSold?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button>);})()}
               </div>
               <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{tpl('venteLabel',{n:soldQty??sold.length})}</div>
             </div>
@@ -749,7 +751,7 @@ const StockTab = memo(function StockTab({
               const _slAll=[...new Set(sold.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
               const marquesFiltreesParType=["Toutes",..._slAll.filter(b=>b.toLowerCase()!=="sans marque"),..._slAll.filter(b=>b.toLowerCase()==="sans marque")];
               if(marquesFiltreesParType.length<=1) return null;
-              const _mob=window.innerWidth<768;
+              const _mob=isMobile;
               const _open=!_mob||pillsExpandedSold;
               return(
                 <div style={{marginBottom:12}}>
