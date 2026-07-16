@@ -133,7 +133,61 @@ le canal générique (clé for= exacte).
 |---|---|---|
 | 234 catégories feuilles | référentiel complet `ebay_item_aspects` (API Taxonomy) | auto-fill (connus) + défauts (MPN, 32 cat.) + resolve_aspects + saisie-manuelle Phase 3 — vérif réelle P4 EN ATTENTE |
 
-## Filets livrés le 16/07 (Étape 1 — code commité, NON déployé/rechargé)
+## Validation réelle (16/07 soir — branche mergée sur main, prod déployée)
+
+Extension rechargée par Nico, app déployée en prod (Vercel dpl READY, merge
+97166a3). Tests menés :
+
+- **Vinted — 400 forgé RÉEL (safe by construction)** : formulaire Téléphones
+  portables rempli (titre + catégorie + 3 photos + description + prix 85 €),
+  champs téléphone laissés vides, clic Publier → **HTTP 400, aucune annonce
+  créée**. Corps serveur capturé :
+  `{"code":99,"message_code":"validation_error","errors":[{"field":"brand",...},
+  {"field":"internal_memory_capacity","value":"Sélectionne une valeur..."},
+  {"field":"condition",...},{"field":"sim_lock",...},{"field":"color",...},
+  {"field":"price",...}]}`. Passé dans le parseur `structuredExtras` (copie
+  exacte de background.js) → **6 champs extraits et traduits** en libellés
+  humains (Marque, Espace de stockage, État, Simlockage, Couleur, Prix). Le
+  champ historiquement invisible au DOM (`internal_memory_capacity`) est bien
+  capturé. Le filet n'est PLUS silencieux. ✅
+  - Finding : le 400 marque `brand`/`color` requis alors que la config
+    `attributes` ne les marque PAS `required`. Les deux couches sont donc
+    COMPLÉMENTAIRES — le gate pré-clic couvre les requis de la config (+ modèle
+    via règle DOM), le parseur 400 rattrape ceux que la config omet.
+- **Vinted — gate pré-clic (lecture DOM)** : `computeVintedRequiredState`
+  détecte correctement un requis vide sur le vrai formulaire (« État » relevé
+  vide). Config phone canonique (storage/condition/simlock required) validée. ✅
+- **eBay P4 — libellés réels (catégorie 9355 Téléphones)** : formulaire de
+  vente réel ouvert (`/lstng`, draft, pas de mur passkey cette fois). Aspects
+  relevés vs référentiel `ebay_item_aspects` :
+  Marque ✅ (pré-rempli « Redmi » par product-match), Modèle ✅ (pré-rempli),
+  **Couleur** ✅ présent+vide, **Capacité de stockage** ✅ présent+vide —
+  libellés IDENTIQUES au référentiel et aux correspondances de la garde/preview
+  app (Couleur→colors[0], Capacité de stockage→pf.stockage). ✅
+- **generate-listing** : version déployée contient DÉJÀ `resolve_aspects`, le
+  défaut MPN « Ne s'applique pas » et le contexte enrichi (déployée avec
+  898e088/1494aea, NON modifiée par ce chantier) → **aucun redéploiement**,
+  verify_jwt reste true. ✅
+- **Beebs P5 — énumération hors Mode** : Figurines (Marque, Âge, Matière, État
+  requis — le scénario exact du bug dry-run 09/07, désormais couvert),
+  Poussettes citadines (Marque, État requis). L'énumération DOM est
+  category-agnostique → couvre 100 % des catégories par construction. ✅
+
+### Artefacts de test laissés (sans effet)
+- eBay : brouillon `draftId=5309600414213` (Xiaomi Redmi Note 10) — jamais
+  publié, à purger à la main avec les autres brouillons de test.
+- Vinted : formulaire Téléphones abandonné après le 400 — aucune annonce.
+
+### Trou de validation restant
+- **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
+  est déployée et compile, mais NON observée dans l'app connectée (login
+  OAuth/mot de passe hors de portée de l'automatisation). À vérifier par Nico
+  connecté, ou lors du test d'acceptation cross-post.
+- **eBay Phase 3 fallback UI (1.F)** : libellés validés sur le vrai formulaire ;
+  le rendu de l'encart de saisie inline pour un aspect SANS source app (ex.
+  « Longueur de la robe ») reste à voir dans l'app connectée.
+
+## Filets livrés le 16/07 (Étape 1 — code commité, mergé sur main, déployé)
 
 1. **Extension** (vinted.js, leboncoin.js, beebs.js, background.js) :
    - Vinted : unfilledRequired RÉEL (config attributes × DOM), gate pré-clic
