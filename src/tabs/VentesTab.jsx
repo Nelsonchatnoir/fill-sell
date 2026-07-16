@@ -295,7 +295,7 @@ const VentesTab = memo(function VentesTab({
         // n'a réellement aucune vente. Le padding bas laisse passer le FAB micro
         // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
         // grille de mini-stats finissaient sous le bouton en fin de scroll.
-        <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'calc(env(safe-area-inset-bottom,0px) + 96px)'}}>
+        <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'var(--nav-content-clearance)'}}>
           <SalesTicker lang={lang} fmt={fmt} setTab={setTab}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email}/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore}/>)}

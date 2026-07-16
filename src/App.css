@@ -120,6 +120,19 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   .topbar { padding-left: 12px; padding-right: 12px; }
 }
 
+/* ─── Réserve basse unifiée (P3) — un seul endroit pour l'espace occupé par la
+   nav flottante (.bnav ≈ 95px depuis le bas, bouton Lens qui dépasse inclus).
+   Remplace les 4 valeurs en dur éparpillées (96/100/108/140).
+   - --nav-content-clearance : réserve pour le CONTENU scrollé (.page-pad, listes)
+     → le contenu ne passe jamais sous la nav.
+   - --nav-float-bottom : ancrage des éléments FLOTTANTS (FAB, Toast) qui doivent
+     rester JUSTE AU-DESSUS de la nav. */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-content-clearance: calc(env(safe-area-inset-bottom, 0px) + 140px);
+  --nav-float-bottom: calc(env(safe-area-inset-bottom, 0px) + 108px);
+}
+
 /* ─── Garde d'orientation (P2) — l'app est PORTRAIT-FIRST. Le natif est déjà
    verrouillé portrait (capacitor.config orientation:'portrait') ; le web ne
    peut pas verrouiller l'orientation, donc en PAYSAGE sur TÉLÉPHONE on couvre
@@ -310,7 +323,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .fab-vocal {
   position: fixed;
   right: 20px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 108px);
+  bottom: var(--nav-float-bottom);
   width: 56px; height: 56px;
   border-radius: 50%;
   background: linear-gradient(135deg, #2DB89A 0%, #1A6B4A 100%);
@@ -594,7 +607,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   .logo-mobile { display: block !important; }
   .premium-full { display: none !important; }
   .premium-short { display: inline !important; }
-  .page-pad { padding-bottom: 140px !important; }
+  .page-pad { padding-bottom: var(--nav-content-clearance) !important; }
 }
 @media (max-width: 480px) {
   .grid4 { grid-template-columns: 1fr; }

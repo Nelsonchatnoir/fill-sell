@@ -2,7 +2,7 @@ export default function Toast({ message, visible }) {
   return (
     <div style={{
       position:"fixed",
-      bottom:"calc(env(safe-area-inset-bottom, 0px) + 108px)",
+      bottom:"var(--nav-float-bottom)",
       left:"50%",
       transform:`translateX(-50%) translateY(${visible?0:16}px)`,
       zIndex:500,
