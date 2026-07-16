@@ -466,6 +466,21 @@ function visibleFields(fieldConfigs, icon, values) {
 const DEFAULT_CONDITION = "Très bon état";
 const isConditionKey = k => k === "etat" || k === "condition";
 
+// Défauts DÉTERMINISTES d'aspects obligatoires eBay (Phase 1, 2026-07-16).
+// Certains obligatoires sans source app ont une valeur standard eBay SÛRE,
+// qui ne dépend pas du contexte article — on la pose sans passer par l'IA :
+//  - « Numéro de pièce fabricant » (MPN) : trou n°1 de l'audit (32 catégories,
+//    ~31 % des trous — Sport, Musique, Bébé, Auto-Moto, Jouets, Bricolage,
+//    Bijoux, Loisirs). Pour un objet d'OCCASION sans référence fabricant
+//    lisible, la valeur canonique eBay est « Ne s'applique pas » (FREE_TEXT,
+//    acceptée par toutes ces catégories). Déterministe = plus jamais bloqué
+//    par un échec/rate-limit de l'appel Haiku resolve_aspects.
+// Écrit dans pf.ebayAspects (même canal générique) ; reste ÉDITABLE dans le
+// fallback UI (l'utilisateur peut saisir un vrai MPN s'il l'a).
+const EBAY_ASPECT_DEFAULTS = {
+  "Numéro de pièce fabricant": "Ne s'applique pas",
+};
+
 function defaultConditionFor(field) {
   if (!field || field.type !== "select") return DEFAULT_CONDITION;
   return findMatchingOption(DEFAULT_CONDITION, field.options ?? []) || DEFAULT_CONDITION;
@@ -2514,14 +2529,47 @@ export default function ListingPreviewScreen({
     });
   }, [ebayRequiredPreview, edited]);
 
+  // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
+  // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
+  // (EBAY_ASPECT_DEFAULTS, ex. MPN → « Ne s'applique pas ») dans pf.ebayAspects
+  // — instantané, sans appel IA, donc jamais bloqué par un échec Haiku. Les
+  // chips passent ✓ tout de suite ; la valeur reste écrasable dans le fallback
+  // UI. Jamais d'écrasement d'une source existante. Une pose par catégorie.
+  const aspectDefaultsFor = useRef(null);
+  useEffect(() => {
+    if (!ebayRequiredStatus || !ebayPreviewCategoryId) return;
+    if (aspectDefaultsFor.current === ebayPreviewCategoryId) return;
+    const pfAspects = edited.ebay?.platform_fields?.ebayAspects ?? {};
+    const toSet = {};
+    for (const a of ebayRequiredStatus) {
+      const def = EBAY_ASPECT_DEFAULTS[a.name];
+      if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) toSet[a.name] = def;
+    }
+    aspectDefaultsFor.current = ebayPreviewCategoryId;
+    if (!Object.keys(toSet).length) return;
+    setEdited(prev => prev.ebay ? {
+      ...prev,
+      ebay: {
+        ...prev.ebay,
+        platform_fields: {
+          ...prev.ebay.platform_fields,
+          ebayAspects: { ...(prev.ebay.platform_fields?.ebayAspects ?? {}), ...toSet },
+        },
+      },
+    } : prev);
+  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited]);
+
   // Résolution IA ciblée des obligatoires SANS source (2026-07-16, même
   // philosophie que resolve_genre : micro-appel jamais bloquant, null si non
   // déductible). Une seule tentative par catégorie — les aspects toujours
   // manquants après ce passage relèvent du fallback UI (Phase 3), jamais
-  // d'une valeur devinée.
+  // d'une valeur devinée. Les aspects à défaut déterministe (MPN…) sont
+  // EXCLUS : ils sont déjà posés par l'effet ci-dessus, pas de tokens gâchés.
   const aspectsResolvedFor = useRef(null);
   useEffect(() => {
-    const missing = (ebayRequiredStatus ?? []).filter(a => a.state === "missing").map(a => a.name);
+    const missing = (ebayRequiredStatus ?? [])
+      .filter(a => a.state === "missing" && !EBAY_ASPECT_DEFAULTS[a.name])
+      .map(a => a.name);
     if (!missing.length || !ebayPreviewCategoryId) return;
     if (aspectsResolvedFor.current === ebayPreviewCategoryId) return;
     aspectsResolvedFor.current = ebayPreviewCategoryId;
@@ -2541,6 +2589,12 @@ export default function ListingPreviewScreen({
             item_data: {
               titre:       src.title || initialListing?.titre || "",
               marque:      src.platform_fields?.marque || initialListing?.marque || null,
+              // Contexte enrichi (Phase 1) : modèle/matière/couleur aident
+              // l'IA à extraire les obligatoires extractibles (Nom de parfum
+              // souvent = modèle, Volume/Taille d'écran dans le titre…).
+              modele:      src.platform_fields?.modele || initialListing?.modele || null,
+              matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
+              couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
               description: src.description || initialListing?.description || null,
               type:        initialListing?.categorie || null,
               // attributs_visibles de lens-analysis (Phase 2) — null tant

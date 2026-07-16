@@ -371,9 +371,24 @@ serve(async (req) => {
       const wanted = (Array.isArray(body.aspects) ? body.aspects : [])
         .filter((a: { name?: unknown }) => a && typeof a.name === "string")
         .slice(0, 12);
+      // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : valeur standard eBay SÛRE
+      // pour les obligatoires sans source, indépendante du contexte article.
+      // Le front les pose déjà côté client (EBAY_ASPECT_DEFAULTS), mais le
+      // contrat resolve_aspects ne doit pas EN dépendre : on les applique ici
+      // aussi, avant l'IA, pour tout appelant. Trou n°1 = MPN (32 catégories).
+      const ASPECT_DEFAULTS: Record<string, string> = {
+        "Numéro de pièce fabricant": "Ne s'applique pas",
+      };
+      const out: Record<string, string> = {};
+      for (const a of wanted) if (ASPECT_DEFAULTS[a.name]) out[a.name] = ASPECT_DEFAULTS[a.name];
+      // On ne demande à l'IA que les aspects SANS défaut déterministe.
+      const askAI = wanted.filter((a: { name: string }) => !ASPECT_DEFAULTS[a.name]);
       const ctx = [
         it.marque && `Marque: ${it.marque}`,
         it.titre && `Article: ${it.titre}`,
+        it.modele && `Modèle: ${it.modele}`,
+        it.matiere && `Matière: ${it.matiere}`,
+        it.couleur && `Couleur: ${it.couleur}`,
         it.type && `Type: ${it.type}`,
         it.description && `Description: ${it.description}`,
         // attributs_visibles de lens-analysis (Phase 2) : valeurs LUES sur
@@ -383,8 +398,10 @@ serve(async (req) => {
         it.attributs && typeof it.attributs === "object" && Object.keys(it.attributs).length &&
           `Attributs lus sur l'article (photos): ${JSON.stringify(it.attributs)}`,
       ].filter(Boolean).join("\n");
-      if (!ctx || !wanted.length) return json({ aspects: {} });
-      const lines = wanted.map((a: { name: string; allowedValues?: string[] }) => {
+      // Rien à extraire par l'IA (tout couvert par les défauts, ou pas de
+      // contexte) : on renvoie directement les défauts déterministes.
+      if (!wanted.length || !askAI.length || !ctx) return json({ aspects: out });
+      const lines = askAI.map((a: { name: string; allowedValues?: string[] }) => {
         const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
         return `- "${a.name}"${allowed.length ? ` — valeurs eBay (suggestions, saisie libre acceptée) : ${allowed.join(" | ")}` : " — texte libre"}`;
       }).join("\n");
@@ -411,10 +428,12 @@ serve(async (req) => {
           if (m) {
             const parsed = JSON.parse(m[0]);
             const raw = parsed?.aspects && typeof parsed.aspects === "object" ? parsed.aspects : {};
-            const wantedNames = new Set(wanted.map((a: { name: string }) => a.name));
-            const out: Record<string, string> = {};
+            // Fusion dans `out` (déjà porteur des défauts déterministes) : l'IA
+            // ne peut renseigner QUE les aspects demandés à l'IA (askAI) —
+            // jamais écraser un défaut déterministe ni inventer une clé.
+            const askNames = new Set(askAI.map((a: { name: string }) => a.name));
             for (const [k, v] of Object.entries(raw)) {
-              if (!wantedNames.has(k)) continue; // jamais de clé hors demande
+              if (!askNames.has(k)) continue; // hors demande IA
               const s = typeof v === "string" ? v.trim() : "";
               if (s && s.toLowerCase() !== "null") out[k] = s;
             }
@@ -426,7 +445,8 @@ serve(async (req) => {
       } catch (e) {
         console.error("[generate-listing] resolve_aspects exception:", e);
       }
-      return json({ aspects: {} });
+      // Échec IA : on renvoie quand même les défauts déterministes déjà posés.
+      return json({ aspects: out });
     }
     // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
     // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur absente, inconnue
