@@ -211,6 +211,27 @@ Conséquence : cross-post dans la MAUVAISE catégorie. Le filet fait son travail
 Reproduit : titre propre « Console Nintendo Switch OLED » → 🎮 correct ;
 « ...avec dock... » → 🔌. À corriger dans l'ordre des règles d'icône.
 
+### Cross-post LIVE réel (17/07) — article console, 3 plateformes
+Jobs déclenchés via « Publier maintenant » (extension), comptes de test.
+- **Vinted ✅ PUBLIÉ** : https://www.vinted.fr/items/9416716174 — le job portait
+  `vintedAspects.video_game_platform = "Nintendo Switch"` (le requis du filet,
+  résolu par l'IA) → posé sur le formulaire, publication SANS 400. Preuve
+  end-to-end : filet app → job → extension → annonce en ligne.
+- **Leboncoin ✅ PUBLIÉ** (listing_url en récupération différée, normal LBC).
+- **eBay ⚠️ NON confirmé** (re-armé, attempts=1) : « l'onglet est resté sur
+  /lstng 20 s après le clic, sans redirection ni réponse serveur portant un
+  n° d'annonce ». ⚠️ Ce n'est PAS un problème de champs obligatoires : les
+  aspects requis eBay (Marque/Modèle) étaient satisfaits, aucun `unfilled`,
+  aucune erreur d'aspect. C'est la fragilité connue de CONFIRMATION DE
+  SOUMISSION eBay (verifyEbaySubmission) — et la garde a bien REFUSÉ de marquer
+  « publié » sans preuve (pas de published-fantôme). À investiguer séparément.
+
+**Verdict acceptation champs obligatoires** : ✅ aucune plateforme n'a publié
+avec un requis vide ; aucune n'a bloqué à tort (eBay non bloqué par le filet,
+son non-publish est orthogonal) ; le filet Vinted a porté son requis
+jusqu'à l'annonce en ligne. Le seul point ouvert (soumission eBay) est hors
+périmètre du chantier requis.
+
 ### Trou de validation restant
 - **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
   est déployée et compile, mais NON observée dans l'app connectée (login
