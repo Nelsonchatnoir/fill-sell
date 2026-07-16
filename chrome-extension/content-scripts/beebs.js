@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-14-00h30 (opacity retiree du filtre — les animations CSS ne tournent pas en fenetre non rendue : dialogue bloque a opacity 0)";
+const BEEBS_BUILD = "2026-07-16-chantier-requis-1B (enumeration DOM des requis + gate pre-clic LIVE + canal generique beebsAspects + discoveredRequired vers catalogue)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -438,6 +438,34 @@ async function fillListingForm(job) {
   // étage de la cascade, et le champ (obligatoire ici) restait vide.
   if (fields.age) await selectDropdownValue("Âge", fields.age, warnings, unfilledRequired);
 
+  // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
+  // platform_fields.beebsAspects = { "<libellé exact du champ>": "valeur" } —
+  // posé par l'app (saisie manuelle du stepper) pour les champs SANS mapping
+  // dédié ci-dessus. Les libellés déjà servis sont ignorés (jamais deux poses).
+  const handledLabels = new Set(["Couleur", "Marque", "Pointure", "Taille", "État", "Matière", "Âge"]);
+  if (fields.beebsAspects && typeof fields.beebsAspects === "object") {
+    for (const [label, value] of Object.entries(fields.beebsAspects)) {
+      const val = String(value ?? "").trim();
+      if (!val || handledLabels.has(label)) continue;
+      await selectDropdownValue(label, val, warnings, unfilledRequired);
+    }
+  }
+
+  // ── Énumération des requis AFFICHÉS (chantier 2026-07-16, 1.B/1.E) ─────────
+  // L'accumulateur unfilledRequired ne voit que les champs qu'on a TENTÉ de
+  // remplir : un champ obligatoire jamais tenté (aucune donnée côté app — cas
+  // Âge/Matière du dry-run Figurines du 2026-07-09) restait invisible. On
+  // énumère donc TOUS les dropdowns affichés : libellé sans « (facultatif) »
+  // = obligatoire (seul marqueur Beebs, cf. findField) ; vide = le bouton
+  // porte encore son placeholder « Sélectionner… » (relevé réel 2026-07-16,
+  // formulaire Baskets femme).
+  const enumerated = enumerateBeebsFields();
+  for (const f of enumerated) {
+    if (f.required && !f.filled && !unfilledRequired.includes(f.label)) {
+      unfilledRequired.push(f.label);
+    }
+  }
+
   if (job.price != null) await fillPriceField("#price", job.price);
 
   // Adresse de remise (politique A+C, même contrat que Leboncoin) : absente
@@ -450,6 +478,7 @@ async function fillListingForm(job) {
       error: addressResult.error,
       warnings,
       unfilledRequired,
+      discoveredRequired: enumerated,
     };
   }
 
@@ -466,7 +495,25 @@ async function fillListingForm(job) {
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning.",
       unfilledRequired.length ? `\n⚠️ Champs OBLIGATOIRES non remplis: ${unfilledRequired.join(", ")}` : ""
     );
-    return { success: true, dryRun: true, warnings, unfilledRequired };
+    return { success: true, dryRun: true, warnings, unfilledRequired, discoveredRequired: enumerated };
+  }
+
+  // ── Gate PRÉ-CLIC (règle produit du chantier) : un requis vide ne part
+  // JAMAIS en silence — needsUser explicite avec les libellés exacts, l'app
+  // les présente en saisie manuelle. Avant ce gate, le job partait en
+  // « COMPLÉTÉ AVEC CHAMPS MANQUANTS » : publié quand Beebs tolérait, refus
+  // opaque sinon.
+  if (unfilledRequired.length) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        `Beebs exige des champs encore vides pour cette catégorie : ${unfilledRequired.join(", ")}. ` +
+        "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication.",
+      warnings,
+      unfilledRequired,
+      discoveredRequired: enumerated,
+    };
   }
 
   const publishBtn = document.querySelector('button[type="submit"]');
@@ -486,10 +533,39 @@ async function fillListingForm(job) {
   // listingUrl reste null — ce n'est PAS une erreur, la re-capture différée
   // côté background ira le chercher plus tard.
   const proof = await waitForBeebsDeposit();
-  if (!proof.ok) return { success: false, error: proof.error, warnings, unfilledRequired };
+  if (!proof.ok) return { success: false, error: proof.error, warnings, unfilledRequired, discoveredRequired: enumerated };
 
   console.log(`[beebs] dépôt CONFIRMÉ (${proof.preuve}) — annonce en modération, listing_url différé`);
-  return { success: true, listingUrl: null, warnings, unfilledRequired };
+  return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
+}
+
+// Relevé de TOUS les champs dynamiques affichés pour la catégorie courante —
+// nourrit unfilledRequired (requis jamais tentés) et le catalogue cumulatif
+// platform_category_aspects côté background. Marqueurs relevés en réel le
+// 2026-07-16 (formulaire Baskets femme) :
+//   - libellé : div[class*="__label"], suffixe « (facultatif) » = optionnel ;
+//   - vide : le bouton porte le placeholder « Sélectionner une valeur » ;
+//   - pré-rempli par Beebs (Format du colis) : texte ≠ placeholder.
+// La Catégorie elle-même est exclue (gérée en bloquant par selectCategory).
+function enumerateBeebsFields() {
+  const out = [];
+  for (const l of document.querySelectorAll('div[class*="__label"]')) {
+    const btn = l.parentElement?.querySelector('button[class*="__selectButton"]');
+    if (!btn) continue;
+    const text = l.textContent.trim();
+    const label = text.replace(/\s*\(facultatif\)\s*/i, "").trim();
+    if (!label || /^catégorie$/i.test(label)) continue;
+    const value = (btn.textContent || "").trim();
+    out.push({
+      key: label,
+      label,
+      required: !/\(facultatif\)/i.test(text),
+      inputType: "dropdown",
+      filled: Boolean(value) && !/^sélectionner/i.test(value),
+      source: "dom",
+    });
+  }
+  return out;
 }
 
 // Confirmation de dépôt Beebs : page de succès OU message de confirmation.
