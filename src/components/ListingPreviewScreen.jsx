@@ -3232,15 +3232,20 @@ export default function ListingPreviewScreen({
   // ── Render : stepper ──────────────────────────────────────────────────────
   return (
     <div style={{
+      // 100dvh (viewport DYNAMIQUE) et non 100% / 100vh : sur Safari iOS web,
+      // un fixed height:100% est dimensionné sur le GRAND viewport (barre
+      // d'outils rétractée) → le bas du conteneur passe SOUS la barre Safari.
+      // dvh suit la hauteur réellement visible. Le conteneur ne scrolle PAS :
+      // seul le contenu scrolle, le footer reste pinné en bas du dvh.
       position:"fixed", inset:0, zIndex:300,
-      display:"flex", flexDirection:"column", width:"100%", height:"100%",
-      background:T.canvas, overflowY:"auto",
+      display:"flex", flexDirection:"column", width:"100%", height:"100dvh",
+      background:T.canvas, overflow:"hidden",
       paddingTop:"env(safe-area-inset-top,0px)",
     }}>
       <style>{`* { box-sizing: border-box; }`}</style>
 
       {/* Header : retour + progression */}
-      <div style={{ padding:"12px 20px 0" }}>
+      <div style={{ padding:"12px 20px 0", flexShrink:0 }}>
         <button
           onClick={handleBack}
           disabled={isLocked}
@@ -3257,8 +3262,10 @@ export default function ListingPreviewScreen({
       </div>
       <StepProgress step={step} labels={stepLabels} />
 
-      {/* Contenu de l'étape */}
-      <div style={{ padding:"16px 20px 8px", flex:1 }}>
+      {/* Contenu de l'étape — SEUL élément scrollable (minHeight:0 pour que le
+          flex enfant puisse rétrécir et scroller au lieu de pousser le footer
+          hors écran). */}
+      <div style={{ padding:"16px 20px 8px", flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
         {step === 0 && (
           <StepUpload
             previews={displayPreviews}
@@ -3347,8 +3354,10 @@ export default function ListingPreviewScreen({
         )}
       </div>
 
-      {/* Footer CTA */}
-      <div style={{ padding:"8px 20px", paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 28px)" }}>
+      {/* Footer CTA — pinné en bas du viewport dynamique (flex-shrink:0), pas
+          dans le flux scrollé : toujours visible, jamais sous la barre Safari.
+          Fond + bordure haute pour le détacher du contenu qui scrolle dessous. */}
+      <div style={{ padding:"8px 20px", paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 20px)", flexShrink:0, background:T.canvas, borderTop:`1px solid ${T.border}`, boxShadow:"0 -6px 16px rgba(16,32,27,0.05)" }}>
         <PrimaryButton
           disabled={ctaDisabled}
           onClick={handleNext}
