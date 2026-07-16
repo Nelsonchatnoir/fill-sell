@@ -482,6 +482,14 @@ const EBAY_ASPECT_DEFAULTS = {
   "Numéro de pièce fabricant": "Ne s'applique pas",
 };
 
+// Canal générique de saisie manuelle des requis par plateforme (chantier
+// champs obligatoires, 2026-07-16) — pendant du pf.ebayAspects : la clé du
+// champ dans platform_fields de la copie, consommée telle quelle par le
+// content script correspondant (codes serveur Vinted, attributs for= LBC,
+// libellés exacts Beebs).
+const GENERIC_ASPECTS_PF_KEY = { vinted: "vintedAspects", leboncoin: "lbcAspects", beebs: "beebsAspects" };
+const GENERIC_PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs" };
+
 function defaultConditionFor(field) {
   if (!field || field.type !== "select") return DEFAULT_CONDITION;
   return findMatchingOption(DEFAULT_CONDITION, field.options ?? []) || DEFAULT_CONDITION;
@@ -1538,7 +1546,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -1685,6 +1693,60 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
           )}
         </div>
       )}
+
+      {/* Encart générique Vinted/LBC/Beebs (chantier 1.A, 2026-07-16) : les
+          requis appris par le catalogue platform_category_aspects, AVANT le
+          clic Publier — miroir exact du bloc eBay ci-dessus. Un requis sans
+          source se complète ICI (select si liste d'options relevée, texte
+          libre sinon) ; tant qu'un ✗ reste, le CTA Publier est désactivé. */}
+      {genericRequiredStatus && Object.entries(genericRequiredStatus).map(([gp, list]) => list.length > 0 && (
+        <div key={gp} style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
+          <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>
+            {tpl("stepPublishGenericRequiredTitle", { platform: PLATFORM_LABELS[gp] ?? gp })}
+          </div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {list.map(({ key, label, state }) => (
+              <span key={key} style={{
+                padding:"3px 9px", borderRadius:10, fontSize:12,
+                background: state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : "#FEF2F2",
+                border: `1px solid ${state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : "#FECACA"}`,
+                color: state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : "#B91C1C",
+              }}>
+                {state === "ok" ? "✓ " : state === "missing" ? "✗ " : ""}{label}
+                {state === "prefilled" ? ` — ${t("stepPublishGenericAspectPrefilled")}` : ""}
+                {state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
+              </span>
+            ))}
+          </div>
+          {onPlatformAspectChange && list.some(a => a.state === "missing" || a.source === "generic") && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
+              {list.filter(a => a.state === "missing" || a.source === "generic").map(a => (
+                <div key={a.key}>
+                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
+                  {a.allowedValues?.length > 0 && a.allowedValues.length <= 30 ? (
+                    <select
+                      value={a.value ?? ""}
+                      onChange={ev => onPlatformAspectChange(gp, a.key, ev.target.value)}
+                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: a.value ? T.ink : T.mute }}
+                    >
+                      <option value="">—</option>
+                      {a.allowedValues.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={a.value ?? ""}
+                      onChange={ev => onPlatformAspectChange(gp, a.key, ev.target.value)}
+                      placeholder="—"
+                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
 
       {missingSharedFields.length > 0 && (
         // Encart inline (Sujet 4) : les champs partagés manquants se
@@ -2657,6 +2719,139 @@ export default function ListingPreviewScreen({
     })();
   }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, initialListing]);
 
+  // ── Requis Vinted/LBC/Beebs AVANT publication (chantier 1.A, 2026-07-16) ──
+  // Même philosophie que le bloc eBay ci-dessus, mais la source est le
+  // catalogue CUMULATIF platform_category_aspects, appris par la découverte
+  // réactive de l'extension (config attributes Vinted, énumérations DOM
+  // Beebs/LBC, refus serveur). Catalogue vide pour une catégorie → aucun
+  // encart, aucun blocage : le gate pré-clic de l'extension reste le plancher,
+  // et sa découverte remplira le catalogue pour la fois suivante.
+  const genericCategoryKeys = useMemo(() => {
+    const keys = {};
+    for (const platform of ["vinted", "leboncoin", "beebs"]) {
+      if (!selected.has(platform) || !edited[platform]) continue;
+      const pf = edited[platform].platform_fields ?? {};
+      const icon = resolveArticleIcon({ initialListing, edited, pf });
+      let path = null;
+      if (platform === "vinted") path = getVintedCategoryPath(icon, pf.genre);
+      if (platform === "leboncoin") path = getLbcCategoryPath(icon);
+      if (platform === "beebs") path = getBeebsCategoryPath(icon, pf.genre);
+      // MÊME clé que categoryKeyOf de l'extension (background.js) : chemin
+      // joint par " > " — c'est elle qui écrit, nous qui lisons.
+      if (Array.isArray(path) && path.length) keys[platform] = path.join(" > ");
+    }
+    return keys;
+  }, [selected, edited, initialListing]);
+
+  const [genericAspectsCatalog, setGenericAspectsCatalog] = useState({});
+  useEffect(() => {
+    const entries = Object.entries(genericCategoryKeys);
+    if (!entries.length) { setGenericAspectsCatalog({}); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const results = await Promise.all(entries.map(async ([platform, key]) => {
+          const { data } = await supabase
+            .from("platform_category_aspects")
+            .select("field_key, field_label, required, input_type, allowed_values")
+            .eq("platform", platform)
+            .eq("category_key", key)
+            .eq("required", true);
+          return [platform, data ?? []];
+        }));
+        if (!alive) return;
+        setGenericAspectsCatalog(Object.fromEntries(results.filter(([, rows]) => rows.length)));
+      } catch { if (alive) setGenericAspectsCatalog({}); }
+    })();
+    return () => { alive = false; };
+  }, [genericCategoryKeys]);
+
+  // Valeur déjà portée par un champ dédié de l'app pour un requis du
+  // catalogue — mêmes correspondances que ce que les content scripts posent
+  // réellement (clés Vinted = codes serveur, LBC = attribut for= des labels,
+  // Beebs = libellés exacts).
+  const genericKnownSource = (platform, key, pf) => {
+    if (platform === "vinted") {
+      if (key === "brand") return pf.marque;
+      if (key === "model") return pf.modele;
+      if (key === "internal_memory_capacity") return pf.stockage;
+      if (key === "condition") return pf.etat;
+      if (key === "color") return pf.colors?.[0] || pf.couleur;
+      if (key === "size") return pf.taille;
+      if (key === "material") return pf.matiere;
+      return null;
+    }
+    if (platform === "leboncoin") {
+      if (/_brand$/.test(key)) return pf.marque;
+      if (key === "condition" || /_condition$/.test(key)) return pf.etat;
+      if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return pf.taille;
+      if (/_material$/.test(key)) return pf.matiere;
+      if (/_univers$|_universe$/.test(key)) return pf.univers || pf.genre;
+      if (/_type$/.test(key) || key === "baby_clothing_category") return pf.lbcProduit;
+      return null;
+    }
+    if (platform === "beebs") {
+      if (key === "Marque") return pf.marque;
+      if (key === "Pointure" || key === "Taille") return pf.taille;
+      if (key === "État") return pf.etat;
+      if (key === "Matière") return pf.matiere;
+      if (key === "Couleur") return pf.colors?.[0] || pf.couleur;
+      if (key === "Âge") return pf.age;
+      return null;
+    }
+    return null;
+  };
+  // Champs posés automatiquement (défaut extension ou pré-remplissage
+  // plateforme) : affichés « rempli automatiquement », jamais bloquants.
+  //   sim_lock : défaut « Non » posé par vinted.js (sémantique prouvée 13/07)
+  //   package_size_id : « Petit » forcé sur la Mode par vinted.js
+  //   quantity : défaut 1 posé par leboncoin.js
+  //   Format du colis : pré-rempli par Beebs (relevé réel 16/07)
+  const GENERIC_PREFILLED = {
+    vinted: ["sim_lock", "package_size_id"],
+    leboncoin: ["quantity"],
+    beebs: ["Format du colis"],
+  };
+
+  const genericRequiredStatus = useMemo(() => {
+    const out = {};
+    for (const [platform, rows] of Object.entries(genericAspectsCatalog)) {
+      if (!selected.has(platform) || !edited[platform]) continue;
+      const pf = edited[platform].platform_fields ?? {};
+      const aspects = pf[GENERIC_ASPECTS_PF_KEY[platform]] ?? {};
+      const status = rows.map((r) => {
+        const key = r.field_key;
+        const label = r.field_label || key;
+        const allowedValues = Array.isArray(r.allowed_values) ? r.allowed_values.slice(0, 200) : [];
+        const src = String(genericKnownSource(platform, key, pf) ?? "").trim();
+        if (src) return { key, label, state: "ok", allowedValues };
+        const generic = String(aspects[key] ?? "").trim();
+        if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues };
+        if (GENERIC_PREFILLED[platform]?.includes(key)) return { key, label, state: "prefilled", allowedValues };
+        return { key, label, state: "missing", value: "", allowedValues };
+      });
+      if (status.length) out[platform] = status;
+    }
+    return Object.keys(out).length ? out : null;
+  }, [genericAspectsCatalog, selected, edited]);
+
+  // Saisie manuelle d'un requis Vinted/LBC/Beebs — écrit dans le canal
+  // générique de la copie plateforme (pf.vintedAspects / lbcAspects /
+  // beebsAspects), consommé tel quel par le content script.
+  function setPlatformAspect(platform, key, value) {
+    const pfKey = GENERIC_ASPECTS_PF_KEY[platform];
+    if (!pfKey) return;
+    setEdited(prev => prev[platform] ? {
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        platform_fields: {
+          ...prev[platform].platform_fields,
+          [pfKey]: { ...(prev[platform].platform_fields?.[pfKey] ?? {}), [key]: value },
+        },
+      },
+    } : prev);
+  }
 
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
@@ -2686,6 +2881,20 @@ export default function ListingPreviewScreen({
         throw new Error(tpl("stepPublishSharedFieldsMissing", {
           fields: missingSharedFields.map(k => labels[k]).join(", "),
         }));
+      }
+
+      // ── Garde générique Vinted/LBC/Beebs (chantier 1.A) : un requis du
+      // catalogue encore vide bloque AVANT le débit/insert — même règle que
+      // la garde eBay plus bas, l'encart de StepPublish est le chemin nominal
+      // (CTA désactivé), ce re-check attrape un état périmé ou une course.
+      for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
+        const missing = list.filter(a => a.state === "missing").map(a => a.label);
+        if (missing.length) {
+          throw new Error(tpl("stepPublishGenericRequiredMissing", {
+            platform: GENERIC_PLATFORM_LABELS[gp] ?? gp,
+            fields: missing.join(", "),
+          }));
+        }
       }
 
       // Switch "Ajouter au stock" ON et article pas encore en stock : on le crée
@@ -3156,11 +3365,22 @@ export default function ListingPreviewScreen({
     ? `Add at least ${MIN_PHOTOS} photos to continue`
     : `Ajoute au moins ${MIN_PHOTOS} photos pour continuer`;
 
+  // ── Publier DÉSACTIVÉ tant qu'un requis est vide (chantier 2026-07-16) ────
+  // Règle produit : plus jamais un clic qui échoue sur un requis — le bouton
+  // reste gris tant que l'encart (eBay, générique, champs partagés, genre
+  // Vinted bloqué) signale un manque. Les états "prefilled"/"generic"/"ok"
+  // ne bloquent pas ; seuls les "missing" comptent.
+  const requiredBlocking =
+    (ebayRequiredStatus ?? []).some(a => a.state === "missing") ||
+    Object.values(genericRequiredStatus ?? {}).some(list => list.some(a => a.state === "missing")) ||
+    missingSharedFields.length > 0 ||
+    vintedGenreBlocked;
+
   const ctaDisabled =
     (step === 0 && (photoCount < MIN_PHOTOS || uploading)) ||
     (step === 1 && (photos.length < MIN_PHOTOS || selected.size === 0)) ||
     (step === 2 && (generatingPlatforms || !platformListings)) ||
-    (step === 3 && (publishChips.length === 0 || publishing));
+    (step === 3 && (publishChips.length === 0 || publishing || requiredBlocking));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
@@ -3355,6 +3575,8 @@ export default function ListingPreviewScreen({
             vintedGenreBlocked={vintedGenreBlocked}
             ebayRequiredStatus={ebayRequiredStatus}
             onEbayAspectChange={setEbayAspect}
+            genericRequiredStatus={genericRequiredStatus}
+            onPlatformAspectChange={setPlatformAspect}
             pausedPlatforms={pausedPlatforms}
           />
         )}
