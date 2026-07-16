@@ -178,6 +178,60 @@ Extension rechargée par Nico, app déployée en prod (Vercel dpl READY, merge
   publié, à purger à la main avec les autres brouillons de test.
 - Vinted : formulaire Téléphones abandonné après le 400 — aucune annonce.
 
+### Test d'acceptation APP (17/07, Nico connecté aux 4 apps) — cross-post console
+
+Article de test « Console Nintendo Switch OLED » créé via Stock IA, cross-post
+Vinted + Leboncoin + eBay (Beebs s'auto-exclut : « catégorie non disponible »,
+les consoles ne sont pas une catégorie Beebs — filet correct).
+
+**Filet APP prouvé end-to-end sur le vrai stepper** (capture à l'appui) :
+- eBay (cat. 139971) : encart « ✓ Marque ✓ Modèle » (product-match) — satisfait.
+- Vinted (cat. Consoles) : encart « ✗ Plateforme — à compléter ci-dessous /
+  ✓ État », select Plateforme (options du catalogue) → **IA resolve_aspects
+  l'auto-remplit « Nintendo Switch »** depuis le titre → passe ✓.
+- **Blocage vérifié** : select Plateforme vidé → chip repasse ✗ ROUGE **et le
+  CTA « Publier » se désactive** (ctaDisabled=true). eBay reste tout vert →
+  **chaque plateforme applique son filet indépendamment**. ✅ DoD APP atteint.
+
+### ⚠️ INCIDENT PROD trouvé + corrigé pendant le test (hotfix fe8726f)
+Boucle de rendu infinie dans l'effet de fetch du catalogue générique
+(`genericAspectsCatalog`) : il dépendait de l'OBJET `genericCategoryKeys`
+(identité instable au fil des rendus) ET posait un état à chaque passage →
+**72+ requêtes/s vers Supabase** sur l'étape Publier, pour TOUT article. Fix :
+dépendance par signature JSON (stable par valeur) + setState gardé par égalité.
+Vérifié post-déploiement : 0 requête en boucle, filet fonctionnel. Les effets
+eBay ne bouclaient pas (dépendance à `ebayPreviewCategoryId`, valeur primitive).
+
+### FINDING mapping (pré-existant, à traiter séparément)
+Une console décrite « avec dock » est classée 🔌 (« Autres appareils >
+Batteries externes ») au lieu de 🎮 (Consoles) : le mot « dock » matche une
+règle accessoire AVANT la règle console dans `OBJECT_ICON_RULES` (shared.js).
+Conséquence : cross-post dans la MAUVAISE catégorie. Le filet fait son travail
+(il lit la catégorie résolue), c'est le classement icône en amont qui dévie.
+Reproduit : titre propre « Console Nintendo Switch OLED » → 🎮 correct ;
+« ...avec dock... » → 🔌. À corriger dans l'ordre des règles d'icône.
+
+### Cross-post LIVE réel (17/07) — article console, 3 plateformes
+Jobs déclenchés via « Publier maintenant » (extension), comptes de test.
+- **Vinted ✅ PUBLIÉ** : https://www.vinted.fr/items/9416716174 — le job portait
+  `vintedAspects.video_game_platform = "Nintendo Switch"` (le requis du filet,
+  résolu par l'IA) → posé sur le formulaire, publication SANS 400. Preuve
+  end-to-end : filet app → job → extension → annonce en ligne.
+- **Leboncoin ✅ PUBLIÉ** (listing_url en récupération différée, normal LBC).
+- **eBay ⚠️ NON confirmé** (re-armé, attempts=1) : « l'onglet est resté sur
+  /lstng 20 s après le clic, sans redirection ni réponse serveur portant un
+  n° d'annonce ». ⚠️ Ce n'est PAS un problème de champs obligatoires : les
+  aspects requis eBay (Marque/Modèle) étaient satisfaits, aucun `unfilled`,
+  aucune erreur d'aspect. C'est la fragilité connue de CONFIRMATION DE
+  SOUMISSION eBay (verifyEbaySubmission) — et la garde a bien REFUSÉ de marquer
+  « publié » sans preuve (pas de published-fantôme). À investiguer séparément.
+
+**Verdict acceptation champs obligatoires** : ✅ aucune plateforme n'a publié
+avec un requis vide ; aucune n'a bloqué à tort (eBay non bloqué par le filet,
+son non-publish est orthogonal) ; le filet Vinted a porté son requis
+jusqu'à l'annonce en ligne. Le seul point ouvert (soumission eBay) est hors
+périmètre du chantier requis.
+
 ### Trou de validation restant
 - **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
   est déployée et compile, mais NON observée dans l'app connectée (login
