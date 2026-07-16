@@ -75,9 +75,28 @@ serve(async (req) => {
 
     if (jobsErr) return json({ error: jobsErr.message }, 500);
 
-    console.log(`[get-pending-jobs] userId=${user.id} → ${jobs?.length ?? 0} job(s) pending`);
+    // Mode dégradé (Phase B) : une plateforme EN PAUSE (platform_health.paused)
+    // ne se voit plus distribuer ses jobs — ils RESTENT 'pending' (rien perdu,
+    // repris dès que paused repasse à false). L'app affiche le message de
+    // maintenance. Lecture tolérante : en cas d'échec, on ne bloque JAMAIS la
+    // distribution (le mode dégradé ne doit pas devenir un point de panne).
+    let paused = new Set<string>();
+    try {
+      const { data: health } = await userClient
+        .from("platform_health")
+        .select("platform, paused")
+        .eq("paused", true);
+      paused = new Set((health ?? []).map((h: { platform: string }) => h.platform));
+    } catch (_e) { /* mode dégradé indisponible → on distribue normalement */ }
 
-    return json({ jobs: jobs ?? [] });
+    const out = (jobs ?? []).filter((j) => !paused.has(j.platform));
+    const heldBack = (jobs?.length ?? 0) - out.length;
+    console.log(
+      `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
+      (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : ""),
+    );
+
+    return json({ jobs: out });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[get-pending-jobs] Erreur inattendue:", msg);

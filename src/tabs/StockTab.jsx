@@ -323,6 +323,24 @@ const StockTab = memo(function StockTab({
     };
   }, [user?.id]);
 
+  // Mode dégradé (Phase B) : plateformes en pause → badge « En pause » sur les
+  // jobs en attente concernés. Lecture TOLÉRANTE, jamais bloquante.
+  const [pausedPlatforms, setPausedPlatforms] = useState([]);
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    const lire = async () => {
+      try {
+        const { data } = await supabase.from("platform_health").select("platform").eq("paused", true);
+        if (alive) setPausedPlatforms((data ?? []).map(h => h.platform));
+      } catch { /* jamais bloquant */ }
+    };
+    lire();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") lire(); }, 60000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user?.id]);
+  const pausedSet = new Set(pausedPlatforms);
+
   const pendingTotal = Object.values(jobsByInventaire).flat()
     .filter(j => j.status === "pending").length;
 
@@ -972,6 +990,9 @@ const StockTab = memo(function StockTab({
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
                   const hasPending=jobs.some(j=>j.status==="pending"||j.status==="processing");
+                  // Job en attente sur une plateforme EN PAUSE (maintenance) :
+                  // badge dédié « reprise auto » plutôt que le simple « En cours ».
+                  const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
                   const enLigne=published.length>0;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
@@ -1008,7 +1029,10 @@ const StockTab = memo(function StockTab({
                                   <PlatformLogo platform={p} size={18}/>
                                 </span>
                               ))}
-                              {hasPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
+                              {hasPending&&!hasPausedPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
+                              {/* Maintenance (Phase B) : plateforme en pause,
+                                  ton neutre, rassurant, aucune action requise. */}
+                              {hasPausedPending&&<div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>⏸ {t("stockJobPausedBadge")}</div>}
                               {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
                             </div>

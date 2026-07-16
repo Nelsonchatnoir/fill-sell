@@ -127,6 +127,12 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
   const resendKey = Deno.env.get("RESEND_API_KEY");
+  // Auto-pause (Phase B) DERRIÈRE UN FLAG OFF PAR DÉFAUT : ne met une
+  // plateforme en pause que si HANDLER_WATCH_AUTOPAUSE=1 est explicitement posé
+  // côté fonction. Sans ça, handler-watch se contente d'alerter (jamais de
+  // pause automatique non voulue). Ne concerne QUE S1 (cross-user) et S3
+  // (anti-bot) — jamais S2, ni un refus légitime (déjà exclu en amont).
+  const autoPauseOn = Deno.env.get("HANDLER_WATCH_AUTOPAUSE") === "1";
 
   const now = Date.now();
   const windowIso = new Date(now - WINDOW_MIN * 60_000).toISOString();
@@ -220,6 +226,20 @@ serve(async (req) => {
     };
     // upsert sur (platform, signature)
     await supabase.from("monitor_state").upsert(patch, { onConflict: "platform,signature" });
+
+    // Auto-pause (flag OFF par défaut) : S1/S3 seulement, réversible, jamais de
+    // ré-activation auto (réactivation MANUELLE — on n'écrit paused=false nulle
+    // part ici). On ne repause pas une plateforme déjà en pause.
+    if (autoPauseOn && (a.severity === "S1" || a.severity === "S3")) {
+      await supabase.from("platform_health").upsert({
+        platform: a.platform,
+        paused: true,
+        reason: `auto ${a.severity}: ${a.signature}`.slice(0, 200),
+        severity: a.severity,
+        paused_since: new Date(now).toISOString(),
+        updated_at: new Date(now).toISOString(),
+      }, { onConflict: "platform" });
+    }
 
     if (!stillCooling) toEmail.push(a);
   }

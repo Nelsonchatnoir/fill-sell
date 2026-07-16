@@ -1537,9 +1537,14 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null }) {
-  const { t } = useTranslation(lang);
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, pausedPlatforms = [] }) {
+  const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
+  // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
+  // On n'empêche PAS la sélection (le job est mis en file et repris auto) — on
+  // informe seulement, ton neutre « maintenance », jamais rouge d'erreur.
+  const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+  const pausedChips = chips.filter(p => pausedPlatforms.includes(p));
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
   // inputs que l'éditeur de StepGeneration — la taille réutilise les groupes
   // (lettres/numérique/pointures) de la config Vinted, le reste est texte.
@@ -1557,6 +1562,17 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
       <h1 style={{ margin:"6px 0 16px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepPublishTitle")}
       </h1>
+
+      {/* Bandeau de maintenance (Phase B) : une plateforme sélectionnée est en
+          pause. Ton NEUTRE/info (pas rouge), rassurant, aucune action requise.
+          La plateforme reste sélectionnée : le job partira automatiquement dès
+          rétablissement. */}
+      {pausedChips.map(p => (
+        <div key={p} style={{ padding:"11px 14px", background:"#EFF3F8", border:"1px solid #C7D6E5", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.5, color:"#334155", display:"flex", gap:9, alignItems:"flex-start" }}>
+          <Clock size={16} color="#64748B" style={{ flexShrink:0, marginTop:1 }} />
+          <span>{tpl("stepPublishMaintenanceBanner", { platform: PLATFORM_LABELS[p] ?? p })}</span>
+        </div>
+      ))}
 
       {canToggleStock && (
         <StockToggle
@@ -1822,6 +1838,25 @@ export default function ListingPreviewScreen({
   const stockLocked = !!invId || alreadyInStock;
   const [addToStock, setAddToStock] = useState(true);
   const [prixAchatSaisi, setPrixAchatSaisi] = useState("");
+
+  // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
+  // de maintenance dans StepPublish. Lecture TOLÉRANTE (rafraîchie à
+  // l'affichage puis toutes les 60 s) : un échec de lecture ne bloque jamais
+  // rien, il masque juste le bandeau.
+  const [pausedPlatforms, setPausedPlatforms] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const lire = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const { data } = await supabase.from("platform_health").select("platform").eq("paused", true);
+        if (alive) setPausedPlatforms((data ?? []).map(h => h.platform));
+      } catch { /* mode dégradé indisponible : pas de bandeau, jamais bloquant */ }
+    };
+    lire();
+    const timer = setInterval(lire, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [supabase]);
 
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
@@ -3307,6 +3342,7 @@ export default function ListingPreviewScreen({
             vintedGenreBlocked={vintedGenreBlocked}
             ebayRequiredStatus={ebayRequiredStatus}
             onEbayAspectChange={setEbayAspect}
+            pausedPlatforms={pausedPlatforms}
           />
         )}
       </div>
