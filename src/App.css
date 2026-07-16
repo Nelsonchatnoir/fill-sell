@@ -120,6 +120,24 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   .topbar { padding-left: 12px; padding-right: 12px; }
 }
 
+/* ─── Garde d'orientation (P2) — l'app est PORTRAIT-FIRST. Le natif est déjà
+   verrouillé portrait (capacitor.config orientation:'portrait') ; le web ne
+   peut pas verrouiller l'orientation, donc en PAYSAGE sur TÉLÉPHONE on couvre
+   l'app d'un overlay « tourne en portrait ». Cible stricte : orientation
+   paysage + petit écran + pointeur tactile sans hover → jamais sur desktop
+   (même fenêtre courte) ni sur tablette landscape (max-height plus grand). ─── */
+.rotate-guard { display: none; }
+@media (orientation: landscape) and (max-height: 600px) and (hover: none) and (pointer: coarse) {
+  .rotate-guard {
+    display: flex; position: fixed; inset: 0; z-index: 99999;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; padding: 24px;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 24px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+    background: #EDEAE0; color: #10201B;
+  }
+}
+
 /* Desktop / mobile nav visibility */
 .desktop-nav { display: flex; }
 .mobile-nav { display: none; }

@@ -4044,6 +4044,15 @@ export default function App({ loginOnly = false }){
   return(
     <div className="app-root" style={{height:"100dvh",overflowY:"hidden",display:"flex",flexDirection:"column",overflowX:"hidden",maxWidth:"100vw",position:"relative"}}>
 
+      {/* Garde d'orientation (P2) : visible UNIQUEMENT en paysage sur téléphone
+          (piloté par la media query .rotate-guard). Couvre l'app pour éviter le
+          layout desktop cassé / l'écran blanc en paysage web. */}
+      <div className="rotate-guard" aria-hidden="true">
+        <div style={{fontSize:44,lineHeight:1}}>📱</div>
+        <div style={{fontSize:17,fontWeight:700,color:"#10201B"}}>{t('rotateToPortraitTitle')}</div>
+        <div style={{fontSize:13,color:"#6B7A75",maxWidth:280,lineHeight:1.5}}>{t('rotateToPortraitSubtitle')}</div>
+      </div>
+
       <div className="topbar">
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
