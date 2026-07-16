@@ -2835,6 +2835,55 @@ export default function ListingPreviewScreen({
     return Object.keys(out).length ? out : null;
   }, [genericAspectsCatalog, selected, edited]);
 
+  // Résolution IA ciblée des requis génériques SANS source (chantier 1.A) —
+  // même micro-appel resolve_aspects que le bloc eBay : extraction depuis le
+  // contexte (titre/description/modèle...), jamais deviné, null si non
+  // déductible → le champ reste en saisie manuelle. Une tentative par
+  // plateforme × catégorie. Cas cible : RAM/stockage d'un PC portable
+  // présents dans le titre, plateforme d'une console (« Nintendo Switch »).
+  const genericResolvedFor = useRef({});
+  useEffect(() => {
+    for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
+      const catKey = genericCategoryKeys[gp];
+      if (!catKey || genericResolvedFor.current[gp] === catKey) continue;
+      const missing = list.filter(a => a.state === "missing");
+      if (!missing.length) continue;
+      genericResolvedFor.current[gp] = catKey;
+      (async () => {
+        try {
+          const details = missing.map(a => ({ name: a.label, allowedValues: (a.allowedValues ?? []).slice(0, 60) }));
+          const src = edited[gp] ?? {};
+          const { data: res } = await supabase.functions.invoke("generate-listing", {
+            body: {
+              resolve_aspects: true,
+              aspects: details,
+              item_data: {
+                titre:       src.title || initialListing?.titre || "",
+                marque:      src.platform_fields?.marque || initialListing?.marque || null,
+                modele:      src.platform_fields?.modele || initialListing?.modele || null,
+                matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
+                couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
+                description: src.description || initialListing?.description || null,
+                type:        initialListing?.categorie || null,
+                attributs:   initialListing?.attributs_visibles ?? null,
+              },
+            },
+          });
+          const values = res?.aspects && typeof res.aspects === "object" ? res.aspects : {};
+          // resolve_aspects répond par LIBELLÉ ; le canal générique écrit par
+          // CLÉ plateforme (code serveur / for= / libellé Beebs) — mappage
+          // retour label → key.
+          const keyOfLabel = Object.fromEntries(missing.map(a => [a.label, a.key]));
+          for (const [label, v] of Object.entries(values)) {
+            const key = keyOfLabel[label];
+            const s = typeof v === "string" ? v.trim() : "";
+            if (key && s && s.toLowerCase() !== "null") setPlatformAspect(gp, key, s);
+          }
+        } catch { /* micro-appel de secours : jamais bloquant */ }
+      })();
+    }
+  }, [genericRequiredStatus, genericCategoryKeys, edited, initialListing]);
+
   // Saisie manuelle d'un requis Vinted/LBC/Beebs — écrit dans le canal
   // générique de la copie plateforme (pf.vintedAspects / lbcAspects /
   // beebsAspects), consommé tel quel par le content script.
