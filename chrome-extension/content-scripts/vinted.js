@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-13-23h45 (suppression SANS LAYOUT : garde de peinture retiree — elle interdisait toute suppression en fenetre minimisee)";
+const VINTED_BUILD = "2026-07-16-chantier-requis-1C (unfilledRequired REEL via config attributes + gate pre-clic LIVE + parsing 400 serveur → serverRequired + canal generique vintedAspects)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -12,6 +12,124 @@ console.log(`[vinted.js] build ${VINTED_BUILD}`);
 // platform_fields.live_run. En dry-run, le formulaire était rempli mais le
 // bouton publier n'était JAMAIS cliqué — le résultat était loggé en console.
 const DRY_RUN = false;
+
+// ── Requis par catégorie (chantier champs obligatoires, 2026-07-16) ──────────
+// Source de vérité n°1 : la réponse POST /api/v2/item_upload/attributes que
+// Vinted émet à CHAQUE sélection de catégorie — capturée par la sonde réseau
+// du background (attrsConfig : code, titre humain, required, options). Relevé
+// réel du 2026-07-16 (Téléphones portables) : internal_memory_capacity,
+// condition et sim_lock y sont required=true ; brand et color n'y portent PAS
+// de configuration (champs standards non requis).
+// Source de vérité n°2 : le refus 400 du POST item_upload/items
+// (errors[{field,value}]) — SEUL révélateur des requis absents de la config
+// attributes, cas prouvé : model (400 réel f69e319c du 13/07).
+//
+// Table de correspondance nom-serveur → libellé humain : sert quand un champ
+// arrive par un 400 sans avoir jamais été vu dans une config attributes (le
+// titre humain manque alors). Libellés relevés sur le VRAI formulaire.
+const VINTED_SERVER_FIELD_LABELS = {
+  brand: "Marque",
+  model: "Modèle",
+  internal_memory_capacity: "Espace de stockage",
+  sim_lock: "Simlockage",
+  condition: "État",
+  color: "Couleur",
+  size: "Taille",
+  material: "Matière",
+  catalog_id: "Catégorie",
+  price: "Prix",
+  title: "Titre",
+  description: "Description",
+  photos: "Photos",
+  isbn: "ISBN",
+  video_game_rating: "Classification par âge (PEGI)",
+  package_size_id: "Format du colis",
+};
+
+// Sélecteur d'input pour un code d'attribut Vinted. Les champs « historiques »
+// ont des testids spécifiques (relevés en réel) ; tout nouveau champ dynamique
+// suit le motif générique category-<code>-… constaté sur stockage/simlock/état.
+function vintedFieldSelector(code) {
+  const special = {
+    brand: '#brand, [data-testid="brand-select-dropdown-input"]',
+    model: '#model, [data-testid="model-select-input"]',
+    color: '#color, [data-testid="color-select-dropdown-input"]',
+    condition: '#condition, [data-testid="category-condition-single-list-input"]',
+    size: '#size, [data-testid="category-size-single-grid-input"]',
+    material: '#material, [data-testid="category-material-multi-list-input"]',
+  };
+  if (special[code]) return special[code];
+  const c = CSS.escape(code);
+  return `#${c}, [data-testid="category-${c}-single-list-input"], [data-testid^="category-${c}-"]`;
+}
+
+// Dernière config attributes capturée par la sonde (celle de la catégorie
+// réellement posée sur le formulaire — la sonde relaie chaque POST attributes,
+// la plus récente gagne). [] si la sonde n'a rien vu (page pré-sonde, CSP…).
+async function readLatestAttrsConfig() {
+  const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
+  const captures = Array.isArray(res?.captures) ? res.captures : [];
+  for (let i = captures.length - 1; i >= 0; i--) {
+    if (Array.isArray(captures[i]?.attrsConfig) && captures[i].attrsConfig.length) {
+      return captures[i].attrsConfig;
+    }
+  }
+  return [];
+}
+
+// État RÉEL des requis de la catégorie courante : croise la config attributes
+// (required=true) avec ce que le DOM affiche et porte comme valeurs.
+// - `unfilled`  : libellés humains des requis encore vides → à bloquer.
+// - `discovered`: tous les champs relevés (requis ou non) → catalogue
+//   platform_category_aspects via le background.
+// Le champ Modèle n'apparaît JAMAIS dans la config attributes (vérifié en réel
+// le 2026-07-16 : aucun nouvel appel attributes à la pose de la marque) mais
+// son 400 est prouvé — règle : #model PRÉSENT dans le DOM ⇒ requis.
+async function computeVintedRequiredState() {
+  const attrs = await readLatestAttrsConfig();
+  const byCode = new Map();
+  for (const a of attrs) {
+    if (a?.code) byCode.set(a.code, a);
+  }
+  if (document.querySelector("#model") && !byCode.has("model")) {
+    byCode.set("model", { code: "model", title: "Modèle", required: true, display: "list", options: null });
+  }
+  const discovered = [];
+  const unfilled = [];
+  for (const [code, meta] of byCode) {
+    const el = document.querySelector(vintedFieldSelector(code));
+    const filled = Boolean(el && String(el.value ?? "").trim());
+    const label = meta.title ?? VINTED_SERVER_FIELD_LABELS[code] ?? code;
+    discovered.push({
+      key: code,
+      label,
+      required: meta.required === true,
+      inputType: meta.display ?? null,
+      options: Array.isArray(meta.options) && meta.options.length ? meta.options : null,
+      source: "dom",
+    });
+    // Un requis ABSENT du DOM reste un requis (le serveur validera contre la
+    // config, pas contre ce que la page a daigné afficher) : il compte vide.
+    if (meta.required === true && !filled) unfilled.push(label);
+  }
+  return { discovered, unfilled };
+}
+
+// Erreurs de validation STRUCTURÉES du refus serveur (parsées par la sonde sur
+// tout status >= 400 de l'endpoint items). Donne les requis INVISIBLES côté
+// DOM avec leur nom serveur exact — traduits en libellés humains via la config
+// attributes puis la table de correspondance.
+async function readServerValidationErrors() {
+  const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
+  const captures = Array.isArray(res?.captures) ? res.captures : [];
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    if (Number(c?.status) < 400) continue;
+    if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
+    if (Array.isArray(c?.validationErrors) && c.validationErrors.length) return c.validationErrors;
+  }
+  return null;
+}
 
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
 // supposé partagé avec Marque/Taille/État/Couleur/Matière, mêmes composants
@@ -422,6 +540,30 @@ async function fillListingForm(job) {
       warnings
     );
   }
+  // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
+  // platform_fields.vintedAspects = { "<code serveur>": "valeur" } — posé par
+  // l'app (saisie manuelle du stepper ou résolution IA) pour les requis SANS
+  // champ dédié ci-dessus. Même philosophie que pf.ebayAspects sur eBay. Les
+  // codes déjà servis par les blocs dédiés sont ignorés (jamais deux poses).
+  const handledCodes = new Set([
+    "brand", "model", "internal_memory_capacity", "sim_lock",
+    "size", "condition", "color", "material",
+  ]);
+  if (fields.vintedAspects && typeof fields.vintedAspects === "object") {
+    for (const [code, value] of Object.entries(fields.vintedAspects)) {
+      const val = String(value ?? "").trim();
+      if (!val || handledCodes.has(code)) continue;
+      const label = VINTED_SERVER_FIELD_LABELS[code] ?? code;
+      await selectClosedOptionSafe(
+        label,
+        vintedFieldSelector(code),
+        `[data-testid^="${code}-"]`,
+        val,
+        warnings
+      );
+    }
+  }
+
   if (job.price != null) await fillPriceField(job.price);
 
   // Format de colis — RÈGLE PRODUIT (Nico, 2026-07-12) : sur TOUTE la branche
@@ -438,6 +580,15 @@ async function fillListingForm(job) {
   const wantedPackage = fields.packageSize ?? (isFashionJob ? "Petit" : null);
   if (wantedPackage) await selectPackageSize(wantedPackage);
 
+  // ── Constat des REQUIS avant tout verdict (chantier 2026-07-16, 1.C) ───────
+  // Fini le `unfilledRequired: []` de constat : la config attributes capturée
+  // par la sonde donne les requis EXACTS de la catégorie posée, croisés avec
+  // les valeurs réellement présentes dans le DOM après remplissage.
+  const requiredState = await computeVintedRequiredState().catch((e) => {
+    console.warn("[vinted] computeVintedRequiredState en échec (non bloquant) :", e?.message);
+    return { discovered: [], unfilled: [] };
+  });
+
   // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
   // marqué platform_fields.live_run === true (test supervisé) publie vraiment.
   const dryRun = DRY_RUN && job.platform_fields?.live_run !== true;
@@ -448,16 +599,34 @@ async function fillListingForm(job) {
       "\nTitre:", job.title,
       "\nPrix:", job.price,
       "\nChamps plateforme:", fields,
+      "\nRequis catégorie:", requiredState.discovered.filter((d) => d.required).map((d) => d.label).join(", ") || "(aucun relevé)",
+      requiredState.unfilled.length ? `\n⚠️ Requis NON remplis: ${requiredState.unfilled.join(", ")}` : "\nTous les requis relevés sont remplis.",
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
     );
-    // unfilledRequired systématiquement VIDE sur Vinted, et c'est un constat,
-    // pas un oubli : le seul champ marqué obligatoire dans le code est le
-    // genre (vintedGenreRequired), et il est contrôlé par precheckJob AVANT
-    // toute navigation — un job sans genre n'atteint jamais ce handler. Aucun
-    // des champs remplis ici (état, taille, marque, matière, couleurs,
-    // packageSize) n'est marqué requis où que ce soit. On expose quand même la
-    // clé pour que les 4 handlers aient le même contrat côté background.
-    return { success: true, dryRun: true, warnings, unfilledRequired: [] };
+    return {
+      success: true,
+      dryRun: true,
+      warnings,
+      unfilledRequired: requiredState.unfilled,
+      discoveredRequired: requiredState.discovered,
+    };
+  }
+
+  // ── Gate PRÉ-CLIC (règle produit du chantier) : un requis vide ne part
+  // JAMAIS en silence. Le 400 serveur est certain (prouvé f69e319c) : cliquer
+  // ne ferait qu'exposer un échec de plus à DataDome. needsUser explicite,
+  // libellés humains exacts — l'app les présente en saisie manuelle.
+  if (requiredState.unfilled.length) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        `Vinted exige des champs encore vides pour cette catégorie : ${requiredState.unfilled.join(", ")}. ` +
+        "Compléter ces champs dans l'app (copie Vinted), puis relancer la publication.",
+      warnings,
+      unfilledRequired: requiredState.unfilled,
+      discoveredRequired: requiredState.discovered,
+    };
   }
 
   // Filet avant le clic (2026-07-11) : un panneau de dropdown resté ouvert
@@ -500,9 +669,37 @@ async function fillListingForm(job) {
   if (proof.error) {
     // La sonde réseau dit ce que Vinted a REÇU (et répondu) — c'est elle qui
     // tranchera si le prix part à 0/null malgré un champ correctement affiché.
-    return { success: false, error: proof.error, warnings };
+    //
+    // Refus 400 : les errors[{field,value}] parsées par la sonde sont les
+    // requis que NI le DOM NI la config attributes n'avaient révélés (cas
+    // fondateur : model). Traduits en libellés humains et remontés
+    // STRUCTURÉS (serverRequired) : le background les persiste au catalogue
+    // (source server_400) et les pose sur platform_fields du job pour la
+    // saisie manuelle côté app.
+    const serverErrors = await readServerValidationErrors().catch(() => null);
+    if (serverErrors?.length) {
+      const attrs = await readLatestAttrsConfig().catch(() => []);
+      const titleOf = (field) =>
+        attrs.find((a) => a.code === field)?.title ??
+        VINTED_SERVER_FIELD_LABELS[field] ??
+        field;
+      const serverRequired = serverErrors.map((e) => ({
+        key: e.field,
+        label: titleOf(e.field),
+        message: e.value,
+      }));
+      const details = serverRequired.map((f) => `${f.label} (${f.key})`).join(", ");
+      return {
+        success: false,
+        error: `${proof.error} — Champs exigés par le serveur Vinted : ${details}.`,
+        warnings,
+        serverRequired,
+        discoveredRequired: requiredState.discovered,
+      };
+    }
+    return { success: false, error: proof.error, warnings, discoveredRequired: requiredState.discovered };
   }
-  return { success: true, listingUrl: proof.listingUrl, warnings };
+  return { success: true, listingUrl: proof.listingUrl, warnings, discoveredRequired: requiredState.discovered };
 }
 
 // Après le clic Publier, Vinted fait l'un des QUATRE (le 4e découvert en réel

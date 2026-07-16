@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-14-00h10 (sonde : corps binaires des pixels de tracking assainis a la capture + ceinture texteSain sur updateJobStatus — plus jamais d'U+0000 vers Postgres)";
+  "2026-07-16-chantier-requis-1C (sonde : attrsConfig Vinted + validationErrors 400 structurés ; catalogue platform_category_aspects alimenté ; failed structuré server_required_fields)";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -698,6 +698,16 @@ async function processJob(rawJob, accessToken) {
       result = await retryInTempTab(job, handler, result);
     }
 
+    // Découverte réactive (chantier champs obligatoires, 2026-07-16) : les
+    // requis observés pendant CE remplissage partent au catalogue cumulatif,
+    // quel que soit le verdict du job — fire-and-forget, jamais bloquant.
+    if (result?.discoveredRequired?.length || result?.serverRequired?.length) {
+      persistDiscoveredAspects(accessToken, job, [
+        ...(result.discoveredRequired ?? []),
+        ...(result.serverRequired ?? []).map((f) => ({ ...f, required: true, source: "server_400" })),
+      ]).catch(() => {});
+    }
+
     if (result?.dryRun) {
       // Dry-run réussi → statut TERMINAL, PAS de ré-armement en pending.
       // Sinon le job repartait à chaque cron de 30 min (get-pending-jobs le
@@ -798,6 +808,20 @@ async function processJob(rawJob, accessToken) {
       // « Vinted attend autre chose ».
       const base = result?.error || "Le content script n'a pas retourné de résultat";
       const probe = job.platform === "vinted" ? await readVintedProbe(tabId) : "";
+      // Requis révélés par le REFUS serveur (400 parsé par la sonde) : portés
+      // par platform_fields.server_required_fields en plus du message — c'est
+      // ce que l'app lit pour proposer la saisie manuelle avec le libellé
+      // EXACT au lieu d'un échec opaque (chantier champs obligatoires).
+      if (result?.serverRequired?.length) {
+        await updateJobStatus(accessToken, job.id, "failed", {
+          error: base + probe,
+          platform_fields: {
+            ...(job.platform_fields ?? {}),
+            server_required_fields: result.serverRequired,
+          },
+        });
+        return { status: "failed", error: base };
+      }
       throw new Error(base + probe);
     }
   } catch (e) {
@@ -1760,6 +1784,51 @@ async function installNetworkProbe(tabId, platform) {
           }
           return s.slice(0, 250).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "\uFFFD");
         };
+        // \u2500\u2500 Extraits STRUCTUR\u00C9S (chantier champs obligatoires, 2026-07-16) \u2500\u2500
+        // Deux payloads d\u00E9passent les 250 chars de l'extrait g\u00E9n\u00E9rique et
+        // portent la v\u00E9rit\u00E9 des REQUIS :
+        //   1. POST /api/v2/item_upload/attributes (Vinted) : la config des
+        //      champs dynamiques de la cat\u00E9gorie \u2014 required, titre humain,
+        //      options. Relev\u00E9 R\u00C9EL du 2026-07-16 sur T\u00E9l\u00E9phones portables :
+        //      internal_memory_capacity/condition/sim_lock required=true.
+        //   2. tout refus >= 400 : le tableau errors[{field,value}] (forme
+        //      v\u00E9rifi\u00E9e en base sur les jobs f69e319c/7b67d67f du 13/07) \u2014
+        //      c'est LUI qui r\u00E9v\u00E8le les requis invisibles c\u00F4t\u00E9 DOM (model).
+        // Parse best-effort : pas du JSON attendu \u2192 extraits g\u00E9n\u00E9riques seuls.
+        const structuredExtras = (url, status, txt) => {
+          const extras = {};
+          try {
+            if (/item_upload\/attributes/i.test(String(url)) && !/suggestions/i.test(String(url))) {
+              const j = JSON.parse(String(txt));
+              if (Array.isArray(j?.attributes)) {
+                extras.attrsConfig = j.attributes.map((a) => ({
+                  code: String(a?.code ?? ""),
+                  title: a?.configuration?.title ?? null,
+                  required: a?.configuration?.required === true,
+                  display: a?.configuration?.display_type ?? null,
+                  options: (a?.configuration?.options ?? [])
+                    .flatMap((g) => (g?.type === "group" ? g.options ?? [] : [g]))
+                    .map((o) => o?.title)
+                    .filter(Boolean)
+                    .slice(0, 60),
+                })).filter((a) => a.code);
+              }
+            }
+            if (Number(status) >= 400) {
+              const j = JSON.parse(String(txt));
+              if (Array.isArray(j?.errors)) {
+                extras.validationErrors = j.errors
+                  .filter((e) => e && (e.field || e.value))
+                  .slice(0, 20)
+                  .map((e) => ({
+                    field: String(e.field ?? "").slice(0, 80),
+                    value: String(e.value ?? "").slice(0, 200),
+                  }));
+              }
+            }
+          } catch { /* pas du JSON : extraits g\u00E9n\u00E9riques seulement */ }
+          return extras;
+        };
         const origFetch = window.fetch;
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input?.url ?? "";
@@ -1772,6 +1841,7 @@ async function installNetworkProbe(tabId, platform) {
                 prix: priceOf(init?.body),
                 annonceId: annonceIdOf(txt),
                 reponse: extraitSain(txt),
+                ...structuredExtras(url, res.status, txt),
               });
             }
           } catch { /* la sonde ne doit JAMAIS casser la publication */ }
@@ -1793,6 +1863,7 @@ async function installNetworkProbe(tabId, platform) {
                   prix: priceOf(typeof body === "string" ? body : null),
                   annonceId: annonceIdOf(corps),
                   reponse: extraitSain(corps),
+                  ...structuredExtras(this.__u, this.status, corps),
                 });
               });
             }
@@ -2726,6 +2797,57 @@ async function restRequest(path, accessToken, init = {}) {
   });
   if (!res.ok) throw new Error(`REST ${path} → HTTP ${res.status}`);
   return init.method && init.method !== "GET" ? null : res.json();
+}
+
+// ── Catalogue cumulatif des requis découverts (chantier 2026-07-16) ───────────
+// Chaque champ requis OBSERVÉ (config attributes Vinted, énumération DOM,
+// refus 400 serveur) est upserté dans platform_category_aspects — la table
+// joue pour Vinted/LBC/Beebs le rôle d'ebay_item_aspects : l'app la lit pour
+// afficher les requis AVANT publication. Fire-and-forget : une découverte
+// perdue se re-découvrira au prochain job, un job ne doit JAMAIS échouer pour
+// un problème de catalogue.
+function categoryKeyOf(job) {
+  const pf = job.platform_fields ?? {};
+  const path = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
+  if (Array.isArray(path) && path.length) return path.join(" > ");
+  if (pf.ebayCategoryId) return String(pf.ebayCategoryId);
+  return "(catégorie inconnue)";
+}
+
+async function persistDiscoveredAspects(accessToken, job, discovered) {
+  const rows = [];
+  const seen = new Set();
+  for (const d of discovered ?? []) {
+    const key = String(d?.key ?? d?.field ?? "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      platform: job.platform,
+      category_key: categoryKeyOf(job).slice(0, 300),
+      field_key: key.slice(0, 120),
+      field_label: d.label ? String(d.label).slice(0, 200) : null,
+      required: d.required !== false,
+      input_type: d.inputType ? String(d.inputType).slice(0, 40) : null,
+      allowed_values: Array.isArray(d.options) && d.options.length ? d.options.slice(0, 200) : null,
+      source: d.source === "server_400" || d.source === "manual" ? d.source : "dom",
+      last_seen_at: new Date().toISOString(),
+    });
+  }
+  if (!rows.length) return;
+  try {
+    await restRequest(
+      "platform_category_aspects?on_conflict=platform,category_key,field_key",
+      accessToken,
+      {
+        method: "POST",
+        headers: { Prefer: "return=minimal,resolution=merge-duplicates" },
+        body: JSON.stringify(rows),
+      }
+    );
+    console.log(`[background] catalogue requis : ${rows.length} champ(s) upserté(s) (${job.platform} / ${rows[0].category_key})`);
+  } catch (e) {
+    console.warn("[background] persistDiscoveredAspects (non bloquant) :", String(e?.message ?? e));
+  }
 }
 
 async function checkPublishedListings(session) {
