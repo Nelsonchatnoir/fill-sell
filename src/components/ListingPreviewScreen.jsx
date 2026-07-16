@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical } from "lucide-react";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
@@ -3188,7 +3189,12 @@ export default function ListingPreviewScreen({
   }
 
   // ── Render : initializing ─────────────────────────────────────────────────
-  if (initializing) return (
+  // createPortal vers document.body : le stepper DOIT sortir du scroller
+  // .wrap.page-pad (celui-ci a -webkit-overflow-scrolling:touch, qui sur iOS
+  // Safari confine tout position:fixed descendant DANS le scroller au lieu du
+  // viewport → topbar/bnav passaient par-dessus et le CTA débordait). Portalé
+  // sur body, l'overlay fixed couvre réellement tout l'écran.
+  if (initializing) return createPortal((
     <div style={{
       position:"fixed", inset:0, zIndex:300,
       background:T.canvas, display:"flex", alignItems:"center", justifyContent:"center",
@@ -3196,10 +3202,10 @@ export default function ListingPreviewScreen({
     }}>
       <Loader size={36} thickness={3} />
     </div>
-  );
+  ), document.body);
 
   // ── Render : done ─────────────────────────────────────────────────────────
-  if (done) return (
+  if (done) return createPortal((
     <div style={{
       position:"fixed", inset:0, zIndex:300,
       background:T.canvas, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
@@ -3227,10 +3233,10 @@ export default function ListingPreviewScreen({
         {t("doneButton")}
       </button>
     </div>
-  );
+  ), document.body);
 
   // ── Render : stepper ──────────────────────────────────────────────────────
-  return (
+  return createPortal((
     <div style={{
       // 100dvh (viewport DYNAMIQUE) et non 100% / 100vh : sur Safari iOS web,
       // un fixed height:100% est dimensionné sur le GRAND viewport (barre
@@ -3393,5 +3399,5 @@ export default function ListingPreviewScreen({
 
       <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
-  );
+  ), document.body);
 }
