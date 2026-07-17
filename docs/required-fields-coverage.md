@@ -284,6 +284,40 @@ Encart app confirmé visuellement (✓ verts sur les 3). → **Le mapping « doc
 est réglé de bout en bout** : app → job payload → bonne catégorie.
 Reste (LIVE) : publication on-platform + 3e preuve eBay + suppression.
 
+### Étape B — publication LIVE on-platform (17/07, confirmée)
+L'article dock republié (bundle corrigé) a été publié par l'extension sur les
+3 plateformes, catégorie **Console** vérifiée CÔTÉ PLATEFORME :
+- eBay itm/800357039555 → fil d'Ariane **« High-tech > Jeux vidéo, consoles >
+  Consoles »** (PAS Batteries externes). Publié AVEC URL, sans erreur → la 3e
+  preuve de confirmation eBay (ou le chemin normal) a fonctionné.
+- Vinted items/9417527366, Leboncoin (URL différée) → catégories Consoles
+  (payloads : Vinted `…> Consoles`, LBC `Électronique > Consoles`).
+→ Mapping « dock » réglé de bout en bout : app → job → annonce en ligne en
+  Consoles.
+
+### Étape C — fallback UI eBay pour aspect « Style » (17/07)
+Test réel catégorie Robes (63861). Le fallback générique eBay couvrait déjà
+« Longueur de la robe » (dans le référentiel, non mappé). **Trou trouvé** :
+« Style » (obligatoire, item-specific) était classé `PREFILLED_BY_EBAY` alors
+qu'il est VIDE sur le vrai formulaire → il passait en silence. **Corrigé**
+(commit 260da09, déployé) : « Style » retiré de la liste prefilled → passe par
+le fallback. **Vérifié en app** (robe réelle) : l'encart eBay affiche désormais
+un champ **Style** (résolu IA « bohème » depuis la description) + un champ
+**Longueur de la robe** (« Midi »), Département resté pré-rempli. Le CTA se
+désactive si un requis reste vide (mécanisme déjà prouvé sur Vinted Plateforme).
+
+### Suppression — nettoyage (17/07)
+Findings suppression complétés :
+- Les jobs `delete` ne s'exécutent QUE sur l'alarme de fond (≤ 30 min) — jamais
+  via « Publier maintenant » (PUBLISH_NOW = publications uniquement). Pas de
+  déclenchement immédiat par l'UI ; recharger l'extension ré-arme un poll à +1 min.
+- Une annonce publiée avec **URL différée** (Leboncoin/Beebs) ne peut PAS être
+  auto-retirée tant que `recoverMissingListingUrls` n'a pas peuplé son
+  listing_url (armRemovals/deleteListing ont besoin de l'URL). Gap à surveiller.
+- Suppressions armées en fin de session (à traiter au prochain poll) : console
+  propre Vinted 9416716174, dock eBay 800357039555, dock Vinted 9417527366.
+  Dock Leboncoin : en attente de récupération d'URL.
+
 ### Trou de validation restant
 - **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
   est déployée et compile, mais NON observée dans l'app connectée (login
