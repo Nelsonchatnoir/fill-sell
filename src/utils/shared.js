@@ -283,7 +283,10 @@ const OBJECT_ICON_RULES = [
   [/voiture.?miniature|hot.?wheels|majorette/i, '🏎️'],
   [/machine.?à.?laver|lave.?linge|sèche.?linge|lave.?vaisselle/i, '🧺'],
   [/machine.?à.?café|cafetière|nespresso|senseo|dolce.?gusto|expresso/i, '☕'],
-  [/carte.?(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner)|booster/i, '🃏'],
+  // ⚠️ `cartes?\s*` et non `carte.?` : `.?` (0-1 char) ne franchit pas « s + espace »
+  // de « cartes pokémon » → un « Lot cartes Pokémon x20 » tombait en 🏆 Collection
+  // (défaut non mappé → job échoué), alors que « Carte Pokémon » (singulier) matchait.
+  [/cartes?\s*(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner)|booster/i, '🃏'],
   [/maillot.?de.?bain|bikini|monokini/i, '👙'],
   [/jeu.?de.?société|monopoly|\buno\b/i, '🎲'],
   // ── Désambiguïsations ajoutées le 2026-07-09 (mission mapping complet) —
