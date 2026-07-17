@@ -5,6 +5,28 @@
 
 ---
 
+## ⚡ MISE À JOUR FINALE (après le merge, état à la clôture)
+
+**Le merge feat → main est FAIT.** `main = e69dff0` sur GitHub (et en local),
+la branche `feat/merge-chrome-extension-into-v2` est intégralement fusionnée
+(code identique au caractère près). Le web (Vercel) se déploie depuis main avec
+TOUS les fixes du jour. Working tree propre.
+
+Donc, par rapport aux sections ci-dessous : l'action "merger feat → main" est
+**terminée** — ne plus la refaire. Il RESTE (avec go Nico) :
+1. Recharger l'extension Chrome + tester la suppression Vinted live.
+2. Publications multi-catégories réelles pour valider le mapping bout-en-bout.
+3. (Optionnel) redéployer `generate-listing` (faible impact, prompts retouche).
+4. **NE PAS déployer `lens-analysis`** (v45 gelée) — le déployer bloquerait les
+   users iOS (ils ne peuvent pas acheter de Pépites, IAP Apple non approuvés).
+   Le code amélioré est dans main mais dort jusqu'au go + approbation Apple.
+
+Point Lens élucidé aujourd'hui : "Merine" (merinegirard2@gmail.com) n'était pas
+bloquée par un bug — elle avait atteint son plafond JOURNALIER (15/15). Compte
+sain (founder, 150/mois, solde 150 Pépites). Rien de cassé par la session.
+
+---
+
 ## 0. TL;DR — les 3 choses à faire ce soir (ordre exact)
 
 1. **Recharger l'extension Chrome** (`chrome://extensions` → recharger FillSell) —
