@@ -554,11 +554,11 @@ const HORS_MODE = {
   "📱": null, "📲": null, "📇": null, "💻": null, "🖥️": null, "⌨️": null,
   "🖱️": null, "🖨️": null, "🎧": null, "🔊": null, "📡": null, "📺": null,
   "📷": null, "🛸": null, "🔌": null, "⏱️": null,
-  "🎿": null, "⚽": null, "🎾": null, "⛳": null, "🏋️": null, "🥊": null,
+  "🎿": null, "🎾": null, "⛳": null, "🏋️": null, "🥊": null,
   "⛺": null, "🎣": null, "🧘": null, "🥽": null, "🏀": null, "🏃": null,
   "🐴": null, "🎱": null, "🤿": null, "🏄": null, "🎽": null,
   "🎸": null, "🎻": null, "🥁": null, "🎺": null, "🎹": null, "🎤": null,
-  "🎼": null, "🧵": null, "💽": null,
+  "🎼": null, "🧵": null,
   "📮": null, "🪙": null, "📰": null, "🐕": null,
   "🏍️": null, "🛵": null, "🛞": null, "🚗": null, "🪖": null,
 };
