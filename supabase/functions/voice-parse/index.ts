@@ -137,7 +137,7 @@ Catégories autorisées (valeurs exactes) :
 marque de luxe se classe par son TYPE DE PRODUIT, jamais par sa marque :
 parfum Chanel/Dior → Beauté ; sac/vêtement/chaussures Louis Vuitton/Hermès/
 Gucci/Prada → Mode ; montre Rolex/Cartier/Omega → Mode ; bijou Cartier/Tiffany
-→ Mode. La marque va dans le champ `marque`, pas dans la catégorie.
+→ Mode. La marque va dans le champ 'marque', pas dans la catégorie.
 
 RÈGLES CATÉGORIES — guide complet (choisis TOUJOURS la plus précise) :
 
@@ -417,7 +417,7 @@ Allowed categories (exact values) :
 classified by its PRODUCT TYPE, never by its brand: Chanel/Dior perfume →
 Beauté; Louis Vuitton/Hermès/Gucci/Prada bag/clothes/shoes → Mode; Rolex/
 Cartier/Omega watch → Mode; Cartier/Tiffany jewellery → Mode. The brand goes
-in the `marque` field, not the category.
+in the 'marque' field, not the category.
 
 CATEGORY RULES — complete guide (always pick the most specific one):
 
