@@ -8,6 +8,7 @@
     "check:legal-permissions": "node scripts/check-legal-permissions.mjs",
     "prebuild": "node scripts/check-legal-permissions.mjs",
     "build": "vite build",
+    "build:extension": "node scripts/build-extension.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -47,6 +48,7 @@
     "playwright": "^1.61.1",
     "puppeteer": "^25.1.0",
     "sharp": "^0.34.5",
+    "terser": "^5.49.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.3"
   }

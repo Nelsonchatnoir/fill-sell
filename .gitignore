@@ -13,6 +13,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Dossier minifié de l'extension (npm run build:extension) — artefact de build
+build/
 *.local
 
 # Environment variables

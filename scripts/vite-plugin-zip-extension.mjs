@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
+import { transformExtensionFile, isExcludedFromPackage } from './minify-extension.mjs';
 
 // Vite plugin : zippe le dossier `chrome-extension/` à chaque build et émet
 // `fillsell-extension.zip` à la racine de dist/. Servi statiquement par Vercel
@@ -41,7 +42,11 @@ export default function zipExtension({
           await addDir(abs);
         } else if (entry.isFile()) {
           const rel = path.relative(absSource, abs).split(path.sep).join('/');
-          zip.file(`${rootFolder}/${rel}`, await readFile(abs));
+          // Doc interne (README.md…) : jamais dans le paquet livré.
+          if (isExcludedFromPackage(rel)) continue;
+          // .js minifié (profil prudent), reste passthrough — cf. minify-extension.mjs.
+          const content = await transformExtensionFile(rel, await readFile(abs));
+          zip.file(`${rootFolder}/${rel}`, content);
           fileCount += 1;
         }
       }
