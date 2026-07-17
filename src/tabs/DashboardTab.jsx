@@ -45,6 +45,8 @@ const CHART_CSS = `
 @media (prefers-reduced-motion:reduce){
   .db-anim,.db-wipe,.db-draw,.db-fade{animation:none !important;stroke-dashoffset:0 !important;opacity:1 !important;transform:none !important}
 }
+.db-charts{display:grid;grid-template-columns:1fr;gap:18px}
+@media (min-width:900px){.db-charts{grid-template-columns:1fr 1fr}}
 `;
 
 // Géométrie commune aux deux graphes (identique au design).
@@ -409,15 +411,17 @@ const DashboardTab = memo(function DashboardTab({
             </div>
           </div>
 
-          {/* Bénéfices */}
-          <PanelCard title={t('benefices')} subtitle={rangeLabel}>
-            <ProfitBars data={mData} fmtShort={fmtShort} fmtValue={fmt} />
-          </PanelCard>
+          {/* Bénéfices + Évolution marge : empilés sur mobile, côte à côte sur
+              desktop (≥900px) pour rester alignés sur la grille KPI 2 colonnes. */}
+          <div className="db-charts">
+            <PanelCard title={t('benefices')} subtitle={rangeLabel}>
+              <ProfitBars data={mData} fmtShort={fmtShort} fmtValue={fmt} />
+            </PanelCard>
 
-          {/* Évolution de la marge */}
-          <PanelCard title={t('evolutionMarge')} subtitle={rangeLabel}>
-            <MarginLine data={mData} />
-          </PanelCard>
+            <PanelCard title={t('evolutionMarge')} subtitle={rangeLabel}>
+              <MarginLine data={mData} />
+            </PanelCard>
+          </div>
 
           {/* Activité récente — ventes + ajouts stock fusionnés, triés par date */}
           {recentActivity.length>0&&(
