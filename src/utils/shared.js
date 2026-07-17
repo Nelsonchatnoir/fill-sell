@@ -502,8 +502,14 @@ const CAT_DEFAULT_ICONS = {
 // AVANT la détection : l'objet PRINCIPAL pilote alors l'icône. Un accessoire
 // vendu SEUL (« Chargeur iPhone », « Dock USB-C ») n'a pas de marqueur
 // d'inclusion → sa mention reste → il est classé 🔌 comme avant.
+// ⚠️ MARQUEURS SYMBOLES HORS \b (fix 2026-07-17) : « + » et « & » sont des
+// caractères NON-WORD ; entourés d'espaces (« blanc + dock »), un \b autour
+// d'eux ne matche jamais → la clause « + dock » n'était pas retirée et une
+// console « Switch OLED blanc + dock » repartait en 🔌 (bug réel re-test dock).
+// On sépare donc les marqueurs MOTS (bornés par \b) des marqueurs SYMBOLES
+// (`[+&]`, sans \b). Constaté aussi sur « Casque Bose & câble » → 🔌.
 const INCLUDED_ACCESSORY_CLAUSE =
-  /\b(?:avec|with|\+|&|inclus|incluse?s?|livré[e]?s?\s+avec|comprend|comprenant|accompagné[e]?\s+de|fourni[e]?s?\s+avec)\b[^,.;:!?]*?\b(?:dock|chargeur|c[âa]ble|adaptateur|\bhub\b|manette|joy-?con|housse|[ée]tui|coque|protection|support|sacoche|pochette)\b[^,.;:!?]*/gi;
+  /(?:\b(?:avec|with|inclus|incluse?s?|livré[e]?s?\s+avec|comprend|comprenant|accompagné[e]?\s+de|fourni[e]?s?\s+avec)\b|[+&])\s*[^,.;:!?]*?\b(?:dock|chargeur|c[âa]ble|adaptateur|hub|manette|joy-?con|housse|[ée]tui|coque|protection|support|sacoche|pochette)\b[^,.;:!?]*/gi;
 
 export function detectObjectIcon(titre, description, type){
   const raw=((titre||'')+' '+(description||''));
