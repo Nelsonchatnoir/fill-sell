@@ -20,6 +20,9 @@ import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
+// detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
+// (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
+import { detectType, normalizeMarque } from './utils/shared';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
@@ -342,7 +345,6 @@ function UsernameOnboardingInput({lang,onConfirm}){
   );
 }
 // Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
-const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : "Sans marque";
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
 const getMargeColor = pct => pct>=40?"#1D9E75":pct>=20?"#5DCAA5":pct>=5?"#F9A26C":"#E53E3E";
 const getCatBorder = type => getTypeStyle(type).border;
@@ -702,31 +704,6 @@ function stripMarque(nom,marque){
   const escaped=marque.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const cleaned=nom.replace(new RegExp(`\\b${escaped}\\b`,'gi'),'').replace(/\s+/g,' ').trim();
   return cleaned||nom;
-}
-function detectType(titre,marque){
-  const t=((titre||'')+' '+(marque||'')).toLowerCase();
-  // ⚠️ CATÉGORIE "Luxe" SUPPRIMÉE le 2026-07-17 (voir detectType dans src/utils/shared.js).
-  // L'ancien 1er test renvoyait 'Luxe' dès qu'une marque « premium » figurait dans le
-  // texte — MAIS la liste incluait des marques NON luxe (Ralph Lauren, Lacoste, Tommy,
-  // Boss, Armani), et 'Luxe' n'est mappé sur AUCUNE plateforme (💎 injouable → publication
-  // bloquée). Désormais on classe par TYPE DE PRODUIT : la marque (luxe ou non) n'influence
-  // plus la catégorie — sac Hermès → Mode, parfum Chanel → Beauté, Rolex → Mode.
-  if(/robe|jupe|pull|jean|veste|manteau|costume|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|\btop\b|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|\bcap\b|\bbob\b|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
-  if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,15}(?:voiture|cuisine|externe))|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?(?:midi|arrangeur|ma[îi]tre)|pédale.?(?:effet|guitare|basse)|table.?(?:de.?)?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|guitare.?basse|basse.?(?:[eé]lec|acoustique|\d.?cordes|fretless|active)|\bbassiste\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
-  // Mobilité AVANT High-Tech : « trottinette Xiaomi » (Xiaomi = marque téléphone
-  // ET trottinette) partait en High-Tech → 📱 Téléphones. L'objet prime sur la marque.
-  if(/\btrottinette\b|hoverboard|gyroroue|monoroue|overboard/i.test(t)) return 'Sport';
-  if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|\bpc\b|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque(?!.{0,8}(?:moto|v[ée]lo|scooter|ski|chantier))|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|\bram\b|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
-  if(/perceuse|visseuse|meuleuse|ponceuse|scie.?(?:circulaire|sauteuse|cloche)?|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
-  if(/tondeuse|débroussailleuse|taille.?haie|souffleur.?(?:feuilles|jardin)|tronçonneuse|sécateur|élagueuse|scarificateur|arrosoir|tuyau.?arrosage|asperseur|pompe.?jardin|\bbêche\b|\brateau\b|\bfourche\b(?!.{0,8}moto)|\bbinette\b|brouette|compost|\bterreau\b|engrais|graines?(?:\s+de\s+jardin)?|jardinage|\bhusqvarna\b|\bstihl\b(?!.{0,8}moto)/i.test(t)) return 'Jardin';
-  if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|lit|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|drap|serviette|vase|bougie|déco|cuisine|assiette|bol|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|pot/i.test(t)) return 'Maison';
-  if(/lego|playmobil|hasbro|mattel|jouet|jeu|puzzle|peluche|figurine|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
-  if(/livre|bd|bande.?dessinée|manga|roman|magazine|comics|guide|encyclopédie|atlas|dictionnaire/i.test(t)) return 'Livres';
-  if(/vélo|trottinette|skateboard|ski|snowboard|raquette|ballon|football|basketball|tennis|badminton|golf|rugby|natation|plongée|surf|kayak|randonnée|camping|sport|fitness|musculation|haltère|kettlebell|yoga|pilates|course|running|trail|cyclisme|équitation|boxe|arts.?martiaux|tapis.?course|vélo.?appartement|rameur|elliptique|corde.?sauter|élastique.?musculation|bande.?résistance|gant.?boxe|protège|casque.?vélo|genouillère|spike|crampon|patin|roller|tente|sac.?dos.?rando|gourde|frontale|bâton.?marche|canne.?pêche|moulinet|waders/i.test(t)) return 'Sport';
-  if(/voiture|auto|moto|scooter|véhicule|pneu|jante|casque.?moto|pièce.?auto|autoradio|gps|huile.?moteur|liquide.?(?:de.?)?(?:refroidissement|frein)/i.test(t)) return 'Auto-Moto';
-  if(/parfum|crème|sérum|mascara|rouge.?lèvre|palette|correcteur|dissolvant|vernis|shampooing|après-shampooing|masque.?cheveux|huile|lotion|gel.?douche|savon|rasoir|fond.?teint|bb.?cream|cc.?cream|cushion|anticernes|poudre|blush|bronzer|highlighter|fard.?paupières|eyeliner|crayon|kajal|extension.?cils|faux.?cils|sourcil|gloss|baume|exfoliant|gommage|peeling|autobronzant|spray.?solaire|after.?sun|déodorant|roll.?on|stick|eau.?de.?cologne|brosse|peigne|lisseur|boucleur|bigoudi|coton|lingette|démaquillant|tonique|brume/i.test(t)) return 'Beauté';  if(/collectionn|carte|timbre|monnaie|pièce.?(?:de.?monnaie|ancienne|de.?collection|comm[ée]morative|rare)|funko|vintage|antique|brocante/i.test(t)) return 'Collection';
-  if(/aspirateur|robot.?aspirateur|roomba|dyson|lave.?linge|lave.?vaisselle|congélateur|four|hotte|plaque|induction|gazinière|sèche.?linge|sèche.?cheveux|fer.?repasser|climatiseur|ventilateur|radiateur|chauffage|chauffe.?eau|nespresso|dolce.?gusto|blender|robot.?cuisine|thermomix|friteuse|yaourtière|extracteur.?jus|centrifugeuse|bouilloire|épilateur|rasoir.?électrique|brosse.?dents/i.test(t)) return 'Électroménager';
-  return 'Autre';
 }
 function getTypeStyle(type){
   const s={
@@ -3791,7 +3768,7 @@ export default function App({ loginOnly = false }){
       reader.onload=ev=>{
         const dataUrl=ev.target.result;
         setLensPhotos(prev=>{
-          if(prev.length>=5)return prev;
+          if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
           return[...prev,{preview:dataUrl,mime:safeMime}];
         });
       };
@@ -3827,7 +3804,7 @@ export default function App({ loginOnly = false }){
       if(!photo.dataUrl)return;
       setLensResult(null);setLensAdded(false);setLensPremiumLimitReached(false);
       setLensPhotos(prev=>{
-        if(prev.length>=5)return prev;
+        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
       });
     }catch(e){

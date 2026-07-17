@@ -170,7 +170,7 @@ export function formatCurrency(amount, currency='EUR', decimals=null) {
   }
 }
 
-export const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : null;
+export const normalizeMarque = m => m?.trim() ? m.trim().toLowerCase().replace(/(^|\s|')(\S)/g,(_,sep,c)=>sep+c.toUpperCase()) : "Sans marque";
 export const fmtp = n => (Math.round(n*10)/10).toFixed(1)+"%";
 
 export const LOC_RE = /^(acheté[e]?\s+(?:à|en|au|aux)\s|bought\s+(?:in|at)\s)/i;
@@ -191,22 +191,22 @@ export function detectType(titre,marque){
   // parfum Chanel partait ainsi en Luxe → injouable. Désormais on classe par
   // TYPE DE PRODUIT : la marque (luxe ou non) n'influence plus la catégorie —
   // un sac Hermès → Mode, un parfum Chanel → Beauté, une Rolex → Mode.
-  if(/robe|jupe|pull|jean|veste|manteau|costume|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|\btop\b|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|\bcap\b|\bbob\b|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
-  if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,15}(?:voiture|cuisine|externe))|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?(?:midi|arrangeur|ma[îi]tre)|pédale.?(?:effet|guitare|basse)|table.?(?:de.?)?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|guitare.?basse|basse.?(?:[eé]lec|acoustique|\d.?cordes|fretless|active)|\bbassiste\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
+  if(/robe|jupe|pull|jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|veste|manteau|costume|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|\btop\b|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|brassière|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s*(?:connect|intelligente))|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|\bcap\b|\bbob\b|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
+  if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,18}(?:voiture|cuisine|externe|lithium|rechargeable|li.?ion|au.?plomb|solaire|\d{3,}|perceuse|visseuse|drone|portable|ordinateur|tondeuse|\d+\s?v\b|\d+\s?mah))|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?(?:midi|arrangeur|ma[îi]tre)|pédale.?(?:effet|guitare|basse)|table.?(?:de.?)?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|guitare.?basse|basse.?(?:[eé]lec|acoustique|\d.?cordes|fretless|active)|\bbassiste\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
   // Mobilité AVANT High-Tech : « trottinette Xiaomi » (Xiaomi = marque téléphone
   // ET trottinette) partait en High-Tech → 📱 Téléphones. L'objet prime sur la marque.
   if(/\btrottinette\b|hoverboard|gyroroue|monoroue|overboard/i.test(t)) return 'Sport';
-  if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|\bpc\b|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque(?!.{0,8}(?:moto|v[ée]lo|scooter|ski|chantier))|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|\bram\b|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
-  if(/perceuse|visseuse|meuleuse|ponceuse|scie.?(?:circulaire|sauteuse|cloche)?|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
-  if(/tondeuse|débroussailleuse|taille.?haie|souffleur.?(?:feuilles|jardin)|tronçonneuse|sécateur|élagueuse|scarificateur|arrosoir|tuyau.?arrosage|asperseur|pompe.?jardin|\bbêche\b|\brateau\b|\bfourche\b(?!.{0,8}moto)|\bbinette\b|brouette|compost|\bterreau\b|engrais|graines?(?:\s+de\s+jardin)?|jardinage|\bhusqvarna\b|\bstihl\b(?!.{0,8}moto)/i.test(t)) return 'Jardin';
-  if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|lit|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|drap|serviette|vase|bougie|déco|cuisine|assiette|bol|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|pot/i.test(t)) return 'Maison';
-  if(/lego|playmobil|hasbro|mattel|jouet|jeu|puzzle|peluche|figurine|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
+  if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|\bpc\b|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque(?!.{0,8}(?:moto|v[ée]lo|scooter|ski|chantier))|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|\bram\b|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|(?<!meuble.{0,6})tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|carte.?graphique|carte.?m[èe]re|\bgpu\b|geforce|radeon|webcam|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
+  if(/perceuse|visseuse|meuleuse|ponceuse|\bscies?\b|scie.?(?:circulaire|sauteuse|cloche)|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
+  if(/tondeuse(?!.{0,12}(?:cheveux|barbe|chien|animal))|débroussailleuse|taille.?haie|souffleur.?(?:feuilles|jardin)|tronçonneuse|sécateur|élagueuse|scarificateur|arrosoir|tuyau.?arrosage|asperseur|pompe.?jardin|\bbêche\b|\brateau\b|\bfourche\b(?!.{0,8}moto)|\bbinette\b|brouette|compost|\bterreau\b|engrais|graines?(?:\s+de\s+jardin)?|jardinage|\bhusqvarna\b|\bstihl\b(?!.{0,8}moto)/i.test(t)) return 'Jardin';
+  if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|\blit\b|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|\bdrap\b|serviette|vase|bougie|déco|cuisine|assiette|\bbol\b|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|\bpot\b/i.test(t)) return 'Maison';
+  if(/lego|playmobil|hasbro|mattel|jouet|\bjeux?\b|puzzle|peluche|figurine|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
   if(/livre|bd|bande.?dessinée|manga|roman|magazine|comics|guide|encyclopédie|atlas|dictionnaire/i.test(t)) return 'Livres';
-  if(/vélo|trottinette|skateboard|ski|snowboard|raquette|ballon|football|basketball|tennis|badminton|golf|rugby|natation|plongée|surf|kayak|randonnée|camping|sport|fitness|musculation|haltère|kettlebell|yoga|pilates|course|running|trail|cyclisme|équitation|boxe|arts.?martiaux|tapis.?course|vélo.?appartement|rameur|elliptique|corde.?sauter|élastique.?musculation|bande.?résistance|gant.?boxe|protège|casque.?vélo|genouillère|spike|crampon|patin|roller|tente|sac.?dos.?rando|gourde|frontale|bâton.?marche|canne.?pêche|moulinet|waders/i.test(t)) return 'Sport';
-  if(/voiture|auto|moto|scooter|véhicule|pneu|jante|casque.?moto|pièce.?auto|autoradio|gps|huile.?moteur|liquide.?(?:de.?)?(?:refroidissement|frein)/i.test(t)) return 'Auto-Moto';
-  if(/parfum|crème|sérum|mascara|rouge.?lèvre|palette|correcteur|dissolvant|vernis|shampooing|après-shampooing|masque.?cheveux|huile|lotion|gel.?douche|savon|rasoir|fond.?teint|bb.?cream|cc.?cream|cushion|anticernes|poudre|blush|bronzer|highlighter|fard.?paupières|eyeliner|crayon|kajal|extension.?cils|faux.?cils|sourcil|gloss|baume|exfoliant|gommage|peeling|autobronzant|spray.?solaire|after.?sun|déodorant|roll.?on|stick|eau.?de.?cologne|brosse|peigne|lisseur|boucleur|bigoudi|coton|lingette|démaquillant|tonique|brume/i.test(t)) return 'Beauté';
-  if(/collectionn|carte|timbre|monnaie|pièce.?(?:de.?monnaie|ancienne|de.?collection|comm[ée]morative|rare)|funko|vintage|antique|brocante/i.test(t)) return 'Collection';
-  if(/aspirateur|robot.?aspirateur|roomba|dyson|lave.?linge|lave.?vaisselle|congélateur|four|hotte|plaque|induction|gazinière|sèche.?linge|sèche.?cheveux|fer.?repasser|climatiseur|ventilateur|radiateur|chauffage|chauffe.?eau|nespresso|dolce.?gusto|blender|robot.?cuisine|thermomix|friteuse|yaourtière|extracteur.?jus|centrifugeuse|bouilloire|épilateur|rasoir.?électrique|brosse.?dents/i.test(t)) return 'Électroménager';
+  if(/vélo|trottinette|skateboard|\bski\b|snowboard|raquette|ballon|football|basketball|tennis|badminton|golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))|rugby|natation|plongée|\bsurf\b|kayak|randonnée|camping|\bsport|fitness|musculation|haltère|kettlebell|yoga|pilates|course|running|trail|cyclisme|équitation|boxe|arts.?martiaux|tapis.?course|vélo.?appartement|rameur|elliptique|corde.?sauter|élastique.?musculation|bande.?résistance|gant.?boxe|protège|casque.?vélo|genouillère|spike|crampon|patin|roller|tente|sac.?dos.?rando|gourde|frontale|bâton.?marche|canne.?pêche|moulinet|waders/i.test(t)) return 'Sport';
+  if(/voiture|\bauto\b|moto|scooter|véhicule|pneu|jante|casque.?moto|pièce.?auto|autoradio|gps|huile.?moteur|liquide.?(?:de.?)?(?:refroidissement|frein)/i.test(t)) return 'Auto-Moto';
+  if(/parfum|crème|sérum|mascara|rouge.?lèvre|palette|correcteur|dissolvant|vernis|shampooing|après-shampooing|masque.?cheveux|(?<!sans\s)huile(?!\s*(?:moteur|d.?olive|de.?friture|de.?tournesol|de.?colza|alimentaire|de.?coude))|lotion|gel.?douche|savon|rasoir|fond.?teint|bb.?cream|cc.?cream|cushion|anticernes|poudre|blush|bronzer|highlighter|fard.?paupières|eyeliner|crayon|kajal|extension.?cils|faux.?cils|sourcil|gloss|baume|exfoliant|gommage|peeling|autobronzant|spray.?solaire|after.?sun|déodorant|roll.?on|\bstick\b|eau.?de.?cologne|brosse|peigne|lisseur|boucleur|bigoudi|coton|lingette|démaquillant|tonique|brume/i.test(t)) return 'Beauté';
+  if(/collectionn|cartes?\s*(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner|de.?collection|postale)|timbre|monnaie|pièce.?(?:de.?monnaie|ancienne|de.?collection|comm[ée]morative|rare)|funko|vintage|antique|brocante/i.test(t)) return 'Collection';
+  if(/aspirateur|robot.?aspirateur|roomba|dyson|lave.?linge|lave.?vaisselle|congélateur|\bfour\b|hotte|plaque|induction|gazinière|sèche.?linge|sèche.?cheveux|fer.?repasser|climatiseur|ventilateur|radiateur|chauffage|chauffe.?eau|nespresso|dolce.?gusto|blender|robot.?cuisine|thermomix|friteuse|yaourtière|extracteur.?jus|centrifugeuse|bouilloire|épilateur|rasoir.?électrique|brosse.?dents/i.test(t)) return 'Électroménager';
   return 'Autre';
 }
 
@@ -270,8 +270,13 @@ export const catClass = type => 'cat-'+((type||'autre').toLowerCase().normalize(
 // dans titre + description, du plus spécifique au plus générique — l'ordre compte).
 const OBJECT_ICON_RULES = [
   // Désambiguïsations prioritaires (avant les règles génériques)
-  [/basket.?ball|panier.?de.?basket/i, '🏀'],
+  [/basket.?ball|ballon.?(?:de.?)?basket|panier.?de.?basket/i, '🏀'],  // ballon de basket : "basket" seul → 👟 (bug)
   [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
+  // Vêtements de SPORT AVANT les règles d'ÉQUIPEMENT sport (⛑️/🤿/🎿/⚽) : un
+  // maillot de foot est un HAUT (pas une robe), une combinaison de ski un
+  // VÊTEMENT (pas des skis). Bug chasse mot-clé 2026-07-17.
+  [/maillot.?(?:de.?)?(?:foot|rugby|basket|hand|volley|cyclis|sport)|\bjersey\b|brassière/i, '👕'],
+  [/combinaison.?(?:de.?)?(?:ski|surf|snowboard|moto|plong[ée]e)|kimono.?(?:judo|karat[ée]|jjb|taekwondo)|justaucorps/i, '🧥'],
   [/casque.?(?:vélo|ski|snow)/i, '⛑️'],
   [/tondeuse.?(?:à.?)?(?:barbe|cheveux)|rasoir|épilateur/i, '🪒'],
   // Contexte sport : doit passer avant les règles génériques sac (👜) et
@@ -311,13 +316,16 @@ const OBJECT_ICON_RULES = [
   [/équitation|équestre|cravache|licol|tapis.?de.?selle|étriers?\b/i, '🐴'],
   [/billard|snooker|pétanque|fléchette|bowling|frisbee/i, '🎱'],
   // Mode / Luxe
+  // Couvre-chefs AVANT les sneakers : une marque de basket (Jordan/Air Max…)
+  // sur une casquette/bonnet ne doit pas router vers 👟 (bug "Casquette Jordan").
+  [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
   [/basket|sneaker|chaussure|jordan|air.?max|air.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
   [/botte|bottine|\bboots?\b/i, '👢'],
   // \btalons?\b : "pantalon" CONTIENT "talon" — sans la boundary stricte,
   // tout titre "Pantalon ..." partait sur Chaussures à talons (bug prod).
   [/\btalons?\b|escarpin|ballerine|compensée|louboutin/i, '👠'],
-  [/sandale|tong\b|claquette|mule\b/i, '🩴'],
-  [/\bsacs?\b|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
+  [/sandale|tongs?\b|claquette|mule\b/i, '🩴'],
+  [/\bsacs?\b(?!\s*(?:de.?couchage|de.?frappe|poubelle|congélation|aspirateur))|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
   [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
   [/valise|bagage/i, '🧳'],
   // (?:^|[^-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
@@ -342,7 +350,7 @@ const OBJECT_ICON_RULES = [
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
-  [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
+  [/jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|pantalon|jogging|legging|\bchino\b|salopette|survêtement/i, '👖'],
   // Lingerie/nuit (2026-07-09) : branche Vinted dédiée des deux côtés
   // (Lingerie et pyjamas / Sous-vêtements et chaussettes) — backlog T3.
   [/lingerie|soutien.?gorge|nuisette|pyjama|peignoir|tenue.?de.?nuit|caleçon|\bboxers?\b|\bslips?\b|culotte(?!.{0,10}cheval)/i, '🩲'],
@@ -359,7 +367,6 @@ const OBJECT_ICON_RULES = [
   // « élégant » (frontière entre « é » et « g »). D'où les lookarounds Unicode
   // explicites ci-dessous, avec le drapeau /u.
   [/(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])(?!\s*de\s*boxe)|(?<![\p{L}\p{N}])mitaines?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])moufles?(?![\p{L}\p{N}])/iu, '🧤'],
-  [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
   [/lunette|solaire|sunglass/i, '🕶️'],
   // Même piège, deux fois : /montre/ matchait le VERBE (« ce casque montre une
   // isolation… ») et « dé-MONTRE- ». Substantif exigé, tournures verbales exclues.
@@ -375,6 +382,7 @@ const OBJECT_ICON_RULES = [
   [/trottinette|hoverboard|gyroroue|monoroue/i, '🛴'],
   // High-Tech
   [/iphone|smartphone|téléphone|galaxy|\bpixel\b|xiaomi|oneplus/i, '📱'],
+  [/carte.?graphique|carte.?m[èe]re|\bgpu\b|\brtx\b|geforce|radeon|\bcpu\b|barrette.?ram/i, '🖥️'],  // composants PC : "carte" seul → 🏆 Collection (bug)
   [/macbook|laptop|ordinateur.?portable|notebook|chromebook/i, '💻'],
   [/\bpc\b|imac|ordinateur|écran|moniteur/i, '🖥️'],
   // 📲 scindé de 📱 (2026-07-09, T4) : feuille dédiée Électronique >
@@ -385,6 +393,8 @@ const OBJECT_ICON_RULES = [
   [/console|playstation|\bps[2-5]\b|xbox|nintendo|switch|game.?boy|manette|jeu.?vidéo/i, '🎮'],
   // télé(?![a-zà-ÿ]) et non télé\b : \b est ASCII-only en JS, donc "télé"
   // suivi d'une lettre matchait quand même ("télécommande" → Téléviseurs).
+  [/meuble.?(?:tv|t[ée]l[ée]|hi.?fi)/i, '🛋️'],  // meuble TV = mobilier, pas un téléviseur
+  [/veilleuse/i, '📦'],  // veilleuse bébé (souvent "projecteur étoiles") ≠ vidéoprojecteur, avant 📺
   [/\btv\b|télé(?![a-zà-ÿ])|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
   [/appareil.?photo|caméra|camera|reflex|gopro|objectif|caméscope/i, '📷'],
   [/drone/i, '🛸'],
@@ -393,8 +403,9 @@ const OBJECT_ICON_RULES = [
   [/souris/i, '🖱️'],
   // Maison
   [/canapé|sofa|fauteuil|banquette|pouf/i, '🛋️'],
+  [/banc.?(?:de.?)?(?:muscu|gym|fitness|abdo|développé)|banc.?à.?charge|presse.?(?:à.?)?cuisse/i, '🏋️'],  // banc de muscu = sport, pas une chaise, avant 🪑
   [/chaise|tabouret|\bbanc\b/i, '🪑'],
-  [/\blit\b|matelas|sommier|couette|drap|parure/i, '🛏️'],
+  [/\blit\b|matelas|sommier|couette|\bdrap\b|parure/i, '🛏️'],
   [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
   [/miroir/i, '🪞'],
   [/bougie|photophore/i, '🕯️'],
@@ -428,7 +439,7 @@ const OBJECT_ICON_RULES = [
   [/radiateur|chauffage.?d.?appoint|convecteur|bain.?d.?huile/i, '🌡️'],
   // Bricolage
   [/perceuse|visseuse|tournevis|perforateur/i, '🪛'],
-  [/scie|tronçonneuse|élagueuse/i, '🪚'],
+  [/\bscies?\b|tronçonneuse|élagueuse/i, '🪚'],
   [/marteau|maillet|\bmasse\b/i, '🔨'],
   [/échelle|escabeau/i, '🪜'],
   [/peinture|rouleau.?peinture|pinceau/i, '🖌️'],
@@ -441,14 +452,15 @@ const OBJECT_ICON_RULES = [
   [/barbecue|plancha|\bbbq\b/i, '🔥'],
   [/salon.?de.?jardin|parasol|transat(?!.{0,10}(?:b[ée]b[ée]|enfant|nouveau))/i, '⛱️'],  // transat BÉBÉ exclu → tombe au filet plutôt que Parasols (jardin)
   // Sport
-  [/vélo|\bvtt\b|bicyclette/i, '🚲'],
+  [/\bvélos?\b|\bvtt\b|bicyclette/i, '🚲'],
   [/trottinette/i, '🛴'],
   [/skate|longboard/i, '🛹'],
-  [/roller|patin/i, '⛸️'],
+  [/roller|\bpatins?(?![a-zà-ÿ])/i, '⛸️'],  // \b ASCII : "patinée" (é) forçait un match → garde accents
   [/\bskis?\b|snowboard/i, '🎿'],
+  [/\bgourde\b|bidon.?(?:sport|vélo)|bouteille.?(?:isotherme|inox|sport)/i, '📦'],  // gourde ≠ ballon (défaut Sport ⚽), pas de feuille dédiée → filet
   [/ballon|football/i, '⚽'],
   [/tennis|raquette|badminton|squash/i, '🎾'],
-  [/golf/i, '⛳'],
+  [/golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))/i, '⛳'],
   [/haltère|kettlebell|musculation|fitness/i, '🏋️'],
   [/boxe|\bmma\b/i, '🥊'],
   [/tente|camping|sac.?de.?couchage|duvet/i, '⛺'],
@@ -468,7 +480,7 @@ const OBJECT_ICON_RULES = [
   [/guitare|stratocaster|telecaster|les.?paul|ukulélé/i, '🎸'],
   [/violon|violoncelle|contrebasse/i, '🎻'],
   [/batterie(?!.{0,15}(?:voiture|moto|vélo|externe|cuisine))|cymbale|caisse.?claire/i, '🥁'],
-  [/trompette|saxophone|clarinette|flûte/i, '🎺'],
+  [/trompette|saxophone|clarinette|flûte(?!s?\s*(?:à\s*)?champagne)/i, '🎺'],
   [/vinyle|vinyl|platine|33.?tours|45.?tours/i, '💿'],
   // Médias physiques (2026-07-09, backlog T3) : Divertissement > Vidéo (DVD/
   // Blu-ray/VHS) et > Musique (CD/Cassettes audio) — 📀 AVANT 💽 pour que
@@ -719,8 +731,12 @@ export function getRotatingExamples(currency, lang) {
 export function groupSales(arr){
   const groups=[];
   for(const s of arr){
+    if(s.quantite!=null){
+      groups.push({...s,_qty:s.quantite});
+      continue;
+    }
     const last=groups[groups.length-1];
-    if(last&&last.title===s.title&&last.marque===s.marque&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
+    if(last&&last.quantite==null&&last.title===s.title&&last.marque===s.marque&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
       last._qty=(last._qty||1)+1;
       last.margin=(last.margin||0)+(s.margin||0);
       last.marginPct=(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:0;

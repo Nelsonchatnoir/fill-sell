@@ -400,6 +400,7 @@ const MODE = {
 // Catégories SANS niveau genre — chemin unique quelle que soit la valeur de
 // platform_fields.genre (même contrat que HORS_MODE Vinted/Beebs).
 const HORS_MODE = {
+  "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
   // ── Bijoux, montres (racine dédiée, non genrée — "Bijoux pour hommes"
   // existe en branche sœur, non atteinte par ce défaut) ─────────────────────
   // DÉFAUT ASSUMÉ : collier/bracelet/bague → feuilles sœurs dédiées sous

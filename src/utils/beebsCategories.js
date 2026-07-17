@@ -557,6 +557,7 @@ const HORS_MODE = {
   "🎿": null, "🎾": null, "⛳": null, "🏋️": null, "🥊": null,
   "⛺": null, "🎣": null, "🧘": null, "🥽": null, "🏀": null, "🏃": null,
   "🐴": null, "🎱": null, "🤿": null, "🏄": null, "🎽": null,
+  "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
   "🎸": null, "🎻": null, "🥁": null, "🎺": null, "🎹": null, "🎤": null,
   "🎼": null, "🧵": null,
   "📮": null, "🪙": null, "📰": null, "🐕": null,
