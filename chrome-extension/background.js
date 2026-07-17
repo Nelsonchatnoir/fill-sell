@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-16-ebay-confirm-active-listings (verifyEbaySubmission : 3e preuve = Hub vendeur /sh/lst/active par titre exact — plus de faux négatif → doublon ; + attrsConfig/400/catalogue requis)";
+  "2026-07-17-vinted-delete-fiber-NON-VERIFIE (vintedFiberClick : props.onClick direct via fibers monde MAIN pour la suppression Vinted en fenêtre cachée) + ebay-confirm-active-listings";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );
@@ -156,6 +156,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg?.type === "VINTED_COMMIT_PRICE" && senderTabId != null) {
     commitVintedPrice(senderTabId, String(msg.value ?? "")).then(sendResponse);
+    return true;
+  }
+  // Clic React direct (fibers, monde MAIN) — demandé par vinted.js deleteListing
+  // quand simulateFullClick ne déclenche pas la modale de confirmation dans la
+  // fenêtre cachée (⚠️ non vérifié, cf. vintedFiberClick).
+  if (msg?.type === "VINTED_FIBER_CLICK" && senderTabId != null && typeof msg.selector === "string") {
+    vintedFiberClick(senderTabId, msg.selector).then(sendResponse);
     return true;
   }
   // Captures STRUCTURÉES de la sonde réseau (succès par preuve serveur —
@@ -2047,6 +2054,60 @@ async function commitVintedPrice(tabId, value) {
           }
         }
         return { ok: false, reason: "composant prix (onChange+currency/locale) introuvable dans les 12 niveaux" };
+      },
+    });
+    return res?.result ?? { ok: false, reason: "executeScript sans résultat" };
+  } catch (e) {
+    return { ok: false, reason: String(e?.message ?? e) };
+  }
+}
+
+// ── Clic React DIRECT par fibers, monde MAIN (2026-07-17, ⚠️ NON VÉRIFIÉ) ─────
+// MÊME canal prouvé que commitVintedPrice : dans la fenêtre de travail
+// invisible/minimisée, les events synthétiques (simulateFullClick) et le CDP
+// input ne déclenchent PAS les handlers React. Résultat vécu : la SUPPRESSION
+// Vinted clique bien [data-testid="item-delete-button"] mais la modale de
+// confirmation ne se monte jamais (« Modale de confirmation introuvable »),
+// l'annonce reste en ligne. eBay/LBC n'ont pas ce souci (pas de modale React
+// dépendante du rendu).
+// Parade : trouver le bouton par selector, remonter ses fibers jusqu'au premier
+// niveau portant un props.onClick fonction, et L'APPELER DIRECTEMENT. Un
+// appel de handler est une mise à jour d'état React — elle passe sans event,
+// sans focus, sans rendu (exactement comme onChange pour le prix).
+// ⚠️ INCERTITUDE à lever au 1er test réel : le handler peut lire l'event
+// (e.preventDefault / e.currentTarget). On passe donc un event MINIMAL simulé ;
+// si l'appel jette, on retente sans argument. À VÉRIFIER sur annonce Vinted live
+// avant tout merge/déploiement.
+async function vintedFiberClick(tabId, selector) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      args: [selector],
+      func: (sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return { ok: false, reason: `élément introuvable : ${sel}` };
+        const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+        if (!key) return { ok: false, reason: `fibers React introuvables sur ${sel}` };
+        const fakeEvent = {
+          preventDefault() {}, stopPropagation() {}, persist() {},
+          currentTarget: el, target: el, nativeEvent: {}, type: "click",
+          bubbles: true, isTrusted: false,
+        };
+        let fiber = el[key];
+        for (let depth = 0; fiber && depth < 12; depth++, fiber = fiber.return) {
+          const p = fiber.memoizedProps;
+          if (p && typeof p === "object" && typeof p.onClick === "function") {
+            try { p.onClick(fakeEvent); return { ok: true, depth, arg: "event" }; }
+            catch (e1) {
+              try { p.onClick(); return { ok: true, depth, arg: "none" }; }
+              catch (e2) {
+                return { ok: false, reason: `onClick a jeté (event: ${String(e1?.message ?? e1)} ; sans arg: ${String(e2?.message ?? e2)})` };
+              }
+            }
+          }
+        }
+        return { ok: false, reason: `aucun props.onClick fonction dans les 12 niveaux de ${sel}` };
       },
     });
     return res?.result ?? { ok: false, reason: "executeScript sans résultat" };

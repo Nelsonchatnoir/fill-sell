@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-16-chantier-requis-1C (unfilledRequired REEL via config attributes + gate pre-clic LIVE + parsing 400 serveur → serverRequired + canal generique vintedAspects)";
+const VINTED_BUILD = "2026-07-17-delete-fiber-click-NON-VERIFIE (suppression : clic React direct props.onClick via fibers monde MAIN, repli simulateFullClick) + chantier-requis-1C";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -211,6 +211,24 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 //   sert ensuite une page "Page not found".
 const DELETE_DRY_RUN = false;
 
+// Clic de suppression : dans la fenêtre de travail invisible/minimisée,
+// simulateFullClick (events synthétiques) ne déclenche PAS les handlers React
+// → la modale de confirmation ne se monte jamais (bug re-vérifié 2026-07-17).
+// On demande donc au background d'appeler DIRECTEMENT le props.onClick du
+// bouton via les fibers (monde MAIN, même canal prouvé que le commit prix).
+// ⚠️ NON VÉRIFIÉ en réel : simulateFullClick reste en repli (cas onglet peint /
+// si le fiber-click échoue). Ne pas merger avant une suppression Vinted live OK.
+async function deleteClickReact(el, trace) {
+  const testid = el?.getAttribute?.("data-testid");
+  if (testid) {
+    const res = await askBackground({ type: "VINTED_FIBER_CLICK", selector: `[data-testid="${CSS.escape(testid)}"]` });
+    if (res?.ok) { trace?.(`clic fiber onClick OK (niveau ${res.depth}, arg ${res.arg}) sur [data-testid="${testid}"]`); return true; }
+    trace?.(`clic fiber KO (${res?.reason ?? "pas de réponse"}) — repli simulateFullClick`);
+  }
+  simulateFullClick(el);
+  return false;
+}
+
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[vinted][delete] ${line}`); };
@@ -280,7 +298,7 @@ async function deleteListing(job) {
   t(`bouton Supprimer localisé (visibilityState=${document.visibilityState}, pas de mesure de layout) — clic`);
   control.scrollIntoView({ block: "center" });
   await humanPause(600, 1200);
-  simulateFullClick(control);
+  await deleteClickReact(control, t);
   await humanPause(800, 1600);
   // Modale "Supprimer l'article" — sélecteur CONFIRMÉ (2026-07-11) :
   // item-delete-confirmation-button ("Confirmer et supprimer"), repli texte.
@@ -311,7 +329,7 @@ async function deleteListing(job) {
     };
   }
   t(`confirmation : "${confirmBtn.textContent.trim()}"`);
-  simulateFullClick(confirmBtn);
+  await deleteClickReact(confirmBtn, t);
   // Confirmé en réel : redirection vers /member/<id> après suppression.
   await sleep(3000);
   return { success: true, trace };
