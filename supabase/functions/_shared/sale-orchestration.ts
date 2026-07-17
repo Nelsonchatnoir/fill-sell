@@ -101,20 +101,44 @@ export async function orchestrateSale(
   const benefice = prixVente - prixAchat - purchaseCosts - sellingFees;
   const marginPct = prixVente > 0 ? (benefice / prixVente) * 100 : 0;
 
+  // ── 2 + 3. GATE ATOMIQUE anti-double-vente (2026-07-17) ───────────────────
+  // Un article détecté hors ligne sur PLUSIEURS plateformes affiche un bandeau
+  // « Vendue ? » PAR plateforme. Sans garde, deux confirmations concurrentes
+  // (double-tap sur deux bandeaux du même article, ou deux appareils) lisaient
+  // toutes deux « pas encore vendu » — ventes/inventaire non verrouillés, AUCUNE
+  // contrainte d'unicité sur ventes.inventaire_id → DEUX ventes du même article,
+  // CA/marge gonflés. Le flip conditionnel de l'inventaire est ATOMIQUE :
+  // `UPDATE inventaire SET statut='vendu' WHERE statut<>'vendu'` ne matche qu'UNE
+  // fois en concurrence. Seule l'orchestration qui GAGNE ce flip crée la vente et
+  // envoie l'email ; les autres retombent proprement (idempotent, 0 double-vente).
+  // (La garde published→sold par job ne suffisait pas : eBay et LBC sont des jobs
+  //  DIFFÉRENTS, chacun passe sa propre garde.)
   let venteCreated = false;
-  // Dédup : la garde published→sold rend déjà l'orchestration unique par job,
-  // ceci couvre le cas d'une vente déjà saisie À LA MAIN dans l'app.
-  let alreadySold = false;
-  if (job.inventaire_id != null) {
-    const { data: existing } = await admin
-      .from("ventes")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("inventaire_id", job.inventaire_id)
-      .maybeSingle();
-    alreadySold = !!existing || inv?.statut === "vendu";
+  let inventaireUpdated = false;
+  let wonSaleGate = true; // défaut : pas d'inventaire à verrouiller → best-effort (cas marginal)
+  if (job.inventaire_id != null && inv) {
+    // Limite assumée : quantite > 1 passe quand même tout l'article en vendu
+    // (les annonces cross-post sont des pièces uniques ; la vente partielle
+    // reste un flux manuel confirmSell, hors de cette orchestration).
+    const { data: won, error: invErr } = await admin
+      .from("inventaire")
+      .update({
+        statut: "vendu",
+        prix_vente: prixVente,
+        margin: benefice,
+        margin_pct: marginPct,
+        selling_fees: sellingFees,
+      })
+      .eq("id", inv.id)
+      .neq("statut", "vendu")
+      .select("id");
+    if (invErr) console.error(`[sale] Update inventaire ${inv.id}:`, invErr.message);
+    inventaireUpdated = (won?.length ?? 0) > 0;
+    wonSaleGate = inventaireUpdated; // a flippé l'inventaire = a gagné le gate
   }
-  if (!alreadySold) {
+
+  // Vente créée UNIQUEMENT par l'orchestration gagnante (ou job sans inventaire lié).
+  if (wonSaleGate) {
     const { error: venteErr } = await admin.from("ventes").insert({
       user_id: userId,
       inventaire_id: job.inventaire_id ?? null,
@@ -133,25 +157,6 @@ export async function orchestrateSale(
     });
     if (venteErr) console.error(`[sale] Insert vente (job ${job.id}):`, venteErr.message);
     else venteCreated = true;
-  }
-
-  let inventaireUpdated = false;
-  if (inv && inv.statut !== "vendu") {
-    // Limite assumée : quantite > 1 passe quand même tout l'article en vendu
-    // (les annonces cross-post sont des pièces uniques ; la vente partielle
-    // reste un flux manuel confirmSell).
-    const { error: invErr } = await admin
-      .from("inventaire")
-      .update({
-        statut: "vendu",
-        prix_vente: prixVente,
-        margin: benefice,
-        margin_pct: marginPct,
-        selling_fees: sellingFees,
-      })
-      .eq("id", inv.id);
-    if (invErr) console.error(`[sale] Update inventaire ${inv.id}:`, invErr.message);
-    else inventaireUpdated = true;
   }
 
   // ── 4. Frères : annulation TOTALE + marquage des annonces encore live ─────
@@ -181,8 +186,11 @@ export async function orchestrateSale(
   }
 
   // ── 5. Email (email-tunnel, mode relance_emails) — best-effort ────────────
+  // ⚠️ SEULEMENT si CETTE orchestration a créé la vente (gagné le gate atomique).
+  // Une orchestration concurrente perdante (ou une re-détection d'un article déjà
+  // vendu) ne doit pas renvoyer un 2e email « Vendu ! ».
   let emailSent = false;
-  try {
+  if (venteCreated) try {
     const cronSecret = Deno.env.get("CRON_SECRET");
     const { data: userData } = await admin.auth.admin.getUserById(userId);
     const email = userData?.user?.email;

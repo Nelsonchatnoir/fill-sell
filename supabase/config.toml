@@ -12,6 +12,11 @@ project_id = "tojihnuawsoohlolangc"
 [functions.voice-intent]
 verify_jwt = false
 
+# check-listing-status : appelé par l'app avec un JWT user, mais vérifié dans le
+# code (getUser) — état prod verify_jwt=false, à préserver.
+[functions.check-listing-status]
+verify_jwt = false
+
 # Webhooks / cron externes (liste CLAUDE.md) : Apple, Google, Stripe, pg_net…
 [functions.email-tunnel]
 verify_jwt = false
