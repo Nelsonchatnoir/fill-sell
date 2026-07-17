@@ -699,9 +699,13 @@ function stripMarque(nom,marque){
 }
 function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
-  // Luxury brands always take absolute priority over article type
-  if(/louis.?vuitton|\blv\b|gucci|hermès|hermes|chanel|dior|prada|balenciaga|givenchy|saint.?laurent|\bysl\b|burberry|versace|fendi|celine|céline|bottega.?veneta|valentino|moncler|off.?white|alexander.?mcqueen|vivienne.?westwood|rolex|omega|cartier|tag.?heuer|breitling|patek|audemars|richard.?mille|\biwc\b|birkin|kelly|speedy|neverfull|louboutin|jimmy.?choo|manolo|stone.?island|canada.?goose|ralph.?lauren|lacoste|tommy|boss|armani/i.test(t)) return 'Luxe';
-  if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|gant|lunette|bijou|collier|bracelet|bague|montre|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset/i.test(t)) return 'Mode';
+  // ⚠️ CATÉGORIE "Luxe" SUPPRIMÉE le 2026-07-17 (voir detectType dans src/utils/shared.js).
+  // L'ancien 1er test renvoyait 'Luxe' dès qu'une marque « premium » figurait dans le
+  // texte — MAIS la liste incluait des marques NON luxe (Ralph Lauren, Lacoste, Tommy,
+  // Boss, Armani), et 'Luxe' n'est mappé sur AUCUNE plateforme (💎 injouable → publication
+  // bloquée). Désormais on classe par TYPE DE PRODUIT : la marque (luxe ou non) n'influence
+  // plus la catégorie — sac Hermès → Mode, parfum Chanel → Beauté, Rolex → Mode.
+  if(/robe|jupe|pull|jean|veste|manteau|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
   if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,12}voiture)|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?midi|pédale.?(?:effet|guitare|basse)|table.?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|\bbasse\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
   if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|pc|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|ram|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
   if(/perceuse|visseuse|meuleuse|ponceuse|scie.?(?:circulaire|sauteuse|cloche)?|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
@@ -813,7 +817,7 @@ const SKELETON_ITEMS=[
   {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},
   {title:'Lot Pokémon x20',      type:'Collection', marque:'Pokémon', buy:8,   qty:20, days:null},
   {title:'iPhone 12 64Go',       type:'High-Tech',  marque:'Apple',   buy:180, qty:1,  days:5},
-  {title:'Sac Kelly Hermès',     type:'Luxe',       marque:'Hermès',  buy:125, qty:1,  days:1},
+  {title:'Sac Kelly Hermès',     type:'Mode',       marque:'Hermès',  buy:125, qty:1,  days:1},
   {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15,  qty:1,  days:null},
 ];
 const SKELETON_SOLD=[
@@ -2480,7 +2484,7 @@ export default function App({ loginOnly = false }){
       const mg=hasS?s-cogs-sf:0;
       const mgp=hasS?(mg/s)*100:0;
       const marqueNorm=normalizeMarque(item.marque);
-      const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=_td1==='Luxe'?'Luxe':(item.categorie||_td1);
+      const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td1;
       let nomNorm=item.nom||"Article";
       if(avToken&&(qty>1||voiceParsed.isLot)){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${avToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
       const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null,plateforme:item.plateforme||null};
@@ -2530,7 +2534,7 @@ export default function App({ loginOnly = false }){
       if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
-      const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=_td2==='Luxe'?'Luxe':(item.categorie||_td2);
+      const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td2;
       // Récupérer les frais d'achat depuis voiceParsed si disponibles (même frais_global pour tout le lot)
       const lotFraisG=parseFloat(voiceParsed?.items?.[0]?.frais_global)||0;
       const lotFraisU=lotFraisG>0?lotFraisG/(voiceParsed?.items?.length||1):(parseFloat(voiceParsed?.items?.[0]?.frais_unitaire)||0);
@@ -3610,7 +3614,7 @@ export default function App({ loginOnly = false }){
       // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
       const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);
       const marqueNorm=normalizeMarque(data.marque);
-      const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=_td3==='Luxe'?'Luxe':(data.categorie||_td3);
+      const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=(data.categorie&&data.categorie!=='Luxe')?data.categorie:_td3;
       const _cleanDesc=(desc,nom,marque)=>{if(!desc)return null;let s=desc;const _strip=(w)=>{if(!w)return;s=s.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'gi'),'').trim();};_strip(nom);_strip(marque);s=s.replace(/\s+/g,' ').replace(/^[,\s]+|[,\s]+$/g,'').trim();return s||null;};
       const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:_cleanDesc(data.description,data.nom,marqueNorm),type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null,plateforme:data.plateforme||null};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
@@ -4017,7 +4021,7 @@ export default function App({ loginOnly = false }){
         const pa=lensResult.prix_achat_reel||0;
         const marqueNorm=normalizeMarque(lensResult.marque);
         const _td=detectType(nom,marqueNorm);
-        const typeAuto=_td==='Luxe'?'Luxe':(lensResult.categorie||_td);
+        const typeAuto=(lensResult.categorie&&lensResult.categorie!=='Luxe')?lensResult.categorie:_td;
         const srow={user_id:user.id,titre:stripMarque(nom,marqueNorm),prix_achat:pa,prix_vente:pv,benefice:pv-pa,marque:marqueNorm||null,type:typeAuto||null,description:lensResult.description||(lensDesc.trim()||null),emplacement:null,date:new Date().toISOString().split('T')[0]};
         const{data:sd,error:se}=await supabase.from('ventes').insert([srow]).select().single();
         if(se)throw new Error(se.message);
@@ -4372,7 +4376,6 @@ export default function App({ loginOnly = false }){
               <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value}))}
                 style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:editItem.type?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
                 <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`🤖 Détecté : ${detectType(editItem.title,editItem.marque)}`:`🤖 Detected: ${typeLabel(detectType(editItem.title,editItem.marque),lang)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
-                <option value="Luxe">💎 {typeLabel('Luxe',lang)}</option>
                 <option value="Mode">👗 {typeLabel('Mode',lang)}</option>
                 <option value="High-Tech">📱 High-Tech</option>
                 <option value="Maison">🏠 {typeLabel('Maison',lang)}</option>
