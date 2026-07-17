@@ -42,7 +42,7 @@ const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'lebonco
 const TICKER_SALES = [
   { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       icon:'🧥', sell:42,   margin:27,  date:'14 juil', dateEn:'Jul 14' },
   { title:'iPhone 12 Pro 128Go',  marque:'Apple',   type:'High-Tech',  icon:'📱', sell:380,  margin:100, date:'12 juil', dateEn:'Jul 12' },
-  { title:'Sac Kelly Hermès',     marque:'Hermès',  type:'Luxe',       icon:'👜', sell:1240, margin:420, date:'9 juil',  dateEn:'Jul 9' },
+  { title:'Sac Kelly Hermès',     marque:'Hermès',  type:'Mode',       icon:'👜', sell:1240, margin:420, date:'9 juil',  dateEn:'Jul 9' },
   { title:'Lot Pokémon x20',      marque:'Pokémon', type:'Collection', icon:'🎴', sell:95,   margin:90,  date:'6 juil',  dateEn:'Jul 6' },
   { title:'Guitare Yamaha F310',  marque:'Yamaha',  type:'Musique',    icon:'🎸', sell:120,  margin:55,  date:'2 juil',  dateEn:'Jul 2' },
 ];
@@ -274,7 +274,7 @@ const VentesTab = memo(function VentesTab({
 
       {/* ── Filtres catégorie — mêmes pills à pastille que StockTab ── */}
       {sales.length>0&&(()=>{
-        const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||sales.some(s=>s.type===tp));
+        const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||sales.some(s=>s.type===tp));
         return presentTypes.length>1&&(
           <div className="cat-filters">
             {presentTypes.map(tp=>{
