@@ -522,8 +522,16 @@ export function detectObjectIcon(titre, description, type){
   // Dé-bruitage des accessoires inclus (cf. INCLUDED_ACCESSORY_CLAUSE).
   const t=raw.replace(INCLUDED_ACCESSORY_CLAUSE,' ').toLowerCase();
   for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
-  if(CAT_DEFAULT_ICONS[type]) return CAT_DEFAULT_ICONS[type];
-  const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  // ⚠️ FILET « Luxe » (2026-07-17) : la catégorie Luxe est supprimée, mais des
+  // items LEGACY (ou une IA pas encore redéployée) peuvent encore porter
+  // type="Luxe" → 💎 non mappé = injouable. On ré-dérive alors le VRAI type
+  // produit (detectType) pour retomber sur une catégorie mappée : un sac/une
+  // montre de luxe redeviennent Mode, un parfum Beauté. (Les items AVEC un
+  // mot-objet ont déjà été résolus par les règles ci-dessus.)
+  let effectiveType = type;
+  if(String(type).toLowerCase()==='luxe') effectiveType = detectType(titre, description);
+  if(CAT_DEFAULT_ICONS[effectiveType]) return CAT_DEFAULT_ICONS[effectiveType];
+  const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(effectiveType||"").toLowerCase());
   return key?CAT_DEFAULT_ICONS[key]:CAT_DEFAULT_ICONS['Autre'];
 }
 
