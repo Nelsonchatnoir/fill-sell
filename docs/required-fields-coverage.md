@@ -450,3 +450,27 @@ essentielle, enceinte JBL, ampli Marshall, casque de ski…). audit-coverage :
 Imprécisions mineures LAISSÉES (mappent sur une catégorie valide ou le filet,
 pas un trou d'intégrité) : boule de pétanque → 🎱 billard, chaussures de
 sécurité → 👟, coque iPhone → 📱, table de ping-pong → 🏠→filet.
+
+### Diff edge déployé vs code (17/07, get_edge_function)
+- **generate-listing v53 : PAS à jour (deploy en attente, gaté sur go Nico).**
+  L'index.ts déployé n'a PAS le bloc « défauts déterministes MPN » (Phase 1,
+  commit 1494aea). De plus il bundle un `src/utils/shared.js` PÉRIMÉ (15/07,
+  encore avec Luxe, sans les fixes cartes/huile/etc.). Impact LIMITÉ : (a) le
+  défaut MPN serveur manque mais le front le pose déjà (EBAY_ASPECT_DEFAULTS) ;
+  (b) le shared.js bundlé ne sert QU'À choisir la famille de retouche PHOTO
+  (RETOUCH_FAMILIES), jamais la catégorie de l'annonce (calculée côté front au
+  publish). Premium 5-clauses BIEN présent au déployé.
+- **handler-watch v1 : à jour, Phase B incluse** (auto-pause HANDLER_WATCH_AUTOPAUSE
+  + platform_health présents au déployé).
+- **lens-analysis v45 : « Luxe » présent dans le schéma (gelée)** — neutralisé
+  par le filet frontend (detectObjectIcon re-dérive + typeAuto ré-écrit).
+
+### Audit lint ciblé premium/voix/paiement (17/07)
+- **BUG RÉEL corrigé — SwipeRow (App.jsx)** : hooks appelés après un return
+  conditionnel (isMobile) → crash React au resize web à travers 768px. Tous les
+  hooks déplacés avant le return. Build + lint OK.
+- iap.js:114 `no-useless-catch` : try/catch redondant, inoffensif (laissé).
+- translations.js `fraisAnnexes` dupliqué (×2) : valeurs IDENTIQUES
+  (« Frais annexes »/« Additional fees ») → écrasement inerte, pas un bug.
+- Aucune erreur `no-undef` / `no-const-assign` / feature premium-voix-paiement
+  cassée. Les ~2100 « erreurs » eslint restantes = bruit (unused-vars, purity).
