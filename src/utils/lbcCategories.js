@@ -96,6 +96,7 @@ const LBC_CATEGORIES = {
   "🚗": null, "🏍️": null, "🛵": null,
   // Beauté : aucun rayon Leboncoin (vérifié dans l'arbre) — fallback explicite.
   "🌸": null, "💄": null, "💅": null, "🧴": null,
+  "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
 
   // ── Ajouts 2026-07-09 (mission mapping complet) — mêmes feuilles plates
   // que leurs familles (relevé docs/leboncoin-form-survey.md, 13 racines) ───

@@ -639,6 +639,7 @@ const HORS_MODE = {
   "🛞": null,
   "🚗": null,
   "🪖": null, // casque moto — équipement du motard, même racine absente
+  "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
 };
 
 /**

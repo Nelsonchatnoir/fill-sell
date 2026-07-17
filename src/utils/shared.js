@@ -191,7 +191,7 @@ export function detectType(titre,marque){
   // parfum Chanel partait ainsi en Luxe → injouable. Désormais on classe par
   // TYPE DE PRODUIT : la marque (luxe ou non) n'influence plus la catégorie —
   // un sac Hermès → Mode, un parfum Chanel → Beauté, une Rolex → Mode.
-  if(/robe|jupe|pull|jean|veste|manteau|costume|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|\btop\b|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|brassière|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s*(?:connect|intelligente))|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|\bcap\b|\bbob\b|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
+  if(/robe|jupe|pull|jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|veste|manteau|costume|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|\btop\b|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|brassière|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s*(?:connect|intelligente))|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|\bcap\b|\bbob\b|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
   if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,18}(?:voiture|cuisine|externe|lithium|rechargeable|li.?ion|au.?plomb|solaire|\d{3,}|perceuse|visseuse|drone|portable|ordinateur|tondeuse|\d+\s?v\b|\d+\s?mah))|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?(?:midi|arrangeur|ma[îi]tre)|pédale.?(?:effet|guitare|basse)|table.?(?:de.?)?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|guitare.?basse|basse.?(?:[eé]lec|acoustique|\d.?cordes|fretless|active)|\bbassiste\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
   // Mobilité AVANT High-Tech : « trottinette Xiaomi » (Xiaomi = marque téléphone
   // ET trottinette) partait en High-Tech → 📱 Téléphones. L'objet prime sur la marque.
@@ -316,6 +316,9 @@ const OBJECT_ICON_RULES = [
   [/équitation|équestre|cravache|licol|tapis.?de.?selle|étriers?\b/i, '🐴'],
   [/billard|snooker|pétanque|fléchette|bowling|frisbee/i, '🎱'],
   // Mode / Luxe
+  // Couvre-chefs AVANT les sneakers : une marque de basket (Jordan/Air Max…)
+  // sur une casquette/bonnet ne doit pas router vers 👟 (bug "Casquette Jordan").
+  [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
   [/basket|sneaker|chaussure|jordan|air.?max|air.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
   [/botte|bottine|\bboots?\b/i, '👢'],
   // \btalons?\b : "pantalon" CONTIENT "talon" — sans la boundary stricte,
@@ -347,7 +350,7 @@ const OBJECT_ICON_RULES = [
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
-  [/jean|pantalon|jogging|legging|\bchino\b|salopette|survêtement/i, '👖'],
+  [/jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|pantalon|jogging|legging|\bchino\b|salopette|survêtement/i, '👖'],
   // Lingerie/nuit (2026-07-09) : branche Vinted dédiée des deux côtés
   // (Lingerie et pyjamas / Sous-vêtements et chaussettes) — backlog T3.
   [/lingerie|soutien.?gorge|nuisette|pyjama|peignoir|tenue.?de.?nuit|caleçon|\bboxers?\b|\bslips?\b|culotte(?!.{0,10}cheval)/i, '🩲'],
@@ -364,7 +367,6 @@ const OBJECT_ICON_RULES = [
   // « élégant » (frontière entre « é » et « g »). D'où les lookarounds Unicode
   // explicites ci-dessous, avec le drapeau /u.
   [/(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])(?!\s*de\s*boxe)|(?<![\p{L}\p{N}])mitaines?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])moufles?(?![\p{L}\p{N}])/iu, '🧤'],
-  [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
   [/lunette|solaire|sunglass/i, '🕶️'],
   // Même piège, deux fois : /montre/ matchait le VERBE (« ce casque montre une
   // isolation… ») et « dé-MONTRE- ». Substantif exigé, tournures verbales exclues.
@@ -392,6 +394,7 @@ const OBJECT_ICON_RULES = [
   // télé(?![a-zà-ÿ]) et non télé\b : \b est ASCII-only en JS, donc "télé"
   // suivi d'une lettre matchait quand même ("télécommande" → Téléviseurs).
   [/meuble.?(?:tv|t[ée]l[ée]|hi.?fi)/i, '🛋️'],  // meuble TV = mobilier, pas un téléviseur
+  [/veilleuse/i, '📦'],  // veilleuse bébé (souvent "projecteur étoiles") ≠ vidéoprojecteur, avant 📺
   [/\btv\b|télé(?![a-zà-ÿ])|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
   [/appareil.?photo|caméra|camera|reflex|gopro|objectif|caméscope/i, '📷'],
   [/drone/i, '🛸'],
@@ -400,6 +403,7 @@ const OBJECT_ICON_RULES = [
   [/souris/i, '🖱️'],
   // Maison
   [/canapé|sofa|fauteuil|banquette|pouf/i, '🛋️'],
+  [/banc.?(?:de.?)?(?:muscu|gym|fitness|abdo|développé)|banc.?à.?charge|presse.?(?:à.?)?cuisse/i, '🏋️'],  // banc de muscu = sport, pas une chaise, avant 🪑
   [/chaise|tabouret|\bbanc\b/i, '🪑'],
   [/\blit\b|matelas|sommier|couette|\bdrap\b|parure/i, '🛏️'],
   [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
@@ -453,6 +457,7 @@ const OBJECT_ICON_RULES = [
   [/skate|longboard/i, '🛹'],
   [/roller|\bpatins?(?![a-zà-ÿ])/i, '⛸️'],  // \b ASCII : "patinée" (é) forçait un match → garde accents
   [/\bskis?\b|snowboard/i, '🎿'],
+  [/\bgourde\b|bidon.?(?:sport|vélo)|bouteille.?(?:isotherme|inox|sport)/i, '📦'],  // gourde ≠ ballon (défaut Sport ⚽), pas de feuille dédiée → filet
   [/ballon|football/i, '⚽'],
   [/tennis|raquette|badminton|squash/i, '🎾'],
   [/golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))/i, '⛳'],
