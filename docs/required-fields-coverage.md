@@ -261,6 +261,29 @@ propagation CÔTÉ PLATEFORME (pas juste en base).
 → Propagation réelle CONFIRMÉE sur eBay + Leboncoin. La suppression n'est PAS
 un simple changement de statut en base : les annonces sont bien retirées.
 
+### Étape B — Re-test article « avec dock » (17/07)
+Republication de l'article dock (fix mapping déployé) pour vérifier qu'il part
+maintenant en **Consoles**, pas en 🔌 Batteries externes.
+
+**2e bug mapping trouvé ET corrigé pendant le re-test** (commit 5a865ca) : le
+1er fix (`INCLUDED_ACCESSORY_CLAUSE`) utilisait `\b` autour des marqueurs
+symboles « + » et « & » — or ce sont des NON-WORD, `\b` entouré d'espaces ne
+matche jamais. Le titre généré « Nintendo Switch OLED blanc **+ dock**… » n'était
+donc pas dé-bruité → repartait en 🔌. Idem « Casque Bose **&** câble ». Fix :
+marqueurs MOTS (`\b…\b`) séparés des SYMBOLES (`[+&]`). Re-testé 10/10.
+
+**Confirmé end-to-end (job payloads, bundle corrigé)** : l'article dock résout
+la catégorie CONSOLE sur les 3 plateformes —
+| Plateforme | Catégorie du job | Aspect requis |
+|---|---|---|
+| Vinted | `Électronique > Jeux vidéo et consoles > Consoles` | `vintedAspects.video_game_platform = "Nintendo Switch"` (résolu IA) |
+| eBay | `139971` (Consoles) | ✓ Marque ✓ Modèle |
+| Leboncoin | `Électronique > Consoles` | ✓ Marque ✓ État |
+
+Encart app confirmé visuellement (✓ verts sur les 3). → **Le mapping « dock »
+est réglé de bout en bout** : app → job payload → bonne catégorie.
+Reste (LIVE) : publication on-platform + 3e preuve eBay + suppression.
+
 ### Trou de validation restant
 - **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
   est déployée et compile, mais NON observée dans l'app connectée (login
