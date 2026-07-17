@@ -1546,6 +1546,57 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
+// id de <datalist> valide et stable dérivé du nom d'aspect (accents/espaces/
+// apostrophes retirés) — "Capacité de stockage" → "capacite-de-stockage".
+const aspectSlug = s => String(s).toLowerCase().normalize("NFD")
+  .replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+// Contrôle de saisie d'un aspect obligatoire dans le fallback UI. Quatre rendus :
+//  · `strict` (eBay mode=SELECTION_ONLY) → <select> : choix IMPOSÉ quel que soit
+//    le volume (la Taxonomy eBay est autoritaire, une valeur hors liste serait
+//    refusée à la publication) ;
+//  · petite liste (≤ 30) → <select> : comportement existant qui marche déjà
+//    (ex. Couleur, 16 valeurs) — non touché pour éviter toute régression ;
+//  · grande liste FREE_TEXT (> 30) → <input list=datalist> : autocomplétion
+//    guidée montrant les valeurs recommandées (ex. « 256 Go ») tout en
+//    autorisant la saisie libre. Remplace l'ancien champ texte AVEUGLE — c'est
+//    le fix du bug « Capacité de stockage » (245 valeurs, FREE_TEXT) ;
+//  · aucune valeur connue → <input> texte simple.
+// NB : côté générique (Vinted/LBC/Beebs) on ne passe JAMAIS strict=true — les
+// allowedValues y sont DÉCOUVERTES (potentiellement partielles), forcer un choix
+// bloquerait une valeur légitime absente du relevé. Les petites listes gardent
+// leur <select> ≤30 existant ; seules les grandes passent en datalist.
+function AspectValueInput({ value, allowedValues, strict = false, onChange, T, idBase }) {
+  const vals = Array.isArray(allowedValues) ? allowedValues : [];
+  const n = vals.length;
+  const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
+  if (n > 0 && (strict || n <= 30)) {
+    return (
+      <select value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+        style={{ ...base, background:T.chip, color: value ? T.ink : T.mute }}>
+        <option value="">—</option>
+        {vals.map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+    );
+  }
+  if (n > 30) {
+    const listId = `aspect-dl-${idBase}`;
+    return (
+      <>
+        <input type="text" list={listId} value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+          placeholder="—" style={{ ...base, background:T.chip, color:T.ink }} />
+        <datalist id={listId}>
+          {vals.map(v => <option key={v} value={v} />)}
+        </datalist>
+      </>
+    );
+  }
+  return (
+    <input type="text" value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+      placeholder="—" style={{ ...base, background:T.chip, color:T.ink }} />
+  );
+}
+
 function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
@@ -1669,24 +1720,14 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
               {ebayRequiredStatus.filter(a => a.state === "missing" || a.source === "generic").map(a => (
                 <div key={a.name}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
-                  {a.allowedValues?.length > 0 && a.allowedValues.length <= 30 ? (
-                    <select
-                      value={a.value ?? ""}
-                      onChange={ev => onEbayAspectChange(a.name, ev.target.value)}
-                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: a.value ? T.ink : T.mute }}
-                    >
-                      <option value="">—</option>
-                      {a.allowedValues.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={a.value ?? ""}
-                      onChange={ev => onEbayAspectChange(a.name, ev.target.value)}
-                      placeholder="—"
-                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
-                    />
-                  )}
+                  <AspectValueInput
+                    value={a.value}
+                    allowedValues={a.allowedValues}
+                    strict={a.mode === "SELECTION_ONLY"}
+                    onChange={v => onEbayAspectChange(a.name, v)}
+                    T={T}
+                    idBase={`ebay-${aspectSlug(a.name)}`}
+                  />
                 </div>
               ))}
             </div>
@@ -1723,24 +1764,14 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
               {list.filter(a => a.state === "missing" || a.source === "generic").map(a => (
                 <div key={a.key}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
-                  {a.allowedValues?.length > 0 && a.allowedValues.length <= 30 ? (
-                    <select
-                      value={a.value ?? ""}
-                      onChange={ev => onPlatformAspectChange(gp, a.key, ev.target.value)}
-                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: a.value ? T.ink : T.mute }}
-                    >
-                      <option value="">—</option>
-                      {a.allowedValues.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={a.value ?? ""}
-                      onChange={ev => onPlatformAspectChange(gp, a.key, ev.target.value)}
-                      placeholder="—"
-                      style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
-                    />
-                  )}
+                  <AspectValueInput
+                    value={a.value}
+                    allowedValues={a.allowedValues}
+                    strict={false}
+                    onChange={v => onPlatformAspectChange(gp, a.key, v)}
+                    T={T}
+                    idBase={`gen-${gp}-${aspectSlug(a.key)}`}
+                  />
                 </div>
               ))}
             </div>
@@ -2621,9 +2652,13 @@ export default function ListingPreviewScreen({
         if (!alive) return;
         // Objets complets {name, allowedValues} : les allowedValues nourrissent
         // resolve_aspects (échantillon) ET le fallback UI (select ≤ 30 options).
+        // slice(0,1000) : les valeurs utiles peuvent être en fin de liste (ex.
+        // « Capacité de stockage » : 16 Go…1 To aux index 238-244) — 200 les
+        // coupait. `mode` remonté pour le <select> strict des SELECTION_ONLY.
+        // État UI seulement : le payload du job reste tronqué séparément (60).
         const req = (data?.aspects ?? [])
           .filter(a => a?.required === true && a?.name)
-          .map(a => ({ name: a.name, allowedValues: (a.allowedValues ?? []).slice(0, 200) }));
+          .map(a => ({ name: a.name, mode: a.mode, allowedValues: (a.allowedValues ?? []).slice(0, 1000) }));
         setEbayRequiredPreview(req.length ? req : null);
       } catch { if (alive) setEbayRequiredPreview(null); }
     })();
@@ -2653,15 +2688,15 @@ export default function ListingPreviewScreen({
     // les autres obligatoires sans source : resolve_aspects tente de l'extraire
     // du contexte, sinon saisie manuelle obligatoire (CTA bloqué tant que vide).
     const PREFILLED_BY_EBAY = ["Département", "Type"];
-    return ebayRequiredPreview.map(({ name, allowedValues }) => {
+    return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
-      if (src && String(src.get() ?? "").trim()) return { name, state: "ok", allowedValues };
+      if (src && String(src.get() ?? "").trim()) return { name, state: "ok", allowedValues, mode };
       const generic = String(pf.ebayAspects?.[name] ?? "").trim();
       // source:"generic" : valeur venue de resolve_aspects/du fallback UI —
       // reste ÉDITABLE dans l'encart (contrairement aux champs dédiés).
-      if (generic) return { name, state: "ok", source: "generic", value: generic, allowedValues };
-      if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled", allowedValues };
-      return { name, state: "missing", value: "", allowedValues };
+      if (generic) return { name, state: "ok", source: "generic", value: generic, allowedValues, mode };
+      if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled", allowedValues, mode };
+      return { name, state: "missing", value: "", allowedValues, mode };
     });
   }, [ebayRequiredPreview, edited]);
 
@@ -2886,7 +2921,7 @@ export default function ListingPreviewScreen({
       const status = rows.map((r) => {
         const key = r.field_key;
         const label = r.field_label || key;
-        const allowedValues = Array.isArray(r.allowed_values) ? r.allowed_values.slice(0, 200) : [];
+        const allowedValues = Array.isArray(r.allowed_values) ? r.allowed_values.slice(0, 1000) : [];
         const src = String(genericKnownSource(platform, key, pf) ?? "").trim();
         if (src) return { key, label, state: "ok", allowedValues };
         const generic = String(aspects[key] ?? "").trim();
