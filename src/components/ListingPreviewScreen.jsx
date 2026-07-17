@@ -2811,8 +2811,19 @@ export default function ListingPreviewScreen({
       if (key === "condition" || /_condition$/.test(key)) return pf.etat;
       if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return pf.taille;
       if (/_material$/.test(key)) return pf.matiere;
+      // ⚠️ Naming LBC trompeur (relevé DOM 2026-07-17) : clothing_type et
+      // shoe_type sont le champ « Univers* » (Femme/Homme/Enfant) — le « Type »
+      // réel est clothing_category/shoe_category. Sans ces cas, le pattern
+      // générique /_type$/ les routait sur lbcProduit (jamais posé pour la
+      // mode) → fausse saisie manuelle de l'Univers à chaque vêtement.
+      if (key === "clothing_type" || key === "shoe_type") return pf.univers || pf.genre;
+      // house_and_garden_type = « Univers* » de Maison & Jardin (Décoration
+      // d'intérieur/extérieur…) — ce n'est NI le genre NI un produit : aucune
+      // source app fiable → null explicite (résolution IA puis saisie manuelle),
+      // surtout pas lbcProduit qui poserait une valeur FAUSSE silencieuse.
+      if (key === "house_and_garden_type") return null;
       if (/_univers$|_universe$/.test(key)) return pf.univers || pf.genre;
-      if (/_type$/.test(key) || key === "baby_clothing_category") return pf.lbcProduit;
+      if (/_type$/.test(key) || /_product$/.test(key) || key === "baby_clothing_category" || key === "clothing_category") return pf.lbcProduit;
       return null;
     }
     if (platform === "beebs") {
