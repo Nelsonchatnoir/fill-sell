@@ -184,8 +184,14 @@ export function parseLocDesc(desc) {
 
 export function detectType(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
-  if(/louis.?vuitton|\blv\b|gucci|hermès|hermes|chanel|dior|prada|balenciaga|givenchy|saint.?laurent|\bysl\b|burberry|versace|fendi|celine|céline|bottega.?veneta|valentino|moncler|off.?white|alexander.?mcqueen|vivienne.?westwood|rolex|omega|cartier|tag.?heuer|breitling|patek|audemars|richard.?mille|\biwc\b|birkin|kelly|speedy|neverfull|louboutin|jimmy.?choo|manolo|stone.?island|canada.?goose|ralph.?lauren|lacoste|tommy|boss|armani/i.test(t)) return 'Luxe';
-  if(/robe|jupe|pull|jean|veste|manteau|chemise|blouse|short|legging|pantalon|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset/iu.test(t)) return 'Mode';
+  // ⚠️ CATÉGORIE "Luxe" SUPPRIMÉE le 2026-07-17. L'ancien 1er test renvoyait
+  // 'Luxe' dès qu'une marque « premium » figurait dans le texte — MAIS la liste
+  // incluait des marques NON luxe (Ralph Lauren, Lacoste, Tommy, Boss, Armani),
+  // et surtout 'Luxe' n'est mappé sur AUCUNE plateforme (💎 injouable). Un
+  // parfum Chanel partait ainsi en Luxe → injouable. Désormais on classe par
+  // TYPE DE PRODUIT : la marque (luxe ou non) n'influence plus la catégorie —
+  // un sac Hermès → Mode, un parfum Chanel → Beauté, une Rolex → Mode.
+  if(/robe|jupe|pull|jean|veste|manteau|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
   if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,12}voiture)|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?midi|pédale.?(?:effet|guitare|basse)|table.?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|\bbasse\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
   if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|pc|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|ram|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|webcam|micro|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
   if(/perceuse|visseuse|meuleuse|ponceuse|scie.?(?:circulaire|sauteuse|cloche)?|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
@@ -516,8 +522,16 @@ export function detectObjectIcon(titre, description, type){
   // Dé-bruitage des accessoires inclus (cf. INCLUDED_ACCESSORY_CLAUSE).
   const t=raw.replace(INCLUDED_ACCESSORY_CLAUSE,' ').toLowerCase();
   for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
-  if(CAT_DEFAULT_ICONS[type]) return CAT_DEFAULT_ICONS[type];
-  const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(type||"").toLowerCase());
+  // ⚠️ FILET « Luxe » (2026-07-17) : la catégorie Luxe est supprimée, mais des
+  // items LEGACY (ou une IA pas encore redéployée) peuvent encore porter
+  // type="Luxe" → 💎 non mappé = injouable. On ré-dérive alors le VRAI type
+  // produit (detectType) pour retomber sur une catégorie mappée : un sac/une
+  // montre de luxe redeviennent Mode, un parfum Beauté. (Les items AVEC un
+  // mot-objet ont déjà été résolus par les règles ci-dessus.)
+  let effectiveType = type;
+  if(String(type).toLowerCase()==='luxe') effectiveType = detectType(titre, description);
+  if(CAT_DEFAULT_ICONS[effectiveType]) return CAT_DEFAULT_ICONS[effectiveType];
+  const key=Object.keys(CAT_DEFAULT_ICONS).find(k=>k.toLowerCase()===(effectiveType||"").toLowerCase());
   return key?CAT_DEFAULT_ICONS[key]:CAT_DEFAULT_ICONS['Autre'];
 }
 
@@ -620,7 +634,7 @@ export const SKELETON_ITEMS=[
   {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},
   {title:'Lot Pokémon x20',      type:'Collection', marque:'Pokémon', buy:8,   qty:20, days:null},
   {title:'iPhone 12 64Go',       type:'High-Tech',  marque:'Apple',   buy:180, qty:1,  days:5},
-  {title:'Sac Kelly Hermès',     type:'Luxe',       marque:'Hermès',  buy:125, qty:1,  days:1},
+  {title:'Sac Kelly Hermès',     type:'Mode',       marque:'Hermès',  buy:125, qty:1,  days:1},
   {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15,  qty:1,  days:null},
 ];
 export const SKELETON_SOLD=[

@@ -284,6 +284,95 @@ Encart app confirmé visuellement (✓ verts sur les 3). → **Le mapping « doc
 est réglé de bout en bout** : app → job payload → bonne catégorie.
 Reste (LIVE) : publication on-platform + 3e preuve eBay + suppression.
 
+### Étape B — publication LIVE on-platform (17/07, confirmée)
+L'article dock republié (bundle corrigé) a été publié par l'extension sur les
+3 plateformes, catégorie **Console** vérifiée CÔTÉ PLATEFORME :
+- eBay itm/800357039555 → fil d'Ariane **« High-tech > Jeux vidéo, consoles >
+  Consoles »** (PAS Batteries externes). Publié AVEC URL, sans erreur → la 3e
+  preuve de confirmation eBay (ou le chemin normal) a fonctionné.
+- Vinted items/9417527366, Leboncoin (URL différée) → catégories Consoles
+  (payloads : Vinted `…> Consoles`, LBC `Électronique > Consoles`).
+→ Mapping « dock » réglé de bout en bout : app → job → annonce en ligne en
+  Consoles.
+
+### Étape C — fallback UI eBay pour aspect « Style » (17/07)
+Test réel catégorie Robes (63861). Le fallback générique eBay couvrait déjà
+« Longueur de la robe » (dans le référentiel, non mappé). **Trou trouvé** :
+« Style » (obligatoire, item-specific) était classé `PREFILLED_BY_EBAY` alors
+qu'il est VIDE sur le vrai formulaire → il passait en silence. **Corrigé**
+(commit 260da09, déployé) : « Style » retiré de la liste prefilled → passe par
+le fallback. **Vérifié en app** (robe réelle) : l'encart eBay affiche désormais
+un champ **Style** (résolu IA « bohème » depuis la description) + un champ
+**Longueur de la robe** (« Midi »), Département resté pré-rempli. Le CTA se
+désactive si un requis reste vide (mécanisme déjà prouvé sur Vinted Plateforme).
+
+### Couverture d'autres catégories à risque (17/07 — test au-delà de la console)
+Testé via Stock IA jusqu'à l'étape publication (sans publier) :
+| Catégorie | Icône résolue | Résultat |
+|---|---|---|
+| Console (Switch) | 🎮 | ✅ publiable, filet OK (Consoles, video_game_platform) |
+| Robe | 👗 | ✅ publiable, filet OK (fallback Style + Longueur) |
+| **Parfum** (Chanel N°5) | **💎 Luxe** | ⚠️ **BLOQUÉ 4/4** « catégorie pas encore prise en charge (bientôt) » |
+| **Carte Pokémon** (Dracaufeu) | **🏆 Collection** | ⚠️ **BLOQUÉ 4/4** « catégorie pas encore prise en charge (bientôt) » |
+
+**Comportement du filet = BON** : l'app BLOQUE proprement (message clair +
+plateformes désactivées + CTA off), jamais de publication silencieuse dans une
+mauvaise catégorie. C'est l'objectif « zéro trou » atteint côté sécurité.
+
+**Mais 2 trous de COUVERTURE (catégories à ajouter)** :
+1. **Parfum mal classé 💎 Luxe** : la règle `parfum → 🌸` EXISTE et 🌸 est
+   mappé (Vinted/eBay/Beebs), MAIS le parse Stock IA a produit titre « N°5 » +
+   desc « 100ml, neuf sous blister » + catégorie « Luxe » → le mot « parfum »
+   est PERDU → detectObjectIcon retombe sur 💎 (défaut Luxe), non mappé.
+   Fix = parse IA (catégoriser Beauté / garder le signal parfum) — touche
+   generate-listing/voice-parse, à valider avant deploy. Un défensif possible :
+   reconnaître « eau de parfum/toilette/edp/edt » dans resolveArticleIcon.
+2. **Collectibles (Pokémon) 🏆 Collection non mappé** : aucune plateforme
+   n'a de mapping pour 🏆. Fix = expansion de mapping (Vinted « Cartes à
+   collectionner », eBay cartes Pokémon, etc.) — nouveau lot de mapping fin.
+
+Ces 2 gaps sont des CATÉGORIES À AJOUTER (pas des bugs) : le filet fait déjà
+son travail en bloquant. À prioriser selon le volume réel (parfums fréquents,
+cartes Pokémon en forte demande).
+
+### 🔴 TROU #1 — SUPPRESSION VINTED CASSÉE en fenêtre invisible (17/07, vérifié)
+Testée pour la 1re fois de bout en bout : la **suppression Vinted ÉCHOUE**.
+Job delete 4d52f60a (annonce 9416716174) traité par le poll → erreur :
+« Suppression vinted non aboutie (Modale de confirmation introuvable après le
+clic Supprimer, testids présents : item-delete-button). L'annonce est TOUJOURS
+en ligne (vérifié). » Le bouton Supprimer EST trouvé et cliqué
+(simulateFullClick), mais la **modale de confirmation ne se monte pas** dans la
+fenêtre de travail minimisée/non rendue → l'annonce reste en ligne.
+- eBay ✅ et Leboncoin ✅ suppriment bien (pas de modale React dépendante du
+  rendu) ; **Vinted ❌** (sa modale de confirmation exige un vrai rendu).
+- ⚠️ CORRIGE la conclusion d'Étape A : j'avais validé eBay+LBC, mais la Vinted
+  n'avait pas encore été testée (c'était la plateforme « vendue »). Elle échoue.
+- Même classe de bug que le commit PRIX Vinted : les events synthétiques ne
+  déclenchent pas React dans la fenêtre cachée (CDP input non délivré non plus).
+- **Impact produit** : « Vendu ailleurs → retrait auto » NE MARCHE PAS pour
+  Vinted (l'annonce reste en ligne après une vente sur une autre plateforme).
+  Le memory « Vinted delete confirmé bout-en-bout 11/07 » date d'AVANT la
+  fenêtre invisible minimisée (2026-07-13) qui a cassé ça.
+- **FIX proposé (non shippé — non testable à distance)** : mirror de
+  `commitVintedPrice` v3 — script monde MAIN qui walk le fiber du bouton
+  `item-delete-button` et appelle DIRECTEMENT `props.onClick` (sans event),
+  attend le montage de la modale, puis `props.onClick` de
+  `item-delete-confirmation-button`. Incertitude à lever au test : l'argument
+  event attendu par onClick. À implémenter + VÉRIFIER en session avec extension
+  rechargeable + annonce Vinted live.
+
+### Suppression — nettoyage (17/07)
+Findings suppression complétés :
+- Les jobs `delete` ne s'exécutent QUE sur l'alarme de fond (≤ 30 min) — jamais
+  via « Publier maintenant » (PUBLISH_NOW = publications uniquement). Pas de
+  déclenchement immédiat par l'UI ; recharger l'extension ré-arme un poll à +1 min.
+- Une annonce publiée avec **URL différée** (Leboncoin/Beebs) ne peut PAS être
+  auto-retirée tant que `recoverMissingListingUrls` n'a pas peuplé son
+  listing_url (armRemovals/deleteListing ont besoin de l'URL). Gap à surveiller.
+- Suppressions armées en fin de session (à traiter au prochain poll) : console
+  propre Vinted 9416716174, dock eBay 800357039555, dock Vinted 9417527366.
+  Dock Leboncoin : en attente de récupération d'URL.
+
 ### Trou de validation restant
 - **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
   est déployée et compile, mais NON observée dans l'app connectée (login

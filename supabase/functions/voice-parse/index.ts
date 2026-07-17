@@ -131,17 +131,24 @@ Si les frais de vente sont en pourcentage du prix de vente total :
 Si aucun frais mentionné → frais_global:null, frais_unitaire:null (prix_achat inchangé).
 
 Catégories autorisées (valeurs exactes) :
-["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
+["Mode", "High-Tech", "Maison", "Électroménager", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
+
+⚠️ IL N'Y A PAS DE CATÉGORIE "Luxe" (supprimée le 2026-07-17). Un article de
+marque de luxe se classe par son TYPE DE PRODUIT, jamais par sa marque :
+parfum Chanel/Dior → Beauté ; sac/vêtement/chaussures Louis Vuitton/Hermès/
+Gucci/Prada → Mode ; montre Rolex/Cartier/Omega → Mode ; bijou Cartier/Tiffany
+→ Mode. La marque va dans le champ `marque`, pas dans la catégorie.
 
 RÈGLES CATÉGORIES — guide complet (choisis TOUJOURS la plus précise) :
 
-- Mode : vêtements, chaussures, accessoires vestimentaires, montres non-luxe.
+- Mode : vêtements, chaussures, accessoires vestimentaires, montres, sacs, bijoux — TOUTES marques, luxe compris.
   ✅ robe, jean, veste, manteau, sweat, hoodie, t-shirt, short, legging, pyjama, lingerie
-  ✅ basket, botte, sandale, sneaker, talon, mocassin, derby, chaussure de ville
+  ✅ basket, botte, sandale, sneaker, talon, mocassin, derby, chaussure de ville (Louboutin, Manolo inclus)
   ✅ sac, pochette, portefeuille, ceinture, écharpe, foulard, casquette, bonnet, gant, lunettes
-  ✅ bijou, collier, bracelet, bague, boucle d'oreille (non-luxe)
-  ✅ montre Casio, Fossil, Swatch, Timex, Citizen, Seiko entrée de gamme → Mode
-  ❌ montre → jamais Électroménager, jamais High-Tech
+     (y compris Louis Vuitton, Hermès Birkin/Kelly, Gucci, Chanel, Dior, Prada → Mode)
+  ✅ bijou, collier, bracelet, bague, boucle d'oreille (y compris Cartier, Van Cleef, Tiffany → Mode)
+  ✅ montre TOUTES marques → Mode : Casio, Fossil, Swatch aussi bien que Rolex, Omega, Cartier, TAG Heuer, Patek
+  ❌ montre → jamais Électroménager, jamais High-Tech (les montres CONNECTÉES Apple/Galaxy Watch → High-Tech)
 
 - High-Tech : électronique grand public, informatique, photo/vidéo, domotique.
   ✅ iPhone, Samsung, Xiaomi, MacBook, PC, ordinateur, tablette, iPad, écran, imprimante
@@ -169,14 +176,8 @@ RÈGLES CATÉGORIES — guide complet (choisis TOUJOURS la plus précise) :
   ✅ sèche-cheveux, lisseur, épilateur, rasoir électrique, brosse à dents électrique
   ✅ ventilateur, climatiseur, radiateur électrique, chauffe-eau
   ❌ perceuse, scie, visseuse → Bricolage ; tondeuse à gazon → Jardin
-  ❌ montre, bracelet, accessoire → Mode ou Luxe (jamais Électroménager)
+  ❌ montre, bracelet, accessoire → Mode (jamais Électroménager)
   ❌ enceinte Bluetooth, TV → High-Tech
-
-- Luxe : articles de grandes maisons de luxe (mode, horlogerie haut de gamme, joaillerie).
-  ✅ Louis Vuitton, Hermès (Birkin, Kelly), Gucci, Chanel, Dior, Prada, Balenciaga, Céline, Burberry
-  ✅ montre Rolex, Omega, Cartier, TAG Heuer, Breitling, Audemars Piguet, Patek Philippe, IWC, Richard Mille → Luxe
-  ✅ bijou Cartier, Van Cleef, Tiffany ; chaussures Louboutin, Manolo Blahnik
-  ❌ montre Casio, Fossil, Swatch → Mode (pas Luxe) ; aspirateur Dyson → Électroménager
 
 - Jouets : jouets pour enfants, jeux de société, peluches.
   ✅ Lego, Playmobil, Duplo, Kapla, Hot Wheels, Barbie, peluche, poupée
@@ -410,17 +411,24 @@ If selling fees are expressed as a % of the total sale price:
 If no fees mentioned → frais_global:null, frais_unitaire:null (prix_achat unchanged).
 
 Allowed categories (exact values) :
-["Mode", "High-Tech", "Maison", "Électroménager", "Luxe", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
+["Mode", "High-Tech", "Maison", "Électroménager", "Jouets", "Livres", "Sport", "Auto-Moto", "Beauté", "Musique", "Collection", "Bricolage", "Jardin", "Autre"]
+
+⚠️ THERE IS NO "Luxe" category (removed 2026-07-17). A luxury-brand item is
+classified by its PRODUCT TYPE, never by its brand: Chanel/Dior perfume →
+Beauté; Louis Vuitton/Hermès/Gucci/Prada bag/clothes/shoes → Mode; Rolex/
+Cartier/Omega watch → Mode; Cartier/Tiffany jewellery → Mode. The brand goes
+in the `marque` field, not the category.
 
 CATEGORY RULES — complete guide (always pick the most specific one):
 
-- Mode : clothing, shoes, fashion accessories, non-luxury watches.
+- Mode : clothing, shoes, fashion accessories, watches, bags, jewellery — ALL brands, luxury included.
   ✅ dress, jeans, jacket, coat, sweatshirt, hoodie, t-shirt, shorts, leggings, pyjamas, lingerie
-  ✅ sneakers, boots, sandals, heels, loafers, derbies, dress shoes
+  ✅ sneakers, boots, sandals, heels, loafers, derbies, dress shoes (Louboutin, Manolo included)
   ✅ bag, clutch, wallet, belt, scarf, cap, beanie, gloves, sunglasses
-  ✅ jewellery, necklace, bracelet, ring, earrings (non-luxury)
-  ✅ Casio, Fossil, Swatch, Timex, Citizen, entry-level Seiko watch → Mode
-  ❌ watch → never Électroménager, never High-Tech
+     (including Louis Vuitton, Hermès Birkin/Kelly, Gucci, Chanel, Dior, Prada → Mode)
+  ✅ jewellery, necklace, bracelet, ring, earrings (including Cartier, Van Cleef, Tiffany → Mode)
+  ✅ watch ALL brands → Mode: Casio, Fossil, Swatch as well as Rolex, Omega, Cartier, TAG Heuer, Patek
+  ❌ watch → never Électroménager, never High-Tech (CONNECTED Apple/Galaxy Watch → High-Tech)
 
 - High-Tech : consumer electronics, computers, photo/video, smart home.
   ✅ iPhone, Samsung, Xiaomi, MacBook, PC, laptop, tablet, iPad, monitor, printer
@@ -448,14 +456,8 @@ CATEGORY RULES — complete guide (always pick the most specific one):
   ✅ hair dryer, hair straightener, epilator, electric shaver, electric toothbrush
   ✅ fan, air conditioner, electric heater, water heater
   ❌ drill, saw, screwdriver → Bricolage; lawnmower → Jardin
-  ❌ watch, bracelet, accessory → Mode or Luxe (never Électroménager)
+  ❌ watch, bracelet, accessory → Mode (never Électroménager)
   ❌ Bluetooth speaker, TV → High-Tech
-
-- Luxe : items from luxury houses (fashion, fine watchmaking, jewellery).
-  ✅ Louis Vuitton, Hermès (Birkin, Kelly), Gucci, Chanel, Dior, Prada, Balenciaga, Céline, Burberry
-  ✅ Rolex, Omega, Cartier, TAG Heuer, Breitling, Audemars Piguet, Patek Philippe, IWC, Richard Mille watch → Luxe
-  ✅ Cartier, Van Cleef, Tiffany jewellery; Louboutin, Manolo Blahnik shoes
-  ❌ Casio, Fossil, Swatch watch → Mode (not Luxe); Dyson vacuum → Électroménager
 
 - Jouets : children's toys, board games, soft toys.
   ✅ Lego, Playmobil, Duplo, Kapla, Hot Wheels, Barbie, soft toy, doll
