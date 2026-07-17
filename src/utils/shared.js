@@ -197,9 +197,9 @@ export function detectType(titre,marque){
   // ET trottinette) partait en High-Tech → 📱 Téléphones. L'objet prime sur la marque.
   if(/\btrottinette\b|hoverboard|gyroroue|monoroue|overboard/i.test(t)) return 'Sport';
   if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|\bpc\b|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque(?!.{0,8}(?:moto|v[ée]lo|scooter|ski|chantier))|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|\bram\b|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|(?<!meuble.{0,6})tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|carte.?graphique|carte.?m[èe]re|\bgpu\b|geforce|radeon|webcam|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
-  if(/perceuse|visseuse|meuleuse|ponceuse|scie.?(?:circulaire|sauteuse|cloche)?|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
+  if(/perceuse|visseuse|meuleuse|ponceuse|\bscies?\b|scie.?(?:circulaire|sauteuse|cloche)|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
   if(/tondeuse(?!.{0,12}(?:cheveux|barbe|chien|animal))|débroussailleuse|taille.?haie|souffleur.?(?:feuilles|jardin)|tronçonneuse|sécateur|élagueuse|scarificateur|arrosoir|tuyau.?arrosage|asperseur|pompe.?jardin|\bbêche\b|\brateau\b|\bfourche\b(?!.{0,8}moto)|\bbinette\b|brouette|compost|\bterreau\b|engrais|graines?(?:\s+de\s+jardin)?|jardinage|\bhusqvarna\b|\bstihl\b(?!.{0,8}moto)/i.test(t)) return 'Jardin';
-  if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|\blit\b|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|drap|serviette|vase|bougie|déco|cuisine|assiette|\bbol\b|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|\bpot\b/i.test(t)) return 'Maison';
+  if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|\blit\b|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|\bdrap\b|serviette|vase|bougie|déco|cuisine|assiette|\bbol\b|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|\bpot\b/i.test(t)) return 'Maison';
   if(/lego|playmobil|hasbro|mattel|jouet|\bjeux?\b|puzzle|peluche|figurine|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
   if(/livre|bd|bande.?dessinée|manga|roman|magazine|comics|guide|encyclopédie|atlas|dictionnaire/i.test(t)) return 'Livres';
   if(/vélo|trottinette|skateboard|\bski\b|snowboard|raquette|ballon|football|basketball|tennis|badminton|golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))|rugby|natation|plongée|\bsurf\b|kayak|randonnée|camping|\bsport|fitness|musculation|haltère|kettlebell|yoga|pilates|course|running|trail|cyclisme|équitation|boxe|arts.?martiaux|tapis.?course|vélo.?appartement|rameur|elliptique|corde.?sauter|élastique.?musculation|bande.?résistance|gant.?boxe|protège|casque.?vélo|genouillère|spike|crampon|patin|roller|tente|sac.?dos.?rando|gourde|frontale|bâton.?marche|canne.?pêche|moulinet|waders/i.test(t)) return 'Sport';
@@ -347,7 +347,7 @@ const OBJECT_ICON_RULES = [
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
-  [/jean|pantalon|jogging|legging|chino|salopette|survêtement/i, '👖'],
+  [/jean|pantalon|jogging|legging|\bchino\b|salopette|survêtement/i, '👖'],
   // Lingerie/nuit (2026-07-09) : branche Vinted dédiée des deux côtés
   // (Lingerie et pyjamas / Sous-vêtements et chaussettes) — backlog T3.
   [/lingerie|soutien.?gorge|nuisette|pyjama|peignoir|tenue.?de.?nuit|caleçon|\bboxers?\b|\bslips?\b|culotte(?!.{0,10}cheval)/i, '🩲'],
@@ -401,7 +401,7 @@ const OBJECT_ICON_RULES = [
   // Maison
   [/canapé|sofa|fauteuil|banquette|pouf/i, '🛋️'],
   [/chaise|tabouret|\bbanc\b/i, '🪑'],
-  [/\blit\b|matelas|sommier|couette|drap|parure/i, '🛏️'],
+  [/\blit\b|matelas|sommier|couette|\bdrap\b|parure/i, '🛏️'],
   [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
   [/miroir/i, '🪞'],
   [/bougie|photophore/i, '🕯️'],
@@ -435,7 +435,7 @@ const OBJECT_ICON_RULES = [
   [/radiateur|chauffage.?d.?appoint|convecteur|bain.?d.?huile/i, '🌡️'],
   // Bricolage
   [/perceuse|visseuse|tournevis|perforateur/i, '🪛'],
-  [/scie|tronçonneuse|élagueuse/i, '🪚'],
+  [/\bscies?\b|tronçonneuse|élagueuse/i, '🪚'],
   [/marteau|maillet|\bmasse\b/i, '🔨'],
   [/échelle|escabeau/i, '🪜'],
   [/peinture|rouleau.?peinture|pinceau/i, '🖌️'],
@@ -448,14 +448,14 @@ const OBJECT_ICON_RULES = [
   [/barbecue|plancha|\bbbq\b/i, '🔥'],
   [/salon.?de.?jardin|parasol|transat(?!.{0,10}(?:b[ée]b[ée]|enfant|nouveau))/i, '⛱️'],  // transat BÉBÉ exclu → tombe au filet plutôt que Parasols (jardin)
   // Sport
-  [/vélo|\bvtt\b|bicyclette/i, '🚲'],
+  [/\bvélos?\b|\bvtt\b|bicyclette/i, '🚲'],
   [/trottinette/i, '🛴'],
   [/skate|longboard/i, '🛹'],
-  [/roller|patin/i, '⛸️'],
+  [/roller|\bpatins?(?![a-zà-ÿ])/i, '⛸️'],  // \b ASCII : "patinée" (é) forçait un match → garde accents
   [/\bskis?\b|snowboard/i, '🎿'],
   [/ballon|football/i, '⚽'],
   [/tennis|raquette|badminton|squash/i, '🎾'],
-  [/golf/i, '⛳'],
+  [/golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))/i, '⛳'],
   [/haltère|kettlebell|musculation|fitness/i, '🏋️'],
   [/boxe|\bmma\b/i, '🥊'],
   [/tente|camping|sac.?de.?couchage|duvet/i, '⛺'],
@@ -475,7 +475,7 @@ const OBJECT_ICON_RULES = [
   [/guitare|stratocaster|telecaster|les.?paul|ukulélé/i, '🎸'],
   [/violon|violoncelle|contrebasse/i, '🎻'],
   [/batterie(?!.{0,15}(?:voiture|moto|vélo|externe|cuisine))|cymbale|caisse.?claire/i, '🥁'],
-  [/trompette|saxophone|clarinette|flûte/i, '🎺'],
+  [/trompette|saxophone|clarinette|flûte(?!s?\s*(?:à\s*)?champagne)/i, '🎺'],
   [/vinyle|vinyl|platine|33.?tours|45.?tours/i, '💿'],
   // Médias physiques (2026-07-09, backlog T3) : Divertissement > Vidéo (DVD/
   // Blu-ray/VHS) et > Musique (CD/Cassettes audio) — 📀 AVANT 💽 pour que
