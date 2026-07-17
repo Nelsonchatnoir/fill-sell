@@ -1546,7 +1546,7 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -1770,9 +1770,16 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
                 ? [...field.childGroups.filter(g => g.axis === "shoes" || sharedChildAxes[g.axis]), ...field.groups]
                 : field.groups;
               const isLastOdd = fi === missingSharedFields.length - 1 && missingSharedFields.length % 2 !== 0;
+              // Origine : la/les plateforme(s) sélectionnée(s) qui exigent ce
+              // champ (ex. « Vinted, Beebs ») — pour que l'utilisateur sache
+              // pourquoi « Taille » est demandé, comme l'encart bleu au-dessus.
+              const originLabel = missingSharedFieldPlatforms[key];
               return (
                 <div key={key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
-                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{field.label}</div>
+                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
+                    {field.label}
+                    {originLabel && <span style={{ color:"#B91C1C", fontWeight:600 }}> · {originLabel}</span>}
+                  </div>
                   {field.type === "select" ? (
                     <select
                       value={val}
@@ -2462,7 +2469,11 @@ export default function ListingPreviewScreen({
     });
   }, [edited, initialListing]);
 
-  const missingSharedFields = useMemo(() => {
+  // Détaillé : [{ key, platforms:[ids] }] — expose les plateformes gardées de
+  // chaque champ manquant (pour afficher leur origine dans l'encart rouge, comme
+  // le fait l'encart bleu). `missingSharedFields` (les clés seules) en dérive et
+  // garde la même forme qu'avant pour tous les consommateurs existants.
+  const missingSharedFieldsDetailed = useMemo(() => {
     // Même résolution d'icône que les mappings catalogue (resolveArticleIcon) :
     // source française et stable, jamais la copie eBay (anglaise).
     const catSrc = edited.leboncoin ?? edited.vinted ?? edited.ebay ?? edited.beebs ?? null;
@@ -2518,13 +2529,30 @@ export default function ListingPreviewScreen({
     // edited[p].platform_fields (handlePublish), pas depuis sharedFields —
     // une canonique remplie ne prouve pas que chaque copie l'est (divergence
     // possible : copie vidée à la main, plateforme re-cochée sans copie…).
-    return SHARED_FIELD_KEYS.filter(key => {
+    return SHARED_FIELD_KEYS.map(key => {
       const guarded = guardPlatforms(key).filter(p => selected.has(p));
-      if (!guarded.length) return false;
-      if (!String(sharedFields[key] ?? "").trim()) return true;
-      return guarded.some(p => !String(edited[p]?.platform_fields?.[key] ?? "").trim());
-    });
+      if (!guarded.length) return null;
+      const canonicalEmpty = !String(sharedFields[key] ?? "").trim();
+      const copyEmpty = guarded.some(p => !String(edited[p]?.platform_fields?.[key] ?? "").trim());
+      if (!canonicalEmpty && !copyEmpty) return null;
+      return { key, platforms: guarded };
+    }).filter(Boolean);
   }, [sharedFields, selected, edited, initialListing]);
+
+  const missingSharedFields = useMemo(
+    () => missingSharedFieldsDetailed.map(f => f.key),
+    [missingSharedFieldsDetailed]
+  );
+
+  // Clé → « Vinted, Beebs » : plateformes sélectionnées qui EXIGENT ce champ,
+  // affichées à côté du libellé dans l'encart rouge (miroir de l'encart bleu).
+  const missingSharedFieldPlatforms = useMemo(() => {
+    const m = {};
+    for (const f of missingSharedFieldsDetailed) {
+      m[f.key] = f.platforms.map(p => PLATFORM_LABELS[p] ?? p).join(", ");
+    }
+    return m;
+  }, [missingSharedFieldsDetailed]);
 
   // Axes de tailles enfant du champ partagé Taille (encart inline de
   // StepPublish) : UNION des axes autorisés par les genres enfant des
@@ -3657,6 +3685,7 @@ export default function ListingPreviewScreen({
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
             missingSharedFields={missingSharedFields}
+            missingSharedFieldPlatforms={missingSharedFieldPlatforms}
             sharedFields={sharedFields}
             onSharedFieldChange={setSharedField}
             sharedChildAxes={sharedChildAxes}

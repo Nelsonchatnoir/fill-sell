@@ -200,7 +200,7 @@ export function detectType(titre,marque){
   if(/perceuse|visseuse|meuleuse|ponceuse|\bscies?\b|scie.?(?:circulaire|sauteuse|cloche)|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
   if(/tondeuse(?!.{0,12}(?:cheveux|barbe|chien|animal))|débroussailleuse|taille.?haie|souffleur.?(?:feuilles|jardin)|tronçonneuse|sécateur|élagueuse|scarificateur|arrosoir|tuyau.?arrosage|asperseur|pompe.?jardin|\bbêche\b|\brateau\b|\bfourche\b(?!.{0,8}moto)|\bbinette\b|brouette|compost|\bterreau\b|engrais|graines?(?:\s+de\s+jardin)?|jardinage|\bhusqvarna\b|\bstihl\b(?!.{0,8}moto)/i.test(t)) return 'Jardin';
   if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|\blit\b|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|\bdrap\b|serviette|vase|bougie|déco|cuisine|assiette|\bbol\b|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|\bpot\b/i.test(t)) return 'Maison';
-  if(/lego|playmobil|hasbro|mattel|jouet|\bjeux?\b|puzzle|peluche|figurine|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
+  if(/lego|playmobil|hasbro|mattel|jouet|\bjeux?\b|puzzle|peluche|figurines?|\bfunko\b|nendoroid|\bamiibo\b|\bbandai\b|banpresto|kotobukiya|poupée|voiture.?miniature|construction|kapla|duplo|hot.?wheels|barbie/i.test(t)) return 'Jouets';
   if(/livre|bd|bande.?dessinée|manga|roman|magazine|comics|guide|encyclopédie|atlas|dictionnaire/i.test(t)) return 'Livres';
   if(/vélo|trottinette|skateboard|\bski\b|snowboard|raquette|ballon|football|basketball|tennis|badminton|golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))|rugby|natation|plongée|\bsurf\b|kayak|randonnée|camping|\bsport|fitness|musculation|haltère|kettlebell|yoga|pilates|course|running|trail|cyclisme|équitation|boxe|arts.?martiaux|tapis.?course|vélo.?appartement|rameur|elliptique|corde.?sauter|élastique.?musculation|bande.?résistance|gant.?boxe|protège|casque.?vélo|genouillère|spike|crampon|patin|roller|tente|sac.?dos.?rando|gourde|frontale|bâton.?marche|canne.?pêche|moulinet|waders/i.test(t)) return 'Sport';
   if(/voiture|\bauto\b|moto|scooter|véhicule|pneu|jante|casque.?moto|pièce.?auto|autoradio|gps|huile.?moteur|liquide.?(?:de.?)?(?:refroidissement|frein)/i.test(t)) return 'Auto-Moto';
@@ -270,6 +270,16 @@ export const catClass = type => 'cat-'+((type||'autre').toLowerCase().normalize(
 // dans titre + description, du plus spécifique au plus générique — l'ordre compte).
 const OBJECT_ICON_RULES = [
   // Désambiguïsations prioritaires (avant les règles génériques)
+  // Figurines / objets de collection — AVANT TOUTE règle vêtement. La description
+  // d'une figurine décrit la TENUE du personnage représenté (kimono, manteau,
+  // veste…) et matchait alors la règle vêtement 🧥 (« manteau|veste|kimono »,
+  // plus bas) → catégorie Mode>Vêtements → champ « Taille » obligatoire absurde
+  // sur une figurine (bug réel « Bandai Roronoa Zoro One Piece », 2026-07-17).
+  // On matche l'OBJET (« figurine ») et les MARQUES de figurines (jamais des
+  // marques de vêtement) : l'objet prime sur les habits du personnage. On ne met
+  // PAS les noms de licences nus (naruto, one piece…) — un « hoodie Naruto » ou
+  // un « maillot one-piece » doit rester un vêtement.
+  [/figurines?|\bfunko\b|nendoroid|\bamiibo\b|\bbandai\b|banpresto|kotobukiya|good.?smile|mc.?farlane|s\.?h\.?\s?figuarts|pop.?!?\s?vinyl/i, '🦸'],
   [/basket.?ball|ballon.?(?:de.?)?basket|panier.?de.?basket/i, '🏀'],  // ballon de basket : "basket" seul → 👟 (bug)
   [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
   // Vêtements de SPORT AVANT les règles d'ÉQUIPEMENT sport (⛑️/🤿/🎿/⚽) : un
