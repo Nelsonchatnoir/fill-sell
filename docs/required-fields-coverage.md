@@ -417,3 +417,36 @@ Findings suppression complétés :
 - **Test d'acceptation final** (cross-post simultané 4 plateformes × 2-3
   catégories à risque) : à faire après rechargement extension + déploiement
   app validé.
+
+---
+
+## Chasse catégories/mapping — 17/07 (DRY RUN, sans extension)
+
+Test node de detectObjectIcon + detectType + chemins plateforme sur 5 familles
+neuves (Mode, Sport, Maison, Beauté, Bricolage) + batterie de titres pièges.
+Résultat familles : mapping correct partout ; les catégories sans feuille
+plateforme (vélo adulte, canapé sur Vinted) tombent en null → filet manuel
+(comportement voulu, pas un trou).
+
+**5 bugs de mapping « mot-clé ambigu » trouvés et corrigés** (même classe que
+dock→🔌 ; la mauvaise règle matchait avant la bonne). Corrigés dans les DEUX
+copies de detectType (shared.js + App.jsx local) + OBJECT_ICON_RULES :
+1. « Trottinette électrique **Xiaomi** » → 📱 High-Tech (marque tél. avant
+   Sport) → court-circuit mobilité avant High-Tech + règle 🛴 avant 📱.
+2. « **Batterie** de cuisine » → 🥁 Musique → lookahead `cuisine` ajouté
+   (Musique + règle 🥁). Retombe en Maison.
+3. « **Huile** moteur 5W30 » → 💄 Beauté → `huile.?moteur` ajouté à Auto-Moto
+   (avant Beauté).
+4. « **Batterie externe** » (power bank) → 🥁 Musique (préexistant : lookahead
+   n'excluait que « voiture ») → `externe` ajouté. Retombe en High-Tech.
+5. « **Casque** moto/vélo/ski » → catégorie High-Tech (casque audio) alors que
+   l'icône 🪖/⛑️ était correcte → négatif `casque(?!…moto|vélo|scooter|ski|
+   chantier)` en High-Tech. Type retombe en Auto-Moto/Sport.
+
+Non-régression vérifiée (iPhone, casque audio/gaming, batterie Yamaha, huile
+essentielle, enceinte JBL, ampli Marshall, casque de ski…). audit-coverage :
+0 non-mappé, 0 invalide, 52/52. Les 2 copies detectType prouvées identiques.
+
+Imprécisions mineures LAISSÉES (mappent sur une catégorie valide ou le filet,
+pas un trou d'intégrité) : boule de pétanque → 🎱 billard, chaussures de
+sécurité → 👟, coque iPhone → 📱, table de ping-pong → 🏠→filet.
