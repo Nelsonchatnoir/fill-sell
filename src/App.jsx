@@ -2633,6 +2633,15 @@ export default function App({ loginOnly = false }){
     const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
     if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
     setConfirmingSale(job.id);
+    // ⚠️ ANTI-DOUBLE-VENTE (2026-07-17) : un article détecté hors ligne sur
+    // PLUSIEURS plateformes affiche un bandeau « Vendue ? » PAR plateforme.
+    // Confirmer la vente d'UN retire IMMÉDIATEMENT (avant l'appel réseau) TOUS
+    // les bandeaux du MÊME article — sinon un 2e tap sur le bandeau frère
+    // enregistrait une 2e vente (les 2 orchestrations serveur lisaient « pas
+    // encore vendu »). Le gate atomique de orchestrateSale est le filet serveur ;
+    // ceci ferme le chemin UI. Regroupement par inventaire_id (fallback id si absent).
+    setUnavailableListings(prev=>prev.filter(j=>
+      job.inventaire_id!=null ? j.inventaire_id!==job.inventaire_id : j.id!==job.id));
     try{
       const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id,price:prix}});
       if(error)throw error;
