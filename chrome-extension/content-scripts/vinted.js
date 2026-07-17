@@ -112,7 +112,11 @@ async function computeVintedRequiredState() {
     // config, pas contre ce que la page a daigné afficher) : il compte vide.
     if (meta.required === true && !filled) unfilled.push(label);
   }
-  return { discovered, unfilled };
+  // hadConfig : avait-on une BASE pour juger les requis ? byCode vide = la sonde
+  // n'a capté AUCUNE config /attributes pour cette catégorie (page pré-sonde,
+  // timing, CSP) → on ne peut PAS affirmer « tous les requis OK » (bug réel
+  // 2026-07-18 : « Espace de stockage » jamais vu requis → publié à blanc).
+  return { discovered, unfilled, hadConfig: byCode.size > 0 };
 }
 
 // Erreurs de validation STRUCTURÉES du refus serveur (parsées par la sonde sur
@@ -624,8 +628,10 @@ async function fillListingForm(job) {
   // par la sonde donne les requis EXACTS de la catégorie posée, croisés avec
   // les valeurs réellement présentes dans le DOM après remplissage.
   const requiredState = await computeVintedRequiredState().catch((e) => {
-    console.warn("[vinted] computeVintedRequiredState en échec (non bloquant) :", e?.message);
-    return { discovered: [], unfilled: [] };
+    console.warn("[vinted] computeVintedRequiredState en échec :", e?.message);
+    // hadConfig:false → traité comme « non vérifiable » ci-dessous (needsUser),
+    // plus jamais un {unfilled:[]} silencieux qui laissait cliquer à l'aveugle.
+    return { discovered: [], unfilled: [], hadConfig: false };
   });
 
   // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
@@ -651,6 +657,28 @@ async function fillListingForm(job) {
     };
   }
 
+  // ── Gate PRÉ-CLIC n°0 : requis NON VÉRIFIABLES (bug réel 2026-07-18).
+  // Si la sonde n'a capté aucune config /attributes (hadConfig=false), on ne
+  // peut PAS affirmer que les requis sont remplis — « Espace de stockage »
+  // était introuvable et l'annonce est partie à blanc. On échoue honnêtement
+  // (needsUser) plutôt que de cliquer à l'aveugle. Auto-réparable : relancer
+  // ré-ouvre le formulaire et laisse la sonde re-capter la config.
+  // ⚠️ Compromis assumé (règle produit « jamais un faux published ») : une
+  // catégorie SANS aucun attribut serait bloquée à tort — cas rare sur les
+  // rayons ciblés (mode/high-tech ont tous des attributs), et la relance est le
+  // remède. On préfère ce faux-négatif à une publication fantôme.
+  if (!requiredState.hadConfig) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Impossible de vérifier les champs obligatoires Vinted pour cette catégorie " +
+        "(configuration non captée). Relance la publication — le formulaire sera rechargé.",
+      warnings,
+      discoveredRequired: requiredState.discovered,
+    };
+  }
+
   // ── Gate PRÉ-CLIC (règle produit du chantier) : un requis vide ne part
   // JAMAIS en silence. Le 400 serveur est certain (prouvé f69e319c) : cliquer
   // ne ferait qu'exposer un échec de plus à DataDome. needsUser explicite,
@@ -671,6 +699,14 @@ async function fillListingForm(job) {
   // Filet avant le clic (2026-07-11) : un panneau de dropdown resté ouvert
   // recouvre le bouton Publier et le clic part dans le vide, sans erreur.
   await closeAnyOpenDropdown();
+
+  // RE-VÉRIFICATION DU PRIX À L'INSTANT DU CLIC (bug réel 2026-07-18) — la vérif
+  // faite pendant fillPriceField ne protège pas d'un re-render survenu DEPUIS
+  // (choix format de colis, refetch /attributes…) qui a pu vider la prop `value`
+  // pendant que l'affichage restait correct. On relit l'état React et on
+  // re-commit si besoin ; si le prix est définitivement perdu, ensurePriceCommitted
+  // throw → job failed honnête, AUCUN clic avec price: null.
+  if (job.price != null) await ensurePriceCommitted(job.price);
 
   const publishBtn = await waitForElement('[data-testid="upload-form-save-button"]');
   publishBtn.click();
@@ -1182,6 +1218,23 @@ async function fillPriceField(value) {
   // conditions exactes de l'échec (onglet caché, hasFocus=false, zéro CDP) —
   // le niveau formulaire passe à la valeur brute, signature du mode sain.
   // Invisible, sans permission supplémentaire, Chrome par défaut.
+  await ensurePriceCommitted(value);
+}
+
+// Vérifie que le prix est bien dans l'ÉTAT RÉACT (pas seulement affiché) et le
+// re-commit via props.onChange (fibers) si l'état l'a perdu. Extraite de
+// fillPriceField pour être appelable DEUX fois : après la saisie ET juste AVANT
+// le clic Publier. Raison (bug réel 2026-07-18, iPhone) : entre la saisie et le
+// clic, une interaction (choix du format de colis, refetch /attributes…) peut
+// re-render le composant prix en onglet caché et REPOSER sa prop `value` à
+// undefined pendant que le DOM garde l'affichage « 1 200,00 € » — le POST part
+// alors sans prix (200 mais annonce jamais créée). Une seule vérif après saisie
+// ne le voyait pas ; on re-vérifie donc à l'instant du clic.
+// `state.readable` faux (fibers illisibles) → on ne peut ni confirmer ni
+// infirmer : comportement historique conservé (pas de blocage sur illisible ici
+// — c'est le garde-fou systémique de l'objectif 3 qui tranchera ce cas).
+async function ensurePriceCommitted(value) {
+  const str = String(value).replace(".", ",");
   const expected = parseFloat(String(value).replace(",", "."));
   const committedOk = (s) =>
     Array.isArray(s?.levels) &&
@@ -1191,24 +1244,23 @@ async function fillPriceField(value) {
       return Number.isFinite(n) && Math.abs(n - expected) < 0.005;
     });
   let state = await askBackground({ type: "VINTED_PRICE_STATE" });
-  if (state?.readable && !committedOk(state)) {
-    console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — commit direct par props.onChange (fibers)");
-    const commit = await askBackground({ type: "VINTED_COMMIT_PRICE", value: str });
-    if (!commit?.ok) {
-      console.warn("[vinted] ⚠️ commit direct refusé :", commit?.reason ?? "réponse nulle");
-    }
-    await sleep(1000); // laisser le re-render propager la prop value
-    state = await askBackground({ type: "VINTED_PRICE_STATE" });
-    if (state?.readable && !committedOk(state)) {
-      throw new Error(
-        `Prix jamais commité dans l'état React du formulaire (affiché "${String(el.value ?? "")}", ` +
-        `niveaux fibers [${(state?.levels ?? []).map((v) => `"${v}"`).join(", ")}], ` +
-        `commit direct : ${commit?.ok ? "ok" : commit?.reason ?? "échec"}) — job arrêté AVANT le ` +
-        "clic Publier (sinon Vinted recevrait price: null et refuserait)."
-      );
-    }
-    if (state?.readable) console.log("[vinted] prix commité par props.onChange :", state.levels);
+  if (!state?.readable || committedOk(state)) return; // illisible (inchangé) ou déjà bon
+  console.warn("[vinted] ⚠️ prix affiché mais NON commité dans l'état React — commit direct par props.onChange (fibers)");
+  const commit = await askBackground({ type: "VINTED_COMMIT_PRICE", value: str });
+  if (!commit?.ok) {
+    console.warn("[vinted] ⚠️ commit direct refusé :", commit?.reason ?? "réponse nulle");
   }
+  await sleep(1000); // laisser le re-render propager la prop value
+  state = await askBackground({ type: "VINTED_PRICE_STATE" });
+  if (state?.readable && !committedOk(state)) {
+    throw new Error(
+      `Prix jamais commité dans l'état React du formulaire ` +
+      `(niveaux fibers [${(state?.levels ?? []).map((v) => `"${v}"`).join(", ")}], ` +
+      `commit direct : ${commit?.ok ? "ok" : commit?.reason ?? "échec"}) — job arrêté AVANT le ` +
+      "clic Publier (sinon Vinted recevrait price: null et refuserait)."
+    );
+  }
+  if (state?.readable) console.log("[vinted] prix (re)commité par props.onChange :", state.levels);
 }
 
 // Messages vers le background (lecture des fibers React en monde MAIN, peinture
