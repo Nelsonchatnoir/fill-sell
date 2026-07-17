@@ -232,6 +232,35 @@ son non-publish est orthogonal) ; le filet Vinted a porté son requis
 jusqu'à l'annonce en ligne. Le seul point ouvert (soumission eBay) est hors
 périmètre du chantier requis.
 
+### Suppression cross-plateforme — test réel du VRAI flux (17/07)
+Objectif : retirer les 3 annonces console via le chemin applicatif, vérifier la
+propagation CÔTÉ PLATEFORME (pas juste en base).
+
+**Mécanisme observé (findings)** :
+- L'app n'a **AUCUN retrait autonome** : `delItem` (swipe supprimer) efface la
+  ligne d'inventaire SANS toucher aux annonces plateforme (elles resteraient
+  orphelines en ligne). Le SEUL retrait cross-plateforme part d'une VENTE.
+- Chemin réel : `check-listing-status` → `orchestrateSale` (job → sold, vente,
+  inventaire vendu, frères `pending_removal`) → bandeau app « Retirer (N) » →
+  `armRemovals` (insère les jobs `action='delete'`) → poll de fond de
+  l'extension → `deleteListing` (DELETE_DRY_RUN=false, réel).
+- Un cycle ne retire que les **frères** : la plateforme « vendue » garde son
+  annonce (en vente réelle elle est déjà partie ; en test simulé elle reste).
+- Les jobs `delete` **ne passent PAS par le popup « Publier maintenant »**
+  (PUBLISH_NOW ne cible que les publications) — ils s'exécutent uniquement au
+  poll de fond (≤ 30 min), volontairement invisible. Pas de déclenchement
+  manuel immédiat via l'UI.
+
+**Résultat VÉRIFIÉ côté plateforme** (vente Vinted simulée → retrait eBay+LBC) :
+| Plateforme | Job delete | Vérif on-platform |
+|---|---|---|
+| **eBay** (itm/800354759898) | `deleted`, sans erreur | ✅ RETIRÉ — Hub vendeur « Résultats : 0 » (0 annonce active). **Suppression eBay fonctionne, plus de blocage passkey** (historiquement bloqué). |
+| **Leboncoin** (ad/consoles/3234161806) | `deleted`, sans erreur | ✅ RETIRÉ — page « Cette annonce est désactivée / introuvable ». |
+| **Vinted** (items/9416716174) | plateforme « vendue » (sold) | ⏳ Restée EN LIGNE (non retirée par le flux vente). Job delete armé à part (cleanup) → à exécuter au poll. |
+
+→ Propagation réelle CONFIRMÉE sur eBay + Leboncoin. La suppression n'est PAS
+un simple changement de statut en base : les annonces sont bien retirées.
+
 ### Trou de validation restant
 - **Filet APP côté UI (CTA désactivé + encart saisie manuelle)** : la logique
   est déployée et compile, mais NON observée dans l'app connectée (login
