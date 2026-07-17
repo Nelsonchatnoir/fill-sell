@@ -306,6 +306,32 @@ un champ **Style** (résolu IA « bohème » depuis la description) + un champ
 **Longueur de la robe** (« Midi »), Département resté pré-rempli. Le CTA se
 désactive si un requis reste vide (mécanisme déjà prouvé sur Vinted Plateforme).
 
+### 🔴 TROU #1 — SUPPRESSION VINTED CASSÉE en fenêtre invisible (17/07, vérifié)
+Testée pour la 1re fois de bout en bout : la **suppression Vinted ÉCHOUE**.
+Job delete 4d52f60a (annonce 9416716174) traité par le poll → erreur :
+« Suppression vinted non aboutie (Modale de confirmation introuvable après le
+clic Supprimer, testids présents : item-delete-button). L'annonce est TOUJOURS
+en ligne (vérifié). » Le bouton Supprimer EST trouvé et cliqué
+(simulateFullClick), mais la **modale de confirmation ne se monte pas** dans la
+fenêtre de travail minimisée/non rendue → l'annonce reste en ligne.
+- eBay ✅ et Leboncoin ✅ suppriment bien (pas de modale React dépendante du
+  rendu) ; **Vinted ❌** (sa modale de confirmation exige un vrai rendu).
+- ⚠️ CORRIGE la conclusion d'Étape A : j'avais validé eBay+LBC, mais la Vinted
+  n'avait pas encore été testée (c'était la plateforme « vendue »). Elle échoue.
+- Même classe de bug que le commit PRIX Vinted : les events synthétiques ne
+  déclenchent pas React dans la fenêtre cachée (CDP input non délivré non plus).
+- **Impact produit** : « Vendu ailleurs → retrait auto » NE MARCHE PAS pour
+  Vinted (l'annonce reste en ligne après une vente sur une autre plateforme).
+  Le memory « Vinted delete confirmé bout-en-bout 11/07 » date d'AVANT la
+  fenêtre invisible minimisée (2026-07-13) qui a cassé ça.
+- **FIX proposé (non shippé — non testable à distance)** : mirror de
+  `commitVintedPrice` v3 — script monde MAIN qui walk le fiber du bouton
+  `item-delete-button` et appelle DIRECTEMENT `props.onClick` (sans event),
+  attend le montage de la modale, puis `props.onClick` de
+  `item-delete-confirmation-button`. Incertitude à lever au test : l'argument
+  event attendu par onClick. À implémenter + VÉRIFIER en session avec extension
+  rechargeable + annonce Vinted live.
+
 ### Suppression — nettoyage (17/07)
 Findings suppression complétés :
 - Les jobs `delete` ne s'exécutent QUE sur l'alarme de fond (≤ 30 min) — jamais
