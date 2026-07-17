@@ -306,6 +306,35 @@ un champ **Style** (résolu IA « bohème » depuis la description) + un champ
 **Longueur de la robe** (« Midi »), Département resté pré-rempli. Le CTA se
 désactive si un requis reste vide (mécanisme déjà prouvé sur Vinted Plateforme).
 
+### Couverture d'autres catégories à risque (17/07 — test au-delà de la console)
+Testé via Stock IA jusqu'à l'étape publication (sans publier) :
+| Catégorie | Icône résolue | Résultat |
+|---|---|---|
+| Console (Switch) | 🎮 | ✅ publiable, filet OK (Consoles, video_game_platform) |
+| Robe | 👗 | ✅ publiable, filet OK (fallback Style + Longueur) |
+| **Parfum** (Chanel N°5) | **💎 Luxe** | ⚠️ **BLOQUÉ 4/4** « catégorie pas encore prise en charge (bientôt) » |
+| **Carte Pokémon** (Dracaufeu) | **🏆 Collection** | ⚠️ **BLOQUÉ 4/4** « catégorie pas encore prise en charge (bientôt) » |
+
+**Comportement du filet = BON** : l'app BLOQUE proprement (message clair +
+plateformes désactivées + CTA off), jamais de publication silencieuse dans une
+mauvaise catégorie. C'est l'objectif « zéro trou » atteint côté sécurité.
+
+**Mais 2 trous de COUVERTURE (catégories à ajouter)** :
+1. **Parfum mal classé 💎 Luxe** : la règle `parfum → 🌸` EXISTE et 🌸 est
+   mappé (Vinted/eBay/Beebs), MAIS le parse Stock IA a produit titre « N°5 » +
+   desc « 100ml, neuf sous blister » + catégorie « Luxe » → le mot « parfum »
+   est PERDU → detectObjectIcon retombe sur 💎 (défaut Luxe), non mappé.
+   Fix = parse IA (catégoriser Beauté / garder le signal parfum) — touche
+   generate-listing/voice-parse, à valider avant deploy. Un défensif possible :
+   reconnaître « eau de parfum/toilette/edp/edt » dans resolveArticleIcon.
+2. **Collectibles (Pokémon) 🏆 Collection non mappé** : aucune plateforme
+   n'a de mapping pour 🏆. Fix = expansion de mapping (Vinted « Cartes à
+   collectionner », eBay cartes Pokémon, etc.) — nouveau lot de mapping fin.
+
+Ces 2 gaps sont des CATÉGORIES À AJOUTER (pas des bugs) : le filet fait déjà
+son travail en bloquant. À prioriser selon le volume réel (parfums fréquents,
+cartes Pokémon en forte demande).
+
 ### 🔴 TROU #1 — SUPPRESSION VINTED CASSÉE en fenêtre invisible (17/07, vérifié)
 Testée pour la 1re fois de bout en bout : la **suppression Vinted ÉCHOUE**.
 Job delete 4d52f60a (annonce 9416716174) traité par le poll → erreur :
