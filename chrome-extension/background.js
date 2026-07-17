@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-17-vinted-delete-fiber-NON-VERIFIE (vintedFiberClick : props.onClick direct via fibers monde MAIN pour la suppression Vinted en fenêtre cachée) + ebay-confirm-active-listings";
+  "2026-07-17-vinted-delete-fiber+VERIF-REDIRECT (suppression Vinted : clic fiber props.onClick monde MAIN, PUIS vérification de la redirection hors /items/ avant success — un clic fiber raté ne peut plus produire un faux 'deleted', le background revérifie l'état réel et ré-arme) + ebay-confirm-active-listings";
 console.log(
   `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
 );

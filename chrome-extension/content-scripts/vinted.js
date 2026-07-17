@@ -330,8 +330,29 @@ async function deleteListing(job) {
   }
   t(`confirmation : "${confirmBtn.textContent.trim()}"`);
   await deleteClickReact(confirmBtn, t);
-  // Confirmé en réel : redirection vers /member/<id> après suppression.
-  await sleep(3000);
+  // ── VÉRIFICATION RÉELLE (2026-07-17) ────────────────────────────────────────
+  // Ne JAMAIS renvoyer success sur la seule foi du clic : le clic fiber de
+  // suppression (deleteClickReact) est NON VÉRIFIÉ en fenêtre cachée. Vinted
+  // redirige hors de /items/<id> (vers /member/<id>) après une suppression
+  // RÉELLE — on attend cette disparition de la page annonce. Sans redirection,
+  // la suppression n'a pas abouti → success:false → le background revérifie
+  // l'état réel de l'annonce et ré-arme (jamais un faux « deleted » qui
+  // laisserait l'annonce EN LIGNE alors qu'un sibling s'est vendu = double-vente).
+  // Un faux négatif ici (supprimée mais pas de redirect) reste SÛR : le
+  // background confirme alors la suppression par l'état réel de l'annonce.
+  const redirected = await waitFor(
+    () => (!location.pathname.includes("/items/") ? true : null),
+    8000
+  );
+  if (!redirected) {
+    t("pas de redirection hors de /items/ après confirmation — suppression NON confirmée");
+    return {
+      success: false,
+      error: "Confirmation cliquée mais l'annonce Vinted est toujours affichée (pas de redirection) — suppression non confirmée",
+      trace,
+    };
+  }
+  t("redirection hors de la page annonce — suppression confirmée");
   return { success: true, trace };
 }
 
