@@ -476,19 +476,44 @@ saisie manuelle AVANT le clic sinon.
 
 ### Tableau de couverture (mapping fin / testé réel / fallback 400)
 
-| Famille (volume ↓)        | Vinted                  | Leboncoin      | Beebs          | eBay |
-|---------------------------|-------------------------|----------------|----------------|------|
-| Vêtements femme           | ✅ relevé+base+400 ✅   | ⏳ à relever   | — (enfant only)| ✅ catalogue officiel |
-| Vêtements homme           | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
-| Vêtements enfant          | ✅ relevé+base+400 ✅   | ✅ (relevé 16/07 bébé) | ⏳ à relever | ✅ |
-| Chaussures                | ✅ relevé+base+400 ✅   | ⏳             | ✅ baskets F (16/07) | ✅ |
-| Sacs & accessoires        | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
-| Puériculture (poussettes) | ✅ relevé+base+400 ✅   | ⏳             | ✅ (16/07)     | ✅ |
-| Jouets & jeux             | ✅ relevé+base+400 ✅   | ⏳             | ✅ figurines (16/07) | ✅ |
-| Livres/BD (ISBN !)        | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
-| Maison & déco             | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
-| Électronique              | ✅ (P1 16/07)           | ✅ (P2 16/07)  | —              | ✅ |
-| EXOTIQUES (É3)            | ✅ timbres=État seul + champ inconnu → parseur généralise | idem parseur générique | énum DOM générique | ✅ |
+| Famille (volume ↓)        | Vinted                  | Leboncoin              | Beebs          | eBay |
+|---------------------------|-------------------------|------------------------|----------------|------|
+| Vêtements femme           | ✅ relevé+base+400      | ✅ Univers* (pré-rempli par le TITRE) | — (enfant only)| ✅ catalogue officiel |
+| Vêtements homme           | ✅ relevé+base+400      | ✅ (idem)              | —              | ✅ |
+| Vêtements enfant/bébé     | ✅ relevé+base+400      | ✅ (idem + bébé 16/07) | ✅ Bodies+Lots relevés (Taille•/Marque•/État•) | ✅ |
+| Chaussures                | ✅ relevé+base+400      | ✅ Univers*+Pointure*  | ✅ baskets F (16/07) | ✅ |
+| Sacs & accessoires        | ✅ relevé+base+400      | ✅ AUCUN requis        | —              | ✅ |
+| Puériculture              | ✅ relevé+base+400      | ✅ Univers*+Produit*   | ✅ poussettes (16/07) + biberons | ✅ |
+| Jouets & jeux             | ✅ relevé+base+400      | ✅ AUCUN requis        | ✅ figurines (16/07) + peluches/LEGO | ✅ |
+| Livres/BD (ISBN !)        | ✅ relevé+base+400      | ✅ Genre* (IA/manuel)  | —              | ✅ |
+| Maison & déco             | ✅ relevé+base+400      | ✅ Univers*+Produit*   | —              | ✅ |
+| Électronique              | ✅ (P1 16/07)           | ✅ (P2 16/07)          | —              | ✅ |
+| EXOTIQUES (É3)            | ✅ timbres=État seul + parseur 400 généralise (10/10) | ✅ Collection>Produit* détecté par énum générique | énum DOM générique (16/07 P5) | ✅ |
+
+**Bilan base `platform_category_aspects` : 200 lignes / 54 catégories**
+(Vinted 96/28, Leboncoin 60/15, Beebs 44/11 — était ~20 catégories ce matin).
+
+### Leboncoin — relevés wizard 17/07 (7 familles, 36 lignes)
+- **Vêtements** : Univers* (clothing_type) SEUL requis. Découverte majeure : LBC
+  PRÉ-REMPLIT Univers/Taille/Type depuis le TITRE (« Robe été fleurie taille
+  38 » → Femme / 38-M / Robes-jupes) — friction quasi nulle.
+- **Chaussures** : Univers* (shoe_type) + Pointure* (shoe_size).
+- **Accessoires & Bagagerie / Jeux & Jouets : AUCUN requis.**
+- **Équipement bébé** : Univers* + Produit*. **Décoration** : Univers* + Produit*.
+- **Livres** : Genre* (leisure_book_genre — sans source app → résolution IA
+  ciblée puis saisie manuelle).
+- **Collection (exotique)** : Produit* — l'énumération générique le détecte.
+- ⚠️ 3 pièges de naming corrigés dans genericKnownSource : clothing_type/
+  shoe_type = Univers (pas un « type » produit) ; house_and_garden_type = univers
+  maison → null explicite (jamais lbcProduit : valeur fausse silencieuse).
+
+### Beebs — relevés 17/07 (8 catégories, 34 lignes)
+- **Bodies (bébé)** : Taille•, Marque•, État• + Couleur (facultatif) + Format du
+  colis (pré-rempli → non bloquant via GENERIC_PREFILLED).
+- **Lots de bodies** : la Marque devient FACULTATIVE sur les lots + champ Quantité.
+- Vêtements bébé/fille/garçon insérés sur le pattern Bodies ; peluches/LEGO/
+  biberons en SOUS-MARQUAGE volontaire (État seul requis) — l'énumération DOM de
+  l'extension (1.B) affine à l'usage : c'est l'architecture du filet.
 
 ### Vinted — relevés DOM 17/07 (18 catégories, 96 lignes en base)
 - **Vêtements** (Robes casual 1059, Jeans F 1845, Jeans garçons 1696, T-shirts H
