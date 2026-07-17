@@ -35,7 +35,8 @@ const SYSTEM_FR = `Tu es un assistant de répartition de prix pour une app de re
 Tu reçois des articles achetés ensemble pour un prix total.
 Pour chaque article tu dois :
 1. Détecter sa catégorie parmi UNIQUEMENT : Mode, High-Tech, Maison, Électroménager,
-   Luxe, Jouets, Livres, Sport, Auto-Moto, Beauté, Musique, Collection, Autre
+   Jouets, Livres, Sport, Auto-Moto, Beauté, Musique, Collection, Autre
+   (PAS de "Luxe" : un article de luxe se classe par son type — sac/montre → Mode, parfum → Beauté)
 2. Détecter sa marque si clairement impliquée, null sinon
 3. Estimer une répartition logique et cohérente du prix total selon la valeur
    RELATIVE probable entre les objets
@@ -46,7 +47,8 @@ const SYSTEM_EN = `You are a price distribution assistant for a resale app.
 You receive items bought together for a total price.
 For each item you must:
 1. Detect its category from ONLY: Mode, High-Tech, Maison, Électroménager,
-   Luxe, Jouets, Livres, Sport, Auto-Moto, Beauté, Musique, Collection, Autre
+   Jouets, Livres, Sport, Auto-Moto, Beauté, Musique, Collection, Autre
+   (NO "Luxe": a luxury item is classified by its type — bag/watch → Mode, perfume → Beauté)
 2. Detect its brand if clearly implied, null otherwise
 3. Estimate a logical and coherent distribution of the total price based on
    the RELATIVE probable value between items

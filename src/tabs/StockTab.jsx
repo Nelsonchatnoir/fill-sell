@@ -528,7 +528,6 @@ const StockTab = memo(function StockTab({
               <option value="High-Tech">📱 High-Tech</option>
               <option value="Maison">🏠 {typeLabel('Maison',lang)}</option>
               <option value="Électroménager">⚡ {typeLabel('Électroménager',lang)}</option>
-              <option value="Luxe">💎 {typeLabel('Luxe',lang)}</option>
               <option value="Jouets">🧸 {typeLabel('Jouets',lang)}</option>
               <option value="Livres">📚 {typeLabel('Livres',lang)}</option>
               <option value="Sport">⚽ Sport</option>
@@ -722,7 +721,7 @@ const StockTab = memo(function StockTab({
             // Basé uniquement sur stock (pas sold) : les pills de catégorie filtrent la
             // section EN STOCK ci-dessous (VENDUS est masqué dans Stock IA) — une catégorie
             // sans article en stock ne doit plus s'afficher, même si elle a des ventes passées.
-            const presentTypes=["Tous","Mode","Luxe","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||stock.some(i=>i.type===tp));
+            const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||stock.some(i=>i.type===tp));
             return presentTypes.length>1&&(
               <div className="cat-filters">
                 {presentTypes.map(tp=>{
@@ -920,7 +919,7 @@ const StockTab = memo(function StockTab({
                       {nom:"Veste Zara oversize",  marque:"Zara",    categorie:"Mode",       buy:12,  quantite:1,  description:"Taille M, noir, très bon état, acheté à Vide-grenier",                       emplacement:"Étagère salon"},
                       {nom:"Lot Pokémon",          marque:"Pokémon", categorie:"Collection", buy:8,   quantite:20, description:"Cartes communes + 2 rares, sous pochette, acheté à Brocante",                emplacement:"Boîte à cartes"},
                       {nom:"iPhone 12 64Go",       marque:"Apple",   categorie:"High-Tech",  buy:180, quantite:1,  description:"Écran fissuré, fonctionne parfaitement, acheté à Leboncoin",                  emplacement:"Portant 1"},
-                      {nom:"Sac Kelly Hermès",     marque:"Hermès",  categorie:"Luxe",       buy:125, quantite:1,  description:"Authentique, sangles légèrement usées, acheté à Dépôt-vente",                emplacement:"Vitrine luxe"},
+                      {nom:"Sac Kelly Hermès",     marque:"Hermès",  categorie:"Mode",       buy:125, quantite:1,  description:"Authentique, sangles légèrement usées, acheté à Dépôt-vente",                emplacement:"Vitrine luxe"},
                       {nom:"Jean Levis 501",       marque:"Levis",   categorie:"Mode",       buy:15,  quantite:1,  description:"Taille 32, bleu délavé, vintage 90s, acheté à Facebook Marketplace",          emplacement:"Étagère bureau"},
                     ].map((it,i)=>{
                       const {loc:_loc,rest:_desc}=parseLocDesc(it.description);

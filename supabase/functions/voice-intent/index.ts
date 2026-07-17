@@ -268,8 +268,7 @@ RÈGLE : tout périphérique informatique (imprimante, scanner, webcam...) et to
 "guitare"|"piano"|"basse"|"ampli"|"synthé"|"instrument de musique"|"Fender"|"Gibson"|"Stratocaster"|"Marshall"|"Roland"|"saxophone"|"ukulele"|"violon"|"trompette" → "Musique"
 "cartes pokemon"|"cartes yugioh"|"trading cards"|"cartes magic"|"cartes collector"|"booster pokemon"|"paquet de cartes"|"vinyle"|"disque rare" → "Collection"
 "livre"|"roman"|"BD"|"manga"|"bouquin"|"bande dessinée" → "Livres"
-"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"balenciaga"|"prada"|"céline"|"givenchy"|"valentino"|"saint laurent"|"ysl"|"fendi"|"moncler"|"off-white"|"bottega veneta"|"burberry"|"bvlgari"|"cartier"|"van cleef"|"sac de luxe"|"montre de luxe" → "Luxe"
-ATTENTION Luxe = grandes maisons uniquement (prix neuf > 500€). Les marques premium/accessibles comme Lacoste, Ralph Lauren, Tommy Hilfiger, Hugo Boss, Calvin Klein, Adidas, Nike → "Mode".
+⚠️ PAS DE CATÉGORIE "Luxe" (supprimée le 2026-07-17). Un article de marque de luxe (Louis Vuitton, Chanel, Gucci, Hermès, Rolex, Dior, Cartier…) se classe par son TYPE DE PRODUIT, jamais par sa marque : sac/vêtement/chaussures → "Mode" ; montre → "Mode" ; bijou → "Mode" ; parfum → "Beauté". La marque va dans `marque`, pas dans la catégorie.
 "jouet"|"lego"|"playmobil"|"puzzle"|"jeu de société"|"peluche" → "Jouets"
 "vélo"|"tapis de course"|"haltères"|"raquette de tennis"|"skate"|"rollers"|"ski" → "Sport"
 "canapé"|"table"|"chaise"|"lampe"|"vaisselle"|"meuble"|"tapis"|"miroir"|"décoration" → "Maison"
@@ -741,8 +740,7 @@ RULE: any computer peripheral (printer, scanner, webcam...) and any connected/no
 "guitar"|"piano"|"bass guitar"|"amp"|"synth"|"musical instrument"|"Fender"|"Gibson"|"Stratocaster"|"Marshall"|"Roland"|"saxophone"|"ukulele"|"violin"|"trumpet" → "Musique"
 "pokemon cards"|"yugioh cards"|"trading cards"|"magic cards"|"collector cards"|"pokemon booster"|"card pack"|"vinyl record" → "Collection"
 "book"|"novel"|"comic"|"manga"|"graphic novel" → "Livres"
-"louis vuitton"|"chanel"|"gucci"|"hermès"|"rolex"|"dior"|"balenciaga"|"prada"|"céline"|"givenchy"|"valentino"|"saint laurent"|"ysl"|"fendi"|"moncler"|"off-white"|"bottega veneta"|"burberry"|"bvlgari"|"cartier"|"van cleef"|"luxury bag"|"luxury watch" → "Luxe"
-NOTE Luxe = true luxury houses only (retail price > €500). Premium/accessible brands like Lacoste, Ralph Lauren, Tommy Hilfiger, Hugo Boss, Calvin Klein, Adidas, Nike → "Mode".
+⚠️ NO "Luxe" category (removed 2026-07-17). A luxury-brand item (Louis Vuitton, Chanel, Gucci, Hermès, Rolex, Dior, Cartier…) is classified by its PRODUCT TYPE, never by its brand: bag/clothes/shoes → "Mode"; watch → "Mode"; jewellery → "Mode"; perfume → "Beauté". The brand goes in `marque`, not the category.
 "toy"|"lego"|"playmobil"|"puzzle"|"board game"|"stuffed animal" → "Jouets"
 "bike"|"treadmill"|"weights"|"tennis racket"|"skateboard"|"rollerblades"|"ski" → "Sport"
 "couch"|"table"|"chair"|"lamp"|"dishes"|"furniture"|"rug"|"mirror"|"decoration" → "Maison"
