@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import { formatCurrency, fmtp, MONTHS_FR, MONTHS_EN, groupSales } from '../utils/shared';
 import { UI, Loader, SegmentedPills, StatTile } from '../components/ui';
@@ -49,8 +49,23 @@ const CHART_CSS = `
 
 // Géométrie commune aux deux graphes (identique au design).
 const W=330, H=182, PAD_L=30, PAD_R=6, PAD_T=10, PAD_B=26;
-const PLOT_W = W-PAD_L-PAD_R;
 const PLOT_H = H-PAD_T-PAD_B;
+
+// Largeur réelle du conteneur : le viewBox s'y cale (1 unité SVG = 1 px CSS),
+// hauteur fixe H. Sans ça, width:100% + ratio d'aspect fixe faisait zoomer tout
+// le graphe ×3-4 sur desktop (barre géante, textes énormes) ; mobile ≈ 1:1.
+function useContainerWidth(){
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+  useEffect(()=>{
+    const el = ref.current;
+    if(!el || typeof ResizeObserver==='undefined') return;
+    const ro = new ResizeObserver(en=>setW(en[0].contentRect.width));
+    ro.observe(el);
+    return ()=>ro.disconnect();
+  },[]);
+  return [ref, w];
+}
 
 // Mini-courbe du hero — tendance du profit sur la période sélectionnée.
 function HeroSparkline({ data, width=104, height=38 }) {
@@ -81,58 +96,95 @@ function HeroSparkline({ data, width=104, height=38 }) {
   );
 }
 
-// « Bénéfices » — barres, wipe à l'apparition.
-function ProfitBars({ data, fmtShort }) {
+// « Bénéfices » — barres, wipe à l'apparition. Tap/clic sur un mois → pastille
+// avec le montant exact (toggle) ; fmtValue = format complet, fmtShort = ticks.
+function ProfitBars({ data, fmtShort, fmtValue }) {
+  const [wrapRef, cw] = useContainerWidth();
+  const [active, setActive] = useState(null);
+  useEffect(()=>{ setActive(null); }, [data]);
+  const vw = Math.max(W, Math.round(cw) || W);
+  const plotW = vw-PAD_L-PAD_R;
   const values = data.map(d=>d.profit);
   const max = Math.max(...values, 1);
   const nice = max*1.18;
   const n = values.length || 1;
-  const band = PLOT_W/n;
+  const band = plotW/n;
   const bw = Math.min(26, band*0.5);
   const yTicks = [0,1,2,3].map(k=>{
     const y = +(PAD_T + PLOT_H - PLOT_H*k/3).toFixed(1);
     return { y, ty:+(y+3).toFixed(1), label: fmtShort(nice*k/3) };
   });
+  // 2.5px de plancher : un mois à 0 € reste visible (barre plate).
+  const bars = values.map((v,i)=>{
+    const h = Math.max(PLOT_H*(Math.max(v,0)/nice), 2.5);
+    return { cx: PAD_L + band*(i+0.5), h, y: PAD_T+PLOT_H-h };
+  });
+  const tip = active==null ? null : (()=>{
+    const b = bars[active];
+    const label = fmtValue(values[active]);
+    const tw = Math.max(34, label.length*5.8+14);
+    const tx = Math.min(Math.max(b.cx, PAD_L+tw/2), vw-PAD_R-tw/2);
+    const ty = Math.max(b.y-22, 2);
+    return { label, tw, tx, ty };
+  })();
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:'auto', display:'block' }}>
+    <div ref={wrapRef} style={{ width:'100%' }}>
+    <svg viewBox={`0 0 ${vw} ${H}`} style={{ width:'100%', height:H, display:'block' }}>
       <defs>
         <linearGradient id="db-bar-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#3FB0A0"/>
           <stop offset="1" stopColor={UI.tealDeep}/>
         </linearGradient>
         <clipPath id="db-bar-clip">
-          <rect className="db-wipe" x="0" y="0" width={W} height={H}
+          <rect className="db-wipe" x="0" y="0" width={vw} height={H}
             style={{ transformOrigin:'left', transformBox:'fill-box', animation:'db-wipe 0.9s cubic-bezier(0.2,0.7,0.3,1) forwards' }} />
         </clipPath>
       </defs>
       {yTicks.map((t,i)=>(
         <g key={i}>
-          <line x1={PAD_L} y1={t.y} x2={W-PAD_R} y2={t.y} stroke={UI.border} strokeWidth="1" />
+          <line x1={PAD_L} y1={t.y} x2={vw-PAD_R} y2={t.y} stroke={UI.border} strokeWidth="1" />
           <text x={PAD_L-6} y={t.ty} textAnchor="end" style={{ font:"500 9px 'Space Grotesk',sans-serif", fill:'#A6A192' }}>{t.label}</text>
         </g>
       ))}
       <g clipPath="url(#db-bar-clip)">
-        {values.map((v,i)=>{
-          const cx = PAD_L + band*(i+0.5);
-          const h = Math.max(PLOT_H*(Math.max(v,0)/nice), 0.5);
-          return <rect key={i} x={+(cx-bw/2).toFixed(1)} y={+(PAD_T+PLOT_H-h).toFixed(1)} width={+bw.toFixed(1)} height={+h.toFixed(1)} rx="5" fill="url(#db-bar-grad)" />;
-        })}
+        {bars.map((b,i)=>(
+          <rect key={i} x={+(b.cx-bw/2).toFixed(1)} y={+b.y.toFixed(1)} width={+bw.toFixed(1)} height={+b.h.toFixed(1)} rx="5"
+            fill="url(#db-bar-grad)" opacity={active==null||active===i?1:0.45} />
+        ))}
       </g>
       {data.map((d,i)=>(
         <text key={i} x={+(PAD_L+band*(i+0.5)).toFixed(1)} y={H-6} textAnchor="middle"
-          style={{ font:"500 9.5px 'Space Grotesk',sans-serif", fill:UI.mute }}>{d.name}</text>
+          style={{ font:"500 9.5px 'Space Grotesk',sans-serif", fill:active===i?UI.ink:UI.mute, fontWeight:active===i?700:500 }}>{d.name}</text>
       ))}
+      {/* Zones de tap pleine-bande (invisibles) — le onClick SVG répond au tap iOS. */}
+      {bars.map((b,i)=>(
+        <rect key={`hit-${i}`} x={+(PAD_L+band*i).toFixed(1)} y={PAD_T} width={+band.toFixed(1)} height={H-PAD_T}
+          fill="rgba(0,0,0,0)" style={{ cursor:'pointer' }}
+          onClick={()=>setActive(a=>a===i?null:i)} />
+      ))}
+      {tip && (
+        <g style={{ pointerEvents:'none' }}>
+          <rect x={+(tip.tx-tip.tw/2).toFixed(1)} y={tip.ty} width={+tip.tw.toFixed(1)} height="17" rx="8.5"
+            fill={UI.ink} opacity="0.92" />
+          <text x={+tip.tx.toFixed(1)} y={tip.ty+11.5} textAnchor="middle"
+            style={{ font:"600 9.5px 'Space Grotesk',sans-serif", fill:'#fff' }}>{tip.label}</text>
+        </g>
+      )}
     </svg>
+    </div>
   );
 }
 
 // « Évolution marge % » — courbe lissée, tracé progressif.
 function MarginLine({ data }) {
+  const [wrapRef, cw] = useContainerWidth();
+  const vw = Math.max(W, Math.round(cw) || W);
+  const plotW = vw-PAD_L-PAD_R;
   const values = data.map(d=>d['Marge %']);
   const max = Math.max(...values, 1);
   const nice = max*1.18;
   const n = values.length || 1;
-  const band = PLOT_W/n;
+  const band = plotW/n;
   const pts = values.map((v,i)=>({ x: PAD_L+band*(i+0.5), y: PAD_T+PLOT_H*(1 - Math.max(v,0)/nice) }));
   const smooth = (a) => {
     if (a.length < 2) return a.length ? `M${a[0].x.toFixed(1)},${a[0].y.toFixed(1)}` : '';
@@ -152,8 +204,11 @@ function MarginLine({ data }) {
     const y = +(PAD_T + PLOT_H - PLOT_H*k/3).toFixed(1);
     return { y, ty:+(y+3).toFixed(1), label: `${(Math.round(nice*k/3*10)/10).toString().replace('.',',')}%` };
   });
+  // dasharray ≥ longueur max du tracé élargi, sinon la courbe se tronque.
+  const dash = Math.max(900, vw*2);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:'auto', display:'block' }}>
+    <div ref={wrapRef} style={{ width:'100%' }}>
+    <svg viewBox={`0 0 ${vw} ${H}`} style={{ width:'100%', height:H, display:'block' }}>
       <defs>
         <linearGradient id="db-line-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="rgba(232,149,109,0.32)"/>
@@ -162,13 +217,13 @@ function MarginLine({ data }) {
       </defs>
       {yTicks.map((t,i)=>(
         <g key={i}>
-          <line x1={PAD_L} y1={t.y} x2={W-PAD_R} y2={t.y} stroke={UI.border} strokeWidth="1" />
+          <line x1={PAD_L} y1={t.y} x2={vw-PAD_R} y2={t.y} stroke={UI.border} strokeWidth="1" />
           <text x={PAD_L-6} y={t.ty} textAnchor="end" style={{ font:"500 9px 'Space Grotesk',sans-serif", fill:'#A6A192' }}>{t.label}</text>
         </g>
       ))}
       <path className="db-fade" d={areaPath} fill="url(#db-line-grad)" style={{ opacity:0, animation:'db-fade 0.8s ease 0.5s forwards' }} />
       <path className="db-draw" d={linePath} fill="none" stroke={UI.amber} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
-        style={{ strokeDasharray:900, strokeDashoffset:900, animation:'db-draw 1.2s ease 0.15s forwards' }} />
+        style={{ strokeDasharray:dash, strokeDashoffset:dash, animation:'db-draw 1.2s ease 0.15s forwards' }} />
       {pts.map((p,i)=>(
         <circle key={i} className="db-fade" cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="3" fill="#fff" stroke={UI.amber} strokeWidth="2"
           style={{ opacity:0, animation:'db-fade 0.4s ease 1s forwards' }} />
@@ -178,6 +233,7 @@ function MarginLine({ data }) {
           style={{ font:"500 9.5px 'Space Grotesk',sans-serif", fill:UI.mute }}>{d.name}</text>
       ))}
     </svg>
+    </div>
   );
 }
 
@@ -355,7 +411,7 @@ const DashboardTab = memo(function DashboardTab({
 
           {/* Bénéfices */}
           <PanelCard title={t('benefices')} subtitle={rangeLabel}>
-            <ProfitBars data={mData} fmtShort={fmtShort} />
+            <ProfitBars data={mData} fmtShort={fmtShort} fmtValue={fmt} />
           </PanelCard>
 
           {/* Évolution de la marge */}
