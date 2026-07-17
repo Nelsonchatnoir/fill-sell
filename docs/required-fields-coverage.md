@@ -507,17 +507,29 @@ saisie manuelle AVANT le clic sinon.
   shoe_type = Univers (pas un « type » produit) ; house_and_garden_type = univers
   maison → null explicite (jamais lbcProduit : valeur fausse silencieuse).
 
-### TEST LIVE cascade (17/07 après-midi) — EN COURS
-- **Suppression manuelle Vinted RÉUSSIE en réel** (Switch 9417527366, session
-  visible) : bouton Supprimer → modale `item-delete-confirmation-button`
-  (« Confirmer et supprimer ») → **redirection /member/<id>** confirmée comme
-  signal de succès — valide le choix de la vérif post-suppression (8467191).
-- Trio cascade armé : eBay 800357039555 + LBC 3234288470 en ligne, Vinted
-  supprimé hors app → détection extension attendue au poll (≤30 min), puis
-  bandeau app (confirmation humaine) → orchestrateSale → delete jobs eBay/LBC.
-- Publications nouvelles familles : BLOQUÉES sur les photos (seul le Switch a
-  3 photos en stock ; refus de publier photos/titre incohérents). Reprise dès
-  photos fournies.
+### TEST LIVE cascade (17/07 après-midi) — RÉSULTATS
+- **Suppression manuelle Vinted RÉUSSIE** (Switch 9417527366) : Supprimer →
+  modale `item-delete-confirmation-button` → redirection /member confirmée.
+- **Cadence de détection de vente comprise/validée** : PUBLISH_GRACE 4 h +
+  re-check toutes les 2 h (volontairement conservateur, anti-vente-fantôme).
+- **Cascade DATA validée en RÉEL** : eBay/LBC Switch tombés hors ligne tout seuls
+  (LBC vérifiée « désactivée »), Nico a confirmé UNE vente sur le bandeau eBay →
+  orchestrateSale : **1 seule vente** (ebay:220), inventaire vendu, Vinted+LBC
+  → cancelled + pending_removal=true → **bandeau groupé « Retirer (2) »**. ✅
+- **🐞 BUG TROUVÉ PAR NICO + CORRIGÉ + DÉPLOYÉ (v12)** : un article hors ligne
+  sur N plateformes affichait N bandeaux « Vendue ? » (un par job), sans garde
+  → deux confirmations concurrentes (double-tap) auraient enregistré **2 ventes**
+  du même article (orchestrateSale lisait ventes/inventaire sans verrou, `ventes`
+  sans contrainte d'unicité sur inventaire_id). Fix 2 couches :
+  · Backend : **gate atomique** `UPDATE inventaire … WHERE statut<>'vendu'
+    RETURNING id` — seule l'orchestration gagnante crée la vente + l'email
+    (check-listing-status **v12**, verify_jwt=false préservé).
+  · Frontend : confirmer retire IMMÉDIATEMENT tous les bandeaux du même article
+    (groupés par inventaire_id) → ferme le double-tap UI (live via Vercel).
+- **Suppression PHYSIQUE active** : NON testable ici (les 3 annonces Switch déjà
+  hors ligne → les jobs delete se résolvent par « déjà hors ligne = succès »).
+  À faire ce soir : extension rechargée + une annonce réellement en ligne.
+- Publications nouvelles familles : BLOQUÉES sur les photos.
 
 ### Beebs — relevés 17/07 (8 catégories, 34 lignes)
 - **Bodies (bébé)** : Taille•, Marque•, État• + Couleur (facultatif) + Format du
