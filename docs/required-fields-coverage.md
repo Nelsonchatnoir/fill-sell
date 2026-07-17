@@ -507,6 +507,18 @@ saisie manuelle AVANT le clic sinon.
   shoe_type = Univers (pas un « type » produit) ; house_and_garden_type = univers
   maison → null explicite (jamais lbcProduit : valeur fausse silencieuse).
 
+### TEST LIVE cascade (17/07 après-midi) — EN COURS
+- **Suppression manuelle Vinted RÉUSSIE en réel** (Switch 9417527366, session
+  visible) : bouton Supprimer → modale `item-delete-confirmation-button`
+  (« Confirmer et supprimer ») → **redirection /member/<id>** confirmée comme
+  signal de succès — valide le choix de la vérif post-suppression (8467191).
+- Trio cascade armé : eBay 800357039555 + LBC 3234288470 en ligne, Vinted
+  supprimé hors app → détection extension attendue au poll (≤30 min), puis
+  bandeau app (confirmation humaine) → orchestrateSale → delete jobs eBay/LBC.
+- Publications nouvelles familles : BLOQUÉES sur les photos (seul le Switch a
+  3 photos en stock ; refus de publier photos/titre incohérents). Reprise dès
+  photos fournies.
+
 ### Beebs — relevés 17/07 (8 catégories, 34 lignes)
 - **Bodies (bébé)** : Taille•, Marque•, État• + Couleur (facultatif) + Format du
   colis (pré-rempli → non bloquant via GENERIC_PREFILLED).
