@@ -516,6 +516,23 @@ async function fillListingForm(job) {
     };
   }
 
+  // ── Garde-fou pré-submit (2026-07-18, garde systémique 4 plateformes) ──────
+  // Un HTTP 200 ne garantit RIEN sur le contenu réellement envoyé. On relit le
+  // DOM juste avant le clic pour confirmer que le prix (champ le plus sujet au
+  // vidage silencieux, cf. bug prix Vinted du même soir) est présent et non nul
+  // — sinon échec HONNÊTE plutôt qu'un dépôt sans prix. Titre et catégorie sont
+  // garantis en amont (progression du wizard + gate requis ci-dessus).
+  if (job.price != null) {
+    const priceEl = document.querySelector("#price");
+    const priceNum = Number(String(priceEl?.value ?? "").replace(",", ".").replace(/[^\d.]/g, ""));
+    if (!priceEl || !Number.isFinite(priceNum) || priceNum <= 0) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        error: `Prix absent ou nul dans le formulaire Beebs au moment du dépôt (#price = "${priceEl?.value ?? "introuvable"}") — dépôt annulé pour éviter une annonce sans prix.`,
+      };
+    }
+  }
+
   const publishBtn = document.querySelector('button[type="submit"]');
   publishBtn?.click();
 

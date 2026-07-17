@@ -558,6 +558,25 @@ async function fillListingForm(job) {
   if (!finalContinue) {
     return { success: false, needsUser: true, error: "LIVE : Continuer final introuvable sur l'aperçu.", warnings, unfilledRequired, discoveredRequired: enumerated };
   }
+  // ── Garde-fou pré-submit (2026-07-18, garde systémique 4 plateformes) ──────
+  // Un HTTP 200 ne garantit RIEN sur le contenu envoyé. On relit le DOM juste
+  // avant le dépôt final pour confirmer que le prix est réellement posé et non
+  // nul (#price_cents) — sinon échec HONNÊTE plutôt qu'une annonce sans prix.
+  // ⚠️ LBC pré-remplit un prix suggéré : ce contrôle garantit « présent et non
+  // nul » (spec), pas l'égalité exacte à job.price (le prix imposé l.510 peut
+  // théoriquement échouer en laissant la suggestion — non couvert ici, volontaire).
+  // Titre/catégorie garantis par la progression du wizard + les gates requis.
+  if (job.price != null) {
+    const priceEl = document.querySelector("#price_cents");
+    const priceNum = Number(String(priceEl?.value ?? "").replace(/[^\d]/g, ""));
+    if (!priceEl || !Number.isFinite(priceNum) || priceNum <= 0) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        error: `Prix absent ou nul dans l'aperçu Leboncoin au moment du dépôt (#price_cents = "${priceEl?.value ?? "introuvable"}") — dépôt annulé pour éviter une annonce sans prix.`,
+      };
+    }
+  }
+
   console.log("[leboncoin] 🚀 LIVE — Continuer final (« je confirme l'exactitude »)");
   await humanPause(1200, 2400);
   realClick(finalContinue);

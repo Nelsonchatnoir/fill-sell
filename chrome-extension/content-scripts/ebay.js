@@ -680,6 +680,26 @@ async function fillListingForm(job) {
     };
   }
 
+  // ── Garde-fou pré-submit (2026-07-18, garde systémique 4 plateformes) ──────
+  // Parité avec Vinted/LBC/Beebs : on relit le DOM juste avant l'engagement de
+  // frais pour confirmer que le prix (input[name="price"]) est présent et non
+  // nul — un formulaire soumis sans prix ne crée pas d'annonce vendable.
+  // verifyEbaySubmission (côté background) reste le filet réseau APRÈS clic ;
+  // ceci l'AVANT-clic. Titre/aspects requis déjà gardés en amont.
+  if (job.price != null) {
+    const priceEl = document.querySelector('input[name="price"]');
+    const priceNum = Number(String(priceEl?.value ?? "").replace(",", ".").replace(/[^\d.]/g, ""));
+    if (!priceEl || !Number.isFinite(priceNum) || priceNum <= 0) {
+      return {
+        success: false,
+        needsUser: true,
+        error: `LIVE : prix absent ou nul sur le formulaire eBay au moment de la mise en vente (input[name="price"] = "${priceEl?.value ?? "introuvable"}") — mise en vente annulée pour éviter une annonce sans prix.`,
+        warnings,
+        unfilledRequired,
+      };
+    }
+  }
+
   // Le clic "Mettre en vente avec les frais affichés" est un engagement de
   // frais. Libellé relevé en session réelle 2026-07-07 ; on privilégie le
   // bouton mentionnant les frais, repli sur tout "Mettre en vente" hors liens
