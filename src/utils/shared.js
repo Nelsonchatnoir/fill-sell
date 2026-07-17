@@ -192,7 +192,7 @@ export function detectType(titre,marque){
   // TYPE DE PRODUIT : la marque (luxe ou non) n'influence plus la catégorie —
   // un sac Hermès → Mode, un parfum Chanel → Beauté, une Rolex → Mode.
   if(/robe|jupe|pull|jean|veste|manteau|chemise|chemisier|blouse|short|legging|pantalon|\bpolo\b|top|t-shirt|cardigan|blouson|parka|doudoune|sweat|hoodie|débardeur|tunique|combinaison|kimono|salopette|bermuda|jogging|survêtement|maillot|bikini|lingerie|soutien|culotte|boxer|chaussette|collant|chaussure|basket|botte|sandale|espadrille|escarpin|mocassin|sneaker|talon|ballerine|sac|pochette|portefeuille|ceinture|écharpe|foulard|casquette|chapeau|bonnet|(?<![p{L}p{N}])gants?(?![p{L}p{N}])|lunette|bijou|collier|bracelet|\bbagues?\b|(?<![p{L}p{N}])montres?(?![p{L}p{N}])|boucle|accessoire|imperméable|pyjama|nuisette|robe.?chambre|maillot.?bain|cap|bob|beret|turban|snood|mitaine|manchette|cravate|noeud.?papillon|bretelle|jarretelle|chaussure.?sport|derby|oxford|loafer|chelsea|compensée|plateforme|slip|string|monokini|playsuit|body|bustier|corset|louboutin|jimmy.?choo|manolo|birkin|kelly|neverfull|speedy/iu.test(t)) return 'Mode';
-  if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,15}(?:voiture|cuisine|externe))|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?midi|pédale.?(?:effet|guitare|basse)|table.?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|\bbasse\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
+  if(/guitare|\bpiano\b|violon|\bbatterie\b(?!.{0,15}(?:voiture|cuisine|externe))|\bsynthé\b|synthétiseur|ukulélé|trompette|saxophone|accordéon|contrebasse|clavier.?(?:midi|arrangeur|ma[îi]tre)|pédale.?(?:effet|guitare|basse)|table.?(?:de.?)?(?:mix|mixage)|\bampli\b(?!.{0,10}voiture|.{0,10}\bauto\b)|\bvinyle\b|vinyl|platine.?(?:vinyle|disque|dj)|\bpartition\b|solfège|\bgibson\b|\bfender\b|\bmarshall\b|\bibanez\b|\bepiphone\b|les.?paul|stratocaster|telecaster|\bstrat\b|guitare.?basse|basse.?(?:[eé]lec|acoustique|\d.?cordes|fretless|active)|\bbassiste\b|micro.?(?:studio|chant|enregistrement)|enceinte.?studio|moniteur.?studio/i.test(t)) return 'Musique';
   // Mobilité AVANT High-Tech : « trottinette Xiaomi » (Xiaomi = marque téléphone
   // ET trottinette) partait en High-Tech → 📱 Téléphones. L'objet prime sur la marque.
   if(/\btrottinette\b|hoverboard|gyroroue|monoroue|overboard/i.test(t)) return 'Sport';
@@ -282,7 +282,7 @@ const OBJECT_ICON_RULES = [
   [/sac.?à.?dos|backpack|cartable/i, '🎒'],
   [/batterie.?externe|powerbank|chargeur|câble|adaptateur|\bhub\b|\bdock\b/i, '🔌'],
   [/tapis.?de.?course|vélo.?d.?appartement|rameur|elliptique/i, '🏃'],
-  [/clavier.?(?:midi|maître)|piano|synthé|synthétiseur/i, '🎹'],
+  [/clavier.?(?:midi|maître|maitre|arrangeur)|piano|synthé|synthétiseur/i, '🎹'],  // clavier arrangeur/maître = instrument, avant ⌨️ clavier ordinateur
   [/voiture.?miniature|hot.?wheels|majorette/i, '🏎️'],
   [/machine.?à.?laver|lave.?linge|sèche.?linge|lave.?vaisselle/i, '🧺'],
   [/machine.?à.?café|cafetière|nespresso|senseo|dolce.?gusto|expresso/i, '☕'],
@@ -303,7 +303,7 @@ const OBJECT_ICON_RULES = [
   [/chausson|pantoufle|charentaise/i, '🥿'],                                    // avant 👟 chaussure
   [/sac.?banane|banane.?(?:eastpak|nike|adidas)|fanny.?pack|bum.?bag/i, '👝'],  // avant 👜 sac
   [/housse.?de.?couette|parure.?de.?lit|taie.?d.?oreiller|drap.?housse|\bdraps?\b/i, '🛌'],    // avant 🛏️ lit (scission literie/meuble)
-  [/lit.?à.?barreaux|berceau|cododo|table.?à.?langer|réducteur.?de.?lit|\btoise\b/i, '🚼'],    // avant 🛏️ lit et 🪑 chaise
+  [/lit.?parapluie|lit.?à.?barreaux|berceau|cododo|table.?à.?langer|réducteur.?de.?lit|\btoise\b/i, '🚼'],    // avant 🛏️ lit, 🪑 chaise ET ☂️ parapluie (lit parapluie = lit de voyage bébé, pas un parapluie)
   [/fer.?à.?repasser|défroisseur|centrale.?vapeur|table.?à.?repasser/i, '🧼'],
   [/machine.?à.?coudre|surjeteuse/i, '🧵'],
   [/plongée|\btuba\b|\bpalmes\b/i, '🤿'],                                       // avant 🕶️/👟 (masque, palmes)
@@ -439,7 +439,7 @@ const OBJECT_ICON_RULES = [
   [/tondeuse|débroussailleuse|scarificateur/i, '🌱'],
   [/taille.?haie|sécateur|cisaille/i, '✂️'],
   [/barbecue|plancha|\bbbq\b/i, '🔥'],
-  [/salon.?de.?jardin|parasol|transat/i, '⛱️'],
+  [/salon.?de.?jardin|parasol|transat(?!.{0,10}(?:b[ée]b[ée]|enfant|nouveau))/i, '⛱️'],  // transat BÉBÉ exclu → tombe au filet plutôt que Parasols (jardin)
   // Sport
   [/vélo|\bvtt\b|bicyclette/i, '🚲'],
   [/trottinette/i, '🛴'],
