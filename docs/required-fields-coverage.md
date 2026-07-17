@@ -465,6 +465,54 @@ sécurité → 👟, coque iPhone → 📱, table de ping-pong → 🏠→filet.
 - **lens-analysis v45 : « Luxe » présent dans le schéma (gelée)** — neutralisé
   par le filet frontend (detectObjectIcon re-dérive + typeAuto ré-écrit).
 
+## CHANTIER FINAL — Couverture par volume + fallback universel (17/07)
+
+Relevés DOM RÉELS sur /items/new (session authentifiée, IDs catalogue exacts),
+insérés dans `platform_category_aspects` (source='dom'). Le canal frontend ne lit
+que `required=true` (vérifié L2782) → les optionnels (couleur/matériau/ISBN)
+n'ajoutent aucune friction. `genericKnownSource` mappe brand/size/condition →
+marque/taille/etat (auto-remplis par l'IA) → famille fluide si l'IA a les infos,
+saisie manuelle AVANT le clic sinon.
+
+### Tableau de couverture (mapping fin / testé réel / fallback 400)
+
+| Famille (volume ↓)        | Vinted                  | Leboncoin      | Beebs          | eBay |
+|---------------------------|-------------------------|----------------|----------------|------|
+| Vêtements femme           | ✅ relevé+base+400 ✅   | ⏳ à relever   | — (enfant only)| ✅ catalogue officiel |
+| Vêtements homme           | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
+| Vêtements enfant          | ✅ relevé+base+400 ✅   | ✅ (relevé 16/07 bébé) | ⏳ à relever | ✅ |
+| Chaussures                | ✅ relevé+base+400 ✅   | ⏳             | ✅ baskets F (16/07) | ✅ |
+| Sacs & accessoires        | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
+| Puériculture (poussettes) | ✅ relevé+base+400 ✅   | ⏳             | ✅ (16/07)     | ✅ |
+| Jouets & jeux             | ✅ relevé+base+400 ✅   | ⏳             | ✅ figurines (16/07) | ✅ |
+| Livres/BD (ISBN !)        | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
+| Maison & déco             | ✅ relevé+base+400 ✅   | ⏳             | —              | ✅ |
+| Électronique              | ✅ (P1 16/07)           | ✅ (P2 16/07)  | —              | ✅ |
+| EXOTIQUES (É3)            | ✅ timbres=État seul + champ inconnu → parseur généralise | idem parseur générique | énum DOM générique | ✅ |
+
+### Vinted — relevés DOM 17/07 (18 catégories, 96 lignes en base)
+- **Vêtements** (Robes casual 1059, Jeans F 1845, Jeans garçons 1696, T-shirts H
+  1810, Sweats H 1811 — structure homogène vérifiée ×5) : Marque•, Taille•, État•,
+  Couleur, Matériau(rec). Appliqué aux 9 clés mapping (F/H/enfant, baskets F/H).
+- **Sacs à main (156), Poussettes (1612), Vases (1940)** : Marque•, État•, Couleur —
+  PAS de taille (formulaire adaptatif confirmé).
+- **Jouets (Jeux de construction 1767)** : + champ Taille présent mais douteux →
+  required=false (sous-marquage volontaire, le 400-learner corrigera si besoin).
+- **Livres/BD (5425)** : structure UNIQUE — **ISBN (champ TEXTE, testid isbn--input)**
+  + État seul. Ni marque ni taille. ISBN marqué optionnel (prudence).
+- **Timbres à l'unité (4889, exotique É3)** : État SEUL — formulaire minimal.
+- (• = required=true en base)
+
+### Validations croisées
+- `vintedFieldSelector` (content script) utilise EXACTEMENT les testids relevés
+  (brand-select-dropdown-input, category-size-single-grid-input, category-
+  condition-single-list-input, category-material-multi-list-input) → remplissage
+  prêt pour toutes ces familles sans modification de code.
+- **Parseur 400 : 10/10 familles** (node, réplique exacte de la logique L718-736) —
+  labels français pour tous les champs connus (isbn inclus), fallback
+  attrsConfig.title pour un champ inconnu, code brut en dernier ressort. Jamais
+  d'échec → fallback universel PROUVÉ côté logique.
+
 ### Audit lint ciblé premium/voix/paiement (17/07)
 - **BUG RÉEL corrigé — SwipeRow (App.jsx)** : hooks appelés après un return
   conditionnel (isMobile) → crash React au resize web à travers 768px. Tous les
