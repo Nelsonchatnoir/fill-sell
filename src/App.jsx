@@ -3768,7 +3768,7 @@ export default function App({ loginOnly = false }){
       reader.onload=ev=>{
         const dataUrl=ev.target.result;
         setLensPhotos(prev=>{
-          if(prev.length>=5)return prev;
+          if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
           return[...prev,{preview:dataUrl,mime:safeMime}];
         });
       };
@@ -3804,7 +3804,7 @@ export default function App({ loginOnly = false }){
       if(!photo.dataUrl)return;
       setLensResult(null);setLensAdded(false);setLensPremiumLimitReached(false);
       setLensPhotos(prev=>{
-        if(prev.length>=5)return prev;
+        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
       });
     }catch(e){
