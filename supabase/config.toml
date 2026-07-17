@@ -1,0 +1,35 @@
+# Config déclarative Supabase CLI — verify_jwt par fonction.
+# ⚠️ Source de vérité pour `supabase functions deploy <nom>` : le CLI lit ce
+# fichier, plus AUCUN flag --no-verify-jwt à retenir pour les fonctions listées
+# ici (le piège documenté dans CLAUDE.md : un deploy sans le flag repassait
+# verify_jwt à true et cassait les appels externes en 401).
+# État relevé en prod le 2026-07-17 (list_edge_functions) — ne mettre ici QUE
+# des fonctions dont verify_jwt=false est l'état voulu et constaté.
+
+project_id = "tojihnuawsoohlolangc"
+
+# Auth applicative interne (Bearer user vérifié dans le code) — gateway ouvert.
+[functions.voice-intent]
+verify_jwt = false
+
+# Webhooks / cron externes (liste CLAUDE.md) : Apple, Google, Stripe, pg_net…
+[functions.email-tunnel]
+verify_jwt = false
+
+[functions.apple-iap-webhook]
+verify_jwt = false
+
+[functions.google-play-webhook]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.send-merine-reply]
+verify_jwt = false
+
+[functions.tiktok-event]
+verify_jwt = false
+
+[functions.apple-subscription-status]
+verify_jwt = false
