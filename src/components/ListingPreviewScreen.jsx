@@ -2614,7 +2614,17 @@ export default function ListingPreviewScreen({
       { labels: ["Modèle"], get: () => pf.modele },
       { labels: ["Capacité de stockage"], get: () => pf.stockage },
     ];
-    const PREFILLED_BY_EBAY = ["Département", "Type", "Style"];
+    // Aspects qu'eBay pose lui-même depuis la CATÉGORIE (pas item-specific) :
+    // Département (rayon Femme/Homme/… en pills pré-actives, vérifié en session
+    // réelle) et Type (dérivé de la catégorie sur consoles/baskets). Ils ne
+    // bloquent pas et n'ouvrent pas de fallback.
+    // ⚠️ « Style » RETIRÉ le 2026-07-17 : c'est un aspect ITEM-SPECIFIC
+    // (Casual/Cocktail/Bohème…) qu'eBay NE pré-remplit PAS — constaté VIDE sur
+    // le vrai formulaire Robes (cat. 63861). Le marquer « prefilled » le
+    // laissait passer VIDE en silence (trou du filet). Désormais traité comme
+    // les autres obligatoires sans source : resolve_aspects tente de l'extraire
+    // du contexte, sinon saisie manuelle obligatoire (CTA bloqué tant que vide).
+    const PREFILLED_BY_EBAY = ["Département", "Type"];
     return ebayRequiredPreview.map(({ name, allowedValues }) => {
       const src = sources.find(s => s.labels.includes(name));
       if (src && String(src.get() ?? "").trim()) return { name, state: "ok", allowedValues };
