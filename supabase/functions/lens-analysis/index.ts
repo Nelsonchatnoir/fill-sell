@@ -46,10 +46,14 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 // (coin_config.price_lens_overflow) ; la différenciation par tier se fait
 // uniquement sur le grant mensuel de Pépites (free=30, premium=150, pro=600).
 function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
+  // Multi-photos (2026-07-17) : neutralise le biais d'ORDRE (les modèles vision
+  // sur-pondèrent souvent la 1re image) et force une lecture SYSTÉMATIQUE de
+  // chaque vue + le CROISEMENT des infos (marque sur une photo, taille sur une
+  // autre). Diagnostic : l'ancien "croise-les" était trop faible.
   const multiNote = photoCount > 1
     ? (lang === "en"
-        ? ` You have ${photoCount} photos of the same item — cross-reference them.`
-        : ` Tu as ${photoCount} photos du même article — croise-les.`)
+        ? ` You are given ${photoCount} photos of the SAME item, as different views (front, back, label/tag, close-up…). Their ORDER carries NO meaning — examine EVERY photo with equal attention, never assume the first is the most important. Read ALL visible text across ALL photos (brand logos, size/care labels, model or reference numbers, packaging) and CROSS-REFERENCE them: the brand may be on one photo, the size on another, a defect on a third. Merge everything into ONE coherent identification.`
+        : ` Tu reçois ${photoCount} photos du MÊME article, sous différents angles (face, dos, étiquette, gros plan…). Leur ORDRE n'a AUCUNE signification — examine CHAQUE photo avec la même attention, ne considère jamais la première comme la plus importante. Lis TOUT le texte visible sur TOUTES les photos (logos de marque, étiquettes taille/composition, numéros de modèle ou référence, packaging) et CROISE-les : la marque peut être sur une photo, la taille sur une autre, un défaut sur une troisième. Fusionne le tout en UNE identification cohérente.`)
     : "";
 
   const schema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,"attributs_visibles":{"nom_parfum":string,"volume":string,"teinte":string,"reference_fabricant":string,"taille_ecran":string,"capacite":string,"hauteur":string,"largeur":string,"longueur":string}|null}`;
@@ -247,7 +251,13 @@ serve(async (req) => {
     if (userStats?.topCategories?.length) textParts.push(_lang === "en" ? `My top categories: ${userStats.topCategories.join(", ")}` : `Mes meilleures catégories : ${userStats.topCategories.join(", ")}`);
     const userText = textParts.length ? textParts.join("\n") : (_lang === "en" ? "Analyze this item." : "Analyse cet article.");
 
-    const imageContent = (urls as string[]).slice(0, 5).map(url => ({
+    // Cap 8 (2026-07-17) : ALIGNÉ sur la limite UI Pro (LensTab maxPhotos =
+    // isPro ? 8 : 5). L'ancien slice(0,5) tronquait SILENCIEUSEMENT les photos
+    // 6-8 d'un Pro (qui les avait payées) — la 6e n'était de toute façon jamais
+    // ajoutable côté client (handlers cappés à 5), donc bug à 2 étages : ici +
+    // handlers App.jsx. Les deux corrigés ensemble. Free/Premium n'envoient
+    // jamais > 5 (grille UI 5). ⚠️ Déploiement nécessaire pour prendre effet.
+    const imageContent = (urls as string[]).slice(0, 8).map(url => ({
       type: "image",
       source: { type: "url", url },
     }));
