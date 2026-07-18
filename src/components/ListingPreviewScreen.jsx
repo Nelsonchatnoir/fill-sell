@@ -1923,6 +1923,55 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// ── Persistance du stepper (2026-07-18) ──────────────────────────────────────
+// Chrome décharge les onglets en arrière-plan : au retour, la page se recharge
+// et tout l'état React du stepper (étape, photos, annonces générées, sélection)
+// était perdu — retour Dashboard, progression envolée. sessionStorage survit au
+// reload de l'onglet et se vide à sa fermeture : exactement la durée de vie
+// voulue pour un brouillon de publication en cours.
+// Deux clés : le brouillon interne du stepper (états du composant) et le blob
+// « hôte » écrit par LensTab/StockTab pour savoir REMONTER le stepper après un
+// remount (reload navigateur ou simple changement d'onglet interne).
+const STEPPER_DRAFT_KEY = "fs_stepper_draft";
+const STEPPER_HOST_KEY  = "fs_stepper_host";
+
+export function clearStepperPersistence() {
+  try {
+    sessionStorage.removeItem(STEPPER_DRAFT_KEY);
+    sessionStorage.removeItem(STEPPER_HOST_KEY);
+  } catch { /* stockage indisponible : rien à nettoyer */ }
+}
+
+export function readStepperHost(source) {
+  try {
+    const raw = sessionStorage.getItem(STEPPER_HOST_KEY);
+    if (!raw) return null;
+    const h = JSON.parse(raw);
+    return h?.source === source ? h : null;
+  } catch { return null; }
+}
+
+export function writeStepperHost(data) {
+  try { sessionStorage.setItem(STEPPER_HOST_KEY, JSON.stringify(data)); }
+  catch { /* quota : le stepper marchera, il ne survivra juste pas au reload */ }
+}
+
+function readStepperDraft(invKey) {
+  try {
+    const raw = sessionStorage.getItem(STEPPER_DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    // Le brouillon ne se réapplique qu'au MÊME contexte d'ouverture (même ligne
+    // inventaire, ou flux Lens sans ligne dans les deux cas) : un brouillon
+    // d'un autre article ne doit jamais fuiter dans un stepper fraîchement
+    // ouvert. Le second test couvre le brouillon ouvert SANS ligne inventaire
+    // dont la ligne a été créée en cours de route (switch « Ajouter au stock »)
+    // et que l'hôte remonte ensuite avec ce nouvel id.
+    if ((d.invKey ?? null) !== (invKey ?? null) && (d.invId ?? null) !== (invKey ?? null)) return null;
+    return d;
+  } catch { return null; }
+}
+
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
   isPremium = false, isPro = false, onUpgrade = () => {},
@@ -1932,19 +1981,27 @@ export default function ListingPreviewScreen({
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
   const platformFieldsConfig = getPlatformFieldsConfig(t);
 
-  const [step, setStep]         = useState(0);
+  // Brouillon sessionStorage lu UNE fois au mount (ref : stable même si les
+  // props bougent ensuite). null = ouverture fraîche, sinon on reprend là où
+  // l'utilisateur en était avant le remount/reload.
+  const draftRef = useRef(undefined);
+  if (draftRef.current === undefined) draftRef.current = readStepperDraft(inventaireId ?? null);
+  const draft = draftRef.current;
+  const invKeyRef = useRef(inventaireId ?? null);
+
+  const [step, setStep]         = useState(draft?.step ?? 0);
   const [initializing, setInit] = useState(true);
 
   // Ligne inventaire liée à cette annonce : peut ne pas encore exister si l'article
   // n'a pas encore été ajouté au stock (switch "Ajouter au stock" à l'étape Publier).
-  const [invId, setInvId] = useState(inventaireId || null);
+  const [invId, setInvId] = useState(inventaireId || draft?.invId || null);
   const canToggleStock = typeof createStockItem === "function" && !invId && !alreadyInStock;
   // Provenance de l'article : invId est posé quand on publie DEPUIS le Stock
   // (StockTab passe inventaireId) ; alreadyInStock l'est par Lens quand l'article
   // a déjà été ajouté. Dans les deux cas il est déjà en stock → toggle verrouillé.
   const stockLocked = !!invId || alreadyInStock;
-  const [addToStock, setAddToStock] = useState(true);
-  const [prixAchatSaisi, setPrixAchatSaisi] = useState("");
+  const [addToStock, setAddToStock] = useState(draft?.addToStock ?? true);
+  const [prixAchatSaisi, setPrixAchatSaisi] = useState(draft?.prixAchatSaisi ?? "");
 
   // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
   // de maintenance dans StepPublish. Lecture TOLÉRANTE (rafraîchie à
@@ -1970,53 +2027,81 @@ export default function ListingPreviewScreen({
   // Step 0
   const [pickedFiles, setPickedFiles]       = useState([]);
   const [pickedPreviews, setPickedPreviews] = useState([]);
-  const [notes, setNotes]                   = useState("");
+  const [notes, setNotes]                   = useState(draft?.notes ?? "");
   const [micActive, setMicActive]           = useState(false);
   const [uploading, setUploading]           = useState(false);
   const [uploadError, setUploadError]       = useState("");
   const recognitionRef                      = useRef(null);
 
   // Photos prêtes
-  const [photos, setPhotos] = useState(initialPhotos);
+  const [photos, setPhotos] = useState(draft?.photos ?? initialPhotos);
 
   // Prix (depuis Lens ou DB)
-  const [price, setPrice] = useState(null);
+  const [price, setPrice] = useState(draft?.price ?? null);
   // Plateformes dont le prix a été édité individuellement : le champ central ne
   // les écrase plus (2026-07-14).
-  const [customPriced, setCustomPriced] = useState(() => new Set());
+  const [customPriced, setCustomPriced] = useState(() => new Set(draft?.customPriced ?? []));
   // ── Analyse photo optionnelle (chantier 3) ────────────────────────────────
   // photoAnalysis porte la réponse brute de lens-analysis. Elle complète
   // initialListing SANS le remplacer : le contrat (prix_vente_suggere +
   // canonical_fields taille/couleur/matiere/marque) est celui que le stepper
   // consomme déjà depuis Lens — on le REMPLIT, on ne le change pas.
-  const [photoAnalysis, setPhotoAnalysis] = useState(null);
+  const [photoAnalysis, setPhotoAnalysis] = useState(draft?.photoAnalysis ?? null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
 
   // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
-    isPro ? "ia_advanced" : isPremium ? "ia_light" : "original"
+    draft?.photoOption ?? (isPro ? "ia_advanced" : isPremium ? "ia_light" : "original")
   );
   // Choix de fond — ia_advanced uniquement (voir StepPhotos). "original" = fond
   // d'origine conservé. Envoyé à generate-listing via le paramètre `background`.
-  const [background, setBackground] = useState("original");
+  const [background, setBackground] = useState(draft?.background ?? "original");
 
   // Step 2 — résultats generate-listing
   const [generatingPlatforms, setGeneratingPlatforms] = useState(false);
   const [platformError, setPlatformError]             = useState("");
-  const [platformListings, setPlatformListings]       = useState(null);
-  const [processedPhotos, setProcessedPhotos]         = useState([]);
-  const [edited, setEdited]                           = useState({});
+  const [platformListings, setPlatformListings]       = useState(draft?.platformListings ?? null);
+  const [processedPhotos, setProcessedPhotos]         = useState(draft?.processedPhotos ?? []);
+  const [edited, setEdited]                           = useState(draft?.edited ?? {});
   // Champs partagés (Sujet 4) : source canonique unique + trace des copies
   // éditées à la main (sacrées : plus jamais resynchronisées).
-  const [sharedFields, setSharedFields]     = useState({ taille:"", couleur:"", matiere:"", marque:"" });
-  const [sharedOverrides, setSharedOverrides] = useState({}); // { [platform]: Set<fieldKey> }
+  const [sharedFields, setSharedFields]     = useState(draft?.sharedFields ?? { taille:"", couleur:"", matiere:"", marque:"" });
+  const [sharedOverrides, setSharedOverrides] = useState(() => // { [platform]: Set<fieldKey> }
+    draft?.sharedOverrides
+      ? Object.fromEntries(Object.entries(draft.sharedOverrides).map(([k, v]) => [k, new Set(v)]))
+      : {}
+  );
 
   // Step 3 — sélection plateformes (chips) + publication
-  const [selected, setSelected]         = useState(new Set(PLATFORMS_DEFAULT));
+  const [selected, setSelected]         = useState(() => new Set(draft?.selected ?? PLATFORMS_DEFAULT));
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
+
+  // Sauvegarde continue du brouillon : tout ce qui permet de reprendre le
+  // stepper après un remount (reload d'onglet Chrome, changement d'onglet
+  // interne). Les états transitoires (publishing, uploading, fichiers locaux
+  // du step 0) ne sont volontairement PAS persistés — non sérialisables ou non
+  // reprenables côté client. Publication terminée → brouillon purgé.
+  useEffect(() => {
+    if (initializing) return;
+    if (done) { clearStepperPersistence(); return; }
+    try {
+      sessionStorage.setItem(STEPPER_DRAFT_KEY, JSON.stringify({
+        invKey: invKeyRef.current,
+        step, invId, addToStock, prixAchatSaisi, notes,
+        photos, price, customPriced: [...customPriced], photoAnalysis,
+        photoOption, background,
+        platformListings, processedPhotos, edited,
+        sharedFields,
+        sharedOverrides: Object.fromEntries(Object.entries(sharedOverrides).map(([k, v]) => [k, [...v]])),
+        selected: [...selected],
+      }));
+    } catch { /* quota plein : le stepper continue, seul le brouillon saute */ }
+  }, [initializing, done, step, invId, addToStock, prixAchatSaisi, notes, photos, price,
+      customPriced, photoAnalysis, photoOption, background, platformListings,
+      processedPhotos, edited, sharedFields, sharedOverrides, selected]);
 
   // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
   // platformCompat.js) : calculée dès que l'article est connu, elle GRISE les
@@ -2072,6 +2157,10 @@ export default function ListingPreviewScreen({
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
+    // Reprise d'un brouillon : step/photos/prix déjà hydratés depuis
+    // sessionStorage — surtout ne pas laisser l'init les écraser (le
+    // setStep(1) ci-dessous renverrait l'utilisateur en arrière).
+    if (draft) { setInit(false); return; }
     // Pas encore de ligne inventaire (article pas encore en stock) : le prix vient
     // uniquement du résultat Lens, pas de lecture DB possible.
     if (invId) {

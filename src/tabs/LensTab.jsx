@@ -1,6 +1,6 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { Camera, Mic, Sparkles, Plus, HelpCircle, X } from 'lucide-react';
-import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
@@ -470,6 +470,25 @@ const LensTab = memo(function LensTab({
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
   const [showExtReminder,setShowExtReminder]=useState(false);
+  // Ligne inventaire restaurée depuis sessionStorage (lensInventaireId vit dans
+  // App et n'a pas de setter ici) : fallback utilisé uniquement à la reprise.
+  const [restoredInvId,setRestoredInvId]=useState(null);
+  const effectiveInvId=lensInventaireId??restoredInvId;
+
+  // Reprise du stepper après remount (reload d'onglet Chrome ou navigation
+  // interne) : le blob hôte écrit à l'ouverture permet de le REMONTER avec les
+  // mêmes props ; son état interne (étape, annonces générées…) revient, lui,
+  // du brouillon sessionStorage du stepper.
+  useEffect(()=>{
+    const h=readStepperHost('lens');
+    if(!h)return;
+    setLensListingPhotos(h.photos||[]);
+    if(h.lensResult)setLensResult(h.lensResult);
+    if(h.inventaireId)setRestoredInvId(h.inventaireId);
+    setShowListingPreview(true);
+    onStepperOpenChange?.(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   function compressImage(file, maxWidth = 1024, quality = 0.85) {
     return new Promise((resolve) => {
@@ -506,6 +525,10 @@ const LensTab = memo(function LensTab({
       }
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
 
+      // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
+      // blob hôte de CETTE session de publication.
+      clearStepperPersistence();
+      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult,inventaireId:lensInventaireId??null});
       setLensListingPhotos(uploadedUrls);
       setShowListingPreview(true);
       onStepperOpenChange?.(true);
@@ -520,18 +543,18 @@ const LensTab = memo(function LensTab({
     return (
       <div style={{ width:"100%" }}>
         <ListingPreviewScreen
-          inventaireId={lensInventaireId}
+          inventaireId={effectiveInvId}
           userId={user.id}
           initialPhotos={lensListingPhotos}
           initialListing={lensResult}
-          onClose={()=>{setShowListingPreview(false);setLensListingPhotos([]);onStepperOpenChange?.(false);}}
+          onClose={()=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
           onUpgrade={openUpgradeModal}
           createStockItem={saveLensItemForListing}
-          alreadyInStock={!!lensInventaireId}
+          alreadyInStock={!!effectiveInvId}
         />
       </div>
     );

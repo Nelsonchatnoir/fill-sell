@@ -2150,11 +2150,16 @@ export default function App({ loginOnly = false }){
     })();
   },[showSettings,conversionModal.open,user]);
 
+  // Session déjà vue dans CE chargement de page : supabase-js ré-émet
+  // SIGNED_IN au retour de focus d'onglet (session rafraîchie/restaurée) — sans
+  // cette garde, le setTab(0) ci-dessous renvoyait l'utilisateur au Dashboard à
+  // chaque retour sur l'onglet, en pleine publication (bug stepper 2026-07-18).
+  const dejaConnecteRef=useRef(false);
   useEffect(()=>{
     let mounted=true;
     supabase.auth.getSession().then(({data:{session}})=>{
       const u=session?.user??null;
-      if(u){ setUser(u); fetchAll(u.id); setAuthLoading(false); }
+      if(u){ dejaConnecteRef.current=true; setUser(u); fetchAll(u.id); setAuthLoading(false); }
       else setLoading(false);
     });
     if(isNative){
@@ -2185,9 +2190,15 @@ export default function App({ loginOnly = false }){
       setUser(u);
       if(event==='INITIAL_SESSION') setAuthLoading(false);
       if(u){
-        if(event==='SIGNED_IN'){ setIsSigningIn(false); setTab(0); localStorage.setItem('tab','0'); }
+        // Retour au Dashboard UNIQUEMENT sur une connexion réelle (aucune
+        // session vue jusqu'ici), pas sur les SIGNED_IN de refocus d'onglet.
+        if(event==='SIGNED_IN'){
+          setIsSigningIn(false);
+          if(!dejaConnecteRef.current){ setTab(0); localStorage.setItem('tab','0'); }
+        }
+        dejaConnecteRef.current=true;
         fetchAll(u.id);
-      }else{setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
+      }else{dejaConnecteRef.current=false;setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
     });
     return()=>{ mounted=false; subscription.unsubscribe(); coinRecoveryHandle?.remove?.(); };
   },[]);

@@ -1,10 +1,10 @@
-import { memo, useState, useEffect } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
-import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
@@ -272,6 +272,30 @@ const StockTab = memo(function StockTab({
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
+  // Ouverture du stepper : purge tout brouillon précédent puis pose le blob
+  // hôte (sessionStorage) qui permettra de le REMONTER après un remount
+  // (reload d'onglet Chrome ou navigation interne).
+  const ouvrirStepper = (item) => {
+    clearStepperPersistence();
+    writeStepperHost({ source: 'stock', itemId: item.id });
+    setPublishItem(item);
+    onStepperOpenChange?.(true);
+  };
+  // Reprise après remount : on retrouve la ligne inventaire dans items (chargés
+  // en async par App) et on rouvre le stepper — son état interne revient du
+  // brouillon sessionStorage propre au stepper.
+  const stepperRestaureRef = useRef(false);
+  useEffect(() => {
+    if (stepperRestaureRef.current || publishItem) return;
+    const h = readStepperHost('stock');
+    if (!h) return;
+    const item = (items || []).find(i => i.id === h.itemId);
+    if (!item) return;
+    stepperRestaureRef.current = true;
+    setPublishItem(item);
+    onStepperOpenChange?.(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
   // Article en attente derrière le rappel extension : le clic « Publier » passe
   // d'abord par le modal, l'ouverture du stepper n'a lieu qu'au « Continuer ».
   const [extReminderItem, setExtReminderItem] = useState(null);
@@ -1051,7 +1075,7 @@ const StockTab = memo(function StockTab({
                                 l'utilisateur qu'il RESTAIT quelque chose à faire, alors que
                                 l'annonce était en ligne. */}
                             {isPro&&(
-                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{setPublishItem(item);onStepperOpenChange?.(true);}}}>
+                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{ouvrirStepper(item);}}}>
                                 {enLigne?(lang==='fr'?'Republier':'Republish'):(lang==='fr'?'Publier':'Publish')}
                               </button>
                             )}
@@ -1087,7 +1111,7 @@ const StockTab = memo(function StockTab({
         <ExtensionReminderModal
           lang={lang}
           onClose={()=>setExtReminderItem(null)}
-          onContinue={()=>{setPublishItem(extReminderItem);setExtReminderItem(null);onStepperOpenChange?.(true);}}
+          onContinue={()=>{const it=extReminderItem;setExtReminderItem(null);ouvrirStepper(it);}}
         />
       )}
       {publishItem&&(
@@ -1109,7 +1133,7 @@ const StockTab = memo(function StockTab({
             // jour à chaque publication (fix bd9a516).
             prix_vente_suggere: publishItem.prix_vente ?? publishItem.prix_achat ?? null,
           }}
-          onClose={()=>{setPublishItem(null);onStepperOpenChange?.(false);}}
+          onClose={()=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
