@@ -94,8 +94,15 @@ const LBC_CATEGORIES = {
   // Véhicules immatriculés complets : hors périmètre v1 (le dépôt LBC exige
   // plaque/carte grise, flux spécifique) — fallback explicite volontaire.
   "🚗": null, "🏍️": null, "🛵": null,
-  // Beauté : aucun rayon Leboncoin (vérifié dans l'arbre) — fallback explicite.
-  "🌸": null, "💄": null, "💅": null, "🧴": null,
+  // Beauté (re-relevé LIVE 2026-07-19, wizard de dépôt) : toujours AUCUN rayon
+  // beauté dans les 13 racines — mais un sérum/parfum se vend bel et bien sur
+  // LBC (221 annonces « sérum visage », rangées au petit bonheur : Collection,
+  // Équipements commerces, Matériel médical…). DÉFAUT ASSUMÉ : Divers > Autres,
+  // l'unique fourre-tout officiel du dépôt — le null d'origine bloquait la
+  // plateforme entière (« Non vendable sur Leboncoin ») pour des produits
+  // parfaitement vendables. Appareils (💇🪒) déjà en Électroménager, inchangés.
+  "🌸": ["Divers", "Autres"], "💄": ["Divers", "Autres"],
+  "💅": ["Divers", "Autres"], "🧴": ["Divers", "Autres"],
   "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
 
   // ── Ajouts 2026-07-09 (mission mapping complet) — mêmes feuilles plates

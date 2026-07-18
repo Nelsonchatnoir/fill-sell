@@ -97,6 +97,14 @@ const SHARED_GUARD = {
   matiere: ["vinted", "beebs", "leboncoin", "ebay"],
   marque:  ["vinted", "beebs", "leboncoin", "ebay"],
 };
+// Icônes beauté PRODUIT (mêmes 4 que generate-listing) : la Couleur n'y est
+// exigée par AUCUN référentiel réel — eBay (table ebay_item_aspects) : Soins
+// 21205 et Vernis 11873 → Marque+Type, Parfums 11848/29585/112661/159719 →
+// Marque+Type+Volume+Nom, Maquillage 31804 → Teinte (label DIFFÉRENT, que le
+// champ Couleur ne satisfait pas de toute façon) ; relevé Vinted réel
+// (platform_category_aspects) : Beauté > Parfums → État seul. Les appareils
+// (💇 sèche-cheveux, 🪒 rasoirs) gardent la garde standard.
+const BEAUTY_PRODUCT_ICONS = ["🌸", "💄", "💅", "🧴"];
 
 // ── Icône objet : UNE résolution, stable, pour TOUTES les plateformes ─────────
 // (2026-07-12, run du soir) Les mappings catalogue (Vinted/eBay/Beebs/LBC) sont
@@ -2729,8 +2737,19 @@ export default function ListingPreviewScreen({
     // blocage visible dans l'app par un refus silencieux d'eBay à la publication.
     const materialGuardApplies = sizeGuardApplies;
 
+    // COULEUR — 4e cas du même bug que Taille/Matière (2026-07-19, sérum
+    // Medik8 routé 🧴 par le fix B) : gardée en aveugle sur les 3 plateformes
+    // alors qu'aucun référentiel beauté ne l'exige (détail sur
+    // BEAUTY_PRODUCT_ICONS). Le signal du bug : eBay listé dans l'encart ROUGE
+    // pour Couleur alors que son propre encart BLEU (référentiel réel de la
+    // catégorie résolue) ne la demandait pas. Beebs non relevé — DÉFAUT
+    // ASSUMÉ : pas de couleur non plus ; si un relevé l'apprend un jour,
+    // l'encart générique platform_category_aspects la réclamera.
+    const colorGuardApplies = !BEAUTY_PRODUCT_ICONS.includes(catIcon);
+
     const guardPlatforms = (key) => {
       if (key === "matiere") return materialGuardApplies ? SHARED_GUARD.matiere : [];
+      if (key === "couleur") return colorGuardApplies ? SHARED_GUARD.couleur : [];
       if (key !== "taille") return SHARED_GUARD[key];
       if (!sizeGuardApplies) return [];
       return lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD.taille;
