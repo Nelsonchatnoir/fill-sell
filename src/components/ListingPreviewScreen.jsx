@@ -680,8 +680,8 @@ function DragHandle({ bind }) {
 function CoverBadge({ lang }) {
   return (
     <span style={{
-      position:"absolute", right:6, bottom:6, background:T.teal, color:"#fff",
-      borderRadius:99, padding:"2px 7px", fontSize:9.5, fontWeight:700, whiteSpace:"nowrap",
+      position:"absolute", right:5, bottom:5, background:T.teal, color:"#fff",
+      borderRadius:99, padding:"2px 6px", fontSize:8.5, fontWeight:700, whiteSpace:"nowrap",
     }}>
       {lang === "en" ? "Cover" : "Couverture"}
     </span>
@@ -756,14 +756,18 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
         </p>
       )}
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+      {/* auto-fill minmax et non repeat(3,1fr) : le stepper est plein écran sans
+          maxWidth, 3 colonnes donnaient des tuiles énormes sur desktop. Les
+          vignettes restent carrées et compactes (~80 px) quelle que soit la
+          largeur ; le drag-to-reorder est inchangé (data-photo-idx + poignée). */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(76px, 1fr))", gap:8, marginBottom:20 }}>
         {previews.map((url, i) => {
           const tile = drag.tileProps(i);
           return (
           <div
             key={i}
             data-photo-idx={i}
-            style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}`, ...tile.style }}
+            style={{ aspectRatio:"1", borderRadius:12, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}`, ...tile.style }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
             {count > 1 && <DragHandle bind={drag.handleProps(i)} />}
@@ -786,7 +790,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
         {count < MAX && (
           <button
             onClick={() => fileRef.current?.click()}
-            style={{ aspectRatio:"1", borderRadius:16, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+            style={{ aspectRatio:"1", borderRadius:12, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
           >
             <Plus size={20} color={T.mute} />
           </button>
@@ -921,7 +925,9 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         </p>
       )}
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+      {/* Même grille compacte que StepUpload (auto-fill ~80 px) — voir le
+          commentaire là-bas. */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(76px, 1fr))", gap:8, marginBottom:20 }}>
         {photos.map((url, i) => {
           const tile = drag.tileProps(i);
           return (
@@ -929,14 +935,14 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
             key={i}
             data-photo-idx={i}
             onClick={() => { if (!drag.dragging) onPhotoClick(url); }}
-            style={{ aspectRatio:"1", borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer", ...tile.style }}
+            style={{ aspectRatio:"1", borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer", ...tile.style }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
             {photos.length > 1 && <DragHandle bind={drag.handleProps(i)} />}
             {photoOption !== "original" && i >= MAX_RETOUCHED && (
               <span style={{
-                position:"absolute", left:6, bottom:6, background:"rgba(16,32,27,0.72)", color:"#fff",
-                borderRadius:99, padding:"2px 7px", fontSize:9.5, fontWeight:700, whiteSpace:"nowrap",
+                position:"absolute", left:5, bottom:5, background:"rgba(16,32,27,0.72)", color:"#fff",
+                borderRadius:99, padding:"2px 6px", fontSize:8.5, fontWeight:700, whiteSpace:"nowrap",
               }}>
                 {lang === "en" ? "Not enhanced" : "Non retouchée"}
               </span>
@@ -958,7 +964,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         {photos.length < MAX && (
           <button
             onClick={() => addRef.current?.click()}
-            style={{ aspectRatio:"1", borderRadius:16, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+            style={{ aspectRatio:"1", borderRadius:12, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
           >
             <Plus size={20} color={T.mute} />
           </button>
