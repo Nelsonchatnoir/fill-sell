@@ -2626,6 +2626,16 @@ export default function ListingPreviewScreen({
   // eBay et on casse le lien partagé pour cette clé (override sacré), la
   // canonique et les autres copies gardent leur valeur d'origine.
   function setEbaySharedField(key, value) {
+    // État "missing" (2026-07-18, bug Couleur en double) : la valeur n'existe
+    // NULLE PART — le choix fait ici devient la CANONIQUE (une couleur ou une
+    // pointure de la liste eBay reste un libellé valable ailleurs) et remplit
+    // d'un coup toutes les copies non overridées : le bloc rouge « Il manque
+    // des infos » se satisfait en même temps, fini la double-saisie. Le lien
+    // partagé reste INTACT dans ce cas. Une canonique DÉJÀ remplie (état
+    // "invalid" : valeur hors liste fermée eBay) garde le comportement
+    // d'origine — copie eBay seule + override, la divergence est voulue.
+    const canonicalEmpty = SHARED_FIELD_KEYS.includes(key) && !String(sharedFields[key] ?? "").trim();
+    if (canonicalEmpty) setSharedField(key, value);
     setEdited(prev => {
       if (!prev.ebay) return prev;
       const pf = { ...prev.ebay.platform_fields };
@@ -2638,7 +2648,9 @@ export default function ListingPreviewScreen({
       }
       return { ...prev, ebay: { ...prev.ebay, platform_fields: pf } };
     });
-    noteSharedOverride("ebay", key); // clés hors SHARED_FIELD_KEYS (modele, stockage) : no-op
+    // Pas d'override quand le choix vient de remplir la canonique : le lien
+    // partagé doit rester vivant pour cette clé.
+    if (!canonicalEmpty) noteSharedOverride("ebay", key); // clés hors SHARED_FIELD_KEYS (modele, stockage) : no-op
   }
   // Édition manuelle d'UNE copie plateforme : le lien casse pour cette copie
   // seulement (les autres restent synchronisées sur la source).
@@ -2886,7 +2898,12 @@ export default function ListingPreviewScreen({
       // reste ÉDITABLE dans l'encart (contrairement aux champs dédiés).
       if (generic) return { name, state: "ok", source: "generic", value: generic, allowedValues, mode };
       if (PREFILLED_BY_EBAY.includes(name)) return { name, state: "prefilled", allowedValues, mode };
-      return { name, state: "missing", value: "", allowedValues, mode };
+      // sharedKey aussi en "missing" (2026-07-18, bug Couleur en double) : sans
+      // lui, le sélecteur de l'encart écrivait pf.ebayAspects["Couleur"] alors
+      // que le bloc rouge et la garde lisent pf.couleur/canonique — remplir le
+      // select eBay ne satisfaisait jamais le bloc rouge (double-saisie, et
+      // deux valeurs divergentes possibles au publish).
+      return { name, state: "missing", value: "", sharedKey: src?.key, allowedValues, mode };
     });
   }, [ebayRequiredPreview, edited]);
 
