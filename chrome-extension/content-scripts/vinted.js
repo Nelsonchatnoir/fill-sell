@@ -226,8 +226,16 @@ async function deleteClickReact(el, trace) {
   const testid = el?.getAttribute?.("data-testid");
   if (testid) {
     const res = await askBackground({ type: "VINTED_FIBER_CLICK", selector: `[data-testid="${CSS.escape(testid)}"]` });
-    if (res?.ok) { trace?.(`clic fiber onClick OK (niveau ${res.depth}, arg ${res.arg}) sur [data-testid="${testid}"]`); return true; }
-    trace?.(`clic fiber KO (${res?.reason ?? "pas de réponse"}) — repli simulateFullClick`);
+    if (res?.ok) {
+      trace?.(`clic fiber onClick OK (${res.source ?? "?"}, niveau ${res.depth}, arg ${res.arg}) sur [data-testid="${testid}"]`);
+      return true;
+    }
+    // Diagnostic remonté dans la trace (delete_trace du job) : c'est LUI qui, au
+    // run RÉEL côté propriétaire, dira si le bouton porte un onClick React ou si
+    // le handler est ailleurs / le contrôle n'est pas rendu (rect 0×0).
+    const d = res?.diag;
+    const diagStr = d ? ` | diag: rect=${d.rect?.w}x${d.rect?.h}, offsetParent=${d.offsetParent}, vis=${d.visibilityState}` : "";
+    trace?.(`clic fiber KO — ${res?.reason ?? "pas de réponse"}${diagStr} — repli simulateFullClick`);
   }
   simulateFullClick(el);
   return false;

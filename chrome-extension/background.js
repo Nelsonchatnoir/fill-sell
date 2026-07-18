@@ -2330,27 +2330,66 @@ async function vintedFiberClick(tabId, selector) {
       func: (sel) => {
         const el = document.querySelector(sel);
         if (!el) return { ok: false, reason: `élément introuvable : ${sel}` };
-        const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
-        if (!key) return { ok: false, reason: `fibers React introuvables sur ${sel}` };
+
+        // Diagnostic d'état — la fenêtre de travail est minimisée : on veut savoir
+        // CE que React expose réellement côté propriétaire (rect, fibers, props).
+        // Ce diag remonte dans la trace du job, même en échec (instrumentation
+        // 2026-07-18 : l'obs Claude-in-Chrome n'était pas propriétaire, donc non
+        // représentative — c'est le run RÉEL de Nico qui tranchera).
+        const r = el.getBoundingClientRect();
+        const diag = {
+          rect: { w: Math.round(r.width), h: Math.round(r.height) },
+          offsetParent: !!el.offsetParent,
+          visibilityState: document.visibilityState,
+        };
+
         const fakeEvent = {
-          preventDefault() {}, stopPropagation() {}, persist() {},
-          currentTarget: el, target: el, nativeEvent: {}, type: "click",
+          preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {},
+          persist() {}, currentTarget: el, target: el, nativeEvent: {}, type: "click",
           bubbles: true, isTrusted: false,
         };
-        let fiber = el[key];
-        for (let depth = 0; fiber && depth < 12; depth++, fiber = fiber.return) {
-          const p = fiber.memoizedProps;
-          if (p && typeof p === "object" && typeof p.onClick === "function") {
-            try { p.onClick(fakeEvent); return { ok: true, depth, arg: "event" }; }
-            catch (e1) {
-              try { p.onClick(); return { ok: true, depth, arg: "none" }; }
-              catch (e2) {
-                return { ok: false, reason: `onClick a jeté (event: ${String(e1?.message ?? e1)} ; sans arg: ${String(e2?.message ?? e2)})` };
+        const call = (fn, source, depth) => {
+          try { fn(fakeEvent); return { ok: true, source, depth, arg: "event", diag }; }
+          catch (e1) {
+            try { fn(); return { ok: true, source, depth, arg: "none", diag }; }
+            catch (e2) { return { ok: false, reason: `onClick (${source}) a jeté : ${String(e2?.message ?? e2)}`, diag }; }
+          }
+        };
+
+        // 1) Sac de props React 17+ sur l'élément (__reactProps$) : onClick,
+        //    onClickCapture, onPointerDown.
+        const propsKey = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+        if (propsKey) {
+          const p = el[propsKey] || {};
+          for (const h of ["onClick", "onClickCapture", "onPointerDown"]) {
+            if (typeof p[h] === "function") return call(p[h], `props.${h}`, 0);
+          }
+        }
+
+        // 2) Remontée des fibers (jusqu'à 20 niveaux), onClick ET onClickCapture —
+        //    le handler peut vivre sur un wrapper Button plusieurs niveaux au-dessus.
+        const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+        const seen = [];
+        if (fiberKey) {
+          let fiber = el[fiberKey];
+          for (let depth = 0; fiber && depth < 20; depth++, fiber = fiber.return) {
+            const p = fiber.memoizedProps;
+            if (p && typeof p === "object") {
+              for (const h of ["onClick", "onClickCapture"]) {
+                if (typeof p[h] === "function") { seen.push(`${h}@${depth}`); return call(p[h], `fiber.${h}`, depth); }
               }
             }
           }
         }
-        return { ok: false, reason: `aucun props.onClick fonction dans les 12 niveaux de ${sel}` };
+
+        // Aucun onClick React actionnable : diagnostic RICHE pour le run réel.
+        return {
+          ok: false,
+          reason:
+            `aucun onClick React actionnable sur ${sel} ` +
+            `(reactProps:${!!propsKey}, reactFiber:${!!fiberKey}, handlersVus:[${seen.join(",") || "aucun"}])`,
+          diag,
+        };
       },
     });
     return res?.result ?? { ok: false, reason: "executeScript sans résultat" };
