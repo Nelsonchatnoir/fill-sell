@@ -401,6 +401,18 @@ const MODE = {
 // platform_fields.genre (même contrat que HORS_MODE Vinted/Beebs).
 const HORS_MODE = {
   "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
+  // ── Icônes DÉFAUT de type (audit 2026-07-19) : jamais mappées → 4
+  // plateformes grisées pour tout article sans mot-clé objet. eBay a une
+  // feuille « Autres » réelle dans chaque famille (relevé
+  // ebay-categories-raw) : le défaut idéal. Ids pas encore dans
+  // ebay_item_aspects → encart bleu vide au début, rattrapable via l'API
+  // Taxonomy. 🎵 : les supports ont leurs mots-clés (💿💽📀) → le défaut
+  // Musique = instruments/accessoires. ──────────────────────────────────────
+  "🏠": { path: ["Maison", "Autres"], id: 1280 },
+  "⚡": { path: ["Électroménager", "Autres"], id: 20715 },
+  "🎵": { path: ["Instruments de musique", "Autres"], id: 308 },
+  "🏆": { path: ["Collections", "Autres"], id: 32643 },
+  "🌿": { path: ["Jardin, terrasse", "Autres"], id: 159913 },
   // ── Bijoux, montres (racine dédiée, non genrée — "Bijoux pour hommes"
   // existe en branche sœur, non atteinte par ce défaut) ─────────────────────
   // DÉFAUT ASSUMÉ : collier/bracelet/bague → feuilles sœurs dédiées sous
@@ -745,10 +757,11 @@ const HORS_MODE = {
   // couvre la regex 🎱 sauf pétanque, qui a sa propre feuille [115195].
   "🎱": { path: ["Jouets et jeux", "Jeux de café"], id: 92101 },
 
-  // ── Non mappé assumé (cf. en-tête) ────────────────────────────────────────
-  // Piste "Sports, vacances > Vacances" [3252] NON CRAWLÉE — à re-crawler
-  // avant d'activer, pas de pari.
-  "🧳": null,
+  // ── Valises (fix audit 2026-07-19) : la piste « Sports, vacances >
+  // Vacances » [3252] était NON CRAWLÉE, d'où l'ancien null. Re-relevé LIVE
+  // sur ebay.fr : Vacances 3252 > Accessoires voyage, bagagerie 157967 >
+  // Bagagerie 16080 > Valises 11236 (feuille réelle, ids des URLs /b/). ─────
+  "🧳": { path: ["Sports, vacances", "Vacances", "Accessoires voyage, bagagerie", "Bagagerie", "Valises"], id: 11236 },
 };
 
 /**

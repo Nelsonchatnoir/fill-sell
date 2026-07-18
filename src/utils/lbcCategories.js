@@ -104,6 +104,16 @@ const LBC_CATEGORIES = {
   "🌸": ["Divers", "Autres"], "💄": ["Divers", "Autres"],
   "💅": ["Divers", "Autres"], "🧴": ["Divers", "Autres"],
   "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
+  // ── Icônes DÉFAUT de type (audit 2026-07-19) : un article d'un type sans
+  // mot-clé objet reconnu tombait sur une icône jamais mappée → 4 plateformes
+  // grisées. Les feuilles LBC sont larges (2 niveaux) : parfaites en défaut.
+  // 🎵 : les supports (CD/vinyles) ont leurs mots-clés → le défaut Musique ne
+  // capte que le reste, c.-à-d. instruments et accessoires. ─────────────────
+  "🏠": ["Maison & Jardin", "Décoration"],
+  "⚡": ["Maison & Jardin", "Électroménager"],
+  "🎵": ["Loisirs", "Instruments de musique"],
+  "🏆": ["Loisirs", "Collection"],
+  "🌿": ["Maison & Jardin", "Jardin & Plantes"],
 
   // ── Ajouts 2026-07-09 (mission mapping complet) — mêmes feuilles plates
   // que leurs familles (relevé docs/leboncoin-form-survey.md, 13 racines) ───

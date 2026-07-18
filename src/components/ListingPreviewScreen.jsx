@@ -106,6 +106,36 @@ const SHARED_GUARD = {
 // (💇 sèche-cheveux, 🪒 rasoirs) gardent la garde standard.
 const BEAUTY_PRODUCT_ICONS = ["🌸", "💄", "💅", "🧴"];
 
+// Correspondances label d'aspect eBay → champ partagé de l'app — UNE seule
+// source pour l'encart bleu (ebayRequiredStatus) ET la garde data-driven du
+// bloc rouge : aucune divergence possible entre les deux.
+const EBAY_ASPECT_LABELS = {
+  marque:  ["Marque"],
+  taille:  ["Taille", "Pointure EU", "Pointure"],
+  couleur: ["Couleur", "Couleur de la monture", "Couleur extérieure"],
+  matiere: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"],
+};
+// field_key du catalogue platform_category_aspects → champ partagé de l'app.
+// MÊMES correspondances que genericKnownSource (qui mappe champ→valeur, plus
+// bas) — les deux doivent évoluer ensemble : vinted = codes d'attribut
+// serveur, LBC = attribut for= des labels du wizard, Beebs = libellés exacts.
+function genericFieldToSharedKey(platform, key) {
+  if (platform === "vinted") {
+    return { brand: "marque", size: "taille", color: "couleur", material: "matiere" }[key] ?? null;
+  }
+  if (platform === "leboncoin") {
+    if (/_brand$/.test(key)) return "marque";
+    if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return "taille";
+    if (/_material$/.test(key)) return "matiere";
+    if (/_colou?r$/.test(key)) return "couleur";
+    return null;
+  }
+  if (platform === "beebs") {
+    return { "Marque": "marque", "Pointure": "taille", "Taille": "taille", "Couleur": "couleur", "Matière": "matiere" }[key] ?? null;
+  }
+  return null;
+}
+
 // ── Icône objet : UNE résolution, stable, pour TOUTES les plateformes ─────────
 // (2026-07-12, run du soir) Les mappings catalogue (Vinted/eBay/Beebs/LBC) sont
 // tous indexés par l'icône objet, et l'icône était calculée depuis le titre de
@@ -2688,6 +2718,14 @@ export default function ListingPreviewScreen({
     });
   }, [edited, initialListing]);
 
+  // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
+  // leurs effets de chargement restent plus bas, à côté des encarts bleus
+  // qu'ils nourrissaient déjà : ebayRequiredPreview = requis eBay COMPLETS de
+  // la catégorie résolue (ebay_item_aspects) ; genericAspectsCatalog = requis
+  // APPRIS Vinted/LBC/Beebs (platform_category_aspects, relevés cumulés).
+  const [ebayRequiredPreview, setEbayRequiredPreview] = useState(null);
+  const [genericAspectsCatalog, setGenericAspectsCatalog] = useState({});
+
   // Détaillé : [{ key, platforms:[ids] }] — expose les plateformes gardées de
   // chaque champ manquant (pour afficher leur origine dans l'encart rouge, comme
   // le fait l'encart bleu). `missingSharedFields` (les clés seules) en dérive et
@@ -2732,9 +2770,8 @@ export default function ListingPreviewScreen({
     // …alors qu'elle a un vrai sens sur les vêtements (coton/laine/cuir). On la
     // garde donc sur la Mode (même périmètre que la Taille, vêtements de sport
     // inclus) et on cesse de bloquer ailleurs.
-    // Couleur et Marque restent gardées partout : elles, eBay les EXIGE sur les
-    // 4 catégories ci-dessus, meuble compris — les retirer remplacerait un
-    // blocage visible dans l'app par un refus silencieux d'eBay à la publication.
+    // (Depuis les gardes data-driven ci-dessous, ces scopes ne servent plus
+    // que de FALLBACK quand le référentiel de la catégorie n'est pas chargé.)
     const materialGuardApplies = sizeGuardApplies;
 
     // COULEUR — 4e cas du même bug que Taille/Matière (2026-07-19, sérum
@@ -2747,12 +2784,46 @@ export default function ListingPreviewScreen({
     // l'encart générique platform_category_aspects la réclamera.
     const colorGuardApplies = !BEAUTY_PRODUCT_ICONS.includes(catIcon);
 
-    const guardPlatforms = (key) => {
+    // ── Gardes DATA-DRIVEN (2026-07-19) ─────────────────────────────────────
+    // 4 bugs de la même classe en une semaine (taille 12/07, matière 12/07,
+    // couleur beauté 18/07, audit 19/07 : ~90 catégories eBay sur-gardées en
+    // Couleur, médias sur-gardés en Marque, gants/casquettes sous-gardés en
+    // Taille) : une liste FIGÉE ne peut pas suivre les exigences réelles par
+    // catégorie. Les référentiels sont DÉJÀ chargés pour les encarts bleus —
+    // on branche la garde dessus. Par (champ, plateforme) :
+    //   · source dispo   → gardé SSI le référentiel exige le champ
+    //     (eBay : ebayRequiredPreview, vérité COMPLÈTE de la catégorie ;
+    //      Vinted/LBC/Beebs : genericAspectsCatalog, relevés cumulés) ;
+    //   · source absente (catégorie jamais relevée, chargement en cours,
+    //     échec réseau, ou catégorie sans aucun requis — indistinguable) →
+    //     FALLBACK = la garde statique scopée, à l'identique d'avant.
+    // Pendant le chargement async, la statique s'applique et le CTA Publier
+    // dérive du MÊME memo (requiredBlocking) : jamais publiable trop tôt sur
+    // un champ que les vraies données confirmeraient. Une sous-garde due à un
+    // relevé V/B incomplet reste rattrapée par le gate pré-clic de
+    // l'extension, dont l'échec sert de relevé correctif (philosophie 1.A).
+    const staticGuard = (key) => {
       if (key === "matiere") return materialGuardApplies ? SHARED_GUARD.matiere : [];
       if (key === "couleur") return colorGuardApplies ? SHARED_GUARD.couleur : [];
       if (key !== "taille") return SHARED_GUARD[key];
       if (!sizeGuardApplies) return [];
       return lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD.taille;
+    };
+    const guardPlatforms = (key) => {
+      const fallback = staticGuard(key);
+      return ["vinted", "leboncoin", "beebs", "ebay"].filter(p => {
+        if (p === "ebay") {
+          // ebayRequiredPreview n'est chargé que si eBay est sélectionné et
+          // sa catégorie résolue — sinon fallback (le filtre selected en aval
+          // neutralise de toute façon une plateforme non cochée).
+          return ebayRequiredPreview
+            ? ebayRequiredPreview.some(a => EBAY_ASPECT_LABELS[key].includes(a.name))
+            : fallback.includes("ebay");
+        }
+        return genericAspectsCatalog[p]
+          ? genericAspectsCatalog[p].some(r => genericFieldToSharedKey(p, r.field_key) === key)
+          : fallback.includes(p);
+      });
     };
     // Manquant si la canonique est vide OU si la copie d'une plateforme
     // gardée sélectionnée est vide : les jobs partent depuis
@@ -2767,7 +2838,7 @@ export default function ListingPreviewScreen({
       if (!canonicalEmpty && !copyEmpty) return null;
       return { key, platforms: guarded };
     }).filter(Boolean);
-  }, [sharedFields, selected, edited, initialListing]);
+  }, [sharedFields, selected, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog]);
 
   const missingSharedFields = useMemo(
     () => missingSharedFieldsDetailed.map(f => f.key),
@@ -2836,7 +2907,6 @@ export default function ListingPreviewScreen({
     const icon = resolveArticleIcon({ initialListing, edited, pf });
     return getEbayCategoryId(icon, pf.genre) ?? null;
   }, [selected, edited, initialListing]);
-  const [ebayRequiredPreview, setEbayRequiredPreview] = useState(null);
   useEffect(() => {
     if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); return; }
     let alive = true;
@@ -2871,11 +2941,13 @@ export default function ListingPreviewScreen({
     // champ de platform_fields où écrit le sélecteur de l'encart (état
     // "invalid"). `send` = valeur telle que l'EXTENSION l'enverra (ebay.js
     // strip « EU » sur la taille) — c'est ELLE qu'on valide contre la liste.
+    // Labels des 4 champs partagés : EBAY_ASPECT_LABELS (constante module,
+    // partagée avec la garde data-driven du bloc rouge — une seule source).
     const sources = [
-      { key: "marque",   labels: ["Marque"], get: () => pf.marque },
-      { key: "taille",   labels: ["Taille", "Pointure EU", "Pointure"], get: () => pf.taille, send: v => String(v).replace(/^EU\s*/i, "") },
-      { key: "couleur",  labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], get: () => pf.colors?.[0] || pf.couleur },
-      { key: "matiere",  labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], get: () => pf.matiere },
+      { key: "marque",   labels: EBAY_ASPECT_LABELS.marque, get: () => pf.marque },
+      { key: "taille",   labels: EBAY_ASPECT_LABELS.taille, get: () => pf.taille, send: v => String(v).replace(/^EU\s*/i, "") },
+      { key: "couleur",  labels: EBAY_ASPECT_LABELS.couleur, get: () => pf.colors?.[0] || pf.couleur },
+      { key: "matiere",  labels: EBAY_ASPECT_LABELS.matiere, get: () => pf.matiere },
       { key: "modele",   labels: ["Modèle"], get: () => pf.modele },
       { key: "stockage", labels: ["Capacité de stockage"], get: () => pf.stockage },
     ];
@@ -3066,7 +3138,6 @@ export default function ListingPreviewScreen({
   // réellement. Le contraste avec les effets eBay (qui ne bouclaient pas) tient
   // à leur dépendance à ebayPreviewCategoryId, une valeur primitive.
   const genericCategoryKeysSig = JSON.stringify(genericCategoryKeys);
-  const [genericAspectsCatalog, setGenericAspectsCatalog] = useState({});
   useEffect(() => {
     const entries = Object.entries(JSON.parse(genericCategoryKeysSig));
     // Garde d'égalité de contenu : ne jamais reposer un {} d'identité neuve si

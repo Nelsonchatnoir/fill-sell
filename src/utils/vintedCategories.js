@@ -640,6 +640,18 @@ const HORS_MODE = {
   "🚗": null,
   "🪖": null, // casque moto — équipement du motard, même racine absente
   "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
+
+  // ── Icônes DÉFAUT de type (audit 2026-07-19) : atteintes quand un article
+  // d'un type sans mot-clé objet reconnu arrive — elles n'avaient AUCUN
+  // mapping nulle part (4 plateformes grisées, CTA mort, même bug que le
+  // défaut Beauté fixé le 19/07). Vinted n'a de fourre-tout que pour la
+  // Collection ; les autres types n'ont que des feuilles trop spécifiques
+  // (une feuille au hasard casserait la publi) → null documenté, LBC/eBay
+  // prennent le relais. 🎵 : Vinted n'a que les SUPPORTS (CD/vinyles, déjà
+  // couverts par les mots-clés 💿💽📀) — un défaut Musique est un
+  // instrument/accessoire, absent de l'arbre Vinted. ────────────────────────
+  "🏆": ["Loisirs et collections", "Souvenirs", "Autres souvenirs"],
+  "🏠": null, "⚡": null, "🎵": null, "🌿": null,
 };
 
 /**
