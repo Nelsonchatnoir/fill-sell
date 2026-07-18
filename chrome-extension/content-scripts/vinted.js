@@ -241,157 +241,91 @@ async function deleteClickReact(el, trace) {
   return false;
 }
 
+// Jeton CSRF Vinted : dans un <script> inline, en JSON échappé
+// (\"csrf_token\":\"…\"). Relevé en direct le 2026-07-18. Repli meta.
+function extractVintedCsrfToken() {
+  for (const s of document.querySelectorAll("script:not([src])")) {
+    const m = (s.textContent || "").match(/\\?"csrf[_-]?token\\?"\s*:\s*\\?"([^"\\]+)\\?"/i);
+    if (m) return m[1];
+  }
+  const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf_token"]');
+  return meta ? meta.getAttribute("content") : null;
+}
+function getVintedCookie(name) {
+  const c = document.cookie.split("; ").find((x) => x.indexOf(name + "=") === 0);
+  return c ? c.split("=").slice(1).join("=") : null;
+}
+
+// ── SUPPRESSION VINTED PAR API (2026-07-18) ───────────────────────────────────
+// Le DOM ne peut PAS marcher en fenêtre de travail minimisée : le bouton
+// "Supprimer" de Vinted n'obtient son handler React qu'après un VRAI scroll/paint
+// (hydratation paresseuse à l'intersection) — impossible dans une fenêtre jamais
+// rendue. PROUVÉ en direct : 5 s sans scroller → bouton 0×0 sans onClick ;
+// window.scrollTo (programmatique) ne l'hydrate pas ; seul un vrai scroll molette
+// le fait. On supprime donc par l'API — même origine, aucun DOM, 100% invisible,
+// indépendant de l'état de la fenêtre. Requête relevée en direct sur le vrai
+// flux (capture PerformanceObserver + patch XHR, tokens vérifiés par un PUT
+// is_hidden qui a répondu 200) :
+//   POST /api/v2/items/{id}/delete
+//   X-CSRF-Token (script inline), X-Anon-Id (cookie anon_id), Accept/Content-Type JSON.
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[vinted][delete] ${line}`); };
 
-  // Le background a navigué l'onglet de travail sur listing_url : on doit
-  // être sur la page de l'annonce (côté propriétaire).
+  // Le background a navigué l'onglet de travail sur listing_url : on est sur la
+  // page de l'annonce (même origine vinted.fr → cookies + tokens accessibles).
   if (!/\/items\/\d+/.test(location.pathname)) {
     return { success: false, error: `Page inattendue pour une suppression Vinted : ${location.href}`, trace };
   }
-  t(`page annonce ok : ${location.pathname}`);
-  await humanPause(800, 1800);
-
-  // Sélecteur CONFIRMÉ (session réelle 2026-07-11) en tête de cascade, puis
-  // repli générique testid → texte exact → menu "plus d'options" (ouvrir un
-  // menu n'est pas destructif, cliquer "Supprimer" le serait — jamais fait
-  // en dry-run).
-  let control =
-    document.querySelector('[data-testid="item-delete-button"]') ??
-    document.querySelector('[data-testid*="delete"]');
-  if (control) t(`contrôle trouvé par testid : ${control.getAttribute("data-testid")}`);
-
-  if (!control) {
-    control = findDeleteByText();
-    if (control) t(`contrôle trouvé par texte : "${control.textContent.trim()}"`);
+  const itemId = location.pathname.match(/\/items\/(\d+)/)?.[1];
+  if (!itemId) {
+    return { success: false, error: `Id d'annonce introuvable dans ${location.pathname}`, trace };
   }
+  t(`page annonce ok : item ${itemId}`);
 
-  if (!control) {
-    // Menu "..." / "Plus d'options" éventuel sur la page annonce vendeur.
-    const menuBtn = Array.from(document.querySelectorAll("button")).find((b) => {
-      const label = (b.getAttribute("aria-label") || "").toLowerCase();
-      return /options|plus d|more/.test(label);
-    });
-    if (menuBtn) {
-      t(`menu candidat ouvert : aria-label="${menuBtn.getAttribute("aria-label")}"`);
-      simulateFullClick(menuBtn);
-      await humanPause(600, 1200);
-      control = document.querySelector('[data-testid*="delete"]') || findDeleteByText();
-      if (control) t(`contrôle trouvé dans le menu : "${control.textContent.trim()}"`);
-    }
-  }
-
-  if (!control) {
-    const visible = Array.from(document.querySelectorAll("button, a"))
-      .map((b) => b.textContent.trim()).filter((s) => s && s.length < 40).slice(0, 25);
-    t(`contrôle Supprimer INTROUVABLE — libellés visibles : ${visible.join(" | ")}`);
-    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Contrôle de suppression introuvable sur la page annonce", trace };
-  }
+  const csrf = extractVintedCsrfToken();
+  const anonId = getVintedCookie("anon_id");
+  t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
 
   if (DELETE_DRY_RUN) {
-    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    t("🧪 DELETE_DRY_RUN actif — endpoint prêt, AUCUN appel de suppression.");
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  // ── LIVE ─────────────────────────────────────────────────────────────────
-  // ⚠️ GARDE DE PEINTURE SUPPRIMÉE (2026-07-13). Elle exigeait que le bouton
-  // mesure plus de 0×0 avant de cliquer — or l'onglet de travail vit désormais
-  // dans une fenêtre MINIMISÉE, jamais rendue : le bouton y mesure TOUJOURS 0×0.
-  // Cette garde interdisait donc purement et simplement toute suppression Vinted.
-  // Son hypothèse de départ (« sans layout, le clic part dans le vide et les
-  // handlers React ne sont pas attachés ») est INFIRMÉE par un run réel du
-  // 2026-07-13 : en fenêtre minimisée, les clics de suppression eBay ont bel et
-  // bien retiré les deux annonces. Le clic fonctionne sans layout ; c'était la
-  // LECTURE (rects, innerText) qui était aveugle, pas l'action.
-  // On clique donc, et c'est la MODALE qui fait foi juste après — puis, en
-  // dernier ressort, l'état réel de l'annonce, vérifié par le background.
-  t(`bouton Supprimer localisé (visibilityState=${document.visibilityState}, pas de mesure de layout) — clic`);
-  control.scrollIntoView({ block: "center" });
-  await humanPause(600, 1200);
-  await deleteClickReact(control, t);
-  await humanPause(800, 1600);
-
-  // ── APRÈS LE CLIC SUPPRIMER — la modale n'est PAS obligatoire (2026-07-18) ───
-  // Vinted ne montre pas toujours une modale de confirmation : dans certains cas
-  // le clic supprime DIRECTEMENT (redirection hors /items/, ou page introuvable).
-  // L'ancien code EXIGEAIT la modale et échouait sinon (« Modale de confirmation
-  // introuvable ») alors que l'annonce pouvait être déjà supprimée — ou sur le
-  // point de l'être sans modale. On attend désormais le PREMIER des deux
-  // résultats : suppression EFFECTIVE, ou modale à valider.
-  const gone = () =>
-    !location.pathname.includes("/items/") || /\/not-found|\/404/.test(location.pathname);
-
-  const findConfirm = () =>
-    document.querySelector('[data-testid="item-delete-confirmation-button"]') ??
-    (() => {
-      // La modale de SUPPRESSION Vinted uniquement — surtout PAS la bannière
-      // cookies (elle aussi [role="dialog"], vu en direct le 2026-07-18) : on
-      // exige un texte de suppression ET on écarte tout marqueur de consentement.
-      const dialog = document.querySelector(
-        '[class*="item-delete-modal"], [data-testid*="delete"][role="dialog"], [role="dialog"], .ReactModal__Content'
-      );
-      if (!dialog) return null;
-      const txt = dialog.textContent || "";
-      if (!/supprimer|article|delete/i.test(txt)) return null;
-      if (/cookie|consent|fournisseur|\biab\b|intérêt légitime/i.test(txt)) return null;
-      return Array.from(dialog.querySelectorAll("button"))
-        .find((b) => /confirmer et supprimer|supprimer/i.test(b.textContent)) ?? null;
-    })();
-
-  const outcome = await waitFor(() => {
-    if (gone()) return { kind: "gone" };
-    const c = findConfirm();
-    if (c) return { kind: "modal", confirm: c };
-    return null;
-  }, 8000);
-
-  // Cas 1 : déjà supprimée au clic, sans modale → succès direct (pas de modale à
-  // chercher, on ne fabrique pas un échec sur une annonce bel et bien retirée).
-  if (outcome?.kind === "gone") {
-    t("annonce disparue directement après le clic Supprimer (aucune modale) — suppression confirmée");
-    return { success: true, trace };
-  }
-
-  // Cas 2 : modale de confirmation → on la valide, puis on EXIGE la disparition.
-  // (Ne JAMAIS renvoyer success sur la seule foi du clic : deleteClickReact reste
-  // non vérifié en fenêtre cachée. Vinted redirige hors de /items/ après une
-  // suppression réelle — c'est cette disparition qui fait foi. Un faux négatif
-  // ici reste SÛR : le background revérifie l'état réel et confirme.)
-  if (outcome?.kind === "modal") {
-    t(`modale de confirmation : "${outcome.confirm.textContent.trim()}"`);
-    await deleteClickReact(outcome.confirm, t);
-    const done = await waitFor(() => (gone() ? true : null), 8000);
-    if (!done) {
-      t("confirmation cliquée mais l'annonce est toujours affichée — suppression NON confirmée");
+  try {
+    const resp = await fetch(`/api/v2/items/${itemId}/delete`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        ...(anonId ? { "X-Anon-Id": anonId } : {}),
+      },
+    });
+    t(`API delete /api/v2/items/${itemId}/delete → HTTP ${resp.status}`);
+    // 200/204 = supprimée ; 404 = déjà absente (idempotent) → succès.
+    if (resp.ok || resp.status === 204 || resp.status === 404) {
+      return { success: true, trace };
+    }
+    // 401/403 = session/CSRF invalide → reconnexion (pas un échec sec).
+    if (resp.status === 401 || resp.status === 403) {
       return {
         success: false,
-        error:
-          "Confirmation cliquée mais l'annonce Vinted est toujours affichée (pas de disparition) — suppression non confirmée",
+        needsUser: true,
+        error: `Suppression Vinted refusée (HTTP ${resp.status}) : session ou jeton CSRF invalide. Se reconnecter à Vinted.`,
         trace,
       };
     }
-    t("redirection hors de la page annonce — suppression confirmée");
-    return { success: true, trace };
+    // Autre code : le background revérifie l'état réel (jamais de faux « deleted »).
+    return {
+      success: false,
+      error: `Suppression Vinted : l'API a répondu HTTP ${resp.status}. Le background revérifie l'état réel de l'annonce.`,
+      trace,
+    };
+  } catch (e) {
+    return { success: false, error: `Suppression Vinted (appel API) : ${String(e?.message ?? e)}`, trace };
   }
-
-  // Cas 3 : ni disparition, ni modale (clic sans effet en fenêtre cachée, ou
-  // markup inconnu) → ÉCHEC HONNÊTE, jamais un faux « deleted ». Le background
-  // revérifie l'état réel de l'annonce et ré-arme. Testids remontés pour le
-  // diagnostic si Vinted a changé son markup.
-  const testids = [...document.querySelectorAll("[data-testid]")]
-    .map((e) => e.getAttribute("data-testid"))
-    .filter((id) => /delete|modal|dialog|confirm/i.test(id));
-  t(`ni disparition ni modale après le clic Supprimer — testids présents : ${testids.join(", ") || "(aucun)"}`);
-  return {
-    success: false,
-    error:
-      `Après le clic Supprimer : ni disparition de l'annonce, ni modale de confirmation détectée ` +
-      `(testids présents : ${testids.join(", ") || "aucun"}). L'annonce est peut-être toujours en ligne — ` +
-      `le background revérifie son état réel.`,
-    trace,
-  };
 }
 
 function findDeleteByText() {
