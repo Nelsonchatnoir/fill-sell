@@ -562,6 +562,11 @@ const HORS_MODE = {
   "🎼": null, "🧵": null,
   "📮": null, "🪙": null, "📰": null, "🐕": null,
   "🏍️": null, "🛵": null, "🛞": null, "🚗": null, "🪖": null,
+  // ── Icônes DÉFAUT de type (audit 2026-07-19) : Beebs (marketplace
+  // famille/enfant, 5 racines) n'a ni Collection, ni Musique, ni Jardin, et
+  // sa racine Maison n'offre que des feuilles trop spécifiques pour un objet
+  // inconnu → null documenté, LBC/eBay prennent le relais. ──────────────────
+  "🏠": null, "⚡": null, "🎵": null, "🏆": null, "🌿": null,
 };
 
 /**
