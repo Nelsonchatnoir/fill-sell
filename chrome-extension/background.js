@@ -2331,90 +2331,109 @@ async function commitVintedPrice(tabId, value) {
   }
 }
 
-// ── Clic React DIRECT par fibers, monde MAIN (2026-07-17, ⚠️ NON VÉRIFIÉ) ─────
-// MÊME canal prouvé que commitVintedPrice : dans la fenêtre de travail
-// invisible/minimisée, les events synthétiques (simulateFullClick) et le CDP
-// input ne déclenchent PAS les handlers React. Résultat vécu : la SUPPRESSION
-// Vinted clique bien [data-testid="item-delete-button"] mais la modale de
-// confirmation ne se monte jamais (« Modale de confirmation introuvable »),
-// l'annonce reste en ligne. eBay/LBC n'ont pas ce souci (pas de modale React
-// dépendante du rendu).
-// Parade : trouver le bouton par selector, remonter ses fibers jusqu'au premier
-// niveau portant un props.onClick fonction, et L'APPELER DIRECTEMENT. Un
-// appel de handler est une mise à jour d'état React — elle passe sans event,
-// sans focus, sans rendu (exactement comme onChange pour le prix).
-// ⚠️ INCERTITUDE à lever au 1er test réel : le handler peut lire l'event
-// (e.preventDefault / e.currentTarget). On passe donc un event MINIMAL simulé ;
-// si l'appel jette, on retente sans argument. À VÉRIFIER sur annonce Vinted live
-// avant tout merge/déploiement.
+// ── Clic React DIRECT par fibers/props, monde MAIN ────────────────────────────
+// MÊME canal que commitVintedPrice : dans la fenêtre de travail minimisée, les
+// events synthétiques ne déclenchent pas les handlers React. On appelle donc
+// DIRECTEMENT le onClick React du bouton (mise à jour d'état, sans event ni rendu).
+//
+// ⚠️ CAUSE ÉLUCIDÉE le 2026-07-18 (observation en direct, en tant que PROPRIÉTAIRE
+// de l'annonce) : la suppression Vinted échouait (« Modale de confirmation
+// introuvable / ni disparition ni modale ») non pas parce que le clic n'aboutit
+// pas, mais parce que le bouton "Supprimer" (item-delete-button) est HYDRATÉ
+// PARESSEUSEMENT — son onClick React n'existe QUE lorsque la colonne d'actions
+// owner entre dans le VIEWPORT (intersection). Sur 5 s sans scroller : 0×0, aucun
+// onClick. Après un vrai scroll : 361×36 + __reactProps$.onClick, et l'appeler
+// supprime bien l'annonce. L'extension cliquait AVANT hydratation → onClick absent.
+// Parade (ci-dessous) : ATTENDRE l'hydratation en amenant la zone dans le viewport
+// (scroll par paliers), poller l'onClick, puis l'appeler. Un élément déjà hydraté
+// (bouton de confirmation d'une modale fraîche) est pris au 1er tour, sans scroll.
 async function vintedFiberClick(tabId, selector) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
       args: [selector],
-      func: (sel) => {
-        const el = document.querySelector(sel);
-        if (!el) return { ok: false, reason: `élément introuvable : ${sel}` };
-
-        // Diagnostic d'état — la fenêtre de travail est minimisée : on veut savoir
-        // CE que React expose réellement côté propriétaire (rect, fibers, props).
-        // Ce diag remonte dans la trace du job, même en échec (instrumentation
-        // 2026-07-18 : l'obs Claude-in-Chrome n'était pas propriétaire, donc non
-        // représentative — c'est le run RÉEL de Nico qui tranchera).
-        const r = el.getBoundingClientRect();
-        const diag = {
-          rect: { w: Math.round(r.width), h: Math.round(r.height) },
-          offsetParent: !!el.offsetParent,
-          visibilityState: document.visibilityState,
+      func: async (sel) => {
+        const diagOf = () => {
+          const el = document.querySelector(sel);
+          const r = el ? el.getBoundingClientRect() : null;
+          return {
+            rect: r ? { w: Math.round(r.width), h: Math.round(r.height) } : null,
+            offsetParent: !!(el && el.offsetParent),
+            visibilityState: document.visibilityState,
+          };
         };
 
-        const fakeEvent = {
-          preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {},
-          persist() {}, currentTarget: el, target: el, nativeEvent: {}, type: "click",
-          bubbles: true, isTrusted: false,
-        };
-        const call = (fn, source, depth) => {
-          try { fn(fakeEvent); return { ok: true, source, depth, arg: "event", diag }; }
-          catch (e1) {
-            try { fn(); return { ok: true, source, depth, arg: "none", diag }; }
-            catch (e2) { return { ok: false, reason: `onClick (${source}) a jeté : ${String(e2?.message ?? e2)}`, diag }; }
+        // Récupère le onClick React de l'élément : sac de props (__reactProps$)
+        // puis remontée des fibers (onClick/onClickCapture, 20 niveaux).
+        const getHandler = (el) => {
+          if (!el) return null;
+          const pk = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+          if (pk) {
+            const p = el[pk] || {};
+            for (const h of ["onClick", "onClickCapture", "onPointerDown"]) {
+              if (typeof p[h] === "function") return { fn: p[h], source: `props.${h}` };
+            }
           }
-        };
-
-        // 1) Sac de props React 17+ sur l'élément (__reactProps$) : onClick,
-        //    onClickCapture, onPointerDown.
-        const propsKey = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
-        if (propsKey) {
-          const p = el[propsKey] || {};
-          for (const h of ["onClick", "onClickCapture", "onPointerDown"]) {
-            if (typeof p[h] === "function") return call(p[h], `props.${h}`, 0);
-          }
-        }
-
-        // 2) Remontée des fibers (jusqu'à 20 niveaux), onClick ET onClickCapture —
-        //    le handler peut vivre sur un wrapper Button plusieurs niveaux au-dessus.
-        const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
-        const seen = [];
-        if (fiberKey) {
-          let fiber = el[fiberKey];
-          for (let depth = 0; fiber && depth < 20; depth++, fiber = fiber.return) {
-            const p = fiber.memoizedProps;
-            if (p && typeof p === "object") {
-              for (const h of ["onClick", "onClickCapture"]) {
-                if (typeof p[h] === "function") { seen.push(`${h}@${depth}`); return call(p[h], `fiber.${h}`, depth); }
+          const fk = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+          if (fk) {
+            let f = el[fk];
+            for (let d = 0; f && d < 20; d++, f = f.return) {
+              const p = f.memoizedProps;
+              if (p && typeof p === "object") {
+                for (const h of ["onClick", "onClickCapture"]) {
+                  if (typeof p[h] === "function") return { fn: p[h], source: `fiber.${h}@${d}` };
+                }
               }
             }
           }
+          return null;
+        };
+        const call = (fn, source) => {
+          const ev = {
+            preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {},
+            persist() {}, currentTarget: document.querySelector(sel), target: document.querySelector(sel),
+            nativeEvent: {}, type: "click", bubbles: true, isTrusted: false,
+          };
+          try { fn(ev); return { ok: true, source, arg: "event", diag: diagOf() }; }
+          catch (e1) {
+            try { fn(); return { ok: true, source, arg: "none", diag: diagOf() }; }
+            catch (e2) { return { ok: false, reason: `onClick (${source}) a jeté : ${String(e2?.message ?? e2)}`, diag: diagOf() }; }
+          }
+        };
+
+        // ⚠️ CAUSE RACINE (prouvée en direct le 2026-07-18, propriétaire) : le
+        // bouton "Supprimer" (item-delete-button) est HYDRATÉ PARESSEUSEMENT — il
+        // n'a son onClick React QUE lorsque la colonne d'actions owner entre dans
+        // le VIEWPORT (intersection au scroll). L'extension cliquait avant → onClick
+        // absent → rien. On ATTEND donc l'hydratation, en amenant la zone dans le
+        // viewport (scroll) pour la déclencher, puis on appelle l'onClick.
+        // Un élément déjà hydraté (bouton de confirmation d'une modale fraîche)
+        // est trouvé au 1er tour, sans scroll.
+        const deadline = Date.now() + 12000;
+        let tick = 0;
+        while (Date.now() < deadline) {
+          const el = document.querySelector(sel);
+          if (el) {
+            const h = getHandler(el);
+            if (h) return call(h.fn, h.source);
+            // Pas encore hydraté : provoquer l'intersection. scrollIntoView est un
+            // no-op sur un élément 0×0, donc on scrolle AUSSI la fenêtre par paliers.
+            try { el.scrollIntoView({ block: "center" }); } catch {}
+            const max = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, 1);
+            window.scrollTo(0, (tick * 400) % (max + 400));
+            tick++;
+          }
+          await new Promise((r) => setTimeout(r, 300));
         }
 
-        // Aucun onClick React actionnable : diagnostic RICHE pour le run réel.
+        const el = document.querySelector(sel);
+        const pk = !!(el && Object.keys(el).some((k) => k.startsWith("__reactProps$")));
+        const fk = !!(el && Object.keys(el).some((k) => k.startsWith("__reactFiber$")));
         return {
           ok: false,
-          reason:
-            `aucun onClick React actionnable sur ${sel} ` +
-            `(reactProps:${!!propsKey}, reactFiber:${!!fiberKey}, handlersVus:[${seen.join(",") || "aucun"}])`,
-          diag,
+          reason: `aucun onClick React après 12 s d'attente d'hydratation sur ${sel} (reactProps:${pk}, reactFiber:${fk})`,
+          diag: diagOf(),
         };
       },
     });
