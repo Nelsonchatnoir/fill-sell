@@ -1374,6 +1374,15 @@ async function getOrCreateWorkTab(platform, url) {
   return tab.id;
 }
 
+// Hosts couverts par host_permissions (manifest.json) — À GARDER SYNCHRONE avec
+// le manifest. Sert UNIQUEMENT au diagnostic de neutralizeBeforeUnload :
+// distinguer un host réellement hors manifest (permission manquante, à ajouter)
+// d'une page sans document scriptable sur un host couvert (onglet déchargé,
+// page d'erreur chrome-error:// après un échec réseau) — les deux produisent le
+// MÊME message générique Chrome (« must request permission »).
+const MANIFEST_HOSTS_RE =
+  /^https:\/\/([a-z0-9-]+\.)*(vinted\.(fr|com)|leboncoin\.fr|ebay\.(fr|com)|beebs\.app|fillsell\.app|tojihnuawsoohlolangc\.supabase\.co)(\/|$)/i;
+
 // Neutralise tout handler beforeunload de la page AVANT une navigation ou une
 // fermeture PROGRAMMATIQUE de l'onglet de travail (les 4 plateformes passent par
 // ici). Sans ça, une page de dépôt/édition aux modifications non enregistrées
@@ -1391,11 +1400,27 @@ async function getOrCreateWorkTab(platform, url) {
 // (pas au chargement) car le site RÉ-arme le handler à chaque édition de champ —
 // un neutraliseur posé une fois serait réécrit ensuite.
 //
-// Retourne true si la neutralisation a pu s'exécuter ; false si l'onglet est
-// injoignable — cas typique : un dialogue beforeunload est DÉJÀ ouvert et bloque
-// le renderer (l'injection ne reviendrait jamais). Ce false est le signal d'un
-// état « bloqué » DISTINCT d'une lecture indéterminée normale.
+// Retourne true si la suite (update/remove) ne risque AUCUN dialogue : soit la
+// neutralisation s'est exécutée, soit il n'y a rien à neutraliser (onglet
+// déchargé, fermé, page d'erreur — pas de document = pas de handlers). false =
+// vrai risque de dialogue : renderer figé (dialogue probablement DÉJÀ ouvert)
+// ou host réellement hors manifest.
 async function neutralizeBeforeUnload(tabId) {
+  // État réel AVANT d'injecter (fix 2026-07-18). Un onglet DÉCHARGÉ — le chemin
+  // NORMAL de navigateWorkTab après un tabs.discard réussi — n'a plus ni
+  // renderer ni document : ses handlers beforeunload sont morts avec la page,
+  // rien à neutraliser, aucun dialogue possible. Injecter quand même faisait
+  // échouer executeScript avec l'erreur générique de Chrome « Cannot access
+  // contents of the page. Extension manifest must request permission... » —
+  // qui signale une CIBLE NON SCRIPTABLE (onglet déchargé, page d'erreur
+  // chrome-error://), PAS une permission manquante : les hosts des 4
+  // plateformes sont tous couverts (audit host_permissions du 2026-07-18).
+  // L'ancien log recopiait ce message en l'attribuant à un « dialogue déjà
+  // ouvert » : faux diagnostic (même famille que le postulat tabs.remove).
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) return true;            // onglet déjà fermé : rien à neutraliser
+  if (tab.discarded) return true;   // page déchargée : pas de handlers possibles
+
   try {
     const inject = chrome.scripting.executeScript({
       target: { tabId },
@@ -1421,10 +1446,35 @@ async function neutralizeBeforeUnload(tabId) {
     try { await Promise.race([inject, guard]); } finally { clearTimeout(timer); }
     return true;
   } catch (e) {
-    console.warn(
-      `[background] neutralizeBeforeUnload(${tabId}) : onglet injoignable — ` +
-      `dialogue beforeunload DÉJÀ ouvert ? (${String(e?.message ?? e)})`
-    );
+    // Diagnostic par CAUSE — toujours avec l'URL réelle de l'onglet, pour ne
+    // plus jamais avoir à deviner le host après coup.
+    const msg = String(e?.message ?? e);
+    const url = tab.url || "(url inconnue)";
+    if (/cannot access|must request permission/i.test(msg)) {
+      if (MANIFEST_HOSTS_RE.test(url)) {
+        // Host couvert mais document non scriptable : l'onglet vient d'être
+        // déchargé (course avec tabs.get) ou affiche une page d'erreur Chrome
+        // (échec réseau). Pas de document = pas de handler = pas de dialogue.
+        console.log(
+          `[background] neutralizeBeforeUnload(${tabId}) : rien à neutraliser — document non scriptable ` +
+          `(onglet déchargé ou page d'erreur Chrome) sur ${url}`
+        );
+        return true;
+      }
+      console.warn(
+        `[background] neutralizeBeforeUnload(${tabId}) : PERMISSION MANQUANTE — ${url} n'est pas couvert ` +
+        `par host_permissions du manifest. Si cet host est légitime, l'ajouter au manifest. (${msg})`
+      );
+      return false;
+    }
+    if (msg.includes("timeout")) {
+      console.warn(
+        `[background] neutralizeBeforeUnload(${tabId}) : injection sans réponse après 3 s sur ${url} — ` +
+        "renderer figé, dialogue beforeunload natif probablement DÉJÀ ouvert (à fermer à la main)"
+      );
+      return false;
+    }
+    console.warn(`[background] neutralizeBeforeUnload(${tabId}) : échec sur ${url} — ${msg}`);
     return false;
   }
 }
@@ -1526,7 +1576,7 @@ async function replaceWorkTab(oldTabId, target) {
   if (!removed) {
     console.warn(
       `[background] replaceWorkTab : ancien onglet ${oldTabId} NON fermé — ` +
-      `dialogue beforeunload bloquant probable (neutralisation ${neutralized ? "exécutée mais insuffisante" : "impossible, dialogue déjà ouvert"}). ` +
+      `dialogue beforeunload bloquant probable (neutralisation ${neutralized ? "exécutée mais insuffisante" : "impossible — cause exacte loggée par neutralizeBeforeUnload juste au-dessus"}). ` +
       "À débloquer à la main ; le nouvel onglet prend le relais, pas de perte de job."
     );
   }
