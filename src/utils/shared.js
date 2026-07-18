@@ -334,7 +334,12 @@ const OBJECT_ICON_RULES = [
   // \btalons?\b : "pantalon" CONTIENT "talon" — sans la boundary stricte,
   // tout titre "Pantalon ..." partait sur Chaussures à talons (bug prod).
   [/\btalons?\b|escarpin|ballerine|compensée|louboutin/i, '👠'],
-  [/sandale|tongs?\b|claquette|mule\b/i, '🩴'],
+  // ⚠️ mules? : frontières Unicode obligatoires (2026-07-18) — /mule\b/ sans
+  // frontière GAUCHE matchait « forMULE », mot quasi systématique des
+  // descriptions cosmétiques générées par l'IA : une crème Medik8 partait en
+  // Sandales eBay (62107, « Pointure EU » obligatoire). Même piège déjà vu
+  // sur gants (élégant) et montres (démontre) plus bas.
+  [/sandale|tongs?\b|claquette|(?<![\p{L}\p{N}])mules?(?![\p{L}\p{N}])/iu, '🩴'],
   [/\bsacs?\b(?!\s*(?:de.?couchage|de.?frappe|poubelle|congélation|aspirateur))|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
   [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
   [/valise|bagage/i, '🧳'],
@@ -486,6 +491,14 @@ const OBJECT_ICON_RULES = [
   [/rouge.?à.?lèvre|gloss|lipstick|mascara|palette|fard|eyeliner|fond.?de.?teint|blush|maquillage/i, '💄'],
   [/vernis|manucure/i, '💅'],
   [/crème|sérum|lotion|shampooing|gel.?douche|savon|\bsoin\b/i, '🧴'],
+  // Couverture élargie (2026-07-18, bug Medik8) : huile et masque exigent un
+  // CONTEXTE beauté (une huile moteur, un masque de ski/plongée/carnaval ne
+  // doivent pas router ici) ; le reste est sans ambiguïté. Équivalents anglais
+  // pour les titres importés (« Crystal Retinal 6 Serum ») que les regex FR ne
+  // voyaient pas — ils tombaient au défaut type, jusqu'ici 💄 Rouges à lèvres.
+  [/huiles?\s+(?:pour\s+)?(?:l[ea]s?\s+)?(?:visage|corps|cheveux|barbe|s[èe]che|démaquillante|essentielle|de\s*massage)/i, '🧴'],
+  [/masques?\s+(?:pour\s+)?(?:l[ea]s?\s+)?(?:visage|corps|cheveux|capillaire|hydratant|purifiant|exfoliant|de\s*nuit|en\s*tissu|à\s*l.argile)/i, '🧴'],
+  [/déodorant|gommage|exfoliant|démaquillant|\btoniques?\b|\bbaumes?\b|après.?rasage|contour.?des.?yeux|\bserums?\b|\bcreams?\b|moisturi[sz]ers?|cleanser/i, '🧴'],
   // Musique
   [/guitare|stratocaster|telecaster|les.?paul|ukulélé/i, '🎸'],
   [/violon|violoncelle|contrebasse/i, '🎻'],
@@ -528,7 +541,10 @@ const OBJECT_ICON_RULES = [
 // Icône par défaut si aucun mot-clé ne matche : celle de la catégorie.
 const CAT_DEFAULT_ICONS = {
   'Mode':'👗','Luxe':'💎','High-Tech':'📱','Maison':'🏠','Électroménager':'⚡',
-  'Jouets':'🧸','Livres':'📚','Sport':'⚽','Auto-Moto':'🚗','Beauté':'💄',
+  // Beauté : 🧴 Soins et non 💄 (2026-07-18) — un produit beauté SANS mot-clé
+  // (déo importé, titre anglais inconnu) partait en « Rouges à lèvres » eBay
+  // (31804, Teinte obligatoire) ; Soins de la peau est le défaut le moins faux.
+  'Jouets':'🧸','Livres':'📚','Sport':'⚽','Auto-Moto':'🚗','Beauté':'🧴',
   'Musique':'🎵','Collection':'🏆','Multimédia':'📺','Jardin':'🌿','Bricolage':'🔧','Autre':'📦',
 };
 // Accessoires fréquemment INCLUS avec un appareil principal — leur simple
