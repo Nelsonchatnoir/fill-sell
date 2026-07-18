@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Camera, Mic, Sparkles, Plus, HelpCircle, X } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
 import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
@@ -468,6 +469,7 @@ const LensTab = memo(function LensTab({
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
+  const [showExtReminder,setShowExtReminder]=useState(false);
 
   function compressImage(file, maxWidth = 1024, quality = 0.85) {
     return new Promise((resolve) => {
@@ -692,7 +694,7 @@ const LensTab = memo(function LensTab({
             {isPro&&!lensResult.error&&(
               <>
                 <PrimaryButton
-                  onClick={handleCreateListing}
+                  onClick={()=>shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing()}
                   disabled={generatingListing}
                   style={{marginTop:8}}
                 >
@@ -708,6 +710,14 @@ const LensTab = memo(function LensTab({
           </div>
         )}
       </div>
+
+      {showExtReminder&&(
+        <ExtensionReminderModal
+          lang={lang}
+          onClose={()=>setShowExtReminder(false)}
+          onContinue={()=>{setShowExtReminder(false);handleCreateListing();}}
+        />
+      )}
 
       {generatingListing&&(
         <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,padding:"0 40px"}}>

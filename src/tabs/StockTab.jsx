@@ -5,6 +5,7 @@ import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS } from '../components/ListingPreviewScreen';
+import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -271,6 +272,9 @@ const StockTab = memo(function StockTab({
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
+  // Article en attente derrière le rappel extension : le clic « Publier » passe
+  // d'abord par le modal, l'ouverture du stepper n'a lieu qu'au « Continuer ».
+  const [extReminderItem, setExtReminderItem] = useState(null);
   const [jobsByInventaire, setJobsByInventaire] = useState({});
   const [voiceInputMode, setVoiceInputMode] = useState('write');
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -1047,7 +1051,7 @@ const StockTab = memo(function StockTab({
                                 l'utilisateur qu'il RESTAIT quelque chose à faire, alors que
                                 l'annonce était en ligne. */}
                             {isPro&&(
-                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();setPublishItem(item);onStepperOpenChange?.(true);}}>
+                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{setPublishItem(item);onStepperOpenChange?.(true);}}}>
                                 {enLigne?(lang==='fr'?'Republier':'Republish'):(lang==='fr'?'Publier':'Publish')}
                               </button>
                             )}
@@ -1079,6 +1083,13 @@ const StockTab = memo(function StockTab({
           connues de l'article (format inventaire.photos [{type,url}], mêmes
           fallbacks que la relecture cross_post_jobs du stepper) — vide → étape
           upload comme avant. */}
+      {extReminderItem&&(
+        <ExtensionReminderModal
+          lang={lang}
+          onClose={()=>setExtReminderItem(null)}
+          onContinue={()=>{setPublishItem(extReminderItem);setExtReminderItem(null);onStepperOpenChange?.(true);}}
+        />
+      )}
       {publishItem&&(
         <ListingPreviewScreen
           inventaireId={publishItem.id}
