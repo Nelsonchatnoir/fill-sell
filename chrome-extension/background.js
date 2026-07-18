@@ -520,6 +520,77 @@ async function recoverStaleProcessingJobs(session) {
   }
 }
 
+// ── Nettoyage périodique des onglets de travail orphelins (2026-07-18) ────────
+// Le fix 0c8ac66 empêche la prolifération FUTURE (tabs.remove qui échouait en
+// silence sur un beforeunload), mais ne ferme PAS les orphelins DÉJÀ accumulés
+// (onglets #fillsell-worker laissés par un replaceWorkTab d'avant le fix), ni un
+// éventuel cas résiduel non couvert. Invariant visé : AU PLUS UN onglet de
+// travail par plateforme.
+//
+// Orphelin = onglet portant notre fragment mais qui n'est PLUS l'onglet mémorisé
+// (storage.session fillsell_work_tab_<platform>) de sa plateforme — donc plus
+// référencé par aucun flux. Les onglets temporaires (#fillsell-temp) ne matchent
+// pas #fillsell-worker : exclus d'office.
+//
+// ⚠️ APPELÉ SOUS withJobFlowLock (fin de pollAndProcessJobsUnlocked) : jamais en
+// concurrence d'une création/navigation/remplacement d'onglet de travail. Sans
+// ce verrou, on risquerait de fermer un onglet fraîchement créé AVANT que
+// getOrCreateWorkTab n'ait mémorisé son id → job cassé. C'est pour ça qu'on tourne
+// APRÈS la boucle de jobs (les ids mémorisés sont alors à jour pour ce cycle).
+async function cleanupOrphanWorkTabs() {
+  try {
+    const platforms = Object.keys(PLATFORM_HANDLERS);
+
+    // Ids mémorisés (l'onglet "actif" de chaque plateforme) — à ne JAMAIS fermer.
+    const store = await chrome.storage.session.get(platforms.map(workTabKey));
+    const memorizedFor = (platform) => store[workTabKey(platform)] ?? null;
+
+    let closed = 0;
+    for (const platform of platforms) {
+      const host = PLATFORM_HOSTS[platform];
+      if (!host) continue;
+      // Même requête que getOrCreateWorkTab (permission d'hôte déjà couverte).
+      const cands = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
+      const marked = (cands ?? []).filter((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
+      // Cas normal : 0 ou 1 onglet de travail → rien à faire, aucun bruit.
+      if (marked.length <= 1) continue;
+
+      // DÉRIVE : plus d'un onglet de travail pour cette plateforme. On garde
+      // l'onglet mémorisé s'il est là, sinon le plus récemment ouvert (id le
+      // plus élevé) — pour rester adoptable par un futur job, comme le fait le
+      // repli de getOrCreateWorkTab quand le storage a été vidé (redémarrage).
+      const memId = memorizedFor(platform);
+      const keeper =
+        marked.find((t) => t.id === memId)?.id ??
+        marked.reduce((a, b) => (a.id > b.id ? a : b)).id;
+      const orphans = marked.filter((t) => t.id !== keeper);
+      console.warn(
+        `[background] Nettoyage onglets : ${platform} a ${marked.length} onglets de travail (DÉRIVE, ` +
+        `normal = 1) — onglet ${keeper} gardé, ${orphans.length} orphelin(s) à fermer`
+      );
+
+      for (const t of orphans) {
+        // Même parade que replaceWorkTab : neutraliser beforeunload AVANT la
+        // fermeture, sinon un formulaire dirty bloque tabs.remove (le bug d'origine).
+        await neutralizeBeforeUnload(t.id);
+        const ok = await chrome.tabs.remove(t.id).then(() => true).catch(() => false);
+        if (ok) {
+          closed++;
+          console.log(`[background] Nettoyage onglets : onglet ${t.id} (${platform}) fermé — orphelin nettoyé`);
+        } else {
+          console.warn(
+            `[background] Nettoyage onglets : onglet ${t.id} (${platform}) NON fermé ` +
+            "(dialogue beforeunload bloquant ?) — à débloquer à la main, il sera re-tenté au prochain cycle"
+          );
+        }
+      }
+    }
+    if (closed) console.log(`[background] Nettoyage onglets : ${closed} orphelin(s) fermé(s) au total`);
+  } catch (e) {
+    console.warn("[background] cleanupOrphanWorkTabs (non bloquant) :", String(e?.message ?? e));
+  }
+}
+
 async function pollAndProcessJobsUnlocked() {
   const session = await getValidSession();
   if (!session) {
@@ -572,6 +643,13 @@ async function pollAndProcessJobsUnlocked() {
   // le scraping serveur de l'ancienne check-listing-status se faisait bloquer.
   await checkPublishedListings(session).catch((e) =>
     console.error("[background] checkPublishedListings:", e)
+  );
+
+  // Fin de cycle : fermer les onglets de travail orphelins (dérive d'avant le
+  // fix beforeunload, ou cas résiduel). Sous le verrou de flux, après la boucle
+  // de jobs → les ids mémorisés sont à jour, aucun onglet actif n'est fermé.
+  await cleanupOrphanWorkTabs().catch((e) =>
+    console.error("[background] cleanupOrphanWorkTabs:", e)
   );
 }
 
