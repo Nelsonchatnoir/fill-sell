@@ -76,11 +76,18 @@ function firstAnnonce(jobs) {
   const head = group[0];
   const byPlatform = {};
   for (const j of group) byPlatform[j.platform] = j;
+  // photos = tableau d'OBJETS { url, type } (pas de simples chaînes) : la carte
+  // affichait <img src="[object Object]"> → vignette cassée. On extrait l'URL
+  // (compat chaîne brute au cas où d'anciens jobs en portent).
+  const firstPhoto = Array.isArray(head.photos) ? head.photos[0] : null;
+  const photoUrl = firstPhoto
+    ? (typeof firstPhoto === "string" ? firstPhoto : (firstPhoto.url ?? firstPhoto.src ?? null))
+    : null;
   return {
     key,
     title: head.title || "Sans titre",
     price: head.price,
-    photo: Array.isArray(head.photos) ? head.photos[0] : null,
+    photo: photoUrl,
     tag: head.platform_fields?.categorie || null,
     byPlatform,
   };
@@ -161,8 +168,12 @@ async function load() {
     try {
       const rr = await chrome.storage.local.get(RECENT_RESULTS);
       const now = Date.now();
+      // Inclut désormais les ÉCHECS (failed/needsUser/retry) : un job terminé en
+      // échec sort de get-pending-jobs et retombait sur « Non incluse » — on le
+      // ré-affiche « Échec »/« À reconnecter » grâce à son résultat récent.
+      const RECENT_TERMINAL = ["dry_run_completed", "published", "failed", "needsUser", "retry"];
       const fresh = Object.values(rr[RECENT_RESULTS] ?? {}).filter(
-        (r) => now - (r.ts ?? 0) < 30 * 60 * 1000 && ["dry_run_completed", "published"].includes(r.status)
+        (r) => now - (r.ts ?? 0) < 30 * 60 * 1000 && RECENT_TERMINAL.includes(r.status)
       );
       const refKey = state.annonce?.key ?? fresh.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0]?.annonceKey ?? null;
       for (const r of fresh) {
@@ -253,6 +264,7 @@ function platformLogo(p) {
 function rowState(p) {
   if (!p.supported) return "soon";
   const st = state.status[p.key];
+  if (st?.phase === "queued") return "queued";
   if (st?.phase === "busy") return "busy";
   if (st?.phase === "done") return "done";
   if (st?.phase === "err") return "err";
@@ -263,10 +275,15 @@ function rowState(p) {
   // C'est ce qui affichait « Non incluse » sur Beebs pendant toute sa publication.
   if (job?.status === "processing") return "busy";
   if (job) return "ready";
-  // Terminé (<30 min) par le poll de fond (Sujet 5) : badge "Publié" au lieu
-  // de "Non incluse" — un job pending pour la même plateforme garde la main
-  // (test au-dessus : un job régénéré redevient "ready").
-  if (state.recent[p.key]) return "done";
+  // Terminé (<30 min) par le poll de fond (Sujet 5). Désormais on distingue le
+  // verdict réel du résultat récent : publié → « Publié », échec → « Échec »,
+  // reconnexion → « Se connecter » — fini le « Non incluse » sur un job échoué.
+  const rec = state.recent[p.key];
+  if (rec) {
+    if (rec.status === "published" || rec.status === "dry_run_completed") return "done";
+    if (isConnErr(rec.error)) return "connect";
+    return "err";
+  }
   return "none";
 }
 
@@ -281,7 +298,9 @@ function renderFlow() {
     if (s === "soon" || s === "none") row.classList.add("dim");
 
     const nodeClass = { ready: "ready", connect: "connect", soon: "soon", none: "none",
-                        busy: "busy", done: "done", err: "err" }[s];
+                        queued: "queued", busy: "busy", done: "done", err: "err" }[s];
+    const st = state.status[p.key];
+    const rec = state.recent[p.key];
 
     let right = "";
     if (s === "ready") {
@@ -293,14 +312,18 @@ function renderFlow() {
       right = `<span class="badge-soft">Bientôt</span>`;
     } else if (s === "none") {
       right = `<span class="badge-soft">Non incluse</span>`;
+    } else if (s === "queued") {
+      // En attente de son tour (publication SÉQUENTIELLE plateforme par plateforme).
+      right = `<span class="status-wait"><span class="dot-wait"></span>En attente…</span>`;
     } else if (s === "busy") {
       right = `<span class="status-run"><span class="spinner"></span>Publication…</span>`;
     } else if (s === "done") {
-      const st = state.status[p.key];
-      right = `<span class="status-ok">${CHECK_TEAL}${st?.msg || "Publié"}</span>`;
+      // Message live (state.status) sinon résultat récent (popup rouvert).
+      const msg = st?.msg || (rec?.status === "dry_run_completed" ? "Prêt (test)" : "Publié");
+      right = `<span class="status-ok">${CHECK_TEAL}${escapeHtml(msg)}</span>`;
     } else if (s === "err") {
-      const st = state.status[p.key];
-      right = `<span class="status-err" title="${escapeHtml(st?.msg || "Échec")}">${escapeHtml(st?.msg || "Échec")}</span>`;
+      const msg = st?.msg || shortErr(rec?.error);
+      right = `<span class="status-err" title="${escapeHtml(st?.msg || rec?.error || "Échec")}">${escapeHtml(msg || "Échec")}</span>`;
     }
 
     row.innerHTML = `
@@ -421,7 +444,11 @@ els.cta.addEventListener("click", () => {
   if (!jobIds.length) return;
 
   state.publishing = true;
-  for (const key of state.selected) state.status[key] = { phase: "busy" };
+  // « En attente… » d'emblée pour TOUTES les plateformes cochées : la
+  // publication est SÉQUENTIELLE (background : une plateforme à la fois), et
+  // l'événement FILLSELL_PROGRESS "processing" fait passer chacune à « Publication… »
+  // à son tour — la séquence devient lisible au lieu d'un « Publication… » global.
+  for (const key of state.selected) state.status[key] = { phase: "queued" };
   render();
 
   chrome.runtime.sendMessage({ type: "PUBLISH_NOW", jobIds }, (res) => {
@@ -431,7 +458,10 @@ els.cta.addEventListener("click", () => {
       // les lignes concernées, sans écraser un état live déjà reçu.
       const reason = res?.reason;
       for (const key of state.selected) {
-        if (state.status[key]?.phase === "busy") {
+        // "queued" inclus : sur un échec GLOBAL (pas de session, aucun job),
+        // aucune plateforme n'a reçu d'événement "processing" → elles sont
+        // encore en attente et doivent basculer, pas rester bloquées.
+        if (["busy", "queued"].includes(state.status[key]?.phase)) {
           state.status[key] = reason === "no_session"
             ? { phase: "connect" }
             : { phase: "err", msg: reason === "no_matching_jobs" ? "Déjà traité" : "Échec" };
