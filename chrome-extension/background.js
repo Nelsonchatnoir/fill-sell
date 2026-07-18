@@ -1010,8 +1010,13 @@ async function retryInTempTab(job, handler, originalResult) {
     return originalResult;
   } finally {
     // Fermeture SYSTÉMATIQUE (dry-run compris — contrairement à l'onglet
-    // persistant qui reste ouvert pour inspection).
-    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+    // persistant qui reste ouvert pour inspection). Le formulaire LBC rempli
+    // arme beforeunload : on le neutralise avant de fermer, sinon le dialogue
+    // natif bloque la fermeture et l'onglet temporaire traîne.
+    if (tab) {
+      await neutralizeBeforeUnload(tab.id);
+      await chrome.tabs.remove(tab.id).catch(() => {});
+    }
   }
 }
 
@@ -1046,6 +1051,7 @@ async function navigateHomeToForm(tabId, listingUrl) {
   // Navigation interne vers le formulaire (depuis une page du site, avec
   // referrer) plutôt qu'une ouverture d'onglet froide.
   const loaded = waitForTabComplete(tabId, listingUrl + WORK_TAB_FRAGMENT);
+  await neutralizeBeforeUnload(tabId);
   await chrome.tabs.update(tabId, { url: listingUrl + WORK_TAB_FRAGMENT });
   await loaded;
 }
@@ -1275,6 +1281,61 @@ async function getOrCreateWorkTab(platform, url) {
   return tab.id;
 }
 
+// Neutralise tout handler beforeunload de la page AVANT une navigation ou une
+// fermeture PROGRAMMATIQUE de l'onglet de travail (les 4 plateformes passent par
+// ici). Sans ça, une page de dépôt/édition aux modifications non enregistrées
+// (Vinted en tête) arme window.onbeforeunload, et chrome.tabs.update({url})
+// COMME chrome.tabs.remove() déclenchent la popup native « Quitter le site ? » —
+// un dialogue HORS DOM qu'aucun event ni fiber simulé ne peut cliquer. L'onglet
+// gèle, le job tourne dans le vide jusqu'à l'abandon, et l'onglet resté bloqué
+// n'étant jamais fermé, replaceWorkTab en crée un DE PLUS à chaque passage
+// (prolifération observée le 2026-07-17). ⚠️ Le vieux postulat « tabs.remove ne
+// déclenche jamais beforeunload » (répété dans les commentaires de replaceWorkTab)
+// est FAUX : Chrome honore beforeunload sur une fermeture programmatique.
+//
+// world MAIN OBLIGATOIRE : window.onbeforeunload appartient à la page, un content
+// script ISOLATED ne peut pas l'écraser. On neutralise JUSTE AVANT la navigation
+// (pas au chargement) car le site RÉ-arme le handler à chaque édition de champ —
+// un neutraliseur posé une fois serait réécrit ensuite.
+//
+// Retourne true si la neutralisation a pu s'exécuter ; false si l'onglet est
+// injoignable — cas typique : un dialogue beforeunload est DÉJÀ ouvert et bloque
+// le renderer (l'injection ne reviendrait jamais). Ce false est le signal d'un
+// état « bloqué » DISTINCT d'une lecture indéterminée normale.
+async function neutralizeBeforeUnload(tabId) {
+  try {
+    const inject = chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => {
+        try { window.onbeforeunload = null; } catch {}
+        // Les handlers addEventListener('beforeunload') du site n'ont pas de
+        // référence retirable : un écouteur en CAPTURE qui stoppe la propagation
+        // immédiate neutralise ceux ajoutés en bubble (cas courant, React), et
+        // on efface returnValue par sûreté.
+        try {
+          window.addEventListener("beforeunload", (e) => {
+            e.stopImmediatePropagation();
+            delete e.returnValue;
+          }, true);
+        } catch {}
+      },
+    });
+    // Un dialogue beforeunload DÉJÀ ouvert bloque le renderer : l'injection ne
+    // reviendrait jamais. On borne l'attente pour distinguer ce cas d'un succès.
+    let timer;
+    const guard = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("timeout")), 3000); });
+    try { await Promise.race([inject, guard]); } finally { clearTimeout(timer); }
+    return true;
+  } catch (e) {
+    console.warn(
+      `[background] neutralizeBeforeUnload(${tabId}) : onglet injoignable — ` +
+      `dialogue beforeunload DÉJÀ ouvert ? (${String(e?.message ?? e)})`
+    );
+    return false;
+  }
+}
+
 // Amène l'onglet de travail sur la page de dépôt avec un formulaire VIERGE.
 // Retourne l'ID de l'onglet à utiliser (peut différer de tabId : discard ou
 // remplacement — le caller met à jour son stockage).
@@ -1337,6 +1398,10 @@ async function navigateWorkTab(tabId, target) {
       // Écouteur attaché AVANT de déclencher la navigation : un chargement
       // rapide pourrait sinon émettre son "complete" avant qu'on ne l'attende.
       const loaded = waitForTabComplete(effectiveId, target);
+      // Ceinture : si l'onglet n'était en fait PAS déchargé (chrome.tabs.discard
+      // ment parfois — cf. cas DevTools), naviguer une page aux modifs non
+      // enregistrées déclencherait le dialogue. On neutralise beforeunload avant.
+      await neutralizeBeforeUnload(effectiveId);
       await chrome.tabs.update(effectiveId, { url: target });
       await loaded;
       return effectiveId;
@@ -1352,13 +1417,26 @@ async function navigateWorkTab(tabId, target) {
   return replaceWorkTab(tabId, target);
 }
 
-// Crée le nouvel onglet de travail (inactif) PUIS ferme l'ancien : tabs.remove
-// ne déclenche jamais la popup beforeunload, contrairement à une navigation.
-// Toujours UN SEUL onglet persistant à l'arrivée.
+// Crée le nouvel onglet de travail (inactif) PUIS ferme l'ancien.
+// ⚠️ CORRIGÉ le 2026-07-18 : contrairement à ce qu'affirmait l'ancien commentaire,
+// chrome.tabs.remove() DÉCLENCHE bel et bien la popup beforeunload d'une page aux
+// modifications non enregistrées. C'était la source n°1 de la prolifération : le
+// remove restait bloqué par le dialogue (ou échouait, .catch avalant l'erreur),
+// l'ancien onglet SURVIVAIT, et on repartait avec un onglet de plus à chaque
+// passage. On neutralise donc beforeunload AVANT de fermer, et on VÉRIFIE la
+// fermeture — un échec est loggé comme état « bloqué » distinct, jamais avalé.
 async function replaceWorkTab(oldTabId, target) {
   const fresh = await createWorkTabInWorkWindow(target);
   await waitForTabComplete(fresh.id, target);
-  await chrome.tabs.remove(oldTabId).catch(() => {});
+  const neutralized = await neutralizeBeforeUnload(oldTabId);
+  const removed = await chrome.tabs.remove(oldTabId).then(() => true).catch(() => false);
+  if (!removed) {
+    console.warn(
+      `[background] replaceWorkTab : ancien onglet ${oldTabId} NON fermé — ` +
+      `dialogue beforeunload bloquant probable (neutralisation ${neutralized ? "exécutée mais insuffisante" : "impossible, dialogue déjà ouvert"}). ` +
+      "À débloquer à la main ; le nouvel onglet prend le relais, pas de perte de job."
+    );
+  }
   return fresh.id;
 }
 
@@ -1636,6 +1714,9 @@ async function ebayConfirmViaActiveListings(tabId, title) {
   const pattern = LISTING_URL_PATTERNS.ebay;
   if (!listUrl || !pattern) return null;
   try {
+    // L'onglet est encore sur le formulaire /lstng NON publié (aux modifs non
+    // enregistrées) : neutraliser beforeunload avant de le quitter.
+    await neutralizeBeforeUnload(tabId);
     await chrome.tabs.update(tabId, { url: listUrl });
   } catch { return null; }
   // Laisse le Hub vendeur se charger (SPA : les cartes arrivent après le HTML).
@@ -2511,6 +2592,7 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
     // cycles de poll suivants.
     await sleep(randInt(8000, 15000));
     const loaded = waitForTabComplete(tabId);
+    await neutralizeBeforeUnload(tabId);
     await chrome.tabs.update(tabId, { url: myListingsUrl + WORK_TAB_FRAGMENT });
     await loaded;
     await sleep(randInt(1200, 2500)); // rendu de la liste
@@ -2539,6 +2621,7 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
     // planté sur la liste des annonces du vendeur.
     if (backTo) {
       const back = waitForTabComplete(tabId).catch(() => {});
+      await neutralizeBeforeUnload(tabId);
       await chrome.tabs.update(tabId, { url: backTo }).catch(() => {});
       await back;
     }
@@ -2789,7 +2872,7 @@ async function fetchListingHtml(url, platform) {
   const tabId = await workTabForFetch(platform).catch(() => null);
   if (tabId != null) {
     try {
-      const [res] = await chrome.scripting.executeScript({
+      const inject = chrome.scripting.executeScript({
         target: { tabId },
         world: "MAIN",
         args: [url],
@@ -2803,11 +2886,31 @@ async function fetchListingHtml(url, platform) {
           }
         },
       });
+      // ⚠️ ÉTAT « BLOQUÉ » DISTINCT (2026-07-18) : si un dialogue beforeunload
+      // natif est resté ouvert sur l'onglet de travail, le renderer est figé et
+      // cet executeScript ne reviendrait JAMAIS — le job de vérification partait
+      // alors en boucle d'« indéterminé » puis « non vérifiable 24 h », un
+      // verdict TROMPEUR (l'annonce n'a rien d'illisible, c'est l'onglet qui est
+      // bloqué). On borne l'attente et on NOMME la cause au lieu de la confondre
+      // avec un bot-shield. Les neutralisations en amont doivent empêcher que ça
+      // arrive ; ce garde est le filet.
+      let timer;
+      const guard = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("BLOCKED_TAB")), 20_000); });
+      let res;
+      try { [res] = await Promise.race([inject, guard]); } finally { clearTimeout(timer); }
       const r = res?.result;
       if (r && !r.erreur) return r;
       console.warn(`[background] lecture via onglet (${platform}) : ${r?.erreur ?? "sans résultat"} — repli service worker`);
     } catch (e) {
-      console.warn(`[background] lecture via onglet (${platform}) impossible :`, String(e?.message ?? e));
+      const msg = String(e?.message ?? e);
+      if (msg.includes("BLOCKED_TAB")) {
+        console.warn(
+          `[background] lecture via onglet (${platform}) : onglet de travail FIGÉ (dialogue beforeunload natif ` +
+          "resté ouvert ?) — état BLOQUÉ, distinct d'une page illisible. À débloquer à la main. Repli service worker."
+        );
+      } else {
+        console.warn(`[background] lecture via onglet (${platform}) impossible :`, msg);
+      }
     }
   }
   // Repli : historique, et bloqué par DataDome sur Leboncoin (403). Conservé
