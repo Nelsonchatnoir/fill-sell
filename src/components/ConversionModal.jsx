@@ -46,7 +46,9 @@ const ANIM = `
 // ⚠️ REPLI UNIQUEMENT — utilisé si la lecture de coin_config échoue (réseau).
 // Le chemin normal lit TOUJOURS la table. Ces valeurs sont celles constatées en
 // base le 2026-07-14 ; si elles divergent un jour, c'est la base qui a raison.
-const COIN_CONFIG_FALLBACK = {
+// Exporté pour PlanDetailsModal (modale « mon plan » du badge header), qui lit
+// coin_config avec le même repli.
+export const COIN_CONFIG_FALLBACK = {
   price_original: 3,
   price_ia_light: 12,
   price_ia_advanced: 35,
@@ -68,7 +70,8 @@ const COIN_CONFIG_FALLBACK = {
 //    constante et relire monthly_grant_pro depuis coin_config comme pour le
 //    Premium (le code de lecture est déjà en place, il suffit de repasser
 //    grantPro sur K.monthly_grant_pro).
-const DISPLAY_GRANT_PRO = 600;
+// (Exporté : PlanDetailsModal affiche le même 600 — à retirer ensemble.)
+export const DISPLAY_GRANT_PRO = 600;
 
 // Prix des abonnements — ils vivent chez Stripe / Apple / Google, pas en base.
 // Vérifiés côté Stripe le 2026-07-14 : « Standard Plan » 1299 c, « FillSell Pro

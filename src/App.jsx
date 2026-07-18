@@ -33,6 +33,7 @@ import CoinStoreModal from './components/CoinStoreModal';
 import PepiteIcon from './components/PepiteIcon';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
+import PlanDetailsModal from './components/PlanDetailsModal';
 import BrandMark from './components/BrandMark';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from './components/voice/tokens';
@@ -5035,56 +5036,16 @@ export default function App({ loginOnly = false }){
         <PremiumWelcomeModal lang={lang} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
-      {/* ── PREMIUM ADVANTAGES MODAL ── */}
+      {/* ── MODALE « MON PLAN » (badge Premium/Pro du header) ──
+          Contenu par plan RÉEL (isPro devant, comme PlanBadge) — l'ancienne
+          version listait des avantages Premium périmés quel que soit le plan. */}
       {showPremiumModal&&(
-        <>
-          <div onClick={()=>setShowPremiumModal(false)} style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.45)",backdropFilter:"blur(3px)",display:"flex",alignItems:"flex-end",justifyContent:"center",animation:"fadeInBd 0.2s ease"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",padding:"28px 24px 40px",animation:"slideUpPm 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
-            {/* Header */}
-            <div style={{textAlign:"center",marginBottom:20}}>
-              <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:99,margin:"0 auto 20px"}}/>
-              <div style={{fontSize:26,marginBottom:6}}>⭐</div>
-              <div style={{fontSize:20,fontWeight:700,color:UI.ink}}>FillSell Premium</div>
-              <div style={{fontSize:13,color:UI.mute2,marginTop:4}}>{lang==='fr'?'Vos avantages inclus':'Your included benefits'}</div>
-            </div>
-            {/* Avantages */}
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-              {[
-                {icon:"🎙️",fr:"IA vocale — Illimité",en:"Voice AI — Unlimited"},
-                {icon:"📸",fr:"Lens — 10/jour · 120/mois",en:"Lens — 10/day · 120/month"},
-                {icon:"💡",fr:"Price advice illimité",en:"Unlimited price advice"},
-                {icon:"📊",fr:"Stats avancées & analyse business",en:"Advanced stats & business insights"},
-                {icon:"⚡",fr:"Support prioritaire",en:"Priority support"},
-              ].map(({icon,fr,en},i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#E7F3F0",borderRadius:12,border:"1px solid rgba(47,158,144,0.15)"}}>
-                  <span style={{fontSize:17,flexShrink:0}}>{icon}</span>
-                  <span style={{fontSize:13,fontWeight:600,color:UI.tealDeep}}>{lang==='fr'?fr:en}</span>
-                </div>
-              ))}
-            </div>
-            {/* VS Excel */}
-            <div style={{background:"linear-gradient(135deg,rgba(47,158,144,0.07),rgba(232,149,109,0.07))",borderRadius:16,padding:"16px 18px",marginBottom:20,border:"1px solid rgba(47,158,144,0.12)"}}>
-              <div style={{fontSize:13,fontWeight:700,color:UI.ink,marginBottom:10}}>
-                {lang==='fr'?'💪 FillSell vs Excel ?':'💪 FillSell vs Excel?'}
-              </div>
-              {[
-                {icon:"⏱️",fr:"~3h/semaine économisées sur la saisie",en:"~3h/week saved on manual entry"},
-                {icon:"🤖",fr:"Ajout vocal — zéro tableur à remplir",en:"Voice entry — no spreadsheet needed"},
-                {icon:"📱",fr:"Suivi multi-plateformes en temps réel",en:"Real-time multi-platform tracking"},
-                {icon:"📈",fr:"Marges & bénéfices calculés automatiquement",en:"Margins & profits calculated automatically"},
-              ].map(({icon,fr,en},i)=>(
-                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:i<3?8:0}}>
-                  <span style={{fontSize:14,flexShrink:0,marginTop:1}}>{icon}</span>
-                  <span style={{fontSize:12,color:"#374151",lineHeight:1.5}}>{lang==='fr'?fr:en}</span>
-                </div>
-              ))}
-            </div>
-            {/* Fermer */}
-            <SecondaryButton onClick={()=>setShowPremiumModal(false)}>{lang==='fr'?'Fermer':'Close'}</SecondaryButton>
-          </div>
-          </div>
-          <style>{`@keyframes slideUpPm{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
-        </>
+        <PlanDetailsModal
+          isPro={isPro}
+          lang={lang}
+          onClose={()=>setShowPremiumModal(false)}
+          supabase={supabase}
+        />
       )}
 
       {/* ── DELETE CONFIRM MODAL ── */}
