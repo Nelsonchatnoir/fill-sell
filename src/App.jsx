@@ -34,6 +34,7 @@ import PepiteIcon from './components/PepiteIcon';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import PlanDetailsModal from './components/PlanDetailsModal';
+import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from './components/voice/tokens';
@@ -1761,6 +1762,9 @@ export default function App({ loginOnly = false }){
   const [coinWallet,setCoinWallet]=useState(null);
   const [coinHistory,setCoinHistory]=useState([]);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
+  // Viewport mobile (réactif, breakpoint 768 partagé) : sert à masquer ce qui
+  // n'a pas de sens sur téléphone, ex. l'installation de l'extension Chrome.
+  const isMobileViewport=useIsMobile();
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
@@ -4868,8 +4872,9 @@ export default function App({ loginOnly = false }){
               </div>
             </a>
 
-            {/* Extension Chrome — desktop uniquement (pas de sens sur l'app native) */}
-            {!isNative&&(
+            {/* Extension Chrome — desktop uniquement : impossible à installer
+                depuis un mobile (app native comme navigateur mobile). */}
+            {!isNative&&!isMobileViewport&&(
               <a href="/extension" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
                 onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}

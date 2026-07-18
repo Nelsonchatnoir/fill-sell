@@ -9,6 +9,8 @@
 // aucun autre choix UI n'est persisté côté Supabase.
 import { useEffect, useState } from 'react';
 import { Puzzle, ExternalLink } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const C = {
   canvas: '#EDEAE0',
@@ -35,6 +37,10 @@ export function shouldShowExtensionReminder() {
 export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
   const fr = lang !== 'en';
   const [dontShowAgain, setDontShowAgain] = useState(false);
+  // Le guide d'installation n'a de sens que sur Chrome desktop : une extension
+  // ne s'installe ni depuis l'app native ni depuis un navigateur mobile.
+  const isMobile = useIsMobile();
+  const showInstallLink = !Capacitor.isNativePlatform() && !isMobile;
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -95,6 +101,7 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
               : 'Make sure you have downloaded and installed the FillSell extension on Chrome, and that you are logged in to the platforms you want to publish on.'}
           </p>
 
+          {showInstallLink && (
           <a
             href="/extension"
             style={{
@@ -107,6 +114,7 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
             {fr ? "Guide d'installation de l'extension" : 'Extension install guide'}
             <ExternalLink size={14} strokeWidth={2.4} />
           </a>
+          )}
 
           <button
             onClick={handleContinue}
