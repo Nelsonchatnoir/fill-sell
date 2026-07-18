@@ -1557,6 +1557,46 @@ function StockToggle({ checked, onChange, label, hint, disabled = false }) {
 const aspectSlug = s => String(s).toLowerCase().normalize("NFD")
   .replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+// ── Listes fermées eBay (2026-07-18, cas « Unique » vs « Taille unique ») ────
+// Même critère que la garde du publish : une liste ≤ 200 valeurs (ou
+// SELECTION_ONLY quel que soit le volume) est un choix fermé — eBay refuse
+// toute valeur hors liste même en mode FREE_TEXT court. UNE seule constante
+// pour la garde ET l'UI : si l'UI propose un select, la garde accepte le choix.
+const EBAY_CLOSED_LIST_MAX = 200;
+const isEbayClosedList = (allowedValues, mode) => {
+  const n = Array.isArray(allowedValues) ? allowedValues.length : 0;
+  return n > 0 && (n <= EBAY_CLOSED_LIST_MAX || mode === "SELECTION_ONLY");
+};
+// Normalisation partagée valeur↔liste (mêmes règles que normalizeFuzzy de
+// ebay.js : trim + minuscules + accents retirés).
+const normAspectVal = s => String(s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+// Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
+// « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers
+// (jamais de sous-chaîne : "S" ne matche pas "XS") : match si tous les tokens
+// d'un côté se retrouvent de l'autre ; à couverture égale, la valeur la plus
+// courte gagne. null si rien d'assez proche — on laisse l'utilisateur choisir.
+function nearestAllowedValue(val, allowedValues) {
+  const vals = Array.isArray(allowedValues) ? allowedValues : [];
+  const v = normAspectVal(val);
+  if (!v || !vals.length) return null;
+  const exact = vals.find(a => normAspectVal(a) === v);
+  if (exact) return exact;
+  const vTokens = v.split(/[^a-z0-9/]+/).filter(Boolean);
+  if (!vTokens.length) return null;
+  const vSet = new Set(vTokens);
+  let best = null, bestScore = 0;
+  for (const a of vals) {
+    const aTokens = normAspectVal(a).split(/[^a-z0-9/]+/).filter(Boolean);
+    if (!aTokens.length) continue;
+    const shared = aTokens.filter(tk => vSet.has(tk)).length;
+    if (!shared) continue;
+    if (shared !== aTokens.length && shared !== vSet.size) continue;
+    const score = shared - aTokens.length * 0.01;
+    if (score > bestScore) { bestScore = score; best = a; }
+  }
+  return best;
+}
+
 // Contrôle de saisie d'un aspect obligatoire dans le fallback UI. Quatre rendus :
 //  · `strict` (eBay mode=SELECTION_ONLY) → <select> : choix IMPOSÉ quel que soit
 //    le volume (la Taxonomy eBay est autoritaire, une valeur hors liste serait
@@ -1572,11 +1612,16 @@ const aspectSlug = s => String(s).toLowerCase().normalize("NFD")
 // allowedValues y sont DÉCOUVERTES (potentiellement partielles), forcer un choix
 // bloquerait une valeur légitime absente du relevé. Les petites listes gardent
 // leur <select> ≤30 existant ; seules les grandes passent en datalist.
-function AspectValueInput({ value, allowedValues, strict = false, onChange, T, idBase }) {
+// `closedMax` (2026-07-18) : seuil de bascule en <select>. Générique
+// Vinted/LBC/Beebs : 30 (valeurs DÉCOUVERTES, listes partielles — inchangé).
+// eBay : EBAY_CLOSED_LIST_MAX — toute liste fermée au sens de la garde devient
+// un vrai sélecteur, on ne peut plus taper une valeur que la garde refusera
+// (cas réel : Taille "Unique" vs « Taille unique », casquette 52365, 18/07).
+function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
   const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
-  if (n > 0 && (strict || n <= 30)) {
+  if (n > 0 && (strict || n <= closedMax)) {
     return (
       <select value={value ?? ""} onChange={ev => onChange(ev.target.value)}
         style={{ ...base, background:T.chip, color: value ? T.ink : T.mute }}>
@@ -1603,7 +1648,7 @@ function AspectValueInput({ value, allowedValues, strict = false, onChange, T, i
   );
 }
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -1710,27 +1755,35 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
                 border: `1px solid ${state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : "#FECACA"}`,
                 color: state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : "#B91C1C",
               }}>
-                {state === "ok" ? "✓ " : state === "missing" ? "✗ " : ""}{name}
+                {state === "ok" ? "✓ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{name}
                 {state === "prefilled" ? ` — ${t("stepPublishEbayAspectPrefilled")}` : ""}
                 {state === "missing" ? ` — ${t("stepPublishEbayAspectMissing")}` : ""}
+                {state === "invalid" ? ` — ${t("stepPublishEbayAspectInvalid")}` : ""}
               </span>
             ))}
           </div>
           {/* Fallback UI générique (Phase 3) : saisie inline des obligatoires
-              sans source — select quand la liste eBay est courte (≤ 30),
-              texte libre sinon (FREE_TEXT accepté par eBay, la garde valide
-              les listes fermées au publish). Les valeurs venues de
-              resolve_aspects (source "generic") restent éditables ici. */}
-          {onEbayAspectChange && ebayRequiredStatus.some(a => a.state === "missing" || a.source === "generic") && (
+              sans source — select pour toute liste FERMÉE au sens de la garde
+              (≤ EBAY_CLOSED_LIST_MAX ou SELECTION_ONLY : une valeur hors liste
+              serait refusée au publish, autant imposer le choix ici), datalist
+              au-delà. Les valeurs venues de resolve_aspects (source "generic")
+              restent éditables ici. state "invalid" (2026-07-18) : un champ
+              DÉDIÉ (taille/couleur/matière…) rempli avec une valeur hors liste
+              fermée s'édite désormais ICI en vrai sélecteur — fini le message
+              d'erreur avec exemples inutiles sans moyen de choisir. */}
+          {onEbayAspectChange && ebayRequiredStatus.some(a => a.state === "missing" || a.state === "invalid" || a.source === "generic") && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {ebayRequiredStatus.filter(a => a.state === "missing" || a.source === "generic").map(a => (
+              {ebayRequiredStatus.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => (
                 <div key={a.name}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
                   <AspectValueInput
-                    value={a.value}
+                    value={a.state === "invalid" ? (a.suggested ?? "") : a.value}
                     allowedValues={a.allowedValues}
                     strict={a.mode === "SELECTION_ONLY"}
-                    onChange={v => onEbayAspectChange(a.name, v)}
+                    closedMax={EBAY_CLOSED_LIST_MAX}
+                    onChange={v => (a.sharedKey && onEbaySharedFieldChange)
+                      ? onEbaySharedFieldChange(a.sharedKey, v)
+                      : onEbayAspectChange(a.name, v)}
                     T={T}
                     idBase={`ebay-${aspectSlug(a.name)}`}
                   />
@@ -2567,6 +2620,26 @@ export default function ListingPreviewScreen({
       },
     } : prev);
   }
+  // Champ DÉDIÉ de la copie eBay depuis le sélecteur de l'encart (2026-07-18,
+  // état "invalid") : la valeur choisie est un libellé eBay exact (« Taille
+  // unique ») qui n'a pas de sens sur Vinted/LBC — on n'écrit QUE la copie
+  // eBay et on casse le lien partagé pour cette clé (override sacré), la
+  // canonique et les autres copies gardent leur valeur d'origine.
+  function setEbaySharedField(key, value) {
+    setEdited(prev => {
+      if (!prev.ebay) return prev;
+      const pf = { ...prev.ebay.platform_fields };
+      if (key === "couleur") {
+        // La garde et ebay.js lisent colors[0] AVANT couleur : écrire les deux.
+        pf.couleur = value;
+        if (Array.isArray(pf.colors) && pf.colors.length) pf.colors = [value, ...pf.colors.slice(1)];
+      } else {
+        pf[key] = value;
+      }
+      return { ...prev, ebay: { ...prev.ebay, platform_fields: pf } };
+    });
+    noteSharedOverride("ebay", key); // clés hors SHARED_FIELD_KEYS (modele, stockage) : no-op
+  }
   // Édition manuelle d'UNE copie plateforme : le lien casse pour cette copie
   // seulement (les autres restent synchronisées sur la source).
   function noteSharedOverride(platform, key) {
@@ -2763,14 +2836,17 @@ export default function ListingPreviewScreen({
     if (!ebayRequiredPreview || !edited.ebay) return null;
     const pf = edited.ebay.platform_fields ?? {};
     // Mêmes correspondances que la garde du publish + Modèle/Capacité de
-    // stockage (remplis par ebay.js depuis les champs High-Tech).
+    // stockage (remplis par ebay.js depuis les champs High-Tech). `key` =
+    // champ de platform_fields où écrit le sélecteur de l'encart (état
+    // "invalid"). `send` = valeur telle que l'EXTENSION l'enverra (ebay.js
+    // strip « EU » sur la taille) — c'est ELLE qu'on valide contre la liste.
     const sources = [
-      { labels: ["Marque"], get: () => pf.marque },
-      { labels: ["Taille", "Pointure EU", "Pointure"], get: () => pf.taille },
-      { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], get: () => pf.colors?.[0] || pf.couleur },
-      { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], get: () => pf.matiere },
-      { labels: ["Modèle"], get: () => pf.modele },
-      { labels: ["Capacité de stockage"], get: () => pf.stockage },
+      { key: "marque",   labels: ["Marque"], get: () => pf.marque },
+      { key: "taille",   labels: ["Taille", "Pointure EU", "Pointure"], get: () => pf.taille, send: v => String(v).replace(/^EU\s*/i, "") },
+      { key: "couleur",  labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], get: () => pf.colors?.[0] || pf.couleur },
+      { key: "matiere",  labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], get: () => pf.matiere },
+      { key: "modele",   labels: ["Modèle"], get: () => pf.modele },
+      { key: "stockage", labels: ["Capacité de stockage"], get: () => pf.stockage },
     ];
     // Aspects qu'eBay pose lui-même depuis la CATÉGORIE (pas item-specific) :
     // Département (rayon Femme/Homme/… en pills pré-actives, vérifié en session
@@ -2785,7 +2861,26 @@ export default function ListingPreviewScreen({
     const PREFILLED_BY_EBAY = ["Département", "Type"];
     return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
-      if (src && String(src.get() ?? "").trim()) return { name, state: "ok", allowedValues, mode };
+      const srcVal = src ? String(src.get() ?? "").trim() : "";
+      if (srcVal) {
+        // Champ dédié REMPLI : validé ici contre la liste fermée de la
+        // catégorie (même critère que la garde du publish). Hors liste →
+        // state "invalid" : le chip passe ✗ et l'encart ouvre un vrai
+        // sélecteur (cas réel 18/07 : Taille "Unique" ≠ « Taille unique »,
+        // casquette 52365 — champ texte + message d'erreur = impasse).
+        // `suggested` = valeur de la liste la plus proche, auto-appliquée
+        // par l'effet ci-dessous au step Publier.
+        const sendVal = src.send ? String(src.send(srcVal)).trim() : srcVal;
+        if (isEbayClosedList(allowedValues, mode) &&
+            !allowedValues.some(v => normAspectVal(v) === normAspectVal(sendVal))) {
+          return {
+            name, state: "invalid", sharedKey: src.key, value: srcVal,
+            suggested: nearestAllowedValue(sendVal, allowedValues),
+            allowedValues, mode,
+          };
+        }
+        return { name, state: "ok", allowedValues, mode };
+      }
       const generic = String(pf.ebayAspects?.[name] ?? "").trim();
       // source:"generic" : valeur venue de resolve_aspects/du fallback UI —
       // reste ÉDITABLE dans l'encart (contrairement aux champs dédiés).
@@ -2824,6 +2919,19 @@ export default function ListingPreviewScreen({
       },
     } : prev);
   }, [ebayRequiredStatus, ebayPreviewCategoryId, edited]);
+
+  // Pré-sélection auto (2026-07-18) : au step Publier, une valeur dédiée hors
+  // liste avec un rapprochement sûr est remplacée d'office par le libellé eBay
+  // exact (« Unique » → « Taille unique ») — le chip repasse ✓ sans action de
+  // l'utilisateur. Gaté sur step===3 pour ne jamais réécrire un champ en cours
+  // de frappe au step d'édition ; s'éteint de lui-même dès l'écriture (la
+  // valeur entre dans la liste → plus d'état "invalid").
+  useEffect(() => {
+    if (step !== 3 || !ebayRequiredStatus) return;
+    for (const a of ebayRequiredStatus) {
+      if (a.state === "invalid" && a.sharedKey && a.suggested) setEbaySharedField(a.sharedKey, a.suggested);
+    }
+  }, [step, ebayRequiredStatus]);
 
   // Résolution IA ciblée des obligatoires SANS source (2026-07-16, même
   // philosophie que resolve_genre : micro-appel jamais bloquant, null si non
@@ -3516,7 +3624,9 @@ export default function ListingPreviewScreen({
         // sait la taper — bloquer "MaMarqueDeNiche123" ici refuserait une
         // publication qu'eBay aurait acceptée). FREE_TEXT + liste > 200 ou
         // liste vide → la présence suffit, comme avant ce patch.
-        const CLOSED_LIST_MAX = 200;
+        // Même constante que l'UI (2026-07-18) : si l'encart propose un
+        // sélecteur pour une liste, la garde accepte forcément le choix fait.
+        const CLOSED_LIST_MAX = EBAY_CLOSED_LIST_MAX;
         // Deux cas DISTINCTS depuis le 2026-07-15 (bug réel : taille en mois
         // sur la catégorie 51581 « Robes Fille 2-16 ans » — le message
         // unique « Complète ce(s) champ(s) » laissait croire à un champ
@@ -3652,7 +3762,7 @@ export default function ListingPreviewScreen({
   // Vinted bloqué) signale un manque. Les états "prefilled"/"generic"/"ok"
   // ne bloquent pas ; seuls les "missing" comptent.
   const requiredBlocking =
-    (ebayRequiredStatus ?? []).some(a => a.state === "missing") ||
+    (ebayRequiredStatus ?? []).some(a => a.state === "missing" || a.state === "invalid") ||
     Object.values(genericRequiredStatus ?? {}).some(list => list.some(a => a.state === "missing")) ||
     missingSharedFields.length > 0 ||
     vintedGenreBlocked;
@@ -3857,6 +3967,7 @@ export default function ListingPreviewScreen({
             vintedGenreBlocked={vintedGenreBlocked}
             ebayRequiredStatus={ebayRequiredStatus}
             onEbayAspectChange={setEbayAspect}
+            onEbaySharedFieldChange={setEbaySharedField}
             genericRequiredStatus={genericRequiredStatus}
             onPlatformAspectChange={setPlatformAspect}
             pausedPlatforms={pausedPlatforms}
