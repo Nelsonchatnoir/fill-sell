@@ -18,8 +18,25 @@ importScripts("config.js");
 // modification de ce fichier.
 const FILLSELL_BUILD =
   "2026-07-17-vinted-delete-fiber+VERIF-REDIRECT (suppression Vinted : clic fiber props.onClick monde MAIN, PUIS vérification de la redirection hors /items/ avant success — un clic fiber raté ne peut plus produire un faux 'deleted', le background revérifie l'état réel et ré-arme) + ebay-confirm-active-listings";
+
+// ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
+// FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
+// à mettre à jour : elle est restée figée à "2026-07-17…" pendant des jours de
+// fixes, faisant croire à un code périmé chargé. FILLSELL_BUILD_ID, lui, est
+// remplacé par build-extension.mjs (horodatage + hash git) à CHAQUE build : il
+// change forcément d'un build à l'autre.
+//   · dossier build/extension/ chargé  → id daté+hash (ex. 2026-07-18T…+e252620)
+//   · dossier chrome-extension/ source → jeton non remplacé → "SOURCE non-buildé"
+// Vérif immédiate dans la console du service worker : taper  FILLSELL_BUILD_ID.
+const FILLSELL_BUILD_ID = "__FILLSELL_BUILD_ID__";
+const FILLSELL_BUILD_LABEL = FILLSELL_BUILD_ID.startsWith("__FILLSELL_BUILD")
+  ? "SOURCE non-buildé (dossier chrome-extension/ chargé tel quel)"
+  : FILLSELL_BUILD_ID;
+// Exposé sur self pour une vérif en UNE ligne dans la console du SW.
+self.FILLSELL_BUILD_ID = FILLSELL_BUILD_ID;
 console.log(
-  `[background.js] build ${FILLSELL_BUILD} — service worker v${chrome.runtime.getManifest().version}`
+  `[background.js] BUILD_ID = ${FILLSELL_BUILD_LABEL} — v${chrome.runtime.getManifest().version}\n` +
+  `[background.js] build (desc) ${FILLSELL_BUILD}`
 );
 
 const ALARM_NAME = "fillsell-poll-jobs";
@@ -407,7 +424,7 @@ function updateJobStatus(accessToken, jobId, status, extra = {}) {
     // l'extension a traité ce job — enrichit le diagnostic d'alerte. Écrit
     // dans la colonne DÉDIÉE cross_post_jobs.handler_build, jamais dans
     // platform_fields (qu'update-job-status écrase en entier).
-    handler_build: `${FILLSELL_BUILD.split(" (")[0]} · v${chrome.runtime.getManifest().version}`,
+    handler_build: `${FILLSELL_BUILD_LABEL} · v${chrome.runtime.getManifest().version}`,
     ...safe,
   });
 }

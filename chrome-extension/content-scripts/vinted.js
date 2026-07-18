@@ -1897,4 +1897,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension (le libellé change à chaque évolution notable du remplissage).
-console.log(`[vinted] prêt — build ${VINTED_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
+console.log(`[vinted] prêt — build ${VINTED_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

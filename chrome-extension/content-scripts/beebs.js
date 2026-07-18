@@ -1198,4 +1198,4 @@ async function uploadPhotos(photos) {
 // Marqueur de version dans le log : permet de vérifier depuis la console
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension.
-console.log(`[beebs] prêt — build ${BEEBS_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
+console.log(`[beebs] prêt — build ${BEEBS_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

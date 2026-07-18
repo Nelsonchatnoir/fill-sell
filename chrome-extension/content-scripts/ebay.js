@@ -1478,4 +1478,4 @@ async function uploadPhotos(photos) {
   await sleep(1500 * files.length);
 }
 
-console.log(`[ebay] prêt — build ${EBAY_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
+console.log(`[ebay] prêt — build ${EBAY_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

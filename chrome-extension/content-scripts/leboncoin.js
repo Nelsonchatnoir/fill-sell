@@ -1382,4 +1382,4 @@ async function uploadPhotos(input, photos) {
   await sleep(1500 * files.length);
 }
 
-console.log(`[leboncoin] prêt — build ${LEBONCOIN_BUILD} | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
+console.log(`[leboncoin] prêt — build ${LEBONCOIN_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
