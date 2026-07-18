@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
 import LandingPage from "../pages/LandingPage";
 import Success from "../pages/Success";
@@ -40,10 +41,17 @@ function RequireAuth({ children }) {
 }
 
 export default function AppRouter() {
+  // App NATIVE (Capacitor iOS/Android) : pas de landing marketing — la racine
+  // ouvre directement l'auth/création de compte (décision 2026-07-18). Le WEB
+  // garde la landing sur « / » : c'est la page publique de fillsell.app
+  // (campagnes TikTok, badges stores, SEO) — ne pas la retirer du routing web.
+  const isNative = Capacitor.isNativePlatform();
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<RedirectIfLoggedIn><LandingPage /></RedirectIfLoggedIn>} />
+        <Route path="/" element={isNative
+          ? <Navigate to="/login" replace />
+          : <RedirectIfLoggedIn><LandingPage /></RedirectIfLoggedIn>} />
         <Route path="/login" element={<RedirectIfLoggedIn><App loginOnly /></RedirectIfLoggedIn>} />
         <Route path="/app" element={<RequireAuth><App /></RequireAuth>} />
         <Route path="/success" element={<Success />} />
