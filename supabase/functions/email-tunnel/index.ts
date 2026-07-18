@@ -78,6 +78,60 @@ function ctaButton(label: string): string {
   </a>`;
 }
 
+// ── Mail « mise à jour extension » (mode extension_update, déclenché à la main) ─
+function extensionUpdateHtml(lang: string, version: string): string {
+  const isFr = lang !== "en";
+  const steps = isFr
+    ? [
+        "Télécharge la nouvelle version depuis la page Extension de FillSell",
+        "Dans Chrome, ouvre chrome://extensions et retire l'ancienne extension FillSell",
+        "Charge le nouveau dossier dézippé (« Charger l'extension non empaquetée »)",
+      ]
+    : [
+        "Download the new version from the FillSell Extension page",
+        "In Chrome, open chrome://extensions and remove the old FillSell extension",
+        "Load the new unzipped folder (\"Load unpacked\")",
+      ];
+  const content = `
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
+      color:#111827;font-family:sans-serif;">
+      ${isFr ? "Nouvelle version de l'extension 🧩" : "New extension version 🧩"}
+    </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
+      font-family:sans-serif;">
+      ${isFr
+        ? `La version <strong>${version}</strong> de l'extension FillSell est disponible. Elle corrige et fiabilise la publication automatique sur Vinted, Leboncoin, eBay et Beebs — les anciennes versions peuvent échouer à publier certaines annonces.`
+        : `Version <strong>${version}</strong> of the FillSell extension is available. It fixes and improves automatic publishing on Vinted, Leboncoin, eBay and Beebs — older versions may fail to publish some listings.`}
+    </p>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">
+      ${isFr
+        ? "Chrome ne met pas à jour l'extension tout seul : la mise à jour prend 2 minutes."
+        : "Chrome doesn't update the extension by itself: updating takes 2 minutes."}
+    </p>
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
+      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
+        font-family:sans-serif;">${isFr ? "Pour mettre à jour :" : "To update:"}</p>
+      <ol style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
+        line-height:1.9;font-family:sans-serif;">
+        ${steps.map((s) => `<li>${s}</li>`).join("")}
+      </ol>
+    </div>
+    <a href="https://fillsell.app/extension" class="cta"
+       style="display:block;text-align:center;background:#2DD4BF;
+         color:#fff;font-weight:800;font-size:15px;padding:14px 24px;
+         border-radius:12px;text-decoration:none;font-family:sans-serif;">
+      ${isFr ? "Mettre à jour l'extension" : "Update the extension"}
+    </a>`;
+  return emailWrapper(content, lang);
+}
+
+function extensionUpdateSubject(lang: string): string {
+  return lang === "en"
+    ? "Update your FillSell extension 🧩"
+    : "Mets à jour ton extension FillSell 🧩";
+}
+
 function welcomeHtml(lang: string): string {
   const isFr = lang !== "en";
   const content = isFr ? `
@@ -473,6 +527,97 @@ serve(async (req) => {
     return new Response(JSON.stringify({ relance: true, sent, errors }), {
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // ── Extension update mode (2026-07-18) — DORMANT PAR DÉFAUT ───────────────
+  // Mail « nouvelle version de l'extension », déclenché UNIQUEMENT à la main :
+  // AUCUN cron ni trigger ne pose extension_update:true. Les appels existants
+  // (cron tunnel avec body {}, trigger welcome_now) ne passent JAMAIS ici.
+  //
+  // Déclenchement (jour J, décision explicite de Nico) :
+  //   1. Test sur soi (n'écrit pas email_logs) :
+  //      curl -X POST https://tojihnuawsoohlolangc.supabase.co/functions/v1/email-tunnel \
+  //        -H "x-cron-secret: <CRON_SECRET>" -H "Content-Type: application/json" \
+  //        -d '{"extension_update":true,"version":"0.4.0","audience":"test","test_email":"moi@exemple.fr"}'
+  //   2. Envoi réel — users dont l'extension a été vue au moins une fois
+  //      (profiles.extension_last_seen_at posé par get-pending-jobs) :
+  //      ... -d '{"extension_update":true,"version":"0.4.0","audience":"extension"}'
+  //   3. audience "all" = tous les inscrits (hors emails de test, via le RPC) —
+  //      à réserver à une annonce majeure.
+  // Dédup : email_logs type 'ext_update_<version>' → re-POST idempotent pour une
+  // même version (relance sûre après coupure), nouvelle version = nouveau type.
+  if (body?.extension_update === true) {
+    const version = String(body?.version ?? "").trim();
+    if (!version) {
+      return new Response(
+        JSON.stringify({ error: "extension_update: 'version' requis (ex. \"0.4.0\")" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const audience = ["extension", "all", "test"].includes(body?.audience) ? body.audience : "extension";
+    const emailType = `ext_update_${version}`;
+
+    if (audience === "test") {
+      const to = String(body?.test_email ?? "").trim();
+      if (!to) {
+        return new Response(
+          JSON.stringify({ error: "audience 'test' : 'test_email' requis" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const ok = await sendEmail(to, extensionUpdateSubject("fr"), extensionUpdateHtml("fr", version));
+      return new Response(
+        JSON.stringify({ extension_update: true, version, audience, sent: ok ? [to] : [], errors: ok ? [] : [to] }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Même source d'adresses que le tunnel (RPC : exclut déjà les emails de test).
+    const { data: extCandidates, error: extCandErr } = await supabase.rpc("email_tunnel_candidates");
+    if (extCandErr || !extCandidates) {
+      return new Response(
+        JSON.stringify({ error: extCandErr?.message ?? "email_tunnel_candidates a échoué" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    let targets = extCandidates as any[];
+    if (audience === "extension") {
+      const { data: extRows, error: extErr } = await supabase
+        .from("profiles")
+        .select("id")
+        .not("extension_last_seen_at", "is", null);
+      if (extErr) {
+        return new Response(
+          JSON.stringify({ error: `lecture extension_last_seen_at : ${extErr.message}` }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const extSet = new Set((extRows ?? []).map((r: any) => r.id));
+      targets = targets.filter((c) => extSet.has(c.user_id));
+    }
+
+    const { data: extLogs } = await supabase
+      .from("email_logs")
+      .select("user_id")
+      .eq("email_type", emailType);
+    const alreadyDone = new Set((extLogs ?? []).map((l: any) => l.user_id));
+
+    let skipped = 0;
+    for (const c of targets) {
+      if (alreadyDone.has(c.user_id)) { skipped++; continue; }
+      const lang = c.lang === "en" ? "en" : "fr";
+      const ok = await sendEmail(c.user_email, extensionUpdateSubject(lang), extensionUpdateHtml(lang, version));
+      if (ok) {
+        await supabase.from("email_logs").insert({ user_id: c.user_id, email_type: emailType });
+        sent.push(`${emailType}:${c.user_email}`);
+      } else {
+        errors.push(`${emailType}:${c.user_email}`);
+      }
+    }
+    return new Response(
+      JSON.stringify({ extension_update: true, version, audience, targeted: targets.length, skipped, sent, errors }),
+      { headers: { "Content-Type": "application/json" } }
+    );
   }
 
   async function logEmail(userId: string, emailType: string): Promise<void> {

@@ -287,7 +287,7 @@ async function publishSelectedUnlocked(jobIds) {
 
   let jobs;
   try {
-    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token));
+    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, { build: FILLSELL_BUILD_ID }));
   } catch (e) {
     return { ok: false, reason: "fetch_failed", error: String(e?.message ?? e) };
   }
@@ -638,7 +638,9 @@ async function pollAndProcessJobsUnlocked() {
 
   let jobs;
   try {
-    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token));
+    // build : télémétrie de version (profiles.extension_build via
+    // get-pending-jobs) — sert au ciblage du mail « mise à jour extension ».
+    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, { build: FILLSELL_BUILD_ID }));
   } catch (e) {
     console.error("[background] get-pending-jobs:", e);
     return;

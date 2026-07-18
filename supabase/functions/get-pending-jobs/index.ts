@@ -63,6 +63,24 @@ serve(async (req) => {
     const includeProcessing = body?.include_processing === true;
     const statuses = includeProcessing ? ["pending", "processing"] : ["pending"];
 
+    // Télémétrie extension (2026-07-18) : chaque poll stampe
+    // profiles.extension_last_seen_at (+ extension_build si le background
+    // l'envoie — versions récentes uniquement). Sert au ciblage du mail
+    // « mise à jour extension » (email-tunnel, mode extension_update) et au
+    // futur bandeau de version dans l'app. Service role : ces colonnes ne
+    // doivent pas dépendre de la policy UPDATE client. Best-effort : un échec
+    // n'empêche JAMAIS la distribution des jobs.
+    try {
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const patch: Record<string, unknown> = { extension_last_seen_at: new Date().toISOString() };
+      const build = typeof body?.build === "string" ? body.build.slice(0, 120) : "";
+      if (build) patch.extension_build = build;
+      await admin.from("profiles").update(patch).eq("id", user.id);
+    } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
+
     // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
     // (action='delete', armés par le bandeau semi-auto de l'app après une
     // vente) passent par la même file — le background route sur job.action
