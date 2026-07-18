@@ -17,6 +17,11 @@ verify_jwt = false
 [functions.check-listing-status]
 verify_jwt = false
 
+# lens-analysis : même schéma (Bearer user vérifié dans le code via getUser) —
+# état prod verify_jwt=false constaté le 2026-07-18, à préserver au redeploy.
+[functions.lens-analysis]
+verify_jwt = false
+
 # Webhooks / cron externes (liste CLAUDE.md) : Apple, Google, Stripe, pg_net…
 [functions.email-tunnel]
 verify_jwt = false

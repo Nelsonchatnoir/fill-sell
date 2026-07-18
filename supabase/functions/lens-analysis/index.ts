@@ -267,14 +267,26 @@ serve(async (req) => {
     ];
 
     const basePayload = {
+      // max_tokens 1200 → 2500 (2026-07-18) : 1200 pouvait être épuisé en
+      // narration/recherches AVANT l'émission du JSON (schéma massif) →
+      // stop_reason "max_tokens" sans la moindre accolade → "non parsable".
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1200,
+      max_tokens: 2500,
       temperature: 0,
       system: systemPrompt,
     };
 
     // Analyse unifiée : web_search pour tout le monde (prix marché en direct),
     // avec repli sur l'analyse vision seule si l'outil échoue.
+    // ⚠️ web_search est un outil SERVEUR : les recherches s'exécutent côté API
+    // dans la même requête (blocs "server_tool_use"/"web_search_tool_result"),
+    // il n'y a jamais de stop_reason "tool_use" ni de tool_result à renvoyer.
+    // L'ancienne boucle filtrait type==="tool_use" → ne matchait jamais → boucle
+    // morte : un tour long interrompu par l'API (stop_reason "pause_turn")
+    // n'était jamais repris et le texte reçu s'arrêtait AVANT le JSON final
+    // ("Réponse IA non parsable", casquette Volcom 18/07, déterministe selon
+    // l'ordre des photos). Reprise correcte d'un pause_turn : rejouer la même
+    // requête avec le contenu assistant partiel ajouté en fin de conversation.
     let data: any;
     try {
       const wsMessages: any[] = [...initialMessages];
@@ -284,17 +296,8 @@ serve(async (req) => {
         messages: wsMessages,
       }, "web-search-2025-03-05");
 
-      for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
+      for (let i = 0; i < 3 && data.stop_reason === "pause_turn"; i++) {
         wsMessages.push({ role: "assistant", content: data.content });
-        const toolResults = (data.content as any[])
-          .filter((b: any) => b.type === "tool_use")
-          .map((b: any) => ({
-            type: "tool_result",
-            tool_use_id: b.id,
-            content: b.content ?? [],
-          }));
-        if (!toolResults.length) break;
-        wsMessages.push({ role: "user", content: toolResults });
         data = await callClaude(apiKey, {
           ...basePayload,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
@@ -318,9 +321,13 @@ serve(async (req) => {
       itemData = JSON.parse(rawText);
     } catch {
       const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) {
+      try {
+        if (!match) throw new Error("no JSON braces");
         itemData = JSON.parse(match[0]);
-      } else {
+      } catch {
+        // Sans ce log, la réponse fautive est irrécupérable : rien d'autre ne
+        // la journalise et les photos lens-temp sont purgées côté client.
+        console.error(`[lens-analysis] parse fail — stop_reason=${data?.stop_reason ?? "?"} — rawText(400): ${rawText.slice(0, 400)}`);
         throw new Error(_lang === "en" ? "AI response could not be parsed" : "Réponse IA non parsable");
       }
     }
