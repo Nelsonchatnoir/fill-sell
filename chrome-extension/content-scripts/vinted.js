@@ -416,6 +416,32 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
 
+  // ── Pont canal générique → champs dédiés (2026-07-18) ──────────────────────
+  // Un requis choisi dans le fallback « champs obligatoires » de l'app (ex.
+  // « Espace de stockage ») est écrit dans platform_fields.vintedAspects sous le
+  // CODE SERVEUR (internal_memory_capacity, condition, model…), PAS dans le champ
+  // dédié (fields.stockage, fields.etat…). Or ces codes sont dans handledCodes :
+  // le loop générique plus bas les SAUTE (pour ne pas doubler la pose des blocs
+  // dédiés). Sans ce pont, la valeur choisie tombait donc dans un trou — le bloc
+  // dédié lisait un champ vide, le loop générique passait son tour, « Espace de
+  // stockage » restait à blanc et le 400 revenait. On alimente le champ dédié
+  // depuis vintedAspects quand il est vide (jamais d'écrasement d'une valeur déjà
+  // posée par l'app). Couleur exclue (fields.colors est un tableau, canal propre).
+  const _va = fields.vintedAspects && typeof fields.vintedAspects === "object" ? fields.vintedAspects : {};
+  const _bridge = {
+    stockage: "internal_memory_capacity",
+    modele: "model",
+    etat: "condition",
+    marque: "brand",
+    matiere: "material",
+    taille: "size",
+    simlock: "sim_lock",
+  };
+  for (const [dedie, code] of Object.entries(_bridge)) {
+    const v = String(_va[code] ?? "").trim();
+    if (v && !String(fields[dedie] ?? "").trim()) fields[dedie] = v;
+  }
+
   // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
   // publiée sur Vinted — on échoue AVANT de remplir quoi que ce soit, avec un
   // message actionnable. `vintedGenreRequired` (posé par l'app à la création
