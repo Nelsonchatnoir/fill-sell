@@ -2898,20 +2898,21 @@ const UNKNOWN_RETRY_MS = 24 * 60 * 60 * 1000;
 // publiquement dans les minutes qui suivent son dépôt — elle serait lue comme
 // "unavailable" et un bandeau « Vendue ? » s'afficherait sur une annonce qui
 // vient d'être mise en ligne.
-// ⚠️ UNIFORMISÉ À 4 h SUR LES 4 PLATEFORMES (décision Nico, 2026-07-13). Cette
-// valeur remplace À LA FOIS les fenêtres par plateforme (beebs 24 h · leboncoin
-// 6 h · ebay 2 h · vinted 2 h — calées sur des observations ponctuelles) ET les
-// 20 min « TEMP TEST À REVERT AVANT LE LAUNCH » du 2026-07-12, qui traînaient
-// depuis. Un seul chiffre, tenable et explicable : 4 h couvrent la modération et
-// la propagation CDN observées, sans laisser une vraie vente invisible une
-// journée entière. Plus rien à reverter avant le launch.
+// ⚠️ UNIFORME SUR LES 4 PLATEFORMES depuis le 2026-07-13 (décision Nico — a
+// remplacé les fenêtres par plateforme beebs 24 h · leboncoin 6 h · ebay 2 h ·
+// vinted 2 h, calées sur des observations ponctuelles, ET les 20 min « TEMP
+// TEST » du 2026-07-12). Réduit 4 h → 2 h le 2026-07-19 (décision Nico,
+// launch) : 2 h couvrent toujours la modération/propagation CDN observées, et
+// une vraie vente devient détectable deux fois plus tôt. La garde reste doublée
+// par SALE_CHECK_MIN_INTERVAL_MS (2 h entre deux lectures d'une même annonce)
+// et par la règle « unknown ne conclut jamais rien ».
 const PUBLISH_GRACE_MS = {
-  beebs: 4 * 60 * 60 * 1000,
-  leboncoin: 4 * 60 * 60 * 1000,
-  ebay: 4 * 60 * 60 * 1000,
-  vinted: 4 * 60 * 60 * 1000,
+  beebs: 2 * 60 * 60 * 1000,
+  leboncoin: 2 * 60 * 60 * 1000,
+  ebay: 2 * 60 * 60 * 1000,
+  vinted: 2 * 60 * 60 * 1000,
 };
-const PUBLISH_GRACE_DEFAULT_MS = 4 * 60 * 60 * 1000;
+const PUBLISH_GRACE_DEFAULT_MS = 2 * 60 * 60 * 1000;
 
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
