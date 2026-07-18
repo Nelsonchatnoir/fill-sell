@@ -274,7 +274,11 @@ function rowState(p) {
   // n'a reçu aucun événement live (popup fermé au moment du démarrage du job).
   // C'est ce qui affichait « Non incluse » sur Beebs pendant toute sa publication.
   if (job?.status === "processing") return "busy";
-  if (job) return "ready";
+  // Lot en cours mais ce job pas encore démarré (popup ROUVERT en pleine
+  // publication : les événements live du début de lot sont perdus) : la ligne
+  // attend son tour — pas une coche de sélection statique ambiguë pendant
+  // qu'une autre plateforme publie (capture du 2026-07-18).
+  if (job) return batchRunning() ? "queued" : "ready";
   // Terminé (<30 min) par le poll de fond (Sujet 5). Désormais on distingue le
   // verdict réel du résultat récent : publié → « Publié », échec → « Échec »,
   // reconnexion → « Se connecter » — fini le « Non incluse » sur un job échoué.
@@ -349,8 +353,15 @@ function batchRunning() {
   for (const st of Object.values(state.status)) {
     if (st && (st.phase === "queued" || st.phase === "busy")) return true;
   }
+  // Snapshot 'processing' pris à l'ouverture — mais le LIVE prime : une fois
+  // l'événement terminal reçu (done/err/connect), le snapshot est périmé et ne
+  // doit pas garder le lot « en cours » (CTA gelé à vie popup ouvert).
   const by = state.annonce?.byPlatform ?? {};
-  return Object.values(by).some((j) => j?.status === "processing");
+  return Object.entries(by).some(([key, j]) => {
+    if (j?.status !== "processing") return false;
+    const st = state.status[key];
+    return !(st && ["done", "err", "connect"].includes(st.phase));
+  });
 }
 
 function renderCta() {
@@ -498,7 +509,14 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type !== "FILLSELL_PROGRESS") return;
   const key = msg.platform;
   if (!PLATFORMS.some((p) => p.key === key)) return;
+  // Filtre par jobId (2026-07-18) : le flux POLL émet désormais aussi la
+  // progression — y compris pour des jobs d'une AUTRE annonce ou des jobs
+  // delete (absents de byPlatform, filtrés au fetch). Sans ce filtre, leur
+  // progression peindrait les lignes de l'annonce affichée.
+  const job = state.annonce?.byPlatform[key];
+  if (!job || (msg.jobId != null && String(msg.jobId) !== String(job.id))) return;
   switch (msg.phase) {
+    case "queued":             state.status[key] = { phase: "queued" }; break;
     case "processing":         state.status[key] = { phase: "busy" }; break;
     case "published":          state.status[key] = { phase: "done", msg: "Publié" }; break;
     case "dry_run_completed":  state.status[key] = { phase: "done", msg: "Prêt (test)" }; break;

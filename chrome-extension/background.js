@@ -299,6 +299,13 @@ async function publishSelectedUnlocked(jobIds) {
   // Même garde anti-rafale qu'un cycle de poll (cf. retryInTempTab).
   tempTabUsedThisPoll = false;
 
+  // « En attente… » émis aussi côté background (2026-07-18) : même mécanique
+  // d'événements que le flux poll — une seule source de vérité. Le popup pose
+  // déjà cet état localement au clic (feedback instantané) ; l'événement le
+  // confirme. (Popup ROUVERT en plein lot : les événements passés sont perdus,
+  // c'est rowState qui re-dérive « En attente… » depuis batchRunning.)
+  for (const j of targets) emitProgress({ jobId: j.id, platform: j.platform, phase: "queued" });
+
   const results = [];
   for (let i = 0; i < targets.length; i++) {
     const job = targets[i];
@@ -651,16 +658,35 @@ async function pollAndProcessJobsUnlocked() {
   // Nouveau cycle : ré-arme le droit à UN onglet temporaire (cf. retryInTempTab).
   tempTabUsedThisPoll = false;
 
+  // Progression live vers le popup (2026-07-18) : le flux POLL n'émettait
+  // AUCUN FILLSELL_PROGRESS (réservé à PUBLISH_NOW) — un popup ouvert pendant
+  // une publication lancée par le poll montrait des lignes « prêtes » (coche
+  // de sélection statique), sans « En attente… » ni « Publication… » (vécu
+  // sur un job Leboncoin le 2026-07-18). Mêmes événements que
+  // publishSelectedUnlocked, même consommateur côté popup — qui filtre par
+  // jobId pour ne peindre que l'annonce affichée (les jobs d'une autre
+  // annonce ou les jobs delete sont ignorés là-bas).
+  for (const j of jobs) emitProgress({ jobId: j.id, platform: j.platform, phase: "queued" });
+
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
   // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
-    const outcome = await processJob(jobs[i], session.access_token);
+    const job = jobs[i];
+    emitProgress({ jobId: job.id, platform: job.platform, phase: "processing" });
+    const outcome = await processJob(job, session.access_token);
     // Même persistance des échecs que le flux popup (cf. recordRecentResult) :
     // un job échoué en poll de fond doit aussi s'afficher « Échec » au popup.
     if (outcome && ["failed", "needsUser", "retry"].includes(outcome.status)) {
-      await recordRecentResult(jobs[i], outcome.status, outcome.error).catch(() => {});
+      await recordRecentResult(job, outcome.status, outcome.error).catch(() => {});
     }
+    emitProgress({
+      jobId: job.id,
+      platform: job.platform,
+      phase: outcome?.status ?? "unknown",
+      error: outcome?.error,
+      listingUrl: outcome?.listingUrl,
+    });
     if (i < jobs.length - 1) await sleep(jobDelayMs());
   }
 
