@@ -11,10 +11,10 @@
 // (gitignoré), reconstruite from scratch à chaque run.
 
 import { readdir, readFile, writeFile, mkdir, stat, rm } from 'node:fs/promises';
-import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformExtensionFile, isExcludedFromPackage } from './minify-extension.mjs';
+import { BUILD_TOKEN, computeBuildId } from './build-id.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'chrome-extension');
@@ -24,18 +24,9 @@ const OUT = path.join(ROOT, 'build', 'extension');
 // la place du jeton __FILLSELL_BUILD_ID__ dans les .js (cf. background.js). C'est
 // LUI, pas une chaîne codée en dur, qui prouve en console qu'on tourne bien sur
 // le dernier build (le tag figé "2026-07-17…" a induit en erreur des tests entiers).
-const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
-function computeBuildId() {
-  const ts = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  let git = 'nogit';
-  try {
-    const hash = execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim();
-    const dirty = execSync('git status --porcelain', { cwd: ROOT }).toString().trim() ? '-dirty' : '';
-    git = hash + dirty;
-  } catch { /* pas de git : horodatage seul */ }
-  return `${ts}+${git}`;
-}
-const BUILD_ID = computeBuildId();
+// Mécanisme partagé avec le zip public + l'app web depuis le 2026-07-19 :
+// cf. scripts/build-id.mjs (source unique).
+const BUILD_ID = computeBuildId(ROOT);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

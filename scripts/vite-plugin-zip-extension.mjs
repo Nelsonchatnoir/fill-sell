@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { transformExtensionFile, isExcludedFromPackage } from './minify-extension.mjs';
+import { BUILD_TOKEN, computeBuildId } from './build-id.mjs';
 
 // Vite plugin : zippe le dossier `chrome-extension/` à chaque build et émet
 // `fillsell-extension.zip` à la racine de dist/. Servi statiquement par Vercel
@@ -23,6 +24,13 @@ export default function zipExtension({
   // Racine du zip = « fillsell-extension/ » pour qu'après dézippage l'utilisateur
   // pointe sur un dossier clairement nommé dans chrome://extensions.
   rootFolder = 'fillsell-extension',
+  // BUILD_ID injecté dans les .js à la place du jeton __FILLSELL_BUILD_ID__ —
+  // même mécanisme que le build local (2026-07-18) : sans lui, le zip public
+  // livrait le jeton nu et un utilisateur en mode dev ne pouvait pas savoir si
+  // sa version était obsolète. vite.config.js passe l'id partagé avec l'app
+  // (define __FILLSELL_APP_BUILD__) pour que la bannière compare des ids issus
+  // du MÊME calcul ; à défaut on en calcule un ici.
+  buildId = computeBuildId(),
 } = {}) {
   // Construit le buffer du zip depuis la source. Retourne { buffer, fileCount } ;
   // lève si le dossier source est introuvable.
@@ -45,7 +53,12 @@ export default function zipExtension({
           // Doc interne (README.md…) : jamais dans le paquet livré.
           if (isExcludedFromPackage(rel)) continue;
           // .js minifié (profil prudent), reste passthrough — cf. minify-extension.mjs.
-          const content = await transformExtensionFile(rel, await readFile(abs));
+          let content = await transformExtensionFile(rel, await readFile(abs));
+          // Estampille du BUILD_ID : UNIQUEMENT dans les .js (toString/replace
+          // corromprait un binaire) — miroir exact de build-extension.mjs.
+          if (/\.js$/i.test(rel)) {
+            content = content.toString('utf8').split(BUILD_TOKEN).join(buildId);
+          }
           zip.file(`${rootFolder}/${rel}`, content);
           fileCount += 1;
         }
