@@ -2843,7 +2843,42 @@ export default function ListingPreviewScreen({
             .eq("platform", platform)
             .eq("category_key", key)
             .eq("required", true);
-          return [platform, data ?? []];
+          let rows = data ?? [];
+
+          // ── Repli d'options intra-plateforme (Vinted) — fix « Espace de
+          // stockage » en texte libre (2026-07-18) ──────────────────────────
+          // Un requis appris par REFUS SERVEUR (source server_400) porte
+          // required=true mais AUCUNE option (allowed_values null) : le refus
+          // 400 ne renseigne que le nom du champ. AspectValueInput rendait alors
+          // un champ TEXTE LIBRE. Or la MÊME clé Vinted (field_key = code
+          // d'attribut serveur, GLOBAL chez Vinted) est souvent relevée AVEC ses
+          // options dans une autre catégorie — ex. internal_memory_capacity
+          // (« Espace de stockage ») : vide en Téléphones portables, complet en
+          // Tablettes. On emprunte donc la liste la plus fournie de la même clé.
+          // Scopé à VINTED : là field_key est un id d'attribut serveur cohérent
+          // d'une catégorie à l'autre. On NE fait PAS ça pour LBC/Beebs, dont le
+          // naming de champ dépend de la catégorie (emprunt = fausses options).
+          if (platform === "vinted") {
+            const hasOpts = (r) => Array.isArray(r.allowed_values) && r.allowed_values.length > 0;
+            const missingKeys = rows.filter((r) => !hasOpts(r)).map((r) => r.field_key);
+            if (missingKeys.length) {
+              const { data: sib } = await supabase
+                .from("platform_category_aspects")
+                .select("field_key, allowed_values")
+                .eq("platform", "vinted")
+                .in("field_key", missingKeys)
+                .not("allowed_values", "is", null);
+              const best = {};
+              for (const s of sib ?? []) {
+                const vals = Array.isArray(s.allowed_values) ? s.allowed_values : [];
+                if (vals.length > (best[s.field_key]?.length ?? 0)) best[s.field_key] = vals;
+              }
+              rows = rows.map((r) =>
+                !hasOpts(r) && best[r.field_key] ? { ...r, allowed_values: best[r.field_key] } : r
+              );
+            }
+          }
+          return [platform, rows];
         }));
         if (!alive) return;
         const next = Object.fromEntries(results.filter(([, rows]) => rows.length));
