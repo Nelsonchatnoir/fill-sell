@@ -335,13 +335,32 @@ function renderFlow() {
   }
 }
 
+// Un lot est-il EN COURS ? state.publishing ne couvre que la publication lancée
+// par CE popup : refermé puis ROUVERT en plein lot, il repart à false alors que
+// la publication séquentielle continue côté background — les plateformes pas
+// encore démarrées sont toujours 'pending', re-cochées par défaut, et le CTA
+// redevenait cliquable en pleine publication (risque de re-soumission par
+// réflexe ; le verrou de flux + le re-fetch du background évitaient la double
+// annonce, mais le bouton MENTAIT). On dérive donc l'état du lot de ce qui est
+// VISIBLE : phase live queued/busy (événements FILLSELL_PROGRESS) ou job de
+// l'annonce 'processing' (visible via include_processing même popup rouvert).
+function batchRunning() {
+  if (state.publishing) return true;
+  for (const st of Object.values(state.status)) {
+    if (st && (st.phase === "queued" || st.phase === "busy")) return true;
+  }
+  const by = state.annonce?.byPlatform ?? {};
+  return Object.values(by).some((j) => j?.status === "processing");
+}
+
 function renderCta() {
   const count = state.selected.size;
-  const disabled = state.publishing || !state.annonce || count === 0;
+  const running = batchRunning();
+  const disabled = running || !state.annonce || count === 0;
   els.cta.disabled = disabled;
-  els.ctaLabel.textContent = state.publishing ? "Publication…" : "Publier maintenant";
+  els.ctaLabel.textContent = running ? "Publication…" : "Publier maintenant";
   els.ctaCount.textContent = String(count);
-  els.ctaCount.classList.toggle("hidden", count === 0 || state.publishing);
+  els.ctaCount.classList.toggle("hidden", count === 0 || running);
 }
 
 function renderFooter() {
@@ -392,7 +411,9 @@ els.history.addEventListener("click", () => {
 // Délégation : cocher/décocher une plateforme, ou "Se connecter" sur une ligne.
 els.flow.addEventListener("click", (e) => {
   const check = e.target.closest("[data-check]");
-  if (check && !state.publishing) {
+  // batchRunning et non state.publishing : les cases restent aussi gelées
+  // quand le popup a été rouvert en plein lot (cohérent avec le CTA).
+  if (check && !batchRunning()) {
     const key = check.getAttribute("data-check");
     if (state.selected.has(key)) state.selected.delete(key);
     else state.selected.add(key);
@@ -439,7 +460,7 @@ function selectedJobIds() {
 }
 
 els.cta.addEventListener("click", () => {
-  if (els.cta.disabled || state.publishing) return;
+  if (els.cta.disabled || batchRunning()) return;
   const jobIds = selectedJobIds();
   if (!jobIds.length) return;
 
@@ -495,6 +516,9 @@ chrome.runtime.onMessage.addListener((msg) => {
     default: break;
   }
   renderFlow();
+  // renderCta aussi : popup rouvert en plein lot, c'est l'événement 'processing'
+  // (ou la fin du lot done/err) qui doit geler/dégeler le bouton en direct.
+  renderCta();
 });
 
 // Re-render si le background met à jour la session pendant que le popup est ouvert.
