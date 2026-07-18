@@ -522,21 +522,7 @@ async function fillListingForm(job) {
   // MARQUE (constaté : il apparaît à la sélection de Xiaomi) — ce bloc doit
   // rester APRÈS le bloc marque ci-dessus. Ses options n'ont PAS d'aria-label
   // (contrairement aux marques) : on matche par texte sur les fils --title.
-  if (fields.modele) {
-    try {
-      await selectSimpleOption(
-        '#model, [data-testid="model-select-input"]',
-        '[data-testid^="model-"][data-testid$="--title"]',
-        fields.modele,
-        { searchInputSelector: "#model-search-input" }
-      );
-    } catch (e) {
-      const note = `modèle: champ sauté — ${e.message}`;
-      console.warn(`[vinted] ⚠️ ${note}`);
-      warnings.push(note);
-      await closeAnyOpenDropdown();
-    }
-  }
+  if (fields.modele) await selectVintedModel(fields.modele, warnings);
   // Espace de stockage : liste fermée (20 options relevées, 256 Mo → 4 To),
   // mêmes testids que état/matière → cascade standard.
   if (fields.stockage) {
@@ -1579,6 +1565,119 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   option.click();
   await humanPause();
   await confirmDropdownIfNeeded();
+}
+
+// ── Modèle Vinted : champ à RECHERCHE sur liste virtualisée ────────────────────
+// Prouvé en direct le 2026-07-18 (Xiaomi Redmi Note 10 5G) :
+//   1. La liste des modèles est VIRTUALISÉE (~50 options rendues) : il FAUT
+//      filtrer par la barre de recherche pour faire apparaître l'option voulue.
+//   2. L'app génère souvent un libellé PLUS SPÉCIFIQUE que le catalogue Vinted :
+//      "Redmi Note 10 5G" alors que Vinted n'a que "Redmi Note 10" → taper la
+//      valeur complète ne renvoie AUCUN modèle réel (juste les replis "Mon modèle
+//      ne figure pas dans la liste"). D'où le 400 "Sélectionne le modèle".
+//      iPhone marchait car "iPhone 13 Pro Max" existe à l'exact.
+//   3. La sélection ne se COMMITTE qu'en cliquant la LIGNE [role="button"]
+//      (#model-<id>), pas seulement le <span> --title (test direct : #model.value
+//      reste vide sur un clic du span de repli).
+// Parade : on essaie la valeur complète, puis on retire les tokens de queue
+// (5G/4G/Dual…) jusqu'à retomber sur un modèle catalogué. Match = exact sur la
+// valeur, ou option qui est un PRÉFIXE mot-à-mot de la valeur (base du variant).
+const MODEL_FALLBACK_LABELS = new Set([
+  "mon modèle ne figure pas dans la liste",
+  "je ne connais pas le nom du modèle",
+]);
+const normModel = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+
+function findVintedModelOption(optionSelector, rawWanted) {
+  const wanted = normModel(rawWanted);
+  const wantedTokens = wanted.split(" ").filter(Boolean);
+  const opts = Array.from(document.querySelectorAll(optionSelector))
+    .map((el) => ({ el, txt: normModel(el.textContent) }))
+    .filter((o) => o.txt && !MODEL_FALLBACK_LABELS.has(o.txt));
+  const exact = opts.find((o) => o.txt === wanted);
+  if (exact) return { el: exact.el, label: exact.el.textContent.trim(), stage: "exact" };
+  // option = préfixe mot-à-mot de la valeur (la plus longue gagne) :
+  // "Redmi Note 10" ⊂ "Redmi Note 10 5G" — même base cataloguée. On EXCLUT les
+  // frères non-préfixes ("Redmi Note 10 Pro" n'est pas un préfixe de "…10 5G").
+  let best = null;
+  for (const o of opts) {
+    const t = o.txt.split(" ").filter(Boolean);
+    if (t.length >= wantedTokens.length) continue;
+    if (t.every((tok, i) => tok === wantedTokens[i]) && (!best || t.length > best.len)) {
+      best = { el: o.el, label: o.el.textContent.trim(), len: t.length };
+    }
+  }
+  return best ? { el: best.el, label: best.label, stage: "prefix" } : null;
+}
+
+// Clique la LIGNE cliquable de l'option (#model-<id> [role=button]) et non le
+// <span> --title : seule la ligne commite la sélection (prouvé en direct).
+function clickModelOption(titleEl) {
+  const row =
+    titleEl.closest('[role="button"], [data-testid^="model-"]:not([data-testid$="--title"])') || titleEl;
+  row.click();
+}
+
+async function selectVintedModel(wanted, warnings) {
+  const raw = String(wanted ?? "").trim();
+  if (!raw) return false;
+  const trigger = '#model, [data-testid="model-select-input"]';
+  const optionSel = '[data-testid^="model-"][data-testid$="--title"]';
+
+  // Requêtes candidates : valeur complète puis en retirant les tokens de queue.
+  const words = raw.split(/\s+/).filter(Boolean);
+  const queries = [];
+  const seen = new Set();
+  for (let n = words.length; n >= 1; n--) {
+    const q = words.slice(0, n).join(" ");
+    const k = q.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); queries.push(q); }
+  }
+
+  try {
+    await openDropdown(trigger);
+  } catch (e) {
+    const note = `modèle: ouverture du champ impossible — ${e.message}`;
+    console.warn(`[vinted] ⚠️ ${note}`);
+    warnings.push(note);
+    return false;
+  }
+  const search = await waitForElement("#model-search-input", 5000).catch(() => null);
+
+  for (const q of queries) {
+    if (search) await typeHuman(search, q);
+    // Poll : laisser le filtre (debounce + réseau + re-render) faire apparaître
+    // l'option, sans délai fixe deviné.
+    const start = Date.now();
+    let match = null;
+    while (Date.now() - start < 8000) {
+      match = findVintedModelOption(optionSel, raw);
+      if (match) break;
+      await sleep(120);
+    }
+    if (match) {
+      await humanPause();
+      clickModelOption(match.el);
+      await humanPause();
+      await confirmDropdownIfNeeded();
+      if (match.stage !== "exact") {
+        const note = `modèle: "${raw}" absent à l'exact → option Vinted "${match.label}" (base du variant retenue)`;
+        console.warn(`[vinted] ≈ ${note}`);
+        warnings.push(note);
+      }
+      return true;
+    }
+  }
+
+  // Aucun modèle catalogué ne correspond, même en retirant les qualificatifs :
+  // champ laissé vide → la gate pré-clic (computeVintedRequiredState) le remonte
+  // en needsUser "Modèle" au lieu d'un 400 muet. (On ne clique PAS le repli
+  // Vinted "Mon modèle ne figure pas dans la liste" : commit non fiabilisé.)
+  await closeAnyOpenDropdown();
+  const note = `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance) — champ laissé vide`;
+  console.warn(`[vinted] ⚠️ ${note}`);
+  warnings.push(note);
+  return false;
 }
 
 // Variante robuste pour les champs à choix fermé (taille, état, matière) :
