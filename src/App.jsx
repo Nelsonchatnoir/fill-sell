@@ -11,6 +11,18 @@ import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
+// BUILD_ID de CE build web, injecté par Vite (define, cf. vite.config.js) —
+// même computeBuildId que le zip public de l'extension. Sert à la bannière
+// « extension obsolète » : profiles.extension_build (stampé par get-pending-jobs
+// à chaque poll de l'extension) comparé à cet id. Les deux commencent par un
+// horodatage ISO triable — on ne compare QUE ce préfixe (le hash git ne
+// s'ordonne pas). Un id sans préfixe ISO (« SOURCE non-buildé » en dev) n'est
+// jamais flaggé.
+const APP_BUILD_ID = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_APP_BUILD__ : null;
+const buildIdTimestamp = (id) => {
+  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/.exec(String(id ?? ''));
+  return m ? Date.parse(m[1]) : null;
+};
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import Toast from './components/Toast';
 import ConversionModal from './components/ConversionModal';
@@ -1765,6 +1777,23 @@ export default function App({ loginOnly = false }){
   // Viewport mobile (réactif, breakpoint 768 partagé) : sert à masquer ce qui
   // n'a pas de sens sur téléphone, ex. l'installation de l'extension Chrome.
   const isMobileViewport=useIsMobile();
+  // Bannière « extension obsolète » (2026-07-19) : télémétrie stampée par
+  // get-pending-jobs (colonnes inertes tant que cette edge n'est pas
+  // redéployée — plan « jour J » du commit 3cac497). Conditions : extension vue
+  // dans les 30 derniers jours (au-delà, l'utilisateur ne s'en sert plus — pas
+  // de nag) ET build extension strictement antérieur au build de l'app. Chaque
+  // déploiement web re-flagge mécaniquement les extensions antérieures : assumé,
+  // le zip téléchargeable est toujours celui du build courant.
+  const [extensionBuild,setExtensionBuild]=useState(null);
+  const [extensionLastSeenAt,setExtensionLastSeenAt]=useState(null);
+  const extensionOutdated=(()=>{
+    if(isNative||isMobileViewport)return false;
+    const seen=Date.parse(extensionLastSeenAt??'');
+    if(!Number.isFinite(seen)||Date.now()-seen>30*24*60*60*1000)return false;
+    const ext=buildIdTimestamp(extensionBuild);
+    const app=buildIdTimestamp(APP_BUILD_ID);
+    return ext!=null&&app!=null&&ext<app;
+  })();
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
@@ -2034,7 +2063,7 @@ export default function App({ loginOnly = false }){
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings').eq('id',uid).maybeSingle(),
+      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -2052,6 +2081,8 @@ export default function App({ loginOnly = false }){
       setSettingsLbcVille(p.data?.platform_settings?.leboncoin?.ville||'');
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
+      setExtensionBuild(p.data?.extension_build??null);
+      setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
       const confirmed=!!localStorage.getItem('fs_currency_confirmed');
       if(confirmed&&p.data?.currency){
         setCurrency(p.data.currency);
@@ -4091,6 +4122,24 @@ export default function App({ loginOnly = false }){
           <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
         </div>
       </div>
+
+      {/* Bannière « extension obsolète » (2026-07-19) : desktop seulement — sur
+          mobile/natif l'extension ne s'installe pas (cf. e252620), la condition
+          extensionOutdated les exclut déjà. Lien vers /extension (zip du build
+          courant + guide de rechargement). */}
+      {extensionOutdated&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#FFFBEB",borderBottom:"1px solid #FDE68A",fontSize:13,color:"#92400E"}}>
+          <span aria-hidden="true">🧩</span>
+          <span style={{flex:1,lineHeight:1.4}}>
+            {lang==='fr'
+              ?"Ton extension Chrome FillSell n'est plus à jour — certaines publications peuvent échouer."
+              :"Your FillSell Chrome extension is out of date — some listings may fail to publish."}
+          </span>
+          <a href="/extension" style={{fontWeight:700,color:"#92400E",textDecoration:"underline",whiteSpace:"nowrap"}}>
+            {lang==='fr'?"Mettre à jour":"Update"}
+          </a>
+        </div>
+      )}
 
       <div className="desktop-nav" style={{background:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
         <div className="wrap">
