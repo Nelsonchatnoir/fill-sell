@@ -156,6 +156,7 @@
     .pnode.none    { background: var(--paper); border: 2px solid var(--ink-15); }
     .pnode.done    { background: var(--teal-deep); box-shadow: 0 0 0 3px rgba(47,158,144,0.20); }
     .pnode.busy    { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.12); }
+    .pnode.queued  { background: var(--paper); border: 2px solid var(--teal); opacity: 0.55; }
     .pnode.err     { background: var(--amber); box-shadow: 0 0 0 3px rgba(232,149,109,0.20); }
 
     .plogo {
@@ -197,6 +198,14 @@
     .status-err { font-size: 11.5px; font-weight: 600; color: var(--amber); max-width: 130px;
                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .status-run { font-size: 12px; font-weight: 600; color: var(--teal-deep); display: flex; align-items: center; gap: 6px; }
+    /* En attente de son tour (publication séquentielle) : ton neutre, point amber
+       qui pulse doucement — pas encore le teal actif de « Publication… ». */
+    .status-wait { font-size: 12px; font-weight: 600; color: var(--ink-50); display: flex; align-items: center; gap: 6px; }
+    .status-wait .dot-wait {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--amber);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
     .spinner {
       width: 13px; height: 13px; border-radius: 50%;
