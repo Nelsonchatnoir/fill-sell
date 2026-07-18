@@ -232,7 +232,7 @@ function emitProgress(payload) {
 // storage.onChanged le re-render même déjà ouvert. annonceKey reprend la
 // même formule que firstAnnonce côté popup (inv:<id> / title:<titre|jobId>).
 const RECENT_RESULTS_TTL_MS = 30 * 60 * 1000;
-async function recordRecentResult(job, status) {
+async function recordRecentResult(job, status, error = null) {
   try {
     const KEY = FILLSELL_CONFIG.STORAGE_KEYS.RECENT_RESULTS;
     const store = await chrome.storage.local.get(KEY);
@@ -243,6 +243,10 @@ async function recordRecentResult(job, status) {
     entries[job.id] = {
       platform: job.platform,
       status,
+      // error : sur un job échoué/needsUser, le popup rouvert affiche « Échec »
+      // (ou « À reconnecter ») avec ce message, au lieu de « Non incluse » —
+      // un job terminé en échec sort de get-pending-jobs et redevenait invisible.
+      error: error ? String(error).slice(0, 300) : null,
       title: job.title ?? "",
       inventaire_id: job.inventaire_id ?? null,
       annonceKey: job.inventaire_id != null ? `inv:${job.inventaire_id}` : `title:${job.title || job.id}`,
@@ -296,6 +300,12 @@ async function publishSelectedUnlocked(jobIds) {
       error: outcome.error,
       listingUrl: outcome.listingUrl,
     });
+    // Persiste aussi les ÉCHECS (les succès le sont déjà dans processJob) : sans
+    // ça, un popup rouvert après un échec retombait sur « Non incluse » (le job
+    // échoué sort de get-pending-jobs). Cf. recordRecentResult.
+    if (["failed", "needsUser", "retry"].includes(outcome.status)) {
+      await recordRecentResult(job, outcome.status, outcome.error).catch(() => {});
+    }
     results.push({ jobId: job.id, platform: job.platform, ...outcome });
     // Pause + jitter entre deux jobs, comme le poll.
     if (i < targets.length - 1) await sleep(jobDelayMs());
@@ -626,7 +636,12 @@ async function pollAndProcessJobsUnlocked() {
   // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
-    await processJob(jobs[i], session.access_token);
+    const outcome = await processJob(jobs[i], session.access_token);
+    // Même persistance des échecs que le flux popup (cf. recordRecentResult) :
+    // un job échoué en poll de fond doit aussi s'afficher « Échec » au popup.
+    if (outcome && ["failed", "needsUser", "retry"].includes(outcome.status)) {
+      await recordRecentResult(jobs[i], outcome.status, outcome.error).catch(() => {});
+    }
     if (i < jobs.length - 1) await sleep(jobDelayMs());
   }
 
