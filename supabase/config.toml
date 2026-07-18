@@ -17,10 +17,12 @@ verify_jwt = false
 [functions.check-listing-status]
 verify_jwt = false
 
-# lens-analysis : même schéma (Bearer user vérifié dans le code via getUser) —
-# état prod verify_jwt=false constaté le 2026-07-18, à préserver au redeploy.
+# lens-analysis : appelée par l'app avec un JWT user (getUser dans le code).
+# verify_jwt=true EXPLICITE (décision Nico 18/07) : l'état false historique
+# datait de l'époque où le gateway bloquait les préflights OPTIONS — plus le
+# cas (preuve : generate-listing/voice-transcribe en true, OPTIONS 200).
 [functions.lens-analysis]
-verify_jwt = false
+verify_jwt = true
 
 # Webhooks / cron externes (liste CLAUDE.md) : Apple, Google, Stripe, pg_net…
 [functions.email-tunnel]

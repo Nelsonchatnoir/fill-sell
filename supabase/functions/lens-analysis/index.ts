@@ -42,9 +42,8 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 }
 
 // Qualité unifiée (2026-07) : un seul prompt — l'ex-analyse Premium avec
-// web_search — pour TOUS les tiers. Chaque analyse coûte des Pépites
-// (coin_config.price_lens_overflow) ; la différenciation par tier se fait
-// uniquement sur le grant mensuel de Pépites (free=30, premium=150, pro=600).
+// web_search — pour TOUS les tiers. La différenciation se fait uniquement sur
+// le quota mensuel inclus (free=5, premium=120, pro=250) + pièces au-delà.
 function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
   // Multi-photos (2026-07-17) : neutralise le biais d'ORDRE (les modèles vision
   // sur-pondèrent souvent la 1re image) et force une lecture SYSTÉMATIQUE de
@@ -186,40 +185,79 @@ serve(async (req) => {
     });
   }
 
-  // ── Chaque analyse coûte des Pépites, tous tiers (décision 2026-07-07) ────
-  // Plus de quota mensuel inclus ni de frein journalier Premium. Le débit et le
-  // log d'usage sont atomiques dans spend_coins_for_lens, qui pose aussi le
-  // grant mensuel du tier (free 30 / premium 150 / pro 600) s'il manque.
+  // ── Quota mensuel inclus par tier + dépassement payé en pièces ────────────
+  // free = 5/mois strict (plus de plafond journalier) · premium = 120/mois
+  // (+10/jour conservé) · pro = 250/mois (pas de plafond journalier).
+  // Les overrides par compte (lens_daily_override / lens_monthly_override)
+  // restent prioritaires sur les valeurs du tier, comme avant.
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("is_premium, is_founder, apple_original_transaction_id, google_purchase_token, is_pro, lens_daily_override, lens_monthly_override")
+    .eq("id", user.id)
+    .single();
+  const isPro = profile?.is_pro === true;
+  // Ne jamais utiliser is_premium seul, mais ne jamais l'omettre non plus :
+  // un Premium standard Stripe (web) n'a ni token Apple/Google ni is_founder.
+  const isPremium = profile?.is_premium === true
+    || profile?.is_founder === true
+    || profile?.apple_original_transaction_id != null
+    || profile?.google_purchase_token != null
+    || isPro;
+  const dailyOverride: number | null = profile?.lens_daily_override ?? null;
+  const monthlyOverride: number | null = profile?.lens_monthly_override ?? null;
+  const dailyLimit   = dailyOverride   ?? (isPro ? null : isPremium ? 10 : null);
+  const monthlyLimit = monthlyOverride ?? (isPro ? 250 : isPremium ? 120 : 5);
+  // Astuce : on passe toujours les limites du tier dans les slots "premium" du
+  // RPC (p_is_premium=true) — NULL = pas de plafond, le RPC gère déjà ça.
+  const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
+    p_user_id: user.id,
+    p_feature: "lens",
+    p_is_premium: true,
+    p_daily_limit_free: null,
+    p_monthly_limit_free: null,
+    p_daily_limit_premium: dailyLimit,
+    p_monthly_limit_premium: monthlyLimit,
+  });
 
-  // Pièces débitées pour cette analyse — sert au remboursement best-effort
-  // si l'analyse échoue après débit.
+  // Pièces débitées pour cette analyse (0 = dans le quota inclus) — sert au
+  // remboursement best-effort si l'analyse échoue après débit.
   let paidWithCoins = 0;
 
-  const { data: spend, error: spendErr } = await adminClient.rpc("spend_coins_for_lens", {
-    p_user_id: user.id,
-  });
-  if (spendErr || !spend) {
-    console.error("[lens-analysis] spend_coins_for_lens:", spendErr?.message);
-    return new Response(
-      JSON.stringify({ error: "coin_debit_failed" }),
-      { status: 500, headers: { "Content-Type": "application/json", ...CORS } }
-    );
-  }
-  if (spend.allowed === false) {
-    if (spend.reason === "insufficient_coins") {
+  if (quotaData?.allowed === false) {
+    if (quotaData.reason === "daily_limit") {
+      // Frein journalier (Premium 10/j) : comportement historique conservé
       return new Response(
-        JSON.stringify({ error: "insufficient_coins", price: spend.price, balance: spend.balance }),
-        { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
       );
     }
-    console.error("[lens-analysis] spend_coins_for_lens refused:", spend.reason);
-    return new Response(
-      JSON.stringify({ error: "coin_debit_failed", reason: spend.reason }),
-      { status: 500, headers: { "Content-Type": "application/json", ...CORS } }
-    );
+    // Quota mensuel épuisé (tous tiers) : l'analyse passe en pièces.
+    // spend_coins_for_lens débite ET journalise l'usage atomiquement.
+    const { data: spend, error: spendErr } = await adminClient.rpc("spend_coins_for_lens", {
+      p_user_id: user.id,
+    });
+    if (spendErr || !spend) {
+      console.error("[lens-analysis] spend_coins_for_lens:", spendErr?.message);
+      return new Response(
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    if (spend.allowed === false) {
+      if (spend.reason === "insufficient_coins") {
+        return new Response(
+          JSON.stringify({ error: "insufficient_coins", price: spend.price, balance: spend.balance }),
+          { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
+        { status: 429, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    paidWithCoins = spend.price ?? 0;
   }
-  paidWithCoins = spend.price ?? 0;
 
   try {
     const body = await req.json();
