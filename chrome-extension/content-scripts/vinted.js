@@ -304,60 +304,86 @@ async function deleteListing(job) {
   await humanPause(600, 1200);
   await deleteClickReact(control, t);
   await humanPause(800, 1600);
-  // Modale "Supprimer l'article" — sélecteur CONFIRMÉ (2026-07-11) :
-  // item-delete-confirmation-button ("Confirmer et supprimer"), repli texte.
-  const confirmBtn = await waitFor(() => {
-    return (
-      document.querySelector('[data-testid="item-delete-confirmation-button"]') ??
-      (() => {
-        const dialog = document.querySelector('[role="dialog"], .ReactModal__Content');
-        if (!dialog) return null;
-        return Array.from(dialog.querySelectorAll("button"))
-          .find((b) => /confirmer et supprimer|supprimer|delete/i.test(b.textContent)) ?? null;
-      })()
-    );
-  }, 6000);
-  if (!confirmBtn) {
-    // Si on arrive ici, ce n'est PAS un problème de peinture (vérifiée juste
-    // au-dessus) : la modale ne s'est réellement pas montée, ou son markup a
-    // changé. On remonte les testids présents — c'est ce relevé qui a permis
-    // d'élucider le cas du 2026-07-12.
-    const testids = [...document.querySelectorAll("[data-testid]")]
-      .map((e) => e.getAttribute("data-testid"))
-      .filter((id) => /delete|modal|dialog/i.test(id));
-    t(`modale NON montée — testids delete/modal présents : ${testids.join(", ") || "(aucun)"}`);
-    return {
-      success: false,
-      error: `Modale de confirmation introuvable après le clic Supprimer (testids présents : ${testids.join(", ") || "aucun"})`,
-      trace,
-    };
+
+  // ── APRÈS LE CLIC SUPPRIMER — la modale n'est PAS obligatoire (2026-07-18) ───
+  // Vinted ne montre pas toujours une modale de confirmation : dans certains cas
+  // le clic supprime DIRECTEMENT (redirection hors /items/, ou page introuvable).
+  // L'ancien code EXIGEAIT la modale et échouait sinon (« Modale de confirmation
+  // introuvable ») alors que l'annonce pouvait être déjà supprimée — ou sur le
+  // point de l'être sans modale. On attend désormais le PREMIER des deux
+  // résultats : suppression EFFECTIVE, ou modale à valider.
+  const gone = () =>
+    !location.pathname.includes("/items/") || /\/not-found|\/404/.test(location.pathname);
+
+  const findConfirm = () =>
+    document.querySelector('[data-testid="item-delete-confirmation-button"]') ??
+    (() => {
+      // La modale de SUPPRESSION Vinted uniquement — surtout PAS la bannière
+      // cookies (elle aussi [role="dialog"], vu en direct le 2026-07-18) : on
+      // exige un texte de suppression ET on écarte tout marqueur de consentement.
+      const dialog = document.querySelector(
+        '[class*="item-delete-modal"], [data-testid*="delete"][role="dialog"], [role="dialog"], .ReactModal__Content'
+      );
+      if (!dialog) return null;
+      const txt = dialog.textContent || "";
+      if (!/supprimer|article|delete/i.test(txt)) return null;
+      if (/cookie|consent|fournisseur|\biab\b|intérêt légitime/i.test(txt)) return null;
+      return Array.from(dialog.querySelectorAll("button"))
+        .find((b) => /confirmer et supprimer|supprimer/i.test(b.textContent)) ?? null;
+    })();
+
+  const outcome = await waitFor(() => {
+    if (gone()) return { kind: "gone" };
+    const c = findConfirm();
+    if (c) return { kind: "modal", confirm: c };
+    return null;
+  }, 8000);
+
+  // Cas 1 : déjà supprimée au clic, sans modale → succès direct (pas de modale à
+  // chercher, on ne fabrique pas un échec sur une annonce bel et bien retirée).
+  if (outcome?.kind === "gone") {
+    t("annonce disparue directement après le clic Supprimer (aucune modale) — suppression confirmée");
+    return { success: true, trace };
   }
-  t(`confirmation : "${confirmBtn.textContent.trim()}"`);
-  await deleteClickReact(confirmBtn, t);
-  // ── VÉRIFICATION RÉELLE (2026-07-17) ────────────────────────────────────────
-  // Ne JAMAIS renvoyer success sur la seule foi du clic : le clic fiber de
-  // suppression (deleteClickReact) est NON VÉRIFIÉ en fenêtre cachée. Vinted
-  // redirige hors de /items/<id> (vers /member/<id>) après une suppression
-  // RÉELLE — on attend cette disparition de la page annonce. Sans redirection,
-  // la suppression n'a pas abouti → success:false → le background revérifie
-  // l'état réel de l'annonce et ré-arme (jamais un faux « deleted » qui
-  // laisserait l'annonce EN LIGNE alors qu'un sibling s'est vendu = double-vente).
-  // Un faux négatif ici (supprimée mais pas de redirect) reste SÛR : le
-  // background confirme alors la suppression par l'état réel de l'annonce.
-  const redirected = await waitFor(
-    () => (!location.pathname.includes("/items/") ? true : null),
-    8000
-  );
-  if (!redirected) {
-    t("pas de redirection hors de /items/ après confirmation — suppression NON confirmée");
-    return {
-      success: false,
-      error: "Confirmation cliquée mais l'annonce Vinted est toujours affichée (pas de redirection) — suppression non confirmée",
-      trace,
-    };
+
+  // Cas 2 : modale de confirmation → on la valide, puis on EXIGE la disparition.
+  // (Ne JAMAIS renvoyer success sur la seule foi du clic : deleteClickReact reste
+  // non vérifié en fenêtre cachée. Vinted redirige hors de /items/ après une
+  // suppression réelle — c'est cette disparition qui fait foi. Un faux négatif
+  // ici reste SÛR : le background revérifie l'état réel et confirme.)
+  if (outcome?.kind === "modal") {
+    t(`modale de confirmation : "${outcome.confirm.textContent.trim()}"`);
+    await deleteClickReact(outcome.confirm, t);
+    const done = await waitFor(() => (gone() ? true : null), 8000);
+    if (!done) {
+      t("confirmation cliquée mais l'annonce est toujours affichée — suppression NON confirmée");
+      return {
+        success: false,
+        error:
+          "Confirmation cliquée mais l'annonce Vinted est toujours affichée (pas de disparition) — suppression non confirmée",
+        trace,
+      };
+    }
+    t("redirection hors de la page annonce — suppression confirmée");
+    return { success: true, trace };
   }
-  t("redirection hors de la page annonce — suppression confirmée");
-  return { success: true, trace };
+
+  // Cas 3 : ni disparition, ni modale (clic sans effet en fenêtre cachée, ou
+  // markup inconnu) → ÉCHEC HONNÊTE, jamais un faux « deleted ». Le background
+  // revérifie l'état réel de l'annonce et ré-arme. Testids remontés pour le
+  // diagnostic si Vinted a changé son markup.
+  const testids = [...document.querySelectorAll("[data-testid]")]
+    .map((e) => e.getAttribute("data-testid"))
+    .filter((id) => /delete|modal|dialog|confirm/i.test(id));
+  t(`ni disparition ni modale après le clic Supprimer — testids présents : ${testids.join(", ") || "(aucun)"}`);
+  return {
+    success: false,
+    error:
+      `Après le clic Supprimer : ni disparition de l'annonce, ni modale de confirmation détectée ` +
+      `(testids présents : ${testids.join(", ") || "aucun"}). L'annonce est peut-être toujours en ligne — ` +
+      `le background revérifie son état réel.`,
+    trace,
+  };
 }
 
 function findDeleteByText() {
