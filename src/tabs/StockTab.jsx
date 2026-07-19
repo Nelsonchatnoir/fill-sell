@@ -324,12 +324,20 @@ const StockTab = memo(function StockTab({
     let annule = false;
 
     const relire = async () => {
+      // "failed" est dans le filtre (2026-07-19, contrat « jamais d'état
+      // flou ») : sans lui, un job échoué disparaissait SILENCIEUSEMENT de la
+      // carte — ni « En cours… », ni pastille, ni erreur : la plateforme avait
+      // simplement l'air de n'avoir jamais été incluse, indistinguable d'un
+      // article jamais publié. `error` et `created_at` servent au badge Échec
+      // (message associé + « seul le job le plus récent de la plateforme
+      // compte » : un échec régénéré puis reparti en pending ne doit plus
+      // s'afficher en échec).
       const { data } = await supabase
         .from("cross_post_jobs")
-        .select("id, inventaire_id, platform, status")
+        .select("id, inventaire_id, platform, status, error, created_at")
         .eq("user_id", user.id)
         .eq("action", "publish")
-        .in("status", ["pending", "processing", "published"]);
+        .in("status", ["pending", "processing", "published", "failed"]);
       if (annule || !data) return;
       const map = {};
       for (const job of data) {
@@ -1022,6 +1030,19 @@ const StockTab = memo(function StockTab({
                   // Job en attente sur une plateforme EN PAUSE (maintenance) :
                   // badge dédié « reprise auto » plutôt que le simple « En cours ».
                   const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
+                  // Échec = le job LE PLUS RÉCENT de la plateforme est "failed"
+                  // (2026-07-19). Pas « il existe un job failed » : après une
+                  // régénération, le nouveau job pending/published de la même
+                  // plateforme doit ÉTEINDRE le badge — seul l'état courant
+                  // compte. À l'inverse, un échec de REPUBLICATION coexiste
+                  // avec la pastille published de l'ancienne annonce toujours
+                  // en ligne : les deux sont vrais, les deux s'affichent.
+                  const latestByPlatform={};
+                  for(const j of jobs){
+                    const cur=latestByPlatform[j.platform];
+                    if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestByPlatform[j.platform]=j;
+                  }
+                  const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed");
                   const enLigne=published.length>0;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
@@ -1042,7 +1063,7 @@ const StockTab = memo(function StockTab({
                             {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
                             {typeLabel(item.type||"Autre",lang)}
                           </div>
-                          {(enLigne||hasPending||item.plateforme||item.emplacement)&&(
+                          {(enLigne||hasPending||failedJobs.length>0||item.plateforme||item.emplacement)&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
@@ -1062,6 +1083,22 @@ const StockTab = memo(function StockTab({
                               {/* Maintenance (Phase B) : plateforme en pause,
                                   ton neutre, rassurant, aucune action requise. */}
                               {hasPausedPending&&<div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>⏸ {t("stockJobPausedBadge")}</div>}
+                              {/* Échec explicite par plateforme (2026-07-19) : le message
+                                  d'erreur complet (déjà humanisé côté extension) est porté
+                                  par title= (survol desktop / lecteur d'écran) et par un
+                                  tap → alert (mobile n'a pas de survol). stopPropagation :
+                                  le tap sur le badge ne doit pas ouvrir l'édition. */}
+                              {failedJobs.map(j=>(
+                                <div
+                                  key={"fail-"+j.platform}
+                                  className="micon"
+                                  title={j.error||undefined}
+                                  onClick={e=>{e.stopPropagation();if(j.error)window.alert(`${PLATFORM_LABELS[j.platform]||j.platform} — ${j.error}`);}}
+                                  style={{background:"#FBEDEC",border:"1px solid #EFC2BE",color:"#8C2F28",cursor:j.error?"pointer":"default"}}
+                                >
+                                  ⚠️ {lang==="en"?"Failed":"Échec"} {PLATFORM_LABELS[j.platform]||j.platform}
+                                </div>
+                              ))}
                               {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
                             </div>
