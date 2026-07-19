@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-19-needs-user (aspect obligatoire vide au moment du clic : needsUserField structure — premier aspect + cible ebayAspects.<nom> — le background persiste needs_user, completion dans l'app uniquement ; gate referentiel/description/prix/connexion restent transitoires) + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-07-19-lecture-valeur-hors-menu (job c5fe1414, constat direct Nico : Style VIDE mais clic parti — readAspectDisplayValue prenait une OPTION du menu ferme pour une valeur → tout dropdown vide passait « pre-rempli » ; les textual-display des conteneurs de menu/tooltip sont exclus, valide sur le brouillon 5317034518613 : Style='', Marque='Volcom') + needs-user + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -956,7 +956,22 @@ function dumpSpecificRow(labelBtn) {
 // « Fréquemment sélectionnées » ne polluent PAS la lecture).
 function readAspectDisplayValue(labelBtn) {
   const field = labelBtn.closest('[class*="summary__attributes--field"]');
-  const display = field?.querySelector('[class*="summary__attributes--value"] [class*="textual-display"]');
+  // ⚠️ JAMAIS un textual-display du MENU FERMÉ (2026-07-19, job c5fe1414 —
+  // Nico a VU le clic partir avec Style vide ; autopsie du brouillon
+  // 5317034518613, cat. 52365) : la zone valeur d'un dropdown VIDE contient
+  // le menu replié, dont chaque OPTION est un span.textual-display.clipped
+  // (chaîne réelle relevée : summary__attributes--value → … →
+  // fake-menu-button__menu → menu__items → menu__item → span.textual-display).
+  // querySelector prenait la PREMIÈRE option (« Entre Haut et de… ») pour une
+  // valeur → « déjà pré-rempli par eBay », gate passé, clic sur un requis
+  // vide. La valeur RÉELLE d'un champ rempli vit HORS de tout conteneur de
+  // menu (span.textual-display.se-expand-button__button-text — « Volcom »
+  // relevé sur Marque du même brouillon). Exclusions STRUCTURELLES précises —
+  // surtout pas [class*="menu"] large : le bouton-valeur légitime porte
+  // lui-même fake-menu-button__button. Sélecteur validé sur le brouillon
+  // réel : Style → "" (vide, honnête), Marque → "Volcom".
+  const display = [...(field?.querySelectorAll('[class*="summary__attributes--value"] [class*="textual-display"]') ?? [])]
+    .find((el) => !el.closest('.fake-menu-button__menu, [class*="list-menu"], .menu__items, [class*="tooltip"], [class*="overlay"]'));
   const staticVal = (display?.textContent ?? "").trim().replace(/^Tendances$/i, "");
   if (staticVal) return staticVal;
   // ⚠️ VARIANTE « PILLS » (autopsiée sur le VRAI job du 2026-07-15,
