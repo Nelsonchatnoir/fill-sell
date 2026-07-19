@@ -865,6 +865,27 @@ async function processJob(rawJob, accessToken) {
       await recordRecentResult(job, "dry_run_completed");
       return { status: "dry_run_completed", unfilled: result.unfilledRequired ?? [] };
     } else if (result?.needsUser) {
+      // Dépôt LBC sans signal lisible (2026-07-19, job 0591781d) : AVANT de
+      // ré-armer — un re-dépôt aveugle créerait un DOUBLON si le dépôt avait
+      // en réalité abouti sans que le content script lise la confirmation —
+      // on vérifie « Mes annonces » par TITRE (captureFromMyListings passe
+      // requireTitle:true : jamais l'URL d'une autre annonce, leçon
+      // listing_url croisée). Trouvée → publié AVEC URL (même filet que
+      // ebayConfirmViaActiveListings) ; absente → le needsUser était juste.
+      if (job.platform === "leboncoin" && result.depositUnconfirmed && job.title && tabId != null) {
+        const url = await captureFromMyListings(
+          tabId, "leboncoin", LISTING_URL_PATTERNS.leboncoin, MY_LISTINGS_URL.leboncoin, job.title
+        ).catch(() => null);
+        if (url) {
+          console.log(`[background] Job ${job.id} : dépôt LBC confirmé a posteriori par Mes annonces — ${url}`);
+          await updateJobStatus(accessToken, job.id, "published", {
+            ...completionExtras(job, result),
+            listing_url: url,
+          });
+          await recordRecentResult(job, "published");
+          return { status: "published", listingUrl: url };
+        }
+      }
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
       // à terminer, connexion). Ré-armement BORNÉ (voir rearmBounded).
       await rearmBounded(accessToken, job, result.error);

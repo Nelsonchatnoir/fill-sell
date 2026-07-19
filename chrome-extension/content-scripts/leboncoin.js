@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-19-ecran-coordonnees-post-apercu (nouvel ecran Vos coordonnees email+tel pre-remplis gere entre apercu et options + dump d'ecran joint aux erreurs post-apercu non reconnues)";
+const LEBONCOIN_BUILD = "2026-07-19-preuve-de-depot (publie exige desormais la redirection /confirmation ou le message Nous avons bien recu — plus jamais par absence d'erreur ; re-clic unique si clic avale ; needsUser depositUnconfirmed sinon)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -709,7 +709,55 @@ async function fillListingForm(job) {
   console.log(`[leboncoin] 🚀 LIVE — clic chemin gratuit : « ${ctaText} »`);
   await humanPause(1000, 2000);
   realClick(freeCta);
-  await sleep(4000);
+
+  // ── PREUVE DE DÉPÔT (2026-07-19, job 0591781d — annonce ABSENTE de Mes
+  // annonces, vérifié manuellement, job pourtant « publié ») ────────────────
+  // AVANT : success:true inconditionnel 4 s après le clic — « publié » =
+  // « le clic est parti, pas d'erreur détectée ». Même classe d'échec que le
+  // clic eBay avalé du même jour (9025e90) : dans l'onglet caché, un clic
+  // peut ne produire STRICTEMENT AUCUN effet. MAINTENANT : on exige le signal
+  // serveur CONFIRMÉ en session réelle du 2026-07-11 — redirection vers
+  // /deposer-une-annonce/confirmation ou message « Nous avons bien reçu votre
+  // annonce » (textContent, fiable sans layout). Aucun signal → re-clic
+  // unique (clic avalé), puis needsUser avec relevé d'écran : plus JAMAIS de
+  // « publié » par simple absence d'erreur. Le background tente en dernier
+  // recours une confirmation par « Mes annonces » (titre obligatoire) avant
+  // de ré-armer — un re-dépôt aveugle créerait un doublon si le dépôt avait
+  // en réalité abouti sans signal lisible.
+  const preuveDepot = () => {
+    if (/\/deposer-une-annonce\/confirmation/.test(location.pathname)) {
+      return `redirection ${location.pathname}`;
+    }
+    const corps = (document.body?.textContent ?? "").replace(/\s+/g, " ");
+    const m = corps.match(
+      /Nous avons bien reçu votre annonce|votre annonce (?:est|sera) (?:en ligne|publiée|bientôt en ligne)/i
+    );
+    return m ? `message « ${m[0]} »` : null;
+  };
+  let preuve = await waitFor(preuveDepot, 15_000);
+  if (!preuve) {
+    const encore = freeCta.isConnected ? freeCta : findFreeCta();
+    if (encore) {
+      const note = "dépôt: 1er clic du chemin gratuit sans aucun effet observable après 15 s (clic avalé, onglet caché) — re-clic unique";
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      await humanPause(800, 1500);
+      realClick(encore);
+      preuve = await waitFor(preuveDepot, 12_000);
+    }
+  }
+  if (!preuve) {
+    return {
+      success: false, needsUser: true, depositUnconfirmed: true,
+      warnings, unfilledRequired, discoveredRequired: enumerated,
+      error:
+        "LIVE : dépôt Leboncoin NON confirmé — ni redirection vers /deposer-une-annonce/confirmation, " +
+        "ni message « Nous avons bien reçu votre annonce » après le clic du chemin gratuit. " +
+        "Jamais de « publié » sans preuve : vérifier sur leboncoin.fr (Mes annonces), le job " +
+        `repartira au prochain passage. Relevé : ${dumpEcranVisible()}`,
+    };
+  }
+  console.log(`[leboncoin] dépôt CONFIRMÉ (${preuve})`);
   return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
