@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-16-chantier-requis-1B (enumeration DOM des requis + gate pre-clic LIVE + canal generique beebsAspects + discoveredRequired vers catalogue)";
+const BEEBS_BUILD = "2026-07-19-options-vers-catalogue (options completes des listes sans recherche relevees a l'ouverture des panneaux et jointes a discoveredRequired → allowed_values du catalogue)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -609,11 +609,20 @@ function enumerateBeebsFields() {
       required: !/\(facultatif\)/i.test(text),
       inputType: "dropdown",
       filled: Boolean(value) && !/^sélectionner/i.test(value),
+      // Options complètes relevées à l'ouverture du panneau pendant CE
+      // remplissage (listes sans recherche uniquement, cf. selectDropdownValue)
+      // → allowed_values du catalogue, comme la config attributes Vinted.
+      options: beebsObservedOptions[label] ?? undefined,
       source: "dom",
     });
   }
   return out;
 }
+
+// Options complètes observées par champ pendant le remplissage courant
+// (libellé → libellés d'options). Rempli par selectDropdownValue, consommé par
+// enumerateBeebsFields → catalogue platform_category_aspects.allowed_values.
+const beebsObservedOptions = {};
 
 // Confirmation de dépôt Beebs : page de succès OU message de confirmation.
 // ⚠️ Aucun filtre par getClientRects()/offsetParent : l'onglet de travail vit
@@ -1016,6 +1025,17 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
   const { trigger, required } = field;
 
   let options = await openPanelOptions(trigger, rawText);
+  // Options observées → catalogue (2026-07-19, cas réel Medik8 : « État »
+  // bloquait sans que PERSONNE ne sache quelles valeurs la catégorie accepte —
+  // allowed_values restait null côté platform_category_aspects, contrairement
+  // à Vinted dont la config attributes porte les listes). UNIQUEMENT quand le
+  // panneau n'a PAS de barre de recherche : une liste filtrée par la recherche
+  // (Marque) est PARTIELLE et empoisonnerait le catalogue — relevé live : la
+  // barre n'existe que sur les listes longues, les listes fermées courtes
+  // (État : 2 options en Hygiène et beauté) n'en ont pas.
+  if (options.length && !document.querySelector('input[class*="__searchBarInput"]')) {
+    beebsObservedOptions[labelText] = options.map(optionLabel).filter(Boolean).slice(0, 60);
+  }
   let researchedFallback = false;
   if (!options.length && !sizeField) {
     // Recherche sans AUCUN résultat (cas réel Medik8 2026-07-19 : la barre de

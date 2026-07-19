@@ -1869,21 +1869,56 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
               générique, sinon la gate extension relirait l'ancienne valeur. */}
           {onPlatformAspectChange && list.some(a => a.state === "missing" || a.state === "invalid" || a.source === "generic") && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {list.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => (
-                <div key={a.key}>
-                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
-                  <AspectValueInput
-                    value={a.state === "invalid" ? (a.suggested ?? "") : a.value}
-                    allowedValues={a.allowedValues}
-                    strict={false}
-                    onChange={v => (a.state === "invalid" && a.dedicatedTarget && onPlatformDedicatedChange)
-                      ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
-                      : onPlatformAspectChange(gp, a.key, v)}
-                    T={T}
-                    idBase={`gen-${gp}-${aspectSlug(a.key)}`}
-                  />
-                </div>
-              ))}
+              {list.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => {
+                // Valeur catalogue UNIQUE (2026-07-19, cas réel Medik8 :
+                // Vinted Beauté n'accepte qu'un État « Neuf avec étiquette ») :
+                // ni sélecteur à une seule option, ni pose silencieuse —
+                // confirmation explicite. « Oui » pose la valeur (champ dédié
+                // si connu, sinon canal générique) ; « Non » décoche la
+                // plateforme, le job n'est jamais créé. Les listes
+                // multi-options (Beebs État beauté : « Neuf, avec étiquette »
+                // / « Neuf, sans étiquette », relevé live) gardent le
+                // sélecteur : un choix ambigu ne se devine pas.
+                const seule = (a.state === "missing" || a.state === "invalid") &&
+                  Array.isArray(a.allowedValues) && a.allowedValues.length === 1
+                  ? a.allowedValues[0] : null;
+                if (seule && setSelected) return (
+                  <div key={a.key} style={{ gridColumn:"1 / -1", padding:"10px 12px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:12 }}>
+                    <div style={{ fontSize:12.5, color:"#92400E", marginBottom:8 }}>
+                      <strong>{a.label}</strong> — {tpl("stepPublishSingleValueMsg", { value: seule, platform: PLATFORM_LABELS[gp] ?? gp })}
+                    </div>
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                      <button
+                        onClick={() => (a.dedicatedTarget && onPlatformDedicatedChange)
+                          ? onPlatformDedicatedChange(gp, a.dedicatedTarget, seule)
+                          : onPlatformAspectChange(gp, a.key, seule)}
+                        style={{ padding:"7px 14px", borderRadius:10, border:"none", background:"#059669", color:"#fff", fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
+                        {t("stepPublishSingleValueYes")}
+                      </button>
+                      <button
+                        onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(gp); return s; })}
+                        style={{ padding:"7px 14px", borderRadius:10, border:`1px solid ${T.border}`, background:T.chip, color:T.ink, fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
+                        {t("stepPublishSingleValueNo")}
+                      </button>
+                    </div>
+                  </div>
+                );
+                return (
+                  <div key={a.key}>
+                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
+                    <AspectValueInput
+                      value={a.state === "invalid" ? (a.suggested ?? "") : a.value}
+                      allowedValues={a.allowedValues}
+                      strict={false}
+                      onChange={v => (a.state === "invalid" && a.dedicatedTarget && onPlatformDedicatedChange)
+                        ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
+                        : onPlatformAspectChange(gp, a.key, v)}
+                      T={T}
+                      idBase={`gen-${gp}-${aspectSlug(a.key)}`}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -3364,7 +3399,11 @@ export default function ListingPreviewScreen({
         const generic = String(aspects[key] ?? "").trim();
         if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues };
         if (GENERIC_PREFILLED[platform]?.includes(key)) return { key, label, state: "prefilled", allowedValues };
-        return { key, label, state: "missing", value: "", allowedValues };
+        // dedicatedTarget aussi sur les "missing" (2026-07-19) : la
+        // confirmation valeur-unique doit écrire le champ DÉDIÉ (etat…) que
+        // lit l'extension — le canal générique est ignoré pour les clés déjà
+        // servies par un mapping dédié (handledForKeys/handledLabels).
+        return { key, label, state: "missing", value: "", allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
       });
       if (status.length) out[platform] = status;
     }
@@ -3384,7 +3423,14 @@ export default function ListingPreviewScreen({
     if (step !== 3 || !genericRequiredStatus) return;
     for (const [gp, list] of Object.entries(genericRequiredStatus)) {
       for (const a of list) {
-        if (a.state === "invalid" && a.dedicatedTarget && a.suggested) {
+        // Liste à valeur UNIQUE exclue du rapprochement silencieux
+        // (2026-07-19) : ce cas passe par la confirmation explicite du bloc
+        // générique (« Cette catégorie n'accepte que… — Oui, confirmer / Non,
+        // décocher cette plateforme ») — poser la valeur sans demander
+        // reviendrait à décider à la place de l'utilisateur qu'un sérum
+        // entamé est « Neuf avec étiquette ».
+        if (a.state === "invalid" && a.dedicatedTarget && a.suggested &&
+            (a.allowedValues?.length ?? 0) > 1) {
           setPlatformDedicatedField(gp, a.dedicatedTarget, a.suggested);
         }
       }
@@ -3402,7 +3448,9 @@ export default function ListingPreviewScreen({
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       const catKey = genericCategoryKeys[gp];
       if (!catKey || genericResolvedFor.current[gp] === catKey) continue;
-      const missing = list.filter(a => a.state === "missing");
+      // Valeur catalogue unique exclue (2026-07-19) : réservée à la
+      // confirmation explicite du bloc générique, jamais posée par l'IA.
+      const missing = list.filter(a => a.state === "missing" && (a.allowedValues?.length ?? 0) !== 1);
       if (!missing.length) continue;
       genericResolvedFor.current[gp] = catKey;
       (async () => {
