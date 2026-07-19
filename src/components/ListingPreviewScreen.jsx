@@ -1687,7 +1687,9 @@ function nearestAllowedValue(val, allowedValues) {
 // eBay : EBAY_CLOSED_LIST_MAX — toute liste fermée au sens de la garde devient
 // un vrai sélecteur, on ne peut plus taper une valeur que la garde refusera
 // (cas réel : Taille "Unique" vs « Taille unique », casquette 52365, 18/07).
-function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase }) {
+// Export nommé (2026-07-19, socle needs_user) : réutilisé par le mini-éditeur
+// « À compléter » de StockTab — même contrôle, mêmes règles de rendu.
+export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
   const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };

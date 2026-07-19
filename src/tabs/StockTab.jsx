@@ -4,7 +4,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
-import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
+import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
@@ -228,6 +228,158 @@ const STOCK_TOP_CSS = `
 }
 `;
 
+// ── Mini-éditeur « À compléter » (socle needs_user, 2026-07-19) ──────────────
+// Un job est en 'needs_user' : l'extension a identifié UN champ obligatoire
+// précis que seul l'utilisateur peut trancher (platform_fields.needsUserField
+// = { platform, field_key, field_label, allowed_values?, target? }).
+// Règles produit NON NÉGOCIABLES :
+//   · allowed_values connue → SELECT FERMÉ sur ces valeurs exactes (strict),
+//     JAMAIS de texte libre — divergence assumée avec le stepper (qui reste
+//     non-strict sur les listes découvertes) : ici la règle n°1 du socle prime ;
+//   · aucune liste connue → saisie texte assistée, comportement existant ;
+//   · TOUT se passe dans l'app : aucun lien ni instruction vers la plateforme.
+// À la validation : la valeur est écrite dans platform_fields à la cible dite
+// par le HANDLER (target { root, key } — l'app ne devine rien), needsUserField
+// est retiré, needsUserAttempts remis à 0 (budget de re-tentatives frais), et
+// le job repasse en 'pending' — il repart au prochain poll comme n'importe
+// quel job. Update CONDITIONNEL .eq(status,'needs_user') + .select() :
+//   · double-clic Valider → 2e update ne matche 0 ligne, aucun double effet ;
+//   · job annulé/supprimé entre-temps → 0 ligne, message doux, jamais d'écrasement ;
+//   · leçon RLS (profiles 2026-07-06) : sans .select(), un update bloqué par
+//     la RLS échoue en silence.
+const NU_T = { border:"#E7E3D8", chip:"#F2F0E9", ink:"#10201B", mute:"#8A8578" };
+const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects" };
+
+function NeedsUserModal({ job, lang, onClose, onDone }) {
+  const f = job.platform_fields?.needsUserField ?? null;
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [errMsg, setErrMsg] = useState(null);
+  // eBay : les allowed_values ne transitent jamais par le job (référentiel
+  // Taxonomy trop volumineux, cf. ListingPreviewScreen l.3912) — on les relit
+  // d'ebay_item_aspects ici, best-effort. SELECTION_ONLY → strict de toute façon.
+  const [ebayAllowed, setEbayAllowed] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const catId = job.platform_fields?.ebayCategoryId;
+    if (job.platform !== "ebay" || !f || (Array.isArray(f.allowed_values) && f.allowed_values.length) || !catId) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("ebay_item_aspects")
+          .select("aspects")
+          .eq("category_id", String(catId))
+          .maybeSingle();
+        const asp = (Array.isArray(data?.aspects) ? data.aspects : [])
+          .find(a => String(a?.name ?? "").toLowerCase() === String(f.field_key).toLowerCase());
+        const vals = Array.isArray(asp?.allowedValues) ? asp.allowedValues.filter(Boolean).map(String) : [];
+        if (alive && vals.length) setEbayAllowed(vals);
+      } catch { /* best-effort, la saisie texte reste possible */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
+  if (!f) return null;
+
+  const allowed = Array.isArray(f.allowed_values) && f.allowed_values.length
+    ? f.allowed_values
+    : ebayAllowed;
+  const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
+
+  const valider = async () => {
+    if (saving) return;
+    const v = String(value ?? "").trim();
+    if (!v) return;
+    setSaving(true); setErrMsg(null);
+    try {
+      const pf = job.platform_fields ?? {};
+      const target = (f.target && f.target.key)
+        ? f.target
+        : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
+      const newPf = { ...pf, needsUserAttempts: 0 };
+      delete newPf.needsUserField;
+      if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
+      else newPf[target.key] = v;
+      const { data, error } = await supabase
+        .from("cross_post_jobs")
+        .update({ status: "pending", error: null, platform_fields: newPf })
+        .eq("id", job.id)
+        .eq("status", "needs_user")
+        .select("id");
+      if (error) throw error;
+      if (!data?.length) {
+        // Job déjà repris/annulé/supprimé pendant que le modal était ouvert.
+        setSaving(false);
+        setErrMsg(lang === "en"
+          ? "This job is no longer waiting (already resumed or cancelled)."
+          : "Ce job n'est plus en attente (déjà repris ou annulé).");
+        onDone?.(null);
+        return;
+      }
+      onDone?.(job.id);
+    } catch (e) {
+      setSaving(false);
+      setErrMsg(String(e?.message ?? e));
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position:"fixed", inset:0, background:"rgba(16,32,27,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background:"#F6F5F1", borderRadius:16, border:`1px solid ${NU_T.border}`, padding:20, width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)", fontFamily:"inherit" }}
+      >
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"#8A6100", marginBottom:6 }}>
+          ✋ {lang === "en" ? "Action needed" : "À compléter"} — {platformLabel}
+        </div>
+        <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
+          {f.field_label}
+        </div>
+        <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:14 }}>
+          {lang === "en"
+            ? `${platformLabel} requires this field for this category. Pick a value — the listing will then resume automatically, nothing to do on ${platformLabel}.`
+            : `${platformLabel} exige ce champ pour cette catégorie. Choisis une valeur — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`}
+        </div>
+        <AspectValueInput
+          value={value}
+          allowedValues={allowed ?? []}
+          strict={Boolean(allowed?.length)}
+          onChange={setValue}
+          T={NU_T}
+          idBase={`nu-${job.id}`}
+        />
+        {errMsg && (
+          <div style={{ marginTop:10, fontSize:12, color:"#8C2F28", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:10, padding:"8px 10px" }}>
+            {errMsg}
+          </div>
+        )}
+        <div style={{ display:"flex", gap:10, marginTop:16 }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ flex:1, padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+          >
+            {lang === "en" ? "Later" : "Plus tard"}
+          </button>
+          <button
+            onClick={valider}
+            disabled={saving || !String(value ?? "").trim()}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || !String(value ?? "").trim() ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+          >
+            {saving
+              ? (lang === "en" ? "Saving…" : "Enregistrement…")
+              : (lang === "en" ? "Confirm & resume" : "Valider et relancer")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
@@ -300,6 +452,10 @@ const StockTab = memo(function StockTab({
   // d'abord par le modal, l'ouverture du stepper n'a lieu qu'au « Continuer ».
   const [extReminderItem, setExtReminderItem] = useState(null);
   const [jobsByInventaire, setJobsByInventaire] = useState({});
+  // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
+  // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
+  // à RIEN : le job reste needs_user, le badge reste affiché.
+  const [needsUserJob, setNeedsUserJob] = useState(null);
   const [voiceInputMode, setVoiceInputMode] = useState('write');
   const [examplesOpen, setExamplesOpen] = useState(false);
 
@@ -332,12 +488,17 @@ const StockTab = memo(function StockTab({
       // (message associé + « seul le job le plus récent de la plateforme
       // compte » : un échec régénéré puis reparti en pending ne doit plus
       // s'afficher en échec).
+      // "needs_user" est dans le filtre (2026-07-19, socle needs_user) : un
+      // champ précis attend une décision de l'utilisateur — badge dédié
+      // « ✋ À compléter », distinct de l'Échec. `platform_fields` est lu pour
+      // needsUserField (libellé du champ, valeurs possibles, cible d'écriture)
+      // que consomme le mini-éditeur.
       const { data } = await supabase
         .from("cross_post_jobs")
-        .select("id, inventaire_id, platform, status, error, created_at")
+        .select("id, inventaire_id, platform, status, error, created_at, platform_fields")
         .eq("user_id", user.id)
         .eq("action", "publish")
-        .in("status", ["pending", "processing", "published", "failed"]);
+        .in("status", ["pending", "processing", "published", "failed", "needs_user"]);
       if (annule || !data) return;
       const map = {};
       for (const job of data) {
@@ -1043,6 +1204,11 @@ const StockTab = memo(function StockTab({
                     if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestByPlatform[j.platform]=j;
                   }
                   const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed");
+                  // « À compléter » (socle needs_user, 2026-07-19) : même règle
+                  // que l'Échec — seul le job LE PLUS RÉCENT de la plateforme
+                  // compte. Dès que le job repart en pending (valeur fournie)
+                  // ou se conclut (published/failed), le badge s'éteint.
+                  const needsUserJobs=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
                   const enLigne=published.length>0;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
@@ -1063,7 +1229,7 @@ const StockTab = memo(function StockTab({
                             {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
                             {typeLabel(item.type||"Autre",lang)}
                           </div>
-                          {(enLigne||hasPending||failedJobs.length>0||item.plateforme||item.emplacement)&&(
+                          {(enLigne||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.plateforme||item.emplacement)&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
@@ -1088,6 +1254,26 @@ const StockTab = memo(function StockTab({
                                   par title= (survol desktop / lecteur d'écran) et par un
                                   tap → alert (mobile n'a pas de survol). stopPropagation :
                                   le tap sur le badge ne doit pas ouvrir l'édition. */}
+                              {/* « ✋ À compléter » (socle needs_user, 2026-07-19) :
+                                  un champ précis attend la décision de l'utilisateur.
+                                  Ambre (action attendue), PAS rouge (ce n'est pas un
+                                  échec définitif). Tap → mini-éditeur DANS l'app :
+                                  jamais de renvoi vers la plateforme externe. */}
+                              {needsUserJobs.map(j=>(
+                                <div
+                                  key={"nu-"+j.platform}
+                                  className="micon"
+                                  title={j.error||undefined}
+                                  onClick={e=>{
+                                    e.stopPropagation();
+                                    if(j.platform_fields?.needsUserField){setNeedsUserJob(j);}
+                                    else if(j.error){window.alert(`${PLATFORM_LABELS[j.platform]||j.platform} — ${j.error}`);}
+                                  }}
+                                  style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
+                                >
+                                  ✋ {lang==="en"?"Action needed":"À compléter"} {PLATFORM_LABELS[j.platform]||j.platform}
+                                </div>
+                              ))}
                               {failedJobs.map(j=>(
                                 <div
                                   key={"fail-"+j.platform}
@@ -1149,6 +1335,30 @@ const StockTab = memo(function StockTab({
           lang={lang}
           onClose={()=>setExtReminderItem(null)}
           onContinue={()=>{const it=extReminderItem;setExtReminderItem(null);ouvrirStepper(it);}}
+        />
+      )}
+      {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
+          Fermeture sans valider → aucun écrit, le job reste needs_user et le
+          badge reste. Après validation : patch LOCAL immédiat (le badge
+          s'éteint sans attendre le poll de 20 s), la relecture périodique
+          confirme ensuite l'état réel. */}
+      {needsUserJob&&(
+        <NeedsUserModal
+          job={needsUserJob}
+          lang={lang}
+          onClose={()=>setNeedsUserJob(null)}
+          onDone={(jobId)=>{
+            setNeedsUserJob(null);
+            if(jobId){
+              setJobsByInventaire(prev=>{
+                const next={};
+                for(const [inv,list] of Object.entries(prev)){
+                  next[inv]=list.map(j=>j.id===jobId?{...j,status:"pending",error:null}:j);
+                }
+                return next;
+              });
+            }
+          }}
         />
       )}
       {publishItem&&(
