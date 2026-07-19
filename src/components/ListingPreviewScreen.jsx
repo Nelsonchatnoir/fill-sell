@@ -3085,22 +3085,6 @@ export default function ListingPreviewScreen({
     noteSharedOverride(gp, pfKey); // clés hors SHARED_FIELD_KEYS (etat, format_colis…) : no-op
   }
 
-  // Pré-sélection auto générique — miroir exact de l'effet eBay ci-dessus :
-  // au step Publier, une valeur dédiée hors liste avec un rapprochement sûr
-  // est remplacée d'office par le libellé exact de la plateforme ; sans
-  // rapprochement (« Très bon état » vs « Neuf avec étiquette » : aucun token
-  // commun), l'utilisateur choisit dans le sélecteur de l'encart.
-  useEffect(() => {
-    if (step !== 3 || !genericRequiredStatus) return;
-    for (const [gp, list] of Object.entries(genericRequiredStatus)) {
-      for (const a of list) {
-        if (a.state === "invalid" && a.dedicatedTarget && a.suggested) {
-          setPlatformDedicatedField(gp, a.dedicatedTarget, a.suggested);
-        }
-      }
-    }
-  }, [step, genericRequiredStatus]);
-
   // Résolution IA ciblée des obligatoires SANS source (2026-07-16, même
   // philosophie que resolve_genre : micro-appel jamais bloquant, null si non
   // déductible). Une seule tentative par catégorie — les aspects toujours
@@ -3386,6 +3370,26 @@ export default function ListingPreviewScreen({
     }
     return Object.keys(out).length ? out : null;
   }, [genericAspectsCatalog, selected, edited]);
+
+  // Pré-sélection auto générique — miroir exact de l'effet eBay (plus haut) :
+  // au step Publier, une valeur dédiée hors liste avec un rapprochement sûr
+  // est remplacée d'office par le libellé exact de la plateforme ; sans
+  // rapprochement (« Très bon état » vs « Neuf avec étiquette » : aucun token
+  // commun), l'utilisateur choisit dans le sélecteur de l'encart.
+  // ⚠️ PLACÉ APRÈS la déclaration de genericRequiredStatus (const useMemo) :
+  // référencé dans les deps, il vit dans la TDZ tant que le useMemo n'a pas
+  // été exécuté — placé avant, chaque rendu crashait en « Cannot access
+  // before initialization » (écran blanc prod du 2026-07-19, hotfix).
+  useEffect(() => {
+    if (step !== 3 || !genericRequiredStatus) return;
+    for (const [gp, list] of Object.entries(genericRequiredStatus)) {
+      for (const a of list) {
+        if (a.state === "invalid" && a.dedicatedTarget && a.suggested) {
+          setPlatformDedicatedField(gp, a.dedicatedTarget, a.suggested);
+        }
+      }
+    }
+  }, [step, genericRequiredStatus]);
 
   // Résolution IA ciblée des requis génériques SANS source (chantier 1.A) —
   // même micro-appel resolve_aspects que le bloc eBay : extraction depuis le
