@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-19-gate-referentiel (job sans ebayRequiredAspects = categorie hors referentiel a la creation → needsUser, jamais de clic aveugle ; + re-clic mise en vente si clic avale, fermeture defensive des menus)";
+const EBAY_BUILD = "2026-07-19-submit-suit-le-rerender (job casquette 47917f97 : un re-render React detachait le bouton « Mettre en vente » → compte comme effet du clic + re-clic sur le nœud DETACHE = clic dans le vide ; le detecteur re-localise desormais le bouton et le re-clic vise le nœud vivant ; dismissLightboxes avant le clic)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -760,6 +760,10 @@ async function fillListingForm(job) {
     document.body.click();
     await humanPause();
   }
+  // Lightbox/dialogue résiduel (tooltip, panneau d'aide) : un overlay au-dessus
+  // du bouton avale le clic de soumission — même fermeture défensive que les
+  // menus, avec le helper déjà utilisé avant chaque pose de specific.
+  await dismissLightboxes();
 
   // État de référence AVANT le clic : notices/dialogues déjà visibles. Après le
   // clic, seule l'APPARITION d'un élément nouveau (ou un changement d'état du
@@ -785,22 +789,54 @@ async function fillListingForm(job) {
   // Si le 1er clic a réellement fonctionné, un de ces signaux apparaît bien
   // avant 8 s (la soumission désactive le bouton / affiche la popup) — le
   // re-clic ne part alors jamais, aucun risque de double dépôt.
-  const effetClic = await waitFor(() => {
+  // ⚠️ « formulaire re-rendu » N'EST PLUS un effet du clic (2026-07-19, job
+  // casquette 47917f97 — 2 tentatives « non confirmée », sonde réseau : AUCUNE
+  // requête de soumission, seulement les heartbeats backstory ~20 s). L'ancien
+  // détecteur comptait `!listBtn.isConnected` comme preuve que le clic avait
+  // pris — or un re-render React ROUTINIER d'eBay détache le nœud sans aucune
+  // soumission : faux positif → re-clic jamais tenté. Et dans le chemin
+  // timeout, le re-clic visait le nœud DÉTACHÉ (realClick sur un élément hors
+  // document = clic dans le vide, échec garanti). Le détecteur SUIT désormais
+  // le bouton à travers les re-renders : la détection d'état (disabled/busy)
+  // et le re-clic portent toujours sur le nœud VIVANT. Les vrais effets d'une
+  // soumission restent : navigation hors /lstng, bouton en traitement,
+  // notice/dialogue apparu, ou bouton définitivement disparu du formulaire.
+  const retrouveListBtn = () =>
+    Array.from(document.querySelectorAll("button")).find((b) =>
+      /mettre en vente avec les frais/i.test(b.textContent)
+    ) ??
+    Array.from(document.querySelectorAll("button")).find((b) =>
+      /^mettre en vente/i.test(b.textContent.trim())
+    );
+  let btnCourant = listBtn;
+  const effetDuClic = () => {
     if (!/\/lstng/.test(location.pathname)) return "navigation";
-    if (!listBtn.isConnected) return "formulaire re-rendu";
-    if (listBtn.disabled || listBtn.getAttribute("aria-disabled") === "true" || /loading|busy|progress/i.test(listBtn.className)) return "bouton en traitement";
     if (surveilleNotices().some((el) => !noticesAvantClic.has(el))) return "notice/dialogue apparu";
+    if (!btnCourant.isConnected) {
+      const frais = retrouveListBtn();
+      if (!frais) return "bouton de mise en vente disparu du formulaire";
+      btnCourant = frais; // re-render : on suit le nouveau nœud, ce n'est PAS un effet
+    }
+    if (btnCourant.disabled || btnCourant.getAttribute("aria-disabled") === "true" || /loading|busy|progress/i.test(btnCourant.className)) return "bouton en traitement";
     return null;
-  }, 8000);
+  };
+  let effetClic = await waitFor(effetDuClic, 8000);
   if (!effetClic) {
     const note = "mise en vente: 1er clic sans aucun effet observable après 8 s (clic avalé, onglet caché) — re-clic unique effectué";
     console.warn(`[ebay] ⚠️ ${note}`);
     warnings.push(note);
     await humanPause(600, 1200);
-    realClick(listBtn);
-  } else {
-    console.log(`[ebay] clic « Mettre en vente » suivi d'effet : ${effetClic}`);
+    realClick(btnCourant);
+    effetClic = await waitFor(effetDuClic, 8000);
+    if (!effetClic) {
+      // Toujours rien : on le DIT (le verdict final reste au background —
+      // verifyEbaySubmission + Hub vendeur par titre, jamais de re-dépôt
+      // aveugle) mais le diagnostic « aucun effet même après re-clic » ne
+      // reste plus enfoui dans la console.
+      warnings.push("mise en vente: re-clic également sans effet observable après 8 s — verdict délégué au background (réponse serveur + Hub vendeur)");
+    }
   }
+  if (effetClic) console.log(`[ebay] clic « Mettre en vente » suivi d'effet : ${effetClic}`);
 
   // La suite est surveillée côté background — detectReauth, puis
   // verifyEbaySubmission (2026-07-12 : la soumission peut être REFUSÉE sur

@@ -2977,11 +2977,33 @@ export default function ListingPreviewScreen({
   // du publish, plus stricte) ; Département/Type/Style sont marqués
   // « pré-remplis par eBay » — vérifié en session réelle, eBay les pose
   // depuis la catégorie/le titre (Département en pills pré-actives).
+  // Genre de secours pour l'encart eBay (2026-07-19, job casquette 47917f97) :
+  // même liste de repli que l'autoGenre du publish (genre des copies sœurs,
+  // univers LBC — jamais Mixte/Enfant). LECTURE SEULE : le genre de la copie
+  // eBay n'est jamais réécrit ici, l'autoGenre de l'insert reste le seul à
+  // poser une valeur sur le job.
+  const ebayGenreFallback = () => [
+    edited.vinted?.platform_fields?.genre,
+    edited.beebs?.platform_fields?.genre,
+    edited.leboncoin?.platform_fields?.univers,
+  ].find(g => g && g !== "Mixte" && g !== "Enfant") ?? null;
   const ebayPreviewCategoryId = useMemo(() => {
     if (!selected.has("ebay") || !edited.ebay) return null;
     const pf = edited.ebay.platform_fields ?? {};
     const icon = resolveArticleIcon({ initialListing, edited, pf });
-    return getEbayCategoryId(icon, pf.genre) ?? null;
+    const direct = getEbayCategoryId(icon, pf.genre);
+    if (direct) return direct;
+    // TROU PROUVÉ (job casquette 47917f97, cat. 52365) : genre de la copie
+    // eBay vide/« Mixte » au stepper → categoryId null ICI alors que
+    // l'autoGenre de handlePublish le résout à l'INSERT → l'encart eBay ne se
+    // montait JAMAIS (preview null → ebayRequiredStatus null) : aucun chip,
+    // aucun défaut posé (ebayAspects est resté null en base — preuve), aucun
+    // resolve_aspects, aucun blocage CTA — le job partait avec des requis
+    // (Style…) sans la moindre source, gate extension seule juge. Même repli
+    // de genre que l'insert : l'encart se monte sur la catégorie que le job
+    // aura réellement.
+    const secours = ebayGenreFallback();
+    return secours ? (getEbayCategoryId(icon, secours) ?? null) : null;
   }, [selected, edited, initialListing]);
   useEffect(() => {
     if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); return; }
@@ -3101,7 +3123,13 @@ export default function ListingPreviewScreen({
     // Clé composite catégorie|genre (2026-07-19) : le Département dérive du
     // genre — un genre posé ou corrigé APRÈS la première passe doit rejouer
     // la pose (une passe par (catégorie, genre), toujours pas de boucle).
-    const genreCle = String(edited.ebay?.platform_fields?.genre ?? "").trim();
+    // Genre EFFECTIF (2026-07-19 soir, job casquette 47917f97) : même repli
+    // que ebayPreviewCategoryId — si l'encart s'est monté grâce au genre
+    // d'une copie sœur, le Département doit dériver du MÊME genre, sinon il
+    // resterait « manquant » (bloquant) alors que l'autoGenre de l'insert
+    // posera ce genre sur le job.
+    const genrePropre = String(edited.ebay?.platform_fields?.genre ?? "").trim();
+    const genreCle = genrePropre && genrePropre !== "Mixte" ? genrePropre : String(ebayGenreFallback() ?? "").trim();
     const passeCle = `${ebayPreviewCategoryId}|${genreCle}`;
     if (aspectDefaultsFor.current === passeCle) return;
     const pfAspects = edited.ebay?.platform_fields?.ebayAspects ?? {};
@@ -3116,8 +3144,9 @@ export default function ListingPreviewScreen({
       // « Adulte »…). Genre absent ou aucun candidat → reste "missing" :
       // resolve_aspects puis saisie manuelle, comme Type/Style.
       if (a.name === "Département" && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) {
-        const genre = String(edited.ebay?.platform_fields?.genre ?? "").trim();
-        const candidats = EBAY_DEPARTMENT_BY_GENRE[genre] ?? [];
+        // genreCle = genre effectif (copie eBay, sinon repli copies sœurs) —
+        // cf. son calcul plus haut, aligné sur ebayPreviewCategoryId.
+        const candidats = EBAY_DEPARTMENT_BY_GENRE[genreCle] ?? [];
         const libelle = candidats.find(c =>
           (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(c)));
         if (libelle) toSet[a.name] = libelle;
