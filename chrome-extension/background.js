@@ -3311,24 +3311,45 @@ function extractListingId(url, platform) {
 // C'est le piège exact du "sold":"Vendu" de Beebs (documenté plus bas)… répété
 // sur l'autre plateforme.
 //
-// Désormais : PREUVE POSITIVE uniquement, scopée à l'id de l'annonce.
-//   · id trouvé dans le JSON de la page ("list_id") ou dans l'URL canonique
-//     (og:url / link rel=canonical portent /ad/<catégorie>/<id>)  → active
-//   · HTTP 404/410 — relevé réel : une annonce supprimée rend 410
-//     (géré en amont dans checkListingState)                      → unavailable
-//   · HTTP 200 mais aucune trace de l'id                          → unknown
-// RÈGLE : on ne conclut plus JAMAIS « absente » sur la présence d'une chaîne de
-// texte — uniquement absence de preuve positive + statut HTTP explicite.
+// Désormais : PREUVE POSITIVE dans les DEUX sens, scopée (2026-07-19, relevé
+// réel en session navigateur — fetch same-origin depuis un onglet leboncoin.fr,
+// même chemin que fetchListingHtml — sur 3 annonces disparues (2098765432
+// ancienne supprimée, 9999999999 jamais existé, 2345678901 autre catégorie) et
+// 1 active (3235576759, casquette Volcom) :
+//   · MORTE  : HTTP 410 + <title>Annonce introuvable</title> +
+//              <h1>Cette annonce est désactivée</h1> + AUCUN JSON d'annonce
+//              (ni list_id, ni subject) — mêmes marqueurs pour supprimée,
+//              expirée et jamais-existé ;
+//   · ACTIVE : HTTP 200 + \"list_id\":<id> présent (+ ad_status \"active\").
+//   ⚠️ le <link rel=canonical> de la page MORTE écho l'URL DEMANDÉE : l'ancienne
+//   « preuve » canonique déclarait ACTIVE une annonce disparue qui serait servie
+//   en 200 (soft-404) — retirée, c'était un faux-actif prouvé.
+//   ⚠️ les chaînes i18n « a été supprimée » / « n'est plus disponible » vivent
+//   dans le bundle JSON de TOUTES les pages, actives comprises (piège 2026-07-13
+//   re-confirmé au relevé) : on ne lit JAMAIS le texte du document — uniquement
+//   des balises UNIQUES par nature (<title>, <h1>), hors bundle.
+//   · id trouvé dans le JSON de la page ("list_id")               → active
+//   · HTTP 404/410 (géré en amont dans checkListingState)         → unavailable
+//   · HTTP 200 mais <title>/<h1> de la page morte                 → unavailable
+//   · HTTP 200, ni id ni marqueur de page morte                   → unknown
 // Rappel inchangé : LBC n'expose AUCUN statut « vendu » public — une annonce
-// vendue est simplement RETIRÉE, réponse identique à une suppression manuelle.
-// La preuve de vente ne peut venir que de la page vendeur (mes-transactions).
+// vendue est simplement RETIRÉE, réponse identique à une suppression manuelle
+// (410 + mêmes marqueurs). D'où "unavailable" (bandeau « Plus en ligne —
+// vendue ? », l'utilisateur tranche) et jamais "sold" : la preuve de vente ne
+// peut venir que de la page vendeur (mes-transactions).
 function detectLeboncoinState(html, adId) {
   if (!adId) return "unknown";
   // \"list_id\":3232382692 — JSON échappé ou non, valeur quotée ou non
   const idField = new RegExp('\\\\?"(?:list_id|listId)\\\\?":\\s*\\\\?"?' + adId + '(?![0-9])');
   if (idField.test(html)) return "active";
-  const canonical = new RegExp('leboncoin\\.fr/ad/[^"\\s]*/' + adId + '(?![0-9])');
-  if (canonical.test(html)) return "active";
+  // Preuve positive de DISPARITION — le filet pour une page morte servie en
+  // HTTP 200 (le 410 nominal est déjà tranché en amont). Balises uniques
+  // relevées en réel, jamais le texte brut du document.
+  const title = (html.match(/<title[^>]*>\s*([^<]{0,200})/i) || [])[1] ?? "";
+  const h1 = (html.match(/<h1[^>]*>\s*([^<]{0,200})/i) || [])[1] ?? "";
+  if (/annonce\s+introuvable/i.test(title) || /annonce\s+est\s+d[ée]sactiv[ée]e/i.test(h1)) {
+    return "unavailable";
+  }
   return "unknown";
 }
 
