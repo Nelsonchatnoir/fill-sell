@@ -382,10 +382,23 @@ const OBJECT_ICON_RULES = [
   // « élégant » (frontière entre « é » et « g »). D'où les lookarounds Unicode
   // explicites ci-dessous, avec le drapeau /u.
   [/(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])(?!\s*de\s*boxe)|(?<![\p{L}\p{N}])mitaines?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])moufles?(?![\p{L}\p{N}])/iu, '🧤'],
-  [/lunette|solaire|sunglass/i, '🕶️'],
-  // Même piège, deux fois : /montre/ matchait le VERBE (« ce casque montre une
-  // isolation… ») et « dé-MONTRE- ». Substantif exigé, tournures verbales exclues.
-  [/(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s+(?:qu|que|comment|bien|aussi|des|une?|le|la|les|son|sa|ses)\b)|watch|rolex|omega|swatch/iu, '⌚'],
+  // ⚠️ MONTRE AVANT LUNETTES (2026-07-19, bug G-Shock → « Lunettes de soleil »
+  // sur les 4 plateformes) : en horlogerie française le cadran est cerclé d'une
+  // « lunette » (bezel) — la desc FR d'une montre matche donc la règle
+  // lunettes, et c'est l'ORDRE des règles qui fait la priorité, pas la position
+  // du mot (même mécanique que le bug Parfum/Soins). La montre prime ; signaux
+  // horlogers ajoutés (timepiece, chronograph, analogique-numérique) pour les
+  // copies qui ne disent jamais « montre ».
+  // Même piège que gants, deux fois : /montre/ matchait le VERBE (« ce casque
+  // montre une isolation… ») et « dé-MONTRE- ». Substantif exigé, tournures
+  // verbales exclues.
+  [/(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s+(?:qu|que|comment|bien|aussi|des|une?|le|la|les|son|sa|ses)\b)|watch|rolex|omega|swatch|timepiece|chronograph|wristwatch|analog(?:ique)?.?(?:digital|num[ée]rique)/iu, '⌚'],
+  // Lunettes RESSERRÉE (même bug G-Shock) : « lunette » au singulier nu est
+  // bien plus souvent une lunette de montre (bezel), arrière (auto), de WC ou
+  // astronomique que des solaires — on exige le pluriel nu, « lunette(s) de
+  // soleil/vue », le nom pluriel « solaires », ou l'anglais. « solaire »
+  // singulier (crème/panneau/montre solaire) ne route plus vers les lunettes.
+  [/(?<![\p{L}\p{N}])lunettes(?![\p{L}\p{N}])|lunettes?.?de.?(?:soleil|vue)|(?<![\p{L}\p{N}])solaires(?![\p{L}\p{N}])|sunglass/iu, '🕶️'],
   // /bague/ sans frontière matchait « BAGUEtte ».
   [/bijou|collier|bracelet|(?<![\p{L}\p{N}])bagues?(?![\p{L}\p{N}])|boucle.?d.?oreille|pendentif|broche/iu, '💍'],
   // Accessoires ajoutés le 2026-07-09 (backlog T3) — feuilles Vinted réelles.

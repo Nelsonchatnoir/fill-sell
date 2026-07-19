@@ -208,11 +208,24 @@ const battery = [
   ["Lit à barreaux bois blanc", "🚼"], ["Poussette Yoyo Babyzen", "👶"],
   ["Montre Casio A158 vintage", "⌚"], ["Gilet en maille boutonné", "🧶"],
   ["Polaire zippée outdoor", "🧥"], ["Body manches longues noir", "👕"],
+  // ── Montre vs lunettes (bug G-Shock 2026-07-19) : en horlogerie FR, le
+  // cadran est cerclé d'une « lunette » (bezel) — cas à 3 éléments
+  // [titre, desc, attendu] : le titre article ne nomme pas l'objet, la desc
+  // FR porte « lunette », la montre doit primer par ordre de règles.
+  ["G-Shock GA2100", "Montre Casio coloris noir. Lunette octogonale iconique, bracelet caoutchouc.", "⌚"],
+  ["Casio G-Shock GA-2100 Black Analog-Digital Watch", "⌚"],
+  ["Lunettes de soleil Ray-Ban Aviator", "🕶️"],
+  ["Solaires Persol 649", "🕶️"],
+  ["Lunette de vue Afflelou", "🕶️"],
 ];
 console.log("\n=== BATTERIE DE DÉTECTION ===");
 let detectFails = 0;
-for (const [phrase, expected] of battery) {
-  const got = detectObjectIcon(phrase, "", "Autre");
+for (const entry of battery) {
+  // 2 éléments = titre seul (historique) ; 3 = [titre, desc, attendu].
+  const phrase = entry[0];
+  const desc = entry.length === 3 ? entry[1] : "";
+  const expected = entry[entry.length - 1];
+  const got = detectObjectIcon(phrase, desc, "Autre");
   if (got !== expected) {
     detectFails++;
     console.log(`  ✗ "${phrase}" → ${got} (attendu ${expected})`);
