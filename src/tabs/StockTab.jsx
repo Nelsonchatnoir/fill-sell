@@ -502,12 +502,19 @@ const StockTab = memo(function StockTab({
       // « ✋ À compléter », distinct de l'Échec. `platform_fields` est lu pour
       // needsUserField (libellé du champ, valeurs possibles, cible d'écriture)
       // que consomme le mini-éditeur.
+      // Les jobs action='delete' sont AUSSI relus (retrait ciblé par logo,
+      // 2026-07-19) : ils portent l'état visuel du logo — retrait en cours,
+      // ou plateforme retirée — car le job publish d'origine, lui, RESTE
+      // 'published' en base après une suppression réussie (seul le flux vente
+      // annule les publish côté serveur). D'où 'deleted' dans le filtre.
+      // listing_url + title servent à armer un delete depuis le logo — jamais
+      // de delete sans le listing_url du job publish LUI-MÊME (leçon
+      // listing_url croisée : tout repli supprime l'annonce d'un autre article).
       const { data } = await supabase
         .from("cross_post_jobs")
-        .select("id, inventaire_id, platform, status, error, created_at, platform_fields")
+        .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title")
         .eq("user_id", user.id)
-        .eq("action", "publish")
-        .in("status", ["pending", "processing", "published", "failed", "needs_user"]);
+        .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted"]);
       if (annule || !data) return;
       const map = {};
       for (const job of data) {
@@ -549,8 +556,61 @@ const StockTab = memo(function StockTab({
   }, [user?.id]);
   const pausedSet = new Set(pausedPlatforms);
 
+  // action !== "delete" : un retrait ciblé en attente n'est pas un dépôt.
   const pendingTotal = Object.values(jobsByInventaire).flat()
-    .filter(j => j.status === "pending").length;
+    .filter(j => j.status === "pending" && j.action !== "delete").length;
+
+  // ── Retrait ciblé par plateforme (2026-07-19) ──────────────────────────────
+  // Clic sur UN logo de plateforme → confirmation → UN job action='delete'
+  // pour CETTE plateforme (même mécanisme que armRemovals côté vente, mais
+  // scopé à une seule annonce). Les autres plateformes ne sont pas touchées :
+  // aucun job créé, aucune donnée modifiée. Insert direct (RLS "Users manage
+  // own cross_post_jobs"), aucune Pépite débitée — ce n'est pas une publication.
+  // L'extension exécute au prochain cycle ; le logo passe en « retrait… »
+  // (optimiste, via le job inséré rendu dans jobsByInventaire) puis disparaît
+  // quand le job atteint 'deleted'.
+  const removeBusyRef = useRef(new Set());
+  async function removePlatform(item, platform) {
+    const key = `${item.id}:${platform}`;
+    if (removeBusyRef.current.has(key)) return;
+    // Le delete cible le job publish 'published' LE PLUS RÉCENT de la
+    // plateforme — son listing_url et rien d'autre (leçon listing_url croisée).
+    let pub = null;
+    for (const j of jobsByInventaire[item.id] || []) {
+      if (j.action === "delete" || j.platform !== platform || j.status !== "published") continue;
+      if (!pub || Date.parse(j.created_at || 0) > Date.parse(pub.created_at || 0)) pub = j;
+    }
+    const label = PLATFORM_LABELS[platform] || platform;
+    if (!pub?.listing_url) {
+      window.alert(lang === 'fr'
+        ? `Impossible de retirer de ${label} : le lien de l'annonce est introuvable. Retire-la directement sur ${label}.`
+        : `Can't remove from ${label}: the listing link is missing. Remove it directly on ${label}.`);
+      return;
+    }
+    const ok = window.confirm(lang === 'fr'
+      ? `Retirer « ${item.title} » de ${label} ?\n\nL'annonce sera supprimée sur ${label} uniquement — les autres plateformes ne bougent pas.`
+      : `Remove "${item.title}" from ${label}?\n\nThe listing will be removed from ${label} only — other platforms are untouched.`);
+    if (!ok) return;
+    removeBusyRef.current.add(key);
+    try {
+      const { data, error } = await supabase.from('cross_post_jobs').insert({
+        user_id: user.id, inventaire_id: item.id, platform,
+        action: 'delete', status: 'pending', photo_option: 'original',
+        title: pub.title || item.title, listing_url: pub.listing_url, platform_fields: {},
+      }).select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title").single();
+      if (error) {
+        console.error('[removePlatform] insert:', error.message);
+        window.alert(lang === 'fr' ? `Le retrait n'a pas pu être lancé (${error.message}).` : `Removal could not be started (${error.message}).`);
+        return;
+      }
+      // Patch local immédiat : le logo passe en « retrait… » sans attendre le
+      // prochain poll (20 s).
+      setJobsByInventaire(prev => ({ ...prev, [item.id]: [...(prev[item.id] || []), data] }));
+      track('remove_single_platform', { platform });
+    } finally {
+      removeBusyRef.current.delete(key);
+    }
+  }
 
   function replaceZoneResult(idx, patch) {
     setVoiceZoneResults(prev => prev.map((r, i) => i === idx ? {...r, ...patch} : r));
@@ -1186,7 +1246,13 @@ const StockTab = memo(function StockTab({
                 {stockVisible.map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   const invested=item.buy*(item.quantite||1)+(item.purchaseCosts||0);
-                  const jobs=jobsByInventaire[item.id]||[];
+                  const jobsAll=jobsByInventaire[item.id]||[];
+                  // Les jobs de retrait ciblé (action='delete') vivent à part :
+                  // mélangés aux publish, un delete pending affichait « En
+                  // cours… » (dépôt) et un delete failed un badge « Échec » de
+                  // publication — deux mensonges.
+                  const jobs=jobsAll.filter(j=>j.action!=="delete");
+                  const deleteJobs=jobsAll.filter(j=>j.action==="delete");
                   // ⚠️ dédoublonnage (2026-07-13) : un article REPUBLIÉ crée un
                   // NOUVEAU job pour la même plateforme, sans clore l'ancien —
                   // deux jobs "published" leboncoin coexistent donc en base pour
@@ -1218,7 +1284,39 @@ const StockTab = memo(function StockTab({
                   // compte. Dès que le job repart en pending (valeur fournie)
                   // ou se conclut (published/failed), le badge s'éteint.
                   const needsUserJobs=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
-                  const enLigne=published.length>0;
+                  // ── État de retrait par plateforme (retrait ciblé, 2026-07-19) ──
+                  // Le job publish reste 'published' en base même après une
+                  // suppression réussie : c'est le delete LE PLUS RÉCENT de la
+                  // plateforme qui dit la vérité — à condition d'être POSTÉRIEUR
+                  // au dernier publish 'published' (une republication après
+                  // retrait rallume le logo, l'ancien delete ne compte plus).
+                  //   'removing' → delete pending/processing : logo estompé,
+                  //                clic désarmé (pas de double job) ;
+                  //   'removed'  → delete 'deleted' : logo éteint, la
+                  //                plateforme n'est plus active ;
+                  //   failed/needs_user/dry_run_completed → rien : l'annonce
+                  //                est toujours en ligne, logo normal, re-clic
+                  //                possible.
+                  const latestPubByPlatform={};
+                  for(const j of jobs){
+                    if(j.status!=="published")continue;
+                    const cur=latestPubByPlatform[j.platform];
+                    if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestPubByPlatform[j.platform]=j;
+                  }
+                  const latestDelByPlatform={};
+                  for(const j of deleteJobs){
+                    const cur=latestDelByPlatform[j.platform];
+                    if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestDelByPlatform[j.platform]=j;
+                  }
+                  const removalState={};
+                  for(const p of published){
+                    const pub=latestPubByPlatform[p],del=latestDelByPlatform[p];
+                    if(!pub||!del||Date.parse(del.created_at||0)<=Date.parse(pub.created_at||0))continue;
+                    if(del.status==="deleted")removalState[p]="removed";
+                    else if(del.status==="pending"||del.status==="processing")removalState[p]="removing";
+                  }
+                  const publishedActive=published.filter(p=>removalState[p]!=="removed");
+                  const enLigne=publishedActive.length>0;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
                     // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
@@ -1249,11 +1347,21 @@ const StockTab = memo(function StockTab({
                                   que soit le CSS. Un logo carré de 18 px règle le problème à
                                   la racine. title= garde le nom accessible au survol/lecteur
                                   d'écran. */}
-                              {published.map(p=>(
-                                <span key={p} className="plogo" title={PLATFORM_LABELS[p]||p}>
-                                  <PlatformLogo platform={p} size={18}/>
-                                </span>
-                              ))}
+                              {/* Cliquables (retrait ciblé, 2026-07-19) : tap sur UN
+                                  logo → confirmation → retrait de CETTE plateforme
+                                  seulement. stopPropagation : ne pas ouvrir l'édition.
+                                  Estompé = retrait en cours (clic désarmé). */}
+                              {publishedActive.map(p=>{
+                                const removing=removalState[p]==="removing";
+                                return(
+                                  <span key={p} className="plogo"
+                                    title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to remove`:`${PLATFORM_LABELS[p]||p} — toucher pour retirer`)}
+                                    style={removing?{opacity:.35}:{cursor:"pointer"}}
+                                    onClick={e=>{e.stopPropagation();if(!removing)removePlatform(item,p);}}>
+                                    <PlatformLogo platform={p} size={18}/>
+                                  </span>
+                                );
+                              })}
                               {hasPending&&!hasPausedPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
                               {/* Maintenance (Phase B) : plateforme en pause,
                                   ton neutre, rassurant, aucune action requise. */}
