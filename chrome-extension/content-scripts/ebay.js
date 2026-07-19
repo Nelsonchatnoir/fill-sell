@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-19-submit-suit-le-rerender (job casquette 47917f97 : un re-render React detachait le bouton « Mettre en vente » → compte comme effet du clic + re-clic sur le nœud DETACHE = clic dans le vide ; le detecteur re-localise desormais le bouton et le re-clic vise le nœud vivant ; dismissLightboxes avant le clic)";
+const EBAY_BUILD = "2026-07-19-needs-user (aspect obligatoire vide au moment du clic : needsUserField structure — premier aspect + cible ebayAspects.<nom> — le background persiste needs_user, completion dans l'app uniquement ; gate referentiel/description/prix/connexion restent transitoires) + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -689,15 +689,28 @@ async function fillListingForm(job) {
     // écrits nulle part. Deux soirs de suite, ce diagnostic manquant nous a
     // laissés deviner. Il remonte maintenant en base avec le job.
     const detail = warnings.length ? ` Détail du remplissage : ${warnings.join(" | ")}` : "";
+    // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
+    // identifié. Premier aspect obligatoire vide, un champ à la fois. Cible :
+    // ebayAspects.<nom d'aspect exact> — le canal générique (l.515) pose tout
+    // nom d'aspect sans skip, y compris ceux à bloc dédié (leur valeur dédiée
+    // étant vide, il n'y a jamais double pose). Les allowed_values sont
+    // complétées côté app depuis ebay_item_aspects (référentiel Taxonomy,
+    // trop volumineux pour transiter par le job — cf. ListingPreviewScreen).
+    // Le message ne renvoie PLUS vers le formulaire eBay : la complétion se
+    // fait dans l'app (règle produit du socle needs_user).
     return {
       success: false,
       needsUser: true,
       error:
         `LIVE : aspect(s) obligatoire(s) eBay vide(s) sur le formulaire : ${unfilledRequired.join(", ")} — ` +
-        "publication NON tentée (refus eBay garanti). Compléter le(s) champ(s) dans l'app ou " +
-        `directement sur le formulaire resté ouvert ; le job repartira au prochain passage.${detail}`,
+        `publication NON tentée (refus eBay garanti). Compléter le champ dans l'app (badge « À compléter » du Stock) ; le job repartira ensuite automatiquement.${detail}`,
       warnings,
       unfilledRequired,
+      needsUserField: {
+        field_key: unfilledRequired[0],
+        field_label: unfilledRequired[0],
+        target: { root: "ebayAspects", key: unfilledRequired[0] },
+      },
     };
   }
 

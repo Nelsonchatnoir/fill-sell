@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-17-delete-fiber-click-NON-VERIFIE (suppression : clic React direct props.onClick via fibers monde MAIN, repli simulateFullClick) + chantier-requis-1C";
+const VINTED_BUILD = "2026-07-19-needs-user (gate pre-clic requis vides : needsUserField structure — premier champ + options de la config attributes + cible vintedAspects.<code> — le background persiste le statut needs_user au lieu du re-armement borne ; erreurs transitoires inchangees)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -677,6 +677,17 @@ async function fillListingForm(job) {
         .slice(0, 8);
       return names.length ? `${label} (accepte : ${names.join(" · ")})` : label;
     };
+    // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
+    // identifié. On pose LE premier requis vide (un champ à la fois : après la
+    // décision de l'utilisateur le job repart en pending, et un éventuel requis
+    // suivant re-déclenchera ce même gate avec le champ d'après). Cible
+    // d'écriture côté app : vintedAspects.<code serveur> — le pont _bridge
+    // (l.399) recopie vers le champ dédié, le canal générique couvre le reste.
+    const firstLabel = requiredState.unfilled[0];
+    const firstMeta = requiredState.discovered.find((x) => x.label === firstLabel);
+    const firstOptions = (firstMeta?.options ?? [])
+      .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+      .filter(Boolean);
     return {
       success: false,
       needsUser: true,
@@ -686,6 +697,12 @@ async function fillListingForm(job) {
       warnings,
       unfilledRequired: requiredState.unfilled,
       discoveredRequired: requiredState.discovered,
+      needsUserField: {
+        field_key: firstMeta?.key ?? firstLabel,
+        field_label: firstLabel,
+        target: { root: "vintedAspects", key: firstMeta?.key ?? firstLabel },
+        ...(firstOptions.length ? { allowed_values: firstOptions } : {}),
+      },
     };
   }
 

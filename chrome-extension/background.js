@@ -1040,6 +1040,19 @@ async function processJob(rawJob, accessToken) {
           return { status: "published", listingUrl: url };
         }
       }
+      // ── Tri (a)/(b) du socle needs_user (2026-07-19) ────────────────────────
+      // (a) Le handler a identifié UN champ précis à trancher (needsUserField
+      //     posé par lui, jamais deviné ici) → statut PERSISTÉ 'needs_user' :
+      //     le job attend la décision de l'utilisateur dans l'app (badge
+      //     « À compléter » du Stock), AUCUNE re-tentative automatique —
+      //     get-pending-jobs ne distribue que 'pending'.
+      // (b) Tout le reste (connexion, adresse, brouillon LBC, écran inconnu,
+      //     page changée…) : comportement HISTORIQUE inchangé — ré-armement
+      //     borné (MAX_NEEDS_USER_RETRIES) puis 'failed'.
+      if (result.needsUserField?.field_key && result.needsUserField?.field_label) {
+        await markNeedsUser(accessToken, job, result);
+        return { status: "needsUser", error: result.error };
+      }
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
       // à terminer, connexion). Ré-armement BORNÉ (voir rearmBounded).
       await rearmBounded(accessToken, job, result.error);
@@ -1263,6 +1276,64 @@ async function rearmBounded(accessToken, job, errorMsg) {
       platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
     });
   }
+}
+
+// ── Statut PERSISTÉ 'needs_user' (socle 2026-07-19) ────────────────────────────
+// Un handler a identifié UN champ obligatoire précis que seul l'utilisateur
+// peut trancher (result.needsUserField = { field_key, field_label,
+// allowed_values?, target? }). Le job passe en 'needs_user' : il SORT de la
+// file (get-pending-jobs ne distribue que 'pending') et attend le mini-éditeur
+// du Stock. Enrichissement : si le handler n'a pas pu joindre la liste des
+// valeurs possibles (dropdown jamais ouvert), on la récupère du catalogue
+// cumulatif platform_category_aspects (allowed_values apprises lors de jobs
+// précédents) — best-effort, jamais bloquant. `target` dit à l'app OÙ écrire
+// la valeur dans platform_fields ({ root: "<canal aspects>"|null, key }) —
+// c'est le handler qui le sait, l'app ne devine rien.
+async function markNeedsUser(accessToken, job, result) {
+  // Même garde que rearmBounded : ne JAMAIS réécrire par-dessus un statut
+  // devenu terminal/annulé pendant le traitement (leçon du job Beebs annulé
+  // à la main, 2026-07-13).
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(
+      `[background] Job ${job.id} : statut devenu "${actuel}" pendant le traitement — ` +
+      `needs_user ABANDONNÉ (on ne réécrit pas par-dessus). Cause : ${result.error}`
+    );
+    return;
+  }
+
+  const f = result.needsUserField;
+  let allowed = Array.isArray(f.allowed_values) && f.allowed_values.length ? f.allowed_values : null;
+  if (!allowed) {
+    try {
+      const rows = await restRequest(
+        `platform_category_aspects?platform=eq.${encodeURIComponent(job.platform)}` +
+        `&category_key=eq.${encodeURIComponent(categoryKeyOf(job).slice(0, 300))}` +
+        `&field_key=eq.${encodeURIComponent(String(f.field_key).slice(0, 120))}` +
+        "&select=allowed_values",
+        accessToken
+      );
+      const av = rows?.[0]?.allowed_values;
+      if (Array.isArray(av) && av.length) allowed = av;
+    } catch (e) {
+      console.warn("[background] markNeedsUser : lecture catalogue en échec (non bloquant) :", String(e?.message ?? e));
+    }
+  }
+
+  console.warn(`[background] Job ${job.id} : champ à trancher « ${f.field_label} » → needs_user (attend l'utilisateur, aucune re-tentative)`);
+  await updateJobStatus(accessToken, job.id, "needs_user", {
+    error: result.error,
+    platform_fields: {
+      ...(job.platform_fields ?? {}),
+      needsUserField: {
+        platform: job.platform,
+        field_key: String(f.field_key).slice(0, 120),
+        field_label: String(f.field_label).slice(0, 200),
+        ...(f.target && f.target.key ? { target: { root: f.target.root ?? null, key: String(f.target.key).slice(0, 200) } } : {}),
+        ...(allowed ? { allowed_values: allowed.slice(0, 200).map((v) => String(v)) } : {}),
+      },
+    },
+  });
 }
 
 // ── Exception brouillon Leboncoin : onglet temporaire par job ──────────────────

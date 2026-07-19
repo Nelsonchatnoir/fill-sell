@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-19-preuve-de-depot (publie exige desormais la redirection /confirmation ou le message Nous avons bien recu — plus jamais par absence d'erreur ; re-clic unique si clic avale ; needsUser depositUnconfirmed sinon)";
+const LEBONCOIN_BUILD = "2026-07-19-needs-user (critere refuse par la validation LBC → needsUserField structure — champ + cible etat/univers/lbcProduit/taille/marque/matiere/lbcAspects — le background persiste needs_user ; connexion/adresse/brouillon/ecrans inconnus restent transitoires) + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -497,6 +497,37 @@ async function fillListingForm(job) {
           : " (aucun message de validation visible)") +
         `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`;
 
+    // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
+    // identifié par la VALIDATION LBC (blockedFields, source de vérité) ou par
+    // un pseudo-requis dédié (univers/produit/quantite). Un champ à la fois :
+    // le suivant re-déclenchera ce même chemin au passage d'après. La cible
+    // d'écriture reproduit le routage du remplissage : clés couvertes par un
+    // bloc dédié → champ racine de platform_fields (le canal générique les
+    // SAUTE, cf. handledForKeys l.407) ; sinon → lbcAspects.<clé for=>.
+    // Aucun champ identifié (wizard bloqué sans message corrélé) → pas de
+    // needsUserField : chemin transitoire (b) inchangé côté background.
+    const lbcTargetFor = (key) => {
+      if (/(_condition$|^condition$)/.test(key)) return { root: null, key: "etat" };
+      if (/(_univers$|_universe$)/.test(key)) return { root: null, key: "univers" };
+      if (/(_type$|^baby_clothing_category$)/.test(key)) return { root: null, key: "lbcProduit" };
+      if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return { root: null, key: "taille" };
+      if (/_brand$/.test(key)) return { root: null, key: "marque" };
+      if (/_material$/.test(key)) return { root: null, key: "matiere" };
+      return { root: "lbcAspects", key };
+    };
+    const LBC_PSEUDO_FIELDS = {
+      univers: { field_key: "univers", field_label: "Univers", target: { root: null, key: "univers" } },
+      produit: { field_key: "produit", field_label: "Produit", target: { root: null, key: "lbcProduit" } },
+      quantite: { field_key: "quantite", field_label: "Quantité", target: { root: null, key: "quantite" } },
+    };
+    const needsUserField = blockedFields.length
+      ? {
+          field_key: blockedFields[0].key,
+          field_label: blockedFields[0].label,
+          target: lbcTargetFor(blockedFields[0].key),
+        }
+      : LBC_PSEUDO_FIELDS[unfilledRequired[0]] ?? null;
+
     return {
       success: false,
       needsUser: true,
@@ -505,6 +536,7 @@ async function fillListingForm(job) {
       unfilledRequired,
       discoveredRequired: enumerated,
       serverRequired: blockedFields.map((f) => ({ key: f.key, label: f.label, message: f.message })),
+      ...(needsUserField ? { needsUserField } : {}),
     };
   }
 

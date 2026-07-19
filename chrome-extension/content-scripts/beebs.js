@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-19-format-colis-palier-direct (format_colis acceptant AUSSI un libelle palier Beebs deja exact — « Poids jusqu'a … » passe tel quel au lieu de retomber sur le defaut 1 kg ; mapping canonique→palier et defaut prudent inchanges, toutes categories)";
+const BEEBS_BUILD = "2026-07-19-needs-user (gate pre-clic requis vides : needsUserField structure — premier champ + options relevees du panneau + cible champ dedie ou beebsAspects.<libelle> — le background persiste needs_user au lieu du re-armement borne) + format-colis-palier-direct";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -542,6 +542,27 @@ async function fillListingForm(job) {
   // « COMPLÉTÉ AVEC CHAMPS MANQUANTS » : publié quand Beebs tolérait, refus
   // opaque sinon.
   if (unfilledRequired.length) {
+    // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
+    // identifié. Premier requis vide, un champ à la fois (le suivant re-passera
+    // par ce gate). Options : celles relevées à l'ouverture du panneau pendant
+    // CE remplissage (listes sans barre de recherche uniquement) — sinon le
+    // background complète depuis le catalogue. Cible d'écriture : les libellés
+    // couverts par un bloc dédié → champ racine de platform_fields (le canal
+    // beebsAspects les SAUTE, cf. handledLabels l.483) ; sinon →
+    // beebsAspects.<libellé exact>.
+    const BEEBS_DEDICATED_TARGETS = {
+      "Couleur": "couleur",
+      "Marque": "marque",
+      "Pointure": "taille",
+      "Taille": "taille",
+      "État": "etat",
+      "Matière": "matiere",
+      "Âge": "age",
+      "Format du colis": "format_colis",
+    };
+    const firstLabel = unfilledRequired[0];
+    const firstMeta = enumerated.find((e) => e.label === firstLabel);
+    const dedicated = BEEBS_DEDICATED_TARGETS[firstLabel];
     return {
       success: false,
       needsUser: true,
@@ -551,6 +572,14 @@ async function fillListingForm(job) {
       warnings,
       unfilledRequired,
       discoveredRequired: enumerated,
+      needsUserField: {
+        field_key: firstLabel,
+        field_label: firstLabel,
+        target: dedicated ? { root: null, key: dedicated } : { root: "beebsAspects", key: firstLabel },
+        ...(Array.isArray(firstMeta?.options) && firstMeta.options.length
+          ? { allowed_values: firstMeta.options }
+          : {}),
+      },
     };
   }
 
