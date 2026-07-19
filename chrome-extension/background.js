@@ -1005,7 +1005,12 @@ async function processJob(rawJob, accessToken) {
     // l'onglet, rechargement de l'extension pendant un test) : transitoire,
     // pas un verdict sur le job — ré-armement borné plutôt que failed sec
     // (cas réel du 2026-07-06 : "message channel closed before a response").
-    if (/message channel closed|Receiving end does not exist/i.test(msg)) {
+    // « No tab with id » AJOUTÉ le 2026-07-19 (job eBay bloqué dans le popup) :
+    // c'est l'erreur de chrome.tabs.sendMessage/tabs.* quand l'ONGLET même a
+    // été fermé en plein job (fenêtre de travail fermée, rechargement
+    // d'extension) — même nature transitoire que le canal coupé, elle partait
+    // pourtant en failed sec avec l'erreur Chrome brute.
+    if (/message channel closed|Receiving end does not exist|No tab with id/i.test(msg)) {
       // ⚠️ D'ABORD : le canal coupé peut être la SIGNATURE D'UN SUCCÈS.
       // Vinted REDIRIGE après une publication réussie — la redirection détruit
       // le content script AVANT qu'il ne réponde, et le job partait en retry
@@ -1582,7 +1587,20 @@ async function neutralizeBeforeUnload(tabId) {
 //      remplace alors l'onglet (même parade que le cas 2 : tabs.remove ne
 //      déclenche pas beforeunload), au lieu de laisser mourir le job.
 async function navigateWorkTab(tabId, target) {
-  const tab = await chrome.tabs.get(tabId);
+  // Onglet mort ENTRE la validation de getOrCreateWorkTab et ici (fenêtre de
+  // travail fermée / extension rechargée pendant la séquence — plusieurs
+  // await s'intercalent, et moveTabToWorkWindow rend l'id INCHANGÉ sur échec) :
+  // l'ancien chrome.tabs.get NU jetait l'erreur Chrome brute « No tab with
+  // id: … » qui remontait telle quelle au job (cas réel 2026-07-19, job eBay
+  // bloqué dans le popup après les rechargements d'extension de la journée).
+  // On repart sur un onglet NEUF au lieu de planter — générique 4 plateformes.
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) {
+    console.warn(`[background] navigateWorkTab : onglet ${tabId} disparu — création d'un onglet de travail neuf`);
+    const fresh = await createWorkTabInWorkWindow(target);
+    await waitForTabComplete(fresh.id, target);
+    return fresh.id;
+  }
 
   if (!tab.active) {
     let effectiveId = tabId;
