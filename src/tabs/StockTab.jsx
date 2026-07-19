@@ -301,6 +301,15 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
       delete newPf.needsUserField;
       if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
       else newPf[target.key] = v;
+      // Trace persistante « tranché par l'utilisateur » (2026-07-19, boucle
+      // needs_user État/Beauté) : les handlers ont des gardes légitimes
+      // « déjà rempli → conservé » (pré-remplissage eBay, valeur d'origine du
+      // job) qui, sans ce marqueur, écartaient silencieusement la réponse.
+      // Clé = cible d'écriture ("ebayAspects.Matière", "vintedAspects.condition",
+      // "etat"…) ; cumulatif : chaque champ tranché reste marqué pour tous les
+      // essais suivants. Les handlers font TOUJOURS primer une valeur marquée.
+      const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
+      newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: v };
       const { data, error } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: null, platform_fields: newPf })

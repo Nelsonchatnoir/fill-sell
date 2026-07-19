@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-19-lecture-valeur-hors-menu (job c5fe1414, constat direct Nico : Style VIDE mais clic parti — readAspectDisplayValue prenait une OPTION du menu ferme pour une valeur → tout dropdown vide passait « pre-rempli » ; les textual-display des conteneurs de menu/tooltip sont exclus, valide sur le brouillon 5317034518613 : Style='', Marque='Volcom') + needs-user + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -321,8 +321,8 @@ async function fillListingForm(job) {
   // un succès marque tout le groupe de synonymes (même logique que la
   // comparaison en face dans computeUnfilledRequired).
   const filledSpecifics = new Set();
-  const fillSpecificTracked = async (labels, value) => {
-    const ok = await fillSpecificSafe(labels, value, warnings);
+  const fillSpecificTracked = async (labels, value, opts = {}) => {
+    const ok = await fillSpecificSafe(labels, value, warnings, opts);
     if (ok) for (const l of labels) filledSpecifics.add(normalizeFuzzy(l));
     // ~5 s entre deux champs (2026-07-12, observation en direct de Nico) :
     // l'enchaînement rapide faisait sauter des remplissages — la page n'a
@@ -512,11 +512,26 @@ async function fillListingForm(job) {
   // obligatoires SANS champ dédié (Nom de parfum, Volume, Hauteur, Numéro de
   // pièce fabricant…). Remplissage par le même chemin vérifié que les champs
   // connus (chip → toggles/pills → menu → saisie libre FREE_TEXT).
+  //
+  // overwrite (2026-07-19, généralisation de la boucle needs_user État/Vinted) :
+  // la réponse d'un needs_user cible TOUJOURS ebayAspects (cf. needsUserField
+  // l.712) — mais un aspect « déjà rempli » (pré-rempli eBay, ou posé par un
+  // bloc dédié depuis la valeur d'origine du job juste au-dessus) est conservé
+  // par fillSpecificSafe, et la réponse de l'utilisateur était silencieusement
+  // écartée. Les clés marquées platform_fields.needsUserResolved (posé par le
+  // mini-éditeur de l'app à la validation) forcent la ré-écriture : une valeur
+  // TRANCHÉE PAR L'UTILISATEUR prime, toujours. Les aspects non marqués
+  // (résolution IA) gardent la règle existante : jamais de ré-écriture d'un
+  // pré-rempli eBay.
+  const _resolved = fields.needsUserResolved && typeof fields.needsUserResolved === "object"
+    ? fields.needsUserResolved
+    : {};
   if (fields.ebayAspects && typeof fields.ebayAspects === "object") {
     for (const [aspectName, aspectValue] of Object.entries(fields.ebayAspects)) {
       const v = String(aspectValue ?? "").trim();
       if (!v || v.toLowerCase() === "null") continue;
-      await fillSpecificTracked([aspectName], v);
+      const userDecided = Object.prototype.hasOwnProperty.call(_resolved, `ebayAspects.${aspectName}`);
+      await fillSpecificTracked([aspectName], v, { overwrite: userDecided });
     }
   }
 
@@ -1027,7 +1042,11 @@ function computeUnfilledRequired(fields, filledSpecifics, warnings = []) {
   return unfilled;
 }
 
-async function fillSpecificSafe(labels, rawValue, warnings) {
+// overwrite (2026-07-19) : true UNIQUEMENT pour un aspect tranché par
+// l'utilisateur (needsUserResolved) — une valeur déjà affichée qui ne matche
+// pas est alors RE-POSÉE au lieu d'être conservée. false partout ailleurs :
+// la règle « on ne ré-écrit jamais un pré-rempli eBay » reste la norme.
+async function fillSpecificSafe(labels, rawValue, warnings, { overwrite = false } = {}) {
   const fieldName = labels[0].toLowerCase();
   // Champ taille/pointure : active la garde anti-nombre-nu de la cascade
   // (cf. findOptionCascade). Calculé sur les labels DEMANDÉS (["Taille",
@@ -1048,7 +1067,15 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
       // cliquer, on conserve la valeur d'eBay comme pour un dropdown pré-rempli.
       const staticValue = readAspectDisplayValue(found.btn);
       if (staticValue) {
-        console.log(`[ebay] ${found.label}: déjà rempli en affichage statique ("${staticValue}"), conservé`);
+        // Affichage statique : aucun contrôle à cliquer — même en overwrite on
+        // ne PEUT pas re-poser. On le dit au lieu de conserver en silence.
+        if (overwrite && normalizeFuzzy(staticValue) !== normalizeFuzzy(String(rawValue))) {
+          const note = `${found.label}: réponse utilisateur "${rawValue}" non posable — affichage statique verrouillé sur "${staticValue}"`;
+          console.warn(`[ebay] ⚠️ ${note}`);
+          warnings.push(note);
+        } else {
+          console.log(`[ebay] ${found.label}: déjà rempli en affichage statique ("${staticValue}"), conservé`);
+        }
         return true;
       }
       // FILET (2026-07-13) : le bouton-valeur est introuvable, mais la CHIP
@@ -1074,11 +1101,20 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     // sélectionnée — faux positif vécu au dry-run ("déjà rempli (Tendances)").
     const readValue = () => anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "");
     // eBay pré-remplit beaucoup depuis le titre et la catégorie (Département,
-    // Type, Style...) : on ne ré-écrit jamais une valeur existante.
+    // Type, Style...) : on ne ré-écrit jamais une valeur existante — SAUF en
+    // overwrite (aspect tranché par l'utilisateur, cf. needsUserResolved) :
+    // la valeur affichée (pré-rempli eBay ou pose du bloc dédié depuis la
+    // donnée d'origine du job) est alors remplacée par la réponse.
     const current = readValue();
     if (current) {
-      console.log(`[ebay] ${found.label}: déjà rempli ("${current}"), conservé`);
-      return true;
+      if (!overwrite || normalizeFuzzy(current) === normalizeFuzzy(String(rawValue))) {
+        console.log(`[ebay] ${found.label}: déjà rempli ("${current}"), conservé`);
+        return true;
+      }
+      const note = `${found.label}: "${current}" remplacé par la réponse utilisateur "${rawValue}"`;
+      console.warn(`[ebay] ⚠️ ${note}`);
+      warnings.push(note);
+      // Pas de return : la pose normale ci-dessous ré-écrit la valeur.
     }
 
     // 2 poses, chacune VÉRIFIÉE par relecture (2026-07-12, même rigueur que
@@ -1089,13 +1125,22 @@ async function fillSpecificSafe(labels, rawValue, warnings) {
     // manquante »). Seule la valeur RELUE dans le bouton-valeur fait foi,
     // jamais le fait d'avoir cliqué. La 2e pose ignore la chip et passe par
     // le menu, le chemin le plus explicite.
+    // En ré-écriture, l'ANCIENNE valeur encore affichée n'est pas une pose
+    // réussie : la relecture n'accepte que le changement (ou une valeur qui
+    // matche enfin la réponse — variante de formatage eBay).
+    const readTaken = () => {
+      const nv = readValue();
+      if (!nv) return null;
+      if (current && nv === current && normalizeFuzzy(nv) !== normalizeFuzzy(String(rawValue))) return null;
+      return nv;
+    };
     for (let attempt = 1; attempt <= 2; attempt++) {
       await setSpecificValue(found, anatomy, rawValue, warnings, fieldName, { skipChip: attempt > 1, sizeField });
       // 8 s : l'onglet de travail est caché, le commit React qui affiche la
       // valeur est différé par le throttling (observé en session réelle
       // 2026-07-12 : toggle Taille cliqué → valeur "M" visible ~1-2 s plus
       // tard, davantage sous charge).
-      const taken = await waitFor(() => readValue() || null, 8000);
+      const taken = await waitFor(() => readTaken(), 8000);
       if (taken) {
         console.log(`[ebay] ${found.label}: valeur posée et relue ("${taken}")${attempt > 1 ? " (2e pose)" : ""}`);
         return true;
