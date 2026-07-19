@@ -3982,6 +3982,56 @@ const DELETE_TARGETS = {
   beebs: () => "https://www.beebs.app/fr/account/my-adverts",
 };
 
+// ── Clôture du publish après un retrait ciblé réussi (2026-07-19) ─────────────
+// Le job publish d'origine reste 'published' en base après un delete réussi :
+// checkPublishedListings aurait re-scanné son listing_url au cycle suivant,
+// trouvé l'annonce disparue (normal — retrait VOLONTAIRE) et posé
+// sale_signal="unavailable" → faux bandeau « Plus en ligne — vendue ? » dans
+// l'app. On passe donc le(s) publish correspondant(s) en 'cancelled' — même
+// statut et même sémantique que « Non, je l'ai retirée » (dismissUnavailable
+// côté app) : un retrait n'est pas une vente, la vente vit dans la table
+// ventes. Le marqueur platform_fields.removed_by_user distingue ce cas, dans
+// l'historique, du 'cancelled' posé par le flux vente (frères annulés).
+// Match par listing_url EXACT + platform : l'URL du delete vient du publish
+// lui-même (jamais de repli — leçon listing_url croisée), et les doublons de
+// republication (même URL, même annonce) sortent tous du scan d'un coup.
+// Un éventuel drapeau unavailable_since/sale_signal déjà posé (course d'un
+// cycle entre scan et suppression) est levé au passage. Best-effort : un échec
+// ici ne doit JAMAIS faire échouer un delete abouti — au pire le bandeau
+// interrogatif apparaît et « Non, je l'ai retirée » le ferme, comme avant.
+async function cancelPublishAfterDelete(accessToken, deleteJob) {
+  try {
+    if (!deleteJob.listing_url) return;
+    const pubs = await restRequest(
+      "cross_post_jobs?select=id,platform_fields" +
+        `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
+        `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`,
+      accessToken
+    );
+    for (const pub of pubs ?? []) {
+      const pf = { ...(pub.platform_fields ?? {}) };
+      delete pf.unavailable_since;
+      delete pf.sale_signal;
+      delete pf.detected_price;
+      pf.removed_by_user = true;
+      await restRequest(`cross_post_jobs?id=eq.${pub.id}`, accessToken, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "cancelled",
+          platform_fields: pf,
+          error: "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente",
+        }),
+      });
+      console.log(
+        `[background] Publish ${pub.id} (${deleteJob.platform}) → cancelled : retrait volontaire, ` +
+        "sorti de la détection de vente (aucun bandeau « vendue ? » à venir)"
+      );
+    }
+  } catch (e) {
+    console.warn("[background] cancelPublishAfterDelete:", String(e?.message ?? e));
+  }
+}
+
 async function processDeleteJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
 
@@ -4038,6 +4088,7 @@ async function processDeleteJob(job, accessToken) {
             delete_trace: result.trace ?? [],
           },
         });
+        await cancelPublishAfterDelete(accessToken, job);
         await recordRecentResult(job, "deleted");
         return { status: "deleted" };
       }
@@ -4070,6 +4121,7 @@ async function processDeleteJob(job, accessToken) {
       await updateJobStatus(accessToken, job.id, "deleted", {
         platform_fields: { ...(job.platform_fields ?? {}), delete_trace: result.trace ?? [] },
       });
+      await cancelPublishAfterDelete(accessToken, job);
       await recordRecentResult(job, "deleted");
       return { status: "deleted" };
     } else {
@@ -4096,6 +4148,7 @@ async function processDeleteJob(job, accessToken) {
           error: null,
           platform_fields: { ...(job.platform_fields ?? {}), delete_confirmed_by: "etat_annonce" },
         }).catch((err) => console.error("[background] update-job-status failed:", err));
+        await cancelPublishAfterDelete(accessToken, job);
         await recordRecentResult(job, "deleted");
         return { status: "deleted" };
       }
