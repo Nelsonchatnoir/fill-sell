@@ -3868,11 +3868,16 @@ export default function ListingPreviewScreen({
         // Alias Mode (audit Phase 0) : monture/extérieure/doublure = nos
         // couleur/matière — mêmes listes que ebay.js, la garde doit juger
         // exactement ce que l'extension enverra.
+        // `set` : écrit la valeur RAPPROCHÉE dans le job sortant (pfE est le
+        // platform_fields de la row d'insert — la mutation part telle quelle
+        // en base, et rows est reconstruit à chaque clic Publier : idempotent).
         const knownAspects = [
-          { labels: ["Marque"], value: () => pfE.marque },
-          { labels: ["Taille", "Pointure EU", "Pointure"], value: () => String(pfE.taille ?? "").replace(/^EU\s*/i, "") },
-          { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], value: () => pfE.colors?.[0] || pfE.couleur },
-          { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], value: () => pfE.matiere },
+          { labels: ["Marque"], value: () => pfE.marque, set: v => { pfE.marque = v; } },
+          { labels: ["Taille", "Pointure EU", "Pointure"], value: () => String(pfE.taille ?? "").replace(/^EU\s*/i, ""), set: v => { pfE.taille = v; } },
+          { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], value: () => pfE.colors?.[0] || pfE.couleur,
+            // Gates et handlers lisent colors[0] AVANT couleur : écrire les deux.
+            set: v => { pfE.couleur = v; if (Array.isArray(pfE.colors) && pfE.colors.length) pfE.colors = [v, ...pfE.colors.slice(1)]; } },
+          { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], value: () => pfE.matiere, set: v => { pfE.matiere = v; } },
         ];
         // Même normalisation que normalizeFuzzy de ebay.js — la garde doit
         // accepter exactement ce que l'extension rapprochera au remplissage.
@@ -3920,13 +3925,41 @@ export default function ListingPreviewScreen({
             (allowed.length <= CLOSED_LIST_MAX || aspect.mode === "SELECTION_ONLY");
           if (!closedList) continue;
           if (allowed.some(v => normFuzzy(v) === normFuzzy(val))) continue;
+          // Rapprochement AUTO au moment du publish (2026-07-19, casquette
+          // 52365 : Taille « Unique » absente de la liste mais « Taille
+          // unique » y EXISTE — la garde jetait quand même, avec en
+          // « exemples » les 4 premières valeurs brutes de la liste, tailles
+          // bébé en tête). Même nearestAllowedValue que la pré-sélection du
+          // step 3, appliqué ICI en dernier filet : déterministe, insensible
+          // aux races d'arrivée du référentiel (preview pas encore chargée,
+          // clic rapide). La valeur du JOB est corrigée — c'est elle que
+          // l'extension posera (libellé eBay exact ⇒ match « exact » du menu).
+          const nearest = nearestAllowedValue(val, allowed);
+          if (nearest) {
+            if (known?.set) known.set(nearest);
+            else pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [aspect.name]: nearest };
+            console.log(`[publish] eBay ${aspect.name} : « ${val} » rapproché en « ${nearest} » (liste fermée de la catégorie)`);
+            continue;
+          }
           const ageLike = /\b(mois|ans)\b/i.test(val);
-          const preferred = ageLike ? allowed.filter(v => /\b(mois|ans)\b/i.test(v)) : [];
-          const sample = (preferred.length ? preferred : allowed).slice(0, 4).join(", ");
-          invalidMessages.push(
-            tpl("stepPublishEbayValueNotAllowed", { name: aspect.name, value: val, sample }) +
-            (ageLike ? ` ${t("stepPublishEbayAxisHint")}` : "")
-          );
+          // Sans rapprochement sûr : plus JAMAIS les 4 premières valeurs
+          // brutes de la liste en guise d'« exemples » (« Bébé prématuré,
+          // Naissance, XS, S » pour une casquette adulte — absurde). Cas âge
+          // conservé (les valeurs mois/ans de la liste sont un VRAI guide) ;
+          // sinon on renvoie vers le sélecteur de l'encart eBay, qui porte la
+          // liste complète (state "invalid", même critère de liste fermée).
+          if (ageLike) {
+            const preferred = allowed.filter(v => /\b(mois|ans)\b/i.test(v));
+            const sample = (preferred.length ? preferred : allowed).slice(0, 4).join(", ");
+            invalidMessages.push(
+              tpl("stepPublishEbayValueNotAllowed", { name: aspect.name, value: val, sample }) +
+              ` ${t("stepPublishEbayAxisHint")}`
+            );
+          } else {
+            invalidMessages.push(
+              tpl("stepPublishEbayValueNotAllowedPick", { name: aspect.name, value: val, count: allowed.length })
+            );
+          }
         }
         const guardMessages = [];
         if (missingEmpty.length) {
