@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-19-needs-user (critere refuse par la validation LBC → needsUserField structure — champ + cible etat/univers/lbcProduit/taille/marque/matiere/lbcAspects — le background persiste needs_user ; connexion/adresse/brouillon/ecrans inconnus restent transitoires) + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -322,9 +322,13 @@ async function fillListingForm(job) {
   if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
   if (job.photos?.length) await uploadPhotos(photoInput, job.photos);
 
-  // Critères : tous NON bloquants. On ne touche jamais un critère que
-  // Leboncoin a déjà pré-rempli depuis le titre (il est souvent plus précis
-  // que nos données — ex. Type="Montre quartz" déduit de "Casio A158").
+  // Critères : tous NON bloquants. Un critère que Leboncoin a déjà pré-rempli
+  // (déduction IA titre/photos) n'est conservé QUE s'il matche la valeur du
+  // job — le cas Type="Montre quartz" déduit de "Casio A158" reste accepté ;
+  // mais quand la déduction contredit le job, la donnée produit fait foi et
+  // écrase (cas réel 2026-07-19, job 8ba961f6 : Marque="New Era" et
+  // Univers="Mixte" devinés des photos, conservés à tort par-dessus
+  // Volcom/Homme, sans aucune trace).
   // Sonde courte préalable (flux paginé) : la page photos dédiée n'a AUCUN
   // critère combobox — sans cette sonde, chaque fillCriterionSafe empilait son
   // timeout de 5 s pour rien (~25 s perdues par job Divers).
@@ -939,8 +943,23 @@ function findCriterionInput(labelSelector) {
   return null;
 }
 
-// Cascade v2 (portée de vinted.js) + jamais bloquant. skipIfPrefilled : ne pas
-// écraser un critère que Leboncoin a déjà déduit du titre.
+// Le pré-rempli LBC matche-t-il la valeur du job ? Mêmes rapprochements que la
+// cascade d'options (normalisation accents/casse, égalité ou contenance à
+// frontière de mots) : "Montre quartz" ↔ "montre quartz" oui, "New Era" ↔
+// "Volcom" non. Comparaison de deux CHAÎNES (pas d'options DOM), donc cascade
+// réduite à ses stages textuels.
+function prefilledMatchesTarget(prefilled, rawValue) {
+  const a = normalizeFuzzy(String(prefilled ?? ""));
+  const b = normalizeFuzzy(String(rawValue ?? ""));
+  if (!a || !b) return false;
+  return a === b || containsAsWords(a, b) || containsAsWords(b, a);
+}
+
+// Cascade v2 (portée de vinted.js) + jamais bloquant. skipIfPrefilled (2026-07-19,
+// job 8ba961f6 Volcom→"New Era") : le pré-rempli LBC (déduction IA titre/photos)
+// n'est conservé que s'il matche la valeur du job ; sinon la donnée produit fait
+// foi et la sélection normale l'écrase. Conservé OU remplacé : warning persisté
+// dans les deux cas — ce comportement ne doit plus jamais être silencieux.
 async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false } = {}) {
   try {
     const input = findCriterionInput(labelSelector);
@@ -949,8 +968,17 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       return false;
     }
     if (skipIfPrefilled && input.value.trim()) {
-      console.log(`[leboncoin] ${fieldName}: déjà pré-rempli par LBC ("${input.value}"), conservé`);
-      return true;
+      const prefilled = input.value.trim();
+      if (prefilledMatchesTarget(prefilled, rawValue)) {
+        const note = `${fieldName}: pré-rempli LBC "${prefilled}" conservé (matche "${rawValue}")`;
+        console.log(`[leboncoin] ${note}`);
+        warnings.push(note);
+        return true;
+      }
+      const note = `${fieldName}: pré-rempli LBC "${prefilled}" remplacé par "${rawValue}"`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      // Pas de return : la sélection normale ci-dessous écrase la déduction LBC.
     }
     await humanPause();
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -991,9 +1019,9 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
 // du relevé Montres & Bijoux (accessories_univers) ; sur d'autres catégories
 // (Vêtements) le contrôle peut être rendu autrement (radios/pills) — d'où le
 // fallback : conteneur titré "Univers" → clic sur l'option via la cascade.
-// @returns {Promise<boolean>} true si l'univers a bien été posé (ou était déjà
-//   pré-rempli par LBC), false sinon — l'appelant l'inscrit alors dans
-//   unfilledRequired.
+// @returns {Promise<boolean>} true si l'univers a bien été posé (ou si le
+//   pré-rempli LBC matche la valeur du job), false sinon — l'appelant
+//   l'inscrit alors dans unfilledRequired.
 async function fillUnivers(rawValue, warnings) {
   // 1. Combobox classique. Suffixes relevés : "_univers" (Montres & Bijoux),
   // "_universe" (anglais — Équipement bébé, campagne 2026-07-08 ; ses valeurs
@@ -1013,12 +1041,27 @@ async function fillUnivers(rawValue, warnings) {
       || /^univers( de |[\s:*])/.test(normalizeFuzzy(el.textContent)));
   if (title) {
     let scope = title.parentElement;
+    let prefilledNoted = false;
     for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
-      // Pré-rempli par LBC depuis le titre → on ne touche pas (même règle
-      // que skipIfPrefilled sur le combobox).
-      if (scope.querySelector('input:checked, [aria-checked="true"], [aria-selected="true"]')) {
-        console.log("[leboncoin] univers: déjà pré-sélectionné par LBC, conservé");
-        return true;
+      // Pré-sélectionné par LBC (déduction IA) → même règle que skipIfPrefilled
+      // sur le combobox : conservé seulement si ça matche la valeur du job,
+      // sinon on écrase via la cascade ci-dessous. Warning dans les deux cas.
+      // (Noté une seule fois : les scopes parents recontiennent le même coché.)
+      const checked = scope.querySelector('input:checked, [aria-checked="true"], [aria-selected="true"]');
+      if (checked && !prefilledNoted) {
+        prefilledNoted = true;
+        const checkedText = ((checked.closest("label") || checked).textContent
+          || checked.getAttribute("aria-label") || "").trim();
+        if (prefilledMatchesTarget(checkedText, rawValue)) {
+          const note = `univers: pré-rempli LBC "${checkedText}" conservé (matche "${rawValue}")`;
+          console.log(`[leboncoin] ${note}`);
+          warnings.push(note);
+          return true;
+        }
+        const note = `univers: pré-rempli LBC "${checkedText}" remplacé par "${rawValue}"`;
+        console.warn(`[leboncoin] ⚠️ ${note}`);
+        warnings.push(note);
+        // Pas de return : la cascade ci-dessous pose la valeur du job.
       }
       const match = findOptionCascade(
         scope,
