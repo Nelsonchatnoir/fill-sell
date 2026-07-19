@@ -389,6 +389,164 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   );
 }
 
+// ── Retrait ciblé (2026-07-19) : état de retrait par plateforme ──────────────
+// Le job publish reste 'published' en base même après une suppression réussie
+// (l'extension le passe ensuite en 'cancelled', mais pas instantanément) :
+// c'est le delete LE PLUS RÉCENT de la plateforme qui dit la vérité — à
+// condition d'être POSTÉRIEUR au dernier publish 'published' (une
+// republication après retrait rallume le logo, l'ancien delete ne compte plus).
+//   'removing' → delete pending/processing : retrait en cours, action désarmée ;
+//   'removed'  → delete 'deleted' : la plateforme n'est plus active ;
+//   failed/needs_user/dry_run_completed → rien : l'annonce est toujours en
+//                ligne, le retrait reste proposable.
+// ⚠️ dédoublonnage published (2026-07-13) : un article REPUBLIÉ crée un NOUVEAU
+// job pour la même plateforme sans clore l'ancien — deux jobs "published"
+// leboncoin coexistent en base pour la même annonce (même listing_url,
+// vérifié). Sans le Set, la pastille s'affichait deux fois.
+// Partagé carte (logos) + RemovePlatformsModal : un seul calcul, jamais deux vérités.
+const RM_PLATFORMS = ["vinted", "leboncoin", "beebs", "ebay"];
+function computeRemovalInfo(jobsAll) {
+  const jobs = jobsAll.filter(j => j.action !== "delete");
+  const deleteJobs = jobsAll.filter(j => j.action === "delete");
+  const published = [...new Set(jobs.filter(j => j.status === "published").map(j => j.platform))];
+  const latestPubByPlatform = {};
+  for (const j of jobs) {
+    if (j.status !== "published") continue;
+    const cur = latestPubByPlatform[j.platform];
+    if (!cur || Date.parse(j.created_at || 0) > Date.parse(cur.created_at || 0)) latestPubByPlatform[j.platform] = j;
+  }
+  const latestDelByPlatform = {};
+  for (const j of deleteJobs) {
+    const cur = latestDelByPlatform[j.platform];
+    if (!cur || Date.parse(j.created_at || 0) > Date.parse(cur.created_at || 0)) latestDelByPlatform[j.platform] = j;
+  }
+  const removalState = {};
+  for (const p of published) {
+    const pub = latestPubByPlatform[p], del = latestDelByPlatform[p];
+    if (!pub || !del || Date.parse(del.created_at || 0) <= Date.parse(pub.created_at || 0)) continue;
+    if (del.status === "deleted") removalState[p] = "removed";
+    else if (del.status === "pending" || del.status === "processing") removalState[p] = "removing";
+  }
+  const publishedActive = published.filter(p => removalState[p] !== "removed");
+  return { published, removalState, publishedActive, latestPubByPlatform };
+}
+
+// ── Modal de retrait ciblé (2026-07-19, remplace window.confirm) ─────────────
+// Ouvert par un tap sur n'importe quel logo de plateforme d'une carte stock.
+// Liste LES 4 plateformes avec leur état réel (en ligne / retrait en cours /
+// retirée / pas publiée) et une action de retrait PAR LIGNE — on peut retirer
+// plusieurs plateformes depuis ce seul modal, chacune restant un job delete
+// individuel (la logique métier ne change pas : insert scopé, patch local,
+// sortie du scan de vente côté extension).
+// Confirmation INLINE par ligne, jamais de window.confirm imbriqué : premier
+// tap sur « Retirer » ARME la ligne (« Retirer de X ? » + Confirmer/Annuler),
+// second tap exécute. Armer une ligne désarme l'autre — une seule décision à
+// la fois. Même squelette visuel que NeedsUserModal : voile ink 45 %, carte
+// paper #F6F5F1, coins 16, bordure #E7E3D8, police héritée (Space Grotesk),
+// poids ≤ 700 ; rouge #8C2F28/#FBEDEC réservé à l'action destructive.
+function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove }) {
+  const [confirming, setConfirming] = useState(null);
+  const [errMsg, setErrMsg] = useState(null);
+  const { published, removalState, latestPubByPlatform } = computeRemovalInfo(jobsAll);
+  const fr = lang !== "en";
+  return (
+    <div
+      onClick={onClose}
+      style={{ position:"fixed", inset:0, background:"rgba(16,32,27,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background:"#F6F5F1", borderRadius:16, border:`1px solid ${NU_T.border}`, padding:20, width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)", fontFamily:"inherit" }}
+      >
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:NU_T.mute, marginBottom:6 }}>
+          {fr ? "Retirer des plateformes" : "Remove from platforms"}
+        </div>
+        <div style={{ fontSize:15, fontWeight:700, color:NU_T.ink, marginBottom:4 }}>
+          {item.title}
+        </div>
+        <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:14 }}>
+          {fr
+            ? "Chaque retrait supprime l'annonce sur cette plateforme uniquement — les autres ne bougent pas."
+            : "Each removal deletes the listing on that platform only — the others are untouched."}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {RM_PLATFORMS.map(p => {
+            const label = PLATFORM_LABELS[p] || p;
+            const isPublished = published.includes(p);
+            const state = removalState[p];
+            const noUrl = isPublished && !state && !latestPubByPlatform[p]?.listing_url;
+            const online = isPublished && !state && !noUrl;
+            const busy = busyPlatform === p;
+            const armed = confirming === p;
+            const dimmed = !isPublished || state === "removed";
+            return (
+              <div key={p} style={{ display:"flex", alignItems:"center", gap:10, background:"#fff", border:`1px solid ${armed ? "#EFC2BE" : NU_T.border}`, borderRadius:12, padding:"10px 12px", minHeight:52 }}>
+                <span style={{ display:"flex", flex:"0 0 auto", lineHeight:0, opacity:dimmed ? 0.3 : state === "removing" ? 0.45 : 1 }}>
+                  <PlatformLogo platform={p} size={22}/>
+                </span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:dimmed ? NU_T.mute : NU_T.ink }}>{label}</div>
+                  <div style={{ fontSize:11.5, lineHeight:1.35, color:NU_T.mute, display:"flex", alignItems:"center", gap:5 }}>
+                    {online && !armed && (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#2F9E90", flex:"0 0 auto" }}/><span style={{ color:"#1B6E62", fontWeight:600 }}>{fr ? "En ligne" : "Live"}</span></>)}
+                    {online && armed && <span style={{ color:"#8C2F28", fontWeight:600 }}>{fr ? `Retirer de ${label} ?` : `Remove from ${label}?`}</span>}
+                    {state === "removing" && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Retrait en cours…" : "Removing…"}</span>}
+                    {state === "removed" && <span>{fr ? "Retirée" : "Removed"}</span>}
+                    {noUrl && <span>{fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`}</span>}
+                    {!isPublished && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
+                  </div>
+                </div>
+                {online && !armed && (
+                  <button
+                    onClick={() => { setErrMsg(null); setConfirming(p); }}
+                    style={{ flex:"0 0 auto", padding:"7px 14px", borderRadius:10, border:"1px solid #EFC2BE", background:"#fff", color:"#8C2F28", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+                  >
+                    {fr ? "Retirer" : "Remove"}
+                  </button>
+                )}
+                {online && armed && (
+                  <div style={{ display:"flex", flex:"0 0 auto", gap:6 }}>
+                    <button
+                      onClick={() => setConfirming(null)}
+                      disabled={busy}
+                      style={{ padding:"7px 10px", borderRadius:10, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+                    >
+                      {fr ? "Annuler" : "Cancel"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (busy) return;
+                        setErrMsg(null);
+                        const err = await onRemove(item, p);
+                        if (err) setErrMsg(err);
+                        setConfirming(null);
+                      }}
+                      disabled={busy}
+                      style={{ padding:"7px 12px", borderRadius:10, border:"none", background:busy ? "#B9C4C0" : "#8C2F28", color:"#fff", fontSize:12, fontWeight:700, cursor:busy ? "wait" : "pointer", fontFamily:"inherit" }}
+                    >
+                      {busy ? (fr ? "Retrait…" : "Removing…") : (fr ? "Confirmer" : "Confirm")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {errMsg && (
+          <div style={{ marginTop:10, fontSize:12, color:"#8C2F28", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:10, padding:"8px 10px" }}>
+            {errMsg}
+          </div>
+        )}
+        <button
+          onClick={onClose}
+          style={{ width:"100%", marginTop:16, padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+        >
+          {fr ? "Fermer" : "Close"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
@@ -561,18 +719,20 @@ const StockTab = memo(function StockTab({
     .filter(j => j.status === "pending" && j.action !== "delete").length;
 
   // ── Retrait ciblé par plateforme (2026-07-19) ──────────────────────────────
-  // Clic sur UN logo de plateforme → confirmation → UN job action='delete'
-  // pour CETTE plateforme (même mécanisme que armRemovals côté vente, mais
-  // scopé à une seule annonce). Les autres plateformes ne sont pas touchées :
-  // aucun job créé, aucune donnée modifiée. Insert direct (RLS "Users manage
-  // own cross_post_jobs"), aucune Pépite débitée — ce n'est pas une publication.
-  // L'extension exécute au prochain cycle ; le logo passe en « retrait… »
-  // (optimiste, via le job inséré rendu dans jobsByInventaire) puis disparaît
-  // quand le job atteint 'deleted'.
-  const removeBusyRef = useRef(new Set());
-  async function removePlatform(item, platform) {
-    const key = `${item.id}:${platform}`;
-    if (removeBusyRef.current.has(key)) return;
+  // Tap sur un logo de plateforme → RemovePlatformsModal (les 4 plateformes,
+  // état réel + action par ligne, confirmation inline) → armRemoveJob : UN job
+  // action='delete' pour la plateforme confirmée (même mécanisme que
+  // armRemovals côté vente, mais scopé à une seule annonce). Les autres
+  // plateformes ne sont pas touchées : aucun job créé, aucune donnée modifiée.
+  // Insert direct (RLS "Users manage own cross_post_jobs"), aucune Pépite
+  // débitée — ce n'est pas une publication. L'extension exécute au prochain
+  // cycle ; la ligne passe en « retrait en cours… » (optimiste, via le job
+  // inséré rendu dans jobsByInventaire) puis « retirée » quand le job atteint
+  // 'deleted'. Retourne un message d'erreur (affiché DANS le modal) ou null.
+  const [removeModalItem, setRemoveModalItem] = useState(null);
+  const [removeBusy, setRemoveBusy] = useState(null);
+  async function armRemoveJob(item, platform) {
+    if (removeBusy) return null;
     // Le delete cible le job publish 'published' LE PLUS RÉCENT de la
     // plateforme — son listing_url et rien d'autre (leçon listing_url croisée).
     let pub = null;
@@ -580,18 +740,14 @@ const StockTab = memo(function StockTab({
       if (j.action === "delete" || j.platform !== platform || j.status !== "published") continue;
       if (!pub || Date.parse(j.created_at || 0) > Date.parse(pub.created_at || 0)) pub = j;
     }
-    const label = PLATFORM_LABELS[platform] || platform;
+    // Le modal désarme la ligne quand l'URL manque — ceci n'est que le filet.
     if (!pub?.listing_url) {
-      window.alert(lang === 'fr'
-        ? `Impossible de retirer de ${label} : le lien de l'annonce est introuvable. Retire-la directement sur ${label}.`
-        : `Can't remove from ${label}: the listing link is missing. Remove it directly on ${label}.`);
-      return;
+      const label = PLATFORM_LABELS[platform] || platform;
+      return lang === 'fr'
+        ? `Impossible de retirer de ${label} : le lien de l'annonce est introuvable.`
+        : `Can't remove from ${label}: the listing link is missing.`;
     }
-    const ok = window.confirm(lang === 'fr'
-      ? `Retirer « ${item.title} » de ${label} ?\n\nL'annonce sera supprimée sur ${label} uniquement — les autres plateformes ne bougent pas.`
-      : `Remove "${item.title}" from ${label}?\n\nThe listing will be removed from ${label} only — other platforms are untouched.`);
-    if (!ok) return;
-    removeBusyRef.current.add(key);
+    setRemoveBusy(platform);
     try {
       const { data, error } = await supabase.from('cross_post_jobs').insert({
         user_id: user.id, inventaire_id: item.id, platform,
@@ -599,16 +755,16 @@ const StockTab = memo(function StockTab({
         title: pub.title || item.title, listing_url: pub.listing_url, platform_fields: {},
       }).select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title").single();
       if (error) {
-        console.error('[removePlatform] insert:', error.message);
-        window.alert(lang === 'fr' ? `Le retrait n'a pas pu être lancé (${error.message}).` : `Removal could not be started (${error.message}).`);
-        return;
+        console.error('[armRemoveJob] insert:', error.message);
+        return lang === 'fr' ? `Le retrait n'a pas pu être lancé (${error.message}).` : `Removal could not be started (${error.message}).`;
       }
-      // Patch local immédiat : le logo passe en « retrait… » sans attendre le
-      // prochain poll (20 s).
+      // Patch local immédiat : la ligne du modal et le logo de la carte passent
+      // en « retrait… » sans attendre le prochain poll (20 s).
       setJobsByInventaire(prev => ({ ...prev, [item.id]: [...(prev[item.id] || []), data] }));
       track('remove_single_platform', { platform });
+      return null;
     } finally {
-      removeBusyRef.current.delete(key);
+      setRemoveBusy(null);
     }
   }
 
@@ -1252,13 +1408,6 @@ const StockTab = memo(function StockTab({
                   // cours… » (dépôt) et un delete failed un badge « Échec » de
                   // publication — deux mensonges.
                   const jobs=jobsAll.filter(j=>j.action!=="delete");
-                  const deleteJobs=jobsAll.filter(j=>j.action==="delete");
-                  // ⚠️ dédoublonnage (2026-07-13) : un article REPUBLIÉ crée un
-                  // NOUVEAU job pour la même plateforme, sans clore l'ancien —
-                  // deux jobs "published" leboncoin coexistent donc en base pour
-                  // la même et unique annonce (même listing_url, vérifié). Sans
-                  // ce Set, la pastille Leboncoin s'affichait DEUX FOIS.
-                  const published=[...new Set(jobs.filter(j=>j.status==="published").map(j=>j.platform))];
                   // "processing" = publication en cours côté extension : même
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
@@ -1284,38 +1433,10 @@ const StockTab = memo(function StockTab({
                   // compte. Dès que le job repart en pending (valeur fournie)
                   // ou se conclut (published/failed), le badge s'éteint.
                   const needsUserJobs=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
-                  // ── État de retrait par plateforme (retrait ciblé, 2026-07-19) ──
-                  // Le job publish reste 'published' en base même après une
-                  // suppression réussie : c'est le delete LE PLUS RÉCENT de la
-                  // plateforme qui dit la vérité — à condition d'être POSTÉRIEUR
-                  // au dernier publish 'published' (une republication après
-                  // retrait rallume le logo, l'ancien delete ne compte plus).
-                  //   'removing' → delete pending/processing : logo estompé,
-                  //                clic désarmé (pas de double job) ;
-                  //   'removed'  → delete 'deleted' : logo éteint, la
-                  //                plateforme n'est plus active ;
-                  //   failed/needs_user/dry_run_completed → rien : l'annonce
-                  //                est toujours en ligne, logo normal, re-clic
-                  //                possible.
-                  const latestPubByPlatform={};
-                  for(const j of jobs){
-                    if(j.status!=="published")continue;
-                    const cur=latestPubByPlatform[j.platform];
-                    if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestPubByPlatform[j.platform]=j;
-                  }
-                  const latestDelByPlatform={};
-                  for(const j of deleteJobs){
-                    const cur=latestDelByPlatform[j.platform];
-                    if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestDelByPlatform[j.platform]=j;
-                  }
-                  const removalState={};
-                  for(const p of published){
-                    const pub=latestPubByPlatform[p],del=latestDelByPlatform[p];
-                    if(!pub||!del||Date.parse(del.created_at||0)<=Date.parse(pub.created_at||0))continue;
-                    if(del.status==="deleted")removalState[p]="removed";
-                    else if(del.status==="pending"||del.status==="processing")removalState[p]="removing";
-                  }
-                  const publishedActive=published.filter(p=>removalState[p]!=="removed");
+                  // État de retrait par plateforme : calcul partagé avec le
+                  // modal de retrait (computeRemovalInfo, en tête de fichier) —
+                  // un seul calcul, jamais deux vérités carte/modal.
+                  const {removalState,publishedActive}=computeRemovalInfo(jobsAll);
                   const enLigne=publishedActive.length>0;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
@@ -1348,16 +1469,17 @@ const StockTab = memo(function StockTab({
                                   la racine. title= garde le nom accessible au survol/lecteur
                                   d'écran. */}
                               {/* Cliquables (retrait ciblé, 2026-07-19) : tap sur UN
-                                  logo → confirmation → retrait de CETTE plateforme
-                                  seulement. stopPropagation : ne pas ouvrir l'édition.
-                                  Estompé = retrait en cours (clic désarmé). */}
+                                  logo → RemovePlatformsModal (toutes les plateformes,
+                                  action de retrait par ligne, confirmation inline).
+                                  stopPropagation : ne pas ouvrir l'édition.
+                                  Estompé = retrait en cours. */}
                               {publishedActive.map(p=>{
                                 const removing=removalState[p]==="removing";
                                 return(
                                   <span key={p} className="plogo"
-                                    title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to remove`:`${PLATFORM_LABELS[p]||p} — toucher pour retirer`)}
-                                    style={removing?{opacity:.35}:{cursor:"pointer"}}
-                                    onClick={e=>{e.stopPropagation();if(!removing)removePlatform(item,p);}}>
+                                    title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
+                                    style={{cursor:"pointer",...(removing?{opacity:.35}:{})}}
+                                    onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
                                     <PlatformLogo platform={p} size={18}/>
                                   </span>
                                 );
@@ -1476,6 +1598,20 @@ const StockTab = memo(function StockTab({
               });
             }
           }}
+        />
+      )}
+      {/* Modal de retrait ciblé (2026-07-19). jobsAll relu à CHAQUE rendu
+          depuis jobsByInventaire : le patch local post-insert et le poll de
+          20 s font vivre les lignes (En ligne → Retrait en cours… → Retirée)
+          pendant que le modal est ouvert. Fermeture = aucune action. */}
+      {removeModalItem&&(
+        <RemovePlatformsModal
+          item={removeModalItem}
+          jobsAll={jobsByInventaire[removeModalItem.id]||[]}
+          lang={lang}
+          busyPlatform={removeBusy}
+          onClose={()=>setRemoveModalItem(null)}
+          onRemove={armRemoveJob}
         />
       )}
       {publishItem&&(
