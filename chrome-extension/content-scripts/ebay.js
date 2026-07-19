@@ -196,11 +196,34 @@ async function deleteListing(job) {
   }, 10000);
   if (!dialog) return { success: false, error: "Dialogue de confirmation de fin d'annonce introuvable", trace };
 
+  // ⚠️ JAMAIS de dialogue laissé ouvert sur un abandon (2026-07-19, vécu en
+  // réel : l'abandon « ne nomme pas l'annonce » du job e3be6777 a laissé la
+  // modale de fin d'annonce ARMÉE dans l'onglet de travail. À la navigation
+  // suivante, la page aux « modifications non enregistrées » a déclenché le
+  // dialogue beforeunload NATIF — que Chrome affiche en RESTAURANT la fenêtre
+  // minimisée : la fenêtre de travail censée être invisible s'est retrouvée à
+  // l'écran de l'utilisateur, dialogue Medik8 apparent, et l'onglet gelé a
+  // nourri la prolifération d'onglets (replaceWorkTab en boucle). On referme
+  // donc la modale par son bouton Annuler avant TOUT return d'abandon.
+  const closeDialog = async () => {
+    const cancelBtn = Array.from(dialog.querySelectorAll("button"))
+      .filter(estVisibleSansLayout)
+      .find((b) => /^annuler$/i.test(texteDe(b)) || /fermer|close/i.test(b.getAttribute("aria-label") || ""));
+    if (cancelBtn) {
+      realClick(cancelBtn);
+      await humanPause(300, 600);
+      t("dialogue de confirmation refermé (Annuler) — onglet laissé propre");
+    } else {
+      t("⚠️ dialogue laissé OUVERT : bouton Annuler/Fermer introuvable dans la modale");
+    }
+  };
+
   // Garde du titre : elle reste, mais sur textContent (innerText est vide sans
   // rendu — c'est ce qui la faisait échouer, pas un vrai désaccord de titre).
   const titleOk = !job.title || texteDe(dialog).toLowerCase().includes(job.title.trim().toLowerCase());
   if (!titleOk) {
     t(`ABANDON : le dialogue ne nomme pas "${job.title}" — aucun clic`);
+    await closeDialog();
     return { success: false, error: "Le dialogue de confirmation ne nomme pas l'annonce du job — abandon", trace };
   }
   t("dialogue de confirmation : nomme bien l'annonce du job");
@@ -208,7 +231,10 @@ async function deleteListing(job) {
   const confirmBtn = Array.from(dialog.querySelectorAll("button"))
     .filter(estVisibleSansLayout)
     .find((b) => texteDe(b) === "Mettre fin à l'annonce");
-  if (!confirmBtn) return { success: false, error: "Bouton « Mettre fin à l'annonce » du dialogue introuvable", trace };
+  if (!confirmBtn) {
+    await closeDialog();
+    return { success: false, error: "Bouton « Mettre fin à l'annonce » du dialogue introuvable", trace };
+  }
 
   await humanPause(800, 1600);
   realClick(confirmBtn);

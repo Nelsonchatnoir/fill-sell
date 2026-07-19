@@ -1080,7 +1080,7 @@ async function processJob(rawJob, accessToken) {
       // en "published" fantôme. Seul le background peut trancher : il survit
       // à la redirection (succès) comme à l'absence de redirection (refus).
       if (job.platform === "ebay") {
-        const verdict = await verifyEbaySubmission(tabId, 20_000, job);
+        const verdict = await verifyEbaySubmission(tabId, 20_000, job, accessToken);
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}`);
           await rearmBounded(accessToken, job, verdict.error);
@@ -1108,7 +1108,7 @@ async function processJob(rawJob, accessToken) {
       //      modération : l'annonce n'y figure pas encore.
       let listingUrl = result.listingUrl ?? null;
       if (!listingUrl && job.platform === "vinted") listingUrl = await vintedUploadSucceeded(tabId).catch(() => null);
-      if (!listingUrl && job.platform === "ebay") listingUrl = await ebayUploadSucceeded(tabId).catch(() => null);
+      if (!listingUrl && job.platform === "ebay") listingUrl = await ebayUploadSucceeded(tabId, accessToken).catch(() => null);
 
       // Beebs : dépôt CONFIRMÉ mais annonce en MODÉRATION (« il sera mis en
       // ligne dès qu'il aura été vérifié par notre équipe ») — elle n'est PAS
@@ -2063,7 +2063,7 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
 // Retourne { error, listingUrl } : error non-null = refus/non confirmé ;
 // listingUrl non-null = numéro d'annonce extrait de la preuve (modale ou
 // réponse serveur), à prendre comme listing_url sans repasser par la capture.
-async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null) {
+async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, accessToken = null) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -2094,7 +2094,15 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null) {
       // Bandeau : rien à fermer (best-effort sans effet). Modale : on la ferme
       // pour laisser l'onglet de travail propre pour le job suivant.
       await closeEbayPostPublishPopup(tabId);
-      return { error: null, listingUrl: success.listingUrl };
+      // Garde anti-croisement sur l'URL SEULEMENT (pas sur la preuve : le
+      // bandeau de succès reste un succès) : la modale post-publication porte
+      // aussi des liens « Vendre un objet similaire »/cross-promo — un /itm/
+      // déjà connu en base n'est pas l'annonce créée, on laisse l'URL en
+      // différé (recoverMissingListingUrls / hub par titre la rattraperont).
+      let successUrl = success.listingUrl;
+      const sm = String(successUrl ?? "").match(/\/itm\/(\d{9,})/);
+      if (sm && await ebayIdAlreadyKnown(accessToken, sm[1])) successUrl = null;
+      return { error: null, listingUrl: successUrl };
     }
 
     // 2e PREUVE (2026-07-13) : la RÉPONSE SERVEUR. eBay publie en affichant une
@@ -2102,7 +2110,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null) {
     // et si la popup n'est pas lue (onglet non rendu, markup inconnu), on
     // déclarait « non confirmée » une annonce EN LIGNE (job 63cfc7f7, annonce
     // 800332793676). Le réseau, lui, ne ment pas. Même parade que Vinted.
-    const served = await ebayUploadSucceeded(tabId);
+    const served = await ebayUploadSucceeded(tabId, accessToken);
     if (served) {
       console.log(`[background] eBay : publication CONFIRMÉE par la réponse serveur (${served})`);
       await closeEbayPostPublishPopup(tabId);
@@ -2463,13 +2471,52 @@ async function installNetworkProbe(tabId, platform) {
   }
 }
 
+// ⚠️ GARDE ANTI-CROISEMENT (2026-07-19, cas RÉEL cap Volcom / Medik8). La sonde
+// eBay capture TOUT le non-GET du domaine, et le motif accepte N'IMPORTE QUEL
+// id à 9+ chiffres dans la réponse : à 20:08, la republication de la casquette
+// Volcom (job fbccc13f) a été « confirmée par la réponse serveur » avec l'id
+// 800372232491 — l'annonce MEDIK8 publiée 30 min plus tôt, dont l'id traînait
+// dans une réponse eBay (hub, cross-promo, notification…). Le job cap est parti
+// published avec l'URL du Medik8, et le retrait ciblé de la casquette a ouvert
+// le dialogue de fin d'annonce DU MEDIK8 — seule la garde du titre (ebay.js)
+// a empêché de supprimer la mauvaise annonce.
+// Principe : un id qui appartient DÉJÀ à un listing_url en base ne peut PAS
+// être l'annonce qu'on vient de créer — c'est l'écho d'une annonce existante.
+// REST scopé utilisateur (RLS). En cas de doute (REST en échec, pas de token),
+// on REJETTE : une preuve sonde perdue se rattrape (bandeau, hub par titre —
+// preuves 1 et 3), un listing_url croisé fait supprimer la mauvaise annonce.
+async function ebayIdAlreadyKnown(accessToken, id) {
+  if (!accessToken) return true;
+  try {
+    const rows = await restRequest(
+      `cross_post_jobs?select=id&listing_url=like.*${id}*&limit=1`,
+      accessToken
+    );
+    if ((rows ?? []).length) {
+      console.warn(
+        `[background] eBay : id candidat ${id} DÉJÀ porté par un listing_url en base — ` +
+        "écho d'une annonce existante, pas une création : capture ignorée (garde anti-croisement)"
+      );
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.warn(
+      `[background] ebayIdAlreadyKnown(${id}) : vérification impossible (${String(e?.message ?? e)}) — ` +
+      "id rejeté par prudence (jamais de listing_url non vérifié)"
+    );
+    return true;
+  }
+}
+
 // L'annonce eBay a-t-elle RÉELLEMENT été créée ? Même principe que
 // vintedUploadSucceeded : la réponse serveur tranche, pas la navigation. eBay
 // publie en affichant une POPUP et en restant sur /lstng — la seule redirection
 // attendue n'arrive jamais (job 63cfc7f7 : annonce 800332793676 en ligne, job
 // laissé en pending « non confirmée »). On exige un HTTP 2xx ET un numéro
-// d'annonce (9 chiffres ou plus) dans la réponse. Retourne l'URL, ou null.
-async function ebayUploadSucceeded(tabId) {
+// d'annonce (9 chiffres ou plus) dans la réponse — qui ne soit pas déjà celui
+// d'une annonce connue (garde anti-croisement ci-dessus). Retourne l'URL, ou null.
+async function ebayUploadSucceeded(tabId, accessToken) {
   const { captures } = await readProbeCaptures(tabId);
   for (let i = captures.length - 1; i >= 0; i--) {
     const c = captures[i];
@@ -2478,14 +2525,20 @@ async function ebayUploadSucceeded(tabId) {
     // annonceId : extrait par la sonde sur le corps COMPLET de la réponse,
     // AVANT troncature (2026-07-13, job 5e3ee1e2 — un id au-delà des 250 chars
     // conservés était détruit à la capture, preuve perdue).
-    if (/^\d{9,}$/.test(String(c?.annonceId ?? ""))) return `https://www.ebay.fr/itm/${c.annonceId}`;
+    if (/^\d{9,}$/.test(String(c?.annonceId ?? ""))) {
+      if (await ebayIdAlreadyKnown(accessToken, c.annonceId)) continue;
+      return `https://www.ebay.fr/itm/${c.annonceId}`;
+    }
     // Repli : captures posées par une sonde antérieure (sans annonceId) — le
     // motif ne peut alors chercher que dans l'extrait tronqué.
     const body = String(c?.reponse ?? "");
     const m =
       body.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ??
       body.match(/\/itm\/(\d{9,})/);
-    if (m) return `https://www.ebay.fr/itm/${m[1]}`;
+    if (m) {
+      if (await ebayIdAlreadyKnown(accessToken, m[1])) continue;
+      return `https://www.ebay.fr/itm/${m[1]}`;
+    }
   }
   return null;
 }
