@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-14-00h30 (opacity retiree du filtre de visibilite — meme piege que Beebs)";
+const EBAY_BUILD = "2026-07-19-reclic-mise-en-vente (clic Mettre en vente avale sans aucun effet observable en onglet cache — detection d'effet 8 s + re-clic unique, fermeture defensive des menus ouverts avant submit)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -720,9 +720,67 @@ async function fillListingForm(job) {
       unfilledRequired,
     };
   }
+  // Fermeture défensive d'un menu de specific resté ouvert (2026-07-19, parité
+  // avec le closeAnyOpenDropdown Vinted) : la vérif de fermeture post-sélection
+  // repose sur offsetParent, peu fiable dans la fenêtre non rendue — un menu
+  // ouvert au moment du submit est un état jamais testé qu'on élimine.
+  // Visibilité par styles calculés uniquement (pas de layout en fenêtre cachée).
+  const visibleSansLayout = (el) => {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.getAttribute("aria-hidden") === "true") return false;
+      const st = getComputedStyle(n);
+      if (st.display === "none" || st.visibility === "hidden") return false;
+    }
+    return true;
+  };
+  const menuOuvert = [...document.querySelectorAll(SPECIFICS_MENU_SELECTOR)].find(visibleSansLayout);
+  if (menuOuvert) {
+    console.log("[ebay] menu de specific encore ouvert avant la mise en vente — fermeture (clic body)");
+    document.body.click();
+    await humanPause();
+  }
+
+  // État de référence AVANT le clic : notices/dialogues déjà visibles. Après le
+  // clic, seule l'APPARITION d'un élément nouveau (ou un changement d'état du
+  // bouton/de l'URL) prouve que le clic a produit quelque chose.
+  const surveilleNotices = () =>
+    [...document.querySelectorAll('.page-notice, [role="alert"], [role="dialog"], [class*="lightbox" i]')].filter(visibleSansLayout);
+  const noticesAvantClic = new Set(surveilleNotices());
+
   console.log(`[ebay] 🚀 LIVE — clic « ${listBtn.textContent.trim()} » (engagement de frais)`);
   await humanPause(1200, 2400);
   realClick(listBtn);
+
+  // ── Re-clic si le clic a été AVALÉ (2026-07-19, job 5253e104 — republication
+  // Medik8, cat. 21205). Preuves : bouton unique, actif et visible (autopsie du
+  // brouillon), gate requis passé (Marque/Type posés), et la sonde réseau n'a
+  // capté AUCUNE requête de soumission après le clic (seulement la télémétrie
+  // de chargement) — le clic n'a produit strictement AUCUN effet. C'est le
+  // mode d'échec déjà vécu sur les menus de specifics dans l'onglet caché (« la
+  // réaction au clic est différée/avalée par le throttling — on re-clique UNE
+  // fois », cf. fillSpecific) : le clic de soumission n'avait, lui, aucun
+  // re-clic. Signaux « le clic a pris » (tous lisibles sans layout) : URL
+  // quittée, bouton détaché/désactivé/en cours, notice ou dialogue APPARU.
+  // Si le 1er clic a réellement fonctionné, un de ces signaux apparaît bien
+  // avant 8 s (la soumission désactive le bouton / affiche la popup) — le
+  // re-clic ne part alors jamais, aucun risque de double dépôt.
+  const effetClic = await waitFor(() => {
+    if (!/\/lstng/.test(location.pathname)) return "navigation";
+    if (!listBtn.isConnected) return "formulaire re-rendu";
+    if (listBtn.disabled || listBtn.getAttribute("aria-disabled") === "true" || /loading|busy|progress/i.test(listBtn.className)) return "bouton en traitement";
+    if (surveilleNotices().some((el) => !noticesAvantClic.has(el))) return "notice/dialogue apparu";
+    return null;
+  }, 8000);
+  if (!effetClic) {
+    const note = "mise en vente: 1er clic sans aucun effet observable après 8 s (clic avalé, onglet caché) — re-clic unique effectué";
+    console.warn(`[ebay] ⚠️ ${note}`);
+    warnings.push(note);
+    await humanPause(600, 1200);
+    realClick(listBtn);
+  } else {
+    console.log(`[ebay] clic « Mettre en vente » suivi d'effet : ${effetClic}`);
+  }
+
   // La suite est surveillée côté background — detectReauth, puis
   // verifyEbaySubmission (2026-07-12 : la soumission peut être REFUSÉE sur
   // place par la validation eBay, bandeau « Vous devez ajouter une
