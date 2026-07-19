@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-17-vinted-delete-fiber+VERIF-REDIRECT (suppression Vinted : clic fiber props.onClick monde MAIN, PUIS vérification de la redirection hors /items/ avant success — un clic fiber raté ne peut plus produire un faux 'deleted', le background revérifie l'état réel et ré-arme) + ebay-confirm-active-listings";
+  "2026-07-19-stale-anti-doublon (reprise d'un job bloqué en 'processing' : AVANT tout ré-armement en pending, on vérifie si l'annonce existe déjà côté plateforme — titre obligatoire sur les pages de liste, sonde Vinted survivante — et on marque published au lieu de re-déposer : plus de doublon possible sur interruption post-dépôt)";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
@@ -506,7 +506,7 @@ async function recoverStaleProcessingJobs(session) {
   let jobs;
   try {
     jobs = await restRequest(
-      "cross_post_jobs?select=id,platform,action,title,created_at,platform_fields&status=eq.processing",
+      "cross_post_jobs?select=id,platform,action,title,inventaire_id,created_at,platform_fields&status=eq.processing",
       session.access_token
     );
   } catch (e) {
@@ -528,6 +528,52 @@ async function recoverStaleProcessingJobs(session) {
     const recoveries = (pf.stale_recoveries ?? 0) + 1;
     const cleaned = { ...pf, stale_recoveries: recoveries };
     delete cleaned.processing_since;
+
+    // ── Filet anti-DOUBLON sur reprise stale (2026-07-19) ─────────────────────
+    // TROU IDENTIFIÉ À L'INVESTIGATION : si le worker meurt APRÈS que la
+    // plateforme a accepté le dépôt mais AVANT l'écriture du statut, le
+    // ré-armement en pending ci-dessous re-déposait l'annonce de zéro → DEUX
+    // annonces réelles pour le même article. Les filets existants (sonde canal
+    // coupé, « Mes annonces » LBC, Hub vendeur eBay) ne tournent que dans le
+    // processJob d'un worker VIVANT — jamais ici. On demande donc à la
+    // plateforme, AVANT tout ré-armement (et avant l'abandon en failed : un
+    // job épuisé dont l'annonce existe est un succès, pas un échec) : une
+    // annonce à NOTRE titre existe-t-elle déjà ? Oui → published direct avec
+    // son URL, AUCUNE re-soumission. Non (ou invérifiable : pas de titre,
+    // onglet disparu, page de liste muette) → pending normal, comme avant.
+    // Jobs delete exclus : re-supprimer une annonce déjà supprimée est
+    // inoffensif (« introuvable » géré), et « published » y serait un
+    // contresens.
+    if (job.action !== "delete") {
+      const existing = await staleJobExistingListingUrl(job).catch((e) => {
+        console.warn(`[background] Filet anti-doublon (job ${job.id}) :`, String(e?.message ?? e));
+        return null;
+      });
+      if (existing) {
+        // Même garde que rearmBounded : ne jamais réécrire par-dessus une
+        // annulation intervenue entre la lecture et cette écriture.
+        const actuel = await jobStatusNow(session.access_token, job.id);
+        if (actuel && actuel !== "processing") {
+          console.warn(
+            `[background] Job ${job.id} : statut devenu "${actuel}" pendant la vérification anti-doublon — écriture abandonnée`
+          );
+          continue;
+        }
+        const done = { ...pf };
+        delete done.processing_since;
+        console.log(
+          `[background] Job ${job.id} (${job.platform}) bloqué en 'processing' ${minutes} min MAIS l'annonce ` +
+          `EXISTE déjà côté plateforme (${existing}) — published direct, aucune re-soumission (doublon évité)`
+        );
+        await updateJobStatus(session.access_token, job.id, "published", {
+          error: null,
+          listing_url: existing,
+          platform_fields: done,
+        }).catch((e) => console.error("[background] published anti-doublon:", String(e?.message ?? e)));
+        await recordRecentResult(job, "published").catch(() => {});
+        continue;
+      }
+    }
 
     if (recoveries > MAX_STALE_RECOVERIES) {
       const msg =
@@ -552,6 +598,105 @@ async function recoverStaleProcessingJobs(session) {
       platform_fields: cleaned,
     }).catch((e) => console.error("[background] reprise job bloqué:", String(e?.message ?? e)));
   }
+}
+
+// ── Filet anti-doublon : l'annonce d'un job stale existe-t-elle déjà ? ────────
+// N'écrit RIEN : rend l'URL de l'annonce si une preuve TITRE-OBLIGATOIRE est
+// trouvée, null sinon (le doute profite au ré-armement, comme avant). Réutilise
+// les filets existants, aucun nouveau détecteur :
+//   - LBC / eBay / Beebs : les pages de liste du compte déjà cataloguées par
+//     recoverMissingListingUrls (LISTING_URL_RECOVERY_PAGES), lues par
+//     findListingLinkInPage en requireTitle:true — la règle « jamais l'URL
+//     d'une autre annonce » (leçon listing_url croisée) s'applique telle quelle.
+//   - Vinted : pas de page de liste cataloguée. Deux preuves possibles SI
+//     l'onglet de travail a survécu à l'interruption (window.__fsCaptures et la
+//     page survivent à la mort du service worker tant que l'onglet n'a pas
+//     re-navigué) : la réponse serveur de la sonde, ou un lien à notre titre
+//     dans la page courante (profil vendeur post-redirection).
+// Appelé SOUS withJobFlowLock (via recoverStaleProcessingJobs, début de poll) :
+// les navigations d'onglet de travail ne croisent jamais un remplissage.
+async function staleJobExistingListingUrl(job) {
+  const title = job.title ?? "";
+  const pattern = LISTING_URL_PATTERNS[job.platform];
+  // Sans titre, aucune vérification n'est SÛRE (le match par titre est la seule
+  // garde anti-annonce-croisée) : on ne devine pas, ré-armement comme avant.
+  if (!title.trim() || !pattern) return null;
+
+  if (job.platform === "vinted") {
+    const tabId = await findExistingWorkTabId("vinted");
+    if (tabId == null) return null; // onglet mort avec l'interruption : invérifiable
+    // Preuve 1 : réponse serveur captée par la sonde. Garde anti-croisée : la
+    // réponse doit porter NOTRE titre — si l'interruption a frappé AVANT la
+    // purge clearProbeCaptures du job, les captures encore en page sont celles
+    // du job PRÉCÉDENT, et son annonce ne doit jamais devenir la nôtre.
+    const fromProbe = await vintedUploadSucceededForTitle(tabId, title).catch(() => null);
+    if (fromProbe) return fromProbe;
+    // Preuve 2 : un lien /items/ portant notre titre dans la page courante
+    // (après publication, Vinted redirige vers le profil vendeur, qui liste
+    // les annonces avec leur titre).
+    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+    return url ? url.replace(WORK_TAB_FRAGMENT, "") : null;
+  }
+
+  for (const pageUrl of LISTING_URL_RECOVERY_PAGES[job.platform] ?? []) {
+    let tabId;
+    try {
+      tabId = await getOrCreateWorkTab(job.platform, pageUrl);
+    } catch (e) {
+      console.warn(`[background] Filet anti-doublon (${job.platform}) : onglet indisponible — ${String(e?.message ?? e)}`);
+      return null;
+    }
+    // SPA : les cartes arrivent après le HTML — mêmes attentes que
+    // ebayConfirmViaActiveListings, bornées.
+    const deadline = Date.now() + 12_000;
+    while (Date.now() < deadline) {
+      await sleep(1500);
+      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+      if (url) return url.replace(WORK_TAB_FRAGMENT, "");
+    }
+  }
+  return null;
+}
+
+// Étapes 1-2 de getOrCreateWorkTab SANS création ni navigation : on veut juste
+// savoir si l'onglet de travail d'une plateforme a survécu, et le lire tel quel
+// (le filet Vinted repose sur l'état laissé par le job interrompu — le naviguer
+// détruirait précisément la preuve qu'on cherche).
+async function findExistingWorkTabId(platform) {
+  const key = workTabKey(platform);
+  const store = await chrome.storage.session.get(key);
+  if (store[key] != null) {
+    const tab = await chrome.tabs.get(store[key]).catch(() => null);
+    if (tab) return tab.id;
+  }
+  const host = PLATFORM_HOSTS[platform];
+  if (!host) return null;
+  const cands = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
+  return (cands ?? []).find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))?.id ?? null;
+}
+
+// vintedUploadSucceeded + exigence du TITRE dans la réponse serveur. Même
+// lecture (HTTP 200 + code:0 + item.id, cf. vintedUploadSucceeded), plus la
+// normalisation de findListingLinkInPage (lettres/chiffres seuls — insensible
+// aux emoji retirés par sanitizeJob et à la ponctuation). Un titre accentué
+// échappé en \uXXXX dans le JSON ne matchera pas : faux négatif assumé (le job
+// repart en pending, comme avant ce filet) — jamais de faux positif.
+async function vintedUploadSucceededForTitle(tabId, title) {
+  const norm = (s) => String(s ?? "").toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const wanted = norm(title);
+  if (!wanted) return null;
+  const { captures } = await readProbeCaptures(tabId);
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    if (Number(c?.status) !== 200) continue;
+    if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
+    const body = String(c?.reponse ?? "");
+    const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
+    if (id && /"code"\s*:\s*0\b/.test(body) && norm(body).includes(wanted)) {
+      return `https://www.vinted.fr/items/${id[1]}`;
+    }
+  }
+  return null;
 }
 
 // ── Nettoyage périodique des onglets de travail orphelins (2026-07-18) ────────
