@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-16-chantier-requis-1B-1D (enumeration des criteres label[for] + canal generique lbcAspects + blocage wizard route en needsUser structure avec libelles exacts)";
+const LEBONCOIN_BUILD = "2026-07-19-ecran-coordonnees-post-apercu (nouvel ecran Vos coordonnees email+tel pre-remplis gere entre apercu et options + dump d'ecran joint aux erreurs post-apercu non reconnues)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -625,9 +625,20 @@ async function fillListingForm(job) {
   await humanPause(1200, 2400);
   realClick(finalContinue);
 
-  // Écran /options : chemin gratuit explicite ("Déposer sans booster mon
-  // annonce", libellé confirmé en réel), sinon on rend la main.
-  const freeCta = await waitFor(() => {
+  // Écrans post-aperçu, avancés d'écran en écran (3 max) :
+  //   · /options : chemin gratuit explicite ("Déposer sans booster mon
+  //     annonce", libellé confirmé en réel 2026-07-11) ;
+  //   · « Vos coordonnées » (NOUVEAU, relevé 2026-07-19 sur le job 7af7279a,
+  //     republication Medik8 en Divers > Autres) : LBC intercale un écran
+  //     email + téléphone PRÉ-REMPLIS depuis le compte, avec son propre
+  //     Continuer, AVANT l'écran options — jamais vu sur les catégories
+  //     standard ; le job mourait en « écran post-aperçu non reconnu ».
+  // Politique : on ne SAISIT jamais un email/téléphone nous-mêmes (champ tél
+  // vide → needsUser explicite) — on ne fait que confirmer des valeurs que
+  // Leboncoin a déjà posées. Écran toujours inconnu → needsUser AVEC un
+  // relevé d'écran joint (l'ancien message promettait « la trace servira de
+  // relevé » sans jamais joindre de trace).
+  const findFreeCta = () => {
     const btns = Array.from(document.querySelectorAll("button, a[role='button'], a"));
     return (
       btns.find((el) => /déposer sans booster/i.test(el.textContent)) ??
@@ -635,11 +646,57 @@ async function fillListingForm(job) {
       btns.find((el) => /déposer (mon |l['’])annonce|publier l['’]annonce|valider et déposer/i.test(el.textContent)) ??
       null
     );
-  }, 15_000);
+  };
+  // Discriminant de l'écran coordonnées : un champ téléphone (les écrans
+  // options/confirmation n'en portent pas). Le CTA gratuit est sondé AVANT :
+  // s'il existe, il gagne toujours.
+  const findContactPhone = () =>
+    document.querySelector('input[type="tel"], input[name*="phone" i], input[id*="phone" i]');
+
+  let freeCta = null;
+  for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
+    const etape = await waitFor(() => {
+      const cta = findFreeCta();
+      if (cta) return { cta };
+      const phone = findContactPhone();
+      if (phone) return { phone };
+      return null;
+    }, 15_000);
+    if (!etape) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired,
+        error: `LIVE : écran post-aperçu non reconnu — terminer le dépôt à la main. Relevé de l'écran : ${dumpEcranVisible()}`,
+      };
+    }
+    if (etape.cta) { freeCta = etape.cta; break; }
+
+    // Écran « Vos coordonnées » : confirmation des valeurs pré-remplies, rien
+    // d'autre. Téléphone vide = donnée personnelle qu'on ne devine JAMAIS.
+    if (!String(etape.phone.value ?? "").trim()) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired,
+        error:
+          "LIVE : écran « Vos coordonnées » avec numéro de téléphone VIDE — le renseigner sur " +
+          "l'écran resté ouvert (ou dans le compte Leboncoin), puis relancer. Aucune saisie " +
+          "automatique d'une coordonnée personnelle.",
+      };
+    }
+    const continuerCoord = findButtonByExactText("Continuer");
+    if (!continuerCoord) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired,
+        error: `LIVE : écran « Vos coordonnées » sans bouton Continuer reconnu — terminer le dépôt à la main. Relevé : ${dumpEcranVisible()}`,
+      };
+    }
+    console.log("[leboncoin] 🚀 LIVE — écran « Vos coordonnées » (téléphone pré-rempli) : clic Continuer");
+    await humanPause(900, 1800);
+    realClick(continuerCoord);
+    await sleep(2000); // laisse l'écran suivant arriver avant de re-sonder
+  }
   if (!freeCta) {
     return {
       success: false, needsUser: true, warnings, unfilledRequired,
-      error: "LIVE : écran post-aperçu non reconnu (options de visibilité ?) — terminer le dépôt à la main, la trace servira de relevé.",
+      error: `LIVE : chemin gratuit toujours introuvable après les écrans intermédiaires — terminer le dépôt à la main. Relevé : ${dumpEcranVisible()}`,
     };
   }
   const ctaText = freeCta.textContent.trim();
@@ -654,6 +711,30 @@ async function fillListingForm(job) {
   realClick(freeCta);
   await sleep(4000);
   return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
+}
+
+// Relevé d'écran joint aux erreurs post-aperçu (2026-07-19) : titres, boutons
+// et champs VISIBLES — c'est ce relevé qui a manqué pour diagnostiquer l'écran
+// « Vos coordonnées » sans intervention manuelle. Visibilité par styles
+// calculés uniquement (fenêtre minimisée : pas de layout, getClientRects nul).
+function dumpEcranVisible() {
+  const visible = (el) => {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.getAttribute("aria-hidden") === "true") return false;
+      const st = getComputedStyle(n);
+      if (st.display === "none" || st.visibility === "hidden") return false;
+    }
+    return true;
+  };
+  const titres = [...document.querySelectorAll("h1, h2, h3, legend")]
+    .filter(visible).map((e) => e.textContent.trim()).filter(Boolean).slice(0, 5);
+  const boutons = [...document.querySelectorAll("button, a[role='button']")]
+    .filter(visible).map((e) => e.textContent.trim()).filter(Boolean).slice(0, 12);
+  const champs = [...document.querySelectorAll("input:not([type=hidden])")]
+    .filter(visible)
+    .map((e) => `${e.type}[${e.name || e.id || "?"}]${String(e.value ?? "").trim() ? "(rempli)" : "(vide)"}`)
+    .slice(0, 8);
+  return `${location.pathname} · titres ${JSON.stringify(titres)} · boutons ${JSON.stringify(boutons)} · champs ${JSON.stringify(champs)}`;
 }
 
 // ── Catégorie ────────────────────────────────────────────────────────────────
