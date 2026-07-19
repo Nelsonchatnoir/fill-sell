@@ -733,8 +733,17 @@ const jobDelayMs = () =>
 // La DESCRIPTION n'est PAS touchée : les emoji y sont acceptés et voulus.
 function stripEmoji(text) {
   return String(text ?? "")
-    // pictogrammes, symboles, drapeaux, dingbats + sélecteurs de variante / ZWJ
-    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, "")
+    // Couverture par PROPRIÉTÉ Unicode (bug réel Casio 2026-07-19) : ⌚ U+231A
+    // (bloc Misc. Technical 2300-23FF) échappait aux plages listées — le titre
+    // partait avec un ⌚ final et Vinted répondait 400 « Le titre contient trop
+    // de symboles d'affilée » (sonde, code 9), déclenché même par UN SEUL
+    // symbole. \p{Extended_Pictographic} couvre tout emoji présent et futur
+    // (⌚ ⏱ 💧 🖤 ™…) ; les plages explicites restent pour les symboles non
+    // pictographiques (flèches, géométrique 25A0-25FF…) ; FE00-FE0F = TOUS les
+    // sélecteurs de variante (seul FE0F avant), 200D = ZWJ. « | » (ASCII) et la
+    // ponctuation normale ne matchent aucune classe : le séparateur
+    // marque/description reste intact.
+    .replace(/[\p{Extended_Pictographic}\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
