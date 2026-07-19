@@ -265,6 +265,14 @@ function getPlatformFieldsConfig(t) {
     ...sizeLetterOptions, ...sizeNumericOptions, ...sizeShoeOptions,
     ...childMonthOptions, ...childYearOptions, ...childShoeOptions,
   ];
+  // Tranches d'âge Beebs : libellés EXACTS relevés sur la vraie page
+  // (2026-07-09, catégorie Figurines — mêmes valeurs que la liste fermée déjà
+  // imposée au prompt generate-listing et à la cascade beebs.js).
+  const beebsAge = [
+    "0-6 mois", "6-12 mois", "12-24 mois", "2 ans - 3 ans", "3 ans - 4 ans",
+    "4 ans - 6 ans", "6 ans - 8 ans", "8 ans - 12 ans", "12 ans - 16 ans",
+    "16 ans et +",
+  ].map(v => ({ value: v, label: v }));
   const packageFormat = [
     { value:"Lettre",           label:t("packageLetter") },
     { value:"Petit colis",      label:t("packageSmall") },
@@ -391,9 +399,11 @@ function getPlatformFieldsConfig(t) {
       // handler.
       { key:"matiere", label:t("fieldMaterialLabel"), type:"text" },
       { key:"couleur", label:t("fieldColorLabel"),    type:"text" },
-      // age (2026-07-09) : champ observé sur « Figurines », jamais rempli en
-      // conditions réelles — à valider au prochain dry-run.
-      { key:"age",     label:t("fieldAgeLabel"),      type:"text" },
+      // age : liste FERMÉE relevée sur la vraie page (2026-07-09, catégorie
+      // Figurines — cf. beebs.js et le prompt generate-listing qui l'impose
+      // déjà). Resté type:"text" jusqu'au 2026-07-19 : un requis en saisie
+      // libre, interdit par la règle produit — select sur les 10 tranches.
+      { key:"age",     label:t("fieldAgeLabel"),      type:"select", options: beebsAge },
       // format_colis (2026-07-19, cas réel Medik8) : requis Beebs PAS toujours
       // pré-rempli (vide sur Hygiène et beauté, relevé live). Mêmes valeurs
       // canoniques que LBC — beebs.js les mappe sur ses paliers de poids.
@@ -3426,6 +3436,13 @@ export default function ListingPreviewScreen({
         const key = r.field_key;
         const label = r.field_label || key;
         const allowedValues = Array.isArray(r.allowed_values) ? r.allowed_values.slice(0, 1000) : [];
+        // « title » (appris par un 400 serveur sur Montres homme Vinted) : le
+        // job porte TOUJOURS un titre (edited[platform].title, édité au step
+        // Génération et posé tel quel à l'insert) — ce n'est jamais un requis
+        // à saisir ici. Sans ce cas, aucune source ne le servait
+        // (genericKnownSource ne connaît pas title) → « manquant » en texte
+        // libre et CTA bloqué à tort, à chaque publication de la catégorie.
+        if (key === "title") return { key, label, state: "ok", value: edited[platform]?.title ?? "", allowedValues };
         const src = String(genericKnownSource(platform, key, pf) ?? "").trim();
         if (src) {
           // Valeur DÉDIÉE validée contre la liste fermée du catalogue quand
