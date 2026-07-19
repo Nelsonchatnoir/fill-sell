@@ -1281,7 +1281,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang,
-  price, setPrice, customPriced, setCustomPriced, articleIcon = "📦" }) {
+  price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null }) {
   const { t } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -1332,7 +1332,12 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
   // Phase A — loading
   if (generating || (!platformListings && !generateError)) {
-    const msg = elapsed < 20 ? t("stepGenLoadingMsg1") : t("stepGenLoadingMsg2");
+    // « Photos originales » : aucune retouche IA ne tourne — ni « Retouche des
+    // photos en cours… » ni la promesse des ~1-2 minutes n'ont de sens.
+    const noRetouch = photoOption === "original";
+    const msg = noRetouch
+      ? t("stepGenLoadingMsg2")
+      : (elapsed < 20 ? t("stepGenLoadingMsg1") : t("stepGenLoadingMsg2"));
     return (
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
         <Loader size={80} thickness={2} icon={Sparkles} iconSize={28} style={{ marginBottom:24 }} />
@@ -1340,7 +1345,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
           {msg}
         </h1>
         <p style={{ margin:0, fontSize:13, lineHeight:1.5, color:T.mute2 }}>
-          {t("stepGenLoadingSubtitle")}
+          {noRetouch ? t("stepGenLoadingNoRetouchSubtitle") : t("stepGenLoadingSubtitle")}
         </p>
       </div>
     );
@@ -4376,6 +4381,7 @@ export default function ListingPreviewScreen({
             customPriced={customPriced}
             setCustomPriced={setCustomPriced}
             articleIcon={articleIcon}
+            photoOption={photoOption}
           />
         )}
         {step === 3 && (
