@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-19-options-vers-catalogue (options completes des listes sans recherche relevees a l'ouverture des panneaux et jointes a discoveredRequired → allowed_values du catalogue)";
+const BEEBS_BUILD = "2026-07-19-format-colis-palier-direct (format_colis acceptant AUSSI un libelle palier Beebs deja exact — « Poids jusqu'a … » passe tel quel au lieu de retomber sur le defaut 1 kg ; mapping canonique→palier et defaut prudent inchanges, toutes categories)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -458,9 +458,17 @@ async function fillListingForm(job) {
     if (/poids/i.test(current)) {
       console.log(`[beebs] Format du colis: déjà posé par Beebs ("${current}"), conservé`);
     } else {
-      const mapped = BEEBS_PACKAGE_BY_FORMAT[String(fields.format_colis ?? "").trim()] ?? "Poids jusqu'à 1 kg max";
-      if (!BEEBS_PACKAGE_BY_FORMAT[String(fields.format_colis ?? "").trim()]) {
-        const note = `format du colis: aucune donnée de format exploitable (format_colis="${fields.format_colis ?? ""}") — défaut prudent "${mapped}"`;
+      const rawFormat = String(fields.format_colis ?? "").trim();
+      // Un libellé palier Beebs DÉJÀ exact (« Poids jusqu'à … ») passe tel
+      // quel : c'est ce que produit une sélection faite dans l'app contre une
+      // liste relevée (allowed_values du catalogue) — le faire retomber sur le
+      // défaut 1 kg trahirait le choix de l'utilisateur (un « 5 kg » choisi
+      // partait en 1 kg).
+      const mapped =
+        BEEBS_PACKAGE_BY_FORMAT[rawFormat] ??
+        (/^poids/i.test(rawFormat) ? rawFormat : "Poids jusqu'à 1 kg max");
+      if (!BEEBS_PACKAGE_BY_FORMAT[rawFormat] && !/^poids/i.test(rawFormat)) {
+        const note = `format du colis: aucune donnée de format exploitable (format_colis="${rawFormat}") — défaut prudent "${mapped}"`;
         console.warn(`[beebs] ⚠️ ${note}`);
         warnings.push(note);
       }

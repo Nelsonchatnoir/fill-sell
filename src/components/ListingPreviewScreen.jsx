@@ -3375,15 +3375,24 @@ export default function ListingPreviewScreen({
   //   sim_lock : défaut « Non » posé par vinted.js (sémantique prouvée 13/07)
   //   package_size_id : « Petit » forcé sur la Mode par vinted.js
   //   quantity : défaut 1 posé par leboncoin.js
-  // ⚠️ « Format du colis » Beebs RETIRÉ le 2026-07-19 (cas réel Medik8) : le
-  // pré-remplissage observé le 16/07 ne vaut que sur CERTAINES catégories —
-  // constaté VIDE en live sur « Hygiène et beauté ». Même classe de bug que
-  // « Style »/« Type » eBay. Désormais posé par beebs.js (mapping poids depuis
-  // format_colis, défaut prudent) — jamais supposé.
+  // ⚠️ « Format du colis » Beebs : retiré le 2026-07-19 matin (le
+  // pré-remplissage PLATEFORME supposé le 16/07 ne vaut que sur certaines
+  // catégories — constaté VIDE en live sur « Hygiène et beauté »), puis
+  // RÉTABLI le soir même à un autre titre : c'est désormais BEEBS.JS qui le
+  // pose pour TOUTE catégorie (mapping canonique→palier de poids + défaut
+  // prudent 1 kg, cf. BEEBS_PACKAGE_BY_FORMAT), exactement la sémantique de
+  // cette liste (« défaut extension », comme sim_lock/quantity). Sans cette
+  // entrée, les 15 catégories du catalogue qui l'exigent (relevé
+  // platform_category_aspects du 19/07 : Mode, Jouets, Puériculture… — PAS
+  // seulement la beauté, et toutes SANS allowed_values) affichaient un requis
+  // « manquant » en SAISIE TEXTE LIBRE et bloquaient le CTA — interdit par la
+  // règle produit « aucun obligatoire en texte libre ». Une valeur posée
+  // (format_colis de la copie, ou choix utilisateur) reste prioritaire :
+  // genericKnownSource est lu AVANT ce filet.
   const GENERIC_PREFILLED = {
     vinted: ["sim_lock", "package_size_id"],
     leboncoin: ["quantity"],
-    beebs: [],
+    beebs: ["Format du colis"],
   };
 
   // Champ platform_fields DÉDIÉ visé par le sélecteur d'un state "invalid" —
@@ -3825,6 +3834,18 @@ export default function ListingPreviewScreen({
           if (categoryPath) pf.beebsCategoryPath = categoryPath;
           if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
           if (lbcAddress) pf.adresse = lbcAddress;
+          // Format du colis (généralisation 2026-07-19 soir) : requis Beebs
+          // sur des catégories de TOUT l'arbre (15 au catalogue : Mode,
+          // Jouets, Puériculture, beauté…), mais le prompt Beebs de
+          // generate-listing ne produit PAS format_colis — seule la copie LBC
+          // le porte. On sème donc la valeur LBC quand la copie Beebs n'en a
+          // pas : beebs.js la mappe sur ses paliers de poids
+          // (BEEBS_PACKAGE_BY_FORMAT) et ne retombe sur le défaut prudent
+          // 1 kg qu'à défaut de toute donnée.
+          if (!String(pf.format_colis ?? "").trim()) {
+            const lbcFormat = String(edited.leboncoin?.platform_fields?.format_colis ?? "").trim();
+            if (lbcFormat) pf.format_colis = lbcFormat;
+          }
         }
         // ── Tailles ENFANT (2026-07-15) : conversion canonique → libellé
         // EXACT de la plateforme (référentiel childSizes.js, relevé DOM réel
