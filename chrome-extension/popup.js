@@ -175,7 +175,20 @@ async function load() {
       const fresh = Object.values(rr[RECENT_RESULTS] ?? {}).filter(
         (r) => now - (r.ts ?? 0) < 30 * 60 * 1000 && RECENT_TERMINAL.includes(r.status)
       );
-      const refKey = state.annonce?.key ?? fresh.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0]?.annonceKey ?? null;
+      // ⚠️ Tri EXPLICITE du plus ancien au plus récent (2026-07-19, casquette
+      // fec0c363) : l'ancien code triait `fresh` EN PLACE en ordre DÉCROISSANT
+      // (uniquement pour choisir refKey, et uniquement quand la file était
+      // vide) — la boucle d'affectation itérait alors du plus récent au plus
+      // ancien et le PLUS VIEUX résultat écrasait les autres : trois jobs eBay
+      // successifs de la même annonce (failed 13:39, published 13:58) →
+      // popup « Échec : Publication eBay non confirmée » pendant que la base
+      // disait published+URL. Le sort ne s'exécutant pas quand une annonce
+      // est affichée (court-circuit ??), le bug n'apparaissait qu'une fois la
+      // file VIDE — exactement le moment où on vient lire le verdict.
+      // Ordre croissant assumé partout : le dernier écrit gagne, refKey = le
+      // plus récent, dans les DEUX branches.
+      fresh.sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+      const refKey = state.annonce?.key ?? fresh[fresh.length - 1]?.annonceKey ?? null;
       for (const r of fresh) {
         if (r.annonceKey === refKey) state.recent[r.platform] = r;
       }
