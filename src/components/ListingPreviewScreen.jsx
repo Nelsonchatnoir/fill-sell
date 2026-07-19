@@ -524,6 +524,24 @@ const EBAY_ASPECT_DEFAULTS = {
   "Numéro de pièce fabricant": "Ne s'applique pas",
 };
 
+// Département eBay depuis le genre de la copie (2026-07-19, montre Casio
+// 31387 : genre="Homme" présent sur le job, Département requis resté VIDE —
+// dernier aspect encore « supposé pré-rempli »). Les LIBELLÉS varient par
+// catégorie (relevé complet ebay_item_aspects : Homme/Femme/Fille/Garçon,
+// « Bébé et tout-petit (unisexe) », « Enfant unisexe », « Adolescents »,
+// « Adulte unisexe », « Unisexe », « Enfant », « Adulte ») : candidats du
+// plus spécifique au plus général, seul un candidat PRÉSENT dans la liste de
+// la catégorie est retenu — jamais de valeur inventée.
+const EBAY_DEPARTMENT_BY_GENRE = {
+  "Femme":  ["Femme", "Adulte unisexe", "Unisexe", "Adulte"],
+  "Homme":  ["Homme", "Adulte unisexe", "Unisexe", "Adulte"],
+  "Fille":  ["Fille", "Enfant unisexe", "Enfant", "Unisexe"],
+  "Garçon": ["Garçon", "Enfant unisexe", "Enfant", "Unisexe"],
+  "Bébé":   ["Bébé et tout-petit (unisexe)", "Bébé", "Enfant unisexe", "Enfant"],
+  "Enfant": ["Enfant unisexe", "Enfant", "Adolescents", "Unisexe"],
+  "Mixte":  ["Adulte unisexe", "Unisexe", "Adulte"],
+};
+
 // Canal générique de saisie manuelle des requis par plateforme (chantier
 // champs obligatoires, 2026-07-16) — pendant du pf.ebayAspects : la clé du
 // champ dans platform_fields de la copie, consommée telle quelle par le
@@ -2999,10 +3017,9 @@ export default function ListingPreviewScreen({
       { key: "modele",   labels: ["Modèle"], get: () => pf.modele },
       { key: "stockage", labels: ["Capacité de stockage"], get: () => pf.stockage },
     ];
-    // Aspects qu'eBay pose lui-même depuis la CATÉGORIE (pas item-specific) :
-    // Département (rayon Femme/Homme/… en pills pré-actives, vérifié en session
-    // réelle) et Type (dérivé de la catégorie sur consoles/baskets). Ils ne
-    // bloquent pas et n'ouvrent pas de fallback.
+    // PLUS AUCUNE exception « supposé pré-rempli » (2026-07-19 soir).
+    // Historique des trois retraits, même classe de bug à chaque fois (un
+    // pré-remplissage observé sur UNE catégorie généralisé à tort) :
     // ⚠️ « Style » RETIRÉ le 2026-07-17 : c'est un aspect ITEM-SPECIFIC
     // (Casual/Cocktail/Bohème…) qu'eBay NE pré-remplit PAS — constaté VIDE sur
     // le vrai formulaire Robes (cat. 63861). Le marquer « prefilled » le
@@ -3017,7 +3034,15 @@ export default function ListingPreviewScreen({
     // gate extension). Désormais résolu par resolve_aspects, sinon saisie
     // manuelle (select : allowedValues du référentiel). Si eBay le pré-remplit
     // réellement, l'extension conserve la valeur existante (jamais réécrite).
-    const PREFILLED_BY_EBAY = ["Département"];
+    // ⚠️ « Département » RETIRÉ le 2026-07-19 soir (cas réel montre Casio,
+    // cat. 31387) : les pills pré-actives n'existent que sur les rayons
+    // vêtements/chaussures — sur Montres, la ligne est un dropdown standard
+    // resté VIDE (dump du job abc33090), gate extension bloquante alors que
+    // genre="Homme" était sur le job. Désormais dérivé DÉTERMINISTE du genre
+    // (EBAY_DEPARTMENT_BY_GENRE, libellé exact de la catégorie), sinon IA,
+    // sinon saisie manuelle — et l'extension conserve toujours une valeur
+    // réellement pré-remplie par eBay (jamais réécrite).
+    const PREFILLED_BY_EBAY = [];
     return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
       const srcVal = src ? String(src.get() ?? "").trim() : "";
@@ -3063,14 +3088,32 @@ export default function ListingPreviewScreen({
   const aspectDefaultsFor = useRef(null);
   useEffect(() => {
     if (!ebayRequiredStatus || !ebayPreviewCategoryId) return;
-    if (aspectDefaultsFor.current === ebayPreviewCategoryId) return;
+    // Clé composite catégorie|genre (2026-07-19) : le Département dérive du
+    // genre — un genre posé ou corrigé APRÈS la première passe doit rejouer
+    // la pose (une passe par (catégorie, genre), toujours pas de boucle).
+    const genreCle = String(edited.ebay?.platform_fields?.genre ?? "").trim();
+    const passeCle = `${ebayPreviewCategoryId}|${genreCle}`;
+    if (aspectDefaultsFor.current === passeCle) return;
     const pfAspects = edited.ebay?.platform_fields?.ebayAspects ?? {};
     const toSet = {};
     for (const a of ebayRequiredStatus) {
       const def = EBAY_ASPECT_DEFAULTS[a.name];
       if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) toSet[a.name] = def;
+      // Département ← genre de la copie eBay (2026-07-19, montre Casio) :
+      // déterministe comme les défauts ci-dessus, mais dérivé d'une DONNÉE du
+      // job — seul un candidat PRÉSENT dans la liste de la catégorie est posé
+      // (libellés variables : « Adulte unisexe » vs « Unisexe » vs
+      // « Adulte »…). Genre absent ou aucun candidat → reste "missing" :
+      // resolve_aspects puis saisie manuelle, comme Type/Style.
+      if (a.name === "Département" && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) {
+        const genre = String(edited.ebay?.platform_fields?.genre ?? "").trim();
+        const candidats = EBAY_DEPARTMENT_BY_GENRE[genre] ?? [];
+        const libelle = candidats.find(c =>
+          (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(c)));
+        if (libelle) toSet[a.name] = libelle;
+      }
     }
-    aspectDefaultsFor.current = ebayPreviewCategoryId;
+    aspectDefaultsFor.current = passeCle;
     if (!Object.keys(toSet).length) return;
     setEdited(prev => prev.ebay ? {
       ...prev,
