@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-19-needs-user (gate pre-clic requis vides : needsUserField structure — premier champ + options de la config attributes + cible vintedAspects.<code> — le background persiste le statut needs_user au lieu du re-armement borne ; erreurs transitoires inchangees)";
+const VINTED_BUILD = "2026-07-19-pont-color (vintedAspects.color → fields.colors=[valeur] : seul code de handledCodes sans chemin de lecture — un needs_user « Couleur » tombait dans un trou et revenait sans fin ; trou latent ferme, jamais d'ecrasement d'un colors deja pose) + needs-user";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -394,7 +394,7 @@ async function fillListingForm(job) {
   // dédié lisait un champ vide, le loop générique passait son tour, « Espace de
   // stockage » restait à blanc et le 400 revenait. On alimente le champ dédié
   // depuis vintedAspects quand il est vide (jamais d'écrasement d'une valeur déjà
-  // posée par l'app). Couleur exclue (fields.colors est un tableau, canal propre).
+  // posée par l'app).
   const _va = fields.vintedAspects && typeof fields.vintedAspects === "object" ? fields.vintedAspects : {};
   const _bridge = {
     stockage: "internal_memory_capacity",
@@ -408,6 +408,20 @@ async function fillListingForm(job) {
   for (const [dedie, code] of Object.entries(_bridge)) {
     const v = String(_va[code] ?? "").trim();
     if (v && !String(fields[dedie] ?? "").trim()) fields[dedie] = v;
+  }
+  // Couleur : cas à part du pont — fields.colors est un TABLEAU, pas une string.
+  // « color » était le SEUL code de handledCodes (boucle générique plus bas)
+  // sans AUCUN chemin de lecture : le bloc dédié ne lit que fields.colors, ce
+  // pont l'excluait, la boucle générique le saute → une valeur écrite dans
+  // vintedAspects.color (mini-éditeur needs_user, saisie manuelle du stepper)
+  // tombait dans un trou et le needs_user « Couleur » revenait à l'identique,
+  // sans issue (trou latent identifié en review du 2026-07-19 — latent car
+  // aucune config attributes connue ne marque color required, mais fermé
+  // AVANT qu'une catégorie inconnue ne l'ouvre). Valeur unique → tableau à un
+  // élément, même format que le canal colors existant, jamais d'écrasement.
+  const _color = String(_va.color ?? "").trim();
+  if (_color && !(Array.isArray(fields.colors) && fields.colors.length)) {
+    fields.colors = [_color];
   }
 
   // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
