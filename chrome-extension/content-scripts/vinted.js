@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-19-pont-color (vintedAspects.color → fields.colors=[valeur] : seul code de handledCodes sans chemin de lecture — un needs_user « Couleur » tombait dans un trou et revenait sans fin ; trou latent ferme, jamais d'ecrasement d'un colors deja pose) + needs-user";
+const VINTED_BUILD = "2026-07-19-pont-ecrasant (reponse needs_user/stepper prime TOUJOURS : le pont vintedAspects→champ dedie ecrase sans condition — la garde si-vide laissait la valeur invalide d'origine bloquer la reponse utilisateur, needs_user « Etat » Beaute en boucle infinie, job c48be67a) + pont-color + needs-user";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -384,17 +384,23 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
 
-  // ── Pont canal générique → champs dédiés (2026-07-18) ──────────────────────
+  // ── Pont canal générique → champs dédiés (2026-07-18, ÉCRASANT 2026-07-19) ──
   // Un requis choisi dans le fallback « champs obligatoires » de l'app (ex.
-  // « Espace de stockage ») est écrit dans platform_fields.vintedAspects sous le
-  // CODE SERVEUR (internal_memory_capacity, condition, model…), PAS dans le champ
-  // dédié (fields.stockage, fields.etat…). Or ces codes sont dans handledCodes :
-  // le loop générique plus bas les SAUTE (pour ne pas doubler la pose des blocs
-  // dédiés). Sans ce pont, la valeur choisie tombait donc dans un trou — le bloc
-  // dédié lisait un champ vide, le loop générique passait son tour, « Espace de
-  // stockage » restait à blanc et le 400 revenait. On alimente le champ dédié
-  // depuis vintedAspects quand il est vide (jamais d'écrasement d'une valeur déjà
-  // posée par l'app).
+  // « Espace de stockage ») ou tranché au mini-éditeur needs_user est écrit dans
+  // platform_fields.vintedAspects sous le CODE SERVEUR (internal_memory_capacity,
+  // condition, model…), PAS dans le champ dédié (fields.stockage, fields.etat…).
+  // Or ces codes sont dans handledCodes : le loop générique plus bas les SAUTE
+  // (pour ne pas doubler la pose des blocs dédiés). Le pont recopie donc vers le
+  // champ dédié — et il ÉCRASE, toujours. La garde « seulement si le champ dédié
+  // est vide » (version 2026-07-18) rendait la réponse d'un needs_user
+  // structurellement inatteignable : le champ dédié portait justement la valeur
+  // INVALIDE qui avait causé le needs_user (job c48be67a : fields.etat « Neuf
+  // sans étiquette » hors catalogue Beauté → needs_user « État » → réponse
+  // « Neuf avec étiquette » dans vintedAspects.condition jamais lue → même
+  // needs_user en boucle infinie). Pour un code ponté, une valeur dans
+  // vintedAspects ne peut venir QUE d'une décision utilisateur (stepper ou
+  // mini-éditeur), toujours plus récente et plus fiable que la valeur d'origine
+  // du job : elle prime, sans condition.
   const _va = fields.vintedAspects && typeof fields.vintedAspects === "object" ? fields.vintedAspects : {};
   const _bridge = {
     stockage: "internal_memory_capacity",
@@ -407,7 +413,7 @@ async function fillListingForm(job) {
   };
   for (const [dedie, code] of Object.entries(_bridge)) {
     const v = String(_va[code] ?? "").trim();
-    if (v && !String(fields[dedie] ?? "").trim()) fields[dedie] = v;
+    if (v) fields[dedie] = v;
   }
   // Couleur : cas à part du pont — fields.colors est un TABLEAU, pas une string.
   // « color » était le SEUL code de handledCodes (boucle générique plus bas)
@@ -418,9 +424,10 @@ async function fillListingForm(job) {
   // sans issue (trou latent identifié en review du 2026-07-19 — latent car
   // aucune config attributes connue ne marque color required, mais fermé
   // AVANT qu'une catégorie inconnue ne l'ouvre). Valeur unique → tableau à un
-  // élément, même format que le canal colors existant, jamais d'écrasement.
+  // élément, même format que le canal colors existant ; même règle d'écrasement
+  // que le pont : la décision utilisateur prime sur les colors d'origine.
   const _color = String(_va.color ?? "").trim();
-  if (_color && !(Array.isArray(fields.colors) && fields.colors.length)) {
+  if (_color) {
     fields.colors = [_color];
   }
 
