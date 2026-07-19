@@ -1794,6 +1794,44 @@ export default function App({ loginOnly = false }){
     const app=buildIdTimestamp(APP_BUILD_ID);
     return ext!=null&&app!=null&&ext<app;
   })();
+  // ── Bundle périmé (2026-07-19, classe de bug c5fe1414) ────────────────────
+  // Un onglet SPA longue vie garde son bundle en mémoire tant que personne ne
+  // fait F5 : un job créé par cet onglet après un déploiement part avec les
+  // données d'AVANT (vécu : ebayAspects absent alors que l'encart requis était
+  // déployé). On poll /build.json (émis au build avec le même computeBuildId,
+  // no-store côté Vercel) au retour sur l'onglet + toutes les 5 min, et on
+  // compare au APP_BUILD_ID EMBARQUÉ dans le bundle qui tourne.
+  // Mismatch → reload AUTO seulement si aucune interaction en cours (stepper
+  // fermé — sessionStorage fs_stepper_host, source de vérité cross-composant —,
+  // aucune saisie clavier active, aucun dialog ouvert) ; sinon bandeau
+  // persistant « Recharger » : on ne jette JAMAIS une saisie en cours.
+  // Natif exclu : les assets sont embarqués dans l'app (capacitor://), un
+  // reload n'irait rien chercher sur Vercel. Dev exclu : APP_BUILD_ID null.
+  const [newVersionAvailable,setNewVersionAvailable]=useState(false);
+  useEffect(()=>{
+    if(isNative||!APP_BUILD_ID)return;
+    let stop=false;
+    const check=async()=>{
+      try{
+        const res=await fetch('/build.json',{cache:'no-store'});
+        if(!res.ok)return;
+        const data=await res.json().catch(()=>null);
+        const remote=String(data?.build??'');
+        if(stop||!remote||remote===APP_BUILD_ID)return;
+        const stepperOpen=(()=>{try{return Boolean(sessionStorage.getItem('fs_stepper_host'));}catch{return false;}})();
+        const el=document.activeElement;
+        const typing=Boolean(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT'||el.isContentEditable));
+        const dialogOpen=Boolean(document.querySelector('[role="dialog"]'));
+        if(stepperOpen||typing||dialogOpen){setNewVersionAvailable(true);return;}
+        window.location.reload();
+      }catch{/* offline/CDN indisponible : silencieux, on retentera */}
+    };
+    const onVisible=()=>{if(document.visibilityState==='visible')check();};
+    document.addEventListener('visibilitychange',onVisible);
+    const timer=setInterval(check,5*60*1000);
+    check();
+    return ()=>{stop=true;document.removeEventListener('visibilitychange',onVisible);clearInterval(timer);};
+  },[]);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
@@ -4127,6 +4165,24 @@ export default function App({ loginOnly = false }){
           mobile/natif l'extension ne s'installe pas (cf. e252620), la condition
           extensionOutdated les exclut déjà. Lien vers /extension (zip du build
           courant + guide de rechargement). */}
+      {/* Bandeau « nouvelle version » (2026-07-19, classe c5fe1414) : ne
+          s'affiche QUE si le reload auto a été différé (saisie/stepper/dialog
+          en cours au moment du constat) — sinon l'onglet s'est déjà rechargé
+          tout seul. Persistant jusqu'au clic : recharger est le seul remède. */}
+      {newVersionAvailable&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#ECFDF5",borderBottom:"1px solid #A7F3D0",fontSize:13,color:"#065F46"}}>
+          <span aria-hidden="true">🔄</span>
+          <span style={{flex:1,lineHeight:1.4}}>
+            {lang==='fr'
+              ?"Nouvelle version de FillSell disponible — recharge pour en profiter."
+              :"A new version of FillSell is available — reload to get it."}
+          </span>
+          <button onClick={()=>window.location.reload()} style={{fontWeight:700,color:"#065F46",background:"transparent",border:"1px solid #A7F3D0",borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
+            {lang==='fr'?"Recharger":"Reload"}
+          </button>
+        </div>
+      )}
+
       {extensionOutdated&&(
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#FFFBEB",borderBottom:"1px solid #FDE68A",fontSize:13,color:"#92400E"}}>
           <span aria-hidden="true">🧩</span>
