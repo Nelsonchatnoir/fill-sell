@@ -37,7 +37,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Le job passe en 'sold' via l'orchestration elle-même, jamais par ce patch.
 //
 // 'deleted' (2026-07-11) : terminal d'un job action='delete' exécuté en LIVE.
-const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed", "deleted"];
+//
+// 'needs_user' (2026-07-19, socle « à trancher par l'utilisateur ») : un champ
+// OBLIGATOIRE précis bloque la publication et seul l'utilisateur peut trancher.
+// Posé par l'extension (détail structuré dans platform_fields.needsUserField,
+// envoyé fusionné comme le reste de platform_fields). Le job N'EST PAS repris
+// par le poll (get-pending-jobs ne distribue que 'pending') : il attend que
+// l'app (mini-éditeur du Stock) écrive la valeur choisie dans platform_fields
+// et le repasse en 'pending' — l'app fait cet update en direct via la RLS,
+// pas par cette fonction. Les erreurs transitoires, elles, restent sur le
+// chemin ré-armement borné → 'failed'.
+const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed", "deleted", "needs_user"];
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -129,6 +139,11 @@ serve(async (req) => {
     } else if (status === "pending") {
       // Ré-armement (ex: needsUser, l'utilisateur doit compléter une info) :
       // on garde l'error explicative si fournie, sinon on nettoie.
+      patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
+    } else if (status === "needs_user") {
+      // Champ précis à trancher côté app : error porte le message humain
+      // (affiché au survol/tap du badge « À compléter »), le détail structuré
+      // vit dans platform_fields.needsUserField (déjà dans le patch ci-dessus).
       patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
     } else if (status === "dry_run_completed") {
       // Terminal : dry-run réussi, ne repart pas dans la queue. L'éventuel
