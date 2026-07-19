@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-19-reclic-mise-en-vente (clic Mettre en vente avale sans aucun effet observable en onglet cache — detection d'effet 8 s + re-clic unique, fermeture defensive des menus ouverts avant submit)";
+const EBAY_BUILD = "2026-07-19-gate-referentiel (job sans ebayRequiredAspects = categorie hors referentiel a la creation → needsUser, jamais de clic aveugle ; + re-clic mise en vente si clic avale, fermeture defensive des menus)";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -601,6 +601,27 @@ async function fillListingForm(job) {
   }
 
   // ── Publication LIVE ────────────────────────────────────────────────────────
+  // Gate RÉFÉRENTIEL (2026-07-19, trou (a) du principe « aucun requis connu
+  // vide au submit ») : un job SANS platform_fields.ebayRequiredAspects
+  // signifie « catégorie hors référentiel au moment de la création » —
+  // computeUnfilledRequired n'aurait RIEN à comparer et le clic partirait à
+  // l'aveugle. Depuis ce jour, l'app pose TOUJOURS le champ (même [] pour une
+  // catégorie sans aspect requis) ou refuse de créer le job (refetch Taxonomy
+  // à la volée, blocage sinon) : un job sans le champ est ancien/dégradé →
+  // needsUser, jamais de clic aveugle.
+  if (!Array.isArray(job.platform_fields?.ebayRequiredAspects)) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "LIVE : liste des aspects obligatoires absente du job (catégorie eBay hors référentiel " +
+        "au moment de la création) — publication NON tentée pour ne pas cliquer à l'aveugle. " +
+        "Régénérer la publication depuis l'app : le référentiel se complète automatiquement.",
+      warnings,
+      unfilledRequired: [],
+    };
+  }
+
   // Description manquante = refus GARANTI par la validation eBay : inutile de
   // cliquer, on remonte tout de suite un needsUser actionnable (le formulaire
   // et son brouillon restent en place dans l'onglet de travail).

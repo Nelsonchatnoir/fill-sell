@@ -16,6 +16,12 @@
 //     "category_ids": ["123"]   — restreint le lot (défaut : category-ids.json)
 //     "marketplace_id": "EBAY_FR" }
 //
+// CHEMIN UTILISATEUR (2026-07-19) : { "refetch_category": "<id>" } avec un JWT
+// utilisateur ordinaire — comble à la volée UN trou du référentiel (catégorie
+// absente ou en erreur) au moment de publier. Borné : un id par appel, ligne
+// utilisable existante retournée sans appel eBay, jamais d'écrasement d'une
+// ligne utilisable par une erreur. Les mises à jour de masse restent admin.
+//
 // Secrets attendus : EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_ENV
 // (sandbox|production, défaut sandbox — on ne tape jamais la prod par accident).
 //
@@ -97,7 +103,25 @@ Deno.serve(async (req) => {
     const customKey = Deno.env.get("SERVICE_ROLE_KEY");
     const auth = req.headers.get("Authorization") ?? "";
     const allowed = [injectedKey, customKey].filter(Boolean).map((k) => `Bearer ${k}`);
-    if (!allowed.includes(auth)) {
+    const isAdmin = allowed.includes(auth);
+
+    // ── Chemin UTILISATEUR (2026-07-19, trou (a) du principe « aucun requis
+    // connu vide au submit ») : { refetch_category: "<id>" } — comble à la
+    // volée UN trou du référentiel quand l'app rencontre une catégorie
+    // absente/en erreur au moment de publier. verify_jwt=true au gateway :
+    // seul un utilisateur authentifié arrive ici. Strictement borné :
+    //   · un seul category_id numérique par appel ;
+    //   · une ligne DÉJÀ utilisable (ok/empty) est retournée telle quelle,
+    //     SANS appel eBay (idempotent, pas d'amplification d'abus — les mises
+    //     à jour de masse restent le chemin admin) ;
+    //   · une ligne error n'écrase jamais une ligne utilisable (on n'y
+    //     arrive que s'il n'y en a pas).
+    const bodyEarly = await req.json().catch(() => ({}));
+    const refetchId =
+      typeof bodyEarly.refetch_category === "string" || typeof bodyEarly.refetch_category === "number"
+        ? String(bodyEarly.refetch_category).trim()
+        : "";
+    if (!isAdmin && !refetchId) {
       return json({ error: "Réservé au service_role (fournir la SERVICE_ROLE_KEY en Bearer)" }, 403);
     }
 
@@ -119,7 +143,59 @@ Deno.serve(async (req) => {
     }
     const env = envRaw as EbayEnv;
 
-    const body = await req.json().catch(() => ({}));
+    // ── Exécution du chemin utilisateur (refetch d'UNE catégorie) ───────────
+    if (!isAdmin) {
+      if (!/^\d{1,12}$/.test(refetchId)) {
+        return json({ error: `refetch_category invalide : "${refetchId}" (id numérique attendu)` }, 400);
+      }
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, (injectedKey ?? customKey)!);
+      const { data: existing } = await admin
+        .from("ebay_item_aspects")
+        .select("category_id, status, aspect_count, required_count")
+        .eq("category_id", refetchId)
+        .maybeSingle();
+      if (existing && (existing.status === "ok" || existing.status === "empty")) {
+        return json({ ...existing, refetched: false });
+      }
+
+      const token = await getAppToken({ env, clientId, clientSecret });
+      const { categoryTreeId, categoryTreeVersion } = await getDefaultCategoryTreeId({
+        env,
+        token,
+        marketplaceId: "EBAY_FR",
+      });
+      const ctx = {
+        treeId: categoryTreeId,
+        treeVersion: categoryTreeVersion,
+        marketplace: "EBAY_FR",
+        env,
+        source: "get_item_aspects_for_category" as const,
+      };
+      let row: Row;
+      try {
+        const aspects = await getItemAspectsForCategory({ env, token, categoryTreeId, categoryId: refetchId });
+        row = aspects.length
+          ? makeRow(refetchId, aspects, "ok", null, ctx)
+          : makeRow(refetchId, [], "empty", "L'API n'a retourné aucun aspect pour cette catégorie", ctx);
+      } catch (e) {
+        // L'échec est ENREGISTRÉ (note = diagnostic) — il ne remplace jamais
+        // une ligne utilisable (garde ci-dessus : on n'arrive ici que sans).
+        row = makeRow(refetchId, [], "error", String((e as Error).message).slice(0, 500), ctx);
+      }
+      const { error } = await admin.from("ebay_item_aspects").upsert(row, { onConflict: "category_id" });
+      if (error) return json({ error: `upsert ebay_item_aspects : ${error.message}` }, 500);
+      console.log(`[fetch-ebay-aspects] refetch utilisateur cat. ${refetchId} → ${row.status} (${row.required_count} requis)`);
+      return json({
+        category_id: row.category_id,
+        status: row.status,
+        aspect_count: row.aspect_count,
+        required_count: row.required_count,
+        note: row.note,
+        refetched: true,
+      });
+    }
+
+    const body = bodyEarly;
     const dryRun = body.dry_run === true;
     const strategy: "fetch" | "per_category" = body.strategy === "per_category" ? "per_category" : "fetch";
     const marketplace = typeof body.marketplace_id === "string" ? body.marketplace_id : "EBAY_FR";

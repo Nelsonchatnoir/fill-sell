@@ -3858,34 +3858,54 @@ export default function ListingPreviewScreen({
         };
       });
       // ── Aspects obligatoires eBay (2026-07-11, Phase 2 du référentiel) ──
-      // ebay_item_aspects (peuplée depuis l'API Taxonomy, 237 catégories,
-      // lecture ouverte à authenticated) : lecture directe client, pas
-      // d'edge function. Le job eBay embarque les NOMS d'aspects
+      // ebay_item_aspects (peuplée depuis l'API Taxonomy, lecture ouverte à
+      // authenticated) : le job eBay embarque les NOMS d'aspects
       // required=true de sa catégorie ; l'extension compare ce qu'elle a
-      // réellement rempli contre cette liste (unfilledRequired du DRY_RUN).
-      // Catégorie absente de la table (trous de mapping — non-feuilles
-      // 20571/63514/121048 — ou id futur non re-fetché) → champ non posé,
-      // comportement identique à avant : DRY_RUN non bloquant.
+      // réellement rempli contre cette liste.
+      // ⚠️ DURCI le 2026-07-19 (trou (a) du principe « aucun requis connu
+      // vide au submit ») : catégorie absente/en erreur au référentiel →
+      // REFETCH Taxonomy à la volée (fetch-ebay-aspects, chemin utilisateur
+      // borné à un id) ; toujours indisponible → publication BLOQUÉE (throw
+      // → bandeau rouge), plus jamais un job sans liste — l'extension
+      // n'aurait rien à comparer et cliquerait à l'aveugle. Le champ est
+      // désormais TOUJOURS posé (même []) : sa présence vaut « référentiel
+      // vérifié » pour le gate extension.
       const ebayRow = rows.find(r => r.platform === "ebay");
       // Objets complets {name, allowedValues, mode} gardés en LOCAL pour la
       // garde ci-dessous — jamais sur le job : la liste Marque fait ~19 000
       // entrées (relevé 15687), le payload d'insert n'a pas à la porter.
       let ebayRequiredFull = null;
       if (ebayRow?.platform_fields?.ebayCategoryId && !ebayRow.platform_fields.ebayRequiredAspects) {
-        try {
-          const { data: aspRow } = await supabase
-            .from("ebay_item_aspects")
-            .select("aspects, required_count")
-            .eq("category_id", String(ebayRow.platform_fields.ebayCategoryId))
-            .limit(1)
-            .maybeSingle();
-          const required = (aspRow?.aspects ?? [])
-            .filter(a => a?.required === true && a?.name);
-          if (required.length) {
-            ebayRow.platform_fields.ebayRequiredAspects = required.map(a => a.name);
-            ebayRequiredFull = required;
-          }
-        } catch { /* best-effort : table indisponible → enrichissement absent, jamais bloquant */ }
+        const catId = String(ebayRow.platform_fields.ebayCategoryId);
+        const lireRef = async () => {
+          try {
+            const { data } = await supabase
+              .from("ebay_item_aspects")
+              .select("aspects, required_count, status")
+              .eq("category_id", catId)
+              .limit(1)
+              .maybeSingle();
+            return data ?? null;
+          } catch { return null; }
+        };
+        // « Utilisable » = fetch Taxonomy abouti : ok (aspects présents) ou
+        // empty (la catégorie n'a AUCUN aspect — information valable, pas un
+        // trou). not_found/error/absent = trou réel → refetch.
+        const utilisable = r => r && (r.status === "ok" || r.status === "empty");
+        let aspRow = await lireRef();
+        if (!utilisable(aspRow)) {
+          try {
+            await supabase.functions.invoke("fetch-ebay-aspects", { body: { refetch_category: catId } });
+          } catch { /* le blocage ci-dessous tranche */ }
+          aspRow = await lireRef();
+        }
+        if (!utilisable(aspRow)) {
+          throw new Error(tpl("stepPublishEbayReferentialMissing", { id: catId }));
+        }
+        const required = (aspRow.aspects ?? [])
+          .filter(a => a?.required === true && a?.name);
+        ebayRow.platform_fields.ebayRequiredAspects = required.map(a => a.name);
+        ebayRequiredFull = required;
       }
       // Job régénéré portant déjà les noms (sans allowedValues re-lues) :
       // la garde retombe sur la seule vérification de présence, comme avant
