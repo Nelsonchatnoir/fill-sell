@@ -564,10 +564,32 @@ const CAT_DEFAULT_ICONS = {
 const INCLUDED_ACCESSORY_CLAUSE =
   /(?:\b(?:avec|with|inclus|incluse?s?|livré[e]?s?\s+avec|comprend|comprenant|accompagné[e]?\s+de|fourni[e]?s?\s+avec)\b|[+&])\s*[^,.;:!?]*?\b(?:dock|chargeur|c[âa]ble|adaptateur|hub|manette|joy-?con|housse|[ée]tui|coque|protection|support|sacoche|pochette)\b[^,.;:!?]*/gi;
 
+// Mentions NÉGATIVES de fragrance (bug réel Medik8 2026-07-19) : « sans
+// parfum » dans la description d'un SÉRUM matchait la règle 🌸 Parfums —
+// prioritaire sur 🧴 dans OBJECT_ICON_RULES — et l'item entier partait en
+// Parfums sur les plateformes (eBay : Type Eau de parfum/Volume/Nom de parfum
+// obligatoires). Retirées AVANT détection, même philosophie que
+// INCLUDED_ACCESSORY_CLAUSE : on enlève le bruit, l'objet principal pilote.
+const FRAGRANCE_NEGATION =
+  /(?:\bsans\b|\b0\s*%)\s*parfum\b|\bnon\s+parfum[ée]e?s?\b|fragrance[-\s]?free|unscented/gi;
+
 export function detectObjectIcon(titre, description, type){
-  const raw=((titre||'')+' '+(description||''));
-  // Dé-bruitage des accessoires inclus (cf. INCLUDED_ACCESSORY_CLAUSE).
-  const t=raw.replace(INCLUDED_ACCESSORY_CLAUSE,' ').toLowerCase();
+  // Dé-bruitage : accessoires inclus + négations de fragrance.
+  const denoise=(s)=>String(s||'')
+    .replace(INCLUDED_ACCESSORY_CLAUSE,' ')
+    .replace(FRAGRANCE_NEGATION,' ')
+    .toLowerCase();
+  // Passe 1 — le TITRE seul : c'est lui qui NOMME l'objet (même règle produit
+  // que le ciblage par titre des pages de liste). Sans cette passe, un mot-clé
+  // de la DESCRIPTION porté par une règle plus haute dans OBJECT_ICON_RULES
+  // vole l'icône à l'objet du titre : « Sérum anti-rides » + description
+  // « …parfum délicat » partait en 🌸 Parfums (l'ordre des règles fait la
+  // priorité, pas la position du mot dans le texte).
+  const tTitre=denoise(titre);
+  for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(tTitre)) return icon; }
+  // Passe 2 — titre + description (comportement historique, filet pour les
+  // titres sans mot-objet : « Medik8 Crystal Retinal 6 » + desc « crème… »).
+  const t=denoise((titre||'')+' '+(description||''));
   for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
   // ⚠️ FILET « Luxe » (2026-07-17) : la catégorie Luxe est supprimée, mais des
   // items LEGACY (ou une IA pas encore redéployée) peuvent encore porter
