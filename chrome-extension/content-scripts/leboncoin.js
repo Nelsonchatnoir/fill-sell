@@ -308,23 +308,44 @@ async function fillListingForm(job) {
   await selectCategory(root, leaf);
 
   // ── Étape 2 : photos + critères ──────────────────────────────────────────
-  const photoInput = await waitForElement('input[type="file"]', 15000);
+  // ⚠️ WIZARD PAGINÉ (relevé live 2026-07-19, cas réel Medik8 sur Divers >
+  // Autres) : certaines catégories fragmentent le dépôt en PAGES au lieu de
+  // tout révéler progressivement — étape 1 + « Type d'annonce » (Offre/Demande)
+  // → « Ajoutez des photos » (page dédiée, l'input[type=file] y existe) →
+  // « Décrivez votre bien » (titre + #body) → « Quel est votre prix ? »
+  // (#price_cents) → « Remise du bien » (adresse + livraison). L'ancien
+  // waitForElement direct expirait sur l'étape 1 (« Élément introuvable:
+  // input[type=file] ») : il faut cliquer Continuer pour ATTEINDRE les photos.
+  // advanceWizardTo couvre les deux mondes : trouve tout de suite sur les
+  // catégories standard, avance de page en page sur les flux paginés.
+  const photoInput = await advanceWizardTo('input[type="file"]', { probeMs: 6000 });
+  if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
   if (job.photos?.length) await uploadPhotos(photoInput, job.photos);
 
   // Critères : tous NON bloquants. On ne touche jamais un critère que
   // Leboncoin a déjà pré-rempli depuis le titre (il est souvent plus précis
   // que nos données — ex. Type="Montre quartz" déduit de "Casio A158").
-  if (fields.etat) {
+  // Sonde courte préalable (flux paginé) : la page photos dédiée n'a AUCUN
+  // critère combobox — sans cette sonde, chaque fillCriterionSafe empilait son
+  // timeout de 5 s pour rien (~25 s perdues par job Divers).
+  const hasCriteria = await waitFor(
+    () => document.querySelector('label[for="condition"], label[for$="_condition"], label[for$="_brand"], label[for$="_size"], label[for$="_univers"], label[for$="_universe"], label[for$="_material"], label[for$="_type"], label[for="clothing_st"], label[for="baby_age"]'),
+    4000
+  );
+  if (!hasCriteria) {
+    console.log("[leboncoin] Aucun critère combobox sur cette étape (flux paginé ou catégorie sans critères) — remplissages de critères sautés.");
+  }
+  if (hasCriteria && fields.etat) {
     // Le critère état s'appelle "condition" sur certaines catégories (relevé
     // Montres & Bijoux) mais "clothing_condition" sur le rayon Vêtements
     // (relevé campagne 2026-07-08) — même pattern suffixe que _brand/_material.
     await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
   }
-  if (fields.univers || fields.genre) {
+  if (hasCriteria && (fields.univers || fields.genre)) {
     const ok = await fillUnivers(fields.univers || fields.genre, warnings);
     if (!ok) unfilledRequired.push("univers");
   }
-  if (fields.lbcProduit) {
+  if (hasCriteria && fields.lbcProduit) {
     // Produit* : critère OBLIGATOIRE dont les options dépendent de
     // l'univers — d'où le passage APRÈS fillUnivers. Le combobox peut
     // n'être (ré)injecté qu'une fois l'univers posé : attente courte, puis
@@ -351,7 +372,7 @@ async function fillListingForm(job) {
       unfilledRequired.push("produit");
     }
   }
-  if (fields.taille) {
+  if (hasCriteria && fields.taille) {
     // Pointure OBLIGATOIRE sur Mode>Chaussures ("Veuillez choisir une
     // pointure" bloque l'aperçu — relevé campagne 2026-07-08, for="shoe_size").
     // Sur Vêtements le critère taille s'appelle "clothing_st" (relevé) et
@@ -371,10 +392,10 @@ async function fillListingForm(job) {
       { sizeField: true }
     );
   }
-  if (fields.marque) {
+  if (hasCriteria && fields.marque) {
     await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true });
   }
-  if (fields.matiere) {
+  if (hasCriteria && fields.matiere) {
     await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
   }
 
@@ -384,7 +405,7 @@ async function fillListingForm(job) {
   // ci-dessus. La clé est le nom sémantique du label (ex. watches_jewels_type),
   // stable contrairement aux ids React — relevé form-survey du 05/07.
   const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
-  if (fields.lbcAspects && typeof fields.lbcAspects === "object") {
+  if (hasCriteria && fields.lbcAspects && typeof fields.lbcAspects === "object") {
     for (const [forKey, value] of Object.entries(fields.lbcAspects)) {
       const val = String(value ?? "").trim();
       if (!val || handledForKeys.test(forKey)) continue;
@@ -497,9 +518,15 @@ async function fillListingForm(job) {
     await humanPause();
   }
 
+  // Trace « prix posé et relu » pour la garde pré-submit : sur les flux
+  // paginés (Divers), #price_cents vit sur sa PROPRE page et n'existe plus au
+  // moment du dépôt final — la vérification se fait ICI, à la pose.
+  let pricePosedVerified = false;
   if (job.price != null) {
-    // LBC pré-remplit un prix suggéré — on impose celui du job.
-    const priceInput = await waitForElement("#price_cents", 8000).catch(() => null);
+    // LBC pré-remplit un prix suggéré — on impose celui du job. Flux paginé :
+    // #price_cents peut être sur la page SUIVANTE (« Quel est votre prix ? »),
+    // advanceWizardTo clique Continuer pour l'atteindre si besoin.
+    const priceInput = await advanceWizardTo("#price_cents", { probeMs: 5000 });
     if (priceInput) {
       // Pose en un coup (setFieldValue, pas typeInto) : champ à format
       // monétaire pré-rempli par LBC, la frappe caractère par caractère
@@ -510,14 +537,21 @@ async function fillListingForm(job) {
       setFieldValue(priceInput, String(Math.round(Number(job.price))));
       priceInput.dispatchEvent(new Event("blur", { bubbles: true }));
       await humanPause();
+      const posed = Number(String(priceInput.value ?? "").replace(/[^\d]/g, ""));
+      pricePosedVerified = Number.isFinite(posed) && posed > 0;
     } else {
-      const note = "prix: champ #price_cents introuvable, prix suggéré LBC conservé";
+      const note = "prix: champ #price_cents introuvable (même après avance du wizard), prix suggéré LBC conservé";
       console.warn(`[leboncoin] ⚠️ ${note}`);
       warnings.push(note);
     }
   }
 
-  // Adresse de remise (politique A+C)
+  // Adresse de remise (politique A+C). Flux paginé : l'étape « Remise du
+  // bien » (adresse + livraison) est une page à part APRÈS le prix — on
+  // avance jusqu'à elle si le champ n'est pas déjà là. fillAddress garde son
+  // comportement (champ introuvable → warning non bloquant : LBC pré-remplit
+  // l'adresse du compte sur ce flux, relevé live 2026-07-19).
+  await advanceWizardTo('label[for="location"]', { probeMs: 4000, maxSteps: 2 });
   const addressResult = await fillAddress(fields.adresse, warnings);
   if (!addressResult.ok) {
     return {
@@ -568,11 +602,21 @@ async function fillListingForm(job) {
   // Titre/catégorie garantis par la progression du wizard + les gates requis.
   if (job.price != null) {
     const priceEl = document.querySelector("#price_cents");
-    const priceNum = Number(String(priceEl?.value ?? "").replace(/[^\d]/g, ""));
-    if (!priceEl || !Number.isFinite(priceNum) || priceNum <= 0) {
+    if (priceEl) {
+      const priceNum = Number(String(priceEl.value ?? "").replace(/[^\d]/g, ""));
+      if (!Number.isFinite(priceNum) || priceNum <= 0) {
+        return {
+          success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+          error: `Prix absent ou nul dans l'aperçu Leboncoin au moment du dépôt (#price_cents = "${priceEl.value ?? ""}") — dépôt annulé pour éviter une annonce sans prix.`,
+        };
+      }
+    } else if (!pricePosedVerified) {
+      // Flux paginé : #price_cents vit sur une page antérieure. S'il n'a PAS
+      // été posé et relu non nul à son étape, on refuse le dépôt — même
+      // garantie qu'avant, adaptée à la pagination (relevé live 2026-07-19).
       return {
         success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
-        error: `Prix absent ou nul dans l'aperçu Leboncoin au moment du dépôt (#price_cents = "${priceEl?.value ?? "introuvable"}") — dépôt annulé pour éviter une annonce sans prix.`,
+        error: "Prix non vérifiable au moment du dépôt (champ prix sur une étape antérieure, jamais posé/relu non nul) — dépôt annulé pour éviter une annonce sans prix.",
       };
     }
   }
@@ -845,6 +889,31 @@ async function fillUnivers(rawValue, warnings) {
 }
 
 // ── Adresse (autocomplete type Google Places) ───────────────────────────────
+
+// ── Avance de wizard PAGINÉ (2026-07-19, cas réel Divers > Autres) ───────────
+// Certaines catégories fragmentent le dépôt en PAGES successives reliées par
+// « Continuer » (relevé live : Divers > Autres = type d'annonce → photos →
+// description → prix → remise), là où les catégories standard révèlent tout
+// progressivement sur une même page. Générique : attend `selector` ; s'il
+// n'apparaît pas et qu'un bouton « Continuer » existe, on le clique (étape
+// intermédiaire) et on ré-attend — au plus maxSteps clics. Sur une catégorie
+// standard, l'élément est trouvé à la première sonde : zéro clic, zéro
+// changement de comportement. Retourne l'élément ou null (jamais de throw :
+// l'appelant garde son message d'erreur métier).
+async function advanceWizardTo(selector, { probeMs = 5000, maxSteps = 3 } = {}) {
+  for (let step = 0; step <= maxSteps; step++) {
+    const el = await waitFor(() => document.querySelector(selector), probeMs);
+    if (el) return el;
+    if (step === maxSteps) return null;
+    const btn = findButtonByExactText("Continuer");
+    if (!btn) return null;
+    console.log(`[leboncoin] "${selector}" absent — étape intermédiaire du wizard, clic Continuer (${step + 1}/${maxSteps})`);
+    await humanPause();
+    btn.click();
+    await sleep(1500);
+  }
+  return null;
+}
 
 async function fillAddress(adresse, warnings) {
   const input = findCriterionInput('label[for="location"]')

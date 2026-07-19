@@ -394,6 +394,10 @@ function getPlatformFieldsConfig(t) {
       // age (2026-07-09) : champ observé sur « Figurines », jamais rempli en
       // conditions réelles — à valider au prochain dry-run.
       { key:"age",     label:t("fieldAgeLabel"),      type:"text" },
+      // format_colis (2026-07-19, cas réel Medik8) : requis Beebs PAS toujours
+      // pré-rempli (vide sur Hygiène et beauté, relevé live). Mêmes valeurs
+      // canoniques que LBC — beebs.js les mappe sur ses paliers de poids.
+      { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormat },
     ],
     // eBay.fr est francophone : clés et valeurs FR canoniques, alignées sur
     // les autres plateformes ET sur ce que consomme l'extension (etat, taille,
@@ -1686,7 +1690,7 @@ function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30
   );
 }
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -1850,22 +1854,31 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
                 border: `1px solid ${state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : "#FECACA"}`,
                 color: state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : "#B91C1C",
               }}>
-                {state === "ok" ? "✓ " : state === "missing" ? "✗ " : ""}{label}
+                {state === "ok" ? "✓ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
                 {state === "prefilled" ? ` — ${t("stepPublishGenericAspectPrefilled")}` : ""}
                 {state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
+                {state === "invalid" ? ` — ${t("stepPublishGenericAspectInvalid")}` : ""}
               </span>
             ))}
           </div>
-          {onPlatformAspectChange && list.some(a => a.state === "missing" || a.source === "generic") && (
+          {/* state "invalid" (2026-07-19, cas réel Medik8) : un champ DÉDIÉ
+              rempli avec une valeur hors de la liste fermée du catalogue
+              (Vinted Beauté : État = « Neuf avec étiquette » SEULEMENT)
+              s'édite ici en vrai sélecteur — l'écriture va au champ dédié de
+              la copie plateforme (onPlatformDedicatedChange), jamais au canal
+              générique, sinon la gate extension relirait l'ancienne valeur. */}
+          {onPlatformAspectChange && list.some(a => a.state === "missing" || a.state === "invalid" || a.source === "generic") && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {list.filter(a => a.state === "missing" || a.source === "generic").map(a => (
+              {list.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => (
                 <div key={a.key}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
                   <AspectValueInput
-                    value={a.value}
+                    value={a.state === "invalid" ? (a.suggested ?? "") : a.value}
                     allowedValues={a.allowedValues}
                     strict={false}
-                    onChange={v => onPlatformAspectChange(gp, a.key, v)}
+                    onChange={v => (a.state === "invalid" && a.dedicatedTarget && onPlatformDedicatedChange)
+                      ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
+                      : onPlatformAspectChange(gp, a.key, v)}
                     T={T}
                     idBase={`gen-${gp}-${aspectSlug(a.key)}`}
                   />
@@ -2961,7 +2974,15 @@ export default function ListingPreviewScreen({
     // laissait passer VIDE en silence (trou du filet). Désormais traité comme
     // les autres obligatoires sans source : resolve_aspects tente de l'extraire
     // du contexte, sinon saisie manuelle obligatoire (CTA bloqué tant que vide).
-    const PREFILLED_BY_EBAY = ["Département", "Type"];
+    // ⚠️ « Type » RETIRÉ le 2026-07-19 (cas réel Medik8, cat. 21205) : comme
+    // « Style » avant lui (17/07), eBay ne le pré-remplit que sur CERTAINES
+    // catégories (consoles, baskets — dérivé de la catégorie) et le laisse
+    // VIDE sur d'autres (beauté : options Hydratation/Masque hydratant…
+    // constatées vides sur le formulaire LIVE, publication bloquée par la
+    // gate extension). Désormais résolu par resolve_aspects, sinon saisie
+    // manuelle (select : allowedValues du référentiel). Si eBay le pré-remplit
+    // réellement, l'extension conserve la valeur existante (jamais réécrite).
+    const PREFILLED_BY_EBAY = ["Département"];
     return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
       const srcVal = src ? String(src.get() ?? "").trim() : "";
@@ -3040,6 +3061,45 @@ export default function ListingPreviewScreen({
       if (a.state === "invalid" && a.sharedKey && a.suggested) setEbaySharedField(a.sharedKey, a.suggested);
     }
   }, [step, ebayRequiredStatus]);
+
+  // Écrit un champ DÉDIÉ d'une copie Vinted/LBC/Beebs depuis le sélecteur de
+  // l'encart générique (state "invalid", 2026-07-19 — cas réel Medik8 : Vinted
+  // Beauté n'accepte qu'un État « Neuf avec étiquette », la valeur canonique
+  // « Très bon état » ne peut pas matcher). Même philosophie que
+  // setEbaySharedField : le libellé choisi est propre à CETTE plateforme — on
+  // n'écrit que sa copie et on casse le lien partagé pour cette clé (les
+  // autres copies gardent la canonique).
+  function setPlatformDedicatedField(gp, pfKey, value) {
+    setEdited(prev => {
+      if (!prev[gp]) return prev;
+      const pf = { ...prev[gp].platform_fields };
+      if (pfKey === "couleur") {
+        // Les gates et handlers lisent colors[0] AVANT couleur : écrire les deux.
+        pf.couleur = value;
+        if (Array.isArray(pf.colors) && pf.colors.length) pf.colors = [value, ...pf.colors.slice(1)];
+      } else {
+        pf[pfKey] = value;
+      }
+      return { ...prev, [gp]: { ...prev[gp], platform_fields: pf } };
+    });
+    noteSharedOverride(gp, pfKey); // clés hors SHARED_FIELD_KEYS (etat, format_colis…) : no-op
+  }
+
+  // Pré-sélection auto générique — miroir exact de l'effet eBay ci-dessus :
+  // au step Publier, une valeur dédiée hors liste avec un rapprochement sûr
+  // est remplacée d'office par le libellé exact de la plateforme ; sans
+  // rapprochement (« Très bon état » vs « Neuf avec étiquette » : aucun token
+  // commun), l'utilisateur choisit dans le sélecteur de l'encart.
+  useEffect(() => {
+    if (step !== 3 || !genericRequiredStatus) return;
+    for (const [gp, list] of Object.entries(genericRequiredStatus)) {
+      for (const a of list) {
+        if (a.state === "invalid" && a.dedicatedTarget && a.suggested) {
+          setPlatformDedicatedField(gp, a.dedicatedTarget, a.suggested);
+        }
+      }
+    }
+  }, [step, genericRequiredStatus]);
 
   // Résolution IA ciblée des obligatoires SANS source (2026-07-16, même
   // philosophie que resolve_genre : micro-appel jamais bloquant, null si non
@@ -3241,6 +3301,9 @@ export default function ListingPreviewScreen({
       if (key === "Matière") return pf.matiere;
       if (key === "Couleur") return pf.colors?.[0] || pf.couleur;
       if (key === "Âge") return pf.age;
+      // Format canonique partagé avec LBC (Lettre/Petit colis/…) — beebs.js le
+      // mappe sur les paliers de poids Beebs à la pose (2026-07-19).
+      if (key === "Format du colis") return pf.format_colis;
       return null;
     }
     return null;
@@ -3250,11 +3313,36 @@ export default function ListingPreviewScreen({
   //   sim_lock : défaut « Non » posé par vinted.js (sémantique prouvée 13/07)
   //   package_size_id : « Petit » forcé sur la Mode par vinted.js
   //   quantity : défaut 1 posé par leboncoin.js
-  //   Format du colis : pré-rempli par Beebs (relevé réel 16/07)
+  // ⚠️ « Format du colis » Beebs RETIRÉ le 2026-07-19 (cas réel Medik8) : le
+  // pré-remplissage observé le 16/07 ne vaut que sur CERTAINES catégories —
+  // constaté VIDE en live sur « Hygiène et beauté ». Même classe de bug que
+  // « Style »/« Type » eBay. Désormais posé par beebs.js (mapping poids depuis
+  // format_colis, défaut prudent) — jamais supposé.
   const GENERIC_PREFILLED = {
     vinted: ["sim_lock", "package_size_id"],
     leboncoin: ["quantity"],
-    beebs: ["Format du colis"],
+    beebs: [],
+  };
+
+  // Champ platform_fields DÉDIÉ visé par le sélecteur d'un state "invalid" —
+  // parallèle EXACT de genericKnownSource (les deux évoluent ensemble).
+  const genericDedicatedTarget = (platform, key) => {
+    if (platform === "vinted") {
+      return { brand: "marque", model: "modele", internal_memory_capacity: "stockage", condition: "etat", color: "couleur", size: "taille", material: "matiere" }[key] ?? null;
+    }
+    if (platform === "leboncoin") {
+      if (/_brand$/.test(key)) return "marque";
+      if (key === "condition" || /_condition$/.test(key)) return "etat";
+      if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return "taille";
+      if (/_material$/.test(key)) return "matiere";
+      if (key === "clothing_type" || key === "shoe_type" || /_univers$|_universe$/.test(key)) return "univers";
+      if (/_type$/.test(key) || /_product$/.test(key) || key === "baby_clothing_category" || key === "clothing_category") return "lbcProduit";
+      return null;
+    }
+    if (platform === "beebs") {
+      return { "Marque": "marque", "Pointure": "taille", "Taille": "taille", "État": "etat", "Matière": "matiere", "Couleur": "couleur", "Âge": "age", "Format du colis": "format_colis" }[key] ?? null;
+    }
+    return null;
   };
 
   const genericRequiredStatus = useMemo(() => {
@@ -3268,7 +3356,27 @@ export default function ListingPreviewScreen({
         const label = r.field_label || key;
         const allowedValues = Array.isArray(r.allowed_values) ? r.allowed_values.slice(0, 1000) : [];
         const src = String(genericKnownSource(platform, key, pf) ?? "").trim();
-        if (src) return { key, label, state: "ok", allowedValues };
+        if (src) {
+          // Valeur DÉDIÉE validée contre la liste fermée du catalogue quand
+          // on en a une (2026-07-19, cas réel Medik8 : Vinted Beauté n'accepte
+          // qu'un État « Neuf avec étiquette » — « Très bon état » partait
+          // quand même et l'extension gate-ait après coup, en boucle). Même
+          // sémantique que le bloc eBay : state "invalid" + vrai sélecteur +
+          // rapprochement auto. Les lignes SANS allowed_values (découvertes
+          // DOM, listes partielles) ne bloquent jamais : présence = ok, comme
+          // avant — on ne refuse une valeur que contre une liste qu'on a.
+          const target = genericDedicatedTarget(platform, key);
+          if (target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX &&
+              !allowedValues.some(v => normAspectVal(v) === normAspectVal(src))) {
+            return {
+              key, label, state: "invalid", value: src,
+              dedicatedTarget: target,
+              suggested: nearestAllowedValue(src, allowedValues),
+              allowedValues,
+            };
+          }
+          return { key, label, state: "ok", allowedValues };
+        }
         const generic = String(aspects[key] ?? "").trim();
         if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues };
         if (GENERIC_PREFILLED[platform]?.includes(key)) return { key, label, state: "prefilled", allowedValues };
@@ -3870,7 +3978,7 @@ export default function ListingPreviewScreen({
   // ne bloquent pas ; seuls les "missing" comptent.
   const requiredBlocking =
     (ebayRequiredStatus ?? []).some(a => a.state === "missing" || a.state === "invalid") ||
-    Object.values(genericRequiredStatus ?? {}).some(list => list.some(a => a.state === "missing")) ||
+    Object.values(genericRequiredStatus ?? {}).some(list => list.some(a => a.state === "missing" || a.state === "invalid")) ||
     missingSharedFields.length > 0 ||
     vintedGenreBlocked;
 
@@ -4077,6 +4185,7 @@ export default function ListingPreviewScreen({
             onEbaySharedFieldChange={setEbaySharedField}
             genericRequiredStatus={genericRequiredStatus}
             onPlatformAspectChange={setPlatformAspect}
+            onPlatformDedicatedChange={setPlatformDedicatedField}
             pausedPlatforms={pausedPlatforms}
           />
         )}

@@ -664,11 +664,24 @@ async function fillListingForm(job) {
   // ne ferait qu'exposer un échec de plus à DataDome. needsUser explicite,
   // libellés humains exacts — l'app les présente en saisie manuelle.
   if (requiredState.unfilled.length) {
+    // Options ACCEPTÉES par la catégorie (config attributes) annexées à chaque
+    // requis vide : sans elles, l'erreur était inactionnable (cas réel Medik8
+    // 18/07 — « État » vide alors que la Beauté n'accepte QUE « Neuf avec
+    // étiquette » : la valeur « Très bon état » de l'app ne pouvait JAMAIS
+    // matcher, et personne ne pouvait le savoir depuis le message).
+    const labelWithOptions = (label) => {
+      const d = requiredState.discovered.find((x) => x.label === label);
+      const names = (d?.options ?? [])
+        .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+        .filter(Boolean)
+        .slice(0, 8);
+      return names.length ? `${label} (accepte : ${names.join(" · ")})` : label;
+    };
     return {
       success: false,
       needsUser: true,
       error:
-        `Vinted exige des champs encore vides pour cette catégorie : ${requiredState.unfilled.join(", ")}. ` +
+        `Vinted exige des champs encore vides pour cette catégorie : ${requiredState.unfilled.map(labelWithOptions).join(", ")}. ` +
         "Compléter ces champs dans l'app (copie Vinted), puis relancer la publication.",
       warnings,
       unfilledRequired: requiredState.unfilled,
@@ -1667,7 +1680,15 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
     }
     return true;
   } catch (e) {
-    const note = `${fieldName}: champ sauté — ${e.message}`;
+    // Options réellement affichées par Vinted, annexées au warning — même
+    // relevé actionnable que Beebs/LBC (jeu d'options PAR CATÉGORIE : la
+    // Beauté n'offre p.ex. que « Neuf avec étiquette » pour l'État).
+    const visible = Array.from(document.querySelectorAll(optionSelector))
+      .map((el) => el.textContent.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+    const note = `${fieldName}: champ sauté — ${e.message}` +
+      (visible.length ? ` — options affichées: ${JSON.stringify(visible)}` : "");
     console.warn(`[vinted] ⚠️ ${note}`);
     warnings.push(note);
     await closeAnyOpenDropdown();

@@ -438,11 +438,41 @@ async function fillListingForm(job) {
   // étage de la cascade, et le champ (obligatoire ici) restait vide.
   if (fields.age) await selectDropdownValue("Âge", fields.age, warnings, unfilledRequired);
 
+  // ── Format du colis (2026-07-19, cas réel Medik8) ──────────────────────────
+  // PAS toujours pré-rempli par Beebs : vide sur « Hygiène et beauté » (relevé
+  // live), l'hypothèse « prefilled » du 16/07 ne tenait que sur certaines
+  // catégories. Options RELEVÉES live (7 paliers de poids) mappées depuis le
+  // format canonique du job (format_colis, partagé avec LBC) ; défaut prudent
+  // 1 kg si aucune donnée. On ne touche JAMAIS une valeur déjà posée par Beebs
+  // (pré-remplissage conservé quand il existe).
+  const BEEBS_PACKAGE_BY_FORMAT = {
+    "Lettre":           "Poids jusqu'à 500g max",
+    "Petit colis":      "Poids jusqu'à 1 kg max",
+    "Moyen colis":      "Poids jusqu'à 2 kg max",
+    "Grand colis":      "Poids jusqu'à 5 kg max",
+    "Très grand colis": "Poids jusqu'à 10 kg max",
+  };
+  const packageField = findField("Format du colis");
+  if (packageField) {
+    const current = (packageField.trigger.textContent || "").trim();
+    if (/poids/i.test(current)) {
+      console.log(`[beebs] Format du colis: déjà posé par Beebs ("${current}"), conservé`);
+    } else {
+      const mapped = BEEBS_PACKAGE_BY_FORMAT[String(fields.format_colis ?? "").trim()] ?? "Poids jusqu'à 1 kg max";
+      if (!BEEBS_PACKAGE_BY_FORMAT[String(fields.format_colis ?? "").trim()]) {
+        const note = `format du colis: aucune donnée de format exploitable (format_colis="${fields.format_colis ?? ""}") — défaut prudent "${mapped}"`;
+        console.warn(`[beebs] ⚠️ ${note}`);
+        warnings.push(note);
+      }
+      await selectDropdownValue("Format du colis", mapped, warnings, unfilledRequired);
+    }
+  }
+
   // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
   // platform_fields.beebsAspects = { "<libellé exact du champ>": "valeur" } —
   // posé par l'app (saisie manuelle du stepper) pour les champs SANS mapping
   // dédié ci-dessus. Les libellés déjà servis sont ignorés (jamais deux poses).
-  const handledLabels = new Set(["Couleur", "Marque", "Pointure", "Taille", "État", "Matière", "Âge"]);
+  const handledLabels = new Set(["Couleur", "Marque", "Pointure", "Taille", "État", "Matière", "Âge", "Format du colis"]);
   if (fields.beebsAspects && typeof fields.beebsAspects === "object") {
     for (const [label, value] of Object.entries(fields.beebsAspects)) {
       const val = String(value ?? "").trim();
@@ -954,6 +984,26 @@ async function closePanel(trigger) {
   await humanPause();
 }
 
+// Re-recherche dans le panneau DÉJÀ OUVERT (2026-07-19) : quand la recherche
+// initiale a filtré la liste à zéro, on vide la barre et on cherche `query`
+// (le bac générique « Autre »). Options prises par VISIBILITÉ (offsetParent)
+// et non par différentiel : React réutilise les mêmes éléments de bouton au
+// re-filtrage, le différentiel d'openPanelOptions ne voit alors rien de neuf.
+async function researchPanelFor(trigger, query) {
+  const search = document.querySelector('input[class*="__searchBarInput"]');
+  if (!search) return [];
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  setter.call(search, "");
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  await sleep(300);
+  await typeHuman(search, query);
+  const fresh = await waitFor(() => {
+    const vis = allValueOptions().filter((el) => el.offsetParent !== null);
+    return vis.length ? vis : null;
+  }, 4000);
+  return fresh ?? [];
+}
+
 /**
  * @param {string[]} unfilledRequired — accumulateur : reçoit le libellé du
  *   champ si celui-ci est OBLIGATOIRE (pas de "(facultatif)") et qu'on n'a pas
@@ -965,14 +1015,28 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
   if (!field) return; // champ non affiché pour cette catégorie : rien à signaler
   const { trigger, required } = field;
 
-  const options = await openPanelOptions(trigger, rawText);
+  let options = await openPanelOptions(trigger, rawText);
+  let researchedFallback = false;
+  if (!options.length && !sizeField) {
+    // Recherche sans AUCUN résultat (cas réel Medik8 2026-07-19 : la barre de
+    // recherche Marque filtre le catalogue — orienté puériculture — à ZÉRO
+    // option pour une marque beauté). L'ancien code sortait ici, AVANT le
+    // repli « Autre » pourtant catalogué (vérifié live : chercher « Autre »
+    // le fait apparaître). On re-cherche donc le bac générique pour
+    // l'atteindre — jamais pour une taille (valeur fausse, pas un bac).
+    options = await researchPanelFor(trigger, "Autre");
+    researchedFallback = options.length > 0;
+  }
   if (!options.length) {
-    const note = `${labelText}: panneau d'options resté vide, champ laissé vide`;
+    const note = `${labelText}: panneau d'options resté vide (recherche "${rawText}" sans résultat, repli "Autre" introuvable), champ laissé vide`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
     if (required) unfilledRequired.push(labelText);
     await closePanel(trigger);
     return;
+  }
+  if (researchedFallback) {
+    console.log(`[beebs] ${labelText}: "${rawText}" hors catalogue — repli sur le bac générique de la liste`);
   }
 
   let match = findOptionCascade(options, rawText, { sizeField });
