@@ -297,7 +297,7 @@ const OBJECT_ICON_RULES = [
   [/sac.?à.?dos|backpack|cartable/i, '🎒'],
   [/batterie.?externe|powerbank|chargeur|câble|adaptateur|\bhub\b|\bdock\b/i, '🔌'],
   [/tapis.?de.?course|vélo.?d.?appartement|rameur|elliptique/i, '🏃'],
-  [/clavier.?(?:midi|maître|maitre|arrangeur)|piano|synthé|synthétiseur/i, '🎹'],  // clavier arrangeur/maître = instrument, avant ⌨️ clavier ordinateur
+  [/clavier.?(?:midi|maître|maitre|arrangeur)|piano(?!\s*de\s*cuisson)|synthé|synthétiseur/i, '🎹'],  // clavier arrangeur/maître = instrument, avant ⌨️ clavier ordinateur ; piano de cuisson = cuisinière, pas un instrument
   [/voiture.?miniature|hot.?wheels|majorette/i, '🏎️'],
   [/machine.?à.?laver|lave.?linge|sèche.?linge|lave.?vaisselle/i, '🧺'],
   [/machine.?à.?café|cafetière|nespresso|senseo|dolce.?gusto|expresso/i, '☕'],
@@ -307,6 +307,11 @@ const OBJECT_ICON_RULES = [
   [/cartes?\s*(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?collectionner)|booster/i, '🃏'],
   [/maillot.?de.?bain|bikini|monokini/i, '👙'],
   [/jeu.?de.?société|monopoly|\buno\b/i, '🎲'],
+  // Peluche AVANT les règles animal/objet homonymes (audit 2026-07-19) : une
+  // « peluche souris » partait en 🖱️ Souris d'ordinateur (la règle souris
+  // vient plus haut que 🧸 dans la section Jouets). L'objet « peluche » prime
+  // sur ce qu'elle représente — même logique que les figurines.
+  [/peluche|doudou/i, '🧸'],
   // ── Désambiguïsations ajoutées le 2026-07-09 (mission mapping complet) —
   // chacune doit gagner sur une règle générique plus bas (indiquée) ─────────
   [/télécommandé|voiture.?rc\b/i, '🚁'],                                        // avant 🚗 voiture
@@ -352,7 +357,7 @@ const OBJECT_ICON_RULES = [
   // Costumes et blazers, Accessoires > Cravates et nœuds papillons) — le
   // T4 "Pantalon de costume → Chemises" venait de "costume" logé dans 👔.
   [/blazer|tailleur\b/i, '🥼'],
-  [/manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|polaire\b/i, '🧥'],
+  [/(?<!porte.)manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|polaire\b/i, '🧥'],  // porte-manteau = mobilier, pas un manteau (audit 2026-07-19)
   [/cravate|n[œo]e?ud.?papillon/i, '🎀'],
   [/costume|smoking\b/i, '🤵'],
   [/chemise|blouse\b/i, '👔'],
@@ -361,7 +366,12 @@ const OBJECT_ICON_RULES = [
   // (voir vintedCategories.js) — un seul et même mot-clé ne peut plus servir
   // de proxy fiable au chemin catalogue, d'où l'icône dédiée.
   [/pull|sweat|hoodie|cardigan|gilet(?!.{0,4}(?:de.?costume|jaune|de.?sécurité))/i, '🧶'],
-  [/t.?shirt|tee.?shirt|débardeur|polo\b|\btop\b|tunique|\bbodys?\b/i, '👕'],
+  // polo/top gardés contre leurs homonymes (audit 2026-07-19) : « Volkswagen
+  // Polo 1.2 TSI » partait en T-shirts (même famille que golf GTI, déjà gardé
+  // plus bas), et « top qualité/état/prix » — tournure quasi systématique des
+  // descriptions IA — matchait \btop\b (« JBL Flip 5, top qualité sonore »
+  // → Hauts et t-shirts).
+  [/t.?shirt|tee.?shirt|débardeur|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbodys?\b/i, '👕'],
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
@@ -417,14 +427,20 @@ const OBJECT_ICON_RULES = [
   // Tablettes, liseuses et accessoires > Tablettes.
   [/tablette(?!.{0,4}de.?chocolat)|ipad|galaxy.?tab/i, '📲'],
   [/écouteur|airpods?|earbud|casque|headphone/i, '🎧'],
-  [/enceinte|haut.?parleur|speaker|barre.?de.?son|soundbar/i, '🔊'],
-  [/console|playstation|\bps[2-5]\b|xbox|nintendo|switch|game.?boy|manette|jeu.?vidéo/i, '🎮'],
+  // « femme enceinte » (grossesse/allaitement) n'est pas un haut-parleur ;
+  // console d'entrée = meuble, console de mixage = audio ; switch réseau =
+  // équipement informatique, pas une Nintendo (audit 2026-07-19).
+  [/(?<!femmes?\s)enceinte|haut.?parleur|speaker|barre.?de.?son|soundbar/i, '🔊'],
+  [/console(?!s?\s*(?:de\s*mixage|d['’]entrée|murale|extensible))|playstation|\bps[2-5]\b|xbox|nintendo|switch(?!\s*(?:réseau|ethernet|rj45|tp.?link|netgear|poe|gigabit|\d+\s*ports))|game.?boy|manette|jeu.?vidéo/i, '🎮'],
   // télé(?![a-zà-ÿ]) et non télé\b : \b est ASCII-only en JS, donc "télé"
   // suivi d'une lettre matchait quand même ("télécommande" → Téléviseurs).
   [/meuble.?(?:tv|t[ée]l[ée]|hi.?fi)/i, '🛋️'],  // meuble TV = mobilier, pas un téléviseur
   [/veilleuse/i, '📦'],  // veilleuse bébé (souvent "projecteur étoiles") ≠ vidéoprojecteur, avant 📺
   [/\btv\b|télé(?![a-zà-ÿ])|téléviseur|télévision|projecteur|vidéoprojecteur/i, '📺'],
-  [/appareil.?photo|caméra|camera|reflex|gopro|objectif|caméscope/i, '📷'],
+  // objectif : singulier seulement, hors tournures figurées (« vos objectifs
+  // fitness », « objectif de remise en forme » — prose IA courante) ; un
+  // objectif photo se vend au singulier avec marque/focale (audit 2026-07-19).
+  [/appareil.?photo|caméra|camera|reflex|gopro|objectif(?!s\b)(?!\s*(?:de\s|d['’]|:|minceur|fitness|sportif))|caméscope/i, '📷'],
   [/drone/i, '🛸'],
   [/imprimante|scanner/i, '🖨️'],
   [/clavier/i, '⌨️'],
@@ -436,12 +452,12 @@ const OBJECT_ICON_RULES = [
   [/\blit\b|matelas|sommier|couette|\bdrap\b|parure/i, '🛏️'],
   [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
   [/miroir/i, '🪞'],
-  [/bougie|photophore/i, '🕯️'],
-  [/cadre|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],
+  [/bougie(?!s?\s*(?:d['’]allumage|de\s*préchauffage))|photophore/i, '🕯️'],  // bougie d'allumage = pièce auto (audit 2026-07-19)
+  [/cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|lit\b))|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],  // cadre de vélo/lit ≠ cadre déco (audit 2026-07-19)
   [/plante|cache.?pot|jardinière/i, '🪴'],
   [/vase\b/i, '🏺'],
-  [/assiette|\bbol\b|tasse|\bmug\b|verre|carafe|vaisselle/i, '🍽️'],
-  [/casserole|poêle|cocotte|marmite|ustensile/i, '🍳'],
+  [/assiette|\bbol\b|tasse|\bmug\b|verres?\b(?!\s*tremp)|carafe|vaisselle/i, '🍽️'],  // verre trempé = protection d'écran (audit 2026-07-19)
+  [/casserole|poêle(?!s?\s*à\s*(?:bois|granulés?|pétrole))|cocotte|marmite|ustensile/i, '🍳'],  // poêle à bois/granulés = chauffage (audit 2026-07-19)
   // Maison — textiles/déco/papeterie/animaux/fêtes (2026-07-09, backlog T3) :
   // toutes ces branches existent réellement (Maison > Textiles/Décoration/
   // Fournitures de bureau/Animaux/Célébrations et fêtes — arbre archivé).
@@ -460,7 +476,16 @@ const OBJECT_ICON_RULES = [
   [/mixeur|blender|robot.?(?:cuisine|pâtissier)|thermomix|batteur.?électrique/i, '🥣'],
   [/grille.?pain|toaster/i, '🍞'],
   [/friteuse|airfryer/i, '🍟'],
-  [/sèche.?cheveux|lisseur|boucleur/i, '💇'],
+  // ⚠️ Appareils coiffants ÉLARGIS à leurs ACCESSOIRES + marques + anglais
+  // (2026-07-19, bug Dyson Airwrap : « Soft Smoothing Brush Attachment »,
+  // desc « brosse lissante … soin optimal des cheveux » → 🧴 Soins de la
+  // peau via \bsoin\b — un embout d'appareil de coiffure n'est pas un
+  // produit de soin, référentiel skincare absurde sur les 4 plateformes).
+  // 3e bug de la classe « mot générique capté par la mauvaise règle » après
+  // Parfum/Soins et Lunettes/Montre. Les titres importés ne disent ni
+  // « sèche-cheveux » ni « lisseur » : marques (airwrap, ghd, babyliss) et
+  // équivalents anglais requis.
+  [/sèche.?cheveux|lisseur|boucleur|airwrap|supersonic|multi.?styler|\bstylers?\b|brosses?.?(?:soufflante|lissante|chauffante|rotative|coiffante)|fers?.?à.?(?:lisser|boucler|friser)|babyliss|\bghd\b|hair.?(?:dryer|straightener|curler)|straightener|curling.?(?:iron|wand)|hot.?(?:air.?)?brush/i, '💇'],
   // Climatisation / chauffage d'appoint (2026-07-09) : feuilles réelles sous
   // Maison > Entretien de la maison > Chauffage, climatisation et ventilation.
   [/ventilateur|climatiseur|purificateur.?d.?air|humidificateur|déshumidificateur/i, '🌀'],
@@ -468,12 +493,17 @@ const OBJECT_ICON_RULES = [
   // Bricolage
   [/perceuse|visseuse|tournevis|perforateur/i, '🪛'],
   [/\bscies?\b|tronçonneuse|élagueuse/i, '🪚'],
-  [/marteau|maillet|\bmasse\b/i, '🔨'],
-  [/échelle|escabeau/i, '🪜'],
-  [/peinture|rouleau.?peinture|pinceau/i, '🖌️'],
+  [/marteau|maillet|\bmasses?\b(?!\s*(?:musculaire|corporelle|graisseuse))/i, '🔨'],  // « masse musculaire » = prose fitness (audit 2026-07-19)
+  [/échelle(?!s?\s*(?:1\s*[:/]\s*\d|\d|réduite))|escabeau/i, '🪜'],  // « échelle 1:18 » = miniature/maquette (audit 2026-07-19)
+  // \b obligatoire avant l'exclusion : sans lui, « pinceaux de maquillage »
+  // re-matchait par backtracking sur « pinceau » nu (le lookahead ne voyait
+  // que « x de maquillage »).
+  [/peinture|rouleau.?peinture|pinceaux?\b(?!\s*(?:de\s*|à\s*)?(?:maquillage|makeup|teint|blush|poudre))/i, '🖌️'],  // pinceau de maquillage = Beauté (audit 2026-07-19)
   [/\bvis\b|boulon|cheville|clou\b/i, '🔩'],
   [/mètre.?ruban|niveau.?(?:laser|à.?bulle)/i, '📏'],
-  [/clé.?(?:plate|allen|molette|mixte|dynamométrique)|pince|étau|serre.?joint/i, '🔧'],
+  // pinces? borné (audit 2026-07-19) : « pince » matchait DANS « pinceaux » —
+  // bug latent révélé par l'exclusion maquillage de 🖌️ juste au-dessus.
+  [/clé.?(?:plate|allen|molette|mixte|dynamométrique)|pinces?(?![\p{L}\p{N}])|étau|serre.?joint/iu, '🔧'],
   // Jardin
   [/tondeuse|débroussailleuse|scarificateur/i, '🌱'],
   [/taille.?haie|sécateur|cisaille/i, '✂️'],
@@ -501,9 +531,16 @@ const OBJECT_ICON_RULES = [
   [/voiture|automobile|autoradio|pare.?choc|rétroviseur/i, '🚗'],
   // Beauté
   [/parfum|eau.?de.?(?:toilette|parfum)|cologne/i, '🌸'],
-  [/rouge.?à.?lèvre|gloss|lipstick|mascara|palette|fard|eyeliner|fond.?de.?teint|blush|maquillage/i, '💄'],
+  // « palette de couleurs » = prose IA omniprésente (vêtements, déco…), pas
+  // une palette de fards (audit 2026-07-19).
+  [/rouge.?à.?lèvre|gloss|lipstick|mascara|palettes?\b(?!\s*(?:de\s*)?couleurs?\b)|fard|eyeliner|fond.?de.?teint|blush|maquillage/i, '💄'],
   [/vernis|manucure/i, '💅'],
-  [/crème|sérum|lotion|shampooing|gel.?douche|savon|\bsoin\b/i, '🧴'],
+  // ⚠️ \bsoin\b nu SUPPRIMÉ (2026-07-19, bug Dyson Airwrap) : « pour un soin
+  // optimal des cheveux/du linge/de vos sols » est une tournure IA générique
+  // qui routait n'importe quel accessoire en Soins de la peau. Le soin ne
+  // compte plus que CONTEXTUALISÉ peau/visage/corps ; un vrai produit a de
+  // toute façon crème/sérum/lotion/masque dans sa copie.
+  [/crème|sérum|lotion|shampooing|gel.?douche|savon|soins?\s+(?:de\s+la\s+peau|du\s+visage|du\s+corps|des\s+mains|hydratants?|anti.?[âa]ges?|anti.?rides|visage|corps)/i, '🧴'],
   // Couverture élargie (2026-07-18, bug Medik8) : huile et masque exigent un
   // CONTEXTE beauté (une huile moteur, un masque de ski/plongée/carnaval ne
   // doivent pas router ici) ; le reste est sans ambiguïté. Équivalents anglais
@@ -515,19 +552,22 @@ const OBJECT_ICON_RULES = [
   // Musique
   [/guitare|stratocaster|telecaster|les.?paul|ukulélé/i, '🎸'],
   [/violon|violoncelle|contrebasse/i, '🎻'],
-  [/batterie(?!.{0,15}(?:voiture|moto|vélo|externe|cuisine))|cymbale|caisse.?claire/i, '🥁'],
+  // Exclusions élargies (audit 2026-07-19) : batteries d'appareils (téléphone,
+  // outil, lithium, mAh) — seuls les fûts restent des instruments.
+  [/batterie(?!.{0,15}(?:voiture|moto|vélo|externe|cuisine|téléphone|smartphone|iphone|ordinateur|pc\b|portable|perceuse|outil|lithium|li.?ion|rechargeable|\d+\s*mah))|cymbale|caisse.?claire/i, '🥁'],
   [/trompette|saxophone|clarinette|flûte(?!s?\s*(?:à\s*)?champagne)/i, '🎺'],
-  [/vinyle|vinyl|platine|33.?tours|45.?tours/i, '💿'],
+  [/(?<!sol\s)(?<!stickers?\s)(?<!autocollants?\s)vinyle?s?\b(?!\s*(?:adhésifs?|autocollants?))|platine|33.?tours|45.?tours/i, '💿'],  // sol/sticker vinyle = revêtement, pas un disque (audit 2026-07-19)
   // Médias physiques (2026-07-09, backlog T3) : Divertissement > Vidéo (DVD/
   // Blu-ray/VHS) et > Musique (CD/Cassettes audio) — 📀 AVANT 💽 pour que
   // "cassette vidéo" parte en Vidéo, "cassette" seule = audio par défaut.
   [/\bdvd\b|blu.?ray|\bvhs\b|cassette.?vidéo|laserdisc/i, '📀'],
   [/\bcd\b|\bk7\b|cassette|minidisc/i, '💽'],
   [/harmonica/i, '🎼'],
-  [/micro(?:phone)?\b/i, '🎤'],
+  [/micro(?:phone)?\b(?![\s-]*(?:sd\b|usb|hdmi|ondes?))/i, '🎤'],  // micro SD/USB/-ondes ≠ microphone (audit 2026-07-19)
   // Jouets
   [/lego|duplo|kapla|jeu.?de.?construction/i, '🧱'],
-  [/peluche|doudou/i, '🧸'],
+  // (peluche/doudou : remontée en tête des désambiguïsations — cf. « peluche
+  // souris » qui partait en 🖱️ Souris d'ordinateur.)
   [/poupée|barbie|poupon/i, '🪆'],
   [/puzzle/i, '🧩'],
   // playmobil : aucune feuille Vinted dédiée (0 hit dans l'arbre, vérifié
@@ -535,7 +575,7 @@ const OBJECT_ICON_RULES = [
   [/figurine|funko|playmobil/i, '🦸'],
   // Livres
   [/manga|\bbd\b|bande.?dessinée|comics/i, '📖'],
-  [/livre|roman|encyclopédie|dictionnaire/i, '📚'],
+  [/livre|romans?(?![\p{L}\p{N}])|encyclopédie|dictionnaire/iu, '📚'],  // « romantique » contenait roman (audit 2026-07-19)
   [/magazine|revue\b/i, '📰'],
   // Collection
   [/timbre/i, '📮'],
