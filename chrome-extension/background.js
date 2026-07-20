@@ -549,7 +549,39 @@ async function recoverStaleProcessingJobs(session) {
         console.warn(`[background] Filet anti-doublon (job ${job.id}) :`, String(e?.message ?? e));
         return null;
       });
-      if (existing) {
+      // ── Garde de PROPRIÉTÉ de l'URL (2026-07-20) ────────────────────────
+      // Le filet identifie l'annonce par le TITRE (findListingLinkInPage,
+      // requireTitle:true) — c'est la seule preuve disponible sur une page de
+      // liste. Or un titre n'identifie pas un article : mesuré sur le stock
+      // réel, 36 % des articles ont un homonyme, et l'inventaire contient
+      // 45 « robe », 16 « veste », 11 « chemise ». Sur homonymie, ce filet
+      // s'attribuait l'URL de l'annonce d'un AUTRE article : le job passait
+      // 'published' sans qu'aucune annonce n'existe pour lui, et il entrait
+      // dans le scan de vente pointé sur l'annonce d'autrui — classe
+      // « listing_url croisée », celle où un retrait cross-plateforme
+      // supprime la MAUVAISE annonce.
+      // On ne cherche pas à mieux identifier l'annonce côté page (le prix y
+      // est trop peu discriminant — 5 prix distincts pour 22 jobs — et
+      // inventaire_id n'existe PAS sur les pages des plateformes). On vérifie
+      // la propriété côté BASE, où inventaire_id existe vraiment.
+      const volee = existing
+        ? await urlPossedeeParUnAutreArticle(session.access_token, job, existing).catch((e) => {
+            console.warn(`[background] Vérification de propriété d'URL (job ${job.id}) :`, String(e?.message ?? e));
+            // Vérification impossible = doute. Le doute profite au
+            // ré-armement, comme partout dans ce filet : un ré-armement
+            // inutile coûte une republication différée, un vol d'URL coûte la
+            // suppression d'une annonce valide.
+            return { id: "(vérification indisponible)" };
+          })
+        : null;
+      if (existing && volee) {
+        console.warn(
+          `[background] Job ${job.id} (${job.platform}) : l'annonce ${existing} appartient DÉJÀ à un autre ` +
+          `article (job ${volee.id}) — filet anti-doublon refusé, ré-armement normal. ` +
+          "Titres homonymes : le titre seul ne prouve pas qu'il s'agit de notre annonce."
+        );
+      }
+      if (existing && !volee) {
         // Même garde que rearmBounded : ne jamais réécrire par-dessus une
         // annulation intervenue entre la lecture et cette écriture.
         const actuel = await jobStatusNow(session.access_token, job.id);
@@ -598,6 +630,36 @@ async function recoverStaleProcessingJobs(session) {
       platform_fields: cleaned,
     }).catch((e) => console.error("[background] reprise job bloqué:", String(e?.message ?? e)));
   }
+}
+
+// ── Une listing_url appartient-elle DÉJÀ à un autre article ? (2026-07-20) ───
+// Rend le job propriétaire concurrent, ou null si l'URL est libre / déjà à nous.
+// IDENTITÉ D'ARTICLE, dans cet ordre :
+//   · inventaire_id des DEUX côtés → comparaison d'id, la plus fiable ;
+//   · sinon → titre EXACT. inventaire_id est nullable et l'est réellement :
+//     ListingPreviewScreen.jsx:4038 écrit `addToStock ? currentInvId : null`,
+//     donc un article publié sans être ajouté au stock n'en a pas. Dans ce cas
+//     on retombe sur le titre — c'est la faiblesse d'origine, MAIS le sens du
+//     repli s'inverse : ici on REFUSE en cas de doute au lieu de s'attribuer
+//     l'URL.
+// PARTAGE LÉGITIME PRÉSERVÉ : publish + delete (et republication) du MÊME
+// article partagent normalement une URL — même inventaire_id, ou même titre :
+// ils ne sont jamais vus comme « un autre article ». Relevé en base au moment
+// d'écrire cette garde : 12 URL partagées par plusieurs jobs, 11 sont
+// exactement ce cas ; la 12e (ebay.fr/itm/800372232491, 2 inventaires et
+// 2 titres distincts) est l'incident de croisement d'id eBay du 19/07, déjà
+// fermé par 5d9d308 — c'est précisément ce que cette garde refuserait.
+async function urlPossedeeParUnAutreArticle(accessToken, job, url) {
+  const rows = await restRequest(
+    "cross_post_jobs?select=id,inventaire_id,title" +
+      `&listing_url=eq.${encodeURIComponent(url)}`,
+    accessToken
+  );
+  const memeArticle = (r) =>
+    r.inventaire_id != null && job.inventaire_id != null
+      ? String(r.inventaire_id) === String(job.inventaire_id)
+      : String(r.title ?? "").trim() === String(job.title ?? "").trim();
+  return (rows ?? []).find((r) => r.id !== job.id && !memeArticle(r)) ?? null;
 }
 
 // ── Filet anti-doublon : l'annonce d'un job stale existe-t-elle déjà ? ────────
