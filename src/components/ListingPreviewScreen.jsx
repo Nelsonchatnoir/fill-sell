@@ -1655,8 +1655,24 @@ const isEbayClosedList = (allowedValues, mode) => {
 // que Vinted affiche, seul le rapprochement devient tolérant.
 // Ciblé chiffre-virgule-chiffre, pas un remplacement global : un libellé qui
 // contient une virgule de ponctuation (« Noir, Blanc ») n'est pas touché.
+//
+// Préfixe « EU » des pointures ignoré À LA COMPARAISON (2026-07-20) : l'app
+// génère « EU 38.5 » (sizeShoeOptions, `EU ${half/2}`) là où Vinted liste
+// « 38,5 » / « 38.5 » SANS préfixe. Sans ça, TOUTE pointure adulte tombait en
+// « Taille — valeur hors liste », y compris les entiers sans décimale
+// (« EU 39 », « EU 42 ») — friction apparue le jour où les listes de tailles
+// ont été renseignées en base, avant quoi aucune vérification ne tournait.
+// Comme pour le séparateur : on ne touche NI la valeur générée, NI le prompt
+// generate-listing (« EU N » reste la convention interne, partagée avec les
+// tailles enfant et consommée par eBay/LBC/Beebs) — seule la comparaison
+// devient tolérante.
+// Rogné seulement devant un CHIFFRE (?=\d) et en début de chaîne : « EUR 39 »,
+// « Europe » ou un « eu » isolé ne sont pas touchés. La garde ne s'affaiblit
+// pas : « EU 99 » reste hors liste, et « EU 34.5 » reste hors liste face à la
+// liste homme (qui démarre à 38) — c'est le comportement voulu.
 const normAspectVal = s => String(s).trim().toLowerCase().normalize("NFD")
-  .replace(/[̀-ͯ]/g, "").replace(/(\d),(\d)/g, "$1.$2");
+  .replace(/[̀-ͯ]/g, "").replace(/(\d),(\d)/g, "$1.$2")
+  .replace(/^eu\s+(?=\d)/, "");
 // Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
 // « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers
 // (jamais de sous-chaîne : "S" ne matche pas "XS") : match si tous les tokens
