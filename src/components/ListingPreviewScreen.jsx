@@ -3425,9 +3425,33 @@ export default function ListingPreviewScreen({
             // re-produira la même classe de bug. Le signal à guetter est le
             // même : « Taille — valeur hors liste » sur un article correctement
             // renseigné. Remède : relever les options de cette catégorie.
-            // `condition` reste emprunté — vérifié, pas supposé : /api/v2/statuses
-            // est un endpoint GLOBAL, sans paramètre de catégorie (6 états pour
-            // tout Vinted), l'emprunt y est donc sans risque.
+            // ── `condition` : l'emprunt RESTE, mais la justification d'hier
+            // était FAUSSE (corrigée le 2026-07-20) ────────────────────────────
+            // On avait conclu « sans risque » parce que /api/v2/statuses est un
+            // endpoint GLOBAL (6 états pour tout Vinted). L'API est bien
+            // globale — mais le FORMULAIRE, lui, restreint par catégorie, et la
+            // base le prouvait déjà : « Femmes > Beauté > Soins du visage »
+            // n'accepte qu'UNE valeur (« Neuf avec étiquette ») contre 5 sur
+            // « Hommes > Accessoires > Montres ». Généraliser d'un endpoint au
+            // formulaire était l'erreur.
+            // Conséquence réelle : « Femmes > Beauté > Parfums » avait condition
+            // required et allowed_values NULL, donc empruntait les 5 valeurs —
+            // « Très bon état » passait la garde et Vinted refusait au dépôt.
+            // C'est la boucle Medik8 (cf. genericRequiredStatus l.3489) rejouée
+            // par un autre chemin, sur une catégorie atteignable par l'icône 🌸.
+            // SOURCE DE VÉRITÉ trouvée : item_upload/catalogs porte
+            // `restricted_to_status_id` par catalogue. 28 feuilles Vinted sont
+            // restreintes, TOUTES à l'id 6 = « Neuf avec étiquette » (beauté,
+            // soins, et lingerie/sous-vêtements — règle d'hygiène). 9 d'entre
+            // elles sont atteignables par nos mappings : elles ont désormais
+            // leur liste propre en base et n'empruntent plus.
+            // L'emprunt est CONSERVÉ volontairement : 27 lignes condition
+            // restent NULL sur des catégories NON restreintes, où les 5 états
+            // sont la bonne réponse. Il n'est donc pas inerte — contrairement à
+            // `size`, dont l'exclusion avait pu être retirée.
+            // ⚠️ Si Vinted restreint un jour une NOUVELLE catégorie, elle
+            // empruntera à nouveau les 5 valeurs. Le contrôle est cheap :
+            // re-balayer `restricted_to_status_id` dans item_upload/catalogs.
             const hasOpts = (r) => Array.isArray(r.allowed_values) && r.allowed_values.length > 0;
             const missingKeys = rows.filter((r) => !hasOpts(r)).map((r) => r.field_key);
             if (missingKeys.length) {
