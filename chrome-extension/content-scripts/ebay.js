@@ -1055,7 +1055,19 @@ function computeUnfilledRequired(fields, filledSpecifics, warnings = []) {
     let current = anatomy ? anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "") : "";
     if (!current && found) current = readAspectDisplayValue(found.btn);
     if (current) {
-      console.log(`[ebay] ${name}: obligatoire déjà pré-rempli par eBay ("${current}"), conservé`);
+      // Satisfait par un pré-rempli eBay, PAS par une de nos poses vérifiées
+      // (celles-là sortent en haut de boucle via filledSpecifics). Le constat
+      // reste le même — l'aspect porte une valeur, il n'est pas « unfilled »,
+      // aucun changement de gate ici — mais il n'est plus SILENCIEUX
+      // (2026-07-20) : la valeur devinée par eBay part dans le « Détail du
+      // remplissage » du job, comme les pré-remplis Leboncoin depuis f1cb67c.
+      // Pas de comparaison à la donnée produit ICI : c'est fillSpecificSafe qui
+      // l'a déjà faite et qui a écrasé si besoin. Un pré-rempli qui survit
+      // jusqu'ici est un aspect qu'AUCUN champ du job ne vise (Style,
+      // Longueur de la robe…) — il n'existe donc pas de valeur à comparer.
+      const note = `${name}: obligatoire satisfait par un pré-rempli eBay ("${current}"), aucune donnée produit ne le vise`;
+      console.log(`[ebay] ${note}`);
+      warnings.push(note);
       continue;
     }
     // PREUVE systématique : ce chemin ne produisait AUCUN dump (leçon du faux
@@ -1093,10 +1105,18 @@ async function fillSpecificSafe(labels, rawValue, warnings, { overwrite = false 
       // cliquer, on conserve la valeur d'eBay comme pour un dropdown pré-rempli.
       const staticValue = readAspectDisplayValue(found.btn);
       if (staticValue) {
-        // Affichage statique : aucun contrôle à cliquer — même en overwrite on
-        // ne PEUT pas re-poser. On le dit au lieu de conserver en silence.
+        // Affichage statique : aucun contrôle à cliquer — on ne PEUT pas
+        // re-poser, ni en overwrite ni sur le chemin normal. La divergence est
+        // donc SIGNALÉE au lieu d'être conservée en silence (2026-07-20, même
+        // principe que ci-dessous : « plus jamais silencieux »). On garde
+        // return true : l'aspect porte bien une valeur, et transformer ce cas
+        // en échec bloquerait des publications que le formulaire accepte.
         if (overwrite && normalizeFuzzy(staticValue) !== normalizeFuzzy(String(rawValue))) {
           const note = `${found.label}: réponse utilisateur "${rawValue}" non posable — affichage statique verrouillé sur "${staticValue}"`;
+          console.warn(`[ebay] ⚠️ ${note}`);
+          warnings.push(note);
+        } else if (!overwrite && !prefilledMatchesTarget(staticValue, rawValue)) {
+          const note = `${found.label}: pré-rempli eBay "${staticValue}" NON conforme à la donnée produit "${rawValue}" — affichage statique, non remplaçable`;
           console.warn(`[ebay] ⚠️ ${note}`);
           warnings.push(note);
         } else {
@@ -1133,13 +1153,34 @@ async function fillSpecificSafe(labels, rawValue, warnings, { overwrite = false 
     // donnée d'origine du job) est alors remplacée par la réponse.
     const current = readValue();
     if (current) {
-      if (!overwrite || normalizeFuzzy(current) === normalizeFuzzy(String(rawValue))) {
-        console.log(`[ebay] ${found.label}: déjà rempli ("${current}"), conservé`);
-        return true;
+      if (overwrite) {
+        // Chemin needs_user INCHANGÉ (égalité stricte) : la réponse tranchée
+        // par l'utilisateur fait foi dès qu'elle diffère de l'affiché. Ne pas
+        // y appliquer prefilledMatchesTarget — plus permissif, il conserverait
+        // « Rouge foncé » face à une réponse « Rouge » alors que l'utilisateur
+        // vient justement de trancher.
+        if (normalizeFuzzy(current) === normalizeFuzzy(String(rawValue))) {
+          console.log(`[ebay] ${found.label}: déjà rempli ("${current}"), conservé`);
+          return true;
+        }
+        const note = `${found.label}: "${current}" remplacé par la réponse utilisateur "${rawValue}"`;
+        console.warn(`[ebay] ⚠️ ${note}`);
+        warnings.push(note);
+      } else {
+        // Chemin NORMAL — porté de leboncoin.js:970-982 (2026-07-20).
+        // AVANT : `if (!overwrite) { conservé; return true; }` — la valeur
+        // devinée par eBay était gardée SANS jamais être comparée à la donnée
+        // du job, et sans warning persisté (un simple console.log).
+        if (prefilledMatchesTarget(current, rawValue)) {
+          const note = `${found.label}: pré-rempli eBay "${current}" conservé (matche "${rawValue}")`;
+          console.log(`[ebay] ${note}`);
+          warnings.push(note);
+          return true;
+        }
+        const note = `${found.label}: pré-rempli eBay "${current}" remplacé par la donnée produit "${rawValue}"`;
+        console.warn(`[ebay] ⚠️ ${note}`);
+        warnings.push(note);
       }
-      const note = `${found.label}: "${current}" remplacé par la réponse utilisateur "${rawValue}"`;
-      console.warn(`[ebay] ⚠️ ${note}`);
-      warnings.push(note);
       // Pas de return : la pose normale ci-dessous ré-écrit la valeur.
     }
 
@@ -1611,6 +1652,30 @@ function containsAsWords(hay, needle) {
   if (!needle) return false;
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
+}
+
+// ── Le pré-rempli eBay ne fait PAS foi (2026-07-20) ──────────────────────────
+// PORT LITTÉRAL de leboncoin.js:951-956, corps identique caractère pour
+// caractère. Le duplique parce que le manifest injecte chaque content script
+// SEUL (aucun module partagé entre vinted/leboncoin/ebay/beebs) : impossible
+// d'importer. Ses deux dépendances existent déjà ici à l'identique —
+// normalizeFuzzy (même chaîne exacte que leboncoin.js:1559) et containsAsWords
+// (même corps que leboncoin.js:1562) — donc le comportement est garanti
+// identique, pas seulement analogue.
+// POURQUOI : eBay pré-remplit par DÉDUCTION depuis le titre et la catégorie
+// (dit en clair l.1129). C'est structurellement la même devinette que le
+// pré-rempli Leboncoin qui avait publié une casquette Volcom en « New Era »
+// (job 8ba961f6, corrigé le 19/07 par f1cb67c). eBay était resté sur
+// l'ancienne règle « on ne ré-écrit jamais un pré-rempli » : la devinette de la
+// plateforme battait la donnée produit, en silence.
+// RÈGLE, identique à Leboncoin : conservé SEULEMENT s'il matche la donnée du
+// job ; sinon la donnée produit fait foi et l'écrase. Conservé OU remplacé, un
+// warning est PERSISTÉ dans les deux cas — plus jamais un simple console.log.
+function prefilledMatchesTarget(prefilled, rawValue) {
+  const a = normalizeFuzzy(String(prefilled ?? ""));
+  const b = normalizeFuzzy(String(rawValue ?? ""));
+  if (!a || !b) return false;
+  return a === b || containsAsWords(a, b) || containsAsWords(b, a);
 }
 
 // Cascade v2 : exact → option⊂valeur (la plus longue) → valeur⊂option (la
