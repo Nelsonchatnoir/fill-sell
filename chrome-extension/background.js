@@ -3119,10 +3119,37 @@ async function findListingLinkInPage(tabId, patternSource, title = null, { requi
           // anti-« mauvaise annonce » ne s'affaiblit pas.
           const norm = (s) => (s || "").toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
           const target = norm(wanted);
+          // MOTS DANS L'ORDRE, pas sous-chaîne contiguë (2026-07-20, job
+          // e1ad45fc). AVANT : hay.includes(target) — une recherche de
+          // sous-chaîne CONTIGUË. Un seul mot inséré au milieu du titre réel la
+          // fait échouer, même quand tous les mots cherchés sont là, dans
+          // l'ordre. Cas prouvé en live sur « Mes annonces » LBC :
+          //   job     « Casquette Volcom Stone beige »
+          //   annonce « Casquette Volcom Stone Logo Beige »   ← « Logo » inséré
+          //   includes() = false → listing_url resté NULL → bandeau « Lien
+          //   d'annonce introuvable » dans le Stock, alors que l'annonce était
+          //   bien en ligne et le lien bien présent dans la page.
+          // MAINTENANT : tous les mots du titre du job doivent apparaître dans
+          // la carte, DANS LE MÊME ORDRE RELATIF, les mots intercalés étant
+          // ignorés. La garde anti-« mauvaise annonce » NE s'affaiblit PAS :
+          //   · TOUS les mots restent exigés (aucun n'est optionnel) ;
+          //   · l'ORDRE reste exigé (« veste rouge » ne matche pas « rouge veste ») ;
+          //   · le périmètre reste la CARTE (el.closest(...)), pas la page ;
+          //   · requireTitle:true est inchangé — pas de titre reconnu, rien rendu.
+          // Bord gauche (?<![\p{L}\p{N}]) et PAS de bord droit : c'est
+          // volontaire. Le textContent des cartes LBC colle les mots entre eux
+          // (relevé réel : « …stone logo beigecasquette volcom… »), un bord
+          // droit ferait rater « beige ». Le bord gauche suffit à empêcher un
+          // mot cherché de matcher la FIN d'un autre mot. Pas d'échappement
+          // regex nécessaire : norm() ne laisse que lettres et chiffres.
+          const mots = target.split(" ").filter(Boolean);
+          const ordre = mots.length
+            ? new RegExp(mots.map((m) => `(?<![\\p{L}\\p{N}])${m}`).join("[\\s\\S]*?"), "u")
+            : null;
           for (const { url, el } of matches) {
             const scope = el.closest("article, li, [class*='item'], [class*='card']") ?? el;
             const hay = norm((el.getAttribute("title") || "") + " " + el.textContent + " " + scope.textContent);
-            if (target && hay.includes(target)) return done(url);
+            if (ordre && ordre.test(hay)) return done(url);
           }
         }
         // Page de liste : pas de titre reconnu = on ne rend RIEN. Mieux vaut un
