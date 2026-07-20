@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // shared.js est un module pur (aucun import, aucune API navigateur), le
 // bundler du CLI Supabase l'embarque au deploy comme n'importe quel import
 // relatif. Même signature que côté app : detectObjectIcon(titre, description, type).
-import { detectObjectIcon } from "../../../src/utils/shared.js";
+import { detectObjectIcon, ALL_OBJECT_ICONS } from "../../../src/utils/shared.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -503,6 +503,60 @@ serve(async (req) => {
     const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const BUCKET = "listing-photos";
 
+    // ── category_icon (chantier 2026-07-20) ────────────────────────────────
+    // EN PLUS des titres/descriptions : une classification directe de l'objet
+    // principal parmi la liste FERMÉE des icônes du système (ALL_OBJECT_ICONS,
+    // importée de shared.js — jamais une valeur inventée). But : au moment de
+    // la génération, la catégorisation ne dépend plus UNIQUEMENT de
+    // detectObjectIcon (regex mots-clés sur texte libre). Micro-appel ISOLÉ,
+    // même philosophie que resolve_genre/resolve_aspects. Garanties :
+    //   - valeur hors liste, absente, contexte vide ou IA en échec → null →
+    //     le champ est OMIS de la réponse → le client retombe silencieusement
+    //     sur detectObjectIcon (comportement actuel, zéro régression) ;
+    //   - lancé MAINTENANT, attendu seulement à la fin (chevauche la retouche
+    //     photo et les 4 appels de génération) → coût wall-clock ~nul ;
+    //   - n'échoue jamais la génération : toute exception est avalée.
+    // detectObjectIcon reste le filet de secours et n'est pas modifié.
+    const ICON_SET = new Set<string>(ALL_OBJECT_ICONS as string[]);
+    const classifyCategoryIcon = async (): Promise<string | null> => {
+      const ctx = [
+        item.marque && `Marque: ${item.marque}`,
+        item.titre && `Article: ${item.titre}`,
+        item.type && `Type: ${item.type}`,
+        item.description && `Description: ${item.description}`,
+      ].filter(Boolean).join("\n");
+      if (!ctx) return null;
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 20,
+            system: `Tu classes un article d'occasion en choisissant l'emoji qui représente le mieux son OBJET PRINCIPAL, STRICTEMENT parmi cette liste (aucune autre valeur n'est acceptée) : ${(ALL_OBJECT_ICONS as string[]).join(" ")}. Choisis l'objet lui-même, pas un accessoire inclus. Réponds UNIQUEMENT du JSON valide {"icon":"<un emoji exact de la liste>"} ; si aucun ne convient clairement, {"icon":null}.`,
+            messages: [{ role: "user", content: `Quel emoji pour cet article ?\n${ctx}` }],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text: string = data.content?.[0]?.text ?? "";
+          const m = text.match(/"icon"\s*:\s*"([^"]+)"/);
+          const icon = m?.[1];
+          if (icon && ICON_SET.has(icon)) return icon;
+        } else {
+          console.error("[generate-listing] category_icon:", await res.text());
+        }
+      } catch (e) {
+        console.error("[generate-listing] category_icon exception:", e);
+      }
+      return null;
+    };
+    const categoryIconPromise = classifyCategoryIcon();
+
     // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
     let processedPhotos: Array<{ type: string; url: string }>;
 
@@ -732,11 +786,16 @@ serve(async (req) => {
       }
     }
 
+    // category_icon : attendu ICI seulement (il chevauchait la retouche photo
+    // et la génération). null → champ OMIS → fallback client detectObjectIcon.
+    const category_icon = await categoryIconPromise;
+
     // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
     return json({
       photos: processedPhotos,
       platforms: platformListings,
       price: item.prix_vente ?? body_price ?? null,
+      ...(category_icon ? { category_icon } : {}),
     });
 
   } catch (e) {

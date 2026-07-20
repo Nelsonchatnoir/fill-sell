@@ -7,7 +7,7 @@ import PepiteIcon from "./PepiteIcon";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon } from "../utils/shared";
+import { detectObjectIcon, ALL_OBJECT_ICONS } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
@@ -150,7 +150,18 @@ function genericFieldToSharedKey(platform, key) {
 //     'Homme') résout parfaitement : le genre était bon, l'icône était fausse.
 // Règle : on détecte sur la SOURCE française et stable (l'article), pas sur la
 // prose réécrite par l'IA pour chaque plateforme.
-function resolveArticleIcon({ initialListing, edited, pf }) {
+// Set des icônes valides (les 164 de shared.js) : garde-fou pour toute icône
+// d'origine EXTERNE (category_icon renvoyé par generate-listing). Une valeur
+// hors de ce set est ignorée → fallback detectObjectIcon.
+const VALID_OBJECT_ICONS = new Set(ALL_OBJECT_ICONS);
+
+function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
+  // Icône IA (category_icon de generate-listing) — PRIORITAIRE uniquement à la
+  // génération initiale et tant qu'elle est valide. L'appelant ne la passe QUE
+  // si le titre/la description n'ont pas été édités depuis la génération ; dès
+  // la moindre retouche manuelle il passe aiIcon=null et l'on repasse par
+  // detectObjectIcon ci-dessous — exactement le comportement historique.
+  if (aiIcon && VALID_OBJECT_ICONS.has(aiIcon)) return aiIcon;
   // Copies FR seulement — jamais eBay (traduite en anglais).
   const frTitle =
     initialListing?.titre ??
@@ -2902,14 +2913,41 @@ export default function ListingPreviewScreen({
   // Icône de l'article — MÊME résolution que missingSharedFields et que les
   // mappings catalogue (source FR, jamais la copie eBay anglaise). Sert au
   // filtrage d'affichage des champs par catégorie (chantier 2).
+  // ── Icône IA active (chantier category_icon, 2026-07-20) ──────────────────
+  // category_icon renvoyé par generate-listing (rangé dans platformListings) —
+  // adopté comme icône de départ de l'article, mais SEULEMENT :
+  //   1. s'il est présent et fait partie des 164 icônes valides ;
+  //   2. tant que le titre ET la description de CHAQUE copie générée n'ont pas
+  //      été édités depuis la génération. platformListings.platforms[p] conserve
+  //      le texte GÉNÉRÉ (jamais muté : les éditions vivent dans `edited`), donc
+  //      la comparaison edited[p] ↔ platformListings.platforms[p] dit si l'on
+  //      est encore « vierge ». Dès la 1re retouche manuelle → null → toute la
+  //      résolution catégorie repasse par detectObjectIcon (comportement
+  //      historique intact). Un ancien run sans category_icon → null d'office.
+  // Le pristine se dérive de platformListings (déjà persisté dans le brouillon),
+  // donc un remount d'onglet conserve le bon comportement sans état ajouté.
+  const activeAiIcon = useMemo(() => {
+    const ai = platformListings?.category_icon;
+    if (!ai || !VALID_OBJECT_ICONS.has(ai)) return null;
+    const gen = platformListings?.platforms ?? {};
+    for (const p of Object.keys(gen)) {
+      const e = edited[p];
+      if (!e) continue; // plateforme non éditée à l'écran : n'invalide pas
+      if ((e.title ?? "") !== (gen[p]?.title ?? "") ||
+          (e.description ?? "") !== (gen[p]?.description ?? "")) return null;
+    }
+    return ai;
+  }, [platformListings, edited]);
+
   const articleIcon = useMemo(() => {
     const src = edited.leboncoin ?? edited.vinted ?? edited.ebay ?? edited.beebs ?? null;
     return resolveArticleIcon({
       initialListing,
       edited,
       pf: src?.platform_fields ?? {},
+      aiIcon: activeAiIcon,
     });
-  }, [edited, initialListing]);
+  }, [edited, initialListing, activeAiIcon]);
 
   // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
   // leurs effets de chargement restent plus bas, à côté des encarts bleus
@@ -2931,6 +2969,7 @@ export default function ListingPreviewScreen({
       initialListing,
       edited,
       pf: catSrc?.platform_fields ?? {},
+      aiIcon: activeAiIcon,
     });
     const catPath = getLbcCategoryPath(catIcon);
     const lbcShoes = catPath?.[0] === "Mode" && catPath?.[1] === "Chaussures";
@@ -3031,7 +3070,7 @@ export default function ListingPreviewScreen({
       if (!canonicalEmpty && !copyEmpty) return null;
       return { key, platforms: guarded };
     }).filter(Boolean);
-  }, [sharedFields, selected, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog]);
+  }, [sharedFields, selected, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog, activeAiIcon]);
 
   const missingSharedFields = useMemo(
     () => missingSharedFieldsDetailed.map(f => f.key),
@@ -3078,12 +3117,12 @@ export default function ListingPreviewScreen({
   const vintedGenreBlocked = useMemo(() => {
     if (!selected.has("vinted") || !edited.vinted) return false;
     const pf = edited.vinted.platform_fields ?? {};
-    const icon = resolveArticleIcon({ initialListing, edited, pf });
+    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
     if (!vintedGenreRequired(icon)) return false;
     const g = pf.genre;
     if (!g || g === "Mixte") return false;
     return !getVintedCategoryPath(icon, g);
-  }, [selected, edited, initialListing]);
+  }, [selected, edited, initialListing, activeAiIcon]);
 
   // ── Aspects obligatoires eBay AVANT publication (B1, 2026-07-16) ──────────
   // Cas réel déclencheur : « Longueur de la robe » (obligatoire sur Robes,
@@ -3107,7 +3146,7 @@ export default function ListingPreviewScreen({
   const ebayPreviewCategoryId = useMemo(() => {
     if (!selected.has("ebay") || !edited.ebay) return null;
     const pf = edited.ebay.platform_fields ?? {};
-    const icon = resolveArticleIcon({ initialListing, edited, pf });
+    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
     const direct = getEbayCategoryId(icon, pf.genre);
     if (direct) return direct;
     // TROU PROUVÉ (job casquette 47917f97, cat. 52365) : genre de la copie
@@ -3121,7 +3160,7 @@ export default function ListingPreviewScreen({
     // aura réellement.
     const secours = ebayGenreFallback();
     return secours ? (getEbayCategoryId(icon, secours) ?? null) : null;
-  }, [selected, edited, initialListing]);
+  }, [selected, edited, initialListing, activeAiIcon]);
   useEffect(() => {
     if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); return; }
     let alive = true;
@@ -3393,7 +3432,7 @@ export default function ListingPreviewScreen({
     for (const platform of ["vinted", "leboncoin", "beebs"]) {
       if (!selected.has(platform) || !edited[platform]) continue;
       const pf = edited[platform].platform_fields ?? {};
-      const icon = resolveArticleIcon({ initialListing, edited, pf });
+      const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
       let path = null;
       if (platform === "vinted") path = getVintedCategoryPath(icon, pf.genre);
       if (platform === "leboncoin") path = getLbcCategoryPath(icon);
@@ -3403,7 +3442,7 @@ export default function ListingPreviewScreen({
       if (Array.isArray(path) && path.length) keys[platform] = path.join(" > ");
     }
     return keys;
-  }, [selected, edited, initialListing]);
+  }, [selected, edited, initialListing, activeAiIcon]);
 
   // ⚠️ DÉPENDANCE PAR SIGNATURE, PAS PAR IDENTITÉ (fix boucle 2026-07-16) :
   // genericCategoryKeys est un OBJET recalculé à chaque rendu (useMemo sur
@@ -3862,7 +3901,7 @@ export default function ListingPreviewScreen({
       // plateforme avant de publier s'il n'est pas d'accord.
       const iconFor = (platform) => {
         const pf = edited[platform]?.platform_fields ?? {};
-        return resolveArticleIcon({ initialListing, edited, pf });
+        return resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
       };
       const genreUnresolved = (platform) => {
         if (!selected.has(platform)) return false;
@@ -3913,7 +3952,7 @@ export default function ListingPreviewScreen({
             pf[field.key] = defaultConditionFor(field);
         }
         if (platform === "leboncoin") {
-          const icon = resolveArticleIcon({ initialListing, edited, pf });
+          const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
           const lbcPath = getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
@@ -3972,7 +4011,7 @@ export default function ListingPreviewScreen({
           // règles que les tuiles Stock/Ventes) + genre IA/corrigé. null →
           // pas de categoryPath → l'extension marque le job "failed" avec un
           // message explicite (fallback volontaire, cf. vintedCategories.js).
-          const icon = resolveArticleIcon({ initialListing, edited, pf });
+          const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
           // Genre vide/Mixte sur une catégorie qui l'exige → genre auto-résolu
           // (cf. bloc autoGenre) : le job part avec un rayon réel au lieu
           // d'être condamné au fallback.
@@ -4003,7 +4042,7 @@ export default function ListingPreviewScreen({
           // valeurs du stepper (Femme/Homme/Enfant) passent TELLES QUELLES
           // — eBay a un vrai rayon "Enfant : unisexe" (contrairement à
           // Vinted/Beebs) ; seul Mixte reste sans rayon (sauf 🌸 parfums).
-          const icon = resolveArticleIcon({ initialListing, edited, pf });
+          const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
           // Même auto-résolution que Vinted — sauf si le genre actuel résout
           // déjà un rayon (🌸+Mixte = Parfums mixtes, rayon réel).
           if (autoGenre && ebayGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")
@@ -4034,7 +4073,7 @@ export default function ListingPreviewScreen({
           // tête du fichier) — pas de blocage dur ici, comme eBay : le flag
           // beebsGenreRequired est posé pour que l'extension retourne un
           // needsUser explicite plutôt qu'un échec silencieux.
-          const icon = resolveArticleIcon({ initialListing, edited, pf });
+          const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
           // Même auto-résolution que Vinted/eBay. Indispensable ici : l'arbre
           // Mode Beebs est genré jusqu'aux accessoires (montres, bijoux,
           // sacs…) — sans genre, AUCUNE montre ne pouvait jamais partir

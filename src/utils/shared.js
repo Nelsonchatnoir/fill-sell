@@ -675,6 +675,21 @@ export function detectObjectIcon(titre, description, type){
   return key?CAT_DEFAULT_ICONS[key]:CAT_DEFAULT_ICONS['Autre'];
 }
 
+// Liste PLATE et dédupliquée de TOUTES les icônes objet que le système
+// reconnaît : les icônes d'OBJECT_ICON_RULES + les défauts par catégorie
+// (CAT_DEFAULT_ICONS). UNIQUE enum autorisé pour toute source EXTERNE
+// d'icône — en particulier le category_icon que generate-listing peut
+// désormais renvoyer : une valeur hors de cette liste est rejetée et l'on
+// retombe silencieusement sur detectObjectIcon. detectObjectIcon lui-même
+// reste INCHANGÉ et reste le filet de secours ; cette constante ne fait que
+// l'exposer, elle ne modifie aucun comportement de détection.
+export const ALL_OBJECT_ICONS = [
+  ...new Set([
+    ...OBJECT_ICON_RULES.map(r => r[1]),
+    ...Object.values(CAT_DEFAULT_ICONS),
+  ]),
+];
+
 // ── Design 2026 (Lens / navbar) : CSS des cards de liste (maquette validée).
 // Partagé entre StockTab (.stock-v2) et VentesTab (.ventes-v2) — même tokens,
 // même structure row [tuile | infos | droite], mêmes filtres à pastilles.
