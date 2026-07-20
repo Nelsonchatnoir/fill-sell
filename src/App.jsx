@@ -2799,7 +2799,23 @@ export default function App({ loginOnly = false }){
   //     CRÉÉE après la suppression de l'article.
   // ⚠️ L'ORDRE EST IMPOSÉ par ce SET NULL : tout ce qui dépend de inventaire_id
   // se fait AVANT le delete. Après, les jobs concernés sont introuvables.
+  // Inventaire EXHAUSTIF des statuts — contrainte cross_post_jobs_status_check
+  // relevée en base, 9 valeurs, aucune autre possible :
+  //   pending · processing · needs_user   -> non terminaux, annulés ici
+  //   published                            -> l'annonce vit : on arme un retrait
+  //   sold · failed · cancelled · deleted  -> terminaux, rien à faire
+  //   dry_run_completed                    -> TERMINAL par conception
+  //     (background.js:1010-1020 : « statut TERMINAL, PAS de ré-armement en
+  //      pending » — sinon le job repartait à chaque cron)
+  // EN VOL = distribué ou en cours d'exécution. Sert à repérer un retrait déjà
+  // lancé (un job needs_user, lui, n'avance pas tout seul).
   const ACTIVE_JOB_STATUSES=['pending','processing'];
+  // À ANNULER = tout ce qui n'est pas terminal. needs_user inclus (2026-07-20) :
+  // il ne peut rien publier seul (get-pending-jobs ne distribue que 'pending'),
+  // mais l'article supprimé emporte la ligne de Stock qui portait le bouton de
+  // réponse — le job deviendrait une ligne morte que PLUS PERSONNE ne peut
+  // résoudre. On le clôt proprement plutôt que de le laisser en suspens.
+  const CANCELLABLE_JOB_STATUSES=['pending','processing','needs_user'];
   // Lit l'état cross-post d'un article. N'écrit RIEN.
   async function buildDeletePlan(id){
     const{data,error}=await supabase.from('cross_post_jobs')
@@ -2820,10 +2836,10 @@ export default function App({ loginOnly = false }){
       const prec=parPlateforme[j.platform];
       if(!prec||Date.parse(j.created_at||0)>Date.parse(prec.created_at||0))parPlateforme[j.platform]=j;
     }
-    // À annuler : les PUBLISH encore actifs. Les delete actifs sont épargnés
-    // (cf. ci-dessus). needs_user est volontairement hors périmètre : il n'est
-    // pas distribué par get-pending-jobs, il ne peut donc rien publier seul.
-    const aAnnuler=jobs.filter(j=>j.action==='publish'&&ACTIVE_JOB_STATUSES.includes(j.status));
+    // À annuler : les PUBLISH non terminaux, needs_user compris. Les delete
+    // actifs restent épargnés (cf. ci-dessus : les annuler laisserait l'annonce
+    // en ligne).
+    const aAnnuler=jobs.filter(j=>j.action==='publish'&&CANCELLABLE_JOB_STATUSES.includes(j.status));
     return{online:Object.values(parPlateforme),aAnnuler,retraitsEnCours:[...retraitsEnCours]};
   }
   // Exécute le plan PUIS supprime. Unique point d'écriture — les 4 chemins de
@@ -2883,11 +2899,16 @@ export default function App({ loginOnly = false }){
             </div>
           </div>
         )}
-        {n>0&&(
-          <div>{lang==='fr'
-            ?`${n} publication${n>1?'s':''} en cours ${n>1?'seront annulées':'sera annulée'}.`
-            :`${n} pending publication${n>1?'s':''} will be cancelled.`}</div>
-        )}
+        {n>0&&(()=>{
+          // Plateformes des jobs annulés — nommées, pas juste comptées : un
+          // « 2 publications annulées » sans dire OÙ n'aide pas à décider.
+          const noms=[...new Set(plan.aAnnuler.map(j=>PLATEFORME_LABELS[j.platform]||j.platform))];
+          return(
+            <div>{lang==='fr'
+              ?`${n} publication${n>1?'s':''} en cours ou en attente ${n>1?'seront annulées':'sera annulée'} (${noms.join(', ')}).`
+              :`${n} publication${n>1?'s':''} in progress or awaiting input will be cancelled (${noms.join(', ')}).`}</div>
+          );
+        })()}
         {plan.retraitsEnCours?.length>0&&(
           <div style={{marginTop:6,opacity:0.85}}>{lang==='fr'
             ?`Retrait déjà en cours sur ${plan.retraitsEnCours.map(p=>PLATEFORME_LABELS[p]||p).join(', ')} — laissé tel quel.`
