@@ -2786,16 +2786,135 @@ export default function App({ loginOnly = false }){
     await fetchAll(user.id);
   }
 
-  function delItem(id){
-    const item=items.find(i=>i.id===id);
-    if(item&&(item.statut==='vendu'||item.sell!=null)){
-      setDeleteConfirm({type:'soldItem',item});
-    }else{
-      (async()=>{
-        await supabase.from('inventaire').delete().eq('id',id);
-        await fetchAll(user.id);
-      })();
+  // ── Suppression d'un article : retrait des annonces AVANT le delete ─────────
+  // (2026-07-20) TROU CORRIGÉ : les 4 chemins de suppression faisaient un
+  // `delete` NU sur inventaire. Rien n'était retiré des plateformes, aucun job
+  // n'était annulé — et la FK cross_post_jobs_inventaire_id_fkey est en
+  // ON DELETE **SET NULL** (relevé en base) : le lien inventaire_id→jobs est
+  // EFFACÉ par le delete. D'où deux conséquences vécues comme un trou :
+  //   · les annonces restaient EN LIGNE et devenaient inatteignables depuis
+  //     l'app (la ligne de stock n'existe plus, le lien vers ses jobs non plus) ;
+  //   · un job 'pending' survivait et était re-distribué par get-pending-jobs
+  //     (index.ts:89-92 ne filtre QUE sur status) → une annonce pouvait être
+  //     CRÉÉE après la suppression de l'article.
+  // ⚠️ L'ORDRE EST IMPOSÉ par ce SET NULL : tout ce qui dépend de inventaire_id
+  // se fait AVANT le delete. Après, les jobs concernés sont introuvables.
+  const ACTIVE_JOB_STATUSES=['pending','processing'];
+  // Lit l'état cross-post d'un article. N'écrit RIEN.
+  async function buildDeletePlan(id){
+    const{data,error}=await supabase.from('cross_post_jobs')
+      .select('id, platform, action, status, listing_url, title, created_at')
+      .eq('user_id',user.id).eq('inventaire_id',id);
+    if(error)throw new Error(error.message);
+    const jobs=data??[];
+    // Un retrait déjà armé fait DÉJÀ le travail : ne pas le ré-armer, ne pas
+    // l'annuler (l'annuler laisserait l'annonce en ligne).
+    const retraitsEnCours=new Set(jobs.filter(j=>j.action==='delete'&&ACTIVE_JOB_STATUSES.includes(j.status)).map(j=>j.platform));
+    // Annonce en ligne = job publish 'published' LE PLUS RÉCENT de la
+    // plateforme, avec SON PROPRE listing_url (leçon listing_url croisée :
+    // jamais de delete sur l'URL d'un autre job).
+    const parPlateforme={};
+    for(const j of jobs){
+      if(j.action!=='publish'||j.status!=='published'||!j.listing_url)continue;
+      if(retraitsEnCours.has(j.platform))continue;
+      const prec=parPlateforme[j.platform];
+      if(!prec||Date.parse(j.created_at||0)>Date.parse(prec.created_at||0))parPlateforme[j.platform]=j;
     }
+    // À annuler : les PUBLISH encore actifs. Les delete actifs sont épargnés
+    // (cf. ci-dessus). needs_user est volontairement hors périmètre : il n'est
+    // pas distribué par get-pending-jobs, il ne peut donc rien publier seul.
+    const aAnnuler=jobs.filter(j=>j.action==='publish'&&ACTIVE_JOB_STATUSES.includes(j.status));
+    return{online:Object.values(parPlateforme),aAnnuler,retraitsEnCours:[...retraitsEnCours]};
+  }
+  // Exécute le plan PUIS supprime. Unique point d'écriture — les 4 chemins de
+  // suppression passent tous par ici, aucune logique dupliquée.
+  async function performItemDeletion(item,plan,{alsoDeleteSale=false}={}){
+    const p=plan??{online:[],aAnnuler:[]};
+    // 1. Armer les retraits — MÊME insert que le retrait ciblé du Stock
+    //    (StockTab.jsx:752-756), y compris listing_url venu du job publish
+    //    lui-même. Ces jobs delete perdront leur inventaire_id au delete
+    //    (SET NULL) : sans conséquence, l'extension ne lit que platform +
+    //    listing_url (DELETE_TARGETS, background.js).
+    if(p.online.length){
+      const rows=p.online.map(pub=>({
+        user_id:user.id,inventaire_id:item.id,platform:pub.platform,
+        action:'delete',status:'pending',photo_option:'original',
+        title:pub.title||item.title,listing_url:pub.listing_url,platform_fields:{},
+      }));
+      const{error}=await supabase.from('cross_post_jobs').insert(rows);
+      if(error)throw new Error(error.message);
+    }
+    // 2. Annuler les publish encore actifs. 'cancelled' = statut d'annulation
+    //    déjà utilisé ailleurs (cancelPublishAfterDelete, flux vente) — pas un
+    //    nouveau vocabulaire. Ciblage par ids relevés AVANT l'insert ci-dessus :
+    //    les retraits qu'on vient d'armer ne sont jamais annulés par ce update.
+    if(p.aAnnuler.length){
+      const{error}=await supabase.from('cross_post_jobs')
+        .update({status:'cancelled',error:lang==='fr'?"Annulé : l'article a été supprimé du stock":'Cancelled: the item was deleted from stock'})
+        .in('id',p.aAnnuler.map(j=>j.id));
+      if(error)throw new Error(error.message);
+    }
+    // 3. SEULEMENT MAINTENANT
+    await supabase.from('inventaire').delete().eq('id',item.id);
+    if(alsoDeleteSale){
+      const t=item?.title?.toLowerCase().trim();
+      const ms=sales.find(s=>s.title?.toLowerCase().trim()===t);
+      if(ms)await supabase.from('ventes').delete().eq('id',ms.id);
+    }
+    await fetchAll(user.id);
+  }
+  // Encart « ce qui va se passer », partagé par les deux modales de suppression
+  // — la liste exacte des plateformes retirées et le nombre de jobs annulés.
+  const PLATEFORME_LABELS={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs'};
+  function renderCrossPostConsequences(plan){
+    if(!plan||(!plan.online?.length&&!plan.aAnnuler?.length&&!plan.retraitsEnCours?.length))return null;
+    const n=plan.aAnnuler?.length??0;
+    return(
+      <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:14,padding:"12px 14px",marginBottom:16,fontSize:12.5,lineHeight:1.5,color:"#7C2D12"}}>
+        {plan.online?.length>0&&(
+          <div style={{marginBottom:plan.aAnnuler?.length?6:0}}>
+            {lang==='fr'?'Annonces en ligne qui seront retirées :':'Live listings that will be removed:'}
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>
+              {plan.online.map(p=>(
+                <span key={p.platform} style={{background:"#fff",border:"1px solid #FED7AA",borderRadius:99,padding:"3px 9px",fontWeight:700}}>
+                  {PLATEFORME_LABELS[p.platform]||p.platform}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {n>0&&(
+          <div>{lang==='fr'
+            ?`${n} publication${n>1?'s':''} en cours ${n>1?'seront annulées':'sera annulée'}.`
+            :`${n} pending publication${n>1?'s':''} will be cancelled.`}</div>
+        )}
+        {plan.retraitsEnCours?.length>0&&(
+          <div style={{marginTop:6,opacity:0.85}}>{lang==='fr'
+            ?`Retrait déjà en cours sur ${plan.retraitsEnCours.map(p=>PLATEFORME_LABELS[p]||p).join(', ')} — laissé tel quel.`
+            :`Removal already running on ${plan.retraitsEnCours.map(p=>PLATEFORME_LABELS[p]||p).join(', ')} — left as is.`}</div>
+        )}
+      </div>
+    );
+  }
+  // Porte d'entrée COMMUNE aux 4 chemins. Décide : suppression directe (aucune
+  // annonce, aucun job actif — comportement d'avant, inchangé) ou confirmation.
+  async function delItem(id){
+    const item=items.find(i=>i.id===id);
+    if(!item){await supabase.from('inventaire').delete().eq('id',id);await fetchAll(user.id);return;}
+    let plan=null;
+    try{plan=await buildDeletePlan(id);}
+    catch(e){
+      // Lecture impossible : on ne supprime PAS à l'aveugle (ce serait
+      // re-créer le trou). L'utilisateur retentera.
+      console.error('[delItem] plan:',e.message);
+      setDeleteConfirm({type:'planError',item});
+      return;
+    }
+    const aDesConsequences=plan.online.length>0||plan.aAnnuler.length>0;
+    const estVendu=item.statut==='vendu'||item.sell!=null;
+    if(estVendu){setDeleteConfirm({type:'soldItem',item,plan});return;}
+    if(aDesConsequences){setDeleteConfirm({type:'itemListings',item,plan});return;}
+    await performItemDeletion(item,plan);
   }
 
   async function addSale(){
@@ -3746,10 +3865,21 @@ export default function App({ loginOnly = false }){
       await fetchAll(user.id);
     },
     deleteItem:(id)=>delItem(id),
+    // « Force » = saute la confirmation VENTE (son rôle d'origine, chemin
+    // vocal). Ne saute PAS le retrait des annonces : supprimer en silence un
+    // article encore en ligne laisserait exactement les annonces orphelines
+    // qu'on corrige. Aucune annonce ni job actif → suppression directe, comme
+    // avant. Sinon la modale s'ouvre : c'est le seul endroit où l'utilisateur
+    // peut décider, et une commande vocale ne peut pas trancher ça seule.
     deleteItemForce:async(id)=>{
-      await supabase.from('inventaire').delete().eq('id',id);
+      const item=items.find(i=>i.id===id);
+      if(!item){await supabase.from('inventaire').delete().eq('id',id);await fetchAll(user.id);return;}
+      let plan=null;
+      try{plan=await buildDeletePlan(id);}
+      catch(e){console.error('[deleteItemForce] plan:',e.message);setDeleteConfirm({type:'planError',item});return;}
+      if(plan.online.length||plan.aAnnuler.length){setDeleteConfirm({type:'itemListings',item,plan});return;}
+      await performItemDeletion(item,plan);
       setItems(prev=>prev.filter(i=>i.id!==id));
-      await fetchAll(user.id);
     },
     fetchAll:()=>fetchAll(user.id),
     updateItem:async(id,fields)=>{
@@ -5191,21 +5321,17 @@ export default function App({ loginOnly = false }){
                     {it.emplacement&&<span style={{background:"#F3F4F6",color:"#374151",borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700,border:"1px solid #E5E7EB"}}>📍 {it.emplacement}</span>}
                   </div>);})()}
                 </div>
+                {renderCrossPostConsequences(deleteConfirm.plan)}
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <button onClick={async()=>{
-                    await supabase.from('inventaire').delete().eq('id',deleteConfirm.item.id);
-                    await fetchAll(user.id);
+                    await performItemDeletion(deleteConfirm.item,deleteConfirm.plan);
                     setDeleteConfirm(null);
                   }} style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     {lang==='fr'?'📦 Supprimer l\'article uniquement':'📦 Delete item only'}
                     <div style={{fontSize:11,fontWeight:400,color:UI.mute2,marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
                   </button>
                   <button onClick={async()=>{
-                    const title=deleteConfirm.item?.title?.toLowerCase().trim();
-                    const matchingSale=sales.find(s=>s.title?.toLowerCase().trim()===title);
-                    await supabase.from('inventaire').delete().eq('id',deleteConfirm.item.id);
-                    if(matchingSale)await supabase.from('ventes').delete().eq('id',matchingSale.id);
-                    await fetchAll(user.id);
+                    await performItemDeletion(deleteConfirm.item,deleteConfirm.plan,{alsoDeleteSale:true});
                     setDeleteConfirm(null);
                   }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     {lang==='fr'?'🗑️ Supprimer et annuler le profit':'🗑️ Delete and remove profit'}
@@ -5215,6 +5341,44 @@ export default function App({ loginOnly = false }){
                     {lang==='fr'?'Annuler':'Cancel'}
                   </SecondaryButton>
                 </div>
+              </>
+            )}
+            {deleteConfirm.type==='itemListings'&&(
+              <>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:16,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?`Cet article est encore présent sur des plateformes.`
+                    :`This item is still live on marketplaces.`}
+                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                </div>
+                {renderCrossPostConsequences(deleteConfirm.plan)}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <button onClick={async()=>{
+                    await performItemDeletion(deleteConfirm.item,deleteConfirm.plan);
+                    setDeleteConfirm(null);
+                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                    {lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete'}
+                    <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>
+                      {lang==='fr'?'Le retrait part en tâche de fond, puis l\'article est supprimé':'Removal runs in the background, then the item is deleted'}
+                    </div>
+                  </button>
+                  <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
+                    {lang==='fr'?'Annuler':'Cancel'}
+                  </SecondaryButton>
+                </div>
+              </>
+            )}
+            {deleteConfirm.type==='planError'&&(
+              <>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?`Impossible de vérifier si cet article a des annonces en ligne. Rien n'a été supprimé — réessaie dans un instant.`
+                    :`Couldn't check whether this item has live listings. Nothing was deleted — try again shortly.`}
+                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                </div>
+                <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10,width:"100%"}}>
+                  {lang==='fr'?'Fermer':'Close'}
+                </SecondaryButton>
               </>
             )}
             {deleteConfirm.type==='sale'&&(
