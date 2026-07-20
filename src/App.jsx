@@ -4513,6 +4513,7 @@ export default function App({ loginOnly = false }){
           <StockTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
+            extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             iapProduct={iapProduct} iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}

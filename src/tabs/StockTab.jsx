@@ -444,6 +444,95 @@ function computeRemovalInfo(jobsAll) {
 // la fois. Même squelette visuel que NeedsUserModal : voile ink 45 %, carte
 // paper #F6F5F1, coins 16, bordure #E7E3D8, police héritée (Space Grotesk),
 // poids ≤ 700 ; rouge #8C2F28/#FBEDEC réservé à l'action destructive.
+// ── Panneau « où en est cette publication ? » (2026-07-20) ───────────────────
+// Ouvert au tap sur le badge « En cours… ». Même squelette visuel que
+// RemovePlatformsModal (voile ink 45 %, carte F6F5F1) — aucun nouveau système.
+// Ne montre QUE des faits déjà en base : statut du job, ancienneté, message
+// d'erreur existant. Le diagnostic global vient du heartbeat de l'extension.
+// HORS SCOPE ASSUMÉ : le détail étape par étape du loader de publication
+// (FILLSELL_PROGRESS, background.js:253) ne remonte JAMAIS en base — il n'est
+// émis que vers le popup, et seulement sur PUBLISH_NOW. L'afficher ici
+// demanderait de persister la progression à chaque étape ; reporté.
+function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose }) {
+  const fr = lang !== "en";
+  const diag = diagnostiquerExtension(extensionStatus, lang);
+  const TONS = {
+    vert:   { bg:"#ECFDF5", bord:"#A7F3D0", texte:"#047857" },
+    orange: { bg:"#FFF7ED", bord:"#FED7AA", texte:"#7C2D12" },
+    rouge:  { bg:"#FEF2F2", bord:"#FECACA", texte:"#B91C1C" },
+  };
+  const ton = TONS[diag.ton];
+  const LIB_STATUT = {
+    pending:    fr ? "En attente"        : "Queued",
+    processing: fr ? "Publication…"      : "Publishing…",
+    needs_user: fr ? "À compléter"       : "Needs input",
+  };
+  // Un seul job par plateforme : le plus récent — même règle que les badges.
+  const parPlateforme = {};
+  for (const j of jobs) {
+    const cur = parPlateforme[j.platform];
+    if (!cur || Date.parse(j.created_at || 0) > Date.parse(cur.created_at || 0)) parPlateforme[j.platform] = j;
+  }
+  const lignes = Object.values(parPlateforme)
+    .filter(j => ["pending", "processing", "needs_user"].includes(j.status));
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position:"fixed", inset:0, background:"rgba(16,32,27,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background:"#F6F5F1", borderRadius:16, border:`1px solid ${NU_T.border}`, padding:20, width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)", fontFamily:"inherit" }}
+      >
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:NU_T.mute, marginBottom:6 }}>
+          {fr ? "Où en est la publication" : "Publishing status"}
+        </div>
+        <div style={{ fontSize:15, fontWeight:700, color:NU_T.ink, marginBottom:14 }}>{item.title}</div>
+
+        <div style={{ background:ton.bg, border:`1px solid ${ton.bord}`, borderRadius:12, padding:"10px 12px", marginBottom:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:ton.texte, marginBottom:3 }}>{diag.titre}</div>
+          <div style={{ fontSize:12.5, lineHeight:1.5, color:ton.texte }}>{diag.detail}</div>
+        </div>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {lignes.map(j => {
+            const enPause = pausedSet?.has(j.platform);
+            const depuis = formatDepuis(Date.parse(j.created_at || 0), lang);
+            return (
+              <div key={j.platform} style={{ background:"#fff", border:`1px solid ${NU_T.border}`, borderRadius:12, padding:"10px 12px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <PlatformLogo platform={j.platform} size={18}/>
+                  <span style={{ fontSize:13, fontWeight:600, color:NU_T.ink, flex:1 }}>
+                    {PLATFORM_LABELS[j.platform] || j.platform}
+                  </span>
+                  <span style={{ fontSize:12, fontWeight:600, color:NU_T.mute }}>
+                    {LIB_STATUT[j.status] || j.status}
+                  </span>
+                </div>
+                <div style={{ fontSize:11.5, color:NU_T.mute, marginTop:4 }}>
+                  {fr ? `Depuis ${depuis}` : `For ${depuis}`}
+                  {enPause && (fr ? " · plateforme en pause (reprise auto)" : " · platform paused (auto-resume)")}
+                </div>
+                {j.error && (
+                  <div style={{ fontSize:11.5, lineHeight:1.45, color:"#8C2F28", marginTop:6 }}>{j.error}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{ marginTop:16, width:"100%", padding:"10px 14px", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:NU_T.ink, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+        >
+          {fr ? "Fermer" : "Close"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove }) {
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
@@ -547,10 +636,87 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
   );
 }
 
+// ── Diagnostic « pourquoi ce job ne bouge pas » (2026-07-20) ─────────────────
+// Incident fondateur : 4 jobs Patagonia restés 30 min en « En cours… » sans le
+// moindre signal, extension déconnectée. Vus de la base ils étaient
+// INDISCERNABLES d'une file d'attente saine — status pending, handler_build
+// NULL, processing_since NULL, error NULL. Seule leur ANCIENNETÉ trahissait le
+// blocage. Le heartbeat (profiles.extension_last_seen_at, écrit par
+// get-pending-jobs à chaque poll) est ce qui permet enfin de trancher entre
+// « ça avance » et « personne n'écoute ».
+// Le poll de l'extension est à 2 min : au-delà de 15 min sans signe de vie,
+// elle ne tourne plus. Entre les deux, on ne conclut pas.
+const EXT_FRAIS_MS = 5 * 60 * 1000;
+const EXT_MORT_MS = 15 * 60 * 1000;
+
+function diagnostiquerExtension(extensionStatus, lang) {
+  const fr = lang !== "en";
+  const seen = Date.parse(extensionStatus?.lastSeenAt ?? "");
+  if (!Number.isFinite(seen)) {
+    return {
+      ton: "rouge",
+      titre: fr ? "Extension jamais vue" : "Extension never seen",
+      detail: fr
+        ? "Reconnecte-toi sur fillsell.app pour réactiver l'extension."
+        : "Sign in again on fillsell.app to reactivate the extension.",
+    };
+  }
+  const age = Date.now() - seen;
+  if (age > EXT_MORT_MS) {
+    return {
+      ton: "rouge",
+      titre: fr ? "Extension inactive" : "Extension inactive",
+      detail: fr
+        ? `Aucun signe de vie depuis ${formatDepuis(seen, lang)}. Ouvre Chrome, et reconnecte-toi sur fillsell.app si ça ne repart pas.`
+        : `No sign of life for ${formatDepuis(seen, lang)}. Open Chrome, and sign in again on fillsell.app if it doesn't resume.`,
+    };
+  }
+  if (extensionStatus?.outdated) {
+    return {
+      ton: "orange",
+      titre: fr ? "Extension à recharger" : "Extension needs reloading",
+      detail: fr
+        ? "Une version plus récente existe. Recharge l'extension dans chrome://extensions."
+        : "A newer version exists. Reload the extension in chrome://extensions.",
+    };
+  }
+  if (age <= EXT_FRAIS_MS) {
+    return {
+      ton: "vert",
+      titre: fr ? "En file d'attente" : "Queued",
+      detail: fr
+        ? "L'extension tourne — la publication part au prochain passage (toutes les 2 min)."
+        : "The extension is running — publishing starts on the next pass (every 2 min).",
+    };
+  }
+  return {
+    ton: "orange",
+    titre: fr ? "Extension silencieuse" : "Extension quiet",
+    detail: fr
+      ? `Dernier signe de vie il y a ${formatDepuis(seen, lang)}. Laisse-lui un instant, ou ouvre Chrome.`
+      : `Last seen ${formatDepuis(seen, lang)} ago. Give it a moment, or open Chrome.`,
+  };
+}
+
+// « il y a 3 min », « il y a 2 h » — sans dépendance externe.
+function formatDepuis(ts, lang) {
+  const fr = lang !== "en";
+  const ms = Math.max(0, Date.now() - ts);
+  // Seuil sur les MILLISECONDES, pas sur les minutes arrondies : Math.round(30 s)
+  // vaut 1 et affichait « 1 min » pour une demi-minute.
+  if (ms < 60000) return fr ? "moins d'une minute" : "less than a minute";
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return fr ? `${h} h` : `${h}h`;
+  const j = Math.floor(h / 24);
+  return fr ? `${j} j` : `${j}d`;
+}
+
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
-  iapProduct, iapLoading,
+  iapProduct, iapLoading, extensionStatus = null,
   // Computed lists
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
@@ -730,6 +896,8 @@ const StockTab = memo(function StockTab({
   // inséré rendu dans jobsByInventaire) puis « retirée » quand le job atteint
   // 'deleted'. Retourne un message d'erreur (affiché DANS le modal) ou null.
   const [removeModalItem, setRemoveModalItem] = useState(null);
+  // Tap sur « En cours… » → panneau de diagnostic (2026-07-20).
+  const [jobStatusItem, setJobStatusItem] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(null);
   async function armRemoveJob(item, platform) {
     if (removeBusy) return null;
@@ -1484,7 +1652,19 @@ const StockTab = memo(function StockTab({
                                   </span>
                                 );
                               })}
-                              {hasPending&&!hasPausedPending&&<div className="micon ic-pending">⏳ {lang==="en"?"Posting…":"En cours…"}</div>}
+                              {hasPending&&!hasPausedPending&&(
+                                <div
+                                  className="micon ic-pending"
+                                  role="button"
+                                  tabIndex={0}
+                                  title={lang==="en"?"See status":"Voir le statut"}
+                                  onClick={e=>{e.stopPropagation();setJobStatusItem(item);}}
+                                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.stopPropagation();setJobStatusItem(item);}}}
+                                  style={{cursor:"pointer"}}
+                                >
+                                  ⏳ {lang==="en"?"Posting…":"En cours…"}
+                                </div>
+                              )}
                               {/* Maintenance (Phase B) : plateforme en pause,
                                   ton neutre, rassurant, aucune action requise. */}
                               {hasPausedPending&&<div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>⏸ {t("stockJobPausedBadge")}</div>}
@@ -1612,6 +1792,16 @@ const StockTab = memo(function StockTab({
           busyPlatform={removeBusy}
           onClose={()=>setRemoveModalItem(null)}
           onRemove={armRemoveJob}
+        />
+      )}
+      {jobStatusItem&&(
+        <JobStatusModal
+          item={jobStatusItem}
+          jobs={(jobsByInventaire[jobStatusItem.id]||[]).filter(j=>j.action!=="delete")}
+          lang={lang}
+          pausedSet={pausedSet}
+          extensionStatus={extensionStatus}
+          onClose={()=>setJobStatusItem(null)}
         />
       )}
       {publishItem&&(
