@@ -1644,7 +1644,19 @@ const isEbayClosedList = (allowedValues, mode) => {
 };
 // Normalisation partagée valeur↔liste (mêmes règles que normalizeFuzzy de
 // ebay.js : trim + minuscules + accents retirés).
-const normAspectVal = s => String(s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+// Séparateur décimal unifié À LA COMPARAISON (2026-07-20) : Vinted lui-même
+// est incohérent d'une catégorie à l'autre — « Hommes > Chaussures > Baskets »
+// liste « 38,5 » (VIRGULE), « Femmes > Chaussures > Baskets » liste « 34.5 »
+// (POINT). Ce sont deux groupes de tailles distincts chez eux (38 et 7),
+// relevés tels quels. Sans unification, une pointure à demi-point ne matche
+// jamais la liste de l'autre convention et tombe en « valeur hors liste » sur
+// un article correctement renseigné. On normalise donc les DEUX côtés de la
+// comparaison, jamais la valeur STOCKÉE : la base garde les libellés exacts
+// que Vinted affiche, seul le rapprochement devient tolérant.
+// Ciblé chiffre-virgule-chiffre, pas un remplacement global : un libellé qui
+// contient une virgule de ponctuation (« Noir, Blanc ») n'est pas touché.
+const normAspectVal = s => String(s).trim().toLowerCase().normalize("NFD")
+  .replace(/[̀-ͯ]/g, "").replace(/(\d),(\d)/g, "$1.$2");
 // Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
 // « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers
 // (jamais de sous-chaîne : "S" ne matche pas "XS") : match si tous les tokens
