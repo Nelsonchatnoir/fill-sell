@@ -441,20 +441,55 @@ const FR_TO_EBAY_CONDITION = {
   "pour pièces":         "Acceptable",
 };
 
-function findMatchingOption(raw, options) {
+// Garde anti-nombre-nu — PORT de la règle des 4 content scripts (leboncoin.js:
+// 1579, vinted.js, ebay.js, beebs.js). Même expression exacte.
+const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+// Frontières de MOT — même corps que containsAsWords des content scripts.
+const optionMatchesAsWords = (hay, needle) => {
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
+};
+
+// ── Rapprochement d'une valeur sur une liste d'options ───────────────────────
+// (2026-07-20) AVANT : le repli était un `includes` NU bidirectionnel, avec le
+// tri par longueur comme seul garde-fou. Le commentaire d'origine avait bien vu
+// le danger (« "EU 42 (US 9)" would wrongly hit "S" from "US" ») mais le tri
+// par longueur n'est un palliatif que si un candidat plus long existe.
+// Exécuté sur la vraie liste `size` unifiée (93 valeurs, 6 familles mélangées :
+// lettres, numériques FR, pointures adultes, mois, années, pointures enfant),
+// il produisait quatre résultats FAUX, prouvés :
+//     "3"     -> "EU 35.5"   une taille enfant devenait une pointure adulte
+//     "98 cm" -> "M"         un « cm » enfant devenait une taille adulte
+//     "US 9"  -> "S"         le piège annoncé, que le tri ne rattrapait pas
+//     "M/L"   -> "M"         perte silencieuse de la moitié de la taille
+// Les 4 content scripts, eux, avaient déjà les deux gardes qu'il manquait ici.
+// On applique le MÊME patron, sans rien changer d'autre :
+//   1. exact (inchangé, prioritaire) ;
+//   2. mapping état FR->eBay (inchangé) ;
+//   3. NOUVEAU — nombre nu sur un champ taille : seul l'EXACT fait foi. Sans
+//      ça « 3 » se rapprochait de « 3 ans »/« 3 mois »/« EU 35.5 » au jugé ;
+//   4. repli par CONTENANCE AU MOT (plus de sous-chaîne nue), et les options
+//      d'UNE SEULE LETTRE ("S"/"M"/"L") sortent du repli — elles restent
+//      atteignables par l'exact. C'est ce qui tue "US 9"->"S" et "M/L"->"M" :
+//      sur eBay « M/L » et « M » sont deux tailles DISTINCTES (cf. la
+//      divergence assumée d'ebay.js), les confondre est une donnée fausse ;
+//   5. tri par longueur CONSERVÉ pour départager les candidats restants —
+//      c'est lui qui fait encore gagner "EU 42" sur "EU 42 (US 9)".
+// Ne rien rendre plutôt que rendre faux : les deux appelants gèrent déjà le
+// vide (`|| fromApi` garde la valeur brute, `|| ""` laisse le champ à remplir).
+function findMatchingOption(raw, options, { sizeField = false } = {}) {
   if (!raw || raw === "null") return "";
   const n = raw.toLowerCase().trim();
   const exact = options.find(o => o.value.toLowerCase() === n);
   if (exact) return exact.value;
   const mapped = FR_TO_EBAY_CONDITION[n];
   if (mapped && options.some(o => o.value === mapped)) return mapped;
-  // Match the LONGEST candidate, not the first one found: with short option values
-  // like "S"/"M"/"L" (letter sizes) mixed into the same list as "EU 42" (shoe sizes),
-  // a naive substring match on e.g. "EU 42 (US 9)" would wrongly hit "S" (from "US")
-  // before ever considering "EU 42" — the longest match is always the more specific one.
+  if (sizeField && PURE_NUMBER_RE.test(n)) return "";
   const candidates = options.filter(o => {
     const v = o.value.toLowerCase();
-    return n.includes(v) || v.includes(n);
+    if (v.length <= 1) return false;
+    return optionMatchesAsWords(n, v) || optionMatchesAsWords(v, n);
   });
   if (!candidates.length) return "";
   candidates.sort((a, b) => b.value.length - a.value.length);
@@ -568,10 +603,13 @@ function defaultConditionFor(field) {
 function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   const result = {};
   for (const field of fieldConfigs) {
+    // sizeField : arme la garde anti-nombre-nu de findMatchingOption, comme
+    // opts.sizeField des content scripts. Mêmes clés que le switch ci-dessous.
+    const estTaille = field.key === "taille" || field.key === "size";
     const fromApi = platformFields?.[field.key];
     if (fromApi && fromApi !== "null") {
       result[field.key] = field.type === "select"
-        ? (findMatchingOption(fromApi, field.options) || fromApi)
+        ? (findMatchingOption(fromApi, field.options, { sizeField: estTaille }) || fromApi)
         : fromApi;
       continue;
     }
@@ -591,7 +629,9 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
       default:            lensVal = null;
     }
     result[field.key] = lensVal
-      ? (field.type === "select" ? (findMatchingOption(lensVal, field.options) || "") : lensVal)
+      ? (field.type === "select"
+          ? (findMatchingOption(lensVal, field.options, { sizeField: estTaille }) || "")
+          : lensVal)
       : "";
     // Aucune source n'a donné l'état (IA, Lens, ligne de stock) — ou en a donné
     // un que la plateforme ne connaît pas : défaut. L'utilisateur voit la valeur
