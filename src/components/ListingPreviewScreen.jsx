@@ -3337,41 +3337,31 @@ export default function ListingPreviewScreen({
           // d'une catégorie à l'autre. On NE fait PAS ça pour LBC/Beebs, dont le
           // naming de champ dépend de la catégorie (emprunt = fausses options).
           if (platform === "vinted") {
-            // ── Clés NON transposables d'une catégorie à l'autre (2026-07-20) ──
-            // L'emprunt ci-dessous suppose que field_key est un id d'attribut
-            // serveur dont les OPTIONS valent partout. Vrai pour
-            // internal_memory_capacity (« 256 Go » est « 256 Go » en Téléphones
-            // comme en Tablettes) — FAUX pour `size`, dont la liste est par
-            // nature propre à sa catégorie : tailles de vêtement, pointures, ou
-            // DIAMÈTRE DE BOÎTIER pour les montres.
-            // Cas réel prouvé (20/07, capture Nico) : un t-shirt homme se voyait
-            // proposer « Jusqu'à 30 mm / 30–38 mm / 39–42 mm / 43–46 mm / 47 mm
-            // et plus » — les valeurs EXACTES (tiret demi-cadratin compris) de
-            // « Hommes > Accessoires > Montres ». Enchaînement :
-            //   · « Hommes > Vêtements > … > T-shirts unis » a size required=true
-            //     et allowed_values NULL (options jamais relevées) ;
-            //   · l'emprunt prend la liste la plus LONGUE de field_key='size'
-            //     toutes catégories confondues → 6 (montres) devant 4 (housses
-            //     de couette) ;
-            //   · la taille réelle de l'article (« M ») n'y figure pas → status
-            //     "invalid" → « ✗ Taille — valeur hors liste » et CTA Publier
-            //     bloqué sur un article parfaitement renseigné.
-            // 9 catégories vêtement/chaussure étaient dans ce cas (t-shirts H/F,
-            // pantalons H/F, robes, baskets H/F, enfants) : ce n'était pas un
-            // article isolé.
-            // Sans emprunt, allowedValues reste vide et le code EXISTANT fait ce
-            // qu'il faut (cf. genericRequiredStatus) : « les lignes SANS
-            // allowed_values ne bloquent jamais : présence = ok ». La taille
-            // dédiée de l'app satisfait le requis, aucun texte libre n'apparaît.
-            // `condition` reste emprunté, et c'est VÉRIFIÉ, pas supposé : son
-            // unique donneur porte les 5 états de l'échelle Vinted GLOBALE
-            // (Neuf avec étiquette / Neuf sans étiquette / Très bon état / Bon
-            // état / Satisfaisant), identiques quelle que soit la catégorie.
-            const VINTED_NON_PORTABLE_OPTIONS = ["size"];
+            // ── Historique `size` (2026-07-20) ────────────────────────────────
+            // L'emprunt a un jour collé des DIAMÈTRES DE BOÎTIER DE MONTRE sur
+            // un t-shirt homme : « Hommes > … > T-shirts unis » avait size
+            // required=true et allowed_values NULL, l'emprunt prenait la liste
+            // la plus longue de field_key='size' toutes catégories confondues
+            // (6 valeurs en mm, « Hommes > Accessoires > Montres »), et la
+            // taille réelle « M » devenait « hors liste » → CTA Publier bloqué.
+            // 11 catégories vêtement/chaussure/jouet étaient dans ce cas.
+            // CORRIGÉ À LA SOURCE : les 11 ont été relevées sur Vinted
+            // (item_upload/catalogs → multiple_size_group_ids, puis size_groups ;
+            // relevé recoupé au DOM du formulaire sur T-shirts unis, identique)
+            // et écrites en base. Il ne reste AUCUNE ligne vinted/size sans
+            // options : l'emprunt ne peut plus se déclencher pour `size`, la
+            // garde par exclusion devenait inerte et a été retirée.
+            // ⚠️ Si une NOUVELLE catégorie Vinted apparaît un jour avec size
+            // required et sans options (découverte par refus serveur, comme les
+            // 11 d'origine), l'emprunt redeviendra actif pour elle et
+            // re-produira la même classe de bug. Le signal à guetter est le
+            // même : « Taille — valeur hors liste » sur un article correctement
+            // renseigné. Remède : relever les options de cette catégorie.
+            // `condition` reste emprunté — vérifié, pas supposé : /api/v2/statuses
+            // est un endpoint GLOBAL, sans paramètre de catégorie (6 états pour
+            // tout Vinted), l'emprunt y est donc sans risque.
             const hasOpts = (r) => Array.isArray(r.allowed_values) && r.allowed_values.length > 0;
-            const missingKeys = rows
-              .filter((r) => !hasOpts(r) && !VINTED_NON_PORTABLE_OPTIONS.includes(r.field_key))
-              .map((r) => r.field_key);
+            const missingKeys = rows.filter((r) => !hasOpts(r)).map((r) => r.field_key);
             if (missingKeys.length) {
               const { data: sib } = await supabase
                 .from("platform_category_aspects")
