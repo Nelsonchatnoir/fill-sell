@@ -1606,6 +1606,10 @@ const StockTab = memo(function StockTab({
                   // un seul calcul, jamais deux vérités carte/modal.
                   const {removalState,publishedActive}=computeRemovalInfo(jobsAll);
                   const enLigne=publishedActive.length>0;
+                  // Compteur de plateformes réellement en ligne : pilote le 3e état
+                  // du bouton (4/4 = plus rien à publier).
+                  const nbEnLigne=publishedActive.length;
+                  const toutEnLigne=nbEnLigne>=RM_PLATFORMS.length;
                   const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
                   return(
                     // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
@@ -1712,13 +1716,35 @@ const StockTab = memo(function StockTab({
                         <div className="right">
                           <div className="price">{fmt(invested)}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
                           <div className="btn-stack">
-                            {/* Déjà en ligne : le bouton reste (on peut vouloir ajouter une
-                                plateforme) mais il ne dit plus « Publier » — il disait à
-                                l'utilisateur qu'il RESTAIT quelque chose à faire, alors que
-                                l'annonce était en ligne. */}
+                            {/* 3 états, une seule source de vérité : publishedActive
+                                (le même calcul que la pastille « En ligne » et les
+                                logos ci-dessus — une plateforme retirée/échouée/
+                                annulée en sort toute seule, le bouton redevient
+                                actif sans code dédié).
+                                  0/4   → « Publier »
+                                  1-3/4 → « Publier » AUSSI, même libellé : le stepper
+                                          n'ouvrira que les plateformes MANQUANTES.
+                                          « Republier » était un mensonge — FillSell ne
+                                          retouche jamais une annonce déjà en ligne
+                                          (relancer une plateforme published créait un
+                                          SECOND job, donc une annonce en double).
+                                  4/4   → inerte, « En ligne (4/4) » : plus rien à faire. */}
                             {isPro&&(
-                              <button className={enLigne?"btn-publier is-online":"btn-publier"} onClick={e=>{e.stopPropagation();if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{ouvrirStepper(item);}}}>
-                                {enLigne?(lang==='fr'?'Republier':'Republish'):(lang==='fr'?'Publier':'Publish')}
+                              <button
+                                className={toutEnLigne?"btn-publier is-complete":"btn-publier"}
+                                disabled={toutEnLigne}
+                                onClick={e=>{
+                                  e.stopPropagation();
+                                  // Garde au niveau du HANDLER, pas seulement visuelle :
+                                  // le stepper ne doit pas pouvoir s'ouvrir sans une
+                                  // seule plateforme à publier.
+                                  if(toutEnLigne)return;
+                                  if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{ouvrirStepper(item);}
+                                }}
+                              >
+                                {toutEnLigne
+                                  ?(lang==='fr'?`En ligne (${nbEnLigne}/${RM_PLATFORMS.length})`:`Live (${nbEnLigne}/${RM_PLATFORMS.length})`)
+                                  :(lang==='fr'?'Publier':'Publish')}
                               </button>
                             )}
                             <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
@@ -1804,10 +1830,16 @@ const StockTab = memo(function StockTab({
           onClose={()=>setJobStatusItem(null)}
         />
       )}
+      {/* alreadyPublished : plateformes DÉJÀ en ligne pour cet article. Le stepper
+          les exclut de la sélection et les verrouille — on ne repasse jamais sur
+          une annonce publiée. Recalculé à chaque rendu (et non figé à l'ouverture)
+          pour rester d'accord avec la carte si un job bascule pendant que le
+          stepper est ouvert ; même calcul que le bouton (computeRemovalInfo). */}
       {publishItem&&(
         <ListingPreviewScreen
           inventaireId={publishItem.id}
           userId={user.id}
+          alreadyPublished={computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive}
           initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
             .map(p=>p?.url||p?.original||p?.enhanced||p?.bg_removed)
             .filter(Boolean)}

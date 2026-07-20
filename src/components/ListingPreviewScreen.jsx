@@ -947,7 +947,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, publishedSet, lang,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
@@ -1272,12 +1272,19 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           // cette catégorie est GRISÉE (désactivée, non cliquable), avec le
           // motif affiché sous la rangée — pas juste décochée.
           const support = platformSupport?.[p] ?? "supported";
-          const disabled = support !== "supported";
+          // Déjà en ligne : verrouillée au même titre qu'une catégorie non
+          // supportée. FillSell ne repasse jamais sur une annonce publiée — la
+          // seule action possible sur cette plateforme est le retrait, depuis
+          // la carte du Stock.
+          const dejaEnLigne = publishedSet?.has(p) ?? false;
+          const disabled = support !== "supported" || dejaEnLigne;
           return (
             <button
               key={p}
               disabled={disabled}
-              title={disabled
+              title={dejaEnLigne
+                ? (lang === 'en' ? `Already live on ${PLATFORM_LABELS[p]}` : `Déjà en ligne sur ${PLATFORM_LABELS[p]}`)
+                : disabled
                 ? t(support === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])
                 : undefined}
               onClick={() => !disabled && setSelected(prev => {
@@ -1300,10 +1307,22 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
             >
               <PlatformLogo platform={p} size={22} />
               {PLATFORM_LABELS[p]}
+              {dejaEnLigne && (
+                <span style={{ fontSize:11, fontWeight:600 }}>
+                  · {lang === 'en' ? 'live' : 'en ligne'}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
+      {PLATFORMS_DEFAULT.filter(p => publishedSet?.has(p)).length > 0 && (
+        <p style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+          {lang === 'en'
+            ? "Platforms already live stay untouched — only the remaining ones will be published."
+            : "Les plateformes déjà en ligne ne sont pas retouchées — seules les manquantes seront publiées."}
+        </p>
+      )}
       {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
         <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {t(platformSupport[p] === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])}
@@ -2218,6 +2237,11 @@ export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
   isPremium = false, isPro = false, onUpgrade = () => {},
   createStockItem = null, alreadyInStock = false,
+  // Plateformes où cet article est DÉJÀ en ligne (Stock uniquement ; Lens publie
+  // toujours du neuf). FillSell ne republie JAMAIS une annonce existante :
+  // relancer une plateforme déjà "published" créait un SECOND job pour la même
+  // annonce, donc un doublon en ligne. Elles sont donc décochées ET verrouillées.
+  alreadyPublished = [],
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -2315,8 +2339,17 @@ export default function ListingPreviewScreen({
       : {}
   );
 
+  // Plateformes déjà en ligne, normalisées. La prop est recalculée à chaque
+  // rendu côté Stock (nouvelle identité de tableau) : on dépend du contenu trié,
+  // pas de la référence, sinon les effets ci-dessous tourneraient en boucle.
+  const alreadyPublishedKey = [...alreadyPublished].sort().join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const publishedSet = useMemo(() => new Set(alreadyPublished), [alreadyPublishedKey]);
+
   // Step 3 — sélection plateformes (chips) + publication
-  const [selected, setSelected]         = useState(() => new Set(draft?.selected ?? PLATFORMS_DEFAULT));
+  // Les plateformes déjà en ligne ne sont JAMAIS pré-cochées — y compris à la
+  // reprise d'un brouillon (une publication a pu aboutir entre-temps).
+  const [selected, setSelected]         = useState(() => new Set((draft?.selected ?? PLATFORMS_DEFAULT).filter(p => !publishedSet.has(p))));
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
@@ -2364,6 +2397,15 @@ export default function ListingPreviewScreen({
       return next.size === prev.size ? prev : next;
     });
   }, [platformSupport]);
+  // Même filet pour les plateformes déjà en ligne : si l'une d'elles bascule en
+  // "published" pendant que le stepper est ouvert, elle sort de la sélection
+  // séance tenante. Aucun job ne peut partir vers une annonce existante.
+  useEffect(() => {
+    setSelected(prev => {
+      const next = new Set([...prev].filter(p => !publishedSet.has(p)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [publishedSet]);
 
   // Modale de conversion (solde de Pépites insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -4467,6 +4509,7 @@ export default function ListingPreviewScreen({
             coinBalance={coinBalance}
             onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
+            publishedSet={publishedSet}
             lang={lang}
             onAnalyze={handleAnalyzePhotos}
             analyzing={analyzing}
