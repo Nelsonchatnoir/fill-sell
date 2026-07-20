@@ -403,6 +403,24 @@ const OBJECT_ICON_RULES = [
   // montre une isolation… ») et « dé-MONTRE- ». Substantif exigé, tournures
   // verbales exclues.
   [/(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s+(?:qu|que|comment|bien|aussi|des|une?|le|la|les|son|sa|ses)\b)|watch|rolex|omega|swatch|timepiece|chronograph|wristwatch|analog(?:ique)?.?(?:digital|num[ée]rique)/iu, '⌚'],
+  // ⌚ ANATOMIE — doit gagner sur 💍 (juste en dessous), 4e bug de la classe
+  // « mot générique capté par la mauvaise règle » :
+  // « bracelet » est le mot d'une montre autant que d'un bijou, et TOUTE
+  // description de montre le porte (bracelet acier / cuir / résine). Quand le
+  // titre ne dit que la marque et le modèle — « Casio G-Shock GA-2100 »,
+  // « Seiko 5 Automatique », « Daniel Wellington Classic » — il ne reste AUCUN
+  // mot horloger : /bracelet/ de la règle 💍 gagnait et la montre partait en
+  // Bijoux fantaisie > Autres (eBay 499), dont le SEUL requis est une Marque à
+  // 57 valeurs mode/bijoux (Accessorize, Debenhams, Dorothy Perkins…) — d'où le
+  // « Marque : valeur hors liste eBay » sur une montre.
+  // On statue donc sur l'anatomie, JAMAIS sur « bracelet » : un bijou n'a ni
+  // cadran, ni mouvement, ni verre saphir, ni étanchéité chiffrée.
+  // Marques bornées à l'horlogerie pure : « casio » seul est volontairement
+  // ABSENT (calculatrices, claviers) — ses montres sont prises par le cadran ou
+  // par g-shock ; « citizen » aussi (mot anglais courant, et la règle 📀 est
+  // plus bas : « DVD Citizen Kane » serait devenu une montre).
+  // Placée APRÈS ⏱️ (l. 319) : une montre connectée reste une montre connectée.
+  [/(?<![\p{L}\p{N}])cadrans?(?![\p{L}\p{N}])|remontoir|montre.?bracelet|bracelet.?(?:de.?)?montre|mouvements?.?(?:[àa].?)?(?:quartz|automatique|m[ée]canique|manuel)|verre.?(?:saphir|min[ée]ral|hardlex)|lunette.?(?:rotative|tournante)|[ée]tanche.?\d+\s?(?:m|atm|bars?)(?![\p{L}\p{N}])|g.?shock|(?<![\p{L}\p{N}])(?:seiko|tissot|festina|longines)(?![\p{L}\p{N}])/iu, '⌚'],
   // Lunettes RESSERRÉE (même bug G-Shock) : « lunette » au singulier nu est
   // bien plus souvent une lunette de montre (bezel), arrière (auto), de WC ou
   // astronomique que des solaires — on exige le pluriel nu, « lunette(s) de

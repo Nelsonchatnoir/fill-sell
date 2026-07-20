@@ -217,6 +217,24 @@ const battery = [
   ["Lunettes de soleil Ray-Ban Aviator", "🕶️"],
   ["Solaires Persol 649", "🕶️"],
   ["Lunette de vue Afflelou", "🕶️"],
+  // ── Montre vs bijou (bug eBay 499 « Marque hors liste », 2026-07-20) :
+  // titre marque+modèle sans mot horloger + « bracelet » dans la desc =
+  // la règle 💍 volait la montre. Verrouillage des deux sens. ──────────────
+  ["Casio G-Shock GA-2100 Noire", "Bracelet en résine noire, boîtier octogonal, étanche 200m.", "⌚"],
+  ["Seiko 5 Automatique", "Bracelet acier inoxydable, verre hardlex.", "⌚"],
+  ["Daniel Wellington Classic", "Bracelet cuir, boîtier 40mm, mouvement quartz.", "⌚"],
+  ["Casio Vintage A168", "Bracelet acier, cadran numérique rétroéclairé.", "⌚"],
+  ["Tissot PRX 40", "Bracelet intégré acier.", "⌚"],
+  ["Bracelet Pandora argent 925", "Charms compatibles, fermoir cœur.", "💍"],
+  ["Parure collier et boucles d'oreilles", "Plaqué or, pierres blanches.", "💍"],
+  ["Bracelet jonc plaqué or", "💍"],
+  // La montre connectée reste ⏱️ malgré cadran et bracelet.
+  ["Apple Watch Series 8 41mm", "Bracelet sport, cadran toujours activé.", "⏱️"],
+  // Non-régression des marques ABSENTES à dessein de la règle anatomie.
+  // (🖋️ = papeterie/bureau, la règle qui la porte déjà — l'important est que
+  // « Casio » ne bascule PAS en ⌚.)
+  ["Calculatrice Casio FX-92 collège", "🖋️"],
+  ["DVD Citizen Kane édition collector", "📀"],
   // ── Audit systématique « mot générique capté par la mauvaise règle »
   // (2026-07-19 soir, 3e bug de la classe : Dyson Airwrap → Soins de la
   // peau via \bsoin\b). Chaque paire = le faux positif corrigé + le vrai
