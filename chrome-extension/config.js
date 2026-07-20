@@ -22,7 +22,22 @@ const FILLSELL_CONFIG = {
   JOB_DELAY_MS: 8000,
   JOB_DELAY_JITTER_MS: 12000,
   STORAGE_KEYS: {
+    // Session RELAYÉE par le pont fillsell-auth.js — c'est une COPIE du token
+    // de l'app web, donc la MÊME famille de refresh token qu'elle. Ne sert
+    // plus qu'au bootstrap (cf. SESSION_OWN) : dès que l'extension a sa propre
+    // session, celle-ci n'est plus jamais utilisée pour appeler quoi que ce
+    // soit — la faire tourner en parallèle de l'app est précisément ce qui
+    // déclenchait la révocation de famille (2026-07-20, 11:57:49).
     SESSION: "fillsell_session",
+    // Session PROPRE à l'extension (2026-07-20), obtenue une fois via l'edge
+    // function extension-session. Famille de refresh token INDÉPENDANTE de
+    // celle de l'app : les deux peuvent tourner chacune de leur côté sans
+    // jamais se marcher dessus. C'est la seule session utilisée en régime
+    // normal.
+    SESSION_OWN: "fillsell_session_own",
+    // Horodatage du dernier bootstrap ÉCHOUÉ — évite de re-tenter à chaque
+    // poll (toutes les 2 min) quand le token relayé est mort de toute façon.
+    BOOTSTRAP_LAST_FAIL: "fillsell_bootstrap_last_fail",
     LAST_POLL: "fillsell_last_poll",
     // Jobs terminés récemment par le poll de fond (Sujet 5, 2026-07-11) :
     // { [jobId]: { platform, status, title, inventaire_id, annonceKey, ts } },

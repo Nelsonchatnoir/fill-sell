@@ -198,10 +198,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
+  // ⚠️ POINT CRITIQUE (2026-07-20) : une fois que l'extension a SA session, le
+  // pont ne doit PLUS RIEN écrire. Sans ce verrou, le token de l'app viendrait
+  // se réinstaller par-dessus à chaque visite de fillsell.app, et l'extension
+  // se remettrait à faire tourner la famille de l'app — exactement la course
+  // qu'on supprime. Le pont ne sert donc qu'AVANT le premier bootstrap.
   if (msg?.type === "FILLSELL_SESSION" && msg.session?.access_token) {
-    chrome.storage.local
-      .set({ [FILLSELL_CONFIG.STORAGE_KEYS.SESSION]: msg.session })
-      .then(() => sendResponse({ ok: true }));
+    const { SESSION, SESSION_OWN } = FILLSELL_CONFIG.STORAGE_KEYS;
+    chrome.storage.local.get(SESSION_OWN).then((store) => {
+      if (store[SESSION_OWN]?.access_token) {
+        // Déjà autonome : on ignore, en le disant (sinon un futur lecteur de
+        // logs croira le pont cassé).
+        console.log("[background] FILLSELL_SESSION ignoré — l'extension a déjà sa propre session");
+        sendResponse({ ok: true, ignored: true });
+        return;
+      }
+      chrome.storage.local
+        .set({ [SESSION]: msg.session })
+        .then(() => sendResponse({ ok: true }));
+    });
     return true;
   }
   if (msg?.type === "POLL_NOW") {
@@ -339,10 +354,85 @@ async function publishSelectedUnlocked(jobIds) {
 
 // ── Session ────────────────────────────────────────────────────────────────────
 
+// ── Bootstrap de la session PROPRE de l'extension (2026-07-20) ───────────────
+// Voir supabase/functions/extension-session pour le pourquoi complet. En deux
+// phrases : l'extension recopiait le refresh token de l'app et le faisait
+// tourner en parallèle d'elle ; Supabase fait tourner un refresh token à chaque
+// usage, donc celui des deux qui présentait un token déjà tourné déclenchait la
+// détection de réutilisation et la RÉVOCATION DE TOUTE LA FAMILLE. Les deux
+// tombaient ensemble, en silence (constaté le 2026-07-20 : famille révoquée à
+// 11:57:49, dernier job traité à 11:56).
+// On ne peut pas détacher une session existante — grant_type=refresh_token
+// reste par construction dans la même famille. On en fait donc créer une NEUVE
+// côté serveur, à partir du JWT relayé, sans jamais manipuler de mot de passe.
+const BOOTSTRAP_RETRY_MS = 30 * 60 * 1000;
+
+async function bootstrapOwnSession(relayedAccessToken) {
+  const { SESSION_OWN, BOOTSTRAP_LAST_FAIL } = FILLSELL_CONFIG.STORAGE_KEYS;
+  try {
+    const { hashed_token } = await callEdgeFunction("extension-session", relayedAccessToken, {});
+    if (!hashed_token) throw new Error("hashed_token absent");
+    // Échange contre une session NEUVE. Le refresh token qui en sort n'a
+    // jamais transité par l'app : famille distincte dès la première seconde.
+    const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/auth/v1/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+      body: JSON.stringify({ type: "magiclink", token: hashed_token }),
+    });
+    if (!res.ok) throw new Error(`verify → HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data?.access_token || !data?.refresh_token) throw new Error("session incomplète");
+    const own = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at ?? Math.floor(Date.now() / 1000) + (data.expires_in ?? 3600),
+      email: data.user?.email ?? null,
+    };
+    await chrome.storage.local.set({ [SESSION_OWN]: own });
+    await chrome.storage.local.remove(BOOTSTRAP_LAST_FAIL);
+    console.log("[background] Session propre de l'extension obtenue — indépendante de l'app web");
+    return own;
+  } catch (e) {
+    // Échec non bloquant : on continue sur la session relayée (comportement
+    // d'avant) et on retentera plus tard. Sans cette borne, un bootstrap
+    // impossible relancerait un appel toutes les 2 min.
+    await chrome.storage.local.set({ [BOOTSTRAP_LAST_FAIL]: Date.now() });
+    console.warn("[background] Bootstrap de session propre échoué :", String(e?.message ?? e));
+    return null;
+  }
+}
+
 async function getValidSession() {
-  const { SESSION } = FILLSELL_CONFIG.STORAGE_KEYS;
-  const store = await chrome.storage.local.get(SESSION);
+  const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL } = FILLSELL_CONFIG.STORAGE_KEYS;
+  const store = await chrome.storage.local.get([SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL]);
+
+  // Régime normal : la session PROPRE fait foi, seule, pour toujours.
+  if (store[SESSION_OWN]?.access_token) {
+    return refreshIfNeeded(store[SESSION_OWN], SESSION_OWN);
+  }
+
+  // Pas encore de session propre → on est soit sur une install neuve, soit sur
+  // une install d'avant ce correctif. Le token relayé sert UNE fois à la
+  // bootstrapper, puis ne sert plus jamais.
   let session = store[SESSION];
+  if (!session?.access_token) return null;
+  session = await refreshIfNeeded(session, SESSION);
+  if (!session) return null;
+
+  const dernierEchec = store[BOOTSTRAP_LAST_FAIL] ?? 0;
+  if (Date.now() - dernierEchec > BOOTSTRAP_RETRY_MS) {
+    const own = await bootstrapOwnSession(session.access_token);
+    if (own) return own;
+  }
+  // Bootstrap indisponible : on reste sur le token relayé plutôt que de bloquer
+  // l'utilisateur. La course d'origine subsiste tant qu'on est dans cet état —
+  // c'est le comportement d'AVANT, pas une régression.
+  return session;
+}
+
+// Refresh maison, inchangé dans sa logique — paramétré par la clé de storage
+// pour servir les deux sessions sans dupliquer le code.
+async function refreshIfNeeded(session, storageKey) {
   if (!session?.access_token) return null;
 
   // Refresh si le token expire dans moins de 5 min
@@ -351,7 +441,7 @@ async function getValidSession() {
     const refreshed = await refreshSession(session.refresh_token);
     if (refreshed) {
       session = { ...session, ...refreshed };
-      await chrome.storage.local.set({ [SESSION]: session });
+      await chrome.storage.local.set({ [storageKey]: session });
     } else {
       // Refresh mort : PURGE du storage, pas seulement retour null (fix
       // 2026-07-11). Sinon l'access_token périmé reste stocké et tout
@@ -360,8 +450,8 @@ async function getValidSession() {
       // reconnexion impossible (le clic compte ne fait rien tant que
       // state.session est truthy). Le storage.onChanged du popup re-render
       // en "Se connecter" tout seul.
-      await chrome.storage.local.remove(SESSION);
-      console.warn("[background] Refresh du token échoué — session purgée, reconnexion nécessaire");
+      await chrome.storage.local.remove(storageKey);
+      console.warn(`[background] Refresh du token échoué (${storageKey}) — session purgée, reconnexion nécessaire`);
       return null;
     }
   }
