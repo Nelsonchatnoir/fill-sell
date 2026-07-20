@@ -3907,7 +3907,19 @@ async function recoverMissingListingUrls(session) {
       "cross_post_jobs" +
         "?select=id,platform,title,created_at" +
         "&status=eq.published&action=eq.publish&listing_url=is.null" +
-        "&platform=in.(leboncoin,beebs)&order=created_at.desc&limit=10",
+        // eBay ajouté le 2026-07-20. Le filtre datait de d4a0c32 (2026-07-12),
+        // quand SEULS leboncoin et beebs avaient une page de récupération. eBay
+        // a été ajouté à LISTING_URL_RECOVERY_PAGES par 3d2566c — et ce filtre
+        // n'a jamais été rouvert : oubli, pas décision (le commentaire de
+        // LISTING_URL_RECOVERY_PAGES annonce explicitement « le filet de TOUT
+        // LE MONDE » et détaille le cas eBay). Conséquence : un job eBay publié
+        // sans listing_url n'était JAMAIS repêché, sa page de récupération
+        // restant morte. Tout l'aval de cette fonction est générique
+        // (LISTING_URL_RECOVERY_PAGES[platform], LISTING_URL_PATTERNS[platform],
+        // findListingLinkInPage requireTitle:true) : rien d'autre à changer.
+        // vinted reste HORS liste, et c'est un constat assumé, pas un oubli —
+        // pas de page de récupération pour lui (cf. commentaire ci-dessus).
+        "&platform=in.(leboncoin,beebs,ebay)&order=created_at.desc&limit=10",
       session.access_token
     );
   } catch (e) {
