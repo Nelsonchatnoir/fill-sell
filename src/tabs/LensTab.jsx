@@ -714,7 +714,13 @@ const LensTab = memo(function LensTab({
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
               openUpgradeModal={openUpgradeModal}
             />
-            {isPro&&!lensResult.error&&(
+            {/* ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
+                `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL
+                (App.jsx) — un Free comme un Premium standard ne voyaient donc
+                jamais « Créer une annonce » depuis Lens, exactement comme dans
+                StockTab. Tout le monde cross-poste ; la différenciation se fait
+                aux Pépites, côté serveur. */}
+            {!lensResult.error&&(
               <>
                 <PrimaryButton
                   onClick={()=>shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing()}

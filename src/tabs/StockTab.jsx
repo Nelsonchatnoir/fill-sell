@@ -1757,9 +1757,19 @@ const StockTab = memo(function StockTab({
                                           retouche jamais une annonce déjà en ligne
                                           (relancer une plateforme published créait un
                                           SECOND job, donc une annonce en double).
-                                  4/4   → inerte, « En ligne (4/4) » : plus rien à faire. */}
-                            {isPro&&(
-                              <button
+                                  4/4   → inerte, « En ligne (4/4) » : plus rien à faire.
+
+                                ⚠️ PAS DE GATE DE TIER ICI (2026-07-21). Ce bouton
+                                était rendu sous `isPro`, or isPro = profiles.is_pro
+                                SEUL (App.jsx) — donc ni un Free ni un Premium
+                                standard ne voyaient « Publier » : le cross-post,
+                                qui est LA fonction du produit, était invisible pour
+                                tout le monde sauf le tier Pro. Ce n'était pas le
+                                packaging voulu : tout le monde cross-poste, et la
+                                différenciation se fait aux PÉPITES, côté serveur —
+                                generate-listing facture déjà les non-premium en
+                                pièces (402 + prix/solde) au lieu de refuser. */}
+                            <button
                                 className={toutEnLigne?"btn-publier is-complete":"btn-publier"}
                                 disabled={toutEnLigne}
                                 onClick={e=>{
@@ -1775,7 +1785,6 @@ const StockTab = memo(function StockTab({
                                   ?(lang==='fr'?`En ligne (${nbEnLigne}/${RM_PLATFORMS.length})`:`Live (${nbEnLigne}/${RM_PLATFORMS.length})`)
                                   :(lang==='fr'?'Publier':'Publish')}
                               </button>
-                            )}
                             <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
                               {lang==='fr'?'Vendre':'Sell'}
                             </button>
