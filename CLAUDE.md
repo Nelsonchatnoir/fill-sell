@@ -6,8 +6,8 @@ Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ``
 
 ## Git
 - **Migrations Supabase** : toujours appliquées directement en prod (comportement normal et irréversible).
-- **Code applicatif** (React, Edge Functions, extension Chrome) : toujours sur une branche feature, jamais sur `main` avant validation complète et tests OK.
-- Pour les hotfixes urgents uniquement : push direct sur `main` autorisé.
+- **Code applicatif** (React, Edge Functions, extension Chrome) : commit et push **directement sur `main`**, plus de branche feature ni de PR (consigne 2026-07-21). Toujours build/vérifier avant de push — le push tient lieu de validation.
+- Déployer les Edge Functions concernées quand elles changent (cf. section dédiée).
 
 ## Déploiement des Edge Functions
 
