@@ -3727,8 +3727,98 @@ function estPageBotShield(html) {
   return /datadome|geo\.captcha|captcha-delivery|\bAre you a human\b|Vérification que vous n/i.test(debut);
 }
 
+// ── Leboncoin : la MORT D'UNE ANNONCE EST DÉFINITIVE (2026-07-21) ────────────
+// Relevé réel sur l'annonce 3236601202 (job a1e4cf68, supprimée le matin même,
+// compte vendeur à « En ligne (0) ») : 5 lectures d'affilée de la MÊME URL, à
+// quelques secondes d'intervalle, ont rendu 200, 410, 200, 410, 200.
+//   · 410 → <title>Annonce introuvable</title> + <h1>Cette annonce est
+//     désactivée</h1> (441 780 o) — l'état RÉEL ;
+//   · 200 → la page COMPLÈTE de l'annonce (556 177 o) avec
+//     "ad":{"list_id":3236601202,…,"status":"active"} — une copie PÉRIMÉE,
+//     servie par l'origine (x-cache: Miss from cloudfront, donc pas un cache
+//     navigateur : cache:"no-store" la renvoie aussi), STRICTEMENT
+//     indiscernable d'une annonce vivante.
+// Conséquence : une lecture unique tombait une fois sur deux sur la copie
+// périmée et déclarait « active » une annonce supprimée — d'où le job delete
+// qui brûlait ses 2 ré-armements sur un faux « TOUJOURS en ligne », et le scan
+// de vente qui laissait des annonces mortes en 'published'.
+//
+// Une suppression Leboncoin est IRRÉVERSIBLE : une annonce ne redevient jamais
+// vivante sous la même URL. Un seul 404/410 observé vaut donc preuve
+// définitive, et prime sur n'importe quel nombre de 200. On l'applique dans les
+// deux sens du temps :
+//   · dans le check courant : plusieurs tirs, le premier « morte » l'emporte ;
+//   · entre les checks : l'URL morte est MÉMORISÉE, et toute lecture ultérieure
+//     conclut « unavailable » sans même interroger la plateforme.
+const LBC_DEAD_KEY = "lbc_urls_mortes";
+const LBC_CHECK_TIRS = 3;
+// Purge : au-delà, l'entrée n'a plus d'utilité (le job est tranché depuis
+// longtemps) et on évite que le stockage enfle indéfiniment.
+const LBC_DEAD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function lbcUrlsMortes() {
+  try {
+    const store = await chrome.storage.local.get(LBC_DEAD_KEY);
+    return store[LBC_DEAD_KEY] ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function lbcUrlDejaMorte(url) {
+  const connues = await lbcUrlsMortes();
+  const vu = connues[String(url)];
+  return Number.isFinite(vu) && Date.now() - vu < LBC_DEAD_TTL_MS;
+}
+
+async function memoriserLbcMorte(url) {
+  try {
+    const connues = await lbcUrlsMortes();
+    const maintenant = Date.now();
+    for (const [u, t] of Object.entries(connues)) {
+      if (!Number.isFinite(t) || maintenant - t >= LBC_DEAD_TTL_MS) delete connues[u];
+    }
+    connues[String(url)] = maintenant;
+    await chrome.storage.local.set({ [LBC_DEAD_KEY]: connues });
+  } catch (e) {
+    // Mémoire de confort : son échec ne doit jamais faire échouer un check.
+    console.warn("[background] mémorisation URL morte (non bloquant) :", String(e?.message ?? e));
+  }
+}
+
 // Retourne { state, price } — price = prix lu SUR LA PAGE (null si inconnu).
+// Leboncoin : plusieurs tirs, et « morte » l'emporte (cf. bloc ci-dessus). Les
+// autres plateformes n'ont jamais montré ce va-et-vient — lecture unique,
+// comportement inchangé.
 async function checkListingState(url, platform) {
+  if (platform !== "leboncoin") return lireEtatAnnonce(url, platform);
+
+  if (await lbcUrlDejaMorte(url)) {
+    console.log(`[background] leboncoin : ${url} déjà observée MORTE (410/404) — état définitif "unavailable", aucune relecture`);
+    return { state: "unavailable", price: null };
+  }
+
+  let vuActive = false;
+  for (let tir = 1; tir <= LBC_CHECK_TIRS; tir++) {
+    if (tir > 1) await sleep(randInt(700, 1600));
+    const res = await lireEtatAnnonce(url, platform);
+    if (res.state === "unavailable" || res.state === "sold") {
+      console.log(`[background] leboncoin : annonce MORTE constatée au tir ${tir}/${LBC_CHECK_TIRS} — verdict définitif (mémorisé)`);
+      await memoriserLbcMorte(url);
+      return res;
+    }
+    if (res.state === "active") vuActive = true;
+    console.log(`[background] leboncoin : tir ${tir}/${LBC_CHECK_TIRS} → ${res.state}`);
+  }
+
+  // Aucun 410/404 en LBC_CHECK_TIRS lectures. Un "active" vient d'une preuve
+  // POSITIVE (list_id présent) : on le retient. Si aucun tir n'a rien pu lire,
+  // ça reste "unknown" — surtout pas "active" par défaut.
+  return { state: vuActive ? "active" : "unknown", price: null };
+}
+
+// Une lecture, une conclusion (l'ancien checkListingState, inchangé).
+async function lireEtatAnnonce(url, platform) {
   try {
     const res = await fetchListingHtml(url, platform);
     // 404/410 : l'annonce n'est plus là. Ce n'est PAS une vente — c'était la
@@ -4348,10 +4438,23 @@ async function processDeleteJob(job, accessToken) {
 
       // L'annonce est TOUJOURS là (ou illisible) : ré-armement borné, jamais un
       // "failed" sec — la suppression reste faisable au prochain passage.
+      //
+      // ⚠️ « VÉRIFIÉ » NE SE DIT QUE SUR UN ÉTAT CONCLUANT (2026-07-21). Le
+      // message annonçait « TOUJOURS en ligne (vérifié) » pour TOUT état autre
+      // que unavailable/sold — donc aussi pour "unknown" (anti-bot, onglet
+      // figé, HTTP non-ok), où le check n'a justement rien pu lire. On
+      // présentait une lecture ratée comme une vérification aboutie, et
+      // l'utilisateur allait chercher sur la plateforme une annonce qui pouvait
+      // très bien être déjà retirée.
       if (/introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
         const msg =
-          `Suppression ${job.platform} non aboutie (${result.error}). L'annonce est TOUJOURS en ligne ` +
-          "(vérifié). Nouvelle tentative au prochain passage ; sinon la retirer à la main sur la plateforme.";
+          state === "active"
+            ? `Suppression ${job.platform} non aboutie (${result.error}). L'annonce est TOUJOURS en ligne ` +
+              "(vérifié). Nouvelle tentative au prochain passage ; sinon la retirer à la main sur la plateforme."
+            : `Suppression ${job.platform} non aboutie (${result.error}). Impossible de VÉRIFIER si l'annonce ` +
+              "est encore en ligne (lecture indéterminée : protection anti-bot, onglet indisponible ou page " +
+              "inattendue) — elle est peut-être déjà retirée. Nouvelle tentative au prochain passage ; sinon " +
+              "vérifier à la main sur la plateforme.";
         await rearmBounded(accessToken, job, msg);
         return { status: "needsUser", error: msg };
       }
