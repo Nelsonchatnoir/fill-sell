@@ -1465,11 +1465,16 @@ serve(async (req) => {
       if (!Array.isArray(items) || items.length !== 1) continue;
       const it = items[0] as Record<string, any>;
       const total = Number((task.data as any)?.lotTotal) || 0;
-      // Quantité = l'entier de la phrase qui n'est PAS le prix total. « 10 jeans
-      // pour 120€ » → {10, 120} moins 120 → 10. Aucun candidat (ex. « un lot de
+      // Quantité = l'entier de la phrase qui n'est NI le prix total NI un numéro
+      // de MODÈLE. « 10 jeans pour 120€ » → {10,120} : on retire 120 (prix) → 10.
+      // ⚠️ « un iPhone 13 pour 120€ » : le 13 est dans le nom → on l'exclut,
+      // sinon on créerait 13 exemplaires. Aucun candidat (ex. « un lot de
       // fringues à 50€ ») → 1 : un article générique au prix indiqué.
+      const modelNums = new Set(
+        (`${it.nom ?? ""} ${it.description ?? ""} ${it.marque ?? ""}`.match(/\d+/g) || []).map(Number)
+      );
       const nums = (text.match(/\d+/g) || []).map(Number);
-      const qtyCand = nums.filter((n) => n !== total && n >= 2 && n <= 999);
+      const qtyCand = nums.filter((n) => n !== total && !modelNums.has(n) && n >= 2 && n <= 999);
       const qty = qtyCand.length ? qtyCand[0] : 1;
       task.intent = "inventory_add";
       task.requiresConfirmation = false;
