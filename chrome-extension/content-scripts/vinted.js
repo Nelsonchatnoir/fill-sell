@@ -256,6 +256,47 @@ function getVintedCookie(name) {
   return c ? c.split("=").slice(1).join("=") : null;
 }
 
+// ── Sondes d'état (2026-07-21) ────────────────────────────────────────────────
+// Nées d'un faux échec vécu : un article DÉJÀ supprimé fait servir sa page en
+// 404 — une page d'erreur de ~18 Ko qui ne porte NI le script inline du jeton
+// CSRF, NI de <meta name="csrf-token"> (Vinted n'en expose plus du tout,
+// vérifié en direct). La requête partait alors SANS en-tête X-CSRF-Token, Vinted
+// répondait 403, et on annonçait « session invalide, se reconnecter » sur une
+// session parfaitement valide — pour une suppression qui avait en fait RÉUSSI.
+// On ne devine plus : on demande à l'API.
+async function vintedItemPresent(itemId, t) {
+  try {
+    const r = await fetch(`/api/v2/items/${itemId}`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    });
+    t(`sonde article /api/v2/items/${itemId} → HTTP ${r.status}`);
+    if (r.status === 404) return "absent";
+    if (r.ok) return "present";
+    return "inconnu";
+  } catch (e) {
+    t(`sonde article impossible : ${String(e?.message ?? e)}`);
+    return "inconnu";
+  }
+}
+
+// « Se reconnecter » ne doit être conseillé QUE si la session est réellement
+// morte — c'est /users/current qui tranche, pas le code d'erreur du delete.
+async function vintedSessionEtat(t) {
+  try {
+    const r = await fetch("/api/v2/users/current", {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    });
+    t(`sonde session /api/v2/users/current → HTTP ${r.status}`);
+    if (r.status === 401) return "expiree";
+    return r.ok ? "valide" : "inconnu";
+  } catch (e) {
+    t(`sonde session impossible : ${String(e?.message ?? e)}`);
+    return "inconnu";
+  }
+}
+
 // ── SUPPRESSION VINTED PAR API (2026-07-18) ───────────────────────────────────
 // Le DOM ne peut PAS marcher en fenêtre de travail minimisée : le bouton
 // "Supprimer" de Vinted n'obtient son handler React qu'après un VRAI scroll/paint
@@ -292,6 +333,25 @@ async function deleteListing(job) {
     return { success: true, dryRun: true, found: true, trace };
   }
 
+  // Jeton absent = on n'envoie RIEN. Envoyer quand même produisait un 403 qu'on
+  // interprétait à contresens. Deux cas seulement, et on les distingue :
+  //   · l'article n'existe plus  → la suppression est acquise (idempotent) ;
+  //   · l'article existe encore  → page non hydratée, on le dit tel quel.
+  if (!csrf) {
+    if ((await vintedItemPresent(itemId, t)) === "absent") {
+      t("article absent de l'API : il était DÉJÀ supprimé → suppression acquise");
+      return { success: true, alreadyGone: true, trace };
+    }
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Jeton CSRF Vinted introuvable sur la page (page 404 ou non hydratée) — " +
+        "requête de suppression NON envoyée. L'annonce n'a pas été touchée.",
+      trace,
+    };
+  }
+
   try {
     const resp = await fetch(`/api/v2/items/${itemId}/delete`, {
       method: "POST",
@@ -308,12 +368,28 @@ async function deleteListing(job) {
     if (resp.ok || resp.status === 204 || resp.status === 404) {
       return { success: true, trace };
     }
-    // 401/403 = session/CSRF invalide → reconnexion (pas un échec sec).
+    // 401/403 : refus. On ne conclut plus « session invalide » par réflexe — on
+    // journalise le corps (c'est lui qui distingue un refus CSRF d'un blocage
+    // anti-bot), puis on demande à l'API si l'article est encore là, et enfin si
+    // la session est vraiment morte.
     if (resp.status === 401 || resp.status === 403) {
+      const corps = (await resp.text().catch(() => "")).slice(0, 300);
+      t(`corps du refus : ${corps || "(vide)"}`);
+
+      if ((await vintedItemPresent(itemId, t)) === "absent") {
+        t("article absent de l'API malgré le refus : suppression déjà effective");
+        return { success: true, alreadyGone: true, trace };
+      }
+
+      const session = await vintedSessionEtat(t);
       return {
         success: false,
         needsUser: true,
-        error: `Suppression Vinted refusée (HTTP ${resp.status}) : session ou jeton CSRF invalide. Se reconnecter à Vinted.`,
+        error:
+          session === "expiree"
+            ? `Suppression Vinted refusée (HTTP ${resp.status}) : session Vinted expirée. Se reconnecter à Vinted.`
+            : `Suppression Vinted refusée (HTTP ${resp.status}) alors que la session est ${session} — ` +
+              `refus CSRF ou protection anti-bot, PAS une déconnexion. Réponse : ${corps.slice(0, 120) || "(vide)"}`,
         trace,
       };
     }

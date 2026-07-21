@@ -4416,7 +4416,16 @@ async function processDeleteJob(job, accessToken) {
     // job s'acharnait en « introuvable dans le Hub — nouvelle tentative »).
     // Avant de conclure quoi que ce soit, on demande à la PLATEFORME. Une annonce
     // qui n'est plus en ligne, c'est une suppression RÉUSSIE, pas un échec.
-    if (result && !result.success && !result.dryRun && !result.needsUser) {
+    //
+    // ⚠️ LES RÉSULTATS needsUser PASSENT AUSSI PAR ICI (2026-07-21). Ils en
+    // étaient exclus, et ça a transformé une suppression RÉUSSIE en échec :
+    // article Vinted déjà supprimé → sa page est servie en 404 → aucun jeton
+    // CSRF dessus → POST refusé en 403 → le handler rendait needsUser… ce qui
+    // sautait précisément le contrôle écrit pour ce cas. Le job a brûlé ses
+    // 2 ré-armements et fini 'failed' sur une annonce qui n'existait plus.
+    // Le ré-armement, lui, reste réservé aux non-needsUser (le cas needsUser a
+    // sa propre branche plus bas, avec son message d'origine).
+    if (result && !result.success && !result.dryRun) {
       const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
       if (state === "unavailable" || state === "sold") {
         console.log(
@@ -4446,7 +4455,7 @@ async function processDeleteJob(job, accessToken) {
       // présentait une lecture ratée comme une vérification aboutie, et
       // l'utilisateur allait chercher sur la plateforme une annonce qui pouvait
       // très bien être déjà retirée.
-      if (/introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
+      if (!result.needsUser && /introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
         const msg =
           state === "active"
             ? `Suppression ${job.platform} non aboutie (${result.error}). L'annonce est TOUJOURS en ligne ` +
