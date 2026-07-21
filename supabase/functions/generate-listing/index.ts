@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // shared.js est un module pur (aucun import, aucune API navigateur), le
 // bundler du CLI Supabase l'embarque au deploy comme n'importe quel import
 // relatif. Même signature que côté app : detectObjectIcon(titre, description, type).
-import { detectObjectIcon, ALL_OBJECT_ICONS } from "../../../src/utils/shared.js";
+import { detectObjectIcon, ALL_OBJECT_ICONS, ICON_LEGEND } from "../../../src/utils/shared.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -518,6 +518,17 @@ serve(async (req) => {
     //   - n'échoue jamais la génération : toute exception est avalée.
     // detectObjectIcon reste le filet de secours et n'est pas modifié.
     const ICON_SET = new Set<string>(ALL_OBJECT_ICONS as string[]);
+    // Légende « emoji = sens » construite depuis la SOURCE DE VÉRITÉ (shared.js).
+    // Sans elle, Haiku ne reçoit que des emojis nus et confond les proxys
+    // contre-intuitifs (🧶 pelote = sweat/hoodie, pris pour 🧥 manteau ; bug
+    // Patagonia 2026-07-21). Une icône sans entrée de légende retombe sur l'emoji
+    // seul — jamais d'omission ni de crash.
+    const ICON_MENU = (ALL_OBJECT_ICONS as string[])
+      .map((ic) => {
+        const label = (ICON_LEGEND as Record<string, string>)[ic];
+        return label ? `${ic} = ${label}` : ic;
+      })
+      .join("\n");
     const classifyCategoryIcon = async (): Promise<string | null> => {
       const ctx = [
         item.marque && `Marque: ${item.marque}`,
@@ -537,7 +548,7 @@ serve(async (req) => {
           body: JSON.stringify({
             model: "claude-haiku-4-5-20251001",
             max_tokens: 20,
-            system: `Tu classes un article d'occasion en choisissant l'emoji qui représente le mieux son OBJET PRINCIPAL, STRICTEMENT parmi cette liste (aucune autre valeur n'est acceptée) : ${(ALL_OBJECT_ICONS as string[]).join(" ")}. Choisis l'objet lui-même, pas un accessoire inclus. Réponds UNIQUEMENT du JSON valide {"icon":"<un emoji exact de la liste>"} ; si aucun ne convient clairement, {"icon":null}.`,
+            system: `Tu classes un article d'occasion en choisissant l'emoji qui représente le mieux son OBJET PRINCIPAL, STRICTEMENT parmi cette liste (aucune autre valeur n'est acceptée). Chaque emoji est suivi de son SENS — fie-toi au sens, pas à l'apparence de l'emoji :\n${ICON_MENU}\n\nRègles : choisis l'objet lui-même, pas un accessoire inclus ni la marque. Un sweat/pull/hoodie (même d'une marque outdoor comme Patagonia, The North Face…) est un vêtement en maille → 🧶, PAS un manteau 🧥. Réponds UNIQUEMENT du JSON valide {"icon":"<un emoji exact de la liste>"} ; si aucun ne convient clairement, {"icon":null}.`,
             messages: [{ role: "user", content: `Quel emoji pour cet article ?\n${ctx}` }],
           }),
         });

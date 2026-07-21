@@ -7,7 +7,7 @@ import PepiteIcon from "./PepiteIcon";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon, ALL_OBJECT_ICONS } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
@@ -156,12 +156,6 @@ function genericFieldToSharedKey(platform, key) {
 const VALID_OBJECT_ICONS = new Set(ALL_OBJECT_ICONS);
 
 function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
-  // Icône IA (category_icon de generate-listing) — PRIORITAIRE uniquement à la
-  // génération initiale et tant qu'elle est valide. L'appelant ne la passe QUE
-  // si le titre/la description n'ont pas été édités depuis la génération ; dès
-  // la moindre retouche manuelle il passe aiIcon=null et l'on repasse par
-  // detectObjectIcon ci-dessous — exactement le comportement historique.
-  if (aiIcon && VALID_OBJECT_ICONS.has(aiIcon)) return aiIcon;
   // Copies FR seulement — jamais eBay (traduite en anglais).
   const frTitle =
     initialListing?.titre ??
@@ -179,6 +173,20 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
   const marque = pf?.marque ?? initialListing?.marque ?? "";
   const taille = pf?.taille ?? initialListing?.taille ?? "";
   const categorie = pf?.categorie || initialListing?.categorie;
+
+  // ── Réconciliation icône IA ↔ mot-clé (Volet 2, 2026-07-21) ────────────────
+  // Un MOT-OBJET explicite dans la source FR (« hoodie », « sweat », « montre »,
+  // « sac »…) est un signal FIABLE et audité — il PRIME sur le category_icon de
+  // l'IA, qui n'est qu'une estimation Haiku pouvant confondre des familles
+  // proches (bug réel : « Patagonia Hoodie » classé 🧥 manteau par l'IA au lieu
+  // de 🧶 sweat, d'où catégorie eBay « Manteaux/vestes » et Vinted « Doudounes »).
+  // L'icône IA ne sert donc plus qu'à COMBLER les cas SANS mot-clé (detect
+  // renvoie null) — c'est le rôle « filet » pour lequel elle avait été ajoutée.
+  const keywordIcon = detectObjectIconKeyword(frTitle, `${frDesc} ${marque}`);
+  if (keywordIcon) return keywordIcon;
+  // Aucun mot-objet reconnu → on fait confiance à l'IA (si valide), exactement
+  // là où detectObjectIcon retomberait sur un simple défaut de catégorie.
+  if (aiIcon && VALID_OBJECT_ICONS.has(aiIcon)) return aiIcon;
 
   const icon = detectObjectIcon(frTitle, `${frDesc} ${marque}`, categorie);
   if (icon !== "📦") return icon; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)

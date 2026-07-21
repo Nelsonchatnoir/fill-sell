@@ -644,7 +644,14 @@ const INCLUDED_ACCESSORY_CLAUSE =
 const FRAGRANCE_NEGATION =
   /(?:\bsans\b|\b0\s*%)\s*parfum\b|\bnon\s+parfum[ée]e?s?\b|fragrance[-\s]?free|unscented/gi;
 
-export function detectObjectIcon(titre, description, type){
+// Détection par MOT-CLÉ seule (les 2 passes d'OBJECT_ICON_RULES), SANS repli sur
+// le défaut de catégorie : renvoie l'icône si un mot-objet explicite matche,
+// sinon null. Extraite de detectObjectIcon (2026-07-21) pour que les appelants
+// puissent distinguer « un vrai mot-clé a matché » (signal FIABLE, audité) d'un
+// simple défaut de catégorie. Sert à la réconciliation icône IA ↔ mot-clé dans
+// resolveArticleIcon (front) : un « hoodie/sweat » nommé dans le titre FR prime
+// sur une estimation Haiku (category_icon) qui, elle, peut confondre 🧶 et 🧥.
+export function detectObjectIconKeyword(titre, description){
   // Dé-bruitage : accessoires inclus + négations de fragrance.
   const denoise=(s)=>String(s||'')
     .replace(INCLUDED_ACCESSORY_CLAUSE,' ')
@@ -662,6 +669,13 @@ export function detectObjectIcon(titre, description, type){
   // titres sans mot-objet : « Medik8 Crystal Retinal 6 » + desc « crème… »).
   const t=denoise((titre||'')+' '+(description||''));
   for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
+  return null;
+}
+
+export function detectObjectIcon(titre, description, type){
+  // Mot-clé explicite d'abord (les 2 passes) — comportement historique intact.
+  const kw = detectObjectIconKeyword(titre, description);
+  if(kw) return kw;
   // ⚠️ FILET « Luxe » (2026-07-17) : la catégorie Luxe est supprimée, mais des
   // items LEGACY (ou une IA pas encore redéployée) peuvent encore porter
   // type="Luxe" → 💎 non mappé = injouable. On ré-dérive alors le VRAI type
@@ -689,6 +703,198 @@ export const ALL_OBJECT_ICONS = [
     ...Object.values(CAT_DEFAULT_ICONS),
   ]),
 ];
+
+// LÉGENDE des icônes objet — sens en clair de CHAQUE emoji (2026-07-21).
+// Pourquoi : quand une source EXTERNE classe un article en choisissant une
+// icône (le category_icon renvoyé par le micro-appel Haiku de generate-listing),
+// elle ne reçoit qu'une liste d'emojis nus. Or beaucoup d'emojis sont des proxys
+// contre-intuitifs : 🧶 (pelote de laine) = pull/sweat/HOODIE, 🥼 (blouse de
+// labo) = blazer, 🪢 (nœud) = ceinture… Un « hoodie Patagonia » partait alors en
+// 🧥 (manteau) → catégorie eBay « Manteaux, vestes » et Vinted « Doudounes »
+// (bug réel 2026-07-21). On fournit donc le SENS de chaque icône au classifieur.
+// Invariant : toute icône d'ALL_OBJECT_ICONS DEVRAIT avoir une entrée ici ; une
+// icône sans légende reste utilisable (le prompt retombe sur l'emoji seul), mais
+// perd la désambiguïsation — à compléter si on ajoute une icône.
+export const ICON_LEGEND = {
+  // Vêtements — le cœur des confusions (l'ordre de résolution compte aussi)
+  "🧥": "manteau, veste, blouson, parka, doudoune, polaire, combinaison de ski",
+  "🧶": "pull, sweat, sweat à capuche (hoodie), cardigan, gilet en maille",
+  "🥼": "blazer, veste de tailleur",
+  "🤵": "costume, smoking",
+  "👔": "chemise, blouse",
+  "👕": "t-shirt, débardeur, polo, maillot de sport",
+  "👗": "robe, jupe",
+  "🩳": "short, bermuda",
+  "👖": "pantalon, jean, jogging, legging, chino, salopette, survêtement",
+  "🩲": "sous-vêtements, lingerie, pyjama",
+  "🧦": "chaussettes, collants",
+  "🧣": "écharpe, foulard, châle",
+  "🧤": "gants, moufles, mitaines",
+  "🧢": "casquette, chapeau, bonnet, béret",
+  "👙": "maillot de bain, bikini",
+  "🎭": "déguisement, panoplie, costume de déguisement",
+  // Chaussures
+  "👟": "baskets, sneakers, chaussures de ville",
+  "👢": "bottes, bottines",
+  "👠": "chaussures à talons, escarpins, ballerines",
+  "🩴": "sandales, tongs, claquettes, mules",
+  "🥿": "chaussons, pantoufles",
+  // Sacs & accessoires
+  "👜": "sac à main, sac, pochette, cabas, besace",
+  "🎒": "sac à dos, cartable",
+  "🎽": "sac de sport",
+  "👝": "sac banane, pochette de ceinture",
+  "👛": "portefeuille, porte-monnaie, porte-cartes",
+  "🧳": "valise, bagage",
+  "⌚": "montre à aiguilles (analogique, mécanique)",
+  "⏱️": "montre connectée, smartwatch",
+  "🕶️": "lunettes de soleil ou de vue",
+  "💍": "bijou : collier, bracelet, bague, boucles d'oreilles, pendentif",
+  "🪢": "ceinture",
+  "☂️": "parapluie, ombrelle",
+  "🗝️": "porte-clés",
+  "🎀": "cravate, nœud papillon",
+  // High-Tech
+  "📱": "smartphone, téléphone portable",
+  "📲": "tablette (iPad, Galaxy Tab)",
+  "💻": "ordinateur portable (MacBook, laptop)",
+  "🖥️": "ordinateur fixe, écran, composant PC (carte graphique, CPU, RAM)",
+  "⌨️": "clavier d'ordinateur",
+  "🖱️": "souris d'ordinateur",
+  "🎧": "écouteurs, casque audio, AirPods",
+  "🔊": "enceinte, haut-parleur, barre de son",
+  "📡": "enceinte connectée, assistant vocal (Alexa, Google Home)",
+  "🎮": "console de jeu, manette (PlayStation, Xbox, Nintendo Switch)",
+  "📷": "appareil photo, caméra, objectif, GoPro",
+  "🛸": "drone",
+  "🖨️": "imprimante, scanner",
+  "📺": "téléviseur, vidéoprojecteur",
+  "📇": "liseuse (Kindle, Kobo)",
+  "🔌": "chargeur, câble, batterie externe, adaptateur",
+  // Électroménager & maison-cuisine
+  "🧺": "gros lavage : machine à laver, lave-vaisselle, sèche-linge",
+  "☕": "machine à café, cafetière",
+  "🫖": "bouilloire, théière",
+  "🧹": "aspirateur, nettoyeur vapeur",
+  "🧊": "réfrigérateur, congélateur",
+  "♨️": "four, micro-ondes",
+  "🥣": "mixeur, blender, robot pâtissier",
+  "🍞": "grille-pain",
+  "🍟": "friteuse, airfryer",
+  "💇": "sèche-cheveux, lisseur, boucleur, brosse soufflante",
+  "🌀": "ventilateur, climatiseur, purificateur d'air",
+  "🌡️": "radiateur, chauffage d'appoint",
+  "🧼": "fer à repasser, défroisseur, centrale vapeur",
+  "🧵": "machine à coudre, surjeteuse",
+  // Maison / déco
+  "🛋️": "canapé, fauteuil, meuble TV",
+  "🪑": "chaise, tabouret, banc",
+  "🛏️": "lit, matelas, sommier",
+  "🛌": "linge de lit (housse de couette, drap, parure)",
+  "💡": "lampe, luminaire, ampoule, guirlande lumineuse",
+  "🪞": "miroir",
+  "🕯️": "bougie, photophore",
+  "🖼️": "cadre, tableau, poster, affiche",
+  "🪴": "plante, cache-pot, jardinière",
+  "🏺": "vase",
+  "🍽️": "vaisselle : assiette, bol, tasse, verre, mug",
+  "🍳": "ustensile de cuisson : casserole, poêle, cocotte",
+  "🪟": "rideau, voilage, store",
+  "🪶": "coussin, plaid, jeté de canapé",
+  "🟫": "tapis (décoration)",
+  "📜": "nappe, linge de table",
+  "🕰️": "horloge, pendule, réveil",
+  "🎄": "décoration de Noël",
+  "🖋️": "papeterie : stylo, carnet, calculatrice, agenda",
+  // Bricolage / jardin
+  "🪛": "perceuse, visseuse, tournevis",
+  "🪚": "scie, tronçonneuse",
+  "🔨": "marteau, maillet, masse",
+  "🪜": "échelle, escabeau",
+  "🖌️": "peinture, rouleau, pinceau de bricolage",
+  "🔩": "visserie : vis, boulon, cheville, clou",
+  "📏": "mètre ruban, niveau",
+  "🔧": "outil à main : clé, pince, étau",
+  "🌱": "tondeuse, débroussailleuse, scarificateur",
+  "✂️": "taille-haie, sécateur, cisaille",
+  "🔥": "barbecue, plancha",
+  "⛱️": "salon de jardin, parasol, transat",
+  // Sport & loisirs
+  "🏀": "ballon de basket",
+  "🏃": "cardio : tapis de course, vélo d'appartement, rameur",
+  "🏋️": "musculation : haltères, kettlebell, banc",
+  "🤿": "matériel de plongée : masque, tuba, palmes",
+  "🏄": "glisse nautique : paddle, kayak, kitesurf, wakeboard",
+  "🐴": "équitation",
+  "🎱": "billard, pétanque, fléchettes, bowling",
+  "🚲": "vélo, VTT, bicyclette",
+  "🛹": "skate, longboard",
+  "⛸️": "roller, patins",
+  "🎿": "ski, snowboard",
+  "⚽": "ballon, football",
+  "🎾": "raquette : tennis, badminton, squash",
+  "⛳": "golf",
+  "🥊": "boxe, MMA",
+  "⛺": "tente, camping, sac de couchage",
+  "🎣": "pêche, moulinet",
+  "🧘": "yoga, pilates",
+  "🥽": "lunettes de natation",
+  "⛑️": "casque de vélo ou de ski",
+  "🪖": "casque de moto",
+  "🛴": "trottinette, hoverboard, gyroroue",
+  // Auto-moto
+  "🏍️": "moto",
+  "🛵": "scooter",
+  "🛞": "pneu, jante, roue",
+  "🚗": "voiture, pièce ou accessoire auto (autoradio, pare-choc)",
+  "🏎️": "voiture miniature (Hot Wheels, Majorette)",
+  "🚁": "objet télécommandé, voiture RC",
+  // Beauté
+  "🌸": "parfum, eau de toilette, cologne",
+  "💄": "maquillage : rouge à lèvres, mascara, fond de teint, palette",
+  "💅": "vernis, manucure",
+  "🧴": "soin : crème, sérum, shampooing, gel douche, savon",
+  "🪒": "rasoir, tondeuse à barbe, épilateur",
+  // Musique
+  "🎸": "guitare, ukulélé",
+  "🎻": "violon, violoncelle, contrebasse",
+  "🥁": "batterie (instrument de musique)",
+  "🎺": "trompette, saxophone, clarinette, flûte",
+  "🎹": "clavier, piano, synthétiseur",
+  "🎼": "harmonica",
+  "🎤": "microphone",
+  "💿": "vinyle, platine",
+  "📀": "DVD, Blu-ray, VHS",
+  "💽": "CD, cassette audio",
+  // Jouets / enfance
+  "🧸": "peluche, doudou",
+  "🧱": "briques de construction (Lego, Duplo, Kapla)",
+  "🪆": "poupée, Barbie, poupon",
+  "🧩": "puzzle",
+  "🦸": "figurine, objet de collection (Funko, Playmobil)",
+  "🃏": "cartes à collectionner (Pokémon, Magic, Yu-Gi-Oh)",
+  "🎲": "jeu de société",
+  "👶": "poussette, landau",
+  "💺": "siège auto",
+  "🍼": "biberon",
+  "📟": "babyphone, écoute-bébé",
+  "🚼": "puériculture chambre : lit parapluie, table à langer, berceau",
+  "🐕": "accessoire pour animal : collier, gamelle, litière, laisse",
+  // Livres & collection & divers
+  "📖": "manga, BD, comics",
+  "📚": "livre, roman, dictionnaire",
+  "📰": "magazine, revue",
+  "📮": "timbre de collection",
+  "🪙": "pièce de monnaie (numismatique)",
+  // Défauts de catégorie (aucun mot-objet précis)
+  "💎": "article de luxe (défaut, aucun objet précis)",
+  "🏠": "article pour la maison (défaut)",
+  "⚡": "appareil électroménager (défaut)",
+  "🎵": "article de musique (défaut)",
+  "🏆": "objet de collection (défaut)",
+  "🌿": "article de jardin (défaut)",
+  "📦": "objet divers, non catégorisable",
+};
 
 // ── Design 2026 (Lens / navbar) : CSS des cards de liste (maquette validée).
 // Partagé entre StockTab (.stock-v2) et VentesTab (.ventes-v2) — même tokens,
