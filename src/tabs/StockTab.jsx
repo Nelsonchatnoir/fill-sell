@@ -955,6 +955,35 @@ const StockTab = memo(function StockTab({
           )}
         </div>
       </div>
+      {/* Bannière déconnexion extension (2026-07-21) — avant, l'app était aveugle
+          à l'état de l'extension : le diagnostic n'existait qu'au tap sur un job
+          « En cours… » (invisible s'il n'y avait rien à tapoter). Ici : permanent,
+          en tête, dès que l'extension est INACTIVE (>15 min sans heartbeat) ou à
+          recharger. Mobile seulement — sur desktop l'utilisateur voit l'extension
+          directement (« desktop c'est ok »). « Jamais vue » n'affiche rien : ce
+          serait du bruit pour qui n'a pas encore installé l'extension. */}
+      {isMobile && (() => {
+        const seen = Date.parse(extensionStatus?.lastSeenAt ?? "");
+        const dead = Number.isFinite(seen) && Date.now() - seen > EXT_MORT_MS;
+        if (!dead && !extensionStatus?.outdated) return null;
+        const diag = diagnostiquerExtension(extensionStatus, lang);
+        const rouge = diag.ton === "rouge";
+        return (
+          <div style={{
+            display:"flex", gap:10, alignItems:"flex-start",
+            background: rouge ? "#FEF2F2" : "#FFF7ED",
+            border:`1px solid ${rouge ? "#FECACA" : "#FED7AA"}`,
+            borderLeft:`4px solid ${rouge ? "#DC2626" : "#EA580C"}`,
+            borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+          }}>
+            <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⚠️</span>
+            <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
+              <div style={{fontWeight:700, marginBottom:2, color: rouge ? "#B91C1C" : "#9A3412"}}>{diag.titre}</div>
+              {diag.detail}
+            </div>
+          </div>
+        );
+      })()}
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Voice Capture (collapsible) ── */}

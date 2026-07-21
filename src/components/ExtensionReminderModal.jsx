@@ -8,6 +8,7 @@
 // fs_currency_confirmed / fs_username_asked (App.jsx) — pas de colonne profil,
 // aucun autre choix UI n'est persisté côté Supabase.
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Puzzle, ExternalLink } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -55,7 +56,13 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
     onContinue();
   };
 
-  return (
+  // Portal vers document.body (2026-07-21) : le modal était monté DANS le
+  // conteneur scrollable des onglets (.wrap, -webkit-overflow-scrolling:touch),
+  // qui crée un contexte d'empilement sur iOS/Android → son z-index 9990 restait
+  // PIÉGÉ sous la navbar (z-index 50, à la racine) et le bouton « continuer »
+  // passait sous la barre d'onglets. Desktop ignorait la propriété → OK. En
+  // sortant à la racine du document, le z-index reprend son sens.
+  return createPortal(
     <>
       <style>{ANIM}</style>
       <div
@@ -143,6 +150,7 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
           </label>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

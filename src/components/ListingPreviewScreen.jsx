@@ -864,12 +864,15 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
         </div>
       )}
 
+      {/* Pas de capture="environment" (2026-07-21) : il FORÇAIT la caméra sur
+          iOS/Android et masquait la photothèque (et cassait `multiple`). Sans
+          lui, la feuille native propose Photothèque + Prendre une photo. Desktop
+          inchangé (capture y est ignoré). */}
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
         multiple
-        capture="environment"
         style={{ display:"none" }}
         onChange={e => {
           const files = Array.from(e.target.files || []);
@@ -1023,12 +1026,13 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         {t("stepPhotosSubtitle")}
       </p>
 
+      {/* Pas de capture="environment" (2026-07-21) : cf. StepUpload — laisse
+          l'utilisateur choisir dans la photothèque, pas seulement l'appareil. */}
       <input
         ref={addRef}
         type="file"
         accept="image/*"
         multiple
-        capture="environment"
         style={{ display:"none" }}
         onChange={e => {
           const files = Array.from(e.target.files || []);
