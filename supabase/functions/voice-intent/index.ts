@@ -1451,6 +1451,41 @@ serve(async (req) => {
       }
     }
 
+    // ── Garde : un « lot » d'UN SEUL article est structurellement invalide ────
+    // Un inventory_lot suppose ≥2 articles DIFFÉRENTS à prix global. Quand le
+    // modèle (Haiku) classe « N exemplaires du MÊME article pour un prix total »
+    // en lot d'1 item, la quantité est PERDUE (bug réel : « 10 jeans Zara pour
+    // 120€ » → LOT DE 1 ARTICLE, 1 seul compté). La règle du prompt (« JAMAIS
+    // inventory_lot pour N exemplaires du même article ») existe mais Haiku la
+    // rate ; ce filet DÉTERMINISTE la rattrape côté serveur. On réécrit en
+    // inventory_add avec la quantité récupérée depuis la phrase.
+    for (const task of parsed.tasks as any[]) {
+      if (task.intent !== "inventory_lot") continue;
+      const items = (task.data as any)?.items;
+      if (!Array.isArray(items) || items.length !== 1) continue;
+      const it = items[0] as Record<string, any>;
+      const total = Number((task.data as any)?.lotTotal) || 0;
+      // Quantité = l'entier de la phrase qui n'est PAS le prix total. « 10 jeans
+      // pour 120€ » → {10, 120} moins 120 → 10. Aucun candidat (ex. « un lot de
+      // fringues à 50€ ») → 1 : un article générique au prix indiqué.
+      const nums = (text.match(/\d+/g) || []).map(Number);
+      const qtyCand = nums.filter((n) => n !== total && n >= 2 && n <= 999);
+      const qty = qtyCand.length ? qtyCand[0] : 1;
+      task.intent = "inventory_add";
+      task.requiresConfirmation = false;
+      task.ambiguous = false;
+      task.data = {
+        nom: it.nom ?? null,
+        marque: it.marque ?? null,
+        categorie: it.categorie ?? null,
+        description: it.description ?? null,
+        emplacement: it.emplacement ?? null,
+        plateforme: it.plateforme ?? null,
+        quantite: qty,
+        prix_achat: qty > 0 ? Math.round((total / qty) * 100) / 100 : total,
+      };
+    }
+
     // Guard: supprimer les inventory_add sans nom extractible — évite les ajouts "Article" côté client
     (parsed as any).tasks = (parsed.tasks as any[]).filter((_t: any) => {
       if (_t.intent !== "inventory_add") return true;
