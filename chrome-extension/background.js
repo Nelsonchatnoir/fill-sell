@@ -374,10 +374,19 @@ async function bootstrapOwnSession(relayedAccessToken) {
     if (!hashed_token) throw new Error("hashed_token absent");
     // Échange contre une session NEUVE. Le refresh token qui en sort n'a
     // jamais transité par l'app : famille distincte dès la première seconde.
+    // ⚠️ `token_hash` et NON `token` (fix 2026-07-21) : admin/generate_link
+    // renvoie un token DÉJÀ HASHÉ (properties.hashed_token). GoTrue le vérifie
+    // via le champ `token_hash` (sans email). Passé sous `token`, il est traité
+    // comme un OTP brut → /verify échoue systématiquement → bootstrap KO →
+    // l'extension retombait sur la session RELAYÉE (partagée avec l'app) → la
+    // rotation concurrente des refresh tokens révoquait la famille → l'extension
+    // se déconnectait toutes les ~30-60 min (constaté sur 4 révocations le
+    // 2026-07-21, extension-session rappelée en boucle toutes les 30 min = retry
+    // d'échec). Avec token_hash le bootstrap réussit UNE fois et SESSION_OWN vit.
     const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/auth/v1/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
-      body: JSON.stringify({ type: "magiclink", token: hashed_token }),
+      body: JSON.stringify({ type: "magiclink", token_hash: hashed_token }),
     });
     if (!res.ok) throw new Error(`verify → HTTP ${res.status}`);
     const data = await res.json();
