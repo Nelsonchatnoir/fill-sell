@@ -550,7 +550,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
         onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
         onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
       >
-        {loading ? "..." : <><span className="premium-short">🔥 7j</span><span className="premium-full">{lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →'}</span></>}
+        {loading ? "..." : <><span className="premium-short">✨ Upgrade</span><span className="premium-full">{lang==='fr'?'✨ Upgrade →':'✨ Upgrade →'}</span></>}
       </button>
     );
   }
@@ -559,7 +559,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (lang==='fr'?'✨ Passer Premium · 12,99€/mois — 7j gratuits':'✨ Upgrade to Premium · €12.99/mo — 7 days free')}
+        label={loading ? tb('redirection') : (lang==='fr'?'✨ Passer Premium · 12,99 €/mois':'✨ Upgrade to Premium · €12.99/mo')}
         disabled={loading}
         sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
@@ -571,20 +571,15 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
   return (
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
-        🎁 {lang==='fr'?'7 jours gratuits · Sans CB':'7 days free · No charge today'}
+        ✨ {lang==='fr'?'Stock illimité · IA vocale · Stats':'Unlimited stock · Voice AI · Stats'}
       </div>
-      {iapProduct&&(
-        <div style={{fontSize:11,color:UI.mute,fontWeight:600}}>
-          {lang==='fr'?'puis ':'then '}{iapProduct.priceString} / {lang==='fr'?'mois':'month'}
-        </div>
-      )}
       <CtaPremium
         onClick={onPurchase}
-        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Commencer l\'essai gratuit →':'✨ Start free trial →')}
+        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →')}
         disabled={iapLoading}
         sub={iapProduct
-          ?(lang==='fr'?`puis ${iapProduct.priceString}/mois · Sans engagement.`:`then ${iapProduct.priceString}/month · No commitment.`)
-          :(lang==='fr'?'puis 12,99€/mois · Sans engagement.':'then €12.99/month · No commitment.')}
+          ?(lang==='fr'?`${iapProduct.priceString}/mois · Sans engagement.`:`${iapProduct.priceString}/month · No commitment.`)
+          :(lang==='fr'?'12,99 €/mois · Sans engagement.':'€12.99/month · No commitment.')}
       />
       <button
         onClick={onRestore}
@@ -597,14 +592,14 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
   );
 }
 
-function CtaPremium({ onClick, label = "✨ Commencer l'essai gratuit →", disabled, sub }) {
+function CtaPremium({ onClick, label = "✨ Passer Premium →", disabled, sub }) {
   return (
     <>
       <PremiumButton onClick={onClick} disabled={disabled}>
         {label}
       </PremiumButton>
       <div style={{fontSize:12,color:UI.mute,fontWeight:500,marginTop:2}}>
-        {sub || "Puis 9,99 €/mois — annulable à tout moment"}
+        {sub || "12,99 €/mois — annulable à tout moment"}
       </div>
     </>
   );
@@ -4307,7 +4302,7 @@ export default function App({ loginOnly = false }){
           {!isPremium&&!isNative?(
             <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" onOpenModal={()=>openUpgradeModal()}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>openUpgradeModal()} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>🔥 7j</button>
+            <button onClick={()=>openUpgradeModal()} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>✨ Upgrade</button>
           ):isPremium?(
             // Pro passe devant Premium : isPro vient de profiles.is_pro, isPremium
             // de l'expression complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
