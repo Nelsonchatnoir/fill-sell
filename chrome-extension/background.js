@@ -4521,14 +4521,44 @@ const DELETE_TARGETS = {
 // interrogatif apparaît et « Non, je l'ai retirée » le ferme, comme avant.
 async function cancelPublishAfterDelete(accessToken, deleteJob) {
   try {
-    if (!deleteJob.listing_url) return;
-    const pubs = await restRequest(
-      "cross_post_jobs?select=id,platform_fields" +
-        `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
-        `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`,
-      accessToken
-    );
-    for (const pub of pubs ?? []) {
+    let pubs = null;
+    if (deleteJob.listing_url) {
+      pubs = await restRequest(
+        "cross_post_jobs?select=id,platform_fields" +
+          `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`,
+        accessToken
+      );
+    } else if (deleteJob.inventaire_id != null && String(deleteJob.title ?? "").trim()) {
+      // ── Repli sans URL (2026-07-22) ─────────────────────────────────────
+      // Une suppression peut désormais aboutir SANS listing_url (ciblage par
+      // titre dans « Mes annonces », cf. processDeleteJob). Sans ce repli, le
+      // job publish d'origine resterait 'published' : checkPublishedListings
+      // le re-scannerait, trouverait l'annonce disparue — normal, on vient de
+      // la retirer — et poserait sale_signal="unavailable" → faux bandeau
+      // « Plus en ligne, vendue ? » sur un article déjà vendu.
+      // On restreint à (plateforme + inventaire_id) côté serveur, puis on
+      // compare le TITRE en JS : PostgREST demanderait un échappement délicat
+      // pour des titres à virgules et emoji, et la liste est minuscule (les
+      // jobs d'UN article). Comparaison sur titre normalisé (espaces/casse),
+      // jamais approximative : le job delete a copié le titre du publish, ils
+      // sont identiques à la normalisation près.
+      const rows = await restRequest(
+        "cross_post_jobs?select=id,platform_fields,title" +
+          `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&inventaire_id=eq.${deleteJob.inventaire_id}`,
+        accessToken
+      );
+      const cle = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+      pubs = (rows ?? []).filter((r) => cle(r.title) === cle(deleteJob.title));
+      console.log(
+        `[background] cancelPublishAfterDelete : pas d'URL — repli par ` +
+        `(${deleteJob.platform} + article ${deleteJob.inventaire_id} + titre) → ` +
+        `${pubs.length}/${(rows ?? []).length} publish à clôturer`
+      );
+    }
+    if (!pubs?.length) return;
+    for (const pub of pubs) {
       const pf = { ...(pub.platform_fields ?? {}) };
       delete pf.unavailable_since;
       delete pf.sale_signal;
@@ -4555,10 +4585,38 @@ async function cancelPublishAfterDelete(accessToken, deleteJob) {
 async function processDeleteJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
 
-  if (!job.listing_url) {
-    const msg = "Job delete sans listing_url : impossible de cibler l'annonce à retirer.";
+  // ── Ce qu'il faut pour cibler, PAR PLATEFORME (2026-07-22) ────────────────
+  // AVANT : `if (!job.listing_url) → failed`, sans distinction. Un verrou
+  // trop large, qui a fait échouer le retrait de la montre G-Shock (job
+  // 661f943b) AVANT même d'ouvrir un onglet — l'annonce Leboncoin est restée
+  // en ligne sur un article vendu, et la garde d'identité du handler n'a
+  // jamais eu l'occasion de tourner.
+  // Or DELETE_TARGETS (juste au-dessus) dit exactement de quoi chacun a besoin :
+  //   vinted    → job.listing_url : on navigue SUR l'annonce, sans URL il n'y
+  //               a littéralement nulle part où aller ;
+  //   leboncoin / ebay / beebs → une CONSTANTE (« Mes annonces », Hub vendeur).
+  //               L'URL n'y sert à rien pour naviguer : c'est le content script
+  //               qui localise la carte dans la liste, et il sait le faire par
+  //               TITRE (garde d'identité à l'appui, cf. leboncoin.js).
+  // On exige donc la bonne preuve pour chacun : l'URL là où elle est
+  // indispensable, un titre non vide partout ailleurs — sans titre, le content
+  // script ne peut rien identifier, et le refus reste le bon comportement.
+  const cibleParUrl = job.platform === "vinted";
+  if (cibleParUrl && !job.listing_url) {
+    const msg = "Job delete Vinted sans listing_url : la suppression Vinted navigue sur l'annonce elle-même, il n'y a aucune page de repli.";
     await updateJobStatus(accessToken, job.id, "failed", { error: msg });
     return { status: "failed", error: msg };
+  }
+  if (!cibleParUrl && !job.listing_url && !String(job.title ?? "").trim()) {
+    const msg = `Job delete ${job.platform} sans listing_url NI titre : impossible d'identifier l'annonce dans « Mes annonces ».`;
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg });
+    return { status: "failed", error: msg };
+  }
+  if (!job.listing_url) {
+    console.log(
+      `[background] Job ${job.id} (${job.platform}) : suppression SANS listing_url — ` +
+      `ciblage par titre « ${job.title} » dans la liste, la garde d'identité du handler tranchera`
+    );
   }
 
   try {
