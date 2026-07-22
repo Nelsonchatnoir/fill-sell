@@ -116,25 +116,43 @@ export async function orchestrateSale(
   let venteCreated = false;
   let inventaireUpdated = false;
   let wonSaleGate = true; // défaut : pas d'inventaire à verrouiller → best-effort (cas marginal)
+  let unitesRestantes: number | null = null;
   if (job.inventaire_id != null && inv) {
-    // Limite assumée : quantite > 1 passe quand même tout l'article en vendu
-    // (les annonces cross-post sont des pièces uniques ; la vente partielle
-    // reste un flux manuel confirmSell, hors de cette orchestration).
-    const { data: won, error: invErr } = await admin
-      .from("inventaire")
-      .update({
-        statut: "vendu",
-        prix_vente: prixVente,
-        margin: benefice,
-        margin_pct: marginPct,
-        selling_fees: sellingFees,
-      })
-      .eq("id", inv.id)
-      .neq("statut", "vendu")
-      .select("id");
-    if (invErr) console.error(`[sale] Update inventaire ${inv.id}:`, invErr.message);
-    inventaireUpdated = (won?.length ?? 0) > 0;
-    wonSaleGate = inventaireUpdated; // a flippé l'inventaire = a gagné le gate
+    // ── GATE DE VENTE (2026-07-22) — remplace l'UPDATE conditionnel ─────────
+    // AVANT : `.update({statut:'vendu', …}).neq('statut','vendu')`, avec cette
+    // limite écrite noir sur blanc : « quantite > 1 passe quand même tout
+    // l'article en vendu ». À la vente d'UNE unité d'un lot de 10, les 9 autres
+    // disparaissaient du stock sans qu'aucune vente ne soit enregistrée —
+    // stock faux ET compta fausse.
+    // MAINTENANT : consume_one_unit consomme UNE unité sous verrou de ligne
+    // Postgres (SELECT … FOR UPDATE). Deux ventes simultanées sur deux
+    // plateformes sont sérialisées : la seconde lit la quantité déjà
+    // décrémentée et repart won=false, sans rien écrire.
+    // ⚠️ ÉQUIVALENCE POUR LES PIÈCES UNIQUES : sur un article à quantite = 1,
+    // restant vaut 0 dès la première vente → la RPC exécute exactement l'UPDATE
+    // d'avant (statut 'vendu' + prix_vente/margin/margin_pct/selling_fees, mêmes
+    // colonnes, mêmes valeurs), et un second appel concurrent trouve
+    // statut='vendu' et rend won=false — la sémantique du `.neq` d'origine.
+    // Le chemin des 451 articles à l'unité est donc inchangé.
+    const { data: consumed, error: invErr } = await admin.rpc("consume_one_unit", {
+      p_inventaire_id: job.inventaire_id,
+      p_user_id: userId,
+      p_prix_vente: prixVente,
+      p_margin: benefice,
+      p_margin_pct: marginPct,
+      p_selling_fees: sellingFees,
+      p_plateforme: job.platform,
+    });
+    if (invErr) console.error(`[sale] consume_one_unit ${inv.id}:`, invErr.message);
+    wonSaleGate = consumed?.won === true;
+    inventaireUpdated = wonSaleGate;
+    unitesRestantes = typeof consumed?.restant === "number" ? consumed.restant : null;
+    if (wonSaleGate && (unitesRestantes ?? 0) > 0) {
+      console.log(
+        `[sale] Article ${inv.id} : 1 unité vendue, ${unitesRestantes} restante(s) en stock — ` +
+        "l'article reste publiable, la republication est MANUELLE (nouveau clic Publier, débit de Pépites normal)."
+      );
+    }
   }
 
   // Vente créée UNIQUEMENT par l'orchestration gagnante (ou job sans inventaire lié).
