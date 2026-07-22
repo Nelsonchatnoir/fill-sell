@@ -4495,9 +4495,26 @@ async function paintTab(tabId) {
 // défaut : il LOCALISE le contrôle de suppression sans jamais le cliquer et
 // remonte une trace détaillée (platform_fields.delete_dry_run_trace) qui sert
 // de relevé de sélecteurs pour la bascule en live.
+// ⚠️ MISE À JOUR 2026-07-22 — Leboncoin vise désormais l'ANNONCE, plus la liste.
+// Mesuré en direct pendant la panne LBC du soir, même compte, deux chargements
+// à la suite : /compte/part/mes-annonces rendait 0 carte (« Vous n'avez aucune
+// annonce en ligne ») pendant que /ad/vetements/3237226181 servait l'annonce
+// avec son panneau « Gestion de mon annonce » — Modifier · Supprimer · Mettre en
+// pause. Les deux sont servis par des systèmes distincts : viser l'annonce fait
+// donc survivre la suppression à une panne de l'index vendeur, qui est ce qui a
+// tué le job 2aee959f (robe) en 'failed' sur « Annonce introuvable dans Mes
+// annonces » alors que l'annonce était joignable.
+// Le repli sur la liste reste indispensable pour les jobs SANS listing_url
+// (removal_url_missing) : là, le ciblage par titre dans « Mes annonces » est le
+// seul recours.
+// ⚠️ Ne JAMAIS viser /compte/mes-annonces/suppression directement : cette page
+// lit l'annonce à supprimer dans localStorage.selectedAdsForDeletion, écrit par
+// le clic sur le lien. Relevé réel : sur la page de la robe, cette clé contenait
+// encore la MONTRE d'une session précédente — y aller en direct aurait supprimé
+// la mauvaise annonce.
 const DELETE_TARGETS = {
   vinted: (job) => job.listing_url,
-  leboncoin: () => "https://www.leboncoin.fr/compte/part/mes-annonces",
+  leboncoin: (job) => job.listing_url || "https://www.leboncoin.fr/compte/part/mes-annonces",
   ebay: () => "https://www.ebay.fr/sh/lst/active",
   beebs: () => "https://www.beebs.app/fr/account/my-adverts",
 };
@@ -4594,10 +4611,14 @@ async function processDeleteJob(job, accessToken) {
   // Or DELETE_TARGETS (juste au-dessus) dit exactement de quoi chacun a besoin :
   //   vinted    → job.listing_url : on navigue SUR l'annonce, sans URL il n'y
   //               a littéralement nulle part où aller ;
-  //   leboncoin / ebay / beebs → une CONSTANTE (« Mes annonces », Hub vendeur).
-  //               L'URL n'y sert à rien pour naviguer : c'est le content script
-  //               qui localise la carte dans la liste, et il sait le faire par
-  //               TITRE (garde d'identité à l'appui, cf. leboncoin.js).
+  //   leboncoin → job.listing_url quand il existe (chemin nominal depuis le
+  //               2026-07-22 : la page de l'annonce porte son propre panneau de
+  //               suppression), SINON « Mes annonces » et ciblage par titre —
+  //               d'où un titre non vide exigé dans ce seul cas ;
+  //   ebay / beebs → une CONSTANTE (Hub vendeur, « Mes annonces »). L'URL n'y
+  //               sert à rien pour naviguer : c'est le content script qui
+  //               localise la carte dans la liste, et il sait le faire par
+  //               TITRE (garde d'identité à l'appui).
   // On exige donc la bonne preuve pour chacun : l'URL là où elle est
   // indispensable, un titre non vide partout ailleurs — sans titre, le content
   // script ne peut rien identifier, et le refus reste le bon comportement.

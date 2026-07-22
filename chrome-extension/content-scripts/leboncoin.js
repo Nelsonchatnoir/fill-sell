@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -110,20 +110,119 @@ function annonceNommee(texte, job, adId) {
   return null;
 }
 
+// ── Aiguillage : la PAGE DE L'ANNONCE d'abord (2026-07-22) ───────────────────
+// Relevé réel, compte de Nico, même session, deux chargements à la suite,
+// PENDANT la panne de « Mes annonces » :
+//     /compte/part/mes-annonces  → 0 carte, « Vous n'avez aucune annonce en
+//                                  ligne » — alors que le compte en a ;
+//     /ad/vetements/3237226181   → annonce servie normalement, avec son panneau
+//                                  « Gestion de mon annonce » : Modifier
+//                                  l'annonce · Supprimer l'annonce · Mettre en
+//                                  pause.
+// L'index vendeur et la fiche d'annonce sont donc servis par deux systèmes
+// distincts, et le second survit à la panne du premier. Le job 2aee959f (robe)
+// est mort en 'failed' sur « Annonce introuvable dans Mes annonces » pendant que
+// l'annonce, elle, était parfaitement joignable ET supprimable.
+//
+// La page de l'annonce devient le chemin NOMINAL ; « Mes annonces » reste le
+// repli des jobs sans listing_url (removal_url_missing), où le ciblage par titre
+// est le seul recours possible.
+//
+// Bénéfice second, au moins aussi important : l'identité n'est plus à deviner.
+// L'URL PORTE l'id. Plus de recherche de carte, plus d'ambiguïté « deux annonces
+// du même vendeur se ressemblent », plus de repli par titre sur le chemin
+// nominal — c'était l'étape la plus fragile du flux.
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[leboncoin][delete] ${line}`); };
 
-  if (!/mes-annonces/.test(location.pathname)) {
-    return { success: false, error: `Page inattendue pour une suppression LBC : ${location.href}`, trace };
+  // Ciblage de l'annonce : id numérique extrait de listing_url
+  // (…/ad/<categorie>/<id>).
+  const idMatch = String(job.listing_url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
+  const adId = idMatch?.[1] ?? null;
+
+  if (/^\/ad\//.test(location.pathname)) return deleteDepuisPageAnnonce(job, adId, trace, t);
+  if (/mes-annonces/.test(location.pathname)) return deleteDepuisListe(job, adId, trace, t);
+  return { success: false, error: `Page inattendue pour une suppression LBC : ${location.href}`, trace };
+}
+
+// ── Chemin NOMINAL : suppression depuis la page de l'annonce ─────────────────
+async function deleteDepuisPageAnnonce(job, adId, trace, t) {
+  t(`page d'annonce : ${location.pathname}`);
+  await humanPause(1000, 2200);
+
+  // ── GARDE nº1 — preuve A : l'URL ouverte est-elle CELLE du job ? ───────────
+  const idPage = location.pathname.match(/\/ad\/[^/]+\/(\d{6,})(?:[/?#]|$)/)?.[1] ?? null;
+  if (!idPage) {
+    return { success: false, error: `Page d'annonce sans identifiant lisible (${location.pathname}) — suppression abandonnée`, trace };
   }
+  if (adId && idPage !== adId) {
+    t(`ABANDON : la page ouverte est l'annonce ${idPage}, le job vise ${adId} — aucun clic`);
+    return { success: false, error: `La page ouverte est l'annonce ${idPage} alors que le job vise ${adId} — suppression abandonnée`, trace };
+  }
+  t(`identité par URL vérifiée : annonce ${idPage}`);
+
+  // Annonce déjà retirée : LBC sert une page « Cette annonce est désactivée »
+  // (relevé réel ce soir sur la montre G-Shock : h1 « Cette annonce est
+  // désactivée », titre d'onglet « Annonce introuvable », AUCUN panneau
+  // propriétaire). Le mot « introuvable » dans l'erreur est délibéré : c'est
+  // celui que processDeleteJob reconnaît, et il redemandera de toute façon
+  // l'état réel à la plateforme avant de conclure — une annonce plus en ligne
+  // est une suppression RÉUSSIE, pas un échec.
+  const h1 = (document.querySelector("h1")?.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (/desactivee|annonce introuvable|n est plus en ligne|supprimee/.test(lbcNorm(h1))) {
+    t(`annonce déjà hors ligne — LBC affiche « ${h1} »`);
+    return { success: false, error: `Annonce introuvable sur sa page (LBC affiche « ${h1} ») — probablement déjà retirée`, trace };
+  }
+
+  // ── GARDE nº1 — preuve B : le TITRE affiché nomme-t-il bien l'article ? ────
+  // L'id seul ne suffit PAS, et c'est la leçon d'eBay du 22/07 : le listing_url
+  // enregistré en base pouvait pointer une annonce SANS RAPPORT (bug de
+  // capture). Dans ce cas la preuve A est trivialement vraie — on comparerait
+  // une URL fausse à elle-même. Il faut un témoin INDÉPENDANT de la base : le
+  // titre servi par Leboncoin. Deux preuves qui se contredisent ⇒ on n'agit pas.
+  const preuveTitre = annonceNommee(h1, job, null);
+  if (preuveTitre) {
+    t(`identité par titre vérifiée : ${preuveTitre} — « ${h1} »`);
+  } else if (motsSignificatifs(job?.title).length >= 3) {
+    t(`ABANDON : l'annonce ${idPage} s'intitule « ${h1} », le job « ${job.title} » — aucun clic`);
+    return {
+      success: false,
+      error: `Contradiction d'identité : l'annonce ${idPage} s'intitule « ${h1} » alors que le job vise « ${job.title} » — suppression abandonnée (listing_url douteux)`,
+      trace,
+    };
+  } else {
+    t(`titre du job trop court pour un second témoin — identité fondée sur l'id ${idPage} seul`);
+  }
+
+  // Contrôle « Supprimer l'annonce » du panneau « Gestion de mon annonce » :
+  // <a class="gap-md flex items-center" href="/compte/mes-annonces/suppression">
+  // avec <svg data-title="SvgTrashOutline"> (relevé DOM réel, robe Camaïeu).
+  // Même href que depuis la liste — findLbcDelete le trouve donc tel quel.
+  const control = findLbcDelete(document);
+  if (!control) {
+    const visible = Array.from(document.querySelectorAll("aside a, aside button"))
+      .map((b) => b.textContent.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 20);
+    t(`contrôle Supprimer INTROUVABLE sur la page de l'annonce — actions relevées : ${visible.join(" | ") || "(aucune)"}`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    return { success: false, error: "Contrôle « Supprimer l'annonce » introuvable sur la page de l'annonce", trace };
+  }
+  t(`contrôle localisé : « ${control.textContent.replace(/\s+/g, " ").trim() || "(icône poubelle)"} » → ${control.getAttribute("href")}`);
+
+  if (DELETE_DRY_RUN) {
+    t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+    return { success: true, dryRun: true, found: true, trace };
+  }
+
+  realClick(control);
+  return confirmerSuppression(job, idPage, trace, t);
+}
+
+// ── Chemin de REPLI : « Mes annonces » (jobs sans listing_url) ───────────────
+async function deleteDepuisListe(job, adId, trace, t) {
   t(`page Mes annonces ok : ${location.pathname}`);
   await humanPause(1000, 2200);
 
-  // Ciblage de l'annonce : id numérique extrait de listing_url
-  // (…/ad/<categorie>/<id>), sinon repli par titre exact.
-  const idMatch = String(job.listing_url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
-  const adId = idMatch?.[1] ?? null;
   let anchor = null;
   if (adId) {
     // ⚠️ `a[href*="<id>"]` est une sous-chaîne : l'id 3236466230 matcherait
@@ -230,6 +329,14 @@ async function deleteListing(job) {
   // Flux réel confirmé : la poubelle NAVIGUE vers /compte/mes-annonces/
   // suppression (page dédiée, aucun motif), puis "Valider la suppression".
   realClick(control);
+  return confirmerSuppression(job, adId, trace, t);
+}
+
+// ── Page de confirmation : gardes finales avant le clic IRRÉVERSIBLE ─────────
+// Commune aux deux chemins : le lien « Supprimer » est le MÊME composant, qu'on
+// le clique depuis la carte de « Mes annonces » ou depuis le panneau de la page
+// d'annonce, et il mène à la même page dédiée.
+async function confirmerSuppression(job, adId, trace, t) {
   const confirmBtn = await waitFor(() => {
     if (!/suppression/.test(location.pathname)) return null;
     return findButtonByExactText("Valider la suppression");
@@ -237,7 +344,57 @@ async function deleteListing(job) {
   if (!confirmBtn) return { success: false, error: "Page /suppression ou bouton « Valider la suppression » introuvable après le clic poubelle", trace };
   t(`page de confirmation atteinte : ${location.pathname} — "Valider la suppression"`);
 
-  // ── GARDE nº2 : la page de confirmation, avant le clic IRRÉVERSIBLE ────────
+  // ── GARDE nº2a : L'ÉTAT QUE LA PAGE VA RÉELLEMENT SUPPRIMER ────────────────
+  // Trouvé en inspectant la page de la robe le 2026-07-22 : le lien « Supprimer
+  // l'annonce » est un chemin NU (/compte/mes-annonces/suppression, sans id ni
+  // query string) et son onClick écrit l'annonce visée dans le localStorage :
+  //     selectedAdsForDeletion = { type:"simple",
+  //                                ads:[ { list_id, subject, url, status, … } ] }
+  // C'est CETTE valeur que la page de confirmation relit. On tient donc enfin
+  // une preuve par IDENTIFIANT de ce qui va être détruit, là où la garde nº2b
+  // ci-dessous ne pouvait que comparer du texte.
+  //
+  // ⚠️ CE N'EST PAS THÉORIQUE. Mesuré en direct, sur la page de la ROBE, la clé
+  // contenait encore :
+  //     list_id 3236466230 — « Casio G-Shock Noire Bracelet Résine »
+  // c'est-à-dire une valeur PÉRIMÉE, d'une TOUTE AUTRE annonce. Aller
+  // directement sur /compte/mes-annonces/suppression et valider aurait supprimé
+  // la montre au lieu de la robe. D'où deux règles :
+  //   · on n'atteint JAMAIS /suppression par navigation directe — toujours par
+  //     le clic sur le lien, seul geste qui réécrit cet état (cf. DELETE_TARGETS
+  //     côté background, qui vise la page de l'annonce, jamais /suppression) ;
+  //   · on relit l'état ICI, après le clic et avant de valider.
+  // Une seule annonce sélectionnée, et c'est la nôtre : sinon abandon sec. Le
+  // cas « plusieurs » vient de la sélection groupée par cases à cocher de « Mes
+  // annonces » — un état résiduel qui emporterait plusieurs annonces d'un coup.
+  let selection = null;
+  try { selection = JSON.parse(localStorage.getItem("selectedAdsForDeletion") ?? "null"); } catch { selection = null; }
+  const ads = Array.isArray(selection?.ads) ? selection.ads : null;
+  const idsSelection = ads ? ads.map((a) => String(a?.list_id ?? "")).filter(Boolean) : [];
+  if (idsSelection.length) {
+    const sujets = ads.map((a) => String(a?.subject ?? "?")).join(" | ");
+    if (idsSelection.length > 1) {
+      t(`ABANDON : ${idsSelection.length} annonces sélectionnées pour suppression (${idsSelection.join(", ")}) — « Valider la suppression » NON cliqué`);
+      return {
+        success: false,
+        error: `${idsSelection.length} annonces sont sélectionnées pour suppression (${sujets}) — suppression abandonnée, on n'en retire jamais plusieurs d'un coup`,
+        trace,
+      };
+    }
+    if (adId && idsSelection[0] !== String(adId)) {
+      t(`ABANDON : la page s'apprête à supprimer l'annonce ${idsSelection[0]} (« ${sujets} »), le job vise ${adId} — « Valider la suppression » NON cliqué`);
+      return {
+        success: false,
+        error: `La page de confirmation cible l'annonce ${idsSelection[0]} (« ${sujets} ») alors que le job vise ${adId} — suppression abandonnée`,
+        trace,
+      };
+    }
+    t(`cible de suppression vérifiée par identifiant : list_id ${idsSelection[0]} — « ${sujets} »`);
+  } else {
+    t("état selectedAdsForDeletion absent ou illisible — on retombe sur la vérification par texte");
+  }
+
+  // ── GARDE nº2b : la page de confirmation, avant le clic IRRÉVERSIBLE ───────
   // Relevé réel 2026-07-22 : le lien « Supprimer » est un chemin NU
   // (/compte/mes-annonces/suppression), sans id ni query string — l'annonce
   // ciblée ne voyage que dans l'état React. On ne peut donc pas prouver
@@ -273,7 +430,7 @@ async function deleteListing(job) {
         trace,
       };
     }
-    t(`⚠️ page de confirmation générique (aucune identité lisible, ${presents}/${mots.length} mot(s)) — validation sur la foi de la garde carte`);
+    t(`⚠️ page de confirmation générique (aucune identité lisible, ${presents}/${mots.length} mot(s)) — validation sur la foi de la garde nº1 (page d'annonce ou carte) et de la garde nº2a`);
   }
 
   await humanPause(900, 1800);
