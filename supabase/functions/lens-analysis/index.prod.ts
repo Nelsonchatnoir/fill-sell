@@ -228,6 +228,38 @@ serve(async (req) => {
   // remboursement best-effort si l'analyse échoue après débit.
   let paidWithCoins = 0;
 
+  // Unité de quota mensuel consommée par check_and_log_usage. Elle est écrite
+  // AVANT l'appel au modèle : une analyse qui échoue la brûlait donc sans
+  // contrepartie, et la reprise en brûlait une seconde. Sur un compte Free
+  // (5/mois) deux « Réponse IA non parsable » suffisaient à en manger 40 % sans
+  // qu'aucune analyse n'ait été rendue. Le remboursement des Pépites posé plus
+  // bas ne couvrait QUE le dépassement de quota — le cas majoritaire (analyse
+  // DANS le quota inclus) n'avait aucun filet. On garde l'id pour relâcher la
+  // ligne si l'analyse n'aboutit pas : la reprise redevient gratuite de fait.
+  const usageLogId: string | null = quotaData?.log_id ?? null;
+
+  // Relâche tout ce que cette tentative a consommé. Idempotent (les deux
+  // branches sont neutralisées après le premier appel), best-effort : un échec
+  // de libération ne doit jamais masquer l'erreur d'origine.
+  let released = false;
+  const userId = user.id; // capturé hors closure : TS ne garde pas le narrowing
+  async function releaseAttempt(reason: string) {
+    if (released) return;
+    released = true;
+    if (usageLogId) {
+      const { error } = await adminClient.from("usage_logs").delete().eq("id", usageLogId);
+      if (error) console.error("[lens-analysis] release usage_log:", error.message);
+    }
+    if (paidWithCoins > 0) {
+      const { error } = await adminClient.rpc("refund_coins", {
+        p_user_id: userId,
+        p_amount: paidWithCoins,
+        p_metadata: { source: reason },
+      });
+      if (error) console.error("[lens-analysis] refund_coins:", error.message);
+    }
+  }
+
   if (quotaData?.allowed === false) {
     if (quotaData.reason === "daily_limit") {
       // Frein journalier (Premium 10/j) : comportement historique conservé
@@ -267,7 +299,11 @@ serve(async (req) => {
     const body = await req.json();
     const { urls, description, prixAchat, lang = "fr", userCountry, userStats } = body;
 
+    // ⚠️ Ces deux sorties sont des `return` À L'INTÉRIEUR du try : elles ne
+    // passent PAS par le catch, donc ni l'unité de quota ni les Pépites
+    // n'étaient rendues. Elles relâchent désormais explicitement.
     if (!Array.isArray(urls) || urls.length === 0) {
+      await releaseAttempt("lens_missing_urls");
       return new Response(JSON.stringify({ error: "Missing urls" }), {
         status: 400, headers: { "Content-Type": "application/json", ...CORS },
       });
@@ -275,6 +311,7 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
+      await releaseAttempt("lens_missing_api_key");
       return new Response(JSON.stringify({ error: "Missing API key" }), {
         status: 500, headers: { "Content-Type": "application/json", ...CORS },
       });
@@ -426,17 +463,12 @@ serve(async (req) => {
     });
   } catch (err: any) {
     console.error("[lens-analysis] Error:", err);
-    // Analyse hors quota payée en pièces mais jamais livrée : remboursement
-    // best-effort (crédité en solde "acheté", cf. refund_coins).
-    if (paidWithCoins > 0) {
-      await adminClient.rpc("refund_coins", {
-        p_user_id: user.id,
-        p_amount: paidWithCoins,
-        p_metadata: { source: "lens_overflow_failed" },
-      }).then(({ error }) => {
-        if (error) console.error("[lens-analysis] refund_coins:", error.message);
-      });
-    }
+    // Analyse jamais livrée : on relâche l'unité de quota consommée à l'entrée
+    // ET, si l'analyse était hors quota, les Pépites débitées (créditées en
+    // solde « acheté », cf. refund_coins). La reprise depuis le bouton
+    // « Analyser avec l'IA » de LensTab est donc gratuite de fait : la
+    // tentative ratée n'a rien coûté.
+    await releaseAttempt("lens_overflow_failed");
     if (err?.isAiUnavailable) {
       return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
         status: 503, headers: { "Content-Type": "application/json", ...CORS },

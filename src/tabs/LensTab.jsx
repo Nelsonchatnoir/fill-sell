@@ -683,7 +683,26 @@ const LensTab = memo(function LensTab({
           </button>
         </div>
 
-        {/* Bouton Analyser */}
+        {/* ── Bouton Analyser : UNIQUEMENT en reprise après ÉCHEC (2026-07-22) ──
+            Cet écran n'est atteint que si lensResult existe, donc APRÈS une
+            tentative. Le bouton y était rendu inconditionnellement : sur une
+            analyse RÉUSSIE, l'utilisateur voyait « Analyser avec l'IA » posé
+            AU-DESSUS de son résultat, cliquable, et sans la ligne « 6 Pépites »
+            (elle ne vit que dans LensScanHome, l'écran de scan vide) — un tap
+            relançait donc une analyse payante sans jamais afficher son prix.
+            Règle désormais :
+              • succès  → aucun bouton d'analyse. Seul « Nouvelle analyse »
+                (LensAnalysisResult, plus bas) reste : c'est un RESET pur, il ne
+                débite rien. Il repasse lensResult à null → LensScanHome revient,
+                vide, avec son bouton et son tarif « 6 Pépites » ; le prochain
+                tap est une analyse neuve, payante, annoncée comme telle.
+              • échec   → le bouton revient pour retenter. La reprise ne coûte
+                rien de plus : la tentative ratée est relâchée côté serveur
+                (usage_logs + remboursement des Pépites, cf. lens-analysis),
+                donc l'utilisateur paie une seule fois l'analyse qu'il reçoit.
+            Les deux bandeaux de quota accompagnent le bouton : ils annoncent le
+            coût du prochain tap et n'ont aucun sens sans lui. */}
+        {lensResult.error&&(<>
         <PrimaryButton
           onClick={analyzeLens}
           disabled={!lensPhotos.length||lensLoading||lensPremiumLimitReached}
@@ -716,6 +735,7 @@ const LensTab = memo(function LensTab({
             }
           </div>
         )}
+        </>)}
 
         {/* Résultat */}
         {lensResult&&(
