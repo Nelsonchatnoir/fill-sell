@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-19-needs-user (gate pre-clic requis vides : needsUserField structure — premier champ + options relevees du panneau + cible champ dedie ou beebsAspects.<libelle> — le background persiste needs_user au lieu du re-armement borne) + format-colis-palier-direct";
+const BEEBS_BUILD = "2026-07-22-listes-longues (relevé des options AVANT toute frappe dans la barre de recherche : les listes longues — Taille robe femme, Marque, tailles enfant/bébé — entrent enfin au catalogue, la garantie « jamais de liste partielle » passe d'un test fragile à l'ORDRE des opérations ; barre de recherche détectée par différentiel et non plus par querySelector global ; needsUserField porte input_type pour que l'app refuse d'en faire une saisie libre)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -576,6 +576,17 @@ async function fillListingForm(job) {
         field_key: firstLabel,
         field_label: firstLabel,
         target: dedicated ? { root: null, key: dedicated } : { root: "beebsAspects", key: firstLabel },
+        // input_type (2026-07-22) : dit à l'app que ce champ est FERMÉ côté
+        // Beebs. Sans lui, un champ dont on n'a pas pu relever les options
+        // arrivait dans le mini-éditeur indistinguable d'un champ libre, et
+        // s'affichait en saisie texte — violation directe du principe du 19/07
+        // (cas réel : robe Camaïeu, « Taille » en texte libre alors que Beebs
+        // n'accepte qu'une valeur de sa liste ; ce qu'on y tape ne peut que
+        // repartir en échec). TOUS les champs dynamiques Beebs sont des
+        // dropdowns (enumerateBeebsFields ne relève que des __selectButton) :
+        // l'absence d'options est une lacune de NOTRE relevé, jamais la preuve
+        // que le champ serait libre.
+        input_type: firstMeta?.inputType ?? "dropdown",
         ...(Array.isArray(firstMeta?.options) && firstMeta.options.length
           ? { allowed_values: firstMeta.options }
           : {}),
@@ -996,27 +1007,67 @@ async function waitFor(fn, timeoutMs = 5000) {
 
 const VALUE_OPTION_SELECTOR = 'button[class*="__valueButton"]';
 const allValueOptions = () => Array.from(document.querySelectorAll(VALUE_OPTION_SELECTOR));
+// ⚠️ Le panneau est un PORTAIL : il n'est pas descendant du bouton, aucun
+// scope DOM n'est possible. Le seul « scope au panneau ouvert » qui ait un sens
+// ici est DIFFÉRENTIEL — l'élément apparu APRÈS le clic est le nôtre. C'est
+// déjà la technique employée pour les options ; on l'applique aussi à la barre
+// de recherche, au lieu du document.querySelector global d'avant (2026-07-22)
+// qu'un champ de recherche situé ailleurs dans la page aurait suffi à tromper.
+const SEARCH_INPUT_SELECTOR = 'input[class*="__searchBarInput"]';
 
 // Ouvre le panneau du champ et retourne UNIQUEMENT ses options.
 //
 // Le panneau n'est pas un descendant du bouton (portail) : impossible de le
 // scoper par le DOM. On procède donc par DIFFÉRENTIEL — les options présentes
 // avant le clic ne sont pas les nôtres, les nouvelles le sont.
-async function openPanelOptions(trigger, rawText, timeoutMs = 4000) {
+async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = null } = {}) {
   const before = new Set(allValueOptions());
+  const searchBefore = new Set(document.querySelectorAll(SEARCH_INPUT_SELECTOR));
   await humanPause();
   trigger.click(); // ⚠️ BASCULE : re-cliquer ferme le panneau (cf. closePanel)
   await humanPause();
 
-  // La barre de recherche n'existe que sur les listes longues (Marque). Les
-  // listes courtes (Âge : 10 options, Matière : 6) n'en ont pas — relevé.
-  const search = document.querySelector('input[class*="__searchBarInput"]');
-  if (search) await typeHuman(search, String(rawText));
+  const fraiches = () => allValueOptions().filter((el) => !before.has(el));
+  const attendreFraiches = async (ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      const f = fraiches();
+      if (f.length) return f;
+      await sleep(80);
+    }
+    return [];
+  };
 
+  // ── RELEVÉ NON FILTRÉ, AVANT TOUTE FRAPPE (2026-07-22) ────────────────────
+  // À l'ouverture, le panneau affiche la liste COMPLÈTE. Dès qu'on tape dans la
+  // barre de recherche, elle est filtrée — et c'est pour ça que les listes
+  // longues n'étaient JAMAIS cataloguées : l'ancien code ne relevait les
+  // options qu'après la frappe, puis refusait de les mémoriser en constatant la
+  // présence d'une barre (à raison : une liste filtrée est partielle et
+  // empoisonnerait le catalogue). Résultat mesuré en base : 64 des 81 champs
+  // obligatoires Beebs sans la moindre valeur, dont « Taille » sur les robes
+  // femme, les 4 catégories bébé, fille, garçon — donc saisie libre côté app,
+  // en violation du principe du 19/07.
+  // On relève donc MAINTENANT, avant de taper. Le catalogue ne reçoit ainsi que
+  // des listes complètes : la garantie « jamais de liste partielle » n'est plus
+  // portée par un test fragile mais par l'ORDRE des opérations.
+  const searchNouveau = Array.from(document.querySelectorAll(SEARCH_INPUT_SELECTOR))
+    .find((el) => !searchBefore.has(el)) ?? null;
+  // Budget court quand il y a une barre : on ne veut pas retarder la frappe de
+  // 4 s à chaque champ. Sans barre, l'attente EST celle du chemin nominal.
+  const completes = await attendreFraiches(searchNouveau ? 2500 : timeoutMs);
+  if (label && completes.length) {
+    beebsObservedOptions[label] = completes.map(optionLabel).filter(Boolean).slice(0, 60);
+  }
+
+  // Pas de barre de recherche : la liste affichée EST la liste complète.
+  if (!searchNouveau) return completes;
+
+  await typeHuman(searchNouveau, String(rawText));
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const fresh = allValueOptions().filter((el) => !before.has(el));
-    if (fresh.length) return fresh;
+    const f = fraiches();
+    if (f.length) return f;
     await sleep(80);
   }
   return [];
@@ -1036,7 +1087,11 @@ async function closePanel(trigger) {
 // et non par différentiel : React réutilise les mêmes éléments de bouton au
 // re-filtrage, le différentiel d'openPanelOptions ne voit alors rien de neuf.
 async function researchPanelFor(trigger, query) {
-  const search = document.querySelector('input[class*="__searchBarInput"]');
+  // Ici le panneau est DÉJÀ ouvert : le différentiel n'a plus de sens (rien de
+  // nouveau n'apparaît), le sélecteur global reste le seul moyen d'atteindre la
+  // barre. Acceptable : on ne s'en sert que pour re-filtrer un panneau qu'on
+  // vient soi-même d'ouvrir, et jamais pour décider ce qui entre au catalogue.
+  const search = document.querySelector(SEARCH_INPUT_SELECTOR);
   if (!search) return [];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
   setter.call(search, "");
@@ -1061,18 +1116,15 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
   if (!field) return; // champ non affiché pour cette catégorie : rien à signaler
   const { trigger, required } = field;
 
-  let options = await openPanelOptions(trigger, rawText);
-  // Options observées → catalogue (2026-07-19, cas réel Medik8 : « État »
-  // bloquait sans que PERSONNE ne sache quelles valeurs la catégorie accepte —
-  // allowed_values restait null côté platform_category_aspects, contrairement
-  // à Vinted dont la config attributes porte les listes). UNIQUEMENT quand le
-  // panneau n'a PAS de barre de recherche : une liste filtrée par la recherche
-  // (Marque) est PARTIELLE et empoisonnerait le catalogue — relevé live : la
-  // barre n'existe que sur les listes longues, les listes fermées courtes
-  // (État : 2 options en Hygiène et beauté) n'en ont pas.
-  if (options.length && !document.querySelector('input[class*="__searchBarInput"]')) {
-    beebsObservedOptions[labelText] = options.map(optionLabel).filter(Boolean).slice(0, 60);
-  }
+  // Le relevé pour le catalogue se fait DANS openPanelOptions, à l'ouverture du
+  // panneau et avant toute frappe (2026-07-19 pour le principe — cas Medik8 où
+  // « État » bloquait sans que personne ne sache les valeurs acceptées ;
+  // 2026-07-22 pour l'ordre des opérations, qui étend enfin le relevé aux
+  // listes longues). Plus aucun test « y a-t-il une barre de recherche ? » ici :
+  // il ne servait qu'à écarter les listes filtrées, ce que l'ordre garantit
+  // désormais — et il le faisait sur un document.querySelector GLOBAL, donc
+  // faux dès qu'une autre barre de recherche existait dans la page.
+  let options = await openPanelOptions(trigger, rawText, 4000, { label: labelText });
   let researchedFallback = false;
   if (!options.length && !sizeField) {
     // Recherche sans AUCUN résultat (cas réel Medik8 2026-07-19 : la barre de
