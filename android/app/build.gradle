@@ -24,8 +24,10 @@ android {
         // Android affichait 2.4 pour le MÊME code — deux numéros pour une seule
         // release. On aligne sur 2.2 plutôt que de laisser diverger.
         // ⚠️ versionCode, lui, ne recule JAMAIS : Google Play le refuserait.
-        // 15 → 16 pour ce build.
-        versionCode 16
+        // 15 → 16, puis 16 → 17 (2026-07-22 soir : build embarquant le fix du
+        // bouton Lens 6748274, le tarif « 6 Pépites » e411ecc, le garde-fou
+        // lots c6de17b et le déblocage cross-post 4580da6).
+        versionCode 17
         versionName "2.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
