@@ -19,8 +19,14 @@ android {
         applicationId "app.fillsell.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "2.4"
+        // versionName aligné sur iOS (2026-07-22) : codemagic.yaml fige
+        // `agvtool new-marketing-version 2.2`, donc tout build iOS sort en 2.2.
+        // Android affichait 2.4 pour le MÊME code — deux numéros pour une seule
+        // release. On aligne sur 2.2 plutôt que de laisser diverger.
+        // ⚠️ versionCode, lui, ne recule JAMAIS : Google Play le refuserait.
+        // 15 → 16 pour ce build.
+        versionCode 16
+        versionName "2.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
