@@ -64,6 +64,52 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // autonome). Gate Leboncoin : 2/3 suppressions réelles.
 const DELETE_DRY_RUN = false;
 
+// ── Garde « ce périmètre nomme-t-il bien l'annonce du job ? » ────────────────
+// Portée d'eBay (ebay.js), où elle a évité une catastrophe le 2026-07-22 : le
+// listing_url enregistré pointait une annonce SANS RAPPORT (bug de capture,
+// corrigé depuis), et seul le refus de cliquer sur un dialogue qui ne nommait
+// pas l'article du job a empêché de supprimer la mauvaise annonce.
+// Leboncoin n'avait AUCUNE garde équivalente : on cliquait « Supprimer » puis
+// « Valider la suppression » sans jamais vérifier CE QU'ON SUPPRIMAIT. Même
+// URL fausse ⇒ même mécanique ⇒ mauvaise annonce supprimée. Et sur LBC c'est
+// irréversible.
+//
+// Deux preuves acceptées, par ordre de force :
+//   1. l'IDENTIFIANT de l'annonce (…/ad/<catégorie>/<id>) présent dans le
+//      périmètre — preuve d'identité, aucune ambiguïté possible ;
+//   2. le TITRE : tous les mots significatifs (≥3 lettres) du titre du job sauf
+//      AU PLUS UN, avec un minimum de 3 mots. La tolérance à un mot est
+//      nécessaire, pas laxiste — relevé réel sur la montre :
+//          job     « Montre Casio G-Shock noire bracelet résine »
+//          annonce « Casio G-Shock Noire Bracelet Résine »        ← « Montre » en trop
+//      Exiger l'égalité bloquerait des suppressions légitimes ; en exiger moins
+//      laisserait passer une annonce voisine du même vendeur.
+// Aucune preuve ⇒ on n'agit pas. Jamais de suppression à l'aveugle.
+// Accents décomposés puis retirés (̀-ͯ = diacritiques combinantes,
+// écrites en échappement : un intervalle de caractères invisibles collé tel
+// quel dans le source est illisible et se perd au premier copier-coller).
+// « Résine » et « resine » doivent matcher : les titres LBC sont accentués, pas
+// toujours ceux du job.
+const lbcNorm = (s) => String(s ?? "").toLowerCase().normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+function motsSignificatifs(titre) {
+  return [...new Set(lbcNorm(titre).split(" ").filter((m) => m.length >= 3))];
+}
+
+function annonceNommee(texte, job, adId) {
+  const brut = String(texte ?? "");
+  if (adId && brut.includes(String(adId))) return `id ${adId} présent`;
+  const mots = motsSignificatifs(job?.title);
+  if (mots.length < 3) return null; // titre trop court pour prouver quoi que ce soit
+  const cible = lbcNorm(brut);
+  const presents = mots.filter((m) => cible.includes(m));
+  if (presents.length >= mots.length - 1) {
+    return `titre reconnu (${presents.length}/${mots.length} mots significatifs)`;
+  }
+  return null;
+}
+
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[leboncoin][delete] ${line}`); };
@@ -80,24 +126,77 @@ async function deleteListing(job) {
   const adId = idMatch?.[1] ?? null;
   let anchor = null;
   if (adId) {
-    anchor = document.querySelector(`a[href*="${adId}"]`);
-    t(adId ? `id annonce ${adId} → lien ${anchor ? "trouvé" : "introuvable"}` : "");
+    // ⚠️ `a[href*="<id>"]` est une sous-chaîne : l'id 3236466230 matcherait
+    // aussi une annonce 13236466230x. On exige la même borne de chemin que
+    // celle qui a servi à EXTRAIRE l'id, pour comparer des id entiers.
+    anchor = Array.from(document.querySelectorAll("a[href]")).find((a) => {
+      const m = (a.getAttribute("href") ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
+      return m?.[1] === adId;
+    }) ?? null;
+    t(`id annonce ${adId} → lien ${anchor ? "trouvé" : "introuvable"}`);
+  } else {
+    // Job de suppression sans URL : c'est désormais un cas NORMAL et non plus
+    // un job cassé (2026-07-22). L'orchestration de vente arme le retrait dès
+    // qu'un job est 'published', même si la capture d'URL a échoué — sinon
+    // l'annonce restait en ligne pour toujours, en silence. On retombe donc
+    // sur la recherche par titre, qui est de toute façon gardée plus bas.
+    t(`aucun listing_url sur le job (${job.platform_fields?.removal_url_missing ? "removal_url_missing" : "URL jamais capturée"}) — ciblage par TITRE`);
   }
-  if (!anchor && job.title) {
-    anchor = Array.from(document.querySelectorAll("a, h2, h3, p, span"))
-      .find((el) => el.textContent.trim() === job.title.trim()) ?? null;
-    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
+  // Carte englobante : ancêtre porteur des actions. LBC balise ses composants
+  // en data-qa-id — on remonte jusqu'à un conteneur plausible.
+  let card = anchor
+    ? (anchor.closest('[data-qa-id*="ad"], article, li') ?? anchor.closest("div"))
+    : null;
+
+  // Repli par TITRE — REÉCRIT le 2026-07-22. L'ancien exigeait l'égalité EXACTE
+  // (el.textContent.trim() === job.title.trim()) : inutilisable en pratique.
+  // Relevé réel sur la montre restée en ligne :
+  //   job     « Montre Casio G-Shock noire bracelet résine »
+  //   annonce « Casio G-Shock Noire Bracelet Résine »
+  // Un mot d'écart, et le repli ne trouvait rien. On raisonne désormais en
+  // CARTES (le périmètre qui porte les actions) et on exige que la carte NOMME
+  // l'annonce, avec la même garde que celle qui protège le clic. Et surtout :
+  // si PLUSIEURS cartes correspondent, on ne devine pas — on abandonne. Deux
+  // annonces quasi identiques du même vendeur, c'est exactement le cas où une
+  // suppression à l'aveugle détruit la mauvaise (vécu sur eBay le même jour).
+  if (!card && job.title) {
+    const cartes = Array.from(document.querySelectorAll(
+      'li[data-qa-id="ad_item_container"], [data-qa-id*="ad_item"], article'
+    ));
+    const nommees = cartes.filter((c) => annonceNommee(c.textContent, job, adId));
+    if (nommees.length === 1) {
+      card = nommees[0];
+      t(`annonce retrouvée par titre parmi ${cartes.length} carte(s) — ${annonceNommee(card.textContent, job, adId)}`);
+    } else if (nommees.length > 1) {
+      t(`ABANDON : ${nommees.length} annonces correspondent au titre « ${job.title} » — impossible de trancher, aucun clic`);
+      return {
+        success: false,
+        error: `${nommees.length} annonces Leboncoin correspondent au titre du job — suppression abandonnée (ambiguïté, il faut trancher à la main)`,
+        trace,
+      };
+    }
   }
-  if (!anchor) {
+
+  if (!card) {
     t(`annonce INTROUVABLE dans Mes annonces (id=${adId ?? "?"}, titre="${job.title ?? "?"}")`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     return { success: false, error: "Annonce introuvable dans Mes annonces", trace };
   }
-
-  // Carte englobante : ancêtre porteur des actions. LBC balise ses composants
-  // en data-qa-id — on remonte jusqu'à un conteneur plausible.
-  const card = anchor.closest('[data-qa-id*="ad"], article, li') ?? anchor.closest("div");
   t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}${card?.getAttribute?.("data-qa-id") ? ` data-qa-id="${card.getAttribute("data-qa-id")}"` : ""}>`);
+
+  // ── GARDE nº1 : la carte nomme-t-elle bien l'annonce du job ? ──────────────
+  // C'est LA protection décisive : le contrôle « Supprimer » qu'on va cliquer
+  // vit DANS cette carte, donc c'est elle qui détermine l'annonce supprimée.
+  const preuveCarte = annonceNommee(card.textContent, job, adId);
+  if (!preuveCarte) {
+    t(`ABANDON : la carte ciblée ne nomme pas l'annonce du job (attendu « ${job.title ?? "?"} », id ${adId ?? "?"}) — aucun clic`);
+    return {
+      success: false,
+      error: "La carte ciblée ne nomme pas l'annonce du job — suppression abandonnée",
+      trace,
+    };
+  }
+  t(`carte vérifiée : ${preuveCarte}`);
 
   // Contrôle Supprimer (flux réel 2026-07-11) : la poubelle est le DERNIER
   // bouton à icône (svg sans texte) de la rangée d'actions de la carte, après
@@ -137,6 +236,46 @@ async function deleteListing(job) {
   }, 10_000);
   if (!confirmBtn) return { success: false, error: "Page /suppression ou bouton « Valider la suppression » introuvable après le clic poubelle", trace };
   t(`page de confirmation atteinte : ${location.pathname} — "Valider la suppression"`);
+
+  // ── GARDE nº2 : la page de confirmation, avant le clic IRRÉVERSIBLE ────────
+  // Relevé réel 2026-07-22 : le lien « Supprimer » est un chemin NU
+  // (/compte/mes-annonces/suppression), sans id ni query string — l'annonce
+  // ciblée ne voyage que dans l'état React. On ne peut donc pas prouver
+  // l'identité par l'URL, et un état périmé enverrait valider la suppression
+  // d'une AUTRE annonce sans que rien ne le signale.
+  // Trois cas, et un seul est bloquant :
+  //   · la page nomme NOTRE annonce      → on valide (cas nominal) ;
+  //   · la page ne nomme RIEN d'identifiable (page générique « Voulez-vous
+  //     supprimer cette annonce ? ») → on valide QUAND MÊME, mais on le TRACE :
+  //     la garde nº1 a déjà prouvé l'identité sur la carte, et le contrôle
+  //     cliqué appartenait à cette carte. Bloquer ici casserait les
+  //     suppressions qui fonctionnent aujourd'hui (Volcom, 22/07) sans rien
+  //     protéger de plus ;
+  //   · la page nomme une AUTRE annonce  → ABANDON SEC, on ne valide pas.
+  // ⚠️ Le 3e cas est le seul qui puisse détruire quelque chose, et c'est
+  // exactement celui qu'eBay nous a appris à refuser.
+  const contexteConfirm = (document.body.textContent ?? "") + " " + location.href;
+  const preuveConfirm = annonceNommee(contexteConfirm, job, adId);
+  if (preuveConfirm) {
+    t(`page de confirmation vérifiée : ${preuveConfirm}`);
+  } else {
+    // Nomme-t-elle une annonce, mais pas la nôtre ? On cherche un titre d'annonce
+    // plausible : si la page porte des mots de contenu et qu'AUCUN mot
+    // significatif du job n'y figure, c'est qu'elle parle d'autre chose.
+    const cible = lbcNorm(contexteConfirm);
+    const mots = motsSignificatifs(job.title);
+    const presents = mots.filter((m) => cible.includes(m)).length;
+    if (mots.length >= 3 && presents === 0 && cible.length > 120) {
+      t(`ABANDON : la page de confirmation ne mentionne AUCUN mot de « ${job.title} » (0/${mots.length}) — « Valider la suppression » NON cliqué`);
+      return {
+        success: false,
+        error: "La page de confirmation ne nomme pas l'annonce du job — suppression abandonnée",
+        trace,
+      };
+    }
+    t(`⚠️ page de confirmation générique (aucune identité lisible, ${presents}/${mots.length} mot(s)) — validation sur la foi de la garde carte`);
+  }
+
   await humanPause(900, 1800);
   realClick(confirmBtn);
   // Attendu : "Votre demande de suppression a bien été prise en compte".
@@ -1557,7 +1696,7 @@ function findButtonByExactText(text) {
 }
 
 const normalizeFuzzy = (s) =>
-  s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 function containsAsWords(hay, needle) {
   if (!needle) return false;
