@@ -115,15 +115,18 @@ serve(async (req) => {
     }
 
     // ── Abonnements : standard 12,99 € ou Pro 29,99 € ──
-    // Pas d'essai gratuit sur Pro : les 600 pièces mensuelles sont créditées dès
-    // le paiement (un trial serait arbitrable : s'abonner, brûler les pièces, annuler).
+    // Plus AUCUN essai gratuit (2026-07-22) : l'essai 7 jours Premium est
+    // supprimé (il ne restait posé qu'ici, jamais sur le Price Stripe). Pro
+    // n'en a jamais eu (les 600 pièces mensuelles seraient arbitrables :
+    // s'abonner, brûler les pièces, annuler).
     const isProPlan = product === "pro";
     const priceId = isProPlan
       ? Deno.env.get("STRIPE_PRICE_PRO")!
       : Deno.env.get("STRIPE_PRICE_STANDARD")!;
     const planType = isProPlan ? "pro" : "standard";
 
-    // Réutilise le customer Stripe existant pour bloquer un 2ème trial
+    // Réutilise le customer Stripe existant (historique de facturation unifié —
+    // et à l'époque de l'essai 7 jours, c'était aussi la garde anti-2ème trial).
     const { data: profile } = await supabase
       .from("profiles")
       .select("stripe_customer_id")
@@ -137,15 +140,9 @@ serve(async (req) => {
       success_url: "https://fillsell.app/success",
       cancel_url: "https://fillsell.app/cancel",
       ...(existingCustomerId
-        ? {
-            customer: existingCustomerId,
-            subscription_data: { metadata: { plan_type: planType } },
-          }
-        : {
-            customer_email: verifiedEmail || undefined,
-            subscription_data: { ...(isProPlan ? {} : { trial_period_days: 7 }), metadata: { plan_type: planType } },
-          }
-      ),
+        ? { customer: existingCustomerId }
+        : { customer_email: verifiedEmail || undefined }),
+      subscription_data: { metadata: { plan_type: planType } },
       metadata: { plan_type: planType },
     };
 
