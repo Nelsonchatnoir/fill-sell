@@ -280,17 +280,77 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
+  // ── Filet symétrique pour Beebs / Vinted / Leboncoin (2026-07-22) ──────────
+  // Le filet ci-dessus n'existait QUE pour eBay : les 3 autres plateformes
+  // n'avaient aucun recours quand le job arrivait sans allowed_values, alors
+  // que le catalogue cumulatif platform_category_aspects porte exactement cette
+  // information — apprise lors des publications précédentes dans la même
+  // catégorie. On la relit donc ici, best-effort : un job passé AVANT que la
+  // catégorie ne soit cataloguée profite du relevé fait depuis.
+  // La clé de catégorie est le chemin joint par " > ", même convention que
+  // celle écrite par le background (categoryKeyOf).
+  const [catalogueAllowed, setCatalogueAllowed] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const pf = job.platform_fields ?? {};
+    // ⚠️ MÊME ORDRE que categoryKeyOf (background.js:4061) : une clé calculée
+    // différemment ne retrouverait tout simplement jamais la ligne écrite.
+    const chemin = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
+    const categoryKey = Array.isArray(chemin) ? chemin.join(" > ") : null;
+    if (job.platform === "ebay" || !f || (Array.isArray(f.allowed_values) && f.allowed_values.length) || !categoryKey) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("platform_category_aspects")
+          .select("allowed_values")
+          .eq("platform", job.platform)
+          .eq("category_key", categoryKey.slice(0, 300))
+          .eq("field_key", String(f.field_key).slice(0, 120))
+          .maybeSingle();
+        const vals = Array.isArray(data?.allowed_values)
+          ? data.allowed_values.filter(Boolean).map(String)
+          : [];
+        if (alive && vals.length) setCatalogueAllowed(vals);
+      } catch { /* best-effort : on retombe sur le message « valeurs indisponibles » */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
   if (!f) return null;
 
   const allowed = Array.isArray(f.allowed_values) && f.allowed_values.length
     ? f.allowed_values
-    : ebayAllowed;
+    : (ebayAllowed ?? catalogueAllowed);
   const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
 
-  const valider = async () => {
+  // ── RÈGLE DU 19/07 RENDUE INCONTOURNABLE (2026-07-22) ──────────────────────
+  // Un champ FERMÉ côté plateforme ne doit JAMAIS devenir une saisie libre ici.
+  // Jusqu'ici la règle reposait sur une hypothèse fausse : « si le champ est
+  // obligatoire, on finira par connaître ses valeurs ». Quand le relevé
+  // échouait, allowed_values arrivait vide et on retombait sur du texte —
+  // exactement ce que le principe interdit. Cas réel : robe Camaïeu, « Taille »
+  // en input libre alors que Beebs n'accepte qu'une valeur de SA liste (les
+  // listes longues à barre de recherche n'étaient jamais cataloguées).
+  // Ce qu'on tape dans ce cas ne peut QUE repartir en échec : on demande donc
+  // un effort à l'utilisateur pour un résultat impossible. Mieux vaut le dire.
+  // ⚠️ Ne bloque QUE les champs explicitement déclarés fermés par le handler.
+  // Un champ sans input_type garde le comportement historique (saisie texte
+  // assistée) : les aspects eBay LIBRES (référence fabricant, dimensions…)
+  // doivent rester saisissables, et un job d'avant ce correctif ne porte pas
+  // la clé — on ne bloque jamais sur une absence d'information.
+  const CLOSED_INPUT_TYPES = new Set(["dropdown", "select", "radio", "selection_only"]);
+  const champFerme = CLOSED_INPUT_TYPES.has(String(f.input_type ?? "").toLowerCase());
+  const valeursIndisponibles = champFerme && !(allowed?.length);
+
+  // `sansValeur` (2026-07-22) : relance SANS rien écrire, pour le cas
+  // « valeurs indisponibles ». Le job repart en pending avec un budget de
+  // re-tentatives neuf — le prochain passage relève la liste (cf. capture des
+  // panneaux à barre de recherche) et proposera enfin les vrais choix.
+  const valider = async ({ sansValeur = false } = {}) => {
     if (saving) return;
     const v = String(value ?? "").trim();
-    if (!v) return;
+    if (!v && !sansValeur) return;
     setSaving(true); setErrMsg(null);
     try {
       const pf = job.platform_fields ?? {};
@@ -299,8 +359,10 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
         : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
       const newPf = { ...pf, needsUserAttempts: 0 };
       delete newPf.needsUserField;
-      if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
-      else newPf[target.key] = v;
+      if (!sansValeur) {
+        if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
+        else newPf[target.key] = v;
+      }
       // Trace persistante « tranché par l'utilisateur » (2026-07-19, boucle
       // needs_user État/Beauté) : les handlers ont des gardes légitimes
       // « déjà rempli → conservé » (pré-remplissage eBay, valeur d'origine du
@@ -308,8 +370,13 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
       // Clé = cible d'écriture ("ebayAspects.Matière", "vintedAspects.condition",
       // "etat"…) ; cumulatif : chaque champ tranché reste marqué pour tous les
       // essais suivants. Les handlers font TOUJOURS primer une valeur marquée.
-      const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
-      newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: v };
+      // Rien à marquer quand on relance sans valeur : l'utilisateur n'a tranché
+      // aucun champ, poser un needsUserResolved vide ferait primer une chaîne
+      // vide sur la valeur d'origine du job dans les handlers.
+      if (!sansValeur) {
+        const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
+        newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: v };
+      }
       const { data, error } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: null, platform_fields: newPf })
@@ -349,18 +416,30 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
           {f.field_label}
         </div>
         <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:14 }}>
-          {lang === "en"
-            ? `${platformLabel} requires this field for this category. Pick a value — the listing will then resume automatically, nothing to do on ${platformLabel}.`
-            : `${platformLabel} exige ce champ pour cette catégorie. Choisis une valeur — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`}
+          {valeursIndisponibles
+            ? (lang === "en"
+              ? `${platformLabel} only accepts values from its own list for this field, and we could not read that list during the last attempt.`
+              : `${platformLabel} n'accepte que des valeurs de sa propre liste pour ce champ, et nous n'avons pas réussi à lire cette liste au dernier passage.`)
+            : (lang === "en"
+              ? `${platformLabel} requires this field for this category. Pick a value — the listing will then resume automatically, nothing to do on ${platformLabel}.`
+              : `${platformLabel} exige ce champ pour cette catégorie. Choisis une valeur — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`)}
         </div>
-        <AspectValueInput
-          value={value}
-          allowedValues={allowed ?? []}
-          strict={Boolean(allowed?.length)}
-          onChange={setValue}
-          T={NU_T}
-          idBase={`nu-${job.id}`}
-        />
+        {valeursIndisponibles ? (
+          <div style={{ fontSize:12.5, lineHeight:1.55, color:"#8A6100", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:12, padding:"11px 12px" }}>
+            {lang === "en"
+              ? "Values unavailable — a new attempt is needed. Typing free text here would be rejected by the platform, so we don't offer it. Relaunch the publication: the next attempt reads the list and will offer you the real choices."
+              : "Valeurs indisponibles — une relance est nécessaire. Une saisie libre serait refusée par la plateforme, on ne te la propose donc pas. Relance la publication : le prochain passage lit la liste et te proposera les vrais choix."}
+          </div>
+        ) : (
+          <AspectValueInput
+            value={value}
+            allowedValues={allowed ?? []}
+            strict={Boolean(allowed?.length)}
+            onChange={setValue}
+            T={NU_T}
+            idBase={`nu-${job.id}`}
+          />
+        )}
         {errMsg && (
           <div style={{ marginTop:10, fontSize:12, color:"#8C2F28", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:10, padding:"8px 10px" }}>
             {errMsg}
@@ -375,13 +454,15 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
             {lang === "en" ? "Later" : "Plus tard"}
           </button>
           <button
-            onClick={valider}
-            disabled={saving || !String(value ?? "").trim()}
-            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || !String(value ?? "").trim() ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+            onClick={() => valider({ sansValeur: valeursIndisponibles })}
+            disabled={saving || (!valeursIndisponibles && !String(value ?? "").trim())}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!valeursIndisponibles && !String(value ?? "").trim()) ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
           >
             {saving
               ? (lang === "en" ? "Saving…" : "Enregistrement…")
-              : (lang === "en" ? "Confirm & resume" : "Valider et relancer")}
+              : valeursIndisponibles
+                ? (lang === "en" ? "Retry publication" : "Relancer la publication")
+                : (lang === "en" ? "Confirm & resume" : "Valider et relancer")}
           </button>
         </div>
       </div>

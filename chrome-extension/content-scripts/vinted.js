@@ -798,6 +798,11 @@ async function fillListingForm(job) {
         field_key: firstMeta?.key ?? firstLabel,
         field_label: firstLabel,
         target: { root: "vintedAspects", key: firstMeta?.key ?? firstLabel },
+        // input_type (2026-07-22, cf. beebs.js) : les requis Vinted relevés ici
+        // viennent tous de la config `attributes` de la catégorie — ce sont des
+        // listes fermées. Options absentes = relevé incomplet de notre part, pas
+        // un champ libre. L'app doit REFUSER d'en faire une saisie texte.
+        input_type: "dropdown",
         ...(firstOptions.length ? { allowed_values: firstOptions } : {}),
       },
     };
