@@ -51,11 +51,13 @@ workflows:
               }
             },
             "packageClassList": [
+              "AppPlugin",
               "CAPBrowserPlugin",
+              "CAPCameraPlugin",
+              "CameraPlugin",
               "SplashScreenPlugin",
               "NativePurchasesPlugin",
-              "AppleSignInPlugin",
-              "CameraPlugin"
+              "AppleSignInPlugin"
             ]
           }
           EOF
