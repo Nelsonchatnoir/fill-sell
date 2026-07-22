@@ -1748,6 +1748,28 @@ const StockTab = memo(function StockTab({
                             {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
                             {typeLabel(item.type||"Autre",lang)}
                           </div>
+                          {/* ── LOTS : dire ce que « Publier » fait vraiment (2026-07-22) ──
+                              Un clic « Publier » sur un article à quantite > 1 ne met en
+                              ligne QU'UNE unité : la RPC spend_coins_and_publish ne lit
+                              jamais `quantite` et cross_post_jobs n'a aucune colonne de
+                              quantité — une annonce = une pièce. Rien ne le disait, donc
+                              publier un lot de 10 donnait l'impression d'avoir tout mis en
+                              vente alors que 9 unités restaient en stock, sans compteur ni
+                              rappel. Cette ligne rend le comportement réel visible.
+                              ⚠️ AFFICHAGE SEUL — c'est le point ⑥ du plan « lots », livré
+                              isolément. La gestion complète (décrément atomique à la vente,
+                              ligne d'historique par unité vendue, republication manuelle de
+                              l'unité suivante) touche sale-orchestration.ts et arrive APRÈS
+                              la soumission : trop sensible pour la fenêtre actuelle.
+                              Aucun lot n'ayant jamais été publié (41 lots, 0 job), personne
+                              ne perd une fonction dont il se sert. */}
+                          {(item.quantite||1)>1&&(
+                            <div className="meta" style={{color:"#8A6100"}}>
+                              {lang==='fr'
+                                ? `Publier met 1 unité en ligne · ${(item.quantite||1)-1} restent en stock`
+                                : `Publishing lists 1 unit · ${(item.quantite||1)-1} stay in stock`}
+                            </div>
+                          )}
                           {(enLigne||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.plateforme||item.emplacement)&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
