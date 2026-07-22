@@ -173,10 +173,31 @@ export async function orchestrateSale(
       .in("status", ["pending", "processing", "published"]);
 
     for (const sib of siblings ?? []) {
-      const wasLive = sib.status === "published" && sib.listing_url;
+      // ⚠️ NE PLUS EXIGER listing_url (2026-07-22, cas réel : la montre G-Shock
+      // est restée EN LIGNE sur Leboncoin alors que l'article était vendu).
+      // AVANT : `sib.status === "published" && sib.listing_url`. Un job
+      // réellement publié dont l'URL n'avait pas pu être capturée était donc
+      // passé en 'cancelled' SANS pending_removal : aucun bandeau « Retirer »,
+      // aucun job de suppression, et l'annonce restait en ligne POUR TOUJOURS —
+      // en silence, l'article affiché vendu et tous les jobs proprement clos.
+      // C'est un trou SILENCIEUX, le pire des trous.
+      // Le raisonnement d'origine était inversé : une URL manquante n'est pas
+      // la preuve qu'il n'y a rien à retirer, c'est une lacune de NOTRE
+      // bookkeeping. La capture d'URL échoue pour des raisons parfaitement
+      // transitoires — page « Mes annonces » cassée ce jour-là, indexation en
+      // retard, capture qui vise la mauvaise carte (bug corrigé le même jour).
+      // Ce qui prouve qu'une annonce existe, c'est status === 'published'.
+      // removal_url_missing dit à l'app et aux handlers qu'il faudra retrouver
+      // l'annonce par son TITRE (les handlers savent le faire) au lieu de
+      // suivre un lien direct.
+      const wasLive = sib.status === "published";
       const patch: Record<string, unknown> = { status: "cancelled" };
       if (wasLive) {
-        patch.platform_fields = { ...(sib.platform_fields ?? {}), pending_removal: true };
+        patch.platform_fields = {
+          ...(sib.platform_fields ?? {}),
+          pending_removal: true,
+          ...(sib.listing_url ? {} : { removal_url_missing: true }),
+        };
       }
       const { error: sibErr } = await admin.from("cross_post_jobs").update(patch).eq("id", sib.id);
       if (sibErr) { console.error(`[sale] Cancel sibling ${sib.id}:`, sibErr.message); continue; }
