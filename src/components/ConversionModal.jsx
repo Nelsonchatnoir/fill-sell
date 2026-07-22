@@ -21,8 +21,12 @@ import { supabase } from '../lib/supabase';
 // Les quatre cas du design :
 //   CAS 1 · Pépites insuffisantes — Publier  (trigger 'publish', coinPrice ≠ null)
 //   CAS 2 · Pépites insuffisantes — Lens     (trigger 'lens',    coinPrice ≠ null)
-//   CAS 3 · Free → Premium                   (utilisateur non premium)
-//   CAS 4 · Premium → Pro                    (isPremium && !isPro)
+//   CAS 3 · Free → Premium + Pro             (vue comparative, cartes empilées)
+//   CAS 4 · Premium → Pro                    (isPremium && !isPro, carte Pro seule)
+// Depuis 2026-07-22 : le CAS 3 montre les DEUX cartes d'emblée (PlansStack), et
+// le bouton d'upsell des CAS 1/2 bascule vers cette même vue (état `view`) au
+// lieu de partir en checkout — un checkout ne part QUE d'un CTA de carte, après
+// présentation complète du plan.
 
 const C = {
   canvas: '#EDEAE0',
@@ -75,11 +79,12 @@ export const DISPLAY_GRANT_PRO = 600;
 
 // Prix des abonnements — ils vivent chez Stripe / Apple / Google, pas en base.
 // Vérifiés côté Stripe le 2026-07-14 : « Standard Plan » 1299 c, « FillSell Pro
-// Mensuel » 2999 c. L'essai de 7 jours est posé par create-checkout-session
-// (trial_period_days: 7) pour les nouveaux clients Premium ; le Pro n'en a pas.
+// Mensuel » 2999 c. Plus AUCUN essai gratuit (2026-07-22) : trial_period_days
+// retiré de create-checkout-session ; les offres d'introduction Apple / Google
+// éventuelles se désactivent à la main dans ASC / Play Console, pas par code.
 const PLAN_PRICES = {
-  premium: { price: '12,99 €', trialDays: 7 },
-  pro:     { price: '29,99 €', trialDays: 0 },
+  premium: { price: '12,99 €' },
+  pro:     { price: '29,99 €' },
 };
 
 // ── Blocs (au niveau module : jamais recréés à chaque rendu) ─────────────────
@@ -260,9 +265,6 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, onUpgrade }) {
         }}
       >
         {fr ? 'Passer Premium' : 'Go Premium'}
-        {PLAN_PRICES.premium.trialDays > 0 && (fr
-          ? ` · ${PLAN_PRICES.premium.trialDays} jours offerts`
-          : ` · ${PLAN_PRICES.premium.trialDays} days free`)}
       </button>
     </div>
   );
@@ -325,6 +327,36 @@ function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor,
   );
 }
 
+// Vue comparative (2026-07-22) — les cartes des plans achetables, EMPILÉES
+// (la Sheet fait maxWidth 480, mobile-first : pas de côte-à-côte). Un Free voit
+// Premium PUIS Pro ; un Premium n'y voit que Pro (sa propre carte ne vend
+// rien). Chaque CTA de carte part en checkout : c'est légitime ICI SEULEMENT,
+// parce que le détail complet du plan est affiché au-dessus du bouton — l'ancien
+// lien « Découvre Pro → » qui partait en checkout sans présentation est mort
+// avec cette vue.
+function PlansStack({ fr, isPremium, targetTiers, grantPrem, grantPro, lensCost, lensPerMonth, proFactor, K, onUpgrade }) {
+  const showPremium = !isPremium && targetTiers.includes('premium');
+  const showPro = targetTiers.includes('pro');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {showPremium && (
+        <PremiumPlanCard
+          fr={fr} grantPrem={grantPrem} lensCost={lensCost} lensScans={lensPerMonth(grantPrem)}
+          onUpgrade={onUpgrade}
+        />
+      )}
+      {showPro && (
+        <ProPlanCard
+          fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
+          proFactor={proFactor} showFactor
+          pubMin={K.price_original} pubMax={K.price_ia_advanced}
+          onUpgrade={onUpgrade}
+        />
+      )}
+    </div>
+  );
+}
+
 function Sheet({ onClose, children }) {
   return (
     <>
@@ -377,6 +409,12 @@ export default function ConversionModal({
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
+  // Vue interne : 'entry' = écran du cas d'entrée (packs de Pépites en CAS 1/2) ;
+  // 'plans' = vue comparative des abonnements. Depuis les CAS 1/2, le bouton
+  // d'upsell BASCULE ici au lieu de partir en checkout — jamais de checkout
+  // sans avoir vu la carte complète du plan (bug « Découvre Pro » 2026-07-22).
+  const [view, setView] = useState('entry');
+  useEffect(() => { if (isOpen) setView('entry'); }, [isOpen]);
 
   // Coûts et grants : lus en base à chaque ouverture. Aucune valeur en dur.
   useEffect(() => {
@@ -427,6 +465,29 @@ export default function ConversionModal({
   const sellable = isPro ? [] : isPremium ? ['pro'] : targetTiers.filter(t => t === 'premium' || t === 'pro');
   const canBuyCoins = typeof onUseCoins === 'function';
 
+  // ══ Vue comparative demandée depuis les CAS 1/2 (bouton d'upsell) ═══════════
+  // Mêmes cartes que le CAS 3, avec retour vers l'écran Pépites.
+  if (isCoinCase && view === 'plans') {
+    return (
+      <Sheet onClose={onClose}>
+        <div
+          onClick={() => setView('entry')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700, color: C.mute2, cursor: 'pointer', marginBottom: 12 }}
+        >
+          ← {fr ? 'Retour' : 'Back'}
+        </div>
+        <Title>{fr ? 'Compare les plans.' : 'Compare the plans.'}</Title>
+        <PlansStack
+          fr={fr} isPremium={isPremium} targetTiers={targetTiers}
+          grantPrem={grantPrem} grantPro={grantPro} lensCost={lensCost}
+          lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
+          onUpgrade={onUpgrade}
+        />
+        <Dismiss onClose={onClose} label={fr ? 'Non merci' : 'No thanks'} />
+      </Sheet>
+    );
+  }
+
   // ══ CAS 1 & 2 — Pépites insuffisantes (publier / Lens) ══════════════════════
   if (isCoinCase) {
     const isLens = trigger === 'lens';
@@ -469,8 +530,11 @@ export default function ConversionModal({
         {upTier && (
           <>
             <OrDivider fr={fr} />
+            {/* BASCULE vers la vue comparative — plus jamais de checkout direct
+                depuis cette ligne : l'utilisateur n'a pas encore vu la carte
+                complète du plan (fix 2026-07-22). */}
             <button
-              onClick={() => onUpgrade(upTier)}
+              onClick={() => setView('plans')}
               style={{
                 width: '100%', padding: 13, borderRadius: 14, border: `1.5px solid ${C.tealDeep}`,
                 background: 'none', color: C.tealDeep, fontSize: 13, fontWeight: 700,
@@ -550,21 +614,15 @@ export default function ConversionModal({
             : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
 
-      <PremiumPlanCard
-        fr={fr} grantPrem={grantPrem} lensCost={lensCost} lensScans={lensPerMonth(grantPrem)}
+      {/* Vue comparative (2026-07-22) : les DEUX cartes d'emblée, empilées.
+          Remplace l'ancienne carte Premium seule + lien « Découvre Pro → » qui
+          partait DIRECT en checkout Stripe sans présentation de l'offre Pro. */}
+      <PlansStack
+        fr={fr} isPremium={false} targetTiers={targetTiers}
+        grantPrem={grantPrem} grantPro={grantPro} lensCost={lensCost}
+        lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
         onUpgrade={onUpgrade}
       />
-
-      {targetTiers.includes('pro') && (
-        <div style={{ textAlign: 'center', marginTop: 14 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.mute }}>
-            {fr ? 'Gros volume ? ' : 'High volume? '}
-            <span onClick={() => onUpgrade('pro')} style={{ color: C.tealDeep, fontWeight: 700, cursor: 'pointer' }}>
-              {fr ? 'Découvre Pro →' : 'Discover Pro →'}
-            </span>
-          </span>
-        </div>
-      )}
 
       <Dismiss onClose={onClose} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>
