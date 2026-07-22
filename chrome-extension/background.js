@@ -3339,6 +3339,29 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // match par TITRE est OBLIGATOIRE — requireTitle:true. Le repli « lien unique »
 // ne vaut QUE sur une vraie page de confirmation, où l'unique lien est
 // forcément celui de l'annonce qu'on vient de déposer.
+//
+// ⚠️⚠️⚠️ ET ÇA N'A PAS SUFFI (2026-07-22, reproduit en direct sur le Hub eBay).
+// requireTitle:true était bien actif, et la mauvaise URL sortait quand même :
+// ce n'est pas le repli « lien unique » qui déraillait, c'est LE TEST DU TITRE
+// LUI-MÊME, faussé par un périmètre trop large. Le scope venait de
+//   el.closest("article, li, [class*='item'], [class*='card']")
+// et `[class*='card']` attrape le <div class="card-old"> d'eBay, qui enveloppe
+// TOUT LE TABLEAU du Hub vendeur. Résultat mesuré : pour les 10 ancres /itm/ de
+// la page, le « hay » faisait 5 700 caractères — la page entière. Les mots du
+// titre cherché s'y trouvent forcément (ils sont dans SA ligne à elle), donc le
+// test passait pour TOUTES les ancres et on rendait la PREMIÈRE, c'est-à-dire
+// la plus vieille annonce du vendeur.
+// Dégâts constatés en base : 5 jobs eBay, 3 articles différents (G-Shock,
+// casquette Volcom, Patagonia), TOUS avec la même URL 800378950306 — une montre
+// CasiOak que FillSell n'a jamais publiée. 100 % des URLs eBay jamais
+// enregistrées étaient fausses. Les deux jobs de suppression ont donc visé
+// cette annonce-là ; seule la garde du titre d'ebay.js (le dialogue de fin
+// d'annonce doit NOMMER l'article du job) a empêché de supprimer la mauvaise.
+// PARADE : le périmètre n'est plus DEVINÉ par des sélecteurs (ils changent, et
+// une seule classe trop générique casse tout en silence) mais DÉDUIT de la page
+// — on remonte depuis le lien tant que l'ancêtre ne contient qu'une annonce.
+// Plus une garde explicite : un scope multi-annonces est REJETÉ, jamais utilisé
+// pour valider un titre.
 // Retourne { url, diag } — url = lien de NOTRE annonce (ou null), diag = ce que
 // la page contenait vraiment (nombre d'ancres, liens conformes au pattern,
 // échantillon de chemins). Le diag existe parce qu'un échec Beebs était
@@ -3365,6 +3388,13 @@ async function findListingLinkInPage(tabId, patternSource, title = null, { requi
             ancres.map((a) => { try { return new URL(a.href).pathname; } catch { return null; } }).filter(Boolean)
           )].slice(0, 12),
         };
+        // Annonces DISTINCTES contenues dans un élément — la mesure qui sert à
+        // la fois à trouver le périmètre d'une carte et à le refuser.
+        const annoncesDe = (n) => new Set(
+          Array.from(n.querySelectorAll ? n.querySelectorAll("a[href]") : [])
+            .map((a) => (a.href.match(re) || [])[0])
+            .filter(Boolean)
+        );
         const done = (url) => ({ url, diag });
         if (!matches.length) return done(null);
 
@@ -3392,7 +3422,7 @@ async function findListingLinkInPage(tabId, patternSource, title = null, { requi
           // ignorés. La garde anti-« mauvaise annonce » NE s'affaiblit PAS :
           //   · TOUS les mots restent exigés (aucun n'est optionnel) ;
           //   · l'ORDRE reste exigé (« veste rouge » ne matche pas « rouge veste ») ;
-          //   · le périmètre reste la CARTE (el.closest(...)), pas la page ;
+          //   · le périmètre reste la CARTE (cf. carteDe ci-dessous), pas la page ;
           //   · requireTitle:true est inchangé — pas de titre reconnu, rien rendu.
           // Bord gauche (?<![\p{L}\p{N}]) et PAS de bord droit : c'est
           // volontaire. Le textContent des cartes LBC colle les mots entre eux
@@ -3404,10 +3434,60 @@ async function findListingLinkInPage(tabId, patternSource, title = null, { requi
           const ordre = mots.length
             ? new RegExp(mots.map((m) => `(?<![\\p{L}\\p{N}])${m}`).join("[\\s\\S]*?"), "u")
             : null;
+          // Périmètre de LA carte, DÉDUIT de la page (2026-07-22) au lieu d'être
+          // deviné par une liste de sélecteurs — cf. commentaire de tête : le
+          // `[class*='card']` attrapait le <div class="card-old"> du Hub eBay,
+          // qui enveloppe TOUT le tableau. On remonte depuis le lien tant que
+          // l'ancêtre ne contient qu'UNE SEULE annonce ; le dernier ancêtre
+          // mono-annonce EST la carte, quel que soit le markup de la plateforme
+          // (et il n'y a plus de sélecteur à maintenir quand elles changent).
+          const carteDe = (ancre) => {
+            let scope = ancre;
+            for (let n = ancre.parentElement, d = 0; n && d < 15; n = n.parentElement, d++) {
+              if (annoncesDe(n).size > 1) break;
+              scope = n;
+            }
+            return scope;
+          };
+          // DÉPARTAGE PAR COMPACITÉ (2026-07-22) — le périmètre corrigé ne
+          // suffit pas. Mesuré sur le Hub : le vendeur avait DEUX G-Shock aux
+          // titres composés des MÊMES mots dans un ordre différent…
+          //   job / annonce A : « …Digital Display Shock Resistant Resin Bracelet »
+          //   annonce B       : « …Digital Display Resin Bracelet Shock Resistant »
+          // …et le titre d'une carte y est répété (lien + libellé
+          // « Afficher l'historique du trafic »). Les mots-dans-l'ordre peuvent
+          // donc être satisfaits EN SAUTANT d'une copie du titre à l'autre :
+          // B passait le test, et comme on rendait la PREMIÈRE carte trouvée,
+          // c'est B qui sortait — encore la mauvaise annonce.
+          // Parade : on ne rend plus la première carte qui matche, on garde la
+          // PLUS COMPACTE — la longueur du texte réellement couvert par le
+          // match. Un titre exact couvre exactement sa longueur (72 caractères
+          // mesurés pour A) ; un match qui doit sauter d'une copie à l'autre en
+          // couvre bien plus (155 pour B). Et si les deux meilleures sont à
+          // ÉGALITÉ, on ne devine pas : rien n'est rendu (l'ambiguïté est
+          // tracée dans diag, et la re-capture différée retentera).
+          const parUrl = new Map();
           for (const { url, el } of matches) {
-            const scope = el.closest("article, li, [class*='item'], [class*='card']") ?? el;
+            const scope = carteDe(el);
+            // Garde explicite (ceinture) : un périmètre qui contient plusieurs
+            // annonces DIFFÉRENTES ne prouve rien sur le titre — le titre
+            // cherché peut y figurer à cause d'une AUTRE carte. On le rejette
+            // au lieu de rendre le premier lien de la page. C'est exactement ce
+            // qui a collé l'URL de la CasiOak sur 3 articles de suite.
+            if (annoncesDe(scope).size > 1) continue;
             const hay = norm((el.getAttribute("title") || "") + " " + el.textContent + " " + scope.textContent);
-            if (ordre && ordre.test(hay)) return done(url);
+            const trouve = ordre ? ordre.exec(hay) : null;
+            if (!trouve) continue;
+            const etendue = trouve[0].length;
+            if (!parUrl.has(url) || parUrl.get(url) > etendue) parUrl.set(url, etendue);
+          }
+          const classement = [...parUrl.entries()].sort((a, b) => a[1] - b[1]);
+          diag.candidatsTitre = classement.slice(0, 4).map(([u, e]) => ({ url: u, etendue: e }));
+          if (classement.length === 1) return done(classement[0][0]);
+          if (classement.length > 1) {
+            if (classement[0][1] < classement[1][1]) return done(classement[0][0]);
+            diag.ambiguite = "plusieurs annonces matchent le titre avec la même compacité — rien rendu";
+            return done(null);
           }
         }
         // Page de liste : pas de titre reconnu = on ne rend RIEN. Mieux vaut un
