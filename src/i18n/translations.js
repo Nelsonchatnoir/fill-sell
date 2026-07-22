@@ -301,6 +301,9 @@ export const translations = {
     lensMarqueeCaption:"Publie sur tes plateformes préférées",
     lensQuotaFree:"{used}/{limit} analyses ce mois-ci",
     lensQuotaFreeLimitReached:"Limite atteinte",
+    // Tarif affiché en permanence sous le bouton d'analyse, tous tiers
+    // (2026-07-22). Valeur alignée sur coin_config.price_lens_overflow (= 6).
+    lensPricePerScan:"6 Pépites l'analyse",
     lensQuotaPremiumLimitReached:"Limite mensuelle atteinte",
   },
   en: {
@@ -603,6 +606,7 @@ export const translations = {
     lensMarqueeCaption:"Publish on your favorite platforms",
     lensQuotaFree:"{used}/{limit} scans this month",
     lensQuotaFreeLimitReached:"Limit reached",
+    lensPricePerScan:"6 Nuggets per scan",
     lensQuotaPremiumLimitReached:"Monthly limit reached",
   }
 };

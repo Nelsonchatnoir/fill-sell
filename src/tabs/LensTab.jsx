@@ -157,6 +157,24 @@ function LensScanHome({
             </button>
           </div>
 
+          {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22).
+              AVANT : le prix n'apparaissait que dans le bandeau Free une fois le
+              quota épuisé — un Premium au-delà de ses 120 analyses ne le voyait
+              NULLE PART avant de tomber en panne de Pépites.
+              ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
+              <LensScanHome/> et RETOURNE (l.563 `if (!lensResult) return`) :
+              tout ce qui suit dans LensTab n'est atteint qu'une fois un résultat
+              obtenu. Une première version de cette ligne y avait été posée — elle
+              était dans le bundle, déployée, et strictement invisible. C'est ici,
+              sous le bouton d'analyse, qu'elle doit vivre.
+              ⚠️ AFFICHAGE SEUL : le back-end conserve le quota mensuel inclus
+              (free 5 / premium 120 / pro 250) et ne débite les 6 Pépites qu'au-
+              delà. Le passage au débit systématique est un déploiement séparé,
+              après validation Apple. */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:10, color:'#A6A192' }}>
+            <PepiteIcon size={11} />
+            {t('lensPricePerScan')}
+          </div>
           {isPremium && lensPremiumLimitReached && (
             <div style={{ textAlign:'center', fontSize:11.5, marginTop:10, color:'#A6A192' }}>
               {t('lensQuotaPremiumLimitReached')}
@@ -675,22 +693,6 @@ const LensTab = memo(function LensTab({
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </PrimaryButton>
 
-        {/* Prix affiché EN PERMANENCE, tous tiers (2026-07-22, décision Nico).
-            AVANT : le tarif n'apparaissait que dans le bandeau Free une fois le
-            quota épuisé — un Premium qui dépassait ses 120 analyses ne voyait le
-            coût NULLE PART avant de tomber en panne de Pépites.
-            ⚠️ AFFICHAGE SEUL — la facturation n'est PAS alignée dessus dans ce
-            build : le back-end conserve le quota mensuel inclus (free 5 /
-            premium 120 / pro 250) et ne débite les 6 Pépites qu'au-delà. Le
-            passage au débit systématique est un déploiement SÉPARÉ, après
-            validation Apple. Tant qu'il n'a pas eu lieu, cette ligne annonce un
-            prix que la plupart des analyses ne paient pas.
-            Valeur alignée sur coin_config.price_lens_overflow (= 6). */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontSize:11,marginTop:6,color:"#8A8578"}}>
-          <PepiteIcon size={11} />
-          {lang==="en" ? "6 Nuggets per scan" : "6 Pépites l'analyse"}
-        </div>
-
         {/* Bandeau premium : limite mensuelle atteinte */}
         {isPremium&&lensPremiumLimitReached&&(
           <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
@@ -699,18 +701,13 @@ const LensTab = memo(function LensTab({
         )}
 
         {/* Bandeau free : compteur mensuel — même analyse complète que Premium,
-            seul le nombre inclus diffère.
-            ⚠️ Le tarif « 6 Pépites » a été RETIRÉ de la branche « quota épuisé »
-            (2026-07-22) : il est désormais affiché en permanence sous le bouton
-            juste au-dessus, et l'y répéter le faisait apparaître DEUX FOIS à
-            trois lignes d'intervalle. Retrait purement visuel — aucune logique
-            de quota touchée. */}
+            seul le nombre inclus diffère ; au-delà, 6 pièces par analyse */}
         {!isPremium&&(
           <div style={{textAlign:"center",fontSize:11,marginTop:6,lineHeight:1.5,color:lensUsedToday>=LENS_FREE_LIMIT?"#C2410C":"#8A8578"}}>
             {lensUsedToday>=LENS_FREE_LIMIT
               ?(lang==="en"
-                ?<>📸 Monthly scans used · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
-                :<>📸 Analyses du mois épuisées · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
+                ?<>📸 Monthly scans used · <PepiteIcon size={11} /> 6 Nuggets per extra scan · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
+                :<>📸 Analyses du mois épuisées · <PepiteIcon size={11} /> 6 Pépites l'analyse · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
               )
               :(lang==="en"
                 ?<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} scans this month · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
