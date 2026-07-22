@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-19-stale-anti-doublon (reprise d'un job bloqué en 'processing' : AVANT tout ré-armement en pending, on vérifie si l'annonce existe déjà côté plateforme — titre obligatoire sur les pages de liste, sonde Vinted survivante — et on marque published au lieu de re-déposer : plus de doublon possible sur interruption post-dépôt)";
+  "2026-07-22-timeout-chargement-retentable (un timeout de chargement de page ne tue plus le job : ré-armement borné comme le canal coupé. eBay : budget 60 s pour /sl/list — un SAS qui crée le brouillon côté serveur avant de naviguer vers /lstng — et attente EXPLICITE de /lstng, la vraie page de dépôt, au lieu de rendre la main sur le premier 'complete')";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
@@ -45,6 +45,21 @@ const ALARM_NAME = "fillsell-poll-jobs";
 // basculer le job en failed : évite qu'un job attendant une info jamais
 // fournie (ex: adresse Leboncoin) ne rouvre un onglet à chaque cron sans fin.
 const MAX_NEEDS_USER_RETRIES = 2;
+
+// Erreurs qui ne disent RIEN sur le job lui-même, seulement sur l'instant où il
+// est passé : elles doivent être ré-armées (bornées), jamais enterrées en
+// `failed`. Deux familles, apprises en réel :
+//   · canal de message coupé — l'onglet a navigué/rechargé, ou l'extension a
+//     été rechargée en plein remplissage (2026-07-06, puis 2026-07-19) ;
+//   · page trop lente à charger — waitForTabComplete / waitForEbayDraftForm
+//     (2026-07-22, job eBay 244b0ec4 : le Patagonia est parti sur Beebs, Vinted
+//     et Leboncoin, et seul eBay est tombé, définitivement, sur un timeout).
+// ⚠️ N'ajouter ici QUE des erreurs d'infrastructure. Un refus de la plateforme,
+// un champ obligatoire vide ou une catégorie non résolue sont des verdicts :
+// les ré-armer ferait rouvrir un onglet à chaque cron pour rien (risque
+// DataDome documenté plus bas), et masquerait le vrai problème à l'utilisateur.
+const TRANSIENT_JOB_ERROR_RE =
+  /message channel closed|Receiving end does not exist|No tab with id|pas fini de charger|pas fini de s'ouvrir|Onglet de travail fermé pendant/i;
 
 // ── Dispatch par plateforme ────────────────────────────────────────────────────
 // `implemented: false` → le job est loggé et laissé en pending (le content
@@ -1329,7 +1344,16 @@ async function processJob(rawJob, accessToken) {
     // été fermé en plein job (fenêtre de travail fermée, rechargement
     // d'extension) — même nature transitoire que le canal coupé, elle partait
     // pourtant en failed sec avec l'erreur Chrome brute.
-    if (/message channel closed|Receiving end does not exist|No tab with id/i.test(msg)) {
+    // TIMEOUTS DE CHARGEMENT AJOUTÉS le 2026-07-22 — c'est LA cause du
+    // Patagonia perdu sur eBay (job 244b0ec4) : « Timeout: la page de dépôt
+    // n'a pas fini de charger » tombait ici, ne matchait rien, et partait en
+    // `failed` SEC ligne du dessous. Une page qui met plus longtemps que prévu
+    // à charger est pourtant l'archétype du transitoire — Beebs, Vinted et
+    // Leboncoin ont publié le même article dans la minute. Zéro re-tentative
+    // pour un aléa réseau, c'est un cross-post amputé sans recours, alors que
+    // le prochain cron aurait très probablement réussi. Même traitement que le
+    // canal coupé : ré-armement BORNÉ (MAX_NEEDS_USER_RETRIES), jamais infini.
+    if (TRANSIENT_JOB_ERROR_RE.test(msg)) {
       // ⚠️ D'ABORD : le canal coupé peut être la SIGNATURE D'UN SUCCÈS.
       // Vinted REDIRIGE après une publication réussie — la redirection détruit
       // le content script AVANT qu'il ne réponde, et le job partait en retry
@@ -1354,8 +1378,8 @@ async function processJob(rawJob, accessToken) {
         return { status: "published", listingUrl: publishedUrl };
       }
 
-      console.warn(`[background] Job ${job.id} : canal coupé pendant le remplissage (transitoire) — ${msg}`);
-      await rearmBounded(accessToken, job, `Remplissage interrompu (onglet navigué/rechargé) : ${msg}`)
+      console.warn(`[background] Job ${job.id} : incident transitoire (canal coupé ou page trop lente) — ${msg}`);
+      await rearmBounded(accessToken, job, `Publication interrompue, nouvelle tentative au prochain cycle : ${msg}`)
         .catch((err) => console.error("[background] update-job-status failed:", err));
       return { status: "retry", error: msg };
     }
@@ -1600,10 +1624,83 @@ async function navigateHomeToForm(tabId, listingUrl) {
 
   // Navigation interne vers le formulaire (depuis une page du site, avec
   // referrer) plutôt qu'une ouverture d'onglet froide.
-  const loaded = waitForTabComplete(tabId, listingUrl + WORK_TAB_FRAGMENT);
+  // ⚠️ BUDGET 60 s ET NON 30 (2026-07-22, job 244b0ec4 « Timeout: la page de
+  // dépôt n'a pas fini de charger », Patagonia perdu sur eBay seul — les 3
+  // autres plateformes ont publié). eBay est la SEULE des quatre dont l'URL de
+  // dépôt n'ouvre pas un formulaire : /sl/list est un SAS qui crée le brouillon
+  // CÔTÉ SERVEUR, puis navigue vers /lstng?draftId=… (mesuré en direct le
+  // 2026-07-22 : deux documents, ~5 s rien que pour le second, dans un onglet
+  // RENDU). Notre onglet, lui, vit dans une fenêtre minimisée jamais rendue, où
+  // Chrome bride les timers : le sas peut largement dépasser 30 s. Le défaut de
+  // waitForTabComplete reste 30 s pour les trois autres plateformes.
+  const loaded = waitForTabComplete(tabId, listingUrl + WORK_TAB_FRAGMENT, 60_000);
   await neutralizeBeforeUnload(tabId);
+  // URL d'AVANT la navigation : elle sert de garde-fou à waitForEbayDraftForm,
+  // qui ne doit jamais prendre la page de départ pour la page d'arrivée.
+  const urlAvant = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? "";
   await chrome.tabs.update(tabId, { url: listingUrl + WORK_TAB_FRAGMENT });
   await loaded;
+
+  // …et waitForTabComplete rend la main sur le PREMIER "complete" de l'onglet
+  // (il est permissif à dessein : eBay redirige, exiger l'URL cible ferait
+  // expirer tous les jobs eBay — cf. commentaire de tête). Ce premier
+  // "complete", sur eBay, c'est celui du SAS /sl/list, pas celui du formulaire.
+  // Ça ne tenait jusqu'ici que par chance, les 2 s de succeed() + les 2,5-4 s de
+  // paintTab couvrant la seconde navigation ; dès qu'eBay traîne, FILL_LISTING
+  // part sur une page en train d'être détruite — exactement la signature du
+  // 2026-07-12 (0/25 photos, titre vide). On attend donc explicitement la vraie
+  // page de dépôt.
+  await waitForEbayDraftForm(tabId, urlAvant);
+}
+
+// eBay uniquement : le sas /sl/list a-t-il fini par livrer /lstng?draftId=… ?
+// Jamais de verdict optimiste — on ne rend la main que sur la vraie page, ou on
+// jette une erreur RETENTABLE (cf. TRANSIENT_JOB_ERROR_RE : le job est ré-armé,
+// pas enterré, un brouillon lent n'est pas un job perdu).
+const EBAY_DRAFT_FORM_RE = /^https:\/\/[^/]*\bebay\.[a-z.]+\/lstng\b/i;
+const EBAY_PRELIST_RE = /^https:\/\/[^/]*\bebay\.[a-z.]+\/sl\/list\b/i;
+
+async function waitForEbayDraftForm(tabId, urlAvant = "", timeoutMs = 45_000) {
+  const sansFragment = (u) => String(u || "").split("#")[0];
+  const depart = sansFragment(urlAvant);
+  const deadline = Date.now() + timeoutMs;
+  let lastUrl = "";
+  let precedente = null;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) throw new Error("Onglet de travail fermé pendant l'ouverture du formulaire eBay");
+    lastUrl = tab.url || "";
+    if (tab.status === "complete" && EBAY_DRAFT_FORM_RE.test(lastUrl)) {
+      console.log(`[background] eBay : formulaire de dépôt ouvert (${lastUrl})`);
+      return;
+    }
+    // Sortie de secours : eBay a envoyé ailleurs que le sas ET que le
+    // formulaire (page d'erreur MISSING_CATEGORY…, signin, interstitiel). Ce
+    // n'est pas à cette fonction d'en juger — les gardes du content script et
+    // detectReauth le font déjà, avec de bien meilleurs messages.
+    // DEUX verrous, sinon cette sortie devient un faux positif : (1) jamais la
+    // page de DÉPART — le "complete" qui a débloqué waitForTabComplete peut
+    // être celui d'une navigation interne d'eBay antérieure à notre update, et
+    // rendre la main là-dessus enverrait FILL_LISTING sur le hub de vente ;
+    // (2) URL STABLE sur deux relevés — une page traversée au vol pendant la
+    // chaîne de redirections n'est pas une destination.
+    const stable = precedente !== null && precedente === lastUrl;
+    if (
+      tab.status === "complete" &&
+      !EBAY_PRELIST_RE.test(lastUrl) &&
+      sansFragment(lastUrl) !== depart &&
+      stable
+    ) {
+      console.warn(`[background] eBay : page inattendue après /sl/list — ${lastUrl} (on laisse le content script trancher)`);
+      return;
+    }
+    precedente = lastUrl;
+    await sleep(700);
+  }
+  throw new Error(
+    "eBay : le formulaire de dépôt n'a pas fini de s'ouvrir — le brouillon est resté " +
+    `en création sur /sl/list (dernière URL vue : ${lastUrl || "inconnue"})`
+  );
 }
 
 // ── Onglet de travail dédié ────────────────────────────────────────────────────
