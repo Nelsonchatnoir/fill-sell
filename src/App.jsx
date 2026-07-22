@@ -2657,10 +2657,15 @@ export default function App({ loginOnly = false }){
   // DELETE_DRY_RUN tant que les 3 validations réelles n'ont pas eu lieu.
   async function armRemovals(group){
     if(!group.length)return;
+    // removal_url_missing propagé au job delete (2026-07-22) : sans URL captée,
+    // l'extension cible l'annonce par son TITRE dans « Mes annonces ». Le
+    // drapeau ne pilote rien — il rend la trace lisible quand on relit un job
+    // après coup, au lieu de laisser deviner pourquoi listing_url est vide.
     const rows=group.map(j=>({
       user_id:user.id,inventaire_id:j.inventaire_id,platform:j.platform,
       action:'delete',status:'pending',photo_option:'original',
-      title:j.title,listing_url:j.listing_url,platform_fields:{},
+      title:j.title,listing_url:j.listing_url,
+      platform_fields:j.listing_url?{}:{removal_url_missing:true},
     }));
     const{error}=await supabase.from('cross_post_jobs').insert(rows);
     if(error){console.error('[armRemovals] insert:',error.message);return;}

@@ -920,7 +920,16 @@ const StockTab = memo(function StockTab({
       const { data, error } = await supabase.from('cross_post_jobs').insert({
         user_id: user.id, inventaire_id: item.id, platform,
         action: 'delete', status: 'pending', photo_option: 'original',
-        title: pub.title || item.title, listing_url: pub.listing_url, platform_fields: {},
+        title: pub.title || item.title, listing_url: pub.listing_url,
+        // Même drapeau que armRemovals (App.jsx) : sans URL captée, l'extension
+        // cible l'annonce par son TITRE dans « Mes annonces ». ⚠️ Inatteignable
+        // AUJOURD'HUI depuis ce chemin — la garde `if (!pub?.listing_url)`
+        // ci-dessus refuse encore le retrait par logo quand l'URL manque, alors
+        // que le bandeau de l'app, lui, sait désormais le faire. Incohérence
+        // ASSUMÉE et signalée plutôt que corrigée en douce : lever cette garde
+        // change un comportement visible, ça se décide, ça ne se glisse pas
+        // dans un commit de propagation de drapeau.
+        platform_fields: pub.listing_url ? {} : { removal_url_missing: true },
       }).select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title").single();
       if (error) {
         console.error('[armRemoveJob] insert:', error.message);
