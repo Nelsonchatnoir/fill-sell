@@ -65,7 +65,9 @@ import './App.redesign.css';
 
 const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const VOICE_FREE_LIMIT = 5;
+// 50/jour Free depuis le 2026-07-23 (aligné sur voice-transcribe et
+// voice-intent — Premium/Pro sont désormais illimités côté serveur).
+const VOICE_FREE_LIMIT = 50;
 
 const C = {
   // Design tokens FillSell

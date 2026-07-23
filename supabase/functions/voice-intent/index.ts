@@ -1086,10 +1086,14 @@ serve(async (req) => {
       p_user_id: user.id,
       p_feature: "voice_intent",
       p_is_premium: isPremiumUser,
-      p_daily_limit_free: 5, // aligné sur VOICE_FREE_LIMIT (App.jsx) et voice-transcribe
-      p_monthly_limit_free: 100,
-      p_daily_limit_premium: null, // illimité au quotidien pour premium — seul le cap mensuel (300) s'applique
-      p_monthly_limit_premium: 300,
+      // Quotas 2026-07-23 : Free 50/jour sans plafond mensuel, Premium/Pro
+      // ILLIMITÉ (NULL = vrai bypass dans check_and_log_usage — le IF saute
+      // quand la limite est NULL, aucun plafond factice). Aligné sur
+      // VOICE_FREE_LIMIT (App.jsx) et voice-transcribe.
+      p_daily_limit_free: 50,
+      p_monthly_limit_free: null,
+      p_daily_limit_premium: null,
+      p_monthly_limit_premium: null,
     });
     if (quotaError) console.error("[voice-intent] check_and_log_usage error:", quotaError.message);
     quotaLogId = (quotaData as any)?.log_id ?? null;
