@@ -2124,6 +2124,35 @@ async function navigateWorkTab(tabId, target) {
     }
   }
 
+  // Onglet ACTIF. Le test « actif » protège la page que l'UTILISATEUR regarde —
+  // or dans la fenêtre de travail DÉDIÉE, un onglet est TOUJOURS actif (toute
+  // fenêtre Chrome a un onglet actif), sans que personne ne le regarde : la
+  // fenêtre est minimisée. L'ancien remplacement systématique churnait donc un
+  // onglet NEUF à chaque navigation de l'onglet actif de la fenêtre de travail
+  // (vécu 2026-07-23 : « nouvel onglet Hub vendeur eBay à chaque check » —
+  // recoverMissingListingUrls repasse par ici à chaque poll ; et chaque échec
+  // de fermeture sur un dialogue transformait le churn en vraie prolifération).
+  // Dans NOTRE fenêtre : navigation EN PLACE (beforeunload neutralisé, discard
+  // impossible sur un onglet actif) ; le remplacement reste le repli au blocage.
+  const winStore = await chrome.storage.session.get(WORK_WINDOW_KEY).catch(() => ({}));
+  if (tab.windowId === winStore[WORK_WINDOW_KEY]) {
+    try {
+      const loaded = waitForTabComplete(tabId, target);
+      await neutralizeBeforeUnload(tabId);
+      await chrome.tabs.update(tabId, { url: target });
+      await loaded;
+      return tabId;
+    } catch (e) {
+      console.warn(
+        `[background] Onglet de travail actif ${tabId} (fenêtre dédiée) non navigable : ` +
+        `${String(e?.message ?? e)} — remplacement par un onglet neuf`
+      );
+      return replaceWorkTab(tabId, target);
+    }
+  }
+
+  // Actif CHEZ L'UTILISATEUR (onglet hérité dont le rapatriement a échoué) :
+  // on ne navigue jamais une page qu'il regarde — remplacement, comme avant.
   return replaceWorkTab(tabId, target);
 }
 
@@ -3881,7 +3910,12 @@ async function workTabForFetch(platform) {
   const known = store[workTabKey(platform)];
   if (known != null) {
     const tab = await chrome.tabs.get(known).catch(() => null);
-    if (tab && new URL(tab.url || "https://x.invalid").hostname.endsWith(host)) return tab.id;
+    // eBay navigue de lui-même entre .fr et .com (Hub vendeur, redirections
+    // login) : un onglet sur ebay.com est tout aussi exploitable qu'un .fr —
+    // sans ça, chaque vérification renaviguait l'onglet vers la home (2026-07-23).
+    const hosts = platform === "ebay" ? [host, "ebay.com"] : [host];
+    const hn = new URL(tab?.url || "https://x.invalid").hostname;
+    if (tab && hosts.some((h) => hn === h || hn.endsWith(`.${h}`))) return tab.id;
   }
   // Pas d'onglet exploitable : on en ouvre un sur la HOME de la plateforme (page
   // anodine, aucun formulaire touché), qui servira aussi aux vérifications

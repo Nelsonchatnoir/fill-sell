@@ -1223,18 +1223,52 @@ async function waitForCategoryOption(text, timeoutMs = 5000) {
     if (found) return found;
     await sleep(80);
   }
+  // Liste VIDE ≠ mauvais chemin (2026-07-23, vécu sur des articles enfant :
+  // « niveau "Mode" introuvable, options: [] » alors que le chemin
+  // Mode→Fille/Garçon/Bébé est conforme au crawl complet du 09/07). Un chemin
+  // faux échoue AVEC la liste réelle du niveau à l'appui ; une liste vide veut
+  // dire que le panneau ne s'est pas rendu (clic avalé, re-render, lenteur) —
+  // erreur dédiée et actionnable, qui n'envoie plus corriger un catalogue sain.
+  const visibles = visibleCategoryLabels();
+  if (!visibles.length) {
+    throw new Error(
+      `Catégorie: Beebs n'a affiché aucune option au niveau "${text}" (panneau non rendu — ` +
+      "aucun problème de catalogue). Le job repartira au prochain passage."
+    );
+  }
   throw new Error(
     `Catégorie: niveau "${text}" introuvable. Options affichées par Beebs à ce niveau: ` +
-    `${JSON.stringify(visibleCategoryLabels())}. Corriger le chemin dans beebsCategories.js.`
+    `${JSON.stringify(visibles)}. Corriger le chemin dans beebsCategories.js.`
   );
 }
 
 async function selectCategory(path) {
   const trigger = findField("Catégorie")?.trigger;
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
-  await humanPause();
-  trigger.click();
-  await humanPause();
+
+  // Ouverture avec DÉTECTION D'EFFET (2026-07-23) — même parade que le clic
+  // eBay avalé (Medik8 R2) : un clic sur le trigger peut être perdu dans un
+  // re-render React, le panneau ne s'ouvre jamais et le 1er niveau échouait en
+  // « "Mode" introuvable, options: [] ». On ne considère le panneau ouvert que
+  // si des options sont RENDUES ; sinon on re-clique (3 tentatives).
+  let ouvert = false;
+  for (let tentative = 0; tentative < 3 && !ouvert; tentative++) {
+    await humanPause();
+    trigger.click();
+    await humanPause();
+    const echeance = Date.now() + 2500;
+    while (Date.now() < echeance) {
+      if (document.querySelectorAll(CATEGORY_OPTION_SELECTOR).length) { ouvert = true; break; }
+      await sleep(100);
+    }
+    if (!ouvert) console.warn(`[beebs] panneau catégorie non rendu après le clic ${tentative + 1}/3 — re-clic`);
+  }
+  if (!ouvert) {
+    throw new Error(
+      "Catégorie: le panneau Beebs ne s'est pas ouvert après 3 clics (aucune option rendue — " +
+      "aucun problème de catalogue). Le job repartira au prochain passage."
+    );
+  }
 
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
