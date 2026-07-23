@@ -142,7 +142,7 @@ function welcomeHtml(lang: string): string {
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
       font-family:sans-serif;">
       Votre compte est prêt. FillSell vous aide à gérer votre stock, analyser vos
-      marges et publier sur Vinted, eBay et Depop — le tout en quelques secondes.
+      marges et publier automatiquement sur Vinted, Leboncoin, eBay et Beebs — le tout en quelques secondes.
     </p>
     <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
@@ -153,7 +153,58 @@ function welcomeHtml(lang: string): string {
         <li>📸 Analysez les prix avec la photo IA (Lens)</li>
         <li>📊 Suivez vos marges en temps réel</li>
         <li>🚀 Publiez directement sur vos plateformes</li>
+        <li><img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Gagnez et dépensez des Pépites à chaque action</li>
       </ul>
+    </div>
+    <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
+        color:#111827;font-family:sans-serif;">
+        🧩 L'extension Chrome : le cœur de FillSell
+      </h2>
+      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
+        font-family:sans-serif;">
+        C'est elle qui fait le travail à votre place : une fois installée, dès que vous
+        ajoutez un article, elle le publie automatiquement sur Vinted, Leboncoin, eBay et
+        Beebs — sans que vous ayez à remplir un seul formulaire. Elle tourne en
+        arrière-plan, sans jamais prendre le contrôle de votre navigateur.
+      </p>
+      <table cellpadding="0" cellspacing="0" width="100%" role="presentation"
+        style="background:#F0FDF9;border-radius:12px;margin:0 0 18px;">
+        <tr><td align="center" style="padding:16px 0;">
+          <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-vinted.png" width="54" height="54" alt="Vinted" style="display:block;"></td>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-leboncoin.png" width="54" height="54" alt="Leboncoin" style="display:block;"></td>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-ebay.png" width="54" height="54" alt="eBay" style="display:block;"></td>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-beebs.png" width="54" height="54" alt="Beebs" style="display:block;"></td>
+          </tr></table>
+        </td></tr>
+      </table>
+      <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 18px;">
+        <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
+          ⚠️ Elle fonctionne uniquement sur ordinateur (pas sur mobile). Si vous lisez cet
+          email sur votre téléphone, gardez-le de côté et revenez-y depuis votre ordinateur.
+        </p>
+      </div>
+      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
+        font-family:sans-serif;">Comment l'installer aujourd'hui :</p>
+      <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
+        line-height:1.8;font-family:sans-serif;">
+        <li>Depuis votre ordinateur, ouvrez la <a href="https://fillsell.app/extension" style="color:#0F9488;font-weight:600;text-decoration:none;">page d'installation de l'extension</a></li>
+        <li>Téléchargez le fichier d'installation et suivez le guide affiché dans l'app (2 minutes)</li>
+        <li>Connectez-vous à vos comptes Vinted, Leboncoin, eBay et Beebs directement dans votre navigateur, comme vous le faites d'habitude — l'extension utilise ces sessions actives pour publier à votre place. Elle ne se connecte jamais elle-même à votre place, vous gardez la main sur vos comptes.</li>
+      </ol>
+      <a href="https://fillsell.app/extension" class="cta"
+         style="display:block;text-align:center;background:#2DD4BF;color:#fff;
+           font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
+           text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
+        Installer l'extension
+      </a>
+      <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
+        font-family:sans-serif;">
+        Bientôt encore plus simple : l'extension arrive très prochainement directement sur
+        le Chrome Web Store. Un seul clic pour l'installer, et elle se mettra à jour
+        automatiquement à chaque nouvelle version — plus besoin de guide d'installation manuel.
+      </p>
     </div>
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Exemples vocaux</p>
@@ -220,7 +271,7 @@ function welcomeHtml(lang: string): string {
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
       font-family:sans-serif;">
       Your account is ready. FillSell helps you manage inventory, analyze margins
-      and list on Vinted, eBay and Depop — all in seconds.
+      and list automatically on Vinted, Leboncoin, eBay and Beebs — all in seconds.
     </p>
     <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
@@ -231,7 +282,58 @@ function welcomeHtml(lang: string): string {
         <li>📸 Analyze prices with AI photo (Lens)</li>
         <li>📊 Track your margins in real time</li>
         <li>🚀 List directly on your platforms</li>
+        <li><img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Earn and spend Pépites with every action</li>
       </ul>
+    </div>
+    <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
+        color:#111827;font-family:sans-serif;">
+        🧩 The Chrome extension: the heart of FillSell
+      </h2>
+      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
+        font-family:sans-serif;">
+        It does the work for you: once installed, as soon as you add an item, it
+        automatically lists it on Vinted, Leboncoin, eBay and Beebs — without you filling
+        in a single form. It runs in the background, without ever taking control of your
+        browser.
+      </p>
+      <table cellpadding="0" cellspacing="0" width="100%" role="presentation"
+        style="background:#F0FDF9;border-radius:12px;margin:0 0 18px;">
+        <tr><td align="center" style="padding:16px 0;">
+          <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-vinted.png" width="54" height="54" alt="Vinted" style="display:block;"></td>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-leboncoin.png" width="54" height="54" alt="Leboncoin" style="display:block;"></td>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-ebay.png" width="54" height="54" alt="eBay" style="display:block;"></td>
+            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-beebs.png" width="54" height="54" alt="Beebs" style="display:block;"></td>
+          </tr></table>
+        </td></tr>
+      </table>
+      <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 18px;">
+        <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
+          ⚠️ It only works on a computer (not on mobile). If you're reading this email on
+          your phone, keep it aside and come back to it from your computer.
+        </p>
+      </div>
+      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
+        font-family:sans-serif;">How to install it today:</p>
+      <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
+        line-height:1.8;font-family:sans-serif;">
+        <li>From your computer, open the <a href="https://fillsell.app/extension" style="color:#0F9488;font-weight:600;text-decoration:none;">extension install page</a></li>
+        <li>Download the installer file and follow the guide shown in the app (2 minutes)</li>
+        <li>Log in to your Vinted, Leboncoin, eBay and Beebs accounts directly in your browser, as you usually do — the extension uses these active sessions to list on your behalf. It never logs in for you; you stay in control of your accounts.</li>
+      </ol>
+      <a href="https://fillsell.app/extension" class="cta"
+         style="display:block;text-align:center;background:#2DD4BF;color:#fff;
+           font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
+           text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
+        Install the extension
+      </a>
+      <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
+        font-family:sans-serif;">
+        Even simpler soon: the extension is coming very shortly directly to the Chrome Web
+        Store. One click to install, and it will update automatically with each new version
+        — no more manual install guide.
+      </p>
     </div>
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Voice examples</p>
