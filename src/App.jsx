@@ -1840,7 +1840,6 @@ export default function App({ loginOnly = false }){
     return ()=>{stop=true;document.removeEventListener('visibilitychange',onVisible);clearInterval(timer);};
   },[]);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
-  const [lensPremiumLimitReached,setLensPremiumLimitReached]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
   const [coinStoreOpen,setCoinStoreOpen]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
@@ -1907,11 +1906,9 @@ export default function App({ loginOnly = false }){
   },[tab]);
   const [lensPlaceholderIdx,setLensPlaceholderIdx]=useState(0);
   const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
-  const [lensUsedToday,setLensUsedToday]=useState(0);
   const [voiceUsedToday,setVoiceUsedToday]=useState(0);
-  // Quota Lens Free : 5 analyses par MOIS (le plafond journalier a été retiré,
-  // cf. lens-analysis). Le compteur affiché est mensuel.
-  const LENS_FREE_LIMIT=5;
+  // Plus aucun quota Lens côté client (payant-par-scan 2026-07-23) : chaque
+  // analyse coûte 6 Pépites côté serveur, il n'y a plus de compteur mensuel.
   useEffect(()=>{
     const _id=setInterval(()=>{
       setLensPlaceholderFade(false);
@@ -1954,7 +1951,7 @@ export default function App({ loginOnly = false }){
   const [vaError,setVaError]=useState(null);
   const fabTriggerRef=useRef(null);
 
-  const {t,tpl}=useTranslation(lang);
+  const {t}=useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
   useEffect(()=>{localStorage.setItem('fs_currency',currency);},[currency]);
@@ -2222,17 +2219,6 @@ export default function App({ loginOnly = false }){
 
     setLoading(false);
     setAppLoading(false);
-    // Quota Lens : usage_logs est LA source de vérité (comptée côté serveur par
-    // check_and_log_usage). Le quota inclus étant désormais MENSUEL (free 5,
-    // premium 120, pro 250), le compteur affiché l'est aussi — borne = début de
-    // mois UTC, comme date_trunc('month') côté serveur. (Le nom lensUsedToday
-    // est historique : il contient le compteur du MOIS.)
-    const lensMonthStart=new Date();lensMonthStart.setUTCDate(1);lensMonthStart.setUTCHours(0,0,0,0);
-    const{count:lensCount}=await supabase.from('usage_logs')
-      .select('id',{count:'exact',head:true})
-      .eq('user_id',uid).eq('feature','lens')
-      .gte('created_at',lensMonthStart.toISOString());
-    setLensUsedToday(lensCount||0);
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
   }
@@ -4032,7 +4018,7 @@ export default function App({ loginOnly = false }){
   function handleLensPhoto(e){
     const files=Array.from(e.target.files||[]);
     if(!files.length)return;
-    setLensResult(null);setLensAdded(false);setLensPremiumLimitReached(false);
+    setLensResult(null);setLensAdded(false);
     const ALLOWED_MIMES=["image/jpeg","image/png","image/gif","image/webp"];
     files.forEach(file=>{
       if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");return;}
@@ -4077,7 +4063,7 @@ export default function App({ loginOnly = false }){
         source:CameraSource.Prompt,
       });
       if(!photo.dataUrl)return;
-      setLensResult(null);setLensAdded(false);setLensPremiumLimitReached(false);
+      setLensResult(null);setLensAdded(false);
       setLensPhotos(prev=>{
         if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
@@ -4163,10 +4149,10 @@ export default function App({ loginOnly = false }){
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
-    // Quota : plus de pré-check ni d'incrément client (profiles.lens_count_today).
-    // Le serveur (lens-analysis → check_and_log_usage sur usage_logs) est l'unique
-    // autorité : son 429 quota_exceeded est géré plus bas, et le compteur affiché
-    // est resynchronisé après chaque succès.
+    // Facturation (payant-par-scan 2026-07-23) : le serveur débite 6 Pépites
+    // par analyse (spend_coins_for_lens, grant mensuel lazy inclus) et
+    // rembourse si l'analyse n'est pas livrée. Seul le 402 insufficient_coins
+    // remonte ici — plus aucun quota mensuel.
     setLensLoading(true);setLensResult(null);setLensAdded(false);setLensInventaireId(null);
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
@@ -4203,18 +4189,9 @@ export default function App({ loginOnly = false }){
       });
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
-        // Quota mensuel épuisé ET pas assez de pièces pour l'analyse hors quota
+        // Pas assez de Pépites pour l'analyse : prix et solde réels du serveur
         if(errBody.error==='insufficient_coins'){
           setConversionModal({open:true,trigger:'lens',coinPrice:errBody.price??6,coinBalance:errBody.balance??0});
-          return;
-        }
-        // quota_exceeded ne subsiste que pour le frein journalier Premium (10/j)
-        if(errBody.error==='quota_exceeded'){
-          if(isPremium){
-            setLensPremiumLimitReached(true);
-          }else{
-            setConversionModal({open:true,trigger:'lens'});
-          }
           return;
         }
         throw new Error(errBody.error||`HTTP ${r.status}`);
@@ -4222,8 +4199,6 @@ export default function App({ loginOnly = false }){
       const result=await r.json();
       if(result.error)throw new Error(result.error);
       setLensResult(result);
-      // Miroir du log serveur qui vient d'être écrit dans usage_logs
-      setLensUsedToday(prev=>prev+1);
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
@@ -4644,8 +4619,6 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
-            lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
-            lensPremiumLimitReached={lensPremiumLimitReached}
             isPro={isPro}
             supabase={supabase}
             saveLensItemForListing={saveLensItemForListing}

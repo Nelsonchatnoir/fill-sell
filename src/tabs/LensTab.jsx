@@ -38,8 +38,7 @@ function LensScanHome({
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative,
-  analyzeLens, lensLoading, lensPremiumLimitReached,
-  lensUsedToday, LENS_FREE_LIMIT,
+  analyzeLens, lensLoading,
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -49,7 +48,7 @@ function LensScanHome({
   const triggerPhotoPicker = () => (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click());
   const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
 
-  const analyzeDisabled = !lensPhotos.length || lensLoading || lensPremiumLimitReached;
+  const analyzeDisabled = !lensPhotos.length || lensLoading;
 
   return (
     <div style={{ width:'100%', maxWidth:520, margin:'0 auto' }}>
@@ -157,34 +156,17 @@ function LensScanHome({
             </button>
           </div>
 
-          {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22).
-              AVANT : le prix n'apparaissait que dans le bandeau Free une fois le
-              quota épuisé — un Premium au-delà de ses 120 analyses ne le voyait
-              NULLE PART avant de tomber en panne de Pépites.
+          {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22) — et depuis le
+              2026-07-23 (payant-par-scan), c'est LA seule information de coût :
+              chaque analyse débite 6 Pépites côté serveur, il n'y a plus de
+              quota mensuel ni de compteur à afficher.
               ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
-              <LensScanHome/> et RETOURNE (l.563 `if (!lensResult) return`) :
-              tout ce qui suit dans LensTab n'est atteint qu'une fois un résultat
-              obtenu. Une première version de cette ligne y avait été posée — elle
-              était dans le bundle, déployée, et strictement invisible. C'est ici,
-              sous le bouton d'analyse, qu'elle doit vivre.
-              ⚠️ AFFICHAGE SEUL : le back-end conserve le quota mensuel inclus
-              (free 5 / premium 120 / pro 250) et ne débite les 6 Pépites qu'au-
-              delà. Le passage au débit systématique est un déploiement séparé,
-              après validation Apple. */}
+              <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
+              qui suit dans LensTab n'est atteint qu'une fois un résultat obtenu. */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:10, color:'#A6A192' }}>
             <PepiteIcon size={11} />
             {t('lensPricePerScan')}
           </div>
-          {isPremium && lensPremiumLimitReached && (
-            <div style={{ textAlign:'center', fontSize:11.5, marginTop:10, color:'#A6A192' }}>
-              {t('lensQuotaPremiumLimitReached')}
-            </div>
-          )}
-          {!isPremium && (
-            <div style={{ textAlign:'center', fontSize:11.5, marginTop:10, color:'#A6A192' }}>
-              {lensUsedToday >= LENS_FREE_LIMIT ? t('lensQuotaFreeLimitReached') : tpl('lensQuotaFree', { used:lensUsedToday, limit:LENS_FREE_LIMIT })}
-            </div>
-          )}
         </div>
 
         {/* Platform marquee */}
@@ -480,7 +462,7 @@ const LensTab = memo(function LensTab({
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem, openLensEditModal,
-  openUpgradeModal, lensUsedToday, LENS_FREE_LIMIT, lensPremiumLimitReached,
+  openUpgradeModal,
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
@@ -586,8 +568,7 @@ const LensTab = memo(function LensTab({
         lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
         lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
         lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative}
-        analyzeLens={analyzeLens} lensLoading={lensLoading} lensPremiumLimitReached={lensPremiumLimitReached}
-        lensUsedToday={lensUsedToday} LENS_FREE_LIMIT={LENS_FREE_LIMIT}
+        analyzeLens={analyzeLens} lensLoading={lensLoading}
       />
     );
   }
@@ -700,41 +681,23 @@ const LensTab = memo(function LensTab({
                 rien de plus : la tentative ratée est relâchée côté serveur
                 (usage_logs + remboursement des Pépites, cf. lens-analysis),
                 donc l'utilisateur paie une seule fois l'analyse qu'il reçoit.
-            Les deux bandeaux de quota accompagnent le bouton : ils annoncent le
-            coût du prochain tap et n'ont aucun sens sans lui. */}
+            La ligne de tarif accompagne le bouton : elle annonce le coût du
+            prochain tap (la reprise d'un échec, elle, est gratuite de fait :
+            la tentative ratée est remboursée côté serveur). */}
         {lensResult.error&&(<>
         <PrimaryButton
           onClick={analyzeLens}
-          disabled={!lensPhotos.length||lensLoading||lensPremiumLimitReached}
+          disabled={!lensPhotos.length||lensLoading}
         >
           {lensLoading
             ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </PrimaryButton>
 
-        {/* Bandeau premium : limite mensuelle atteinte */}
-        {isPremium&&lensPremiumLimitReached&&(
-          <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
-            📸 {lang==="en"?"Monthly limit reached for this month":"Limite atteinte pour ce mois"}
-          </div>
-        )}
-
-        {/* Bandeau free : compteur mensuel — même analyse complète que Premium,
-            seul le nombre inclus diffère ; au-delà, 6 pièces par analyse */}
-        {!isPremium&&(
-          <div style={{textAlign:"center",fontSize:11,marginTop:6,lineHeight:1.5,color:lensUsedToday>=LENS_FREE_LIMIT?"#C2410C":"#8A8578"}}>
-            {lensUsedToday>=LENS_FREE_LIMIT
-              ?(lang==="en"
-                ?<>📸 Monthly scans used · <PepiteIcon size={11} /> 6 Nuggets per extra scan · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
-                :<>📸 Analyses du mois épuisées · <PepiteIcon size={11} /> 6 Pépites l'analyse · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
-              )
-              :(lang==="en"
-                ?<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} scans this month · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Upgrade for 120/mo →</button></>
-                :<>📸 {lensUsedToday}/{LENS_FREE_LIMIT} analyses ce mois-ci · <button onClick={openUpgradeModal} style={{background:"none",border:"none",padding:0,color:"#1B6E62",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Passer Premium (120/mois) →</button></>
-              )
-            }
-          </div>
-        )}
+        {/* Tarif payant-par-scan (2026-07-23) — plus de quota ni de compteur */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
+          <PepiteIcon size={11} /> {lang==="en"?"6 Nuggets per scan":"6 Pépites l'analyse"}
+        </div>
         </>)}
 
         {/* Résultat */}

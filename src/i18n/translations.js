@@ -291,12 +291,10 @@ export const translations = {
     lensAnalyzeCta:"Analyser avec l'IA",
     lensAnalyzing:"Analyse en cours…",
     lensMarqueeCaption:"Publie sur tes plateformes préférées",
-    lensQuotaFree:"{used}/{limit} analyses ce mois-ci",
-    lensQuotaFreeLimitReached:"Limite atteinte",
-    // Tarif affiché en permanence sous le bouton d'analyse, tous tiers
-    // (2026-07-22). Valeur alignée sur coin_config.price_lens_overflow (= 6).
+    // Tarif affiché en permanence sous le bouton d'analyse, tous tiers.
+    // Payant-par-scan depuis le 2026-07-23 (plus de clés lensQuota*).
+    // Valeur alignée sur coin_config.price_lens_overflow (= 6).
     lensPricePerScan:"6 Pépites l'analyse",
-    lensQuotaPremiumLimitReached:"Limite mensuelle atteinte",
   },
   en: {
     appName:"FillSell",
@@ -588,10 +586,7 @@ export const translations = {
     lensAnalyzeCta:"Analyze with AI",
     lensAnalyzing:"Analyzing…",
     lensMarqueeCaption:"Publish on your favorite platforms",
-    lensQuotaFree:"{used}/{limit} scans this month",
-    lensQuotaFreeLimitReached:"Limit reached",
     lensPricePerScan:"6 Nuggets per scan",
-    lensQuotaPremiumLimitReached:"Monthly limit reached",
   }
 };
 
