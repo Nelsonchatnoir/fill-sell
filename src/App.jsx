@@ -19,6 +19,13 @@ const platform = Capacitor.getPlatform();
 // s'ordonne pas). Un id sans préfixe ISO (« SOURCE non-buildé » en dev) n'est
 // jamais flaggé.
 const APP_BUILD_ID = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_APP_BUILD__ : null;
+// Build extension MINIMAL requis (injecté par Vite depuis scripts/build-id.mjs,
+// bumpé à chaque commit touchant chrome-extension/ — garde-fou au build).
+// C'est LUI que la bannière « extension obsolète » compare au build installé,
+// PAS APP_BUILD_ID : ce dernier avance à chaque déploiement web et re-flaggait
+// mécaniquement toutes les extensions à jour (faux positif confirmé 23/07 sur
+// le build parti en review Chrome Web Store).
+const EXT_MIN_BUILD = typeof __FILLSELL_EXT_MIN_BUILD__ !== 'undefined' ? __FILLSELL_EXT_MIN_BUILD__ : null;
 const buildIdTimestamp = (id) => {
   const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/.exec(String(id ?? ''));
   return m ? Date.parse(m[1]) : null;
@@ -1772,23 +1779,28 @@ export default function App({ loginOnly = false }){
   // Viewport mobile (réactif, breakpoint 768 partagé) : sert à masquer ce qui
   // n'a pas de sens sur téléphone, ex. l'installation de l'extension Chrome.
   const isMobileViewport=useIsMobile();
-  // Bannière « extension obsolète » (2026-07-19) : télémétrie stampée par
-  // get-pending-jobs (colonnes inertes tant que cette edge n'est pas
-  // redéployée — plan « jour J » du commit 3cac497). Conditions : extension vue
-  // dans les 30 derniers jours (au-delà, l'utilisateur ne s'en sert plus — pas
-  // de nag) ET build extension strictement antérieur au build de l'app. Chaque
-  // déploiement web re-flagge mécaniquement les extensions antérieures : assumé,
-  // le zip téléchargeable est toujours celui du build courant.
+  // Bannière « extension obsolète » (2026-07-19, refonte 2026-07-23) :
+  // télémétrie stampée par get-pending-jobs. Conditions : extension vue dans
+  // les 30 derniers jours (au-delà, l'utilisateur ne s'en sert plus — pas de
+  // nag) ET build extension strictement antérieur à EXT_MIN_BUILD (dernier
+  // commit touchant chrome-extension/). L'ancienne comparaison au build de
+  // l'app re-flaggait toutes les extensions à chaque déploiement web — faux
+  // positif systématique dès que le web bougeait sans l'extension.
   const [extensionBuild,setExtensionBuild]=useState(null);
   const [extensionLastSeenAt,setExtensionLastSeenAt]=useState(null);
+  // Renvoi de la bannière mémorisé par couple (build installé | build minimal
+  // requis) : elle revient si l'extension change de build en restant obsolète,
+  // OU si un nouveau commit extension bumpe l'exigence — jamais pour rien.
+  const [extBannerDismissedFor,setExtBannerDismissedFor]=useState(()=>{try{return localStorage.getItem('fs_ext_banner_dismissed');}catch{return null;}});
   const extensionOutdated=(()=>{
     if(isNative||isMobileViewport)return false;
     const seen=Date.parse(extensionLastSeenAt??'');
     if(!Number.isFinite(seen)||Date.now()-seen>30*24*60*60*1000)return false;
     const ext=buildIdTimestamp(extensionBuild);
-    const app=buildIdTimestamp(APP_BUILD_ID);
-    return ext!=null&&app!=null&&ext<app;
+    const min=Date.parse(EXT_MIN_BUILD??'');
+    return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
+  const extBannerKey=`${extensionBuild}|${EXT_MIN_BUILD}`;
   // ── Bundle périmé (2026-07-19, classe de bug c5fe1414) ────────────────────
   // Un onglet SPA longue vie garde son bundle en mémoire tant que personne ne
   // fait F5 : un job créé par cet onglet après un déploiement part avec les
@@ -4312,10 +4324,13 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      {/* Bannière « extension obsolète » (2026-07-19) : desktop seulement — sur
-          mobile/natif l'extension ne s'installe pas (cf. e252620), la condition
-          extensionOutdated les exclut déjà. Lien vers /extension (zip du build
-          courant + guide de rechargement). */}
+      {/* Bannière « extension obsolète » (2026-07-19, restyle amber + dismiss
+          2026-07-23) : desktop seulement — sur mobile/natif l'extension ne
+          s'installe pas (cf. e252620), la condition extensionOutdated les
+          exclut déjà. Lien vers /extension (zip du build courant + guide de
+          rechargement) — PAS le Chrome Web Store, le build y est encore en
+          review. Dismissible : clé (build installé | build minimal requis)
+          en localStorage, cf. extBannerDismissedFor. */}
       {/* Bandeau « nouvelle version » (2026-07-19, classe c5fe1414) : ne
           s'affiche QUE si le reload auto a été différé (saisie/stepper/dialog
           en cours au moment du constat) — sinon l'onglet s'est déjà rechargé
@@ -4334,17 +4349,20 @@ export default function App({ loginOnly = false }){
         </div>
       )}
 
-      {extensionOutdated&&(
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#FFFBEB",borderBottom:"1px solid #FDE68A",fontSize:13,color:"#92400E"}}>
-          <span aria-hidden="true">🧩</span>
-          <span style={{flex:1,lineHeight:1.4}}>
+      {extensionOutdated&&extBannerDismissedFor!==extBannerKey&&(
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px 11px 14px",background:`linear-gradient(90deg,${UI.amber}1F,${UI.amber}0D)`,borderBottom:`1px solid ${UI.amber}66`,borderLeft:`4px solid ${UI.amber}`,fontSize:13,color:"#C2410C"}}>
+          <span aria-hidden="true" style={{fontSize:17,flexShrink:0}}>🧩</span>
+          <span style={{flex:1,lineHeight:1.45,fontWeight:500}}>
             {lang==='fr'
               ?"Ton extension Chrome FillSell n'est plus à jour — certaines publications peuvent échouer."
               :"Your FillSell Chrome extension is out of date — some listings may fail to publish."}
           </span>
-          <a href="/extension" style={{fontWeight:700,color:"#92400E",textDecoration:"underline",whiteSpace:"nowrap"}}>
+          <a href="/extension" style={{fontWeight:700,fontSize:12,color:"#fff",background:UI.amber,borderRadius:99,padding:"6px 14px",textDecoration:"none",whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 4px rgba(232,149,109,0.4)"}}>
             {lang==='fr'?"Mettre à jour":"Update"}
           </a>
+          <button onClick={()=>{setExtBannerDismissedFor(extBannerKey);try{localStorage.setItem('fs_ext_banner_dismissed',extBannerKey);}catch{/* stockage indisponible : dismiss valable pour la session seulement */}}}
+            aria-label={lang==='fr'?"Masquer":"Dismiss"} title={lang==='fr'?"Masquer":"Dismiss"}
+            style={{background:"transparent",border:"none",color:"#C2410C",fontSize:15,lineHeight:1,cursor:"pointer",padding:"4px 6px",opacity:0.65,flexShrink:0,fontFamily:"inherit"}}>✕</button>
         </div>
       )}
 
