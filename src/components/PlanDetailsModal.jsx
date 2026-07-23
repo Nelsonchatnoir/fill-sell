@@ -5,13 +5,13 @@
 // (9,99 €), afficher le prix courant serait faux pour eux.
 //
 // Chiffres : mêmes sources que les cartes de ConversionModal — grants et coûts
-// lus dans coin_config à l'ouverture (repli COIN_CONFIG_FALLBACK), sauf le
-// grant Pro affiché : DISPLAY_GRANT_PRO (600) tant que la migration 800→600
-// n'est pas appliquée (exception documentée dans ConversionModal).
+// lus dans coin_config à l'ouverture (repli COIN_CONFIG_FALLBACK), grant Pro
+// compris depuis le 2026-07-23 (migration 20260723170000, base à 600 — l'ex-
+// exception d'affichage DISPLAY_GRANT_PRO est retirée).
 import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge } from './PlanBadge';
 import PepiteIcon from './PepiteIcon';
-import { COIN_CONFIG_FALLBACK, DISPLAY_GRANT_PRO } from './ConversionModal';
+import { COIN_CONFIG_FALLBACK } from './ConversionModal';
 
 const C = {
   canvas: '#EDEAE0',
@@ -74,7 +74,7 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase }) {
 
   const K = cfg || COIN_CONFIG_FALLBACK;
   const lensCost = K.price_lens_overflow;
-  const grant = isPro ? DISPLAY_GRANT_PRO : K.monthly_grant_premium;
+  const grant = isPro ? K.monthly_grant_pro : K.monthly_grant_premium;
   const lensScans = lensCost > 0 ? Math.floor(grant / lensCost) : 0;
   const pubMin = K.price_original;
   const pubMax = K.price_ia_advanced;
