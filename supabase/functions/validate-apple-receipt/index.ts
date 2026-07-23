@@ -16,7 +16,15 @@ const supabaseAdmin = createClient(
 const BUNDLE_ID = "app.fillsell.app";
 const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
 const STANDARD_PRODUCT_ID = "app.fillsell.premium.standard";
-const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID];
+const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
+const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, PRO_PRODUCT_ID];
+
+// Prix TTC/mois par produit — Founder = tarif legacy grandfathered
+const PRODUCT_PRICES: Record<string, number> = {
+  [FOUNDER_PRODUCT_ID]: 9.99,
+  [STANDARD_PRODUCT_ID]: 12.99,
+  [PRO_PRODUCT_ID]: 29.99,
+};
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {
   const res = await fetch(url, {
@@ -113,14 +121,26 @@ serve(async (req) => {
 
     const isPremium = !!activeSub;
     const isFounderPurchase = isPremium && activeSub!.product_id === FOUNDER_PRODUCT_ID;
+    const isProPurchase = isPremium && activeSub!.product_id === PRO_PRODUCT_ID;
 
-    await supabaseAdmin.from("profiles").update({ is_premium: isPremium }).eq("id", userId);
+    // Même logique que apple-iap-webhook : is_pro suit l'abonnement Pro actif,
+    // et l'originalTransactionId est capturé dès qu'il est présent (tout produit).
+    const update: Record<string, unknown> = { is_premium: isPremium };
+    if (isProPurchase) update.is_pro = true;
+    if (activeSub?.original_transaction_id) {
+      update.apple_original_transaction_id = activeSub.original_transaction_id;
+    }
+    await supabaseAdmin.from("profiles").update(update).eq("id", userId);
 
     if (isPremium) {
       await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "Purchase", value: 9.99, currency: "EUR" }),
+        body: JSON.stringify({
+          event: "Purchase",
+          value: PRODUCT_PRICES[activeSub!.product_id] ?? 12.99,
+          currency: "EUR",
+        }),
       });
     }
 
@@ -133,7 +153,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[validate-apple-receipt] userId=${userId} is_premium=${isPremium} is_founder=${isFounderPurchase}`);
+    console.log(`[validate-apple-receipt] userId=${userId} is_premium=${isPremium} is_founder=${isFounderPurchase} is_pro=${isProPurchase} product=${activeSub?.product_id ?? "none"}`);
 
     return new Response(JSON.stringify({ success: true, is_premium: isPremium }), {
       headers: { ...CORS, "Content-Type": "application/json" },
