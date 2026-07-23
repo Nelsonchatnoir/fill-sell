@@ -42,9 +42,10 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 }
 
 // Qualité unifiée (2026-07) : un seul prompt — l'ex-analyse Premium avec
-// web_search — pour TOUS les tiers. Chaque analyse coûte des Pépites
-// (coin_config.price_lens_overflow) ; la différenciation par tier se fait
-// uniquement sur le grant mensuel de Pépites (free=30, premium=150, pro=600).
+// web_search — pour TOUS les tiers. Depuis le 2026-07-23 (levée du gate
+// économie v2), CHAQUE analyse coûte des Pépites (price_lens_overflow = 6),
+// tous tiers : la différenciation se fait uniquement sur le grant mensuel
+// de Pépites (free 30 / premium 150 / pro 600).
 function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number): string {
   // Multi-photos (2026-07-17) : neutralise le biais d'ORDRE (les modèles vision
   // sur-pondèrent souvent la 1re image) et force une lecture SYSTÉMATIQUE de
@@ -61,12 +62,15 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
   // clés TOUTES optionnelles — seules celles réellement LUES sur l'article
   // apparaissent. Consommées par le flux resolve_aspects (aspects eBay
   // obligatoires sans champ dédié : Nom de parfum, Volume, Numéro de pièce
-  // fabricant, dimensions…). ⚠️ Déploiement lens-analysis GATED : juste
-  // avant le merge vers main, jamais avant (consigne du 2026-07-16).
+  // fabricant, dimensions…). Depuis le 2026-07-23, CE fichier est la source
+  // unique déployée (index.prod.ts et la procédure cp/deploy/restore sont
+  // morts avec la levée du gate économie v2).
 
   if (lang === "en") {
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
+
+ABSOLUTE RULE, OVERRIDING EVERY OTHER INSTRUCTION: your reply must be a JSON object matching the schema, and NOTHING else. You are NEVER asked to ask a question, request clarification, or comment on what is missing. If a piece of information is absent, uncertain or unreadable, set that field to null (or its default) and CARRY ON: uncertainty is expressed through "confiance":"basse" and the "notes" field, never through a question or any text outside the JSON. A prose reply is a FAILURE, however helpful or polite it may be.
 ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 
@@ -91,6 +95,8 @@ MANDATORY PROCESS — follow in order:
   }
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
+
+RÈGLE ABSOLUE, PRIORITAIRE SUR TOUTE AUTRE INSTRUCTION : ta réponse doit être un objet JSON conforme au schéma, et RIEN d'autre. Il ne t'est JAMAIS demandé de poser une question, de réclamer une précision, ni de commenter ce qui te manque. Si une information est absente, incertaine ou illisible, mets le champ à null (ou à sa valeur par défaut) et CONTINUE : l'incertitude se signale par "confiance":"basse" et par le champ "notes", jamais par une question ni par du texte hors JSON. Une réponse en prose est un ÉCHEC, même si elle est utile et polie.
 ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
 
@@ -186,15 +192,38 @@ serve(async (req) => {
     });
   }
 
-  // ── Chaque analyse coûte des Pépites, tous tiers (décision 2026-07-07) ────
-  // Plus de quota mensuel inclus ni de frein journalier Premium. Le débit et le
-  // log d'usage sont atomiques dans spend_coins_for_lens, qui pose aussi le
-  // grant mensuel du tier (free 30 / premium 150 / pro 600) s'il manque.
+  // ── Payant-par-scan (2026-07-23, levée du gate économie v2) ───────────────
+  // Plus de quota mensuel inclus (ex 5/120/250), plus de frein journalier :
+  // CHAQUE analyse débite price_lens_overflow (6) via spend_coins_for_lens,
+  // tous tiers. Le RPC pose aussi le grant mensuel LAZY (30/150/600) si le
+  // mois du wallet est vierge — un inscrit du jour a ses Pépites dès sa
+  // première analyse, sans attendre le sweep de 04:15. Les colonnes
+  // lens_daily_override / lens_monthly_override ne sont plus consultées
+  // (lettres mortes sans quotas — 2 comptes en avaient, cf. état des lieux).
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  // Pièces débitées pour cette analyse — sert au remboursement best-effort
-  // si l'analyse échoue après débit.
+  // Pièces débitées pour cette analyse — remboursées si elle n'est pas livrée.
   let paidWithCoins = 0;
+
+  // Relâche ce que la tentative a coûté (idempotent, best-effort : un échec de
+  // remboursement ne doit jamais masquer l'erreur d'origine). La ligne
+  // usage_logs posée par spend_coins_for_lens reste en place : elle n'ouvre
+  // plus aucun droit (pure télémétrie), rembourser les Pépites suffit — la
+  // reprise depuis LensTab est gratuite de fait.
+  let released = false;
+  const userId = user.id; // capturé hors closure : TS ne garde pas le narrowing
+  async function releaseAttempt(reason: string) {
+    if (released) return;
+    released = true;
+    if (paidWithCoins > 0) {
+      const { error } = await adminClient.rpc("refund_coins", {
+        p_user_id: userId,
+        p_amount: paidWithCoins,
+        p_metadata: { source: reason },
+      });
+      if (error) console.error("[lens-analysis] refund_coins:", error.message);
+    }
+  }
 
   const { data: spend, error: spendErr } = await adminClient.rpc("spend_coins_for_lens", {
     p_user_id: user.id,
@@ -208,6 +237,9 @@ serve(async (req) => {
   }
   if (spend.allowed === false) {
     if (spend.reason === "insufficient_coins") {
+      // 402 → le client ouvre la ConversionModal (trigger lens) avec le prix
+      // et le solde réels — chemin déjà câblé côté App.jsx et
+      // ListingPreviewScreen.
       return new Response(
         JSON.stringify({ error: "insufficient_coins", price: spend.price, balance: spend.balance }),
         { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
@@ -225,7 +257,11 @@ serve(async (req) => {
     const body = await req.json();
     const { urls, description, prixAchat, lang = "fr", userCountry, userStats } = body;
 
+    // ⚠️ Ces deux sorties sont des `return` À L'INTÉRIEUR du try : elles ne
+    // passent PAS par le catch, donc les Pépites débitées n'étaient pas
+    // rendues. Elles relâchent désormais explicitement.
     if (!Array.isArray(urls) || urls.length === 0) {
+      await releaseAttempt("lens_missing_urls");
       return new Response(JSON.stringify({ error: "Missing urls" }), {
         status: 400, headers: { "Content-Type": "application/json", ...CORS },
       });
@@ -233,6 +269,7 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
+      await releaseAttempt("lens_missing_api_key");
       return new Response(JSON.stringify({ error: "Missing API key" }), {
         status: 500, headers: { "Content-Type": "application/json", ...CORS },
       });
@@ -245,7 +282,16 @@ serve(async (req) => {
     const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, urls.length);
 
     const textParts: string[] = [];
-    if (description) textParts.push(_lang === "en" ? `User note: ${description}` : `Note de l'utilisateur : ${description}`);
+    // TOUJOURS envoyée, même vide (2026-07-22). Le prompt système ordonne TROIS
+    // fois de lire « Note de l'utilisateur » (étapes 1, 6 et 7). Quand la ligne
+    // était omise — cas d'un article sans note, comme la robe Camaïeu du 22/07 —
+    // on demandait au modèle de lire un champ INEXISTANT, et il répondait en
+    // prose pour le réclamer (« Avez-vous une Note de l'utilisateur à me
+    // fournir ? »), d'où « Réponse IA non parsable ». Un « (aucune) » explicite
+    // ferme la question au lieu de l'ouvrir.
+    textParts.push(_lang === "en"
+      ? `User note: ${description || "(none — the user provided no note; do not ask for one)"}`
+      : `Note de l'utilisateur : ${description || "(aucune — l'utilisateur n'a pas fourni de note ; ne la réclame pas)"}`);
     if (prixAchat != null) textParts.push(_lang === "en" ? `My actual purchase price (cost paid): €${prixAchat}` : `Mon prix d'achat réel (coût payé) : ${prixAchat}€`);
     if (userStats?.avgMargin != null) textParts.push(_lang === "en" ? `My average margin: ${userStats.avgMargin}%` : `Ma marge moyenne : ${userStats.avgMargin}%`);
     if (userStats?.topCategories?.length) textParts.push(_lang === "en" ? `My top categories: ${userStats.topCategories.join(", ")}` : `Mes meilleures catégories : ${userStats.topCategories.join(", ")}`);
@@ -267,14 +313,26 @@ serve(async (req) => {
     ];
 
     const basePayload = {
+      // max_tokens 1200 → 2500 (2026-07-18) : 1200 pouvait être épuisé en
+      // narration/recherches AVANT l'émission du JSON (schéma massif) →
+      // stop_reason "max_tokens" sans la moindre accolade → "non parsable".
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1200,
+      max_tokens: 2500,
       temperature: 0,
       system: systemPrompt,
     };
 
     // Analyse unifiée : web_search pour tout le monde (prix marché en direct),
     // avec repli sur l'analyse vision seule si l'outil échoue.
+    // ⚠️ web_search est un outil SERVEUR : les recherches s'exécutent côté API
+    // dans la même requête (blocs "server_tool_use"/"web_search_tool_result"),
+    // il n'y a jamais de stop_reason "tool_use" ni de tool_result à renvoyer.
+    // L'ancienne boucle filtrait type==="tool_use" → ne matchait jamais → boucle
+    // morte : un tour long interrompu par l'API (stop_reason "pause_turn")
+    // n'était jamais repris et le texte reçu s'arrêtait AVANT le JSON final
+    // ("Réponse IA non parsable", casquette Volcom 18/07, déterministe selon
+    // l'ordre des photos). Reprise correcte d'un pause_turn : rejouer la même
+    // requête avec le contenu assistant partiel ajouté en fin de conversation.
     let data: any;
     try {
       const wsMessages: any[] = [...initialMessages];
@@ -284,17 +342,8 @@ serve(async (req) => {
         messages: wsMessages,
       }, "web-search-2025-03-05");
 
-      for (let i = 0; i < 2 && data.stop_reason === "tool_use"; i++) {
+      for (let i = 0; i < 3 && data.stop_reason === "pause_turn"; i++) {
         wsMessages.push({ role: "assistant", content: data.content });
-        const toolResults = (data.content as any[])
-          .filter((b: any) => b.type === "tool_use")
-          .map((b: any) => ({
-            type: "tool_result",
-            tool_use_id: b.id,
-            content: b.content ?? [],
-          }));
-        if (!toolResults.length) break;
-        wsMessages.push({ role: "user", content: toolResults });
         data = await callClaude(apiKey, {
           ...basePayload,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
@@ -318,10 +367,49 @@ serve(async (req) => {
       itemData = JSON.parse(rawText);
     } catch {
       const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) {
+      try {
+        if (!match) throw new Error("no JSON braces");
         itemData = JSON.parse(match[0]);
-      } else {
-        throw new Error(_lang === "en" ? "AI response could not be parsed" : "Réponse IA non parsable");
+      } catch {
+        // ── PASSE DE RÉPARATION (2026-07-22) ────────────────────────────────
+        // Cause réelle : stop_reason "end_turn", aucune coupure — le modèle a
+        // simplement répondu en PROSE (il a posé une question à l'utilisateur)
+        // au lieu du JSON. Les correctifs pause_turn et max_tokens ne couvrent
+        // pas ce mode d'échec : ce n'est ni un tour interrompu ni une sortie
+        // tronquée, c'est un contournement du format.
+        // Plutôt que d'échouer, on lui demande de reformater SA PROPRE réponse.
+        // Cet appel n'a AUCUN outil : le prefill assistant y est donc sûr
+        // (Haiku 4.5 le supporte — voice-intent le garde derrière !useWebSearch
+        // pour cette même raison, la compatibilité prefill × outils serveur
+        // n'étant pas documentée). Le prefill « { » rend la prose
+        // structurellement impossible sur cette seconde passe.
+        // Coût : au plus UN appel, et seulement quand le parsing a déjà échoué.
+        console.error(`[lens-analysis] parse fail — stop_reason=${data?.stop_reason ?? "?"} — rawText(400): ${rawText.slice(0, 400)}`);
+        try {
+          const repair = await callClaude(apiKey, {
+            ...basePayload,
+            messages: [
+              ...initialMessages,
+              { role: "assistant", content: rawText.slice(0, 4000) },
+              { role: "user", content: _lang === "en"
+                  ? "Return ONLY the JSON object for the schema above. No question, no prose, no markdown. Unknown fields: null."
+                  : "Renvoie UNIQUEMENT l'objet JSON du schéma ci-dessus. Aucune question, aucune prose, aucun markdown. Champs inconnus : null." },
+              { role: "assistant", content: "{" },
+            ],
+          });
+          const suite = (repair.content as any[] ?? [])
+            .filter((b: any) => b.type === "text")
+            .map((b: any) => b.text as string)
+            .join("");
+          const recolle = "{" + suite;
+          const fin = recolle.lastIndexOf("}");
+          if (fin < 0) throw new Error("réparation sans accolade fermante");
+          itemData = JSON.parse(recolle.slice(0, fin + 1));
+          console.warn("[lens-analysis] réponse en prose RATTRAPÉE par la passe de réparation");
+        } catch (repairErr) {
+          console.error("[lens-analysis] passe de réparation en échec :", String((repairErr as any)?.message ?? repairErr));
+          throw new Error(_lang === "en" ? "AI response could not be parsed" : "Réponse IA non parsable");
+        }
       }
     }
 
@@ -333,17 +421,11 @@ serve(async (req) => {
     });
   } catch (err: any) {
     console.error("[lens-analysis] Error:", err);
-    // Analyse hors quota payée en pièces mais jamais livrée : remboursement
-    // best-effort (crédité en solde "acheté", cf. refund_coins).
-    if (paidWithCoins > 0) {
-      await adminClient.rpc("refund_coins", {
-        p_user_id: user.id,
-        p_amount: paidWithCoins,
-        p_metadata: { source: "lens_overflow_failed" },
-      }).then(({ error }) => {
-        if (error) console.error("[lens-analysis] refund_coins:", error.message);
-      });
-    }
+    // Analyse jamais livrée : on rembourse les Pépites débitées (créditées en
+    // solde « acheté », cf. refund_coins). La reprise depuis le bouton
+    // « Analyser avec l'IA » de LensTab est donc gratuite de fait : la
+    // tentative ratée n'a rien coûté.
+    await releaseAttempt("lens_analysis_failed");
     if (err?.isAiUnavailable) {
       return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
         status: 503, headers: { "Content-Type": "application/json", ...CORS },
