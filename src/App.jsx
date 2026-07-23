@@ -509,7 +509,7 @@ const COIN_KIND_LABELS={
   admin:{fr:'Ajustement',en:'Adjustment'},
 };
 
-function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', onOpenModal=null }){
+function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', onOpenModal=null, label=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
   const { t: tb } = useTranslation(lang);
@@ -559,7 +559,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (lang==='fr'?'✨ Passer Premium · 12,99 €/mois':'✨ Upgrade to Premium · €12.99/mo')}
+        label={loading ? tb('redirection') : (label ?? (lang==='fr'?'✨ Passer Premium · 12,99 €/mois':'✨ Upgrade to Premium · €12.99/mo'))}
         disabled={loading}
         sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
@@ -567,7 +567,7 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   );
 }
 
-function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }) {
+function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, label=null }) {
   return (
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
@@ -575,7 +575,7 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore }
       </div>
       <CtaPremium
         onClick={onPurchase}
-        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →')}
+        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(label ?? (lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →'))}
         disabled={iapLoading}
         sub={iapProduct
           ?(lang==='fr'?`${iapProduct.priceString}/mois · Sans engagement.`:`${iapProduct.priceString}/month · No commitment.`)
