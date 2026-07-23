@@ -1524,7 +1524,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
           const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1,prix_achat:i.buy??i.prix_achat??null}));
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
-          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){if(isPremium){const msg=iErrJson?.reason==='monthly_limit'?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.'):(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');setVoiceToast(`🔒 ${msg}`);setTimeout(()=>setVoiceToast(''),5000);}else{setConversionModal({open:true,trigger:'voice'});}setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
+          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités : un 429 ne peut venir que d'un Free au plafond journalier */setConversionModal({open:true,trigger:'voice'});setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
           if(iErr)throw new Error(iErr);
@@ -2526,7 +2526,7 @@ export default function App({ loginOnly = false }){
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
         if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
-        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){if(isPremium){setToast({visible:true,message:lang==='fr'?'🎙️ Limite vocale mensuelle atteinte.':'🎙️ Monthly voice limit reached.'});setTimeout(()=>setToast({visible:false,message:''}),5000);}else{setConversionModal({open:true,trigger:'voice'});}setVoiceStep("");setVoiceLoading(false);return;}
+        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités */setConversionModal({open:true,trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;}
         throw new Error(lang==="en"?"Intent failed":"Erreur intention");
       }
       let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
@@ -3971,9 +3971,8 @@ export default function App({ loginOnly = false }){
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
         if(errBody.error==='quota_exceeded'){
-          const msg=errBody.reason==='monthly_limit'
-            ?(lang==='fr'?'Limite mensuelle atteinte. Passez Premium pour continuer.':'Monthly limit reached. Upgrade to Premium to continue.')
-            :(lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.');
+          // deal-analysis : Free 10/jour (pas de plafond mensuel), Premium/Pro illimités
+          const msg=lang==='fr'?'Limite journalière atteinte. Revenez demain ou passez Premium.':'Daily limit reached. Come back tomorrow or upgrade to Premium.';
           setToast({visible:true,message:`🔒 ${msg}`});
           setTimeout(()=>setToast({visible:false,message:''}),4000);
           setDealIALoading(false);

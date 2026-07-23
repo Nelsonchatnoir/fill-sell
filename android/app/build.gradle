@@ -27,7 +27,7 @@ android {
         // 15 → 16, puis 16 → 17 (2026-07-22 soir : build embarquant le fix du
         // bouton Lens 6748274, le tarif « 6 Pépites » e411ecc, le garde-fou
         // lots c6de17b et le déblocage cross-post 4580da6).
-        versionCode 17
+        versionCode 18
         versionName "2.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
