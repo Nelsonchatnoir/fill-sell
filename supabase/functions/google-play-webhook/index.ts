@@ -135,14 +135,16 @@ serve(async (req) => {
       });
     }
 
-    // Pièces incluses au 1er achat et à chaque renouvellement (idempotent par mois)
+    // Pièces incluses au 1er achat et à chaque renouvellement.
+    // upgrade_monthly_grant (2026-07-23) : grant plein si mois vierge, sinon
+    // top-up de la différence de tier (upgrade Premium→Pro en cours de mois).
     if (isPremium) {
       const grantTier = subscriptionId === PRO_PRODUCT_ID ? "pro" : "premium";
-      const { error: grantErr } = await supabaseAdmin.rpc("grant_monthly_coins", {
+      const { error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: userId,
         p_tier: grantTier,
       });
-      if (grantErr) console.error("[google-play-webhook] grant_monthly_coins:", grantErr.message);
+      if (grantErr) console.error("[google-play-webhook] upgrade_monthly_grant:", grantErr.message);
     }
 
     console.log(`[google-play-webhook] type=${notificationType} product=${subscriptionId} → userId=${userId} is_premium=${isPremium} is_founder=${update.is_founder ?? false}`);

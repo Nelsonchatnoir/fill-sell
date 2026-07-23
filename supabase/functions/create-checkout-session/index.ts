@@ -174,15 +174,15 @@ serve(async (req) => {
           metadata: { ...(target.metadata ?? {}), plan_type: "pro" },
         });
         // Miroir de checkout.session.completed (qui ne firera PAS ici — pas de
-        // session Checkout) : flags + Pépites du mois. grant_monthly_coins est
-        // idempotent par mois calendaire : si le grant Premium est déjà passé
-        // ce mois-ci, il répond already_granted (les 600 Pro arrivent au
-        // prochain cycle — comportement assumé, cf. sweep quotidien).
+        // session Checkout) : flags + Pépites du mois. upgrade_monthly_grant
+        // (2026-07-23) complète la différence premium→pro si le grant du mois
+        // est déjà passé (l'ancien grant_monthly_coins répondait already_granted
+        // et l'upgradé restait au grant Premium jusqu'au 1er).
         await supabase
           .from("profiles")
           .update({ is_premium: true, is_pro: true, stripe_customer_id: existingCustomerId })
           .eq("id", authUser.id);
-        const { data: grantRes, error: grantErr } = await supabase.rpc("grant_monthly_coins", {
+        const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
           p_user_id: authUser.id,
           p_tier: "pro",
         });

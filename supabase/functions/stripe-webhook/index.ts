@@ -135,13 +135,16 @@ serve(async (req) => {
         await supabase.rpc("increment_founder_slots");
       }
 
-      // Pièces incluses créditées dès l'activation (idempotent par mois calendaire)
+      // Pièces incluses créditées dès l'activation. upgrade_monthly_grant
+      // (2026-07-23) : grant plein si mois vierge, sinon top-up de la
+      // différence de tier (un abonné du mois déjà crédité plus bas n'attend
+      // plus le 1er).
       const grantTier = planType === "pro" ? "pro" : "premium";
-      const { error: grantErr } = await supabase.rpc("grant_monthly_coins", {
+      const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: users[0].id,
         p_tier: grantTier,
       });
-      if (grantErr) console.error("[webhook] grant_monthly_coins:", grantErr.message);
+      if (grantErr) console.error("[webhook] upgrade_monthly_grant:", grantErr.message);
     }
 
     await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
@@ -163,8 +166,12 @@ serve(async (req) => {
       .eq("stripe_customer_id", customerId)
       .limit(1);
     if (profs && profs.length > 0) {
+      // upgrade_monthly_grant : identique à grant_monthly_coins au 1er du mois
+      // (délégation si mois vierge) ; en cours de mois, la facture de proration
+      // d'un upgrade sert de filet si le top-up synchrone de
+      // create-checkout-session a raté (idempotent, no-op sinon).
       const tier = profs[0].is_pro ? "pro" : "premium";
-      const { error: grantErr } = await supabase.rpc("grant_monthly_coins", {
+      const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: profs[0].id,
         p_tier: tier,
       });
