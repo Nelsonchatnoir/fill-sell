@@ -78,60 +78,6 @@ function ctaButton(label: string): string {
   </a>`;
 }
 
-// ── Mail « mise à jour extension » (mode extension_update, déclenché à la main) ─
-function extensionUpdateHtml(lang: string, version: string): string {
-  const isFr = lang !== "en";
-  const steps = isFr
-    ? [
-        "Télécharge la nouvelle version depuis la page Extension de FillSell",
-        "Dans Chrome, ouvre chrome://extensions et retire l'ancienne extension FillSell",
-        "Charge le nouveau dossier dézippé (« Charger l'extension non empaquetée »)",
-      ]
-    : [
-        "Download the new version from the FillSell Extension page",
-        "In Chrome, open chrome://extensions and remove the old FillSell extension",
-        "Load the new unzipped folder (\"Load unpacked\")",
-      ];
-  const content = `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      ${isFr ? "Nouvelle version de l'extension 🧩" : "New extension version 🧩"}
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
-      font-family:sans-serif;">
-      ${isFr
-        ? `La version <strong>${version}</strong> de l'extension FillSell est disponible. Elle corrige et fiabilise la publication automatique sur Vinted, Leboncoin, eBay et Beebs — les anciennes versions peuvent échouer à publier certaines annonces.`
-        : `Version <strong>${version}</strong> of the FillSell extension is available. It fixes and improves automatic publishing on Vinted, Leboncoin, eBay and Beebs — older versions may fail to publish some listings.`}
-    </p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      ${isFr
-        ? "Chrome ne met pas à jour l'extension tout seul : la mise à jour prend 2 minutes."
-        : "Chrome doesn't update the extension by itself: updating takes 2 minutes."}
-    </p>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
-        font-family:sans-serif;">${isFr ? "Pour mettre à jour :" : "To update:"}</p>
-      <ol style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        ${steps.map((s) => `<li>${s}</li>`).join("")}
-      </ol>
-    </div>
-    <a href="https://fillsell.app/extension" class="cta"
-       style="display:block;text-align:center;background:#2DD4BF;
-         color:#fff;font-weight:800;font-size:15px;padding:14px 24px;
-         border-radius:12px;text-decoration:none;font-family:sans-serif;">
-      ${isFr ? "Mettre à jour l'extension" : "Update the extension"}
-    </a>`;
-  return emailWrapper(content, lang);
-}
-
-function extensionUpdateSubject(lang: string): string {
-  return lang === "en"
-    ? "Update your FillSell extension 🧩"
-    : "Mets à jour ton extension FillSell 🧩";
-}
-
 function welcomeHtml(lang: string): string {
   const isFr = lang !== "en";
   const content = isFr ? `
@@ -408,111 +354,98 @@ function welcomeHtml(lang: string): string {
   return emailWrapper(content, lang);
 }
 
-// Email J+3 : pitch Premium standard. Ex-founderHtml — le tier Founder est
-// supprimé (2026-07), le checkout ne crée plus que standard/pro ; le type
-// email_logs reste 'founder_plan' pour ne pas casser la déduplication.
-function premiumPlanHtml(lang: string): string {
+// Email J+1 « comment ça marche » — pédagogie post-première-publication.
+// Chiffres VÉRIFIÉS dans le code de l'extension (chrome-extension/config.js +
+// background.js, 2026-07-23) : publication en tâche de fond (quelques minutes/
+// plateforme), vérification de vente throttlée à 2 h par annonce
+// (SALE_CHECK_MIN_INTERVAL_MS), délai de grâce avant retrait UNIFORME 2 h sur
+// les 4 plateformes (PUBLISH_GRACE_MS, plus « selon la plateforme » depuis le
+// 2026-07-13). Ne pas réintroduire de chiffre non vérifié ici.
+function howItWorksHtml(lang: string): string {
   const isFr = lang !== "en";
   const content = isFr ? `
-    <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-0.02em;
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
-      FillSell Premium vous attend 🚀
+      Comment FillSell travaille pour vous 🔍
     </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
       font-family:sans-serif;">
-      Débloquez la saisie vocale illimitée, l'analyse photo Lens et toutes les
-      fonctionnalités pro.
+      Vous avez commencé à publier — voici ce qui se passe en coulisses, pour ne jamais
+      avoir à vous demander si ça fonctionne.
     </p>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium inclut</p>
-      <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Voix illimitée (cap 300/mois · vs 5/jour en gratuit)</li>
-        <li>📸 Lens Pro · 10 scans/jour · 120/mois</li>
-        <li>📊 Stats avancées &amp; export multi-plateformes</li>
-        <li>🎁 7 jours gratuits · sans engagement</li>
-      </ul>
-    </div>
-    ${ctaButton("Je passe Premium")}` : `
-    <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      FillSell Premium is waiting for you 🚀
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
-      font-family:sans-serif;">
-      Unlock unlimited voice input, AI photo analysis and all pro features.
-    </p>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium includes</p>
-      <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Unlimited voice (300/month cap · vs 5/day on free)</li>
-        <li>📸 Lens Pro · 10 scans/day · 120/month</li>
-        <li>📊 Advanced stats &amp; multi-platform export</li>
-        <li>🎁 7 days free · no commitment</li>
-      </ul>
-    </div>
-    ${ctaButton("Go Premium")}`;
-  return emailWrapper(content, lang);
-}
-
-function voiceConversionHtml(lang: string): string {
-  const isFr = lang !== "en";
-  const content = isFr ? `
-    <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      Vous maîtrisez la saisie vocale 🎙️
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
-      font-family:sans-serif;">
-      Vous avez atteint votre limite quotidienne de 5 saisies vocales.
-      Passez au Premium pour une utilisation illimitée.
-    </p>
-    <div style="background:#FEF3C7;border-radius:12px;padding:16px 20px;margin:0 0 24px;">
-      <p style="margin:0;color:#92400E;font-size:14px;font-family:sans-serif;line-height:1.6;">
-        ⚡ Avec le plan Premium, la saisie vocale est <strong>illimitée (cap 300/mois)</strong> —
-        ajoutez autant d'articles que vous voulez, quand vous voulez.
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">⏱️ La publication</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        Une fois un article ajouté, l'extension le publie sur chaque plateforme sélectionnée
+        en arrière-plan — comptez quelques minutes par plateforme. Pas besoin de garder l'app
+        ouverte ni de surveiller : tant que votre ordinateur reste allumé avec Chrome ouvert,
+        ça avance tout seul.
       </p>
     </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium débloque</p>
-      <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Voix illimitée (cap 300/mois · vs 5/jour en gratuit)</li>
-        <li>📸 Lens Pro · 10 scans/jour · 120/mois</li>
-        <li>📊 Stats avancées &amp; export</li>
-      </ul>
-    </div>
-    ${ctaButton("Passer au Premium")}` : `
-    <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      You're mastering voice input 🎙️
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
-      font-family:sans-serif;">
-      You've reached your daily limit of 5 voice inputs.
-      Upgrade to Premium for unlimited use.
-    </p>
-    <div style="background:#FEF3C7;border-radius:12px;padding:16px 20px;margin:0 0 24px;">
-      <p style="margin:0;color:#92400E;font-size:14px;font-family:sans-serif;line-height:1.6;">
-        ⚡ With Premium, voice input is <strong>unlimited (300/month cap)</strong> —
-        add as many items as you want, whenever you want.
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🔄 La vérification automatique</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        FillSell vérifie régulièrement (toutes les 2 heures par annonce, en arrière-plan) que
+        vos annonces sont toujours en ligne et si l'une d'elles a été vendue. Vous n'avez
+        jamais besoin de vérifier vous-même.
       </p>
     </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Premium unlocks</p>
-      <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Unlimited voice (300/month cap · vs 5/day on free)</li>
-        <li>📸 Lens Pro · 10 scans/day · 120/month</li>
-        <li>📊 Advanced stats &amp; export</li>
-      </ul>
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🗑️ La suppression automatique</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        Dès qu'un article se vend sur une plateforme, FillSell retire automatiquement
+        l'annonce sur les autres — plus besoin de repasser partout pour éviter une double
+        vente. Par sécurité, un court délai de confirmation (environ 2 heures, identique sur
+        les 4 plateformes) est observé avant la suppression, pour être sûr que la vente est
+        bien réelle.
+      </p>
     </div>
-    ${ctaButton("Upgrade to Premium")}`;
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">
+      <strong>En résumé :</strong> une fois l'article ajouté, il n'y a plus rien à faire.
+      FillSell s'occupe de tout, même loin de votre ordinateur.
+    </p>
+    ${ctaButton("Voir mon stock")}` : `
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
+      color:#111827;font-family:sans-serif;">
+      How FillSell works for you 🔍
+    </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">
+      You've started listing — here's what happens behind the scenes, so you never have to
+      wonder whether it's working.
+    </p>
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">⏱️ Listing</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        Once you add an item, the extension lists it on each selected platform in the
+        background — count a few minutes per platform. No need to keep the app open or watch
+        over it: as long as your computer stays on with Chrome open, it moves along on its own.
+      </p>
+    </div>
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🔄 Automatic checking</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        FillSell regularly checks (every 2 hours per listing, in the background) that your
+        listings are still online and whether one of them has sold. You never need to check
+        yourself.
+      </p>
+    </div>
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🗑️ Automatic removal</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        As soon as an item sells on one platform, FillSell automatically removes the listing
+        from the others — no more going everywhere to avoid a double sale. For safety, a short
+        confirmation delay (about 2 hours, the same across all 4 platforms) is observed before
+        removal, to be sure the sale is real.
+      </p>
+    </div>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">
+      <strong>In short:</strong> once the item is added, there's nothing left to do. FillSell
+      handles everything, even away from your computer.
+    </p>
+    ${ctaButton("View my stock")}`;
   return emailWrapper(content, lang);
 }
 
@@ -609,14 +542,13 @@ serve(async (req) => {
     );
   }
 
-  // ── Test mode: send all 3 templates to the specified email ────────────────
+  // ── Test mode: send the 2 tunnel templates to the specified email ─────────
+  // N'écrit PAS email_logs — sert aux previews (welcome + comment ça marche).
   if (testEmail) {
     const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
     if (r1) sent.push(`welcome:${testEmail}`); else errors.push(`welcome:${testEmail}`);
-    const r2 = await sendEmail(testEmail, "FillSell Premium vous attend 🚀", premiumPlanHtml("fr"));
-    if (r2) sent.push(`founder_plan:${testEmail}`); else errors.push(`founder_plan:${testEmail}`);
-    const r3 = await sendEmail(testEmail, "Limite vocale atteinte — passez illimité 🎙️", voiceConversionHtml("fr"));
-    if (r3) sent.push(`voice_conversion:${testEmail}`); else errors.push(`voice_conversion:${testEmail}`);
+    const r2 = await sendEmail(testEmail, "Comment FillSell travaille pour vous 🔍", howItWorksHtml("fr"));
+    if (r2) sent.push(`how_it_works:${testEmail}`); else errors.push(`how_it_works:${testEmail}`);
     return new Response(JSON.stringify({ test: true, sent, errors }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -641,97 +573,6 @@ serve(async (req) => {
     return new Response(JSON.stringify({ relance: true, sent, errors }), {
       headers: { "Content-Type": "application/json" },
     });
-  }
-
-  // ── Extension update mode (2026-07-18) — DORMANT PAR DÉFAUT ───────────────
-  // Mail « nouvelle version de l'extension », déclenché UNIQUEMENT à la main :
-  // AUCUN cron ni trigger ne pose extension_update:true. Les appels existants
-  // (cron tunnel avec body {}, trigger welcome_now) ne passent JAMAIS ici.
-  //
-  // Déclenchement (jour J, décision explicite de Nico) :
-  //   1. Test sur soi (n'écrit pas email_logs) :
-  //      curl -X POST https://tojihnuawsoohlolangc.supabase.co/functions/v1/email-tunnel \
-  //        -H "x-cron-secret: <CRON_SECRET>" -H "Content-Type: application/json" \
-  //        -d '{"extension_update":true,"version":"0.4.0","audience":"test","test_email":"moi@exemple.fr"}'
-  //   2. Envoi réel — users dont l'extension a été vue au moins une fois
-  //      (profiles.extension_last_seen_at posé par get-pending-jobs) :
-  //      ... -d '{"extension_update":true,"version":"0.4.0","audience":"extension"}'
-  //   3. audience "all" = tous les inscrits (hors emails de test, via le RPC) —
-  //      à réserver à une annonce majeure.
-  // Dédup : email_logs type 'ext_update_<version>' → re-POST idempotent pour une
-  // même version (relance sûre après coupure), nouvelle version = nouveau type.
-  if (body?.extension_update === true) {
-    const version = String(body?.version ?? "").trim();
-    if (!version) {
-      return new Response(
-        JSON.stringify({ error: "extension_update: 'version' requis (ex. \"0.4.0\")" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    const audience = ["extension", "all", "test"].includes(body?.audience) ? body.audience : "extension";
-    const emailType = `ext_update_${version}`;
-
-    if (audience === "test") {
-      const to = String(body?.test_email ?? "").trim();
-      if (!to) {
-        return new Response(
-          JSON.stringify({ error: "audience 'test' : 'test_email' requis" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      const ok = await sendEmail(to, extensionUpdateSubject("fr"), extensionUpdateHtml("fr", version));
-      return new Response(
-        JSON.stringify({ extension_update: true, version, audience, sent: ok ? [to] : [], errors: ok ? [] : [to] }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Même source d'adresses que le tunnel (RPC : exclut déjà les emails de test).
-    const { data: extCandidates, error: extCandErr } = await supabase.rpc("email_tunnel_candidates");
-    if (extCandErr || !extCandidates) {
-      return new Response(
-        JSON.stringify({ error: extCandErr?.message ?? "email_tunnel_candidates a échoué" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    let targets = extCandidates as any[];
-    if (audience === "extension") {
-      const { data: extRows, error: extErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .not("extension_last_seen_at", "is", null);
-      if (extErr) {
-        return new Response(
-          JSON.stringify({ error: `lecture extension_last_seen_at : ${extErr.message}` }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      const extSet = new Set((extRows ?? []).map((r: any) => r.id));
-      targets = targets.filter((c) => extSet.has(c.user_id));
-    }
-
-    const { data: extLogs } = await supabase
-      .from("email_logs")
-      .select("user_id")
-      .eq("email_type", emailType);
-    const alreadyDone = new Set((extLogs ?? []).map((l: any) => l.user_id));
-
-    let skipped = 0;
-    for (const c of targets) {
-      if (alreadyDone.has(c.user_id)) { skipped++; continue; }
-      const lang = c.lang === "en" ? "en" : "fr";
-      const ok = await sendEmail(c.user_email, extensionUpdateSubject(lang), extensionUpdateHtml(lang, version));
-      if (ok) {
-        await supabase.from("email_logs").insert({ user_id: c.user_id, email_type: emailType });
-        sent.push(`${emailType}:${c.user_email}`);
-      } else {
-        errors.push(`${emailType}:${c.user_email}`);
-      }
-    }
-    return new Response(
-      JSON.stringify({ extension_update: true, version, audience, targeted: targets.length, skipped, sent, errors }),
-      { headers: { "Content-Type": "application/json" } }
-    );
   }
 
   async function logEmail(userId: string, emailType: string): Promise<void> {
@@ -769,7 +610,6 @@ serve(async (req) => {
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   );
   const dayMinus1 = new Date(todayUTC.getTime() - 1 * 86_400_000);
-  const dayMinus3 = new Date(todayUTC.getTime() - 3 * 86_400_000);
 
   function registeredOn(createdAt: string, targetDay: Date): boolean {
     const d = new Date(createdAt);
@@ -792,70 +632,22 @@ serve(async (req) => {
     }
   }
 
-  // ── Trigger 2: J+3 pitch Premium (non-premium) ────────────────────────────
-  // email_type conservé à 'founder_plan' (nom legacy) : changer le type
-  // renverrait l'email aux comptes qui ont déjà reçu la version Founder.
+  // ── Trigger 2: J+1 « comment ça marche » (tous, même fenêtre que le welcome) ─
+  // Dédup type 'how_it_works', distinct de 'welcome' : les deux coexistent le
+  // même jour sans conflit. Aucune condition premium/non-premium.
   for (const user of candidates as any[]) {
-    if (user.is_premium) continue;
-    if (!registeredOn(user.created_at, dayMinus3)) continue;
-    if (alreadySent(user.user_id, "founder_plan")) continue;
+    if (!registeredOn(user.created_at, dayMinus1)) continue;
+    if (alreadySent(user.user_id, "how_it_works")) continue;
     const subject =
       user.lang === "en"
-        ? "FillSell Premium is waiting for you 🚀"
-        : "FillSell Premium vous attend 🚀";
-    const ok = await sendEmail(
-      user.user_email,
-      subject,
-      premiumPlanHtml(user.lang)
-    );
+        ? "How FillSell works for you 🔍"
+        : "Comment FillSell travaille pour vous 🔍";
+    const ok = await sendEmail(user.user_email, subject, howItWorksHtml(user.lang));
     if (ok) {
-      await logEmail(user.user_id, "founder_plan");
-      sent.push(`founder_plan:${user.user_email}`);
+      await logEmail(user.user_id, "how_it_works");
+      sent.push(`how_it_works:${user.user_email}`);
     } else {
-      errors.push(`founder_plan:${user.user_email}`);
-    }
-  }
-
-  // ── Trigger 3: voice quota hit yesterday (≥5 voice_intent) ───────────────
-  const { data: voiceLogs } = await supabase
-    .from("usage_logs")
-    .select("user_id")
-    .eq("feature", "voice_intent")
-    .gte("created_at", dayMinus1.toISOString())
-    .lt("created_at", todayUTC.toISOString());
-
-  if (voiceLogs) {
-    const voiceCounts: Record<string, number> = {};
-    for (const log of voiceLogs) {
-      voiceCounts[log.user_id] = (voiceCounts[log.user_id] ?? 0) + 1;
-    }
-
-    const candidateMap: Record<string, any> = {};
-    for (const c of candidates as any[]) {
-      candidateMap[c.user_id] = c;
-    }
-
-    for (const [uid, count] of Object.entries(voiceCounts)) {
-      if (count < 5) continue;
-      const user = candidateMap[uid];
-      if (!user) continue; // excluded email
-      if (user.is_premium) continue;
-      if (alreadySent(uid, "voice_conversion")) continue;
-      const subject =
-        user.lang === "en"
-          ? "You've hit your voice limit — go unlimited 🎙️"
-          : "Limite vocale atteinte — passez illimité 🎙️";
-      const ok = await sendEmail(
-        user.user_email,
-        subject,
-        voiceConversionHtml(user.lang)
-      );
-      if (ok) {
-        await logEmail(uid, "voice_conversion");
-        sent.push(`voice_conversion:${user.user_email}`);
-      } else {
-        errors.push(`voice_conversion:${user.user_email}`);
-      }
+      errors.push(`how_it_works:${user.user_email}`);
     }
   }
 
