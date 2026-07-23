@@ -1980,8 +1980,21 @@ export default function App({ loginOnly = false }){
       const token=session.access_token;
       const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product==='pro'?{product:'pro'}:{})})});
       const body=await res.json();
-      const{url,error}=body;
+      const{url,error,upgraded,already_pro}=body;
       if(error)throw new Error(error);
+      // Upgrade Premium→Pro in situ (2026-07-23) : l'abonnement Stripe existant
+      // a été basculé sur le price Pro côté serveur (proration facturée) — pas
+      // de session Checkout, donc pas de redirection. already_pro = défensif
+      // (double clic / flag client désynchronisé), on aligne juste l'état.
+      if(upgraded||already_pro){
+        setIsPremium(true);setIsPro(true);
+        if(upgraded){
+          track('purchase',{currency:'EUR',value:29.99});
+          setShowPremiumWelcome(true);
+        }
+        if(user?.id)fetchAll(user.id,{silencieux:true});
+        return;
+      }
       track('begin_checkout', { currency: 'EUR', value: product==='pro'?29.99:12.99 });
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
@@ -1996,6 +2009,20 @@ export default function App({ loginOnly = false }){
   async function handleIAPPurchase(tier){
     const isProPurchase=tier==='pro';
     console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isProPurchase?'pro':'premium');
+    // ── Garde anti-double-abonnement Android (2026-07-23) ────────────────────
+    // @capgo/native-purchases (8.6.4 vérifié) n'expose PAS SubscriptionUpdateParams
+    // (oldPurchaseToken/replacementMode) : impossible d'upgrader l'abonnement Play
+    // en place — un achat Pro par un Premium actif créerait un SECOND abonnement
+    // facturé en parallèle (idem si son Premium vient de Stripe web). On bloque
+    // et on guide. iOS non bloqué : StoreKit remplace automatiquement au sein
+    // d'un même subscription group (config ASC à confirmer).
+    if(isProPurchase&&platform==='android'&&isPremium&&!isPro){
+      setToast({visible:true,message:lang==='fr'
+        ?"Pour passer Pro : si tu es abonné par carte, fais l'upgrade sur fillsell.app (automatique). Si ton Premium vient de Google Play, résilie-le d'abord dans Play Store puis reprends Pro ici."
+        :"To go Pro: if you subscribed by card, upgrade on fillsell.app (automatic). If your Premium is via Google Play, cancel it in the Play Store first, then get Pro here."});
+      setTimeout(()=>setToast({visible:false,message:''}),10000);
+      return;
+    }
     setIapLoading(true);
     // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
     // Il reste référencé dans restorePurchases pour les Founders existants.

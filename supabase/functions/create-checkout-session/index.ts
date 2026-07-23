@@ -134,6 +134,68 @@ serve(async (req) => {
       .single();
     const existingCustomerId = profile?.stripe_customer_id ?? null;
 
+    // ── Upgrade Premium→Pro in situ (2026-07-23) ─────────────────────────────
+    // Si le customer a DÉJÀ un abonnement Stripe vivant (Premium standard ou
+    // Founder 9,99 legacy), un checkout Pro créerait un SECOND abonnement :
+    // double facturation 12,99 + 29,99, et l'annulation de l'un des deux
+    // coupait tous les flags (ancien subscription.deleted). On bascule donc
+    // l'abonnement EXISTANT sur le price Pro (proration facturée immédiatement,
+    // error_if_incomplete = si la carte refuse, Stripe annule l'update et on
+    // ressort en erreur SANS toucher aux flags). Aucun customer.subscription
+    // .created — le webhook ne voit qu'un updated (actif) + invoice.paid.
+    if (isProPlan && existingCustomerId) {
+      const { data: existingSubs } = await stripe.subscriptions.list({
+        customer: existingCustomerId,
+        limit: 20, // par défaut Stripe exclut les canceled ; on refiltre quand même
+      });
+      const live = (existingSubs ?? []).filter(
+        (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing"
+      );
+      const isProSub = (s: Stripe.Subscription) =>
+        s.metadata?.plan_type === "pro" ||
+        s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === priceId);
+
+      if (live.some(isProSub)) {
+        // Déjà Pro (double clic, ou flag client désynchronisé) : rien à vendre.
+        return new Response(JSON.stringify({ already_pro: true }), {
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+
+      const target = live.find((s: Stripe.Subscription) => !isProSub(s));
+      if (target) {
+        const item = target.items.data[0];
+        await stripe.subscriptions.update(target.id, {
+          items: [{ id: item.id, price: priceId }],
+          proration_behavior: "always_invoice",
+          payment_behavior: "error_if_incomplete",
+          // Un Premium en cours d'annulation qui upgrade veut manifestement rester :
+          cancel_at_period_end: false,
+          metadata: { ...(target.metadata ?? {}), plan_type: "pro" },
+        });
+        // Miroir de checkout.session.completed (qui ne firera PAS ici — pas de
+        // session Checkout) : flags + Pépites du mois. grant_monthly_coins est
+        // idempotent par mois calendaire : si le grant Premium est déjà passé
+        // ce mois-ci, il répond already_granted (les 600 Pro arrivent au
+        // prochain cycle — comportement assumé, cf. sweep quotidien).
+        await supabase
+          .from("profiles")
+          .update({ is_premium: true, is_pro: true, stripe_customer_id: existingCustomerId })
+          .eq("id", authUser.id);
+        const { data: grantRes, error: grantErr } = await supabase.rpc("grant_monthly_coins", {
+          p_user_id: authUser.id,
+          p_tier: "pro",
+        });
+        if (grantErr) console.error("[checkout] upgrade grant failed:", grantErr.message);
+        else console.log("[checkout] upgraded sub", target.id, "to pro — grant:", JSON.stringify(grantRes));
+        return new Response(JSON.stringify({ upgraded: true }), {
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      // Aucun abonnement Stripe vivant (customer d'un vieux pack de pièces ou
+      // d'un abonnement résilié) : checkout Pro classique ci-dessous.
+    }
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],

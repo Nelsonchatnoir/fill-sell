@@ -7,6 +7,41 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
+// Recalcule is_premium/is_pro depuis les abonnements Stripe RESTANTS du
+// customer (2026-07-23) — remplace les remises à zéro aveugles : un customer
+// historique peut avoir DEUX abonnements (bug double-abo Premium→Pro, corrigé
+// dans create-checkout-session le même jour), et la suppression de l'un ne
+// doit jamais couper l'autre. Le plan supprimé est identifié par ce qui
+// RESTE : price Pro (STRIPE_PRICE_PRO) ou metadata.plan_type='pro' → is_pro ;
+// n'importe quel abonnement vivant → is_premium. is_founder n'est JAMAIS
+// touché (marqueur de prix legacy, cf. CLAUDE.md) ; les Premium Apple/Google
+// ne passent pas par ces flags (leurs tokens suffisent à l'expression
+// complète).
+// deno-lint-ignore no-explicit-any
+async function recomputeStripeFlags(supabase: any, customerId: string) {
+  const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
+  const live = (subs ?? []).filter(
+    (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing"
+  );
+  const proPriceId = Deno.env.get("STRIPE_PRICE_PRO") ?? "";
+  const hasPro = live.some(
+    (s: Stripe.Subscription) =>
+      s.metadata?.plan_type === "pro" ||
+      (proPriceId && s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === proPriceId))
+  );
+  const update = {
+    is_premium: live.length > 0,
+    is_pro: hasPro,
+    subscription_cancel_at_period_end:
+      live.length > 0 && live.every((s: Stripe.Subscription) => s.cancel_at_period_end),
+  };
+  await supabase.from("profiles").update(update).eq("stripe_customer_id", customerId);
+  console.log(
+    "[webhook] recomputed flags for", customerId,
+    "live subs:", live.length, "→", JSON.stringify(update)
+  );
+}
+
 serve(async (req) => {
   const signature = req.headers.get("stripe-signature");
   const body = await req.text();
@@ -142,12 +177,17 @@ serve(async (req) => {
     const subscription = event.data.object as Stripe.Subscription;
     const customerId = subscription.customer as string;
 
-    console.log("[webhook] subscription.deleted for customer:", customerId);
+    console.log(
+      "[webhook] subscription.deleted for customer:", customerId,
+      "plan_type:", subscription.metadata?.plan_type ?? "?",
+      "price:", subscription.items?.data?.[0]?.price?.id ?? "?"
+    );
 
-    await supabase
-      .from("profiles")
-      .update({ is_premium: false, is_pro: false, subscription_cancel_at_period_end: false })
-      .eq("stripe_customer_id", customerId);
+    // Plus JAMAIS is_premium/is_pro à false en bloc : l'abonnement supprimé a
+    // déjà le statut canceled, recomputeStripeFlags ne compte que ce qui reste.
+    // Un seul abonnement existait → tout tombe (correct) ; un double historique
+    // Premium+Pro → l'autre survit.
+    await recomputeStripeFlags(supabase, customerId);
   }
 
   if (event.type === "customer.subscription.updated") {
@@ -159,10 +199,10 @@ serve(async (req) => {
     console.log("[webhook] subscription.updated for customer:", customerId, "status:", status, "cancel_at_period_end:", cancelAtPeriodEnd);
 
     if (status === "unpaid" || status === "incomplete_expired") {
-      await supabase
-        .from("profiles")
-        .update({ is_premium: false, is_pro: false, subscription_cancel_at_period_end: false })
-        .eq("stripe_customer_id", customerId);
+      // Même logique que subscription.deleted : recalcul depuis ce qui reste
+      // de vivant, jamais de double remise à zéro aveugle (un double-abo
+      // historique dont SEUL le Premium tombe en unpaid garde son Pro).
+      await recomputeStripeFlags(supabase, customerId);
     } else {
       await supabase
         .from("profiles")
