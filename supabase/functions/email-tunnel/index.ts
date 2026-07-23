@@ -185,6 +185,12 @@ function welcomeHtml(lang: string): string {
           email sur votre téléphone, gardez-le de côté et revenez-y depuis votre ordinateur.
         </p>
       </div>
+      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
+        font-family:sans-serif;">
+        Une fois installée, vous n'avez plus besoin d'y retoucher : ajoutez vos articles
+        depuis votre téléphone quand vous voulez, l'extension publie automatiquement en
+        arrière-plan — tant que votre ordinateur reste allumé avec Chrome ouvert.
+      </p>
       <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
         font-family:sans-serif;">Comment l'installer aujourd'hui :</p>
       <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
@@ -314,6 +320,12 @@ function welcomeHtml(lang: string): string {
           your phone, keep it aside and come back to it from your computer.
         </p>
       </div>
+      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
+        font-family:sans-serif;">
+        Once installed, you never need to touch it again: add your items from your phone
+        whenever you want, and the extension lists them automatically in the background —
+        as long as your computer stays on with Chrome open.
+      </p>
       <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
         font-family:sans-serif;">How to install it today:</p>
       <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
