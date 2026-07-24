@@ -34,6 +34,31 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// ── Self-heal des customer IDs invalides (2026-07-24) ────────────────────────
+// Un stripe_customer_id de MODE TEST (écrit en base pendant la phase de dev)
+// ou supprimé fait échouer stripe.checkout.sessions.create avec la clé live
+// (« No such customer … a similar object exists in test mode ») AVANT même
+// l'ouverture du Checkout — vécu sur les packs de Pépites. On valide donc
+// l'ID stocké ; s'il n'existe pas en live, on le purge du profil et on
+// retourne null → le checkout repart en customer_email, et stripe-webhook
+// (checkout.session.completed) re-remplira le champ avec le customer LIVE.
+async function validCustomerIdOrNull(customerId: string | null, userId: string): Promise<string | null> {
+  if (!customerId) return null;
+  try {
+    const c = await stripe.customers.retrieve(customerId);
+    if ((c as { deleted?: boolean }).deleted) throw new Error("customer deleted");
+    return customerId;
+  } catch (err) {
+    console.warn(`[checkout] stripe_customer_id ${customerId} invalide en live (${err.message}) — purgé du profil ${userId}`);
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ stripe_customer_id: null })
+      .eq("id", userId);
+    if (error) console.error("[checkout] purge stripe_customer_id failed:", error.message);
+    return null;
+  }
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -99,13 +124,17 @@ serve(async (req) => {
         .select("stripe_customer_id")
         .eq("email", verifiedEmail)
         .single();
+      const packCustomerId = await validCustomerIdOrNull(
+        packProfile?.stripe_customer_id ?? null,
+        authUser.id
+      );
       const packSession = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{ price: packPriceId, quantity: 1 }],
         success_url: "https://fillsell.app/success",
         cancel_url: "https://fillsell.app/cancel",
-        ...(packProfile?.stripe_customer_id
-          ? { customer: packProfile.stripe_customer_id }
+        ...(packCustomerId
+          ? { customer: packCustomerId }
           : { customer_email: verifiedEmail || undefined }),
         metadata: { purchase_type: "coins", coin_pack: product, coins: String(pack.coins), user_id: authUser.id },
       });
@@ -132,7 +161,12 @@ serve(async (req) => {
       .select("stripe_customer_id")
       .eq("email", verifiedEmail)
       .single();
-    const existingCustomerId = profile?.stripe_customer_id ?? null;
+    // Validation live AVANT usage : un ID de test ferait aussi échouer
+    // stripe.subscriptions.list du chemin upgrade Premium→Pro ci-dessous.
+    const existingCustomerId = await validCustomerIdOrNull(
+      profile?.stripe_customer_id ?? null,
+      authUser.id
+    );
 
     // ── Upgrade Premium→Pro in situ (2026-07-23) ─────────────────────────────
     // Si le customer a DÉJÀ un abonnement Stripe vivant (Premium standard ou
