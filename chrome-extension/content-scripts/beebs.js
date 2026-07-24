@@ -1207,38 +1207,69 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
 // en un seul geste (pas de bouton "Fait" à chercher, contrairement à Vinted).
 const CATEGORY_OPTION_SELECTOR = 'button[class*="__category"]';
 
-function visibleCategoryLabels(limit = 20) {
+// ⚠️ Fenêtre de travail jamais rendue (règle produit) : lecture d'état par
+// textContent + getComputedStyle UNIQUEMENT — getClientRects/innerText
+// dépendent du layout et renvoient vide/0 en onglet caché, ce qui fabrique
+// des faux « introuvable ».
+function visibleCategoryLabels(limit = 30) {
   return Array.from(document.querySelectorAll(CATEGORY_OPTION_SELECTOR))
     .map((o) => o.textContent.trim())
     .filter(Boolean)
     .slice(0, limit);
 }
 
-async function waitForCategoryOption(text, timeoutMs = 5000) {
+// Cascade du plus sûr au plus permissif : exact → normalisé (minuscules,
+// accents et ponctuation retirés, trim) → contains. En cas de contains
+// multiple, l'option la plus courte gagne (la plus proche du libellé cherché).
+function matchCategoryOption(options, text) {
+  const wanted = text.trim();
+  const exact = options.find((o) => o.textContent.trim() === wanted);
+  if (exact) return { el: exact, stage: "exact" };
+  const target = normalizeFuzzy(wanted);
+  const norm = options.find((o) => normalizeFuzzy(o.textContent) === target);
+  if (norm) return { el: norm, stage: "normalisé" };
+  const contains = options
+    .filter((o) => normalizeFuzzy(o.textContent).includes(target))
+    .sort((a, b) => a.textContent.trim().length - b.textContent.trim().length)[0];
+  if (contains) return { el: contains, stage: "contains" };
+  return null;
+}
+
+// On ne conclut JAMAIS sur une liste vide (2026-07-23/24, vécu sur casquette
+// et articles enfant : « niveau "Mode" introuvable, options: [] » alors que le
+// chemin est conforme au crawl complet du 09/07). Une liste vide veut dire
+// qu'on n'a RIEN lu (panneau non rendu, clic avalé, re-render, sélecteur
+// périmé) — pas que le mapping est faux. D'où le polling 250 ms / 10 s et
+// DEUX échecs distincts :
+//   - liste jamais non vide  → problème de LECTURE, beebsCategories.js sain ;
+//   - liste lue, libellé absent → problème de MAPPING, liste brute à l'appui.
+async function waitForCategoryOption(text, { path = [], level = 0, timeoutMs = 10000, pollMs = 250 } = {}) {
   const start = Date.now();
-  const target = text.trim().toLowerCase();
+  let lastNonEmpty = null; // dernière liste NON VIDE lue pendant le polling
   while (Date.now() - start < timeoutMs) {
     const options = Array.from(document.querySelectorAll(CATEGORY_OPTION_SELECTOR));
-    const found = options.find((o) => o.textContent.trim().toLowerCase() === target);
-    if (found) return found;
-    await sleep(80);
+    if (options.length) {
+      lastNonEmpty = options.map((o) => o.textContent.trim()).filter(Boolean).slice(0, 30);
+      const match = matchCategoryOption(options, text);
+      if (match) return match;
+    }
+    await sleep(pollMs);
   }
-  // Liste VIDE ≠ mauvais chemin (2026-07-23, vécu sur des articles enfant :
-  // « niveau "Mode" introuvable, options: [] » alors que le chemin
-  // Mode→Fille/Garçon/Bébé est conforme au crawl complet du 09/07). Un chemin
-  // faux échoue AVEC la liste réelle du niveau à l'appui ; une liste vide veut
-  // dire que le panneau ne s'est pas rendu (clic avalé, re-render, lenteur) —
-  // erreur dédiée et actionnable, qui n'envoie plus corriger un catalogue sain.
-  const visibles = visibleCategoryLabels();
-  if (!visibles.length) {
+  const contexte =
+    `niveau ${level + 1}/${path.length} ("${text}"), chemin attendu ${JSON.stringify(path)}, ` +
+    `sélecteur ${CATEGORY_OPTION_SELECTOR}`;
+  if (!lastNonEmpty) {
     throw new Error(
-      `Catégorie: Beebs n'a affiché aucune option au niveau "${text}" (panneau non rendu — ` +
-      "aucun problème de catalogue). Le job repartira au prochain passage."
+      `Catégorie: aucune option lue en ${Math.round(timeoutMs / 1000)}s — ${contexte}. ` +
+      "Problème de lecture/rendu (panneau non ouvert, clic avalé ou sélecteur périmé), " +
+      "PAS un problème de catalogue : ne pas corriger beebsCategories.js. " +
+      "Le job repartira au prochain passage."
     );
   }
   throw new Error(
-    `Catégorie: niveau "${text}" introuvable. Options affichées par Beebs à ce niveau: ` +
-    `${JSON.stringify(visibles)}. Corriger le chemin dans beebsCategories.js.`
+    `Catégorie: libellé absent de la liste lue — ${contexte}. ` +
+    `Options réellement affichées par Beebs: ${JSON.stringify(lastNonEmpty)}. ` +
+    "Corriger le chemin dans beebsCategories.js."
   );
 }
 
@@ -1273,7 +1304,13 @@ async function selectCategory(path) {
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
     const isLast = i === path.length - 1;
-    const option = await waitForCategoryOption(levelLabel);
+    const { el: option, stage } = await waitForCategoryOption(levelLabel, { path, level: i });
+    if (stage !== "exact") {
+      console.warn(
+        `[beebs] ≈ Catégorie niveau ${i + 1}: "${levelLabel}" matché en ${stage} ` +
+        `sur "${option.textContent.trim()}"`
+      );
+    }
     const isLeaf = !!option.querySelector('input[type="checkbox"]');
 
     if (!isLast && isLeaf) {
