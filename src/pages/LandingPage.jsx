@@ -10,6 +10,10 @@ import './landing.css';
 const CONTACT_EMAIL = 'support@fillsell.app';
 const APP_STORE_URL = 'https://apps.apple.com/app/id6762152785';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=app.fillsell.app';
+/* Badges stores masqués le temps que la review App Store passe (2026-07-24,
+   campagne TikTok en cours — éviter le « pourquoi c'est pas sur Apple ? »).
+   Repasser à true dès que l'app est publiée sur les deux stores. */
+const STORE_BADGES_VISIBLE = false;
 const TIKTOK_URL = 'https://www.tiktok.com/@fill.sell';
 const X_URL = 'https://x.com/fillsellapp';
 
@@ -437,7 +441,7 @@ export default function LandingPage() {
               </button>
             </div>
 
-            {!isNative && (
+            {STORE_BADGES_VISIBLE && !isNative && (
               <div className="lp-stores">
                 <a className="lp-store lp-store--apple" href={APP_STORE_URL}
                   target="_blank" rel="noopener noreferrer">
