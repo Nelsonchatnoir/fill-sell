@@ -67,9 +67,12 @@ workflows:
           cat ios/App/App/capacitor.config.json
       - name: Set build number
         script: |
+          # 2.3 = la soumission SUIVANTE (la review 2.2 est en cours sur ASC —
+          # ne pas lancer ce build avant sa validation). Aligné sur Android
+          # versionName 2.3 / versionCode 19.
           BUILD_NUMBER=$(date +%y%m%d%H%M)
           echo "Build number (timestamp): $BUILD_NUMBER"
-          cd ios/App && agvtool new-marketing-version 2.2 && agvtool new-version -all $BUILD_NUMBER
+          cd ios/App && agvtool new-marketing-version 2.3 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles

@@ -1,8 +1,15 @@
 // ── Modale « mon plan » — clic sur le badge Premium/Pro du header ────────────
-// Explique à l'utilisateur ce que SON plan souscrit inclut réellement. Ce n'est
-// PAS une modale de conversion (ça, c'est ConversionModal) : pas de CTA d'achat,
-// et pas de prix affiché — les ~100 comptes Founder paient un tarif legacy
-// (9,99 €), afficher le prix courant serait faux pour eux.
+// Explique à l'utilisateur ce que SON plan souscrit inclut réellement. Le plan
+// ACTUEL reste sans prix affiché — les ~100 comptes Founder paient un tarif
+// legacy (9,99 €), afficher le prix courant serait faux pour eux.
+//
+// Upsell Pro (2026-07-24) : pour un Premium non-Pro, la carte Pro de
+// ConversionModal (prix 29,99 + CTA « Passer Pro ») s'affiche SOUS sa carte —
+// c'était le seul point d'entrée manquant vers l'upgrade depuis que stock et
+// vocal sont illimités en Premium (plus aucun trigger de conversion ne les
+// atteignait). Le prix affiché est celui du plan PRO courant, jamais celui du
+// plan souscrit : la règle Founder est préservée. Un Pro garde la modale
+// d'info telle quelle.
 //
 // Chiffres : mêmes sources que les cartes de ConversionModal — grants et coûts
 // lus dans coin_config à l'ouverture (repli COIN_CONFIG_FALLBACK), grant Pro
@@ -11,7 +18,7 @@
 import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge } from './PlanBadge';
 import PepiteIcon from './PepiteIcon';
-import { COIN_CONFIG_FALLBACK } from './ConversionModal';
+import { COIN_CONFIG_FALLBACK, ProPlanCard } from './ConversionModal';
 
 const C = {
   canvas: '#EDEAE0',
@@ -50,7 +57,7 @@ function Features({ items, dark }) {
   );
 }
 
-export default function PlanDetailsModal({ isPro, lang, onClose, supabase }) {
+export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpgradePro }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
 
@@ -78,6 +85,11 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase }) {
   const lensScans = lensCost > 0 ? Math.floor(grant / lensCost) : 0;
   const pubMin = K.price_original;
   const pubMax = K.price_ia_advanced;
+  // Upsell Pro (Premium uniquement) — mêmes formules que ConversionModal.
+  const grantPro = K.monthly_grant_pro;
+  const grantPrem = K.monthly_grant_premium;
+  const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
+  const lensScansPro = lensCost > 0 ? Math.floor(grantPro / lensCost) : 0;
 
   // Avantages RÉELS — mêmes libellés que les cartes de vente de ConversionModal
   // (source unique de ce qui est promis) ; le Pro cumule tout le Premium.
@@ -152,6 +164,23 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase }) {
             </div>
             <Features dark={isPro} items={features} />
           </div>
+
+          {!isPro && onUpgradePro && (
+            <>
+              <div style={{
+                textAlign: 'center', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.08em', color: C.mute, margin: '20px 0 12px',
+              }}>
+                {fr ? 'Passe au niveau supérieur' : 'Take it further'}
+              </div>
+              <ProPlanCard
+                fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensScansPro}
+                proFactor={proFactor} showFactor
+                pubMin={pubMin} pubMax={pubMax}
+                onUpgrade={() => onUpgradePro()}
+              />
+            </>
+          )}
 
           <button
             onClick={onClose}

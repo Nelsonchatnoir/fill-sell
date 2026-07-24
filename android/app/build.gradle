@@ -20,15 +20,15 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionName aligné sur iOS (2026-07-22) : codemagic.yaml fige
-        // `agvtool new-marketing-version 2.2`, donc tout build iOS sort en 2.2.
-        // Android affichait 2.4 pour le MÊME code — deux numéros pour une seule
-        // release. On aligne sur 2.2 plutôt que de laisser diverger.
+        // `agvtool new-marketing-version`, donc tout build iOS sort avec ce
+        // numéro. Android affichait 2.4 pour le MÊME code — deux numéros pour
+        // une seule release. On garde les deux alignés (2.3 = la soumission
+        // qui suit la review 2.2 en cours, cf. codemagic.yaml).
         // ⚠️ versionCode, lui, ne recule JAMAIS : Google Play le refuserait.
-        // 15 → 16, puis 16 → 17 (2026-07-22 soir : build embarquant le fix du
-        // bouton Lens 6748274, le tarif « 6 Pépites » e411ecc, le garde-fou
-        // lots c6de17b et le déblocage cross-post 4580da6).
-        versionCode 18
-        versionName "2.2"
+        // 17 → 18 (23/07 : économie per-scan), 18 → 19 (24/07 : upsell Pro
+        // dans la modale du badge + self-heal Stripe côté serveur).
+        versionCode 19
+        versionName "2.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

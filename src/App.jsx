@@ -5330,13 +5330,17 @@ export default function App({ loginOnly = false }){
 
       {/* ── MODALE « MON PLAN » (badge Premium/Pro du header) ──
           Contenu par plan RÉEL (isPro devant, comme PlanBadge) — l'ancienne
-          version listait des avantages Premium périmés quel que soit le plan. */}
+          version listait des avantages Premium périmés quel que soit le plan.
+          onUpgradePro (2026-07-24) : upsell Pro pour les Premium — passe par
+          startTierCheckout, qui porte déjà la garde Android anti-double-abo
+          et l'upgrade Stripe in situ. */}
       {showPremiumModal&&(
         <PlanDetailsModal
           isPro={isPro}
           lang={lang}
           onClose={()=>setShowPremiumModal(false)}
           supabase={supabase}
+          onUpgradePro={()=>{setShowPremiumModal(false);startTierCheckout('pro');}}
         />
       )}
 

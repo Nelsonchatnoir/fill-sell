@@ -262,7 +262,9 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, onUpgrade }) {
 // Carte Pro (CAS 4) — fond sombre, badge ProBadge.
 // ⚠️ Aucune promesse « Lens illimité » : Lens est payant en Pépites sur TOUS les
 // paliers. On annonce ce que le grant permet réellement (calculé).
-function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, pubMin, pubMax, onUpgrade }) {
+// Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
+// comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
+export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, pubMin, pubMax, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
