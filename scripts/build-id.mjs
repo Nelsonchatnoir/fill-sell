@@ -21,7 +21,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // À BUMPER dans le même commit que tout changement sous chrome-extension/ —
 // assertExtensionMinBuildCurrent() (appelé par vite.config.js) fait échouer
 // le build local si on l'oublie.
-export const EXTENSION_MIN_BUILD = '2026-07-24T13:45:00Z';
+export const EXTENSION_MIN_BUILD = '2026-07-24T19:25:00Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_MIN_BUILD (constante pas bumpée → la bannière
