@@ -13,6 +13,7 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } fr
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
+import { computeRemovalInfo } from "../utils/publicationState";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
@@ -2367,12 +2368,41 @@ export default function ListingPreviewScreen({
       : {}
   );
 
-  // Plateformes déjà en ligne, normalisées. La prop est recalculée à chaque
-  // rendu côté Stock (nouvelle identité de tableau) : on dépend du contenu trié,
-  // pas de la référence, sinon les effets ci-dessous tourneraient en boucle.
-  const alreadyPublishedKey = [...alreadyPublished].sort().join(",");
+  // Filet autonome (2026-07-25, S7) : la prop alreadyPublished vient du Stock
+  // en synchrone, mais (a) le chemin Lens ne la passe pas — il ne charge aucun
+  // job, un article déjà en stock re-listé via Lens n'était pas protégé — et
+  // (b) le stepper peut s'ouvrir avant la première relecture des jobs côté
+  // Stock. Le stepper relit donc LUI-MÊME les jobs de l'article (même calcul
+  // computeRemovalInfo), et la publication reste verrouillée tant que cette
+  // lecture n'a pas répondu (cf. publishedStateLoaded dans ctaDisabled).
+  const [fetchedPublished, setFetchedPublished] = useState(null); // null = lecture pas encore aboutie
+  useEffect(() => {
+    if (!invId) { setFetchedPublished([]); return; } // article hors stock : rien à relire
+    let cancelled = false;
+    setFetchedPublished(null);
+    (async () => {
+      const { data, error } = await supabase
+        .from("cross_post_jobs")
+        .select("platform, status, action, created_at")
+        .eq("inventaire_id", invId)
+        .in("status", ["pending", "processing", "published", "deleted"]);
+      if (cancelled) return;
+      // Lecture en erreur : on débloque quand même (liste vide) — la garde du
+      // RPC spend_coins_and_publish (already_published) reste le filet de
+      // vérité, on ne condamne pas la publication sur un aléa réseau.
+      setFetchedPublished(error || !data ? [] : computeRemovalInfo(data).publishedActive);
+    })();
+    return () => { cancelled = true; };
+  }, [invId, supabase]);
+  const publishedStateLoaded = !invId || fetchedPublished !== null;
+
+  // Plateformes déjà en ligne, normalisées : union de la prop (Stock, synchrone)
+  // et de la relecture autonome. Recalculées à chaque rendu côté Stock (nouvelle
+  // identité de tableau) : on dépend du contenu trié, pas de la référence, sinon
+  // les effets ci-dessous tourneraient en boucle.
+  const alreadyPublishedKey = [...alreadyPublished, ...(fetchedPublished ?? [])].sort().join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const publishedSet = useMemo(() => new Set(alreadyPublished), [alreadyPublishedKey]);
+  const publishedSet = useMemo(() => new Set([...alreadyPublished, ...(fetchedPublished ?? [])]), [alreadyPublishedKey]);
 
   // Step 3 — sélection plateformes (chips) + publication
   // Les plateformes déjà en ligne ne sont JAMAIS pré-cochées — y compris à la
@@ -3830,6 +3860,10 @@ export default function ListingPreviewScreen({
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
+    // Défense en profondeur (S7) : le CTA est déjà désactivé tant que la
+    // relecture des plateformes en ligne n'a pas répondu — on ne publie pas
+    // sans connaître l'état publié de l'article.
+    if (!publishedStateLoaded) return;
     // Garde-fou prix (2026-07-13, job 3d194668) : un job price=NULL a atteint
     // la base via « Republier » et n'a été refusé qu'en bout de chaîne, par
     // Vinted. AUCUN flux ne doit pouvoir publier sans prix valide — seuil à
@@ -4333,6 +4367,16 @@ export default function ListingPreviewScreen({
           setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
           return;
         }
+        // Garde serveur anti-republication (2026-07-25, S7) : le RPC refuse un
+        // job pour une plateforme déjà en ligne ou déjà en file — dernier filet
+        // quand le griséage front n'a pas suffi (chemin Lens, course).
+        if (pubRes.reason === "already_published") {
+          const plats = (Array.isArray(pubRes.platforms) ? pubRes.platforms : [])
+            .map(p => PLATFORM_LABELS[p] ?? p).join(", ");
+          throw new Error(lang === "en"
+            ? `Already live or queued on: ${plats}. Remove that listing first (tap the platform logo on the item card) or unselect the platform.`
+            : `Déjà en ligne (ou en file) sur : ${plats}. Retire d'abord cette annonce (tap sur le logo de la plateforme sur la carte de l'article) ou décoche la plateforme.`);
+        }
         throw new Error(t("genericError"));
       }
       setWallet({ included_balance: pubRes.included_after, purchased_balance: pubRes.purchased_after });
@@ -4425,7 +4469,10 @@ export default function ListingPreviewScreen({
     (step === 0 && (photoCount < MIN_PHOTOS || uploading)) ||
     (step === 1 && (photos.length < MIN_PHOTOS || selected.size === 0)) ||
     (step === 2 && (generatingPlatforms || !platformListings)) ||
-    (step === 3 && (publishChips.length === 0 || publishing || requiredBlocking));
+    // !publishedStateLoaded (S7) : pas de clic Publier tant que la relecture
+    // des plateformes déjà en ligne n'a pas répondu — sinon une fenêtre de
+    // quelques centaines de ms permettait de lancer une republication.
+    (step === 3 && (publishChips.length === 0 || publishing || requiredBlocking || !publishedStateLoaded));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
