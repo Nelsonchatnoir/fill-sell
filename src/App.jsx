@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Camera } from '@capacitor/camera';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
@@ -4039,12 +4039,56 @@ export default function App({ loginOnly = false }){
     if(lensFileRef.current)lensFileRef.current.value="";
   }
 
-  // Multi-sélection native (2026-07-25, S5) : Camera.getPhoto est mono-photo
-  // PAR DESIGN — chaque tap n'ajoutait qu'une photo, une par une, gros point de
-  // friction. pickImages ouvre la photothèque en multi-sélection. Trade-off
-  // assumé : plus de prise de vue directe appareil photo depuis ce bouton
-  // (getPhoto Prompt la proposait) — l'utilisateur photographie d'abord, puis
-  // sélectionne ; le chemin web (input file multiple) reste le fallback.
+  // Caméra directe native (reprise S5, 2026-07-25) : getPhoto une photo à la
+  // fois, comportement caméra normal — le remplacement intégral par pickImages
+  // (3b967de) avait supprimé la prise de vue directe, non acceptable. Lens
+  // porte désormais DEUX actions distinctes : « Prendre une photo » (ici) et
+  // « Photothèque » (handleLensPhotoNative, pickImages multi).
+  async function handleLensCameraNative(){
+    try{
+      let perms;
+      try{ perms=await Camera.checkPermissions(); }catch(_){ perms=null; }
+
+      if(perms?.camera==='denied'){
+        alert(lang==='fr'
+          ?'Accès à la caméra refusé.\n\nVa dans Réglages › FillSell › Active Appareil photo.'
+          :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera.');
+        return;
+      }
+      if(perms?.camera==='prompt'||perms?.camera==='prompt-with-rationale'){
+        try{ await Camera.requestPermissions({permissions:['camera']}); }catch(_){}
+      }
+
+      const photo=await Camera.getPhoto({
+        quality:90,
+        allowEditing:false,
+        resultType:CameraResultType.DataUrl,
+        source:CameraSource.Camera,
+      });
+      if(!photo.dataUrl)return;
+      setLensResult(null);setLensAdded(false);
+      setLensPhotos(prev=>{
+        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé)
+        return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
+      });
+    }catch(e){
+      const msg=(e?.message||'').toLowerCase();
+      if(msg.includes('cancel'))return;
+      if(msg.includes('denied')||msg.includes('permission')){
+        alert(lang==='fr'
+          ?'Accès à la caméra refusé.\n\nVa dans Réglages › FillSell › Active Appareil photo.'
+          :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera.');
+        return;
+      }
+      // Plugin absent ou erreur interne → fallback silencieux vers file input
+      lensFileRef.current?.click();
+    }
+  }
+
+  // Photothèque native en multi-sélection (2026-07-25, S5) : pickImages —
+  // Camera.getPhoto est mono-photo par design, chaque tap n'ajoutait qu'une
+  // photo. La prise de vue directe vit dans handleLensCameraNative ci-dessus ;
+  // le chemin web (input file multiple) reste le fallback des deux.
   async function handleLensPhotoNative(){
     try{
       // Vérifier l'état des permissions avant d'ouvrir (photos, plus caméra :
@@ -4637,7 +4681,7 @@ export default function App({ loginOnly = false }){
             lensLoading={lensLoading} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
-            handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}
+            handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}

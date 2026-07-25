@@ -37,7 +37,7 @@ function LensScanHome({
   lensPhotos, setLensPhotos, setLensResult, setLensAdded,
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
-  lensFileRef, handleLensPhoto, handleLensPhotoNative,
+  lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
   analyzeLens, lensLoading,
 }) {
   const { t, tpl } = useTranslation(lang);
@@ -45,7 +45,12 @@ function LensScanHome({
   const maxPhotos = 5; // uniforme tous tiers (2026-07-17) — plus de perk Pro-8
   const photoCount = lensPhotos.length;
 
-  const triggerPhotoPicker = () => (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click());
+  // Deux actions distinctes en natif (reprise S5, 2026-07-25) : caméra directe
+  // (getPhoto, une photo) ET photothèque (pickImages, multi-sélection). Sur le
+  // web, les deux retombent sur l'input file multiple — la feuille du
+  // navigateur propose déjà caméra + galerie (même logique que le stepper).
+  const openCamera  = () => (isNative && handleLensCameraNative ? handleLensCameraNative() : lensFileRef.current?.click());
+  const openGallery = () => (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click());
   const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
 
   const analyzeDisabled = !lensPhotos.length || lensLoading;
@@ -82,7 +87,10 @@ function LensScanHome({
 
         {/* Viewfinder hero CTA */}
         <div style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 0', zIndex:10 }}>
-          <button onClick={triggerPhotoPicker} style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:210, height:210, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+          {/* Le viseur = prise de vue directe (icône caméra) ; la photothèque a
+              son bouton dédié juste dessous en natif. Sur le web les deux
+              ouvrent le même input file. */}
+          <button onClick={openCamera} style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:210, height:210, background:'none', border:'none', cursor:'pointer', padding:0 }}>
             <span className="lens-ring-pulse" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
             <span className="lens-ring-pulse lens-ring-pulse-delay" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
             <span style={{ position:'absolute', inset:26, borderRadius:'50%', border:'1px solid rgba(47,158,144,0.25)' }} />
@@ -95,6 +103,14 @@ function LensScanHome({
             {photoCount === 0 ? t('lensViewfinderEmpty') : tpl('lensViewfinderPhotos', { n:photoCount })}
           </span>
 
+          {/* Photothèque (multi-sélection) — bouton dédié en natif uniquement :
+              sur le web l'input file couvre déjà les deux chemins. */}
+          {isNative && photoCount < maxPhotos && (
+            <button onClick={openGallery} style={{ display:'flex', alignItems:'center', gap:6, marginTop:10, padding:'8px 16px', borderRadius:999, background:'#FFFFFF', border:'1px solid #E7E3D8', cursor:'pointer', fontSize:13, fontWeight:600, color:'#6B7A75', fontFamily:'inherit' }}>
+              🖼️ {lang === 'en' ? 'Choose from library' : 'Choisir dans la photothèque'}
+            </button>
+          )}
+
           {photoCount > 0 && (
             <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, flexWrap:'wrap', justifyContent:'center', padding:'0 24px' }}>
               {lensPhotos.map((p, i) => (
@@ -104,7 +120,7 @@ function LensScanHome({
                 </div>
               ))}
               {photoCount < maxPhotos && (
-                <button onClick={triggerPhotoPicker} style={{ width:44, height:44, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'1px dashed #D8D2C4', cursor:'pointer' }}>
+                <button onClick={openGallery} style={{ width:44, height:44, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'1px dashed #D8D2C4', cursor:'pointer' }}>
                   <Plus size={15} color="#8A8578" />
                 </button>
               )}
@@ -461,7 +477,7 @@ const LensTab = memo(function LensTab({
   lensAdded, setLensAdded, lensDesc, setLensDesc,
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
-  lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, analyzeLens, addLensItem, openLensEditModal,
+  lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative, analyzeLens, addLensItem, openLensEditModal,
   openUpgradeModal,
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
 }) {
@@ -567,7 +583,7 @@ const LensTab = memo(function LensTab({
         lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
         lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
         lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
-        lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative}
+        lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
         analyzeLens={analyzeLens} lensLoading={lensLoading}
       />
     );
@@ -612,21 +628,63 @@ const LensTab = memo(function LensTab({
                   >×</button>
                 </div>
               ))}
-              {lensPhotos.length<5&&(
+              {lensPhotos.length<5&&(isNative&&handleLensCameraNative&&handleLensPhotoNative?(
+                /* Natif (reprise S5) : deux tuiles distinctes — caméra directe
+                   (une photo) et photothèque (multi-sélection). */
+                <>
+                  <button
+                    onClick={handleLensCameraNative}
+                    style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
+                  >
+                    <span style={{fontSize:22}}>📷</span>
+                    {lang==="en"?"Camera":"Photo"}
+                  </button>
+                  <button
+                    onClick={handleLensPhotoNative}
+                    style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
+                  >
+                    <span style={{fontSize:22}}>🖼️</span>
+                    {lang==="en"?"Library":"Photothèque"}
+                  </button>
+                </>
+              ):(
                 <button
-                  onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
+                  onClick={()=>lensFileRef.current?.click()}
                   style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
                 >
                   <span style={{fontSize:22}}>➕</span>
                   {lang==="en"?"Add":"Ajouter"}
                 </button>
-              )}
+              ))}
             </div>
             <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/5 {lang==="en"?"photos":"photos"}</div>
           </div>
+        ):(isNative&&handleLensCameraNative&&handleLensPhotoNative?(
+          /* Natif (reprise S5) : deux boutons distincts — caméra directe et
+             photothèque multi-sélection (jusqu'à 5). */
+          <div style={{display:"flex",gap:10,marginBottom:12}}>
+            <button
+              onClick={handleLensCameraNative}
+              style={{flex:1,padding:"24px 12px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:"inherit"}}
+            >
+              <span style={{fontSize:32}}>📷</span>
+              <div style={{fontSize:13,fontWeight:700,color:"#6B7A75"}}>
+                {lang==="en"?"Take a photo":"Prendre une photo"}
+              </div>
+            </button>
+            <button
+              onClick={handleLensPhotoNative}
+              style={{flex:1,padding:"24px 12px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:"inherit"}}
+            >
+              <span style={{fontSize:32}}>🖼️</span>
+              <div style={{fontSize:13,fontWeight:700,color:"#6B7A75"}}>
+                {lang==="en"?"From library (up to 5)":"Photothèque (jusqu'à 5)"}
+              </div>
+            </button>
+          </div>
         ):(
           <button
-            onClick={()=>isNative&&handleLensPhotoNative?handleLensPhotoNative():lensFileRef.current?.click()}
+            onClick={()=>lensFileRef.current?.click()}
             style={{width:"100%",padding:"32px 20px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:10,transition:"all 0.15s",marginBottom:12}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor="#1B6E62";e.currentTarget.style.background="#F0FDF4";}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,0.12)";e.currentTarget.style.background="#F9FAFB";}}
@@ -639,7 +697,7 @@ const LensTab = memo(function LensTab({
               {lang==="en"?"Tap to open camera or gallery":"Appuie pour ouvrir l'appareil photo ou la galerie"}
             </div>
           </button>
-        )}
+        ))}
 
         {/* Champ description optionnel + mic */}
         <div style={{position:"relative",marginBottom:10}}>
