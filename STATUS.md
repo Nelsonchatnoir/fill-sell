@@ -64,7 +64,12 @@ legacy (9,99 €), plus un tier.
 - **App Store (iOS)** : **live**.
 - **Google Play** : soumission **en cours** (ce soir). Reste : désactiver les
   offres d'intro dans Play Console.
-- **Chrome Web Store** : soumission **en cours** (ce soir).
+- **Chrome Web Store** : **publié — public** (2026-07-25, « FillSell — Cross-post »,
+  id `ooeagobimgoabciggfamljdfpkginhnm`, version 0.4.0). Distribution principale
+  désormais : installation un clic + auto-update natif du store. Le zip
+  `/fillsell-extension.zip` reste généré à chaque build (repli navigateurs sans
+  Web Store) ; la page `/extension`, le bandeau « pas à jour » et l'email welcome
+  pointent vers la fiche store.
 
 ## 5. Sécurité
 
