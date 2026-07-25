@@ -137,11 +137,11 @@ function welcomeHtml(lang: string): string {
         font-family:sans-serif;">Comment l'installer aujourd'hui :</p>
       <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.8;font-family:sans-serif;">
-        <li>Depuis votre ordinateur, ouvrez la <a href="https://fillsell.app/extension" style="color:#0F9488;font-weight:600;text-decoration:none;">page d'installation de l'extension</a></li>
-        <li>Téléchargez le fichier d'installation et suivez le guide affiché dans l'app (2 minutes)</li>
+        <li>Depuis votre ordinateur, installez l'extension en un clic depuis le <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a> (« Ajouter à Chrome »)</li>
+        <li>Cliquez sur l'icône FillSell puis « Se connecter » — l'extension récupère votre session fillsell.app automatiquement</li>
         <li>Connectez-vous à vos comptes Vinted, Leboncoin, eBay et Beebs directement dans votre navigateur, comme vous le faites d'habitude — l'extension utilise ces sessions actives pour publier à votre place. Elle ne se connecte jamais elle-même à votre place, vous gardez la main sur vos comptes.</li>
       </ol>
-      <a href="https://fillsell.app/extension" class="cta"
+      <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" class="cta"
          style="display:block;text-align:center;background:#2DD4BF;color:#fff;
            font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
            text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
@@ -149,9 +149,8 @@ function welcomeHtml(lang: string): string {
       </a>
       <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
         font-family:sans-serif;">
-        Bientôt encore plus simple : l'extension arrive très prochainement directement sur
-        le Chrome Web Store. Un seul clic pour l'installer, et elle se mettra à jour
-        automatiquement à chaque nouvelle version — plus besoin de guide d'installation manuel.
+        Disponible sur le Chrome Web Store : un clic pour l'installer, et elle se met à jour
+        automatiquement à chaque nouvelle version.
       </p>
     </div>
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
@@ -268,11 +267,11 @@ function welcomeHtml(lang: string): string {
         font-family:sans-serif;">How to install it today:</p>
       <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
         line-height:1.8;font-family:sans-serif;">
-        <li>From your computer, open the <a href="https://fillsell.app/extension" style="color:#0F9488;font-weight:600;text-decoration:none;">extension install page</a></li>
-        <li>Download the installer file and follow the guide shown in the app (2 minutes)</li>
+        <li>From your computer, install the extension in one click from the <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a> (« Add to Chrome »)</li>
+        <li>Click the FillSell icon then « Sign in » — the extension picks up your fillsell.app session automatically</li>
         <li>Log in to your Vinted, Leboncoin, eBay and Beebs accounts directly in your browser, as you usually do — the extension uses these active sessions to list on your behalf. It never logs in for you; you stay in control of your accounts.</li>
       </ol>
-      <a href="https://fillsell.app/extension" class="cta"
+      <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" class="cta"
          style="display:block;text-align:center;background:#2DD4BF;color:#fff;
            font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
            text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
@@ -280,9 +279,8 @@ function welcomeHtml(lang: string): string {
       </a>
       <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
         font-family:sans-serif;">
-        Even simpler soon: the extension is coming very shortly directly to the Chrome Web
-        Store. One click to install, and it will update automatically with each new version
-        — no more manual install guide.
+        Now on the Chrome Web Store: one click to install, and it updates automatically
+        with each new version.
       </p>
     </div>
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
