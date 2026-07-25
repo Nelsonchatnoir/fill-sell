@@ -718,12 +718,16 @@ function diagnostiquerExtension(extensionStatus, lang) {
     };
   }
   if (extensionStatus?.outdated) {
+    // Wording Web Store (2026-07-25, extension publiée) : plus de « recharge
+    // dans chrome://extensions » — les installs Store se mettent à jour
+    // seules, et pour les anciens installs zip le bon geste est de passer
+    // à la version Store (la page /extension porte le guide de migration).
     return {
       ton: "orange",
-      titre: fr ? "Extension à recharger" : "Extension needs reloading",
+      titre: fr ? "Extension à mettre à jour" : "Extension needs updating",
       detail: fr
-        ? "Une version plus récente existe. Recharge l'extension dans chrome://extensions."
-        : "A newer version exists. Reload the extension in chrome://extensions.",
+        ? "Une version plus récente existe. Installe la dernière version depuis le Chrome Web Store (page Extension dans les réglages)."
+        : "A newer version exists. Install the latest version from the Chrome Web Store (Extension page in settings).",
     };
   }
   if (age <= EXT_FRAIS_MS) {

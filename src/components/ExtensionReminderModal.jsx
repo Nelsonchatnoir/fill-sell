@@ -104,8 +104,8 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
           </div>
           <p style={{ margin: '0 0 16px', fontSize: 13.5, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
             {fr
-              ? "Assure-toi d'avoir téléchargé et installé l'extension FillSell sur Chrome, et d'être connecté aux plateformes sur lesquelles tu veux publier."
-              : 'Make sure you have downloaded and installed the FillSell extension on Chrome, and that you are logged in to the platforms you want to publish on.'}
+              ? "Assure-toi d'avoir installé l'extension FillSell depuis le Chrome Web Store, et d'être connecté aux plateformes sur lesquelles tu veux publier."
+              : 'Make sure you have installed the FillSell extension from the Chrome Web Store, and that you are logged in to the platforms you want to publish on.'}
           </p>
 
           {showInstallLink && (
@@ -118,7 +118,7 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
               fontSize: 13.5, fontWeight: 700, color: C.tealDeep, textDecoration: 'none',
             }}
           >
-            {fr ? "Guide d'installation de l'extension" : 'Extension install guide'}
+            {fr ? "Installer l'extension" : 'Install the extension'}
             <ExternalLink size={14} strokeWidth={2.4} />
           </a>
           )}
