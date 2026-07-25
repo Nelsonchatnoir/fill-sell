@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Camera } from '@capacitor/camera';
 import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
@@ -4039,43 +4039,64 @@ export default function App({ loginOnly = false }){
     if(lensFileRef.current)lensFileRef.current.value="";
   }
 
+  // Multi-sélection native (2026-07-25, S5) : Camera.getPhoto est mono-photo
+  // PAR DESIGN — chaque tap n'ajoutait qu'une photo, une par une, gros point de
+  // friction. pickImages ouvre la photothèque en multi-sélection. Trade-off
+  // assumé : plus de prise de vue directe appareil photo depuis ce bouton
+  // (getPhoto Prompt la proposait) — l'utilisateur photographie d'abord, puis
+  // sélectionne ; le chemin web (input file multiple) reste le fallback.
   async function handleLensPhotoNative(){
     try{
-      // Vérifier l'état des permissions avant d'ouvrir
+      // Vérifier l'état des permissions avant d'ouvrir (photos, plus caméra :
+      // pickImages ne se sert que de la photothèque)
       let perms;
       try{ perms=await Camera.checkPermissions(); }catch(_){ perms=null; }
 
-      if(perms?.camera==='denied'){
+      if(perms?.photos==='denied'){
         alert(lang==='fr'
-          ?'Accès à la caméra refusé.\n\nVa dans Réglages › FillSell › Active Appareil photo et Photos.'
-          :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera and Photos.');
+          ?'Accès aux photos refusé.\n\nVa dans Réglages › FillSell › Active Photos.'
+          :'Photos access denied.\n\nGo to Settings › FillSell › Enable Photos.');
         return;
       }
 
       // Si "prompt" (jamais demandé) → demander explicitement avant d'ouvrir
-      if(perms?.camera==='prompt'||perms?.camera==='prompt-with-rationale'){
-        try{ await Camera.requestPermissions({permissions:['camera','photos']}); }catch(_){}
+      if(perms?.photos==='prompt'||perms?.photos==='prompt-with-rationale'){
+        try{ await Camera.requestPermissions({permissions:['photos']}); }catch(_){}
       }
 
-      const photo=await Camera.getPhoto({
-        quality:90,
-        allowEditing:false,
-        resultType:CameraResultType.DataUrl,
-        source:CameraSource.Prompt,
-      });
-      if(!photo.dataUrl)return;
+      const res=await Camera.pickImages({ quality:90, limit:5 });
+      const picked=res?.photos??[];
+      if(!picked.length)return;
+      // pickImages ne fournit pas de DataUrl (contrairement à getPhoto) :
+      // conversion webPath → dataUrl, une photo illisible est sautée sans
+      // faire échouer les autres.
+      const converted=[];
+      for(const ph of picked){
+        try{
+          const blob=await fetch(ph.webPath).then(r=>r.blob());
+          const dataUrl=await new Promise((resolve,reject)=>{
+            const fr=new FileReader();
+            fr.onload=()=>resolve(fr.result);
+            fr.onerror=reject;
+            fr.readAsDataURL(blob);
+          });
+          if(dataUrl)converted.push({preview:dataUrl,mime:blob.type||'image/jpeg'});
+        }catch(_){/* photo illisible : sautée */}
+      }
+      if(!converted.length)return;
       setLensResult(null);setLensAdded(false);
       setLensPhotos(prev=>{
-        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
-        return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
+        const room=5-prev.length; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
+        if(room<=0)return prev;
+        return[...prev,...converted.slice(0,room)];
       });
     }catch(e){
       const msg=(e?.message||'').toLowerCase();
       if(msg.includes('cancel'))return;
       if(msg.includes('denied')||msg.includes('permission')){
         alert(lang==='fr'
-          ?'Accès à la caméra refusé.\n\nVa dans Réglages › FillSell › Active Appareil photo et Photos.'
-          :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera and Photos.');
+          ?'Accès aux photos refusé.\n\nVa dans Réglages › FillSell › Active Photos.'
+          :'Photos access denied.\n\nGo to Settings › FillSell › Enable Photos.');
         return;
       }
       // Plugin absent ou erreur interne → fallback silencieux vers file input
