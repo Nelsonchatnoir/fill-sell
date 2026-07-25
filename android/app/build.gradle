@@ -26,8 +26,10 @@ android {
         // qui suit la review 2.2 en cours, cf. codemagic.yaml).
         // ⚠️ versionCode, lui, ne recule JAMAIS : Google Play le refuserait.
         // 17 → 18 (23/07 : économie per-scan), 18 → 19 (24/07 : upsell Pro
-        // dans la modale du badge + self-heal Stripe côté serveur).
-        versionCode 19
+        // dans la modale du badge + self-heal Stripe côté serveur),
+        // 19 → 20 (25/07 : Lens 2 boutons caméra/photothèque multi,
+        // patch optimiste retry, anti-republication, premium is_comped).
+        versionCode 20
         versionName "2.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
