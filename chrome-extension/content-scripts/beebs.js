@@ -24,13 +24,14 @@ console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 //     (#input-pictures, multiple, accept jpg/jpeg/jfif/pjpeg/pjp/png/webp/gif),
 //     Description (#description).
 //   - Catégorie : sélecteur en cascade (bouton "Sélectionner une catégorie"
-//     puis panneaux successifs réécrits en place, classe
-//     CategoriesDropDown-module-scss-module__YKdtxa__category confirmée
-//     identique à celle documentée dans beebsCategories.js — on cible par
-//     `[class*="__category"]` plutôt que le hash exact, plus résistant à un
-//     futur redéploiement front). Contrairement à Vinted, cliquer la FEUILLE
-//     (bouton avec un input[type=checkbox]) sélectionne ET ferme le panneau
-//     en un seul clic — pas de bouton "Fait" à chercher ensuite.
+//     puis panneaux successifs réécrits en place). ⚠️ MIGRATION ~22-23/07 :
+//     les OPTIONS n'ont plus de classe CSS-module (`__category` est mort,
+//     l'ancien pari « hash partiel plus résistant » n'a pas tenu) — ce sont
+//     des boutons Tailwind sans ancre stable, à lire UNIQUEMENT scopés dans
+//     le div[class*="__options"] du champ (cf. panelOptions). Contrairement
+//     à Vinted, cliquer la FEUILLE (bouton avec un input[type=checkbox])
+//     sélectionne ET ferme le panneau en un seul clic — pas de bouton
+//     "Fait" à chercher ensuite.
 //   - Genre Mode (Femme/Homme/Fille/Garçon/Bébé) : PAS un champ de
 //     formulaire séparé — c'est le 2e niveau de la cascade Catégorie
 //     lui-même (Mode > Femme > Chaussures > Baskets). Le chemin complet
@@ -44,10 +45,12 @@ console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 //     libellé texte (`div[class*="__label"]`, ex. "Couleur (facultatif)" —
 //     seul marqueur facultatif/obligatoire observé). Cliquer le bouton ouvre
 //     soit une liste courte statique (État : pas de recherche), soit une
-//     liste longue avec recherche live (`input[class*="__searchBarInput"]` ;
-//     options = `button[class*="__valueButton"]`, libellé COURT dans un
-//     `span[class*="__value"]` enfant — le texte complet du bouton inclut
-//     aussi une description longue pour État, ne jamais matcher dessus).
+//     liste longue avec recherche live (input[type=text] rendu DANS le
+//     panneau — `__searchBarInput`/`__valueButton`/`__value` sont morts
+//     depuis la migration Tailwind ~22-23/07 : options et barre se lisent
+//     scopées via panelOf/panelOptions/panelSearchInput, libellé court via
+//     optionLabel — le texte complet du bouton CONCATÈNE libellé et
+//     description pour État, ne jamais matcher dessus).
 //     Sélectionner une option ferme le panneau seule — pas de confirmation
 //     supplémentaire, contrairement à Vinted. Un champ non affiché pour la
 //     catégorie courante (ex: Pointure sur un jouet) est ignoré sans warning
@@ -915,12 +918,19 @@ function containsAsWords(hay, needle) {
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
 }
 
-// Libellé court d'une option : span[class*="__value"] enfant si présent
-// (toujours le cas pour AttributeDropDown), sinon le textContent complet du
-// bouton — le fallback ne sert qu'en cas de changement de structure DOM.
+// Libellé court d'une option (DOM post-migration Tailwind, relevé 25/07) :
+// l'id/name de la checkbox Checkbox-module (= libellé EXACT, présent sur les
+// options d'attributs et les feuilles de catégorie), sinon le 1er span du
+// bouton (libellé gras rendu au-dessus de la description), sinon le
+// textContent complet en dernier recours — jamais en premier : pour un champ
+// à descriptions (État), le textContent CONCATÈNE libellé et description
+// ("Très bon étatLe produit a été…") et aucun étage de match n'y survivrait.
 function optionLabel(el) {
-  const span = el.querySelector('span[class*="__value"]:not([class*="__values"])');
-  return (span ?? el).textContent.trim();
+  const cb = el.querySelector('input[type="checkbox"]');
+  const exact = (cb?.name || cb?.id || "").trim();
+  if (exact) return exact;
+  const court = el.querySelector("span")?.textContent.trim();
+  return court || el.textContent.trim();
 }
 
 // ⚠️ `els` est la liste des options DU PANNEAU OUVERT, pas un querySelectorAll
@@ -1005,33 +1015,45 @@ async function waitFor(fn, timeoutMs = 5000) {
   return null;
 }
 
-const VALUE_OPTION_SELECTOR = 'button[class*="__valueButton"]';
-const allValueOptions = () => Array.from(document.querySelectorAll(VALUE_OPTION_SELECTOR));
-// ⚠️ Le panneau est un PORTAIL : il n'est pas descendant du bouton, aucun
-// scope DOM n'est possible. Le seul « scope au panneau ouvert » qui ait un sens
-// ici est DIFFÉRENTIEL — l'élément apparu APRÈS le clic est le nôtre. C'est
-// déjà la technique employée pour les options ; on l'applique aussi à la barre
-// de recherche, au lieu du document.querySelector global d'avant (2026-07-22)
-// qu'un champ de recherche situé ailleurs dans la page aurait suffi à tromper.
-const SEARCH_INPUT_SELECTOR = 'input[class*="__searchBarInput"]';
+// ⚠️ MIGRATION BEEBS ~22-23/07 (vérifiée sur DOM live le 25/07) : le CONTENU
+// des panneaux (options, barre de recherche) est passé de classes SCSS-module
+// à du Tailwind pur — `__valueButton`, `__searchBarInput` et `__category` ne
+// matchent PLUS RIEN (cause réelle des « Options: [] » du 23-24/07 et du
+// « panneau ne s'est pas ouvert après 3 clics » du 25/07, alors que le
+// panneau s'ouvrait très bien). Restent stables : la COQUILLE DropDown
+// (`__label`, `__selectButton`, `__options`) et le Checkbox-module des
+// options. Et le panneau N'EST PLUS un portail : le div[class*="__options"]
+// est monté en ENFANT du conteneur du trigger, uniquement tant que le panneau
+// est ouvert (vérifié : 0 div __options panneau fermé, 1 seul ouvert). Le
+// scope DOM par champ remplace donc l'ancienne lecture différentielle
+// globale avant/après clic, devenue sans objet.
+const panelOf = (trigger) =>
+  trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
+// Options du panneau OUVERT de ce champ : les boutons à texte non vide — le
+// seul autre bouton du panneau est le retour de l'en-tête mobile (md:hidden),
+// sans texte. textContent uniquement (fenêtre jamais rendue, cf. règle
+// getComputedStyle/textContent plus bas).
+const panelOptions = (trigger) => {
+  const panel = panelOf(trigger);
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll("button")).filter((b) => b.textContent.trim());
+};
+// Barre de recherche du panneau : seul input non-checkbox rendu dedans
+// (placeholder « Rechercher » / « Rechercher une catégorie »).
+const panelSearchInput = (trigger) =>
+  panelOf(trigger)?.querySelector('input[type="text"]') ?? null;
 
-// Ouvre le panneau du champ et retourne UNIQUEMENT ses options.
-//
-// Le panneau n'est pas un descendant du bouton (portail) : impossible de le
-// scoper par le DOM. On procède donc par DIFFÉRENTIEL — les options présentes
-// avant le clic ne sont pas les nôtres, les nouvelles le sont.
+// Ouvre le panneau du champ et retourne UNIQUEMENT ses options, lues scopées
+// dans le div __options du champ (monté seulement panneau ouvert).
 async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = null } = {}) {
-  const before = new Set(allValueOptions());
-  const searchBefore = new Set(document.querySelectorAll(SEARCH_INPUT_SELECTOR));
   await humanPause();
   trigger.click(); // ⚠️ BASCULE : re-cliquer ferme le panneau (cf. closePanel)
   await humanPause();
 
-  const fraiches = () => allValueOptions().filter((el) => !before.has(el));
-  const attendreFraiches = async (ms) => {
+  const attendreOptions = async (ms) => {
     const t0 = Date.now();
     while (Date.now() - t0 < ms) {
-      const f = fraiches();
+      const f = panelOptions(trigger);
       if (f.length) return f;
       await sleep(80);
     }
@@ -1051,11 +1073,14 @@ async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = nu
   // On relève donc MAINTENANT, avant de taper. Le catalogue ne reçoit ainsi que
   // des listes complètes : la garantie « jamais de liste partielle » n'est plus
   // portée par un test fragile mais par l'ORDRE des opérations.
-  const searchNouveau = Array.from(document.querySelectorAll(SEARCH_INPUT_SELECTOR))
-    .find((el) => !searchBefore.has(el)) ?? null;
+  let searchNouveau = panelSearchInput(trigger);
   // Budget court quand il y a une barre : on ne veut pas retarder la frappe de
   // 4 s à chaque champ. Sans barre, l'attente EST celle du chemin nominal.
-  const completes = await attendreFraiches(searchNouveau ? 2500 : timeoutMs);
+  const completes = await attendreOptions(searchNouveau ? 2500 : timeoutMs);
+  // Le panneau peut n'être monté qu'à la 1re relecture d'options : re-vérifier
+  // la barre maintenant qu'il l'est, sinon une liste longue partirait sans
+  // frappe (et le repli « Autre » de researchPanelFor resterait inatteignable).
+  if (!searchNouveau) searchNouveau = panelSearchInput(trigger);
   if (label && completes.length) {
     beebsObservedOptions[label] = completes.map(optionLabel).filter(Boolean).slice(0, 60);
   }
@@ -1064,9 +1089,11 @@ async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = nu
   if (!searchNouveau) return completes;
 
   await typeHuman(searchNouveau, String(rawText));
+  // Le re-filtrage réécrit la liste EN PLACE (mêmes éléments React réutilisés) :
+  // on relit simplement le panneau scopé jusqu'à des options non vides.
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const f = fraiches();
+    const f = panelOptions(trigger);
     if (f.length) return f;
     await sleep(80);
   }
@@ -1087,11 +1114,11 @@ async function closePanel(trigger) {
 // et non par différentiel : React réutilise les mêmes éléments de bouton au
 // re-filtrage, le différentiel d'openPanelOptions ne voit alors rien de neuf.
 async function researchPanelFor(trigger, query) {
-  // Ici le panneau est DÉJÀ ouvert : le différentiel n'a plus de sens (rien de
-  // nouveau n'apparaît), le sélecteur global reste le seul moyen d'atteindre la
-  // barre. Acceptable : on ne s'en sert que pour re-filtrer un panneau qu'on
-  // vient soi-même d'ouvrir, et jamais pour décider ce qui entre au catalogue.
-  const search = document.querySelector(SEARCH_INPUT_SELECTOR);
+  // Ici le panneau est DÉJÀ ouvert : sa barre se lit scopée dans le div
+  // __options du champ, comme partout depuis la migration Tailwind. On ne s'en
+  // sert que pour re-filtrer un panneau qu'on vient soi-même d'ouvrir, et
+  // jamais pour décider ce qui entre au catalogue.
+  const search = panelSearchInput(trigger);
   if (!search) return [];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
   setter.call(search, "");
@@ -1099,7 +1126,7 @@ async function researchPanelFor(trigger, query) {
   await sleep(300);
   await typeHuman(search, query);
   const fresh = await waitFor(() => {
-    const vis = allValueOptions().filter((el) => el.offsetParent !== null);
+    const vis = panelOptions(trigger).filter((el) => el.offsetParent !== null);
     return vis.length ? vis : null;
   }, 4000);
   return fresh ?? [];
@@ -1188,8 +1215,8 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
 
   // Sélectionner une option ferme le panneau (relevé) ; si ce n'était pas le
   // cas, la fermeture par bascule ci-dessous éviterait de polluer le champ
-  // suivant. On ne la déclenche que si des options traînent encore.
-  if (allValueOptions().length) await closePanel(trigger);
+  // suivant. On ne la déclenche que si le panneau est resté monté.
+  if (panelOf(trigger)) await closePanel(trigger);
 
   if (match.stage !== "exact") {
     const note = usedFallback
@@ -1205,14 +1232,18 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
 // Chaque niveau est un bouton dans le panneau ouvert ; une feuille terminale
 // porte un input[type=checkbox] — la cliquer sélectionne ET ferme le panneau
 // en un seul geste (pas de bouton "Fait" à chercher, contrairement à Vinted).
-const CATEGORY_OPTION_SELECTOR = 'button[class*="__category"]';
+// Options de la cascade : boutons Tailwind sans classe stable depuis la
+// migration ~22-23/07 (`__category` mort) — lues scopées via panelOptions sur
+// le trigger Catégorie. Le textContent d'une option de cascade est propre
+// (libellé seul : l'img et le chevron svg n'apportent aucun texte, pas de
+// description concaténée comme sur les attributs).
 
 // ⚠️ Fenêtre de travail jamais rendue (règle produit) : lecture d'état par
 // textContent + getComputedStyle UNIQUEMENT — getClientRects/innerText
 // dépendent du layout et renvoient vide/0 en onglet caché, ce qui fabrique
 // des faux « introuvable ».
-function visibleCategoryLabels(limit = 30) {
-  return Array.from(document.querySelectorAll(CATEGORY_OPTION_SELECTOR))
+function visibleCategoryLabels(trigger, limit = 30) {
+  return panelOptions(trigger)
     .map((o) => o.textContent.trim())
     .filter(Boolean)
     .slice(0, limit);
@@ -1243,11 +1274,11 @@ function matchCategoryOption(options, text) {
 // DEUX échecs distincts :
 //   - liste jamais non vide  → problème de LECTURE, beebsCategories.js sain ;
 //   - liste lue, libellé absent → problème de MAPPING, liste brute à l'appui.
-async function waitForCategoryOption(text, { path = [], level = 0, timeoutMs = 10000, pollMs = 250 } = {}) {
+async function waitForCategoryOption(text, { path = [], level = 0, trigger, timeoutMs = 10000, pollMs = 250 } = {}) {
   const start = Date.now();
   let lastNonEmpty = null; // dernière liste NON VIDE lue pendant le polling
   while (Date.now() - start < timeoutMs) {
-    const options = Array.from(document.querySelectorAll(CATEGORY_OPTION_SELECTOR));
+    const options = panelOptions(trigger);
     if (options.length) {
       lastNonEmpty = options.map((o) => o.textContent.trim()).filter(Boolean).slice(0, 30);
       const match = matchCategoryOption(options, text);
@@ -1257,7 +1288,7 @@ async function waitForCategoryOption(text, { path = [], level = 0, timeoutMs = 1
   }
   const contexte =
     `niveau ${level + 1}/${path.length} ("${text}"), chemin attendu ${JSON.stringify(path)}, ` +
-    `sélecteur ${CATEGORY_OPTION_SELECTOR}`;
+    `options lues scopées dans le div __options du champ Catégorie`;
   if (!lastNonEmpty) {
     throw new Error(
       `Catégorie: aucune option lue en ${Math.round(timeoutMs / 1000)}s — ${contexte}. ` +
@@ -1289,7 +1320,7 @@ async function selectCategory(path) {
     await humanPause();
     const echeance = Date.now() + 2500;
     while (Date.now() < echeance) {
-      if (document.querySelectorAll(CATEGORY_OPTION_SELECTOR).length) { ouvert = true; break; }
+      if (panelOptions(trigger).length) { ouvert = true; break; }
       await sleep(100);
     }
     if (!ouvert) console.warn(`[beebs] panneau catégorie non rendu après le clic ${tentative + 1}/3 — re-clic`);
@@ -1304,7 +1335,7 @@ async function selectCategory(path) {
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
     const isLast = i === path.length - 1;
-    const { el: option, stage } = await waitForCategoryOption(levelLabel, { path, level: i });
+    const { el: option, stage } = await waitForCategoryOption(levelLabel, { path, level: i, trigger });
     if (stage !== "exact") {
       console.warn(
         `[beebs] ≈ Catégorie niveau ${i + 1}: "${levelLabel}" matché en ${stage} ` +
@@ -1327,7 +1358,7 @@ async function selectCategory(path) {
       await sleep(400);
       throw new Error(
         `Catégorie: le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
-        `Sous-catégories proposées par Beebs: ${JSON.stringify(visibleCategoryLabels())}. ` +
+        `Sous-catégories proposées par Beebs: ${JSON.stringify(visibleCategoryLabels(trigger))}. ` +
         `Ajouter le niveau terminal manquant dans beebsCategories.js.`
       );
     }
