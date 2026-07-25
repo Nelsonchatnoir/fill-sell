@@ -278,17 +278,17 @@ serve(async (req) => {
 
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+      .select("is_premium, is_pro, is_comped")
       .eq("id", user.id)
       .single();
 
-    // Ne jamais utiliser is_premium seul, mais ne jamais l'omettre non plus :
-    // un Premium standard Stripe (web) n'a ni token Apple/Google ni is_founder.
+    // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
+    // = source de vérité maintenue par les flux de paiement, is_comped = comptes
+    // offerts. is_founder et les ids Apple/Google résiduels ne valent PLUS
+    // statut premium — un abonnement résilié/expiré = free.
     const isPremium = profile?.is_premium === true
-      || profile?.is_founder === true
-      || profile?.apple_original_transaction_id != null
-      || profile?.google_purchase_token != null
-      || profile?.is_pro === true;
+      || profile?.is_pro === true
+      || profile?.is_comped === true;
 
     const body = await req.json();
     const { inventaire_id, photos, platforms } = body;

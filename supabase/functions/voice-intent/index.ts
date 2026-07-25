@@ -1070,17 +1070,17 @@ serve(async (req) => {
   const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   let quotaLogId: string | null = null;
   if (!isInternalNormalize) {
-    // Ne jamais utiliser is_premium seul : is_pro/is_founder/IAP actif valent aussi
-    // statut premium (cf. CLAUDE.md — cas des promotions manuelles sans flow IAP).
+    // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
+    // = source de vérité maintenue par les flux de paiement, is_comped = comptes
+    // offerts. is_founder et les ids Apple/Google résiduels ne valent PLUS
+    // statut premium — un abonnement résilié/expiré = free.
     const { data: profileData } = await adminClient.from("profiles")
-      .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+      .select("is_premium, is_pro, is_comped")
       .eq("id", user.id).single();
     const isPremiumUser = !!(
       profileData?.is_premium ||
       profileData?.is_pro ||
-      profileData?.is_founder ||
-      profileData?.apple_original_transaction_id ||
-      profileData?.google_purchase_token
+      profileData?.is_comped
     );
     const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
       p_user_id: user.id,

@@ -212,18 +212,16 @@ serve(async (req) => {
     // ── Quota deal (QA, priceAdvice, buyAdvice — 10/jour gratuit, illimité premium) ──
     if (body.question || body.priceAdvice || body.buyAdvice) {
       const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      // Expression premium COMPLÈTE (CLAUDE.md) : is_premium seul manque les
-      // Founders (marqueur legacy), les IAP Apple/Google (identifiés par leur
-      // token, is_premium souvent false) et les Pro → sinon un payant est
-      // plafonné à 10 deals/jour comme un gratuit.
+      // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/
+      // is_pro = source de vérité maintenue par les flux de paiement, is_comped
+      // = comptes offerts. is_founder et les ids Apple/Google résiduels ne
+      // valent PLUS statut premium — un abonnement résilié/expiré = free.
       const { data: prf } = await adminClient.from("profiles")
-        .select("is_premium, is_pro, is_founder, apple_original_transaction_id, google_purchase_token")
+        .select("is_premium, is_pro, is_comped")
         .eq("id", user.id).single();
       const isPremiumDeal = prf?.is_premium === true
         || prf?.is_pro === true
-        || prf?.is_founder === true
-        || prf?.apple_original_transaction_id != null
-        || prf?.google_purchase_token != null;
+        || prf?.is_comped === true;
       const { data: quotaDeal } = await adminClient.rpc("check_and_log_usage", {
         p_user_id: user.id,
         p_feature: "deal",
