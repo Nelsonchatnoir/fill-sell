@@ -11,8 +11,9 @@
 // l'app : c'est volontaire et cantonné à ce fichier.
 //
 // Statut : on ne réinvente rien. isPremium / isPro viennent d'App.jsx
-// (profiles.is_premium|is_pro|is_founder|IAP pour premium, is_pro pour pro —
-// cf. CLAUDE.md). PlanBadge se contente de choisir le bon palier.
+// (profiles.is_premium|is_pro|is_comped pour premium, is_pro pour pro —
+// expression canonique 2026-07-25, cf. CLAUDE.md). PlanBadge se contente de
+// choisir le bon palier.
 
 const SHINE_CSS = `
 @keyframes fs-badge-shine{

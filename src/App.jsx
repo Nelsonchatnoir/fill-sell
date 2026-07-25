@@ -2134,15 +2134,16 @@ export default function App({ loginOnly = false }){
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('profiles').select('is_premium,is_pro,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build').eq('id',uid).maybeSingle(),
+      supabase.from('profiles').select('is_premium,is_pro,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
-    // Ne jamais utiliser is_premium seul (cf. CLAUDE.md) : is_pro/is_founder/IAP actif
-    // valent aussi statut premium, même si is_premium n'a jamais été positionné à true
-    // (ex. promotion manuelle sans passer par le flow IAP).
-    let premiumValue=!!(p.data?.is_premium||p.data?.is_pro||p.data?.is_founder||p.data?.apple_original_transaction_id||p.data?.google_purchase_token);
-    console.log('[fetchAll] premium fields from Supabase:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_founder:p.data?.is_founder,has_apple:!!p.data?.apple_original_transaction_id,has_google:!!p.data?.google_purchase_token}, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
+    // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
+    // = source de vérité maintenue par les flux de paiement (Stripe/Apple/Google),
+    // is_comped = comptes offerts. is_founder et les ids Apple/Google résiduels
+    // ne valent PLUS statut premium — un abonnement résilié/expiré = free.
+    let premiumValue=!!(p.data?.is_premium||p.data?.is_pro||p.data?.is_comped);
+    console.log('[fetchAll] premium fields from Supabase:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_comped:p.data?.is_comped}, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setIsPremium(premiumValue);
       setIsPro(p.data?.is_pro===true);
