@@ -4443,8 +4443,10 @@ export default function App({ loginOnly = false }){
           mobile/natif l'extension ne s'installe pas (cf. e252620), la
           condition extensionOutdated les exclut déjà. Amber PLEIN + texte ink
           (l'ancien fond amber à 12 % était illisible même bien positionné).
-          Lien vers /extension (zip du build courant + guide de rechargement)
-          — PAS le Chrome Web Store, le build y est encore en review.
+          Lien vers /extension — qui promeut désormais le Chrome Web Store
+          (publié 2026-07-25, id ooeagobimgoabciggfamljdfpkginhnm) : la page
+          porte aussi l'avertissement « supprime l'ancienne version zip »
+          nécessaire aux users que CE bandeau cible (installs unpacked).
           Dismissible : clé (build installé | build minimal requis) en
           localStorage, cf. extBannerDismissedFor. */}
       {extensionOutdated&&extBannerDismissedFor!==extBannerKey&&(
