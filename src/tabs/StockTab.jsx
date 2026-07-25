@@ -2006,6 +2006,27 @@ const StockTab = memo(function StockTab({
             prix_vente_suggere: publishItem.prix_vente ?? publishItem.prix_achat ?? null,
           }}
           onClose={()=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);}}
+          onJobsQueued={(invId,platforms)=>{
+            // Patch optimiste (2026-07-25, S6) : la relance d'une plateforme en
+            // échec (et toute publication) affichait « Échec » jusqu'à 20 s
+            // après le clic, faute de patch local sur CE chemin — le retrait
+            // par logo et le mini-éditeur needs_user patchent déjà ainsi. Les
+            // lignes synthétiques 'pending' rendent le badge « En cours… »
+            // immédiat (latestByPlatform prend le job le plus récent, donc le
+            // badge Échec s'éteint aussi) ; la relecture 20 s les remplace par
+            // les vraies lignes.
+            if(!invId||!platforms?.length)return;
+            const now=new Date().toISOString();
+            setJobsByInventaire(prev=>{
+              const cur=[...(prev[invId]||[])];
+              for(const p of platforms){
+                cur.push({id:`optimistic-${invId}-${p}-${now}`,inventaire_id:invId,platform:p,
+                  status:"pending",error:null,created_at:now,platform_fields:null,
+                  action:"publish",listing_url:null,title:null});
+              }
+              return {...prev,[invId]:cur};
+            });
+          }}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}

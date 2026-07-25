@@ -2265,6 +2265,11 @@ export default function ListingPreviewScreen({
   // relancer une plateforme déjà "published" créait un SECOND job pour la même
   // annonce, donc un doublon en ligne. Elles sont donc décochées ET verrouillées.
   alreadyPublished = [],
+  // Appelé après l'insert réussi des jobs (invId, [plateformes]) : permet au
+  // Stock de patcher jobsByInventaire immédiatement (« En cours… » sans
+  // attendre le poll de 20 s) — même principe que le retrait par logo et le
+  // mini-éditeur needs_user, qui patchent déjà en optimiste.
+  onJobsQueued = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -4331,6 +4336,10 @@ export default function ListingPreviewScreen({
         throw new Error(t("genericError"));
       }
       setWallet({ included_balance: pubRes.included_after, purchased_balance: pubRes.purchased_after });
+      // Les jobs sont en base : le Stock peut afficher « En cours… » tout de
+      // suite (patch optimiste, cf. prop onJobsQueued). Une relecture réelle
+      // écrasera ces lignes synthétiques au prochain poll.
+      onJobsQueued?.(currentInvId ?? null, [...selected]);
       if (addToStock && currentInvId && processedPhotos?.length) {
         await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", currentInvId);
       }
