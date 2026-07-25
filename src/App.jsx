@@ -4393,48 +4393,6 @@ export default function App({ loginOnly = false }){
         </div>
       </div>
 
-      {/* Bannière « extension obsolète » (2026-07-19, restyle amber + dismiss
-          2026-07-23) : desktop seulement — sur mobile/natif l'extension ne
-          s'installe pas (cf. e252620), la condition extensionOutdated les
-          exclut déjà. Lien vers /extension (zip du build courant + guide de
-          rechargement) — PAS le Chrome Web Store, le build y est encore en
-          review. Dismissible : clé (build installé | build minimal requis)
-          en localStorage, cf. extBannerDismissedFor. */}
-      {/* Bandeau « nouvelle version » (2026-07-19, classe c5fe1414) : ne
-          s'affiche QUE si le reload auto a été différé (saisie/stepper/dialog
-          en cours au moment du constat) — sinon l'onglet s'est déjà rechargé
-          tout seul. Persistant jusqu'au clic : recharger est le seul remède. */}
-      {newVersionAvailable&&(
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#ECFDF5",borderBottom:"1px solid #A7F3D0",fontSize:13,color:"#065F46"}}>
-          <span aria-hidden="true">🔄</span>
-          <span style={{flex:1,lineHeight:1.4}}>
-            {lang==='fr'
-              ?"Nouvelle version de FillSell disponible — recharge pour en profiter."
-              :"A new version of FillSell is available — reload to get it."}
-          </span>
-          <button onClick={()=>window.location.reload()} style={{fontWeight:700,color:"#065F46",background:"transparent",border:"1px solid #A7F3D0",borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
-            {lang==='fr'?"Recharger":"Reload"}
-          </button>
-        </div>
-      )}
-
-      {extensionOutdated&&extBannerDismissedFor!==extBannerKey&&(
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px 11px 14px",background:`linear-gradient(90deg,${UI.amber}1F,${UI.amber}0D)`,borderBottom:`1px solid ${UI.amber}66`,borderLeft:`4px solid ${UI.amber}`,fontSize:13,color:"#C2410C"}}>
-          <span aria-hidden="true" style={{fontSize:17,flexShrink:0}}>🧩</span>
-          <span style={{flex:1,lineHeight:1.45,fontWeight:500}}>
-            {lang==='fr'
-              ?"Ton extension Chrome FillSell n'est plus à jour — certaines publications peuvent échouer."
-              :"Your FillSell Chrome extension is out of date — some listings may fail to publish."}
-          </span>
-          <a href="/extension" style={{fontWeight:700,fontSize:12,color:"#fff",background:UI.amber,borderRadius:99,padding:"6px 14px",textDecoration:"none",whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 4px rgba(232,149,109,0.4)"}}>
-            {lang==='fr'?"Mettre à jour":"Update"}
-          </a>
-          <button onClick={()=>{setExtBannerDismissedFor(extBannerKey);try{localStorage.setItem('fs_ext_banner_dismissed',extBannerKey);}catch{/* stockage indisponible : dismiss valable pour la session seulement */}}}
-            aria-label={lang==='fr'?"Masquer":"Dismiss"} title={lang==='fr'?"Masquer":"Dismiss"}
-            style={{background:"transparent",border:"none",color:"#C2410C",fontSize:15,lineHeight:1,cursor:"pointer",padding:"4px 6px",opacity:0.65,flexShrink:0,fontFamily:"inherit"}}>✕</button>
-        </div>
-      )}
-
       <div className="desktop-nav" style={{background:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
         <div className="wrap">
           <div style={{display:"flex",padding:"0 14px",gap:0,overflowX:"auto"}}>
@@ -4454,6 +4412,57 @@ export default function App({ loginOnly = false }){
           </div>
         </div>
       </div>
+
+      {/* ⚠️ Les bandeaux vivent APRÈS .desktop-nav, jamais avant (fix
+          2026-07-25) : .topbar est fixed z-index 200 (App.redesign.css:494) et
+          c'est .desktop-nav qui porte la compensation de sa hauteur
+          (margin-top 62px). Placés avant la nav, les bandeaux se rendaient à
+          y=0 SOUS le header fixe — illisibles derrière le verre dépoli,
+          chevauchant le logo (bug constaté en réel). Ici ils s'affichent
+          pleine largeur, juste sous la barre d'onglets. */}
+      {/* Bandeau « nouvelle version » (2026-07-19, classe c5fe1414) : ne
+          s'affiche QUE si le reload auto a été différé (saisie/stepper/dialog
+          en cours au moment du constat) — sinon l'onglet s'est déjà rechargé
+          tout seul. Persistant jusqu'au clic : recharger est le seul remède. */}
+      {newVersionAvailable&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#ECFDF5",borderBottom:"1px solid #A7F3D0",fontSize:13,color:"#065F46"}}>
+          <span aria-hidden="true">🔄</span>
+          <span style={{flex:1,lineHeight:1.4}}>
+            {lang==='fr'
+              ?"Nouvelle version de FillSell disponible — recharge pour en profiter."
+              :"A new version of FillSell is available — reload to get it."}
+          </span>
+          <button onClick={()=>window.location.reload()} style={{fontWeight:700,color:"#065F46",background:"transparent",border:"1px solid #A7F3D0",borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
+            {lang==='fr'?"Recharger":"Reload"}
+          </button>
+        </div>
+      )}
+
+      {/* Bannière « extension obsolète » (2026-07-19 ; dismiss 2026-07-23 ;
+          repositionnée + recontrastée 2026-07-25) : desktop seulement — sur
+          mobile/natif l'extension ne s'installe pas (cf. e252620), la
+          condition extensionOutdated les exclut déjà. Amber PLEIN + texte ink
+          (l'ancien fond amber à 12 % était illisible même bien positionné).
+          Lien vers /extension (zip du build courant + guide de rechargement)
+          — PAS le Chrome Web Store, le build y est encore en review.
+          Dismissible : clé (build installé | build minimal requis) en
+          localStorage, cf. extBannerDismissedFor. */}
+      {extensionOutdated&&extBannerDismissedFor!==extBannerKey&&(
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px 12px 14px",background:UI.amber,borderBottom:"1px solid rgba(16,32,27,0.15)",fontSize:13.5,color:UI.ink,boxShadow:"0 2px 8px rgba(232,149,109,0.35)"}}>
+          <span aria-hidden="true" style={{fontSize:18,flexShrink:0}}>🧩</span>
+          <span style={{flex:1,lineHeight:1.45,fontWeight:600}}>
+            {lang==='fr'
+              ?"Ton extension Chrome FillSell n'est plus à jour — certaines publications peuvent échouer."
+              :"Your FillSell Chrome extension is out of date — some listings may fail to publish."}
+          </span>
+          <a href="/extension" style={{fontWeight:700,fontSize:12.5,color:"#fff",background:UI.ink,borderRadius:99,padding:"7px 16px",textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>
+            {lang==='fr'?"Mettre à jour":"Update"}
+          </a>
+          <button onClick={()=>{setExtBannerDismissedFor(extBannerKey);try{localStorage.setItem('fs_ext_banner_dismissed',extBannerKey);}catch{/* stockage indisponible : dismiss valable pour la session seulement */}}}
+            aria-label={lang==='fr'?"Masquer":"Dismiss"} title={lang==='fr'?"Masquer":"Dismiss"}
+            style={{background:"transparent",border:"none",color:UI.ink,fontSize:16,lineHeight:1,cursor:"pointer",padding:"4px 6px",opacity:0.7,flexShrink:0,fontFamily:"inherit"}}>✕</button>
+        </div>
+      )}
 
       <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
