@@ -31,12 +31,14 @@ Ne pas utiliser de query param ni de header `Authorization` dans pg_net — seul
 
 ## Premium detection
 
-Ne jamais utiliser `is_premium` seul, mais ne jamais l'omettre non plus (un Premium standard Stripe web n'a ni token Apple/Google ni `is_founder`). Expression complète, identique partout (App.jsx, voice-transcribe, voice-intent, lens-analysis, generate-listing) :
+Règle métier (2026-07-25) : **résilié/expiré = plus premium, partout**. Expression canonique, identique partout (App.jsx, voice-transcribe, voice-intent, generate-listing, deal-analysis, sweep et RPC Pépites, check_inventory_limit) :
 ```sql
-is_premium = true OR is_pro = true OR is_founder = true
-  OR apple_original_transaction_id IS NOT NULL OR google_purchase_token IS NOT NULL
+is_premium = true OR is_pro = true OR is_comped = true
 ```
-`is_founder` n'est plus un tier : c'est un marqueur de prix legacy (9,99 €/mois grandfathered) pour les ~100 anciens comptes Founder, désormais des Premium comme les autres.
+- `is_premium`/`is_pro` = source de vérité, maintenus par les 4 flux de paiement (stripe-webhook/recomputeStripeFlags, apple-iap-webhook, validate-apple-receipt, google-play-webhook).
+- `is_comped` = premium offert sans abonnement actif (décision explicite, posé à la main).
+- Ne JAMAIS traiter `is_founder` ni la présence d'`apple_original_transaction_id`/`google_purchase_token` comme signal premium : ces marqueurs survivent à la résiliation (bug « premium fantôme » corrigé le 25/07). `is_founder` reste un marqueur de prix legacy (9,99 €) pour l'affichage tarifaire uniquement.
+- Pour tout statut d'abonnement, vérifier la SOURCE (dashboard/API Stripe, Apple, Google) — jamais les colonnes locales seules.
 
 ## apple-iap-webhook
 
