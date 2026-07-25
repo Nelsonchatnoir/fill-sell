@@ -14,14 +14,21 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
 // doit jamais couper l'autre. Le plan supprimé est identifié par ce qui
 // RESTE : price Pro (STRIPE_PRICE_PRO) ou metadata.plan_type='pro' → is_pro ;
 // n'importe quel abonnement vivant → is_premium. is_founder n'est JAMAIS
-// touché (marqueur de prix legacy, cf. CLAUDE.md) ; les Premium Apple/Google
-// ne passent pas par ces flags (leurs tokens suffisent à l'expression
-// complète).
+// touché (marqueur de prix legacy sans effet sur l'accès, cf. CLAUDE.md).
+//
+// « Vivant » inclut past_due (2026-07-25, cas réel Mériné) : pendant la
+// fenêtre de retry Stripe (dunning, jusqu'à ~1 mois), l'abonnement n'est PAS
+// résilié — un client en retard de paiement garde son statut tant que Stripe
+// n'a pas tranché. Seuls les états terminaux font perdre le premium :
+// canceled (abonnement supprimé → subscription.deleted) et unpaid /
+// incomplete_expired (issues de dunning épuisé → subscription.updated), qui
+// déclenchent tous ce recalcul et n'y comptent pas comme vivants.
 // deno-lint-ignore no-explicit-any
 async function recomputeStripeFlags(supabase: any, customerId: string) {
   const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
   const live = (subs ?? []).filter(
-    (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing"
+    (s: Stripe.Subscription) =>
+      s.status === "active" || s.status === "trialing" || s.status === "past_due"
   );
   const proPriceId = Deno.env.get("STRIPE_PRICE_PRO") ?? "";
   const hasPro = live.some(
