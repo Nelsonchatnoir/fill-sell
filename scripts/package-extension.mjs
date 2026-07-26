@@ -40,7 +40,8 @@ const OUT_DIR = path.join(ROOT, 'build', 'extension');
 const ZIP_DIR = path.join(ROOT, 'build');
 
 // Versions déjà acceptées par le Chrome Web Store.
-const ALREADY_PUBLISHED = ['0.4.0'];
+// 0.4.1 n'y figure PAS : jamais soumise (sautée au profit de la 0.4.2).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
