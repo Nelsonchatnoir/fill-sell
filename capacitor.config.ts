@@ -13,7 +13,15 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
-      backgroundColor: '#1D9E75',
+      // teal #2F9E90 du design system — remplace #1D9E75, un vert hérité qui
+      // n'était plus dans la charte. Doit rester égal à @color/fs_splash_background
+      // (Android) et au fond des splash-2732x2732 (iOS) : c'est la couleur qui
+      // s'affiche avant et autour de l'image, tout écart se voit au lancement.
+      backgroundColor: '#2F9E90',
+      // Sans ça le plugin étire le splash (FIT_XY par défaut) : sur un écran
+      // 9:20 les assets 9:16 déformaient le logo. CENTER_CROP le laisse
+      // proportionné et rogne le fond uni, ce qui ne se voit pas.
+      androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
   },

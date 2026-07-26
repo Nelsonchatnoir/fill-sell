@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Repli plat de la couche background de l'icône adaptative. Valeur Capacitor
+     d'origine : #FFFFFF — invisible sous un glyphe blanc. L'icône utilise
+     désormais @mipmap/ic_launcher_background (le dégradé de marque) ; on garde
+     ce token à jour au cas où une régénération Capacitor y revienne. -->
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#2F9E90</color>
 </resources>

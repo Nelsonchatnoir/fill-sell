@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Splash système Android 12+ (API 31). CAUSE DU BUG corrigé ici : à partir
+  d'Android 12, le système dessine LUI-MÊME l'écran de lancement et ignore le
+  `android:background` du thème de launch. Sans windowSplashScreen*, il retombe
+  sur l'ICÔNE DU LAUNCHER — c'est pour ça qu'on voyait l'icône Capacitor par
+  défaut au démarrage sur les deux plateformes côté Android.
+
+  Les deux jeux d'attributs sont posés volontairement :
+   - sans préfixe = attributs androidx (Theme.SplashScreen), lus si une version
+     future de @capacitor/splash-screen appelle installSplashScreen() ;
+   - préfixés android: = attributs plateforme, lus directement par le système
+     sur API 31+, ce qui est le cas aujourd'hui (Capacitor fait son propre
+     setTheme et n'appelle pas installSplashScreen).
+  ic_splash_icon.png = glyphe blanc à 60 % d'un canvas de 288dp (spec Android 12
+  sans couleur de fond d'icône : contenu dans les 192dp centraux).
+-->
+<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/fs_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+
+        <item name="android:windowSplashScreenBackground">@color/fs_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon</item>
+
+        <item name="android:background">@drawable/splash</item>
+    </style>
+</resources>

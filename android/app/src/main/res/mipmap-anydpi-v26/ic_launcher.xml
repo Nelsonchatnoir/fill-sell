@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Icône adaptative (Android 8+). Le système la masque (cercle, squircle, goutte
+  selon le launcher) et ne garde que les 72dp centraux sur 108 : le foreground
+  doit tenir dans la zone sûre de 66dp, soit 61 % du côté.
+  ic_launcher_foreground.png = le GLYPHE BLANC seul (sac + flèche), extrait de
+  public/icon_1024x1024.png et posé à 60 % du canvas. Ne PAS y remettre
+  l'artwork complet : le glyphe y occupe 66 % du côté, il serait rogné.
+  ic_launcher_background.png = le dégradé turquoise → orange de la marque,
+  échantillonné sur l'icône source pour coller aux stores et au favicon.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
+    <background android:drawable="@mipmap/ic_launcher_background"/>
     <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>
