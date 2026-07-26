@@ -1102,6 +1102,19 @@ function findBlockingDialogs() {
     document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]')
   )
     .filter(estVisibleSansLayout)
+    // ⚠️ FANTÔMES RADIX (2026-07-26, job Casio — 3× « présent NON fermé ») :
+    // la modale promo est un dialogue Radix/shadcn (classes
+    // data-[state=open]:animate-in / data-[state=closed]:animate-out). Sa
+    // fermeture pose data-state="closed" PUIS attend la FIN de l'animation de
+    // sortie pour démonter le nœud — or les animations CSS ne tournent pas
+    // dans la fenêtre non rendue (prouvé le 13/07, cf. estVisibleSansLayout) :
+    // le nœud reste monté et « visible » au sens computed POUR TOUJOURS.
+    // data-state="closed" = modale LOGIQUEMENT fermée (état commité, lisible
+    // par attribut, indépendant de toute animation — le jumeau d'aria-expanded
+    // chez eBay). On ne la re-détecte plus, donc on ne re-clique JAMAIS un
+    // bouton d'une modale déjà fermée (même règle anti-bascule que le panneau
+    // catégorie).
+    .filter((d) => d.getAttribute("data-state") !== "closed")
     // pas nos dropdowns (un panneau __options n'est jamais un interstitiel)
     .filter((d) => !d.querySelector('div[class*="__options"]') && !d.closest('div[class*="__options"]'))
     // le dialogue de suppression est MANIPULÉ par le flux delete, jamais fermé d'office
@@ -1109,6 +1122,17 @@ function findBlockingDialogs() {
   // Ne garder que les conteneurs EXTÉRIEURS (un wrapper + son contenu matchent
   // souvent tous les deux « modal ») : un seul clic de fermeture par modale.
   return bruts.filter((d) => !bruts.some((autre) => autre !== d && autre.contains(d)));
+}
+
+// La modale est-elle fermée APRÈS un clic de fermeture ? Trois signaux, du
+// plus fort au plus faible : nœud détaché ; data-state="closed" (fermeture
+// LOGIQUE Radix — le démontage n'arrivera jamais en fenêtre non rendue, cf.
+// findBlockingDialogs) ; invisible au sens computed. L'ancienne vérification
+// n'avait que le 1er et le 3e : sur Radix, aucun des deux ne devient vrai sans
+// animation ⇒ faux « NON fermé » alors que le clic avait fonctionné, puis
+// re-clics sur une modale déjà fermée (échec Casio du 26/07 après-midi).
+function interstitielFerme(d) {
+  return !d.isConnected || d.getAttribute("data-state") === "closed" || !estVisibleSansLayout(d);
 }
 
 function decrisDialog(d) {
@@ -1119,7 +1143,8 @@ function decrisDialog(d) {
     .slice(0, 6);
   return (
     `<${d.tagName.toLowerCase()} class="${String(d.className).slice(0, 90)}" ` +
-    `role="${d.getAttribute("role") ?? ""}" aria-modal="${d.getAttribute("aria-modal") ?? ""}"> ` +
+    `role="${d.getAttribute("role") ?? ""}" aria-modal="${d.getAttribute("aria-modal") ?? ""}" ` +
+    `data-state="${d.getAttribute("data-state") ?? ""}"> ` +
     `boutons=${JSON.stringify(boutons)}`
   );
 }
@@ -1130,8 +1155,12 @@ function decrisDialog(d) {
 //      « rester sur le web » suit classiquement le CTA principal).
 // Le CTA store est EXCLU par filtre négatif (télécharge/app store/play) : le
 // cliquer ouvrirait la fiche du store dans l'onglet de travail — pire que la
-// modale. Chaque clic est VÉRIFIÉ (dialogue détaché ou plus visible) avant de
-// conclure ; un échec de fermeture est loggé, jamais silencieux.
+// modale. Chaque clic est VÉRIFIÉ par interstitielFerme() — détaché OU
+// data-state="closed" (fermeture logique Radix, seul signal fiable en fenêtre
+// non rendue) OU invisible — avant de conclure ; chaque clic émis est loggé
+// avec le bouton retenu, et un clic sans effet est loggé DISTINCTEMENT avec
+// les trois signaux (data-state resté "open" = clic non pris — autre
+// correctif que le faux négatif d'animation). Échec jamais silencieux.
 async function dismissInterstitials(contexte) {
   const dialogs = findBlockingDialogs();
   if (!dialogs.length) return { present: false, restants: 0 };
@@ -1147,13 +1176,30 @@ async function dismissInterstitials(contexte) {
       .reverse();
     let ferme = false;
     for (const cible of [...fermetures, ...boutons]) {
+      const nom = texteDe(cible) || cible.getAttribute("aria-label") || cible.className;
+      console.log(`[beebs] interstitiel: realClick sur « ${nom} » (${contexte})`);
       realClick(cible);
       await sleep(600);
-      if (!d.isConnected || !estVisibleSansLayout(d)) {
-        console.log(`[beebs] interstitiel fermé via « ${texteDe(cible) || cible.getAttribute("aria-label") || cible.className} »`);
+      if (interstitielFerme(d)) {
+        const etat = !d.isConnected
+          ? "nœud détaché"
+          : d.getAttribute("data-state") === "closed"
+            ? "data-state=closed — fermeture LOGIQUE, nœud fantôme conservé par l'animation de sortie gelée (attendu en fenêtre non rendue)"
+            : "devenu invisible (computed)";
+        console.log(`[beebs] interstitiel fermé via « ${nom} » — ${etat}`);
         ferme = true;
         break;
       }
+      // Clic émis mais AUCUN des trois signaux de fermeture : distinguer les
+      // deux causes (elles n'ont pas le même correctif) — data-state resté
+      // "open" = le clic n'a PAS pris (bouton non réactif au click DOM,
+      // overlay interceptant, focus trap) ; absence de data-state = composant
+      // non-Radix, seuls détaché/invisible peuvent conclure.
+      console.warn(
+        `[beebs] interstitiel: clic sur « ${nom} » SANS effet — ` +
+        `isConnected=${d.isConnected}, data-state="${d.getAttribute("data-state") ?? "(absent)"}", ` +
+        `visible=${estVisibleSansLayout(d)} — candidat suivant s'il en reste`
+      );
     }
     if (!ferme) {
       console.warn(
