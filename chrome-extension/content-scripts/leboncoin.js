@@ -136,6 +136,12 @@ async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[leboncoin][delete] ${line}`); };
 
+  // Didomi/interstitiel à l'arrivée (2026-07-26) : une bannière posée sur
+  // « Mes annonces » ou la page d'annonce avalerait les clics du flux delete.
+  // Les dialogues du flux de suppression lui-même sont EXCLUS du détecteur
+  // (/supprim/i) — on ne ferme jamais ce que ce flux pilote.
+  await dismissInterstitials("arrivée sur le flux de suppression");
+
   // Ciblage de l'annonce : id numérique extrait de listing_url
   // (…/ad/<categorie>/<id>).
   const idMatch = String(job.listing_url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
@@ -558,6 +564,12 @@ async function fillListingForm(job) {
         "au mapping). Régénérer l'annonce depuis l'app, ou compléter src/utils/lbcCategories.js.",
     };
   }
+
+  // Interstitiel éventuel à l'ARRIVÉE (2026-07-26, SELECTOR_AUDIT §9b) —
+  // Didomi en tête. Appelé ICI UNIQUEMENT, jamais entre deux étapes : le
+  // wizard LBC (« juste prix », coordonnées, suggestions de catégorie) est
+  // fait d'écrans que le flux pilote lui-même — cf. exclusions du détecteur.
+  await dismissInterstitials("arrivée sur le dépôt");
 
   // État vierge requis. L'ancien test (présence du seul input titre) laissait
   // passer un brouillon restauré à l'APERÇU : #subject y existe aussi (relevé
@@ -1954,6 +1966,105 @@ async function uploadPhotos(input, photos) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
   const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "leboncoin");
   return signal.note; // null si le signal est confirmé — sinon note à remonter dans les warnings du job
+}
+
+// ── Interstitiels (2026-07-26, porté de beebs.js — SELECTOR_AUDIT §9b) ───────
+// Leboncoin n'avait AUCUNE gestion d'interstitiel, Didomi (bannière cookies)
+// compris : une réapparition (purge de cookies, nouvelle campagne) intercepte
+// les clics sans diagnostic. Deux étages :
+//   1. DIDOMI, cas connu traité en premier : conteneurs #didomi-host /
+//      #didomi-popup, fermeture par « Continuer sans accepter » /
+//      « Refuser » (option la plus respectueuse de la vie privée — on ne
+//      clique JAMAIS « Accepter » : consentir à la place de l'utilisateur
+//      n'est pas notre rôle) ;
+//   2. détection STRUCTURELLE générique (role=dialog / aria-modal / classe
+//      modal, visibles au sens getComputedStyle), jamais par libellé exact.
+// EXCLUSIONS Leboncoin — on ne ferme JAMAIS :
+//   · tout conteneur dont le texte matche /juste prix/i : l'interstitiel
+//     « On cherche le juste prix » est une ÉTAPE DE FLUX du dépôt (lbc.js
+//     ~l.750), le fermer casserait la publication ;
+//   · tout conteneur dont le texte matche /supprim/i : dialogues et pages du
+//     flux delete, pilotés par deleteListing ;
+//   · tout conteneur portant des champs du wizard (input[name="subject"],
+//     #body, #price_cents, input[type="file"], input[role="combobox"],
+//     input[type="radio"]) : certains écrans du wizard vivent dans des
+//     conteneurs à classe « modal » — ce sont des étapes, pas des
+//     interstitiels.
+// Chaque fermeture est VÉRIFIÉE (détaché ou devenu invisible) et loggée ;
+// échec = log, jamais d'abandon du job.
+function visibleSansLayoutL(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden") return false;
+  }
+  return true;
+}
+function findBlockingDialogsLbc() {
+  const bruts = Array.from(
+    document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]')
+  )
+    .filter(visibleSansLayoutL)
+    .filter((d) => !/juste prix|supprim/i.test((d.textContent ?? "").slice(0, 3000)))
+    .filter((d) =>
+      !d.querySelector(
+        'input[name="subject"], #body, #price_cents, input[type="file"], input[role="combobox"], input[type="radio"]'
+      )
+    );
+  return bruts.filter((d) => !bruts.some((autre) => autre !== d && autre.contains(d)));
+}
+async function dismissDidomi() {
+  const host = document.querySelector('#didomi-host, #didomi-popup, [id^="didomi-notice"]');
+  if (!host || !visibleSansLayoutL(host)) return false;
+  console.warn("[leboncoin] bannière Didomi détectée — fermeture « sans accepter »");
+  const candidats = [
+    ...host.querySelectorAll(".didomi-continue-without-agreeing, #didomi-notice-disagree-button, button.didomi-dismiss-button"),
+    // repli structurel : bouton dont le texte contient « sans accepter »/« refuser »
+    ...Array.from(host.querySelectorAll("button, [role='button'], a, span")).filter((b) =>
+      /continuer sans accepter|refuser/i.test(b.textContent ?? "")
+    ),
+  ].filter(visibleSansLayoutL);
+  for (const cible of candidats) {
+    cible.click();
+    await sleep(600);
+    if (!host.isConnected || !visibleSansLayoutL(host)) {
+      console.log(`[leboncoin] Didomi fermé via « ${(cible.textContent ?? "").trim() || cible.id || cible.className} »`);
+      return true;
+    }
+  }
+  console.warn("[leboncoin] Didomi NON fermé — aucun candidat n'a eu d'effet ; le flux continue");
+  return false;
+}
+async function dismissInterstitials(contexte) {
+  await dismissDidomi();
+  const dialogs = findBlockingDialogsLbc();
+  if (!dialogs.length) return { present: false, restants: 0 };
+  for (const d of dialogs) {
+    const boutons = Array.from(d.querySelectorAll("button")).filter(visibleSansLayoutL);
+    console.warn(
+      `[leboncoin] interstitiel détecté (${contexte}) : <${d.tagName.toLowerCase()} class="${String(d.className).slice(0, 90)}"` +
+      ` role="${d.getAttribute("role") ?? ""}"> boutons=${JSON.stringify(boutons.map((b) => b.textContent.trim()).filter(Boolean).slice(0, 6))}`
+    );
+    const fermetures = Array.from(
+      d.querySelectorAll('[aria-label*="clo" i], [aria-label*="ferm" i], [data-qa-id*="close"], [class*="close" i]')
+    ).filter(visibleSansLayoutL);
+    const candidats = boutons
+      .filter((b) => !b.closest("a[href]"))
+      .filter((b) => !/t[ée]l[ée]charg|app\s*store|google\s*play|accepter/i.test(b.textContent))
+      .reverse();
+    let ferme = false;
+    for (const cible of [...fermetures, ...candidats]) {
+      cible.click();
+      await sleep(600);
+      if (!d.isConnected || !visibleSansLayoutL(d)) {
+        console.log(`[leboncoin] interstitiel fermé via « ${cible.textContent.trim() || cible.getAttribute("aria-label") || cible.className} »`);
+        ferme = true;
+        break;
+      }
+    }
+    if (!ferme) console.warn(`[leboncoin] interstitiel NON fermé (${contexte}) — aucun candidat n'a eu d'effet ; le flux continue`);
+  }
+  return { present: true, restants: findBlockingDialogsLbc().length };
 }
 
 // ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────

@@ -541,6 +541,13 @@ async function fillListingForm(job) {
     };
   }
 
+  // Interstitiel éventuel à l'ARRIVÉE sur le formulaire (2026-07-26,
+  // SELECTOR_AUDIT §9b : Vinted n'avait aucun dismiss pré-interaction) —
+  // cookies, promo app… posés au chargement. Appelé ICI UNIQUEMENT, jamais
+  // entre deux champs : les pickers Vinted (catalogue, marque…) sont des
+  // dialogues légitimes qu'un dismiss en cours de flux pourrait fermer.
+  await dismissInterstitials("arrivée sur le formulaire");
+
   const photoResult = job.photos?.length ? await uploadPhotos(job.photos) : null;
   if (job.title) await fillTextField('#title, [data-testid="title--input"]', job.title);
   if (job.description) await fillTextField('#description, [data-testid="description--input"]', job.description);
@@ -2002,6 +2009,75 @@ async function uploadPhotos(photos) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
   const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "vinted");
   return { count: files.length, duplicated, photoNote: signal.note };
+}
+
+// ── Interstitiels (2026-07-26, porté de beebs.js — SELECTOR_AUDIT §9b) ───────
+// Détection STRUCTURELLE (role=dialog / aria-modal / classe modal, visibles au
+// sens getComputedStyle), jamais par libellé exact. EXCLUSIONS Vinted — on ne
+// ferme JAMAIS :
+//   · un dialogue portant des contrôles du flux de dépôt (input photos,
+//     bouton Publier, options catalogue id^="catalog-", panneau
+//     .input-dropdown__content) : c'est un PICKER de champ, pas un
+//     interstitiel — le fermer casserait le remplissage ;
+//   · la modale POST-PUBLICATION (.web_ui__Dialog__content) : attendue par le
+//     flux et gérée par closePostPublishModal — hors fenêtre d'appel de toute
+//     façon (dismiss appelé à l'arrivée seulement), exclue par structure via
+//     la première règle si Vinted la montait plus tôt.
+// Chaque fermeture est VÉRIFIÉE (dialogue détaché ou devenu invisible) et
+// loggée ; échec de fermeture = log, jamais d'abandon du job. Le CTA store et
+// « accepter » (consentement) sont exclus des candidats de clic.
+function visibleSansLayoutV(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden") return false;
+  }
+  return true;
+}
+function findBlockingDialogsVinted() {
+  const bruts = Array.from(
+    document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]')
+  )
+    .filter(visibleSansLayoutV)
+    // Contrôles du flux de dépôt à l'intérieur ⇒ picker légitime, pas un interstitiel.
+    .filter((d) =>
+      !d.querySelector(
+        '[data-testid="add-photos-input"], [data-testid="upload-form-save-button"], ' +
+        '.input-dropdown__content, [id^="catalog-"], input[data-testid$="--input"]'
+      )
+    )
+    .filter((d) => !d.closest(".input-dropdown__content"));
+  return bruts.filter((d) => !bruts.some((autre) => autre !== d && autre.contains(d)));
+}
+async function dismissInterstitials(contexte) {
+  const dialogs = findBlockingDialogsVinted();
+  if (!dialogs.length) return { present: false, restants: 0 };
+  for (const d of dialogs) {
+    const boutons = Array.from(d.querySelectorAll("button")).filter(visibleSansLayoutV);
+    console.warn(
+      `[vinted] interstitiel détecté (${contexte}) : <${d.tagName.toLowerCase()} class="${String(d.className).slice(0, 90)}"` +
+      ` role="${d.getAttribute("role") ?? ""}"> boutons=${JSON.stringify(boutons.map((b) => b.textContent.trim()).filter(Boolean).slice(0, 6))}`
+    );
+    const fermetures = Array.from(
+      d.querySelectorAll('[aria-label*="clo" i], [aria-label*="ferm" i], [data-testid*="close"], [class*="close" i]')
+    ).filter(visibleSansLayoutV);
+    const candidats = boutons
+      .filter((b) => !b.closest("a[href]"))
+      .filter((b) => !/t[ée]l[ée]charg|app\s*store|google\s*play|accepter/i.test(b.textContent))
+      .reverse();
+    let ferme = false;
+    for (const cible of [...fermetures, ...candidats]) {
+      cible.click();
+      await sleep(600);
+      if (!d.isConnected || !visibleSansLayoutV(d)) {
+        console.log(`[vinted] interstitiel fermé via « ${cible.textContent.trim() || cible.getAttribute("aria-label") || cible.className} »`);
+        ferme = true;
+        break;
+      }
+    }
+    if (!ferme) console.warn(`[vinted] interstitiel NON fermé (${contexte}) — aucun candidat n'a eu d'effet ; le flux continue`);
+  }
+  return { present: true, restants: findBlockingDialogsVinted().length };
 }
 
 // ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
