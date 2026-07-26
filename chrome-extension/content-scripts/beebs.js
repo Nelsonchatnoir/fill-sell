@@ -542,6 +542,7 @@ async function fillListingForm(job) {
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning.",
       unfilledRequired.length ? `\n⚠️ Champs OBLIGATOIRES non remplis: ${unfilledRequired.join(", ")}` : ""
     );
+    warnings.push(`observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
     return { success: true, dryRun: true, warnings, unfilledRequired, discoveredRequired: enumerated };
   }
 
@@ -572,12 +573,59 @@ async function fillListingForm(job) {
     const firstLabel = unfilledRequired[0];
     const firstMeta = enumerated.find((e) => e.label === firstLabel);
     const dedicated = BEEBS_DEDICATED_TARGETS[firstLabel];
+
+    // ── RELEVÉ DE SECOURS (2026-07-26, cas Casio « Taille » vide) ────────────
+    // Un needsUser de champ fermé SANS allowed_values est INUTILISABLE : l'app
+    // (à raison, principe du 19/07) refuse la saisie libre et n'offre qu'une
+    // relance — qui reproduit le même échec en boucle. Règle : le needsUser ne
+    // part JAMAIS avec zéro option. Si le remplissage n'a pas relevé les
+    // options (panneau bloqué par la modale au moment du champ, etc.), on
+    // OUVRE le panneau MAINTENANT, une fois, juste pour lire les valeurs —
+    // l'interstitiel vient d'être purgé, le panneau est lisible (prouvé le
+    // 26/07 : Taille@Montres rend ses 6 diamètres à l'ouverture).
+    let optionsChamp = Array.isArray(firstMeta?.options) && firstMeta.options.length
+      ? firstMeta.options
+      : (beebsObservedOptions[firstLabel] ?? null);
+    if (!optionsChamp?.length) {
+      const champ = findField(firstLabel);
+      if (champ?.trigger) {
+        try {
+          console.log(`[beebs] needsUser: relevé de secours des options de « ${firstLabel} »`);
+          const lues = await openPanelOptions(champ.trigger, "", 4000, { label: firstLabel });
+          if (lues.length) optionsChamp = lues.map(optionLabel).filter(Boolean).slice(0, 60);
+          await closePanel(champ.trigger);
+        } catch (e) {
+          console.warn(`[beebs] relevé de secours « ${firstLabel} » impossible : ${String(e?.message ?? e)}`);
+        }
+      }
+    }
+
+    // GARDE FINALE : toujours zéro option ⇒ PAS de needsUserField — un échec
+    // franc et explicite vaut mieux qu'un mini-éditeur impossible. Le job
+    // repart (l'app propose la relance), et le prochain passage — interstitiel
+    // purgé — relèvera la liste.
+    if (!optionsChamp?.length) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `Beebs exige des champs encore vides (${unfilledRequired.join(", ")}) et les valeurs autorisées de ` +
+          `« ${firstLabel} » n'ont pas pu être relevées (panneau illisible même après purge de l'interstitiel). ` +
+          `Aucun choix à proposer ⇒ pas de mini-éditeur (un needsUser sans options est inutilisable). ` +
+          `Relancer la publication — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.`,
+        warnings,
+        unfilledRequired,
+        discoveredRequired: enumerated,
+      };
+    }
+
     return {
       success: false,
       needsUser: true,
       error:
         `Beebs exige des champs encore vides pour cette catégorie : ${unfilledRequired.join(", ")}. ` +
-        "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication.",
+        "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication. " +
+        `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.`,
       warnings,
       unfilledRequired,
       discoveredRequired: enumerated,
@@ -596,9 +644,9 @@ async function fillListingForm(job) {
         // l'absence d'options est une lacune de NOTRE relevé, jamais la preuve
         // que le champ serait libre.
         input_type: firstMeta?.inputType ?? "dropdown",
-        ...(Array.isArray(firstMeta?.options) && firstMeta.options.length
-          ? { allowed_values: firstMeta.options }
-          : {}),
+        // allowed_values TOUJOURS non vide ici (garde ci-dessus) — plus jamais
+        // de mini-éditeur à liste vide (26/07).
+        allowed_values: optionsChamp,
       },
     };
   }
@@ -637,9 +685,16 @@ async function fillListingForm(job) {
   // listingUrl reste null — ce n'est PAS une erreur, la re-capture différée
   // côté background ira le chercher plus tard.
   const proof = await waitForBeebsDeposit();
-  if (!proof.ok) return { success: false, error: proof.error, warnings, unfilledRequired, discoveredRequired: enumerated };
+  if (!proof.ok) {
+    return {
+      success: false,
+      error: `${proof.error} — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`,
+      warnings, unfilledRequired, discoveredRequired: enumerated,
+    };
+  }
 
   console.log(`[beebs] dépôt CONFIRMÉ (${proof.preuve}) — annonce en modération, listing_url différé`);
+  warnings.push(`observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
   return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
@@ -1135,6 +1190,105 @@ function interstitielFerme(d) {
   return !d.isConnected || d.getAttribute("data-state") === "closed" || !estVisibleSansLayout(d);
 }
 
+// Fantômes : dialogues LOGIQUEMENT fermés (data-state="closed") mais toujours
+// montés — l'animation de sortie gelée en fenêtre non rendue ne se termine
+// jamais, donc Radix ne démonte jamais (constat f1185ef). ⚠️ SOUPÇON CONFIRMÉ
+// LE 26/07 (Nico) : un fantôme n'est PAS inerte — son overlay, son verrou de
+// scroll (react-remove-scroll) et surtout le aria-hidden que Radix pose sur
+// TOUT LE RESTE DE LA PAGE (react-aria-hidden) peuvent SURVIVRE avec lui. Or
+// notre détection d'état (estVisibleSansLayout) teste aria-hidden sur les
+// ANCÊTRES : une page entière marquée aria-hidden rend l'extension AVEUGLE à
+// tous les panneaux. Les fantômes doivent donc être PURGÉS, pas ignorés.
+function findGhostDialogs() {
+  return Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]'))
+    .filter((d) => d.isConnected && d.getAttribute("data-state") === "closed")
+    .filter((d) => !d.querySelector('div[class*="__options"]') && !d.closest('div[class*="__options"]'))
+    .filter((d) => !/supprimer mon annonce/i.test(texteDe(d)));
+}
+
+// Nettoyage DUR (2026-07-26, décision Nico : « la méthode qui MARCHE ») — la
+// modale est purement promotionnelle, rien du flux n'en dépend. On retire le
+// PORTAIL entier (l'ancêtre enfant direct de <body> qui contient le dialogue),
+// les overlays orphelins, puis on restaure ce que Radix pose sur le RESTE de
+// la page et qui survivrait au dialogue :
+//   · aria-hidden + data-aria-hidden sur tous les frères (react-aria-hidden) —
+//     c'est LUI qui aveugle estVisibleSansLayout sur toute la page ;
+//   · data-scroll-locked / pointer-events / overflow sur <body>
+//     (react-remove-scroll).
+// Risque React assumé : retirer un nœud de portail peut laisser l'arbre React
+// pointer sur du détaché — sans conséquence pour un composant que la page ne
+// re-rend plus (l'animation de sortie ne se terminant jamais, Radix n'y
+// touchera plus). Arbitré contre : une extension aveugle et des jobs morts.
+function purgeInterstitielResidus(d) {
+  const retraits = [];
+  try {
+    let portail = d;
+    while (portail.parentElement && portail.parentElement !== document.body) portail = portail.parentElement;
+    if (portail && portail.parentElement === document.body) {
+      portail.remove();
+      retraits.push("portail du dialogue retiré");
+    } else if (d.isConnected) {
+      d.remove();
+      retraits.push("dialogue retiré (portail non identifié)");
+    }
+    for (const el of Array.from(document.body.children)) {
+      if (el.querySelector?.('div[class*="__options"]') || el.querySelector?.("form")) continue;
+      const cls = String(el.className ?? "");
+      const marque = el.hasAttribute?.("data-state") || /overlay|backdrop/i.test(cls);
+      if (marque && !el.querySelector('[role="dialog"]') && getComputedStyle(el).position === "fixed") {
+        el.remove();
+        retraits.push(`overlay orphelin retiré <${el.tagName.toLowerCase()} class="${cls.slice(0, 40)}">`);
+      }
+    }
+    let libere = 0;
+    for (const el of document.querySelectorAll('[data-aria-hidden="true"]')) {
+      el.removeAttribute("aria-hidden");
+      el.removeAttribute("data-aria-hidden");
+      libere += 1;
+    }
+    if (libere) retraits.push(`aria-hidden retiré sur ${libere} frère(s) (react-aria-hidden)`);
+    if (document.body.hasAttribute("data-scroll-locked")) {
+      document.body.removeAttribute("data-scroll-locked");
+      retraits.push("data-scroll-locked retiré");
+    }
+    if (document.body.style.pointerEvents === "none") {
+      document.body.style.pointerEvents = "";
+      retraits.push("body pointer-events restauré");
+    }
+    if (document.body.style.overflow === "hidden") {
+      document.body.style.overflow = "";
+      retraits.push("body overflow restauré");
+    }
+  } catch (e) {
+    retraits.push(`purge partielle: ${String(e?.message ?? e)}`);
+  }
+  return retraits;
+}
+
+// PREUVE FONCTIONNELLE (exigence du 26/07 : le bon test n'est pas « le nœud a
+// disparu » mais « un clic atteint sa cible ») : bouton témoin hors de tout
+// dialogue — si un écouteur capture (focus trap…) avale encore les clics, le
+// témoin ne reçoit rien. Aucune mesure de layout : le témoin est hors écran
+// par position fixed, son listener est la seule lecture.
+function probeClicLibre() {
+  return new Promise((resolve) => {
+    const temoin = document.createElement("button");
+    temoin.type = "button";
+    temoin.style.cssText = "position:fixed;left:-9999px;top:0;";
+    let recu = false;
+    temoin.addEventListener("click", () => { recu = true; });
+    document.body.appendChild(temoin);
+    realClick(temoin);
+    setTimeout(() => { temoin.remove(); resolve(recu); }, 150);
+  });
+}
+
+// Observabilité (2026-07-26) : état interstitiel + chemin catégorie remontés
+// dans warnings (succès) et messages d'erreur — la console de la fenêtre
+// minimisée n'est jamais lue, ces deux variables sont le seul canal fiable.
+let etatInterstitiel = "aucune";
+let cheminCategorie = "(non tentée)";
+
 function decrisDialog(d) {
   const boutons = Array.from(d.querySelectorAll('button, [role="button"]'))
     .filter(estVisibleSansLayout)
@@ -1162,9 +1316,17 @@ function decrisDialog(d) {
 // les trois signaux (data-state resté "open" = clic non pris — autre
 // correctif que le faux négatif d'animation). Échec jamais silencieux.
 async function dismissInterstitials(contexte) {
-  const dialogs = findBlockingDialogs();
-  if (!dialogs.length) return { present: false, restants: 0 };
-  for (const d of dialogs) {
+  const ouverts = findBlockingDialogs();
+  const fantomes = findGhostDialogs();
+  if (!ouverts.length && !fantomes.length) return { present: false, restants: 0 };
+
+  const purges = [];
+
+  // 1. Dialogues OUVERTS : clic de fermeture d'abord (laisse React committer
+  //    open=false proprement), puis PURGE DURE dans tous les cas — même un
+  //    clic « réussi » laisse un fantôme actif en fenêtre non rendue
+  //    (animation de sortie gelée, constat du 26/07).
+  for (const d of ouverts) {
     console.warn(`[beebs] interstitiel détecté (${contexte}) : ${decrisDialog(d)}`);
     const fermetures = Array.from(
       d.querySelectorAll('[aria-label*="clo" i], [aria-label*="ferm" i], [class*="close" i]')
@@ -1181,33 +1343,38 @@ async function dismissInterstitials(contexte) {
       realClick(cible);
       await sleep(600);
       if (interstitielFerme(d)) {
-        const etat = !d.isConnected
-          ? "nœud détaché"
-          : d.getAttribute("data-state") === "closed"
-            ? "data-state=closed — fermeture LOGIQUE, nœud fantôme conservé par l'animation de sortie gelée (attendu en fenêtre non rendue)"
-            : "devenu invisible (computed)";
-        console.log(`[beebs] interstitiel fermé via « ${nom} » — ${etat}`);
+        console.log(`[beebs] interstitiel fermé (logiquement) via « ${nom} »`);
         ferme = true;
         break;
       }
-      // Clic émis mais AUCUN des trois signaux de fermeture : distinguer les
-      // deux causes (elles n'ont pas le même correctif) — data-state resté
-      // "open" = le clic n'a PAS pris (bouton non réactif au click DOM,
-      // overlay interceptant, focus trap) ; absence de data-state = composant
-      // non-Radix, seuls détaché/invisible peuvent conclure.
       console.warn(
         `[beebs] interstitiel: clic sur « ${nom} » SANS effet — ` +
         `isConnected=${d.isConnected}, data-state="${d.getAttribute("data-state") ?? "(absent)"}", ` +
         `visible=${estVisibleSansLayout(d)} — candidat suivant s'il en reste`
       );
     }
-    if (!ferme) {
-      console.warn(
-        `[beebs] interstitiel NON fermé (${contexte}) — aucun candidat n'a eu d'effet : ${decrisDialog(d)}`
-      );
-    }
+    if (!ferme) console.warn(`[beebs] interstitiel: aucun clic n'a fermé — purge dure directe`);
+    purges.push(...purgeInterstitielResidus(d));
   }
-  return { present: true, restants: findBlockingDialogs().length };
+
+  // 2. FANTÔMES (data-state=closed encore montés) : JAMAIS de re-clic (la
+  //    modale est logiquement fermée — re-cliquer serait la bascule), purge
+  //    dure directe : c'est leur overlay/aria-hidden résiduel qui bloquait.
+  for (const d of fantomes) {
+    console.warn(`[beebs] interstitiel FANTÔME détecté (${contexte}) : ${decrisDialog(d)} — purge dure sans clic`);
+    purges.push(...purgeInterstitielResidus(d));
+  }
+
+  // 3. PREUVE FONCTIONNELLE : un clic témoin doit atteindre sa cible.
+  const probeOk = await probeClicLibre();
+  const restants = findBlockingDialogs().length + findGhostDialogs().length;
+  etatInterstitiel =
+    `présente (${contexte}) → ` +
+    (restants === 0 && probeOk
+      ? `neutralisée [${purges.join(" ; ") || "clic seul"}] — probe clic OK`
+      : `⚠ NON neutralisée (restants=${restants}, probe clic ${probeOk ? "OK" : "KO"})`);
+  console.log(`[beebs] interstitiel: ${etatInterstitiel}`);
+  return { present: true, restants, probeOk };
 }
 
 // Ouvre le panneau du champ et retourne UNIQUEMENT ses options, lues scopées
@@ -1583,6 +1750,7 @@ async function selectCategory(path) {
       ? await waitFor(() => document.querySelectorAll('div[class*="__label"]').length > 2, 8000)
       : null;
     if (libelleOk && champsOk) {
+      cheminCategorie = `FIBER (feuille "${viaFiber.feuille}")`;
       console.log(
         `[beebs] catégorie posée via FIBER — onSelected("${viaFiber.feuille}", sys=${viaFiber.sysId}), ` +
         "effet constaté : libellé du trigger + champs dynamiques rendus"
@@ -1597,6 +1765,7 @@ async function selectCategory(path) {
   } else {
     console.warn(`[beebs] chemin fiber indisponible : ${viaFiber.reason} — repli sur le chemin clic+panneau`);
   }
+  cheminCategorie = `CLIC+PANNEAU (repli — fiber: ${viaFiber.ok ? "effet non constaté" : viaFiber.reason})`;
   console.log("[beebs] catégorie : chemin CLIC+PANNEAU (repli) utilisé");
 
   // Ouverture avec DÉTECTION D'EFFET (2026-07-23) — même parade que le clic
@@ -1700,7 +1869,8 @@ async function selectCategory(path) {
       // aria-expanded (prouvé le 26/07 — le « aria-expanded sans valeur » du
       // dump Cyrillus était un artefact de dump, pas un état du DOM).
       `trigger: ${trigger.outerHTML.slice(0, 400)} ; ` +
-      `parent (2 niveaux): ${parent2?.outerHTML?.slice(0, 700) ?? "(absent)"}. ` +
+      `parent (2 niveaux): ${parent2?.outerHTML?.slice(0, 700) ?? "(absent)"} ; ` +
+      `observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}. ` +
       "Aucun problème de catalogue. Le job repartira au prochain passage."
     );
   }
