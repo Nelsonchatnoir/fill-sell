@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Tokens du design system FillSell utilisés côté natif Android.
-     teal #2F9E90 = fond des splash (legacy et Android 12+) et de l'icône en
-     repli plat. Le splash système d'Android 12+ n'accepte qu'une COULEUR UNIE
-     (pas de dégradé) : le fond plat est donc le même sur Android ≤11, 12+ et
-     iOS, pour un rendu identique partout. -->
+     ink #10201B = fond des splash (legacy et Android 12+) : glyphe blanc pur
+     sur fond noir, parti pris du 26/07. Le splash système d'Android 12+
+     n'accepte qu'une COULEUR UNIE (pas de dégradé) : le fond plat est donc le
+     même sur Android ≤11, 12+ et iOS, pour un rendu identique partout.
+     Doit rester égal au backgroundColor de capacitor.config.ts et au fond des
+     splash.png / splash-2732x2732 (iOS). -->
 <resources>
-    <color name="fs_splash_background">#2F9E90</color>
+    <color name="fs_splash_background">#10201B</color>
 </resources>
