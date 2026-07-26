@@ -1219,8 +1219,12 @@ async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = nu
   // ouvert (tentative précédente, formulaire non rechargé) serait refermé.
   await dismissInterstitials(`champ ${label ?? "?"}`);
   await humanPause();
-  if (!panelOf(trigger)) trigger.click();
-  else console.log(`[beebs] openPanelOptions(${label ?? "?"}) : panneau déjà ouvert — pas de clic (bascule)`);
+  // Même garde indépendante de la lecture que selectCategory (2026-07-26) :
+  // aria-expanded du trigger d'abord, panelOf en secondaire — une lecture
+  // aveugle ne doit jamais provoquer un re-clic bascule.
+  const dejaOuvert = trigger.getAttribute("aria-expanded") === "true" || Boolean(panelOf(trigger));
+  if (!dejaOuvert) trigger.click();
+  else console.log(`[beebs] openPanelOptions(${label ?? "?"}) : déjà ouvert (aria-expanded=${JSON.stringify(trigger.getAttribute("aria-expanded"))}) — pas de clic (bascule)`);
   await humanPause();
 
   const attendreOptions = async (ms) => {
@@ -1492,18 +1496,32 @@ async function selectCategory(path) {
   // toggler — on ne re-clique que panneau constaté FERMÉ, sinon on relit.
   let ouvert = false;
   const iterations = []; // instrumentation : état constaté à chaque tentative
+  let delaiPremierClicMs = null; // ms depuis le time origin de la page (load) au 1er clic
   for (let tentative = 0; tentative < 3 && !ouvert; tentative++) {
     // Interstitiel D'ABORD : la modale « Toujours plus sur l'appli » avale le
     // clic d'ouverture (capture du 26/07) — la fermer avant de cliquer, et à
     // chaque tentative (elle peut apparaître en cours de route).
     const modale = await dismissInterstitials(`catégorie, tentative ${tentative + 1}`);
+    // ⚠️ GARDE ANTI-BASCULE INDÉPENDANTE DE LA LECTURE (2026-07-26, job
+    // Cyrillus) : l'ancienne garde reposait sur panelOf seul — quand la
+    // LECTURE est aveugle (0 panneau trouvé nulle part), elle concluait
+    // « fermé » et re-cliquait : retour à la bascule par un autre chemin.
+    // Une garde qui dépend du signal qu'elle protège n'est pas une garde.
+    // Signal PRIMAIRE : aria-expanded du TRIGGER — l'état commité par le
+    // composant, lisible par attribut, indépendant du rendu (même parade
+    // qu'ebay.js sur ses menus de specifics). panelOf reste le signal
+    // secondaire. On ne clique que si NI l'un NI l'autre ne dit « ouvert ».
+    const ariaAvant = trigger.getAttribute("aria-expanded");
     const panneauAvant = panelOf(trigger);
-    if (!panneauAvant) {
+    const estOuvertAvant = ariaAvant === "true" || Boolean(panneauAvant);
+    if (!estOuvertAvant) {
       await humanPause();
+      if (delaiPremierClicMs === null) delaiPremierClicMs = Math.round(performance.now());
       trigger.click();
     } else {
       console.log(
-        `[beebs] catégorie tentative ${tentative + 1}/3 : panneau DÉJÀ ouvert — pas de re-clic (bascule), relecture seule`
+        `[beebs] catégorie tentative ${tentative + 1}/3 : DÉJÀ ouvert (aria-expanded=${JSON.stringify(ariaAvant)}, ` +
+        `panneau ${panneauAvant ? "trouvé" : "NON trouvé — lecture aveugle, cf. discriminateur"}) — pas de re-clic (bascule), relecture seule`
       );
     }
     await humanPause();
@@ -1512,9 +1530,18 @@ async function selectCategory(path) {
       if (panelOptions(trigger).length) { ouvert = true; break; }
       await sleep(100);
     }
+    // DISCRIMINATEUR (2026-07-26) : aria-expanded AVANT et APRÈS le clic.
+    //  · passe à "true" avec 0 panneau __options ⇒ le panneau EXISTE ailleurs
+    //    (portail hors du parent, ou classe ≠ __options) : LECTURE à revoir,
+    //    pas le clic ;
+    //  · ne change pas ⇒ le clic ne prend pas (hydratation React pas finie ?
+    //    handler pas encore attaché — le reload explicite précède de peu).
+    const ariaApres = trigger.getAttribute("aria-expanded");
     iterations.push({
       tentative: tentative + 1,
-      clique: !panneauAvant,
+      clique: !estOuvertAvant,
+      ariaAvant: ariaAvant ?? "(absent)",
+      ariaApres: ariaApres ?? "(absent)",
       interstitiel: modale.present ? (modale.restants ? "présent NON fermé" : "fermé") : "absent",
       panneauxVisibles: panneauxVisibles().length,
       optionsLues: panelOptions(trigger).length,
@@ -1534,14 +1561,32 @@ async function selectCategory(path) {
     const scoped = trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
     const visibles = panneauxVisibles();
     const dialogs = findBlockingDialogs();
+    // Le trigger déclare aria-haspopup="listbox" : le panneau est peut-être un
+    // [role="listbox"] SANS classe __options — on liste ceux du document pour
+    // trancher l'hypothèse « portail/classe différente » sans navigateur.
+    const listboxes = Array.from(document.querySelectorAll('[role="listbox"]'))
+      .slice(0, 8)
+      .map((el) =>
+        `<${el.tagName.toLowerCase()} id="${el.id}" class="${String(el.className).slice(0, 60)}" ` +
+        `enfants=${el.children.length} visible=${estVisibleSansLayout(el)}>`
+      );
+    const parent2 = trigger.parentElement?.parentElement ?? trigger.parentElement;
     throw new Error(
-      "Catégorie: aucune option lue après 3 tentatives (clic seulement si panneau fermé). Diagnostic — " +
+      "Catégorie: aucune option lue après 3 tentatives (clic seulement si constaté fermé — aria-expanded PUIS panneau). Diagnostic — " +
+      `aria-expanded final: ${JSON.stringify(trigger.getAttribute("aria-expanded") ?? "(absent)")} ; ` +
+      "lecture du discriminateur: aria passé à \"true\" avec 0 panneau = LECTURE à revoir (portail/classe) ; aria inchangé = clic non pris (hydratation ?) ; " +
       `panneau scopé au trigger: ${scoped ? "présent" : "absent"} ; ` +
       `panneaux __options visibles dans le document: ${visibles.length}` +
       `${visibles.length ? ` (boutons: ${visibles[0].querySelectorAll("button").length})` : ""} ; ` +
+      `[role=listbox] du document: ${listboxes.length ? listboxes.join(" | ") : "AUCUN"} ; ` +
+      `1er clic à ${delaiPremierClicMs ?? "(jamais cliqué)"} ms après le load de la page ; ` +
       `interstitiel bloquant: ${dialogs.length ? dialogs.map(decrisDialog).join(" | ") : "aucun"} ; ` +
       `itérations: ${JSON.stringify(iterations)} ; ` +
-      `trigger: ${trigger.outerHTML.slice(0, 160)}. ` +
+      // 400 et non 160 : la troncature à 160 coupait EXACTEMENT dans
+      // aria-expanded (prouvé le 26/07 — le « aria-expanded sans valeur » du
+      // dump Cyrillus était un artefact de dump, pas un état du DOM).
+      `trigger: ${trigger.outerHTML.slice(0, 400)} ; ` +
+      `parent (2 niveaux): ${parent2?.outerHTML?.slice(0, 700) ?? "(absent)"}. ` +
       "Aucun problème de catalogue. Le job repartira au prochain passage."
     );
   }
