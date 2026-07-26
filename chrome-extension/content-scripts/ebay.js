@@ -1294,24 +1294,40 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
   // .se-filter-menu-button de la ligne ; fallback document pour ne pas
   // régresser si eBay téléporte un jour le menu hors de la ligne.
   const holder = anatomy.expandBtn.closest(".se-filter-menu-button") || anatomy.row;
+  // ⚠️ VISIBILITÉ SANS LAYOUT (2026-07-26, SELECTOR_AUDIT §9a/§9c) : l'ancien
+  // test reposait sur offsetParent, qui est null pour TOUT élément dans la
+  // fenêtre de travail non rendue — même un menu bel et bien ouvert. Faux
+  // « fermé » ⇒ re-clic sur un bouton fake-menu qui BASCULE ⇒ le menu se
+  // referme : le mécanisme exact du bug Beebs corrigé en 0893bc4.
+  // estVisibleSansLayout (déjà utilisé partout ailleurs dans ce fichier :
+  // dialogues delete, lightboxes) discrimine la même chose dans le cas
+  // nominal — les 10 menu-containers coexistent dans le DOM, CACHÉS via
+  // display tant que leur ligne n'est pas dépliée (relevé 2026-07-11), et
+  // display:none rend offsetParent null : mêmes verdicts fenêtre rendue.
+  // Seule différence assumée : un ancêtre aria-hidden="true" compte
+  // désormais comme fermé (cohérent avec le reste du fichier).
   const visibleMenu = () => {
     const scoped = holder.querySelector(`${SPECIFICS_MENU_SELECTOR}, .fake-menu-button__menu`);
-    if (scoped && scoped.offsetParent !== null) return scoped;
+    if (scoped && estVisibleSansLayout(scoped)) return scoped;
     const global = document.querySelector(SPECIFICS_MENU_SELECTOR);
-    return global && global.offsetParent !== null ? global : null;
+    return global && estVisibleSansLayout(global) ? global : null;
   };
   // Onglet de travail CACHÉ (observé en session réelle 2026-07-12) : la
   // réaction d'eBay au clic (ouverture du menu, commits d'état React) est
   // DIFFÉRÉE de plusieurs secondes par le throttling — un clic peut sembler
-  // perdu alors qu'il n'a pas encore produit son effet. On attend d'abord ;
-  // si aria-expanded n'est toujours pas passé à true (l'état commité), le
-  // clic a réellement été avalé (vécu) : on re-clique UNE fois.
+  // perdu alors qu'il n'a pas encore produit son effet. On attend d'abord.
+  // Garde anti-bascule (même règle que Beebs 0893bc4) : on ne re-clique QUE
+  // si le menu est constaté fermé PAR DEUX SIGNAUX — aria-expanded ≠ "true"
+  // (état commité, lecture d'attribut fiable sans rendu) ET visibleMenu()
+  // nul. Sinon on RELIT seulement : un retry ne doit jamais toggler.
   realClick(anatomy.expandBtn);
   let menu = await waitFor(visibleMenu, 4000);
   if (!menu) {
-    if (anatomy.expandBtn.getAttribute("aria-expanded") !== "true") {
-      console.log(`[ebay] ${found.label}: menu sans réaction au 1er clic — re-clic`);
+    if (anatomy.expandBtn.getAttribute("aria-expanded") !== "true" && !visibleMenu()) {
+      console.log(`[ebay] ${found.label}: menu sans réaction au 1er clic (aria-expanded=${anatomy.expandBtn.getAttribute("aria-expanded")}, menu non rendu) — re-clic`);
       realClick(anatomy.expandBtn);
+    } else {
+      console.log(`[ebay] ${found.label}: menu déjà ouvert d'après l'état (aria-expanded=true) — pas de re-clic (bascule), relecture seule`);
     }
     menu = await waitFor(visibleMenu, 8000);
   }
@@ -1362,7 +1378,11 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
   realClick(match.el);
   await humanPause();
   // menuitemradio se ferme seul ; menuitemcheckbox (multi) reste ouvert.
-  if (document.querySelector(SPECIFICS_MENU_SELECTOR)?.offsetParent) {
+  // Même correction offsetParent → estVisibleSansLayout (2026-07-26) : en
+  // fenêtre non rendue l'ancien test était TOUJOURS faux, donc le menu multi
+  // restait ouvert et polluait le champ suivant sans que ce code ne le voie.
+  const menuRestant = document.querySelector(SPECIFICS_MENU_SELECTOR);
+  if (menuRestant && estVisibleSansLayout(menuRestant)) {
     document.body.click();
     await humanPause();
   }
