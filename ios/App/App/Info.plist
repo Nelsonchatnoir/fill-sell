@@ -51,11 +51,16 @@
 	<array>
 		<string>armv7</string>
 	</array>
+	<!-- iPhone : PORTRAIT SEUL (décision 2026-07-26, alignement sur Android qui
+	     est verrouillé portrait depuis toujours). L'ancien ios.orientation de
+	     capacitor.config.ts n'a jamais rien fait (clé inexistante dans le type
+	     Capacitor, retirée le 26/07) : c'est ICI que l'orientation se règle.
+	     La clé ~ipad ci-dessous reste volontairement à 4 orientations :
+	     verrouiller l'iPad exigerait UIRequiresFullScreen (règle App Store
+	     pour les apps multitâche) — décision séparée, non prise. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
