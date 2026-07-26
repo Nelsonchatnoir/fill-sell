@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Icône adaptative (Android 8+). Le système la masque (cercle, squircle, goutte
-  selon le launcher) et ne garde que les 72dp centraux sur 108 : le foreground
-  doit tenir dans la zone sûre de 66dp, soit 61 % du côté.
+  Icône adaptative (Android 8+). Le système masque cette icône (cercle, squircle,
+  goutte selon le launcher) : sur un calque de 108dp, seuls les 72dp centraux
+  sont visibles, et la zone garantie est un CERCLE de 66dp — pas un carré.
+  C'est le piège : ce qui doit tenir dans ce cercle, c'est le cercle CIRCONSCRIT
+  au logo, donc sa diagonale. Le glyphe est large de 43,8 % du calque, ce qui lui
+  fait un cercle circonscrit de 58,7 % (mesuré) pour une limite de 61,1 %. Le
+  poser à 60 % de large le faisait rogner en bas par tous les masques, cercle
+  comme squircle — vérifié en simulant les masques avant commit.
   ic_launcher_foreground.png = le GLYPHE BLANC seul (sac + flèche), extrait de
-  public/icon_1024x1024.png et posé à 60 % du canvas. Ne PAS y remettre
-  l'artwork complet : le glyphe y occupe 66 % du côté, il serait rogné.
+  public/icon_1024x1024.png. Ne PAS y remettre l'artwork complet : le glyphe y
+  occupe 66 % du côté, très au-delà de la zone sûre.
   ic_launcher_background.png = le dégradé turquoise → orange de la marque,
   échantillonné sur l'icône source pour coller aux stores et au favicon.
 -->
