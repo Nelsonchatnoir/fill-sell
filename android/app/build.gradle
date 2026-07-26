@@ -31,13 +31,16 @@ android {
         // patch optimiste retry, anti-republication, premium is_comped),
         // 20 → 21 (26/07 : icônes launcher FillSell — les placeholders
         // Capacitor n'avaient jamais été remplacés — + splash Android 12+
-        // via windowSplashScreen*, fond teal #2F9E90, cf. 4b2894e).
-        // versionName 2.3.1 et pas 2.4 : release SANS feature (assets natifs
-        // seulement), iOS reste en 2.3 — le patch garde l'alignement de
-        // fonctionnalités entre stores et réserve 2.4 à la prochaine release
-        // commune. Play n'impose rien sur versionName, seul versionCode compte.
-        versionCode 21
-        versionName "2.3.1"
+        // via windowSplashScreen*, fond teal #2F9E90, cf. 4b2894e),
+        // 21 → 22 (26/07 soir : splash V2 3d65f74 — glyphe blanc pur 13 % sur
+        // ink #10201B, ic_splash_icon à 80 % de la zone sûre, flash blanc
+        // d'index.html supprimé, fondu 350 ms + hide() au premier render).
+        // versionName 2.3.2 : même logique que 2.3.1 — release SANS feature
+        // (assets natifs + transition seulement), iOS reste en 2.3 — on
+        // réserve 2.4 à la prochaine release commune. Play n'impose rien sur
+        // versionName, seul versionCode compte.
+        versionCode 22
+        versionName "2.3.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
