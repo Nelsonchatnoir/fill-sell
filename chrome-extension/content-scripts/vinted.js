@@ -558,6 +558,7 @@ async function fillListingForm(job) {
       "(Vinted exige 3 photos minimum sur les marques premium)"
     );
   }
+  if (photoResult?.photoNote) warnings.push(photoResult.photoNote);
 
   if (fields.marque) {
     // Deux sections dans le menu marque avec des ids différents :
@@ -1995,11 +1996,50 @@ async function uploadPhotos(photos) {
   const input = await waitForElement('input[data-testid="add-photos-input"]');
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
+  const vignettesAvant = photoPreviewCount();
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  await sleep(1500 * files.length); // laisser le temps à l'upload asynchrone Vinted
-  return { count: files.length, duplicated };
+  const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "vinted");
+  return { count: files.length, duplicated, photoNote: signal.note };
+}
+
+// ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
+// AVANT : dispatch(change) puis sleep(1500 ms × n) aveugle — un upload plus
+// lent que 1,5 s/photo enchaînait la suite du remplissage avec des photos
+// manquantes, sans trace, et l'annonce partait quand même. MAINTENANT : on
+// compte les PRÉVISUALISATIONS apparues depuis le snapshot pris avant
+// l'injection des fichiers. Le signal est un mécanisme NAVIGATEUR, pas un
+// sélecteur plateforme : prévisualiser un fichier local passe par
+// URL.createObjectURL (img src="blob:…") ou un data-URI — haute précision
+// (une page n'ajoute pas n images blob: spontanément), rappel inconnu par
+// plateforme. D'où le contrat NON BLOQUANT :
+//   · signal constaté  → sortie anticipée (gain quand tout va bien) ;
+//   · signal absent    → on attend la durée HISTORIQUE (1500 × n, jamais
+//     moins) puis on CONTINUE COMME AVANT, en loggant et en remontant la
+//     note dans les warnings du job. Ce log est l'instrument : il dira sur
+//     données réelles si le cas arrive et où — rendre bloquant viendra
+//     après, sur ces données (décision explicite, pas ici).
+// Lecture par attribut src uniquement — aucune mesure de layout.
+function photoPreviewCount() {
+  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;
+}
+async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < budgetMs) {
+    const vues = photoPreviewCount() - avant;
+    if (vues >= attendues) {
+      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) blob:/data: en ${Date.now() - t0} ms — signal confirmé`);
+      return { confirmed: true, seen: vues, note: null };
+    }
+    await sleep(250);
+  }
+  const vues = photoPreviewCount() - avant;
+  const note =
+    `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
+    `(budget historique ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
+  console.warn(`[${tag}] ${note}`);
+  return { confirmed: false, seen: vues, note };
 }
 
 // Marqueur de version dans le log : permet de vérifier depuis la console

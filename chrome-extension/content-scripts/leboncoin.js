@@ -616,7 +616,10 @@ async function fillListingForm(job) {
   // catégories standard, avance de page en page sur les flux paginés.
   const photoInput = await advanceWizardTo('input[type="file"]', { probeMs: 6000 });
   if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
-  if (job.photos?.length) await uploadPhotos(photoInput, job.photos);
+  if (job.photos?.length) {
+    const photoNote = await uploadPhotos(photoInput, job.photos);
+    if (photoNote) warnings.push(photoNote);
+  }
 
   // Critères : tous NON bloquants. Un critère que Leboncoin a déjà pré-rempli
   // (déduction IA titre/photos) n'est conservé QUE s'il matche la valeur du
@@ -1945,10 +1948,42 @@ async function uploadPhotos(input, photos) {
   const files = await Promise.all(photos.map((p, i) => urlToFile(p.url, i)));
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
+  const vignettesAvant = photoPreviewCount();
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  await sleep(1500 * files.length);
+  const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "leboncoin");
+  return signal.note; // null si le signal est confirmé — sinon note à remonter dans les warnings du job
+}
+
+// ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
+// Même contrat que les 4 plateformes (copie locale : les content scripts sont
+// autonomes, pas de module partagé — cf. OBSERVATORY.md ADR-03). AVANT :
+// sleep(1500 × n) aveugle. MAINTENANT : sortie anticipée dès que n
+// prévisualisations blob:/data: sont apparues (mécanisme navigateur,
+// URL.createObjectURL) ; sinon durée historique inchangée + log + note dans
+// les warnings du job. JAMAIS bloquant : en l'absence de signal le
+// comportement est exactement celui d'avant. Lecture par attribut src
+// uniquement — aucune mesure de layout.
+function photoPreviewCount() {
+  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;
+}
+async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < budgetMs) {
+    const vues = photoPreviewCount() - avant;
+    if (vues >= attendues) {
+      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) blob:/data: en ${Date.now() - t0} ms — signal confirmé`);
+      return { confirmed: true, seen: vues, note: null };
+    }
+    await sleep(250);
+  }
+  const vues = photoPreviewCount() - avant;
+  const note =
+    `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
+    `(budget historique ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
+  console.warn(`[${tag}] ${note}`);
+  return { confirmed: false, seen: vues, note };
 }
 
 console.log(`[leboncoin] prêt — build ${LEBONCOIN_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

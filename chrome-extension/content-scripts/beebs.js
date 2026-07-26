@@ -392,7 +392,7 @@ async function fillListingForm(job) {
     };
   }
 
-  if (job.photos?.length) await uploadPhotos(job.photos);
+  const photoNote = job.photos?.length ? await uploadPhotos(job.photos) : null;
   if (job.title) await fillTextField("#title", job.title);
   if (job.description) await fillTextField("#description", job.description);
 
@@ -403,6 +403,7 @@ async function fillListingForm(job) {
   // avec un warning en cas de libellé introuvable, et sont silencieusement
   // ignorés s'ils ne sont pas affichés pour la catégorie choisie.
   const warnings = [];
+  if (photoNote) warnings.push(photoNote);
   // Champs OBLIGATOIRES (affichés sans "(facultatif)") qu'on n'a pas su
   // remplir : remontés au background, qui refuse de laisser passer un job
   // pour "réussi" sans le dire (cf. BUG 2 du 2026-07-09).
@@ -1631,10 +1632,42 @@ async function uploadPhotos(photos) {
   const input = await waitForElement("#input-pictures");
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
+  const vignettesAvant = photoPreviewCount();
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  await sleep(1500 * files.length); // laisser le temps à l'upload asynchrone Beebs
+  const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "beebs");
+  return signal.note; // null si le signal est confirmé — sinon note à remonter dans les warnings du job
+}
+
+// ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
+// Même contrat que les 4 plateformes (copie locale : les content scripts sont
+// autonomes, pas de module partagé — cf. OBSERVATORY.md ADR-03). AVANT :
+// sleep(1500 × n) aveugle. MAINTENANT : sortie anticipée dès que n
+// prévisualisations blob:/data: sont apparues (mécanisme navigateur,
+// URL.createObjectURL) ; sinon durée historique inchangée + log + note dans
+// les warnings du job. JAMAIS bloquant : en l'absence de signal le
+// comportement est exactement celui d'avant. Lecture par attribut src
+// uniquement — aucune mesure de layout.
+function photoPreviewCount() {
+  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;
+}
+async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < budgetMs) {
+    const vues = photoPreviewCount() - avant;
+    if (vues >= attendues) {
+      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) blob:/data: en ${Date.now() - t0} ms — signal confirmé`);
+      return { confirmed: true, seen: vues, note: null };
+    }
+    await sleep(250);
+  }
+  const vues = photoPreviewCount() - avant;
+  const note =
+    `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
+    `(budget historique ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
+  console.warn(`[${tag}] ${note}`);
+  return { confirmed: false, seen: vues, note };
 }
 
 // Marqueur de version dans le log : permet de vérifier depuis la console
