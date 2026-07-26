@@ -2137,9 +2137,27 @@ async function navigateWorkTab(tabId, target) {
   const winStore = await chrome.storage.session.get(WORK_WINDOW_KEY).catch(() => ({}));
   if (tab.windowId === winStore[WORK_WINDOW_KEY]) {
     try {
-      const loaded = waitForTabComplete(tabId, target);
+      // ⚠️ RELANCE VERS UNE URL IDENTIQUE (2026-07-26) : les URLs de dépôt sont
+      // CONSTANTES (Beebs /fr/listing en tête) — au 2e job ou à la reprise d'un
+      // échec, target == URL déjà chargée. Deux mécanismes se combinaient alors
+      // pour SAUTER le rechargement : tabs.update vers la même URL peut ne pas
+      // naviguer, et le rattrapage de waitForTabComplete voit « déjà complete
+      // sur la cible » → résolution immédiate. Le content script repartait sur
+      // le DOM RÉSIDUEL de la tentative précédente : photos EMPILÉES sur les
+      // anciennes (fillListingForm ne remet rien à zéro), panneau catégorie
+      // resté ouvert que le clic d'ouverture REFERMAIT (bascule — parité des
+      // échecs Beebs du 25-26/07). Un reload EXPLICITE, attendu par l'événement
+      // SEUL (expectUrl null ⇒ pas de rattrapage possible), garantit une page
+      // neuve à chaque job. Le fragment #fillsell-worker survit au reload.
+      const memePage = String(tab.url || "").split("#")[0] === String(target).split("#")[0];
+      const loaded = memePage ? waitForTabComplete(tabId) : waitForTabComplete(tabId, target);
       await neutralizeBeforeUnload(tabId);
-      await chrome.tabs.update(tabId, { url: target });
+      if (memePage) {
+        console.log(`[background] Onglet ${tabId} déjà sur la cible — reload explicite (jamais de formulaire résiduel)`);
+        await chrome.tabs.reload(tabId);
+      } else {
+        await chrome.tabs.update(tabId, { url: target });
+      }
       await loaded;
       return tabId;
     } catch (e) {

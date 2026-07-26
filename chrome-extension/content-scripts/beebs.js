@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-22-listes-longues (relevé des options AVANT toute frappe dans la barre de recherche : les listes longues — Taille robe femme, Marque, tailles enfant/bébé — entrent enfin au catalogue, la garantie « jamais de liste partielle » passe d'un test fragile à l'ORDRE des opérations ; barre de recherche détectée par différentiel et non plus par querySelector global ; needsUserField porte input_type pour que l'app refuse d'en faire une saisie libre)";
+const BEEBS_BUILD = "2026-07-26-interstitiel-et-parite (trois causes du « panneau jamais ouvert » traitées ensemble : 1. la modale « Toujours plus sur l'appli » avale le clic d'ouverture — détection structurelle role=dialog/aria-modal/modal + fermeture par bouton NON-store avant toute interaction ; 2. la boucle d'ouverture re-cliquait sans regarder alors que le clic BASCULE — on ne re-clique plus que panneau constaté fermé ; 3. panelOf repli sur l'unique panneau visible du document quand la lecture scopée ne voit rien — c'était le cas capture du 26/07 : panneau OUVERT avec 5 options, lecture vide ; diagnostic DOM complet dans l'erreur)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -361,6 +361,11 @@ async function fillListingForm(job) {
   }
 
   const fields = job.platform_fields || {};
+
+  // Interstitiel à l'arrivée (2026-07-26) : la modale promo peut être déjà
+  // posée au chargement du formulaire — la fermer avant TOUTE interaction
+  // (upload de photos compris), pas seulement avant la catégorie.
+  await dismissInterstitials("arrivée sur le formulaire");
 
   // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
   // publiée sur Beebs — on échoue AVANT de remplir quoi que ce soit, avec un
@@ -1027,8 +1032,39 @@ async function waitFor(fn, timeoutMs = 5000) {
 // est ouvert (vérifié : 0 div __options panneau fermé, 1 seul ouvert). Le
 // scope DOM par champ remplace donc l'ancienne lecture différentielle
 // globale avant/après clic, devenue sans objet.
-const panelOf = (trigger) =>
-  trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
+// Tous les panneaux __options actuellement RENDUS (invariant vérifié sur DOM
+// live le 25/07 : 0 panneau fermé, 1 seul ouvert — un panneau présent est donc
+// forcément celui qu'on vient d'ouvrir).
+const panneauxVisibles = () =>
+  Array.from(document.querySelectorAll('div[class*="__options"]')).filter(estVisibleSansLayout);
+
+// Lecture scopée d'abord ; REPLI GLOBAL (2026-07-26) sinon. Preuve du trou :
+// capture du 26/07, panneau catégorie OUVERT à l'écran avec ses 5 options
+// pendant que le job échouait « aucune option rendue » — la lecture scopée
+// (parentElement du trigger) ne voyait pas un panneau pourtant rendu, donc le
+// panneau de CE champ n'est pas toujours monté en frère direct du trigger.
+// Le repli n'accepte le panneau global que s'il est UNIQUE (l'invariant
+// ci-dessus) : deux panneaux visibles = état imprévu, on préfère ne rien lire
+// que lire le mauvais champ. Repli loggé une fois : c'est la preuve demandée
+// pour départager lecture cassée vs panneau réellement absent.
+let panelOfRepliLogge = false;
+const panelOf = (trigger) => {
+  const scoped = trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
+  if (scoped) return scoped;
+  const panneaux = panneauxVisibles();
+  if (panneaux.length === 1) {
+    if (!panelOfRepliLogge) {
+      panelOfRepliLogge = true;
+      console.warn(
+        "[beebs] panelOf: panneau __options ABSENT sous le parent du trigger mais UNIQUE panneau " +
+        "visible dans le document — lecture par repli global. La structure de ce champ diffère de " +
+        "celle relevée le 25/07 (panneau non frère du trigger)."
+      );
+    }
+    return panneaux[0];
+  }
+  return null;
+};
 // Options du panneau OUVERT de ce champ : les boutons à texte non vide — le
 // seul autre bouton du panneau est le retour de l'en-tête mobile (md:hidden),
 // sans texte. textContent uniquement (fenêtre jamais rendue, cf. règle
@@ -1043,11 +1079,101 @@ const panelOptions = (trigger) => {
 const panelSearchInput = (trigger) =>
   panelOf(trigger)?.querySelector('input[type="text"]') ?? null;
 
+// ── Interstitiels Beebs (2026-07-26) ──────────────────────────────────────────
+// Cause PROUVÉE par capture (26/07) : la modale « Toujours plus sur l'appli »
+// (virement bancaire, options avancées — boutons « Ok, je télécharge l'app » /
+// « Je continue sur le web ») recouvre le formulaire ; derrière elle, Catégorie
+// reste sur « Sélectionner une catégorie ». Une modale de ce type pose des
+// écouteurs en phase de CAPTURE au niveau document (focus trap) : même un
+// .click() synthétique sur le trigger est neutralisé avant d'atteindre ses
+// handlers. Elle n'apparaît PAS à chaque session (condition d'apparition non
+// caractérisée — campagne, cookie, cadence ?) : c'est pour ça qu'un même build
+// réussissait un essai et échouait le suivant.
+// Détection STRUCTURELLE, jamais par libellé (il changera à la prochaine
+// campagne) : role=dialog / aria-modal / classe modal, visibles au sens
+// getComputedStyle (convention fenêtre non rendue). elementFromPoint est
+// volontairement ÉCARTÉ : c'est du hit-testing, dépendant du layout — même
+// famille que getClientRects, qui renvoie vide dans la fenêtre de travail
+// minimisée (règle du projet). La détection structurelle + la détection
+// d'effet (options rendues ?) suffisent.
+function findBlockingDialogs() {
+  const bruts = Array.from(
+    document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]')
+  )
+    .filter(estVisibleSansLayout)
+    // pas nos dropdowns (un panneau __options n'est jamais un interstitiel)
+    .filter((d) => !d.querySelector('div[class*="__options"]') && !d.closest('div[class*="__options"]'))
+    // le dialogue de suppression est MANIPULÉ par le flux delete, jamais fermé d'office
+    .filter((d) => !/supprimer mon annonce/i.test(texteDe(d)));
+  // Ne garder que les conteneurs EXTÉRIEURS (un wrapper + son contenu matchent
+  // souvent tous les deux « modal ») : un seul clic de fermeture par modale.
+  return bruts.filter((d) => !bruts.some((autre) => autre !== d && autre.contains(d)));
+}
+
+function decrisDialog(d) {
+  const boutons = Array.from(d.querySelectorAll('button, [role="button"]'))
+    .filter(estVisibleSansLayout)
+    .map((b) => texteDe(b))
+    .filter(Boolean)
+    .slice(0, 6);
+  return (
+    `<${d.tagName.toLowerCase()} class="${String(d.className).slice(0, 90)}" ` +
+    `role="${d.getAttribute("role") ?? ""}" aria-modal="${d.getAttribute("aria-modal") ?? ""}"> ` +
+    `boutons=${JSON.stringify(boutons)}`
+  );
+}
+
+// Ferme les interstitiels présents. Candidats par STRUCTURE, dans l'ordre :
+//   1. bouton de fermeture déclaré (aria-label close/fermer, classe close) ;
+//   2. <button> hors <a href>, en partant du DERNIER (l'action secondaire
+//      « rester sur le web » suit classiquement le CTA principal).
+// Le CTA store est EXCLU par filtre négatif (télécharge/app store/play) : le
+// cliquer ouvrirait la fiche du store dans l'onglet de travail — pire que la
+// modale. Chaque clic est VÉRIFIÉ (dialogue détaché ou plus visible) avant de
+// conclure ; un échec de fermeture est loggé, jamais silencieux.
+async function dismissInterstitials(contexte) {
+  const dialogs = findBlockingDialogs();
+  if (!dialogs.length) return { present: false, restants: 0 };
+  for (const d of dialogs) {
+    console.warn(`[beebs] interstitiel détecté (${contexte}) : ${decrisDialog(d)}`);
+    const fermetures = Array.from(
+      d.querySelectorAll('[aria-label*="clo" i], [aria-label*="ferm" i], [class*="close" i]')
+    ).filter(estVisibleSansLayout);
+    const boutons = Array.from(d.querySelectorAll("button"))
+      .filter(estVisibleSansLayout)
+      .filter((b) => !b.closest("a[href]"))
+      .filter((b) => !/t[ée]l[ée]charg|download|app\s*store|google\s*play/i.test(texteDe(b)))
+      .reverse();
+    let ferme = false;
+    for (const cible of [...fermetures, ...boutons]) {
+      realClick(cible);
+      await sleep(600);
+      if (!d.isConnected || !estVisibleSansLayout(d)) {
+        console.log(`[beebs] interstitiel fermé via « ${texteDe(cible) || cible.getAttribute("aria-label") || cible.className} »`);
+        ferme = true;
+        break;
+      }
+    }
+    if (!ferme) {
+      console.warn(
+        `[beebs] interstitiel NON fermé (${contexte}) — aucun candidat n'a eu d'effet : ${decrisDialog(d)}`
+      );
+    }
+  }
+  return { present: true, restants: findBlockingDialogs().length };
+}
+
 // Ouvre le panneau du champ et retourne UNIQUEMENT ses options, lues scopées
 // dans le div __options du champ (monté seulement panneau ouvert).
 async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = null } = {}) {
+  // Interstitiel éventuel AVANT le clic (même parade que selectCategory : la
+  // modale promo avale les clics), puis clic UNIQUEMENT si le panneau est
+  // constaté fermé — le clic BASCULE (cf. closePanel), et un panneau resté
+  // ouvert (tentative précédente, formulaire non rechargé) serait refermé.
+  await dismissInterstitials(`champ ${label ?? "?"}`);
   await humanPause();
-  trigger.click(); // ⚠️ BASCULE : re-cliquer ferme le panneau (cf. closePanel)
+  if (!panelOf(trigger)) trigger.click();
+  else console.log(`[beebs] openPanelOptions(${label ?? "?"}) : panneau déjà ouvert — pas de clic (bascule)`);
   await humanPause();
 
   const attendreOptions = async (ms) => {
@@ -1309,26 +1435,67 @@ async function selectCategory(path) {
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
 
   // Ouverture avec DÉTECTION D'EFFET (2026-07-23) — même parade que le clic
-  // eBay avalé (Medik8 R2) : un clic sur le trigger peut être perdu dans un
-  // re-render React, le panneau ne s'ouvre jamais et le 1er niveau échouait en
-  // « "Mode" introuvable, options: [] ». On ne considère le panneau ouvert que
-  // si des options sont RENDUES ; sinon on re-clique (3 tentatives).
+  // eBay avalé (Medik8 R2). ⚠️ RÉÉCRIT le 2026-07-26 : l'ancienne boucle
+  // re-cliquait sans regarder l'état, or le clic sur le déclencheur BASCULE
+  // (cf. closePanel) — clic 1 ouvre, clic 2 REFERME, clic 3 rouvre. Quand seule
+  // la LECTURE échouait (panneau ouvert mais non vu par l'ancien panelOf), les
+  // tentatives paires relisaient donc un panneau réellement fermé : c'est la
+  // parité constatée sur les captures du 26/07 (panneau ouvert avec 5 options
+  // sur l'une, formulaire intact sur l'autre). Règle : un retry ne doit JAMAIS
+  // toggler — on ne re-clique que panneau constaté FERMÉ, sinon on relit.
   let ouvert = false;
+  const iterations = []; // instrumentation : état constaté à chaque tentative
   for (let tentative = 0; tentative < 3 && !ouvert; tentative++) {
-    await humanPause();
-    trigger.click();
+    // Interstitiel D'ABORD : la modale « Toujours plus sur l'appli » avale le
+    // clic d'ouverture (capture du 26/07) — la fermer avant de cliquer, et à
+    // chaque tentative (elle peut apparaître en cours de route).
+    const modale = await dismissInterstitials(`catégorie, tentative ${tentative + 1}`);
+    const panneauAvant = panelOf(trigger);
+    if (!panneauAvant) {
+      await humanPause();
+      trigger.click();
+    } else {
+      console.log(
+        `[beebs] catégorie tentative ${tentative + 1}/3 : panneau DÉJÀ ouvert — pas de re-clic (bascule), relecture seule`
+      );
+    }
     await humanPause();
     const echeance = Date.now() + 2500;
     while (Date.now() < echeance) {
       if (panelOptions(trigger).length) { ouvert = true; break; }
       await sleep(100);
     }
-    if (!ouvert) console.warn(`[beebs] panneau catégorie non rendu après le clic ${tentative + 1}/3 — re-clic`);
+    iterations.push({
+      tentative: tentative + 1,
+      clique: !panneauAvant,
+      interstitiel: modale.present ? (modale.restants ? "présent NON fermé" : "fermé") : "absent",
+      panneauxVisibles: panneauxVisibles().length,
+      optionsLues: panelOptions(trigger).length,
+    });
+    if (!ouvert) {
+      console.warn(
+        `[beebs] catégorie tentative ${tentative + 1}/3 sans option lue — ${JSON.stringify(iterations[iterations.length - 1])}`
+      );
+    }
   }
   if (!ouvert) {
+    // Diagnostic COMPLET dans l'erreur : l'ancien message (« le panneau ne
+    // s'est pas ouvert après 3 clics ») affirmait un fait faux — ce test ne
+    // mesure que la LECTURE d'options, et le panneau était parfois ouvert à
+    // l'écran. Deux jours de fausses pistes (25-26/07) : le message doit
+    // rapporter ce qui est CONSTATÉ, pas une interprétation.
+    const scoped = trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
+    const visibles = panneauxVisibles();
+    const dialogs = findBlockingDialogs();
     throw new Error(
-      "Catégorie: le panneau Beebs ne s'est pas ouvert après 3 clics (aucune option rendue — " +
-      "aucun problème de catalogue). Le job repartira au prochain passage."
+      "Catégorie: aucune option lue après 3 tentatives (clic seulement si panneau fermé). Diagnostic — " +
+      `panneau scopé au trigger: ${scoped ? "présent" : "absent"} ; ` +
+      `panneaux __options visibles dans le document: ${visibles.length}` +
+      `${visibles.length ? ` (boutons: ${visibles[0].querySelectorAll("button").length})` : ""} ; ` +
+      `interstitiel bloquant: ${dialogs.length ? dialogs.map(decrisDialog).join(" | ") : "aucun"} ; ` +
+      `itérations: ${JSON.stringify(iterations)} ; ` +
+      `trigger: ${trigger.outerHTML.slice(0, 160)}. ` +
+      "Aucun problème de catalogue. Le job repartira au prochain passage."
     );
   }
 
