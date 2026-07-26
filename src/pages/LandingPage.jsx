@@ -10,10 +10,11 @@ import './landing.css';
 const CONTACT_EMAIL = 'support@fillsell.app';
 const APP_STORE_URL = 'https://apps.apple.com/app/id6762152785';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=app.fillsell.app';
-/* Badges stores masqués le temps que la review App Store passe (2026-07-24,
-   campagne TikTok en cours — éviter le « pourquoi c'est pas sur Apple ? »).
-   Repasser à true dès que l'app est publiée sur les deux stores. */
-const STORE_BADGES_VISIBLE = false;
+/* Badges stores affichés depuis le 2026-07-26 : l'app est publiée sur les DEUX
+   stores (App Store id6762152785 ; Play canal Production, release 20 / 2.3,
+   177 pays). Le flag couvre les deux badges d'un bloc — ne repasser à false que
+   si les deux fiches redeviennent indisponibles. */
+const STORE_BADGES_VISIBLE = true;
 const TIKTOK_URL = 'https://www.tiktok.com/@fill.sell';
 const X_URL = 'https://x.com/fillsellapp';
 
