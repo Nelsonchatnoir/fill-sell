@@ -99,23 +99,51 @@ Réponds sans astérisques, avec des emojis, en français, de façon concise (5-
 Utilise des retours à la ligne pour aérer la réponse.`;
 }
 
+// Réécrit le 2026-07-26 : le prix doit s'ancrer sur la VALEUR MARCHÉ de
+// l'article (positionnement de la marque, prix neuf typique, décote occasion),
+// JAMAIS sur l'historique de ventes de l'utilisateur — une moyenne perso
+// injectée dans le prompt faisait estimer une veste Zara à 180-220 €.
+// L'exigence « fourchette réaliste » obligeait le modèle à inventer un chiffre
+// même sans repère : remplacée par une clause d'honnêteté obligatoire.
 function buildPriceAdviceSystem(lang: string, platforms: string, currency: string): string {
-  if (lang === "en") return `The user is asking for a resale price recommendation for a specific item.
+  if (lang === "en") return `The user is asking for a resale price recommendation for a specific secondhand item.
 User currency: ${currency}. Interpret amounts without explicit currency as ${currency}.
+ANCHOR your estimate on the MARKET VALUE of the item itself, nothing else:
+- the brand and its positioning (fast fashion / mid-range / premium / luxury)
+- the typical new retail price of this kind of item
+- the usual secondhand discount for the category, and the condition if mentioned
+Benchmark: a fast-fashion piece (Zara, H&M, Primark, Shein, Kiabi…) typically
+resells secondhand for 10-25% of its new price. Mid-range roughly 30-50%.
+Never base the price on who the user is or what they usually sell.
 Reply ONLY with:
-💰 Recommended resale price range (realistic, in ${currency})
+💰 Resale price range in ${currency}, anchored as above
 📈 If purchase price mentioned: estimated margin + verdict (🔥 excellent / ✅ good / ⚠️ average / ❌ avoid)
 📦 Recommended platform(s) among: ${platforms} (1-2 max)
 💡 1 short tip to sell faster
-No general business analysis. Short reply (5-6 lines max). With emojis. No asterisks.`;
-  return `L'utilisateur te demande un conseil de prix de revente pour un article précis.
+MANDATORY HONESTY: if you don't know the item, if it's rare, or if the
+description is too vague to estimate seriously, SAY SO — give a wide range
+labeled as uncertain, or suggest a photo analysis in the Lens tab. NEVER
+invent a precise range you cannot justify.
+No general business analysis. Short reply (5-7 lines max). With emojis. No asterisks.`;
+  return `L'utilisateur te demande un conseil de prix de revente pour un article d'occasion précis.
 Devise de l'utilisateur : ${currency}. Interpréter les montants sans devise explicite comme étant en ${currency}.
+ANCRE ton estimation sur la VALEUR MARCHÉ de l'article lui-même, rien d'autre :
+- la marque et son positionnement (fast fashion / milieu de gamme / premium / luxe)
+- le prix neuf typique de ce type d'article
+- la décote occasion usuelle de la catégorie, et l'état s'il est mentionné
+Repère : une pièce de fast fashion (Zara, H&M, Primark, Shein, Kiabi…) se
+revend d'occasion typiquement 10-25 % de son prix neuf. Milieu de gamme : environ 30-50 %.
+Ne base jamais le prix sur qui est l'utilisateur ni sur ce qu'il vend d'habitude.
 Réponds UNIQUEMENT avec :
-💰 Prix de revente recommandé (fourchette réaliste, en ${currency})
+💰 Fourchette de prix de revente en ${currency}, ancrée comme ci-dessus
 📈 Si prix d'achat mentionné : marge estimée + verdict (🔥 excellent / ✅ bon / ⚠️ moyen / ❌ éviter)
 📦 Plateforme(s) conseillée(s) parmi : ${platforms} (1-2 max)
 💡 1 conseil court pour vendre plus vite
-Pas d'analyse business générale. Réponse courte (5-6 lignes max). Avec emojis. Sans astérisques.`;
+HONNÊTETÉ OBLIGATOIRE : si tu ne connais pas l'article, s'il est rare, ou si
+la description est trop vague pour estimer sérieusement, DIS-LE — donne une
+fourchette large assumée comme incertaine, ou propose une analyse photo dans
+l'onglet Lens. N'invente JAMAIS une fourchette précise que tu ne peux pas justifier.
+Pas d'analyse business générale. Réponse courte (5-7 lignes max). Avec emojis. Sans astérisques.`;
 }
 
 function buildBuySystem(lang: string, platforms: string, currency: string): string {
@@ -258,7 +286,7 @@ serve(async (req) => {
     } else if (body.priceAdvice) {
       systemPrompt = buildPriceAdviceSystem(_lang, platforms, currency);
       userMsg = body.priceAdvice;
-      maxTokens = 250;
+      maxTokens = 300; // 5-7 lignes : la clause d'honnêteté peut allonger d'une ligne
     } else if (body.question) {
       systemPrompt = buildQASystem(_lang, platforms, currency);
       userMsg = body.question;

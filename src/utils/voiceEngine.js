@@ -226,8 +226,12 @@ function handleSearch(task, context) {
   else if (status === "sold")
     filtered = filtered.filter(i => i.statut === "vendu" || i.statut === "sold");
 
-  if (brand)
-    filtered = filtered.filter(i => norm(i.marque).includes(norm(brand)));
+  if (brand) {
+    // norm("") == "" et includes("") matche TOUT : une marque vide/blanche ne
+    // doit rien matcher, pas tout matcher (même trou que l'ancre price_advice).
+    const nb = norm(brand);
+    filtered = filtered.filter(i => nb && norm(i.marque).includes(nb));
+  }
   if (categorie) {
     const normCat = norm(categorie);
     filtered = filtered.filter(i =>
@@ -305,8 +309,10 @@ function handleAnalyticsQuery(task, context) {
 
   if (categorie)
     filtered = filtered.filter(s => s.categorie === categorie || s.type === categorie);
-  if (brand)
-    filtered = filtered.filter(s => norm(s.marque).includes(norm(brand)));
+  if (brand) {
+    const nb = norm(brand); // vide → rien, jamais tout (cf. filtre inventaire)
+    filtered = filtered.filter(s => nb && norm(s.marque).includes(nb));
+  }
 
   let value = 0;
   let label = "";
@@ -372,8 +378,10 @@ function handleAnalyticsBest(task, context) {
   if (periode) filtered = filterByPeriod(filtered, periode, null, null);
   if (categorie)
     filtered = filtered.filter(s => s.categorie === categorie || s.type === categorie);
-  if (brand)
-    filtered = filtered.filter(s => norm(s.marque).includes(norm(brand)));
+  if (brand) {
+    const nb = norm(brand); // vide → rien, jamais tout (cf. filtre inventaire)
+    filtered = filtered.filter(s => nb && norm(s.marque).includes(nb));
+  }
 
   if (groupBy === "categorie") {
     const byCategory = {};
@@ -643,6 +651,7 @@ function handlePlatformStats(task, context) {
     case 'by_name': {
       if (!plateforme) return { intent: task.intent, taskData: task.data, status: 'error', data: {}, message: lang === 'en' ? 'Platform name required' : 'Nom de plateforme requis' };
       const normP = norm(plateforme);
+      if (!normP) return { intent: task.intent, taskData: task.data, status: 'error', data: {}, message: lang === 'en' ? 'Platform name required' : 'Nom de plateforme requis' };
       const found = platSales.find(p => norm(p.plateforme) === normP || norm(p.plateforme).includes(normP) || normP.includes(norm(p.plateforme)));
       if (!found) return { intent: task.intent, taskData: task.data, status: 'success', data: { metric, empty: true, plateforme }, message: lang === 'en' ? `No sales found on ${plateforme}` : `Aucune vente trouvée sur ${plateforme}` };
       const msg = lang === 'en'
@@ -1140,20 +1149,10 @@ export async function executeVoiceTasks(tasks, context) {
               if (prix_achat) lines.push(`Prix d'achat : ${prix_achat} ${cur}`);
               if (categorie) lines.push(`Catégorie : ${categorie}`);
             }
-            // Enrich with past similar sales
-            const normQ = norm(itemLabel);
-            const similar = context.sales.filter(s => {
-              const t = norm(s.titre || s.title || s.nom || "");
-              const m = norm(s.marque || "");
-              return (normQ && (t.includes(normQ) || normQ.includes(t) || m.includes(norm(marque || ""))));
-            }).slice(0, 3);
-            if (similar.length) {
-              const avgSell = similar.reduce((a, s) => a + getPrixVente(s), 0) / similar.length;
-              const avgMargin = similar.reduce((a, s) => a + getMargin(s), 0) / similar.length;
-              lines.push(context.lang === "en"
-                ? `Your past sales of similar items: avg sell price ${Math.round(avgSell)} ${cur}, avg margin ${Math.round(avgMargin)} ${cur}`
-                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)} ${cur}, marge moyenne ${Math.round(avgMargin)} ${cur}`);
-            }
+            // AUCUN chiffre issu de l'historique de ventes ici : une moyenne
+            // perso injectée dans le prompt servait d'ancre de prix (veste Zara
+            // estimée 180-220 € parce que l'utilisateur vend cher). Le prix doit
+            // s'ancrer sur la valeur marché de l'article, côté deal-analysis.
             const priceAdvice = lines.join("\n");
             const res = await fetch(`${supabaseUrl}/functions/v1/deal-analysis`, {
               method: "POST",
@@ -1188,20 +1187,8 @@ export async function executeVoiceTasks(tasks, context) {
               if (plateforme_source) lines.push(`Plateforme : ${plateforme_source}`);
               if (categorie) lines.push(`Catégorie : ${categorie}`);
             }
-            // Enrich with past similar sales
-            const normQ = norm(itemLabel);
-            const similar = context.sales.filter(s => {
-              const t = norm(s.titre || s.title || s.nom || "");
-              const m = norm(s.marque || "");
-              return normQ && (t.includes(normQ) || normQ.includes(t) || m.includes(norm(marque || "")));
-            }).slice(0, 3);
-            if (similar.length) {
-              const avgSell = similar.reduce((a, s) => a + getPrixVente(s), 0) / similar.length;
-              const avgMargin = similar.reduce((a, s) => a + getMargin(s), 0) / similar.length;
-              lines.push(context.lang === "en"
-                ? `Your past sales of similar items: avg sell price ${Math.round(avgSell)} ${cur}, avg margin ${Math.round(avgMargin)} ${cur}`
-                : `Tes ventes passées similaires : prix vente moyen ${Math.round(avgSell)} ${cur}, marge moyenne ${Math.round(avgMargin)} ${cur}`);
-            }
+            // Même règle que price_advice : jamais de moyenne chiffrée issue de
+            // l'historique dans le prompt — c'est une ancre qui fausse le verdict.
             const buyAdvice = lines.join("\n");
             const res = await fetch(`${supabaseUrl}/functions/v1/deal-analysis`, {
               method: "POST",
