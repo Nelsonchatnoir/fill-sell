@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="__LANG__">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#EDEAE0; --paper:#F6F5F1; --ink:#10201B;
+    --teal:#2F9E90; --teal-deep:#1B6E62; --mute:#6B7772; --border:#E1DDD2;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#c9c6bd;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Space Grotesk',sans-serif;}
+  .banner{
+    width:1024px;height:500px;position:relative;overflow:hidden;
+    background:
+      radial-gradient(680px 520px at 88% 12%, rgba(47,158,144,0.18), rgba(47,158,144,0) 62%),
+      radial-gradient(520px 420px at 96% 108%, rgba(27,110,98,0.16), rgba(27,110,98,0) 60%),
+      var(--canvas);
+    color:var(--ink);
+  }
+  /* LEFT: brand + message */
+  .left{position:absolute;left:76px;top:0;height:500px;width:560px;display:flex;flex-direction:column;justify-content:center;}
+  .brand{display:flex;align-items:center;gap:16px;margin-bottom:30px;}
+  .brand img{width:74px;height:74px;border-radius:19px;box-shadow:0 12px 26px rgba(27,110,98,0.24);}
+  .brand .word{font-weight:700;font-size:52px;letter-spacing:-0.02em;color:var(--ink);}
+  .brand .word b{font-weight:700;color:var(--teal-deep);}
+  h1{font-weight:700;font-size:52px;line-height:1.02;letter-spacing:-0.03em;margin-bottom:20px;}
+  h1 .hl{color:var(--teal-deep);}
+  .sub{font-weight:500;font-size:22px;line-height:1.35;color:var(--mute);max-width:500px;margin-bottom:34px;}
+  /* platform row */
+  .plats{display:flex;align-items:center;gap:14px;}
+  .plats .lbl{font-weight:600;font-size:14px;letter-spacing:0.02em;text-transform:uppercase;color:var(--mute);}
+  .plats .logos{display:flex;align-items:center;gap:12px;}
+  .plats .chip{width:44px;height:44px;border-radius:13px;background:var(--paper);border:1px solid var(--border);
+    box-shadow:0 4px 12px rgba(16,32,27,0.06);display:flex;align-items:center;justify-content:center;}
+  .plats .chip img{width:26px;height:26px;border-radius:6px;object-fit:contain;}
+  .plats .chip svg{width:24px;height:24px;}
+  /* RIGHT: hero app icon */
+  .right{position:absolute;right:70px;top:50%;transform:translateY(-50%);width:360px;height:360px;display:flex;align-items:center;justify-content:center;}
+  .halo{position:absolute;width:360px;height:360px;border-radius:50%;
+    background:radial-gradient(circle at 50% 45%, rgba(47,158,144,0.28), rgba(47,158,144,0) 66%);}
+  .tile{position:relative;width:232px;height:232px;border-radius:54px;
+    box-shadow:0 30px 64px rgba(8,40,36,0.30), 0 8px 22px rgba(16,32,27,0.14);transform:rotate(-6deg);}
+  .tile img{width:100%;height:100%;border-radius:54px;display:block;}
+  /* floating scan badge */
+  .scan{position:absolute;top:38px;right:6px;transform:rotate(4deg);
+    background:linear-gradient(140deg,var(--teal),var(--teal-deep));color:#fff;
+    font-weight:700;font-size:16px;letter-spacing:0.01em;border-radius:16px;padding:11px 16px;
+    box-shadow:0 14px 30px rgba(27,110,98,0.34);display:flex;align-items:center;gap:8px;}
+  .price{position:absolute;bottom:34px;left:-6px;transform:rotate(-3deg);
+    background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:10px 15px;
+    box-shadow:0 14px 30px rgba(16,32,27,0.14);display:flex;flex-direction:column;line-height:1.05;}
+  .price .k{font-weight:600;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:var(--mute);}
+  .price .v{font-weight:700;font-size:22px;color:var(--teal-deep);letter-spacing:-0.02em;}
+</style>
+</head>
+<body>
+  <div class="banner">
+    <div class="left">
+      <div class="brand">
+        <img src="file:///C:/Users/nicol/fill-and-sell/public/icon-512x512.png" alt="">
+        <span class="word">Fill<b>Sell</b></span>
+      </div>
+      <h1>__TAGLINE__</h1>
+      <p class="sub">__SUB__</p>
+      <div class="plats">
+        <span class="lbl">__POSTS__</span>
+        <div class="logos">
+          <span class="chip"><svg viewBox="0 0 24 24" fill="#007782" xmlns="http://www.w3.org/2000/svg"><path d="M19.316 0c-.258 0-.571.217-1.415.953-.3.108-.627.027-1.008.613-2.15 3.09-3.825 14.648-5.255 17.984-.286-1.444-.885-10.837-1.116-13.41-.028-.477.027-1.076.027-1.43 0-2.368-.516-3.567-2.886-3.567-1.198 0-2.382.436-3.008 1.226-.299.408-.409.708-.409 1.443 0 4.915 1.171 12.973 2.478 18.228C7.132 23.688 8.603 24 9.99 24c.654 0 1.307-.081 2.233-.544 3.212-1.567 4.07-5.84 4.9-9.993.15-.749.899-4.37 1.253-6.275.476-2.6 1.02-5.54 1.347-6.617C19.833.245 19.63 0 19.317 0z"/></svg></span>
+          <span class="chip"><img src="file:///C:/Users/nicol/fill-and-sell/src/components/platform-logos/source/leboncoin-icon.png" alt=""></span>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="#E53238" xmlns="http://www.w3.org/2000/svg"><path d="M6.056 12.132v-4.92h1.2v3.026c.59-.703 1.402-.906 2.202-.906 1.34 0 2.828.904 2.828 2.855 0 .233-.015.457-.06.668.24-.953 1.274-1.305 2.896-1.344.51-.018 1.095-.018 1.56-.018v-.135c0-.885-.556-1.244-1.53-1.244-.72 0-1.245.3-1.305.81h-1.275c.136-1.29 1.5-1.62 2.686-1.62 1.064 0 1.995.27 2.415 1.02l-.436-.84h1.41l2.055 4.125 2.055-4.126H24l-3.72 7.305h-1.346l1.07-2.04-2.33-4.38c.13.255.2.555.2.93v2.46c0 .346.01.69.04 1.005H16.8a6.543 6.543 0 01-.046-.765c-.603.734-1.32.96-2.32.96-1.48 0-2.272-.78-2.272-1.695 0-.15.015-.284.037-.405-.3 1.246-1.36 2.086-2.767 2.086-.87 0-1.694-.315-2.2-.93 0 .24-.015.494-.04.734h-1.18c.02-.39.04-.855.04-1.245v-1.05h-4.83c.065 1.095.818 1.74 1.853 1.74.718 0 1.355-.3 1.568-.93h1.24c-.24 1.29-1.61 1.725-2.79 1.725C.95 15.009 0 13.822 0 12.232c0-1.754.982-2.91 3.116-2.91 1.688 0 2.93.886 2.94 2.806v.005zm9.137.183c-1.095.034-1.77.233-1.77.95 0 .465.36.97 1.305.97 1.26 0 1.935-.69 1.935-1.814v-.13c-.45 0-.99.006-1.484.022h.012zm-6.06 1.875c1.11 0 1.876-.806 1.876-2.02s-.768-2.02-1.893-2.02c-1.11 0-1.89.806-1.89 2.02s.765 2.02 1.875 2.02h.03zm-4.35-2.514c-.044-1.125-.854-1.546-1.725-1.546-.944 0-1.694.474-1.815 1.546z"/></svg></span>
+          <span class="chip"><img src="file:///C:/Users/nicol/fill-and-sell/src/components/platform-logos/source/beebs-icon.png" alt=""></span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="halo"></div>
+      <div class="tile"><img src="file:///C:/Users/nicol/fill-and-sell/public/icon-512x512.png" alt=""></div>
+      <div class="scan">__SCAN__</div>
+      <div class="price"><span class="k">__PRICEK__</span><span class="v">24,00 €</span></div>
+    </div>
+  </div>
+</body>
+</html>

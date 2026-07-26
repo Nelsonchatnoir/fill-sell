@@ -36,3 +36,10 @@ build/
 # Scratch de session (QA locale, captures de review) — jamais commites
 qa_login.mjs
 screenshots-review/
+# Scripts jetables de retouche d'images (composition de mockups store, recadrage
+# Play) — gardés en local, réécrits au besoin
+_tmp_*.mjs
+# Exports de captures pour les fiches store (~10 Mo de PNG déjà téléversés sur
+# App Store Connect et Play Console) : sortis du repo pour ne pas l'alourdir.
+# Le générateur, lui, est versionné (marketing/).
+assets/
