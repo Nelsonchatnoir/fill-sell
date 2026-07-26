@@ -59,6 +59,33 @@ async function validCustomerIdOrNull(customerId: string | null, userId: string):
   }
 }
 
+// ── Garde-fou price archivé (2026-07-26) ─────────────────────────────────────
+// « The price specified is inactive » : éditer un tarif dans le dashboard
+// Stripe CRÉE un nouveau price et ARCHIVE l'ancien — le secret STRIPE_PRICE_*
+// devient silencieusement invalide et le Checkout casse pour tout le monde
+// (vécu le 26/07 : STRIPE_PRICE_STANDARD datait du 14/05, son price avait été
+// remplacé lors d'une édition de tarif ; un utilisateur a cliqué 7× sans
+// pouvoir payer). On vérifie donc le price AVANT d'ouvrir la session : erreur
+// propre `payment_unavailable` pour le front + log qui nomme le secret à
+// reposer, au lieu de l'erreur Stripe brute en anglais.
+async function activePriceOrNull(priceId: string | undefined, secretName: string): Promise<string | null> {
+  if (!priceId) {
+    console.error(`[checkout] ${secretName} absent des secrets`);
+    return null;
+  }
+  try {
+    const price = await stripe.prices.retrieve(priceId);
+    if (!(price as Stripe.Price).active) {
+      console.error(`[checkout] ${secretName}=${priceId} est ARCHIVÉ chez Stripe — reposer le price actif : npx supabase secrets set ${secretName}=price_…`);
+      return null;
+    }
+    return priceId;
+  } catch (err) {
+    console.error(`[checkout] ${secretName}=${priceId} introuvable chez Stripe (${err.message})`);
+    return null;
+  }
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -113,10 +140,10 @@ serve(async (req) => {
     // sur stripe:<session.id>.
     if (typeof product === "string" && COIN_PACKS[product]) {
       const pack = COIN_PACKS[product];
-      const packPriceId = Deno.env.get(pack.envKey);
+      const packPriceId = await activePriceOrNull(Deno.env.get(pack.envKey), pack.envKey);
       if (!packPriceId) {
-        return new Response(JSON.stringify({ error: "pack_price_not_configured", pack: product }), {
-          status: 500, headers: { "Content-Type": "application/json", ...CORS },
+        return new Response(JSON.stringify({ error: "payment_unavailable", pack: product }), {
+          status: 503, headers: { "Content-Type": "application/json", ...CORS },
         });
       }
       const { data: packProfile } = await supabase
@@ -149,9 +176,15 @@ serve(async (req) => {
     // n'en a jamais eu (les 600 pièces mensuelles seraient arbitrables :
     // s'abonner, brûler les pièces, annuler).
     const isProPlan = product === "pro";
-    const priceId = isProPlan
-      ? Deno.env.get("STRIPE_PRICE_PRO")!
-      : Deno.env.get("STRIPE_PRICE_STANDARD")!;
+    const priceSecret = isProPlan ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_STANDARD";
+    // Vérifié actif AVANT toute session ou upgrade in situ (le chemin upgrade
+    // ci-dessous pousse le même priceId dans subscriptions.update).
+    const priceId = await activePriceOrNull(Deno.env.get(priceSecret), priceSecret);
+    if (!priceId) {
+      return new Response(JSON.stringify({ error: "payment_unavailable" }), {
+        status: 503, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
     const planType = isProPlan ? "pro" : "standard";
 
     // Réutilise le customer Stripe existant (historique de facturation unifié —

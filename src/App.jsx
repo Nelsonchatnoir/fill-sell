@@ -542,7 +542,11 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
       if(error) throw new Error(error);
       window.location.href = url;
     } catch(e) {
-      alert(lang==='en'?`Error: ${e.message}`:`Erreur : ${e.message}`);
+      // Même mapping que triggerCheckout : pas d'erreur Stripe brute (26/07).
+      console.error('[checkout] error:', e);
+      alert(e.message==='payment_unavailable'
+        ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie dans quelques minutes.")
+        :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant."));
       setLoading(false);
     }
   }
@@ -1998,8 +2002,14 @@ export default function App({ loginOnly = false }){
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
     }catch(e){
+      // Jamais l'erreur Stripe brute en anglais à l'utilisateur (vécu le 26/07 :
+      // « The price specified is inactive » affiché tel quel, 7 clics sans
+      // conversion). payment_unavailable = price archivé/absent détecté par le
+      // garde-fou serveur ; le détail technique reste en console.
       console.error('[checkout] error:', e);
-      alert("Erreur : "+e.message);
+      alert(e.message==='payment_unavailable'
+        ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie dans quelques minutes.")
+        :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant."));
     }
   }
 

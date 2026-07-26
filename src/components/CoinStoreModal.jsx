@@ -53,7 +53,16 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
         window.location.href = url;
       }
     } catch (e) {
-      setMsg({ ok: false, text: lang === "en" ? `Error: ${e.message}` : `Erreur : ${e.message}` });
+      // payment_unavailable = price Stripe archivé/absent détecté par le
+      // garde-fou de create-checkout-session (26/07) — message propre, le
+      // détail technique reste en console.
+      console.error("[coins] purchase error:", e);
+      setMsg({
+        ok: false,
+        text: e.message === "payment_unavailable"
+          ? (lang === "en" ? "Payment is temporarily unavailable. Please try again shortly." : "Le paiement est momentanément indisponible. Réessaie dans quelques minutes.")
+          : (lang === "en" ? `Error: ${e.message}` : `Erreur : ${e.message}`),
+      });
     } finally {
       setBusy(null);
     }
