@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from 'react';
-import { Camera, Mic, Sparkles, Plus, HelpCircle, X } from 'lucide-react';
+import { Camera, Mic, Sparkles, Plus, HelpCircle, X, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -42,15 +42,21 @@ function LensScanHome({
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
+  const [showPhotoSheet, setShowPhotoSheet] = useState(false);
   const maxPhotos = 5; // uniforme tous tiers (2026-07-17) — plus de perk Pro-8
   const photoCount = lensPhotos.length;
 
   // Deux actions distinctes en natif (reprise S5, 2026-07-25) : caméra directe
-  // (getPhoto, une photo) ET photothèque (pickImages, multi-sélection). Sur le
-  // web, les deux retombent sur l'input file multiple — la feuille du
-  // navigateur propose déjà caméra + galerie (même logique que le stepper).
-  const openCamera  = () => (isNative && handleLensCameraNative ? handleLensCameraNative() : lensFileRef.current?.click());
-  const openGallery = () => (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click());
+  // (getPhoto, une photo) ET photothèque (pickImages, multi-sélection). Depuis
+  // le 2026-07-26 elles sont réunies derrière UNE feuille de choix maison
+  // (openPicker) : le tap sur le viseur ouvre « Prendre une photo / Choisir
+  // dans la photothèque » — feuille in-app plutôt que CameraSource.Prompt ou
+  // @capacitor/action-sheet, pour garder la multi-sélection de pickImages et
+  // ne pas ajouter de plugin natif. Sur le web, tout retombe sur l'input file
+  // multiple — la feuille du navigateur propose déjà caméra + galerie.
+  const openCamera  = () => { setShowPhotoSheet(false); (isNative && handleLensCameraNative ? handleLensCameraNative() : lensFileRef.current?.click()); };
+  const openGallery = () => { setShowPhotoSheet(false); (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click()); };
+  const openPicker  = () => (isNative && handleLensCameraNative && handleLensPhotoNative ? setShowPhotoSheet(true) : lensFileRef.current?.click());
   const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
 
   const analyzeDisabled = !lensPhotos.length || lensLoading;
@@ -67,6 +73,8 @@ function LensScanHome({
         }
         .lens-ring-pulse { animation: lensRingPulse 2.8s cubic-bezier(0.2,0.6,0.4,1) infinite; }
         .lens-ring-pulse-delay { animation-delay: 0.9s; }
+        @keyframes lensSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .lens-photo-sheet { animation: lensSheetUp 0.22s cubic-bezier(0.2,0.8,0.3,1); }
       `}</style>
 
       <input ref={lensFileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleLensPhoto} />
@@ -87,10 +95,10 @@ function LensScanHome({
 
         {/* Viewfinder hero CTA */}
         <div style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 0', zIndex:10 }}>
-          {/* Le viseur = prise de vue directe (icône caméra) ; la photothèque a
-              son bouton dédié juste dessous en natif. Sur le web les deux
-              ouvrent le même input file. */}
-          <button onClick={openCamera} style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:210, height:210, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+          {/* Le viseur ouvre la feuille de choix caméra/photothèque en natif ;
+              sur le web il ouvre l'input file (la feuille du navigateur
+              propose déjà les deux). */}
+          <button onClick={openPicker} style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:210, height:210, background:'none', border:'none', cursor:'pointer', padding:0 }}>
             <span className="lens-ring-pulse" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
             <span className="lens-ring-pulse lens-ring-pulse-delay" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
             <span style={{ position:'absolute', inset:26, borderRadius:'50%', border:'1px solid rgba(47,158,144,0.25)' }} />
@@ -103,14 +111,6 @@ function LensScanHome({
             {photoCount === 0 ? t('lensViewfinderEmpty') : tpl('lensViewfinderPhotos', { n:photoCount })}
           </span>
 
-          {/* Photothèque (multi-sélection) — bouton dédié en natif uniquement :
-              sur le web l'input file couvre déjà les deux chemins. */}
-          {isNative && photoCount < maxPhotos && (
-            <button onClick={openGallery} style={{ display:'flex', alignItems:'center', gap:6, marginTop:10, padding:'8px 16px', borderRadius:999, background:'#FFFFFF', border:'1px solid #E7E3D8', cursor:'pointer', fontSize:13, fontWeight:600, color:'#6B7A75', fontFamily:'inherit' }}>
-              🖼️ {lang === 'en' ? 'Choose from library' : 'Choisir dans la photothèque'}
-            </button>
-          )}
-
           {photoCount > 0 && (
             <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, flexWrap:'wrap', justifyContent:'center', padding:'0 24px' }}>
               {lensPhotos.map((p, i) => (
@@ -120,7 +120,7 @@ function LensScanHome({
                 </div>
               ))}
               {photoCount < maxPhotos && (
-                <button onClick={openGallery} style={{ width:44, height:44, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'1px dashed #D8D2C4', cursor:'pointer' }}>
+                <button onClick={openPicker} style={{ width:44, height:44, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'1px dashed #D8D2C4', cursor:'pointer' }}>
                   <Plus size={15} color="#8A8578" />
                 </button>
               )}
@@ -193,6 +193,57 @@ function LensScanHome({
           <PlatformMarquee />
         </div>
       </div>
+
+      {/* ── Feuille de choix caméra / photothèque (natif uniquement) ── */}
+      {showPhotoSheet && (
+        <div
+          onClick={() => setShowPhotoSheet(false)}
+          style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+        >
+          <div
+            className="lens-photo-sheet"
+            onClick={e => e.stopPropagation()}
+            style={{ width:'100%', maxWidth:520, boxSizing:'border-box', background:UI.paper, border:`1px solid ${UI.border}`, borderBottom:'none', borderRadius:'24px 24px 0 0', padding:'20px 20px calc(16px + env(safe-area-inset-bottom))', boxShadow:'0 -18px 50px rgba(16,32,27,0.25)', fontFamily:'inherit' }}
+          >
+            <div style={{ width:40, height:4, borderRadius:999, background:'#D8D2C4', margin:'0 auto 16px' }} />
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <button
+                onClick={openCamera}
+                style={{ display:'flex', alignItems:'center', gap:12, width:'100%', boxSizing:'border-box', padding:'14px 14px', borderRadius:16, background:UI.card, border:`1px solid ${UI.border}`, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}
+              >
+                <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})` }}>
+                  <Camera size={19} color="#FFFFFF" strokeWidth={2} />
+                </span>
+                <span style={{ fontSize:15, fontWeight:600, color:INK }}>
+                  {lang === 'en' ? 'Take a photo' : 'Prendre une photo'}
+                </span>
+              </button>
+              <button
+                onClick={openGallery}
+                style={{ display:'flex', alignItems:'center', gap:12, width:'100%', boxSizing:'border-box', padding:'14px 14px', borderRadius:16, background:UI.card, border:`1px solid ${UI.border}`, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}
+              >
+                <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:UI.chip }}>
+                  <ImageIcon size={19} color={TEAL_DEEP} strokeWidth={2} />
+                </span>
+                <span style={{ display:'flex', flexDirection:'column' }}>
+                  <span style={{ fontSize:15, fontWeight:600, color:INK }}>
+                    {lang === 'en' ? 'Choose from library' : 'Choisir dans la photothèque'}
+                  </span>
+                  <span style={{ fontSize:12, color:MUTE }}>
+                    {lang === 'en' ? `Up to ${maxPhotos} photos` : `Jusqu'à ${maxPhotos} photos`}
+                  </span>
+                </span>
+              </button>
+              <button
+                onClick={() => setShowPhotoSheet(false)}
+                style={{ width:'100%', boxSizing:'border-box', padding:'13px 0', borderRadius:999, background:'#FFFFFF', border:`1px solid ${UI.border}`, cursor:'pointer', fontSize:14, fontWeight:600, color:MUTE, fontFamily:'inherit', marginTop:2 }}
+              >
+                {lang === 'en' ? 'Cancel' : 'Annuler'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Notice « Comment ça marche ? » ── */}
       {showLensHelp && (
