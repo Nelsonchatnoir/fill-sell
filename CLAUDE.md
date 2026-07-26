@@ -1,5 +1,28 @@
 # FillSell — Instructions Claude
 
+## Dossier de travail — UN SEUL, sans exception
+
+- Le SEUL dossier de travail est `C:\Users\nicol\fill-and-sell\`. Il n'en
+  existe pas d'autre : l'ancien worktree
+  `C:\Users\nicol\fill-and-sell-chrome-extension\` a été SUPPRIMÉ le
+  26/07/2026 (il a coûté une matinée : zip CWS du 24/07 parti sans le fix
+  Beebs, deux extensions actives se disputant les jobs). Si un rapport, une
+  mémoire ou un commentaire de code y fait encore référence, il est périmé —
+  ne JAMAIS y rediriger Nico, ne jamais le recréer.
+- L'extension unpacked se charge dans Chrome depuis
+  `C:\Users\nicol\fill-and-sell\build\extension\` (produit par
+  `npm run build:extension`). Aucun autre chemin.
+- UNE SEULE extension FillSell active dans Chrome à la fois — jamais la
+  version Web Store ET une unpacked ensemble : elles pollent les mêmes jobs,
+  se les disputent, et `handler_build` en base ment sur qui a traité quoi.
+  Avant un test unpacked : désactiver/retirer la version Web Store.
+- Un push sur main ne déploie PAS l'extension. Le déploiement, c'est :
+  `npm run package:extension` (qui refuse tout paquet non traçable), puis
+  téléverser `build\fillsell-extension-<version>-cws.zip` sur la fiche
+  Chrome Web Store, ET cliquer « Envoyer pour examen ». Tant que ces trois
+  gestes ne sont pas faits, les utilisateurs tournent sur l'ancien code —
+  vérifiable par `profiles.extension_build` / `cross_post_jobs.handler_build`.
+
 ## Format des réponses
 
 Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ```) pour faciliter le copier-coller. Diagnostics, rapports, récapitulatifs, listes de changements — tout doit être dans un bloc.
