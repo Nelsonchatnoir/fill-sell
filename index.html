@@ -32,15 +32,22 @@
     <link rel="canonical" href="https://fillsell.app" />
     <meta name="theme-color" content="#2F9E90" />
 
-    <!-- Favicons -->
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/icon_20x20.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icon_40x40.png" />
-    <link rel="icon" type="image/png" sizes="48x48" href="/icon_40x40.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icon_180x180.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/icon_152x152.png" />
-    <link rel="apple-touch-icon" sizes="120x120" href="/icon_120x120.png" />
-    <link rel="apple-touch-icon" sizes="76x76" href="/icon_76x76.png" />
+    <!-- Favicons — Google (résultats de recherche, mobile surtout) n'accepte
+         qu'une icône CARRÉE dont le côté est un multiple de 48 px (48, 96, 144,
+         192…), servie à une URL STABLE et non bloquée par robots.txt. Sinon :
+         globe gris générique. Constat 2026-07-26, ce bloc déclarait :
+           sizes="48x48" → /icon_40x40.png  (fichier réellement 40x40)
+           sizes="32x32" → /icon_40x40.png  et sizes="16x16" → /icon_20x20.png
+           4 apple-touch-icon en 180/152/120/76 — aucun multiple de 48
+         Donc AUCUN candidat conforme. Règles à tenir si on retouche ce bloc :
+         1. l'attribut sizes doit correspondre aux vraies dimensions du fichier
+            (vérifier les octets, pas le nom) ;
+         2. tout href déclaré ici est un candidat favicon Google : ne pas y
+            remettre de taille non multiple de 48 (76/120/152/180/512…) ;
+         3. jamais d'URL hashée par le build — Google recrawle l'ancienne. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192x192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
 
     <!-- Hreflang -->
@@ -55,16 +62,52 @@
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@1,800;1,900&display=swap" as="style" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@1,800;1,900&display=swap" />
 
-    <!-- Schema.org JSON-LD -->
+    <!-- Schema.org JSON-LD — sert AUSSI à désambiguïser la marque : une autre
+         société nommée « FillSell » (fillsell.com, sourcing/dropshipping,
+         antérieure) existe. Les signaux qui rattachent l'entité à CE site sont
+         url + logo + sameAs (fiches stores) : les garder cohérents partout. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://fillsell.app/#organization",
+      "name": "FillSell",
+      "url": "https://fillsell.app",
+      "email": "support@fillsell.app",
+      "description": "Éditeur de l'application FillSell : publication multi-plateformes d'annonces de seconde main pour les revendeurs français.",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://fillsell.app/icon-192x192.png",
+        "width": 192,
+        "height": 192
+      },
+      "image": "https://fillsell.app/icon-192x192.png",
+      "sameAs": [
+        "https://apps.apple.com/app/id6762152785",
+        "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm",
+        "https://www.tiktok.com/@fill.sell"
+      ]
+    }
+    </script>
+
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
+      "@id": "https://fillsell.app/#app",
       "name": "FillSell",
       "applicationCategory": "BusinessApplication",
       "operatingSystem": "iOS, Android, Web",
       "url": "https://fillsell.app",
+      "inLanguage": "fr-FR",
       "description": "Publiez une annonce sur Vinted, Leboncoin, eBay et Beebs en une seule fois. Gestion du stock à la voix, analyse photo IA, retrait automatique des annonces après la vente.",
+      "logo": "https://fillsell.app/icon-192x192.png",
+      "image": "https://fillsell.app/icon-192x192.png",
+      "screenshot": "https://fillsell.app/og-image-fillsell.png",
+      "downloadUrl": "https://apps.apple.com/app/id6762152785",
+      "installUrl": "https://apps.apple.com/app/id6762152785",
+      "sameAs": "https://apps.apple.com/app/id6762152785",
+      "publisher": { "@id": "https://fillsell.app/#organization" },
       "offers": {
         "@type": "Offer",
         "price": "0",

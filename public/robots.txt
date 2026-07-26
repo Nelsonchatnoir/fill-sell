@@ -1,5 +1,17 @@
 User-agent: *
 Allow: /
-Disallow: /app
-Disallow: /api
+
+# ATTENTION — un chemin de robots.txt est un PRÉFIXE, pas une route.
+# « Disallow: /app » (sans le $) bloquait aussi /apple-touch-icon.png, donc
+# l'icône lue par le crawler favicon de Google → globe gris dans les résultats
+# de recherche. Le « $ » borne la règle à l'URL exacte /app. Ne pas le retirer.
+Disallow: /app$
+Disallow: /app?
+Disallow: /api/
+
+# Icônes du site : explicitement autorisées (crawler favicon Google).
+Allow: /favicon.ico
+Allow: /icon-192x192.png
+Allow: /apple-touch-icon.png
+
 Sitemap: https://fillsell.app/sitemap.xml
