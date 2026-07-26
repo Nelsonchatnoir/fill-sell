@@ -158,6 +158,9 @@ serve(async (req) => {
       const packSession = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{ price: packPriceId, quantity: 1 }],
+        // Champ « code promo » au Checkout (2026-07-26) — geste commercial
+        // possible via les promotion codes du dashboard Stripe.
+        allow_promotion_codes: true,
         success_url: "https://fillsell.app/success",
         cancel_url: "https://fillsell.app/cancel",
         ...(packCustomerId
@@ -266,6 +269,10 @@ serve(async (req) => {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
+      // Champ « code promo » au Checkout (2026-07-26). L'upgrade Premium→Pro
+      // in situ ci-dessus n'est PAS concerné : subscriptions.update, aucune
+      // session Checkout (une remise là-bas passerait par `discounts`).
+      allow_promotion_codes: true,
       success_url: "https://fillsell.app/success",
       cancel_url: "https://fillsell.app/cancel",
       ...(existingCustomerId
