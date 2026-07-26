@@ -13,10 +13,11 @@
      sur API 31+, ce qui est le cas aujourd'hui (Capacitor fait son propre
      setTheme et n'appelle pas installSplashScreen).
   ic_splash_icon.png = glyphe blanc sur un calque de 288dp, dimensionné pour que
-  son cercle CIRCONSCRIT tienne dans les 192dp centraux imposés par la spec
-  Android 12 quand il n'y a pas de couleur de fond d'icône (64 % mesuré pour une
-  limite de 66,7 %). Même piège que l'icône adaptative : c'est la diagonale du
-  logo qui est rognée, pas sa largeur — voir mipmap-anydpi-v26/ic_launcher.xml.
+  son cercle CIRCONSCRIT tienne LARGEMENT dans les 192dp centraux imposés par la
+  spec Android 12 sans couleur de fond d'icône : ~154dp mesurés = 80 % de la
+  zone sûre (le 26/07 après-midi ; la V1 du matin frôlait à 96,2 %). Même piège
+  que l'icône adaptative : c'est la diagonale du logo qui est rognée, pas sa
+  largeur — voir mipmap-anydpi-v26/ic_launcher.xml.
 -->
 <resources>
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">

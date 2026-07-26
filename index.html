@@ -193,7 +193,10 @@
         touch-action: pan-y;
         margin: 0;
         padding: 0;
-        background-color: #ffffff;
+        /* canvas #EDEAE0, PAS blanc : le blanc créait un flash hors charte
+           entre le splash natif (ink #10201B) et le premier écran de l'app —
+           c'était lui la vraie bascule brutale. Vaut aussi pour le web. */
+        background-color: #EDEAE0;
       }
       #root {
         overflow-x: hidden;

@@ -5,6 +5,7 @@ import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } fr
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
@@ -1688,6 +1689,16 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // Splash natif : hide() au premier render = durée exacte du splash ;
+  // launchShowDuration (2000 ms) ne sert plus que de PLAFOND de sécurité si ce
+  // render n'arrive jamais. Sur Android 12+ le fondu vient de
+  // launchFadeOutDuration (capacitor.config.ts) et ce paramètre est ignoré
+  // (warning logcat bénin) ; iOS l'utilise.
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {});
+    }
+  }, []);
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
   const [items,setItems]=useState([]);
