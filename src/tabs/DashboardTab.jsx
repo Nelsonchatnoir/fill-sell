@@ -307,23 +307,36 @@ const DashboardTab = memo(function DashboardTab({
       .slice(0,5);
   })();
 
+  // Miroir de check_inventory_limit (migration 20260725180000) : la limite
+  // Free de 20 compte les articles NON vendus — items contient aussi les
+  // vendus, et un ex-Premium redevenu Free peut dépasser 20 (articles hérités,
+  // le trigger serveur bloque seulement les NOUVEAUX ajouts). D'où le
+  // « Plus que -21 article » vu en prod le 26/07 : compteur borné à 0 et
+  // libellé dédié une fois la limite atteinte.
+  const freeActive=items.filter(i=>i.statut!=="vendu").length;
+  const freeLeft=Math.max(0,20-freeActive);
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",overflow:"hidden"}}>
       <style>{CHART_CSS}</style>
 
-      {!isPremium&&!loading&&items.length>0&&items.length<18&&(
+      {!isPremium&&!loading&&freeActive>0&&freeActive<18&&(
         <div style={{background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 18px",textAlign:"center",overflow:"hidden"}}>
-          <div style={{fontSize:13,fontWeight:600,color:20-items.length<=2?UI.amber:UI.tealDeep}}>
-            {20-items.length<=2
-              ? tpl('urgenceArticles',{n:20-items.length})
-              : tpl('articlesGratuits',{n:20-items.length})
+          <div style={{fontSize:13,fontWeight:600,color:freeLeft<=2?UI.amber:UI.tealDeep}}>
+            {freeLeft<=2
+              ? tpl('urgenceArticles',{n:freeLeft})
+              : tpl('articlesGratuits',{n:freeLeft})
             }
           </div>
         </div>
       )}
-      {!isNative&&!isPremium&&!loading&&items.length>=18&&(
+      {!isNative&&!isPremium&&!loading&&freeActive>=18&&(
         <div onClick={()=>openUpgradeModal()} style={{background:UI.card,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
-          <div style={{fontSize:13,fontWeight:600,color:UI.ink}}>{lang==='en'?`⚠️ Only ${20-items.length} item${20-items.length>1?"s":""} left on your free plan`:`⚠️ Plus que ${20-items.length} article${20-items.length>1?"s":""} disponible${20-items.length>1?"s":""}`}</div>
+          <div style={{fontSize:13,fontWeight:600,color:UI.ink}}>
+            {freeLeft===0
+              ?(lang==='en'?"⚠️ Free plan limit reached (20 active items)":"⚠️ Limite du plan gratuit atteinte (20 articles actifs)")
+              :(lang==='en'?`⚠️ Only ${freeLeft} item${freeLeft>1?"s":""} left on your free plan`:`⚠️ Plus que ${freeLeft} article${freeLeft>1?"s":""} disponible${freeLeft>1?"s":""}`)}
+          </div>
           <button onClick={e=>{e.stopPropagation();openUpgradeModal();}} style={{background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",border:"none",borderRadius:99,padding:"7px 14px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
         </div>
       )}
