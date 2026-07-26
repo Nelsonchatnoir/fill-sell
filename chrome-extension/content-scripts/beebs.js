@@ -1481,9 +1481,123 @@ async function waitForCategoryOption(text, { path = [], level = 0, trigger, time
   );
 }
 
+// ── Chemin FIBER pour la catégorie (2026-07-26, GO Nico après preuve live) ───
+// PREUVE (session Claude in Chrome du 26/07, beebs.app/fr/listing réel,
+// session connectée) : la chaîne fiber du trigger porte, quelques niveaux
+// au-dessus, un composant { categories, selectedCategory, onSelected } —
+// `categories` est l'ARBRE COMPLET (nœuds Contentful : title,
+// subcategoriesCollection.items récursif, sys.id, defaultWeight, maxWeight,
+// carriersCollection) et onSelected = e => onChange(e) du Controller
+// react-hook-form. Vérifié en réel : onSelected(FEUILLE) — l'objet entier,
+// jamais un id — pose le libellé sur le trigger, ferme le panneau et fait
+// apparaître les champs dynamiques (Couleur/Marque/État/Format du colis).
+// Technique prix-Vinted-v3 : commit d'état React direct, INSENSIBLE AU RENDU —
+// le panneau n'a plus besoin d'exister (cause Cyrillus : aria-expanded="true"
+// mais panneau jamais monté dans la fenêtre jamais peinte).
+//
+// PONT MONDE MAIN : les expandos __reactFiber$ sont invisibles du monde isolé
+// du content script → script INLINE injecté (CSP Beebs relevée le 26/07 :
+// « default-src * 'unsafe-inline' » — autorisé), réponse par
+// window.postMessage. Canal INCONFONDABLE avec la sonde Vinted
+// (__fillsellProbe) : marqueur dédié __fillsellBeebsCategory portant un NONCE
+// aléatoire par appel, et tout message dont e.source n'est pas la page
+// elle-même est ignoré. Sans réponse en 3 s (CSP durcie, obfuscation
+// changée…) : {ok:false} → le REPLI clic+panneau — le chemin actuel, INTACT —
+// prend la main. Jamais bloquant.
+function commitCategoryViaFiber(path) {
+  return new Promise((resolve) => {
+    const nonce = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", onMsg);
+      resolve({ ok: false, reason: "pont MAIN muet après 3 s (CSP durcie ? script bloqué ?)" });
+    }, 3000);
+    function onMsg(e) {
+      if (e.source !== window || e.data?.__fillsellBeebsCategory !== nonce) return;
+      clearTimeout(timer);
+      window.removeEventListener("message", onMsg);
+      resolve(e.data);
+    }
+    window.addEventListener("message", onMsg);
+    const s = document.createElement("script");
+    s.textContent = `(() => {
+      const reponds = (p) => window.postMessage(Object.assign({ __fillsellBeebsCategory: ${JSON.stringify(nonce)} }, p), "*");
+      try {
+        const norm = (x) => String(x ?? "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/\\s+/g, " ").trim().toLowerCase();
+        let trigger = null;
+        for (const l of document.querySelectorAll('div[class*="__label"]')) {
+          if (norm(l.textContent).startsWith("categorie")) {
+            trigger = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+            if (trigger) break;
+          }
+        }
+        if (!trigger) return reponds({ ok: false, reason: "trigger Catégorie introuvable (monde MAIN)" });
+        const fk = Object.keys(trigger).find((k) => k.startsWith("__reactFiber$"));
+        if (!fk) return reponds({ ok: false, reason: "expando __reactFiber$ absent du trigger" });
+        let f = trigger[fk], props = null;
+        for (let i = 0; f && i < 15; i++, f = f.return) {
+          const p = f.memoizedProps;
+          if (p && Array.isArray(p.categories) && typeof p.onSelected === "function") { props = p; break; }
+        }
+        if (!props) return reponds({ ok: false, reason: "composant {categories, onSelected} introuvable dans la chaîne fiber" });
+        const chemin = ${JSON.stringify(path)};
+        let niveau = props.categories, noeud = null;
+        for (const etiquette of chemin) {
+          const cible = norm(etiquette);
+          const items = Array.isArray(niveau) ? niveau : [];
+          noeud = items.find((c) => norm(c && c.title) === cible)
+               || items.find((c) => norm(c && c.title).startsWith(cible) || cible.startsWith(norm(c && c.title)));
+          if (!noeud) return reponds({ ok: false, reason: 'niveau "' + etiquette + '" introuvable dans props.categories — titres du niveau: ' + items.map((c) => c && c.title).slice(0, 12).join(" | ") });
+          niveau = (noeud.subcategoriesCollection && noeud.subcategoriesCollection.items) || [];
+        }
+        const enfants = (noeud.subcategoriesCollection && noeud.subcategoriesCollection.items) || [];
+        if (enfants.length) return reponds({ ok: false, reason: 'le chemin finit sur un niveau NON feuille ("' + noeud.title + '", ' + enfants.length + ' enfants) — repli clic pour le message canonique' });
+        props.onSelected(noeud);
+        reponds({ ok: true, feuille: noeud.title, sysId: noeud.sys && noeud.sys.id });
+      } catch (e) { reponds({ ok: false, reason: "exception MAIN: " + (e && e.message) }); }
+    })();`;
+    (document.head ?? document.documentElement).appendChild(s);
+    s.remove(); // l'exécution d'un script inline est synchrone à l'insertion
+  });
+}
+
 async function selectCategory(path) {
   const trigger = findField("Catégorie")?.trigger;
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
+
+  // ── CHEMIN 1 : COMMIT FIBER — le chemin nominal depuis le 26/07. Le chemin
+  // utilisé est TOUJOURS loggé (« via FIBER » ou « repli clic+panneau ») :
+  // c'est la donnée qui dira sur runs réels si le chemin fiber tient.
+  const viaFiber = await commitCategoryViaFiber(path);
+  if (viaFiber.ok) {
+    // VÉRIFICATION D'EFFET OBLIGATOIRE (règle du bug LBC : jamais de succès
+    // sans signal constaté) : le libellé du trigger doit devenir la feuille
+    // ET les champs dynamiques de la catégorie doivent apparaître. Sinon
+    // c'est un ÉCHEC du chemin fiber — loggé, puis repli intégral sur le
+    // chemin clic. Pas de succès silencieux.
+    const feuille = String(path[path.length - 1] ?? "");
+    const libelleOk = await waitFor(() => {
+      const t = findField("Catégorie")?.trigger;
+      return t && normalizeFuzzy(texteDe(t)).includes(normalizeFuzzy(feuille)) ? t : null;
+    }, 8000);
+    const champsOk = libelleOk
+      ? await waitFor(() => document.querySelectorAll('div[class*="__label"]').length > 2, 8000)
+      : null;
+    if (libelleOk && champsOk) {
+      console.log(
+        `[beebs] catégorie posée via FIBER — onSelected("${viaFiber.feuille}", sys=${viaFiber.sysId}), ` +
+        "effet constaté : libellé du trigger + champs dynamiques rendus"
+      );
+      return;
+    }
+    console.warn(
+      `[beebs] fiber: onSelected appelé (feuille "${viaFiber.feuille}") mais effet NON constaté — ` +
+      `libellé: ${libelleOk ? "ok" : "inchangé"}, champs dynamiques: ${champsOk ? "ok" : "absents"}. ` +
+      "ÉCHEC du chemin fiber (pattern LBC : pas de succès sans signal) — repli sur le chemin clic+panneau"
+    );
+  } else {
+    console.warn(`[beebs] chemin fiber indisponible : ${viaFiber.reason} — repli sur le chemin clic+panneau`);
+  }
+  console.log("[beebs] catégorie : chemin CLIC+PANNEAU (repli) utilisé");
 
   // Ouverture avec DÉTECTION D'EFFET (2026-07-23) — même parade que le clic
   // eBay avalé (Medik8 R2). ⚠️ RÉÉCRIT le 2026-07-26 : l'ancienne boucle
