@@ -9,6 +9,7 @@
     "prebuild": "node scripts/check-legal-permissions.mjs",
     "build": "vite build",
     "build:extension": "node scripts/build-extension.mjs",
+    "package:extension": "node scripts/package-extension.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
