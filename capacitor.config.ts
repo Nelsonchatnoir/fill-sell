@@ -7,9 +7,10 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
   },
-  ios: {
-    orientation: 'portrait',
-  },
+  // (bloc ios.orientation retiré le 2026-07-26 : la clé n'existe pas dans le
+  // type iOS de Capacitor — tsc la rejetait — et n'a jamais rien fait. Le
+  // portrait iOS est imposé par UISupportedInterfaceOrientations dans
+  // ios/App/App/Info.plist, pas ici.)
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
