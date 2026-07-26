@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import useSeo from "../lib/seo";
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#0F172A", sub: "#475569", label: "#94A3B8", border: "rgba(0,0,0,0.06)" };
 
@@ -166,6 +167,16 @@ export default function Legal() {
   const [lang] = useState(() => localStorage.getItem('fs_lang') || 'fr');
   const p = privacyTexts[lang] || privacyTexts.fr;
   const en = lang === 'en';
+
+  // Page listée au sitemap : elle doit porter SON canonical, pas celui de la
+  // home. Meta en FR quel que soit `lang` : le canonical annoncé est l'URL FR
+  // et un crawler n'a pas de localStorage — il verrait toujours le français.
+  useSeo({
+    path: '/legal',
+    title: 'Mentions légales, CGU et confidentialité — FillSell',
+    description: "Mentions légales de FillSell : éditeur, hébergement, conditions générales d'utilisation, politique de confidentialité (RGPD), abonnements et suppression de compte.",
+    ogType: 'website',
+  });
 
   // Le scroll natif du navigateur sur #ancre arrive avant le montage React :
   // les liens du footer (/legal#mentions, /legal#confidentialite) le referaient

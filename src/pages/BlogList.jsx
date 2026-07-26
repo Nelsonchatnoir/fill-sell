@@ -1,27 +1,7 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { posts } from '../blog/posts';
+import useSeo from '../lib/seo';
 import './blog.css';
-
-function useSEO({ title, description }) {
-  useEffect(() => {
-    const prev = document.title;
-    document.title = title;
-    const setMeta = (attr, name, content) => {
-      let el = document.querySelector(`meta[${attr}="${name}"]`);
-      if (!el) { el = document.createElement('meta'); el.setAttribute(attr, name); document.head.appendChild(el); }
-      el.setAttribute('content', content);
-      return el;
-    };
-    const metas = [
-      setMeta('name', 'description', description),
-      setMeta('property', 'og:title', title),
-      setMeta('property', 'og:description', description),
-      setMeta('property', 'og:type', 'website'),
-    ];
-    return () => { document.title = prev; metas.forEach(el => el.remove()); };
-  }, [title, description]);
-}
 
 function formatDate(dateStr, lang) {
   try {
@@ -34,9 +14,11 @@ function formatDate(dateStr, lang) {
 }
 
 export default function BlogList() {
-  useSEO({
+  useSeo({
+    path: '/blog',
     title: 'Blog — FillSell',
     description: 'Conseils, guides et astuces pour les revendeurs : calcul de marges, gestion des profits, plateformes de vente.',
+    ogType: 'website',
   });
 
   return (

@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { UI } from "../components/ui";
+import useSeo from "../lib/seo";
 
 // Page d'accès à l'extension Chrome de cross-post. Depuis le 2026-07-25,
 // l'extension est PUBLIÉE sur le Chrome Web Store (« FillSell — Cross-post »,
@@ -19,6 +20,22 @@ export default function ExtensionPage() {
   const nav = useNavigate();
   const [lang] = useState(() => localStorage.getItem("fs_lang") || "fr");
   const en = lang === "en";
+
+  // Page à potentiel SEO (« extension revente vinted », « publier vinted
+  // leboncoin automatiquement ») : on lui donne ses propres meta plutôt que de
+  // la masquer en noindex. ⚠️ Elle reste derrière RequireAuth dans le routeur :
+  // un visiteur (ou un crawler) déconnecté est redirigé vers / AVANT ce rendu,
+  // donc ces meta ne s'appliquent aujourd'hui qu'aux utilisateurs connectés.
+  // Pour que la page puisse réellement ranker, il faudra la servir sans garde
+  // d'auth (décision produit non prise) — c'est aussi pour ça qu'elle n'est pas
+  // encore au sitemap.
+  useSeo({
+    path: "/extension",
+    title: "Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay",
+    description: "Installez l'extension Chrome FillSell : une annonce publiée en une fois sur Vinted, Leboncoin, eBay et Beebs, et retirée automatiquement des autres plateformes après la vente.",
+    ogTitle: "Extension Chrome FillSell — une annonce, 4 plateformes",
+    ogType: "website",
+  });
 
   // [titre, instruction, image?, alt?]
   const steps = en

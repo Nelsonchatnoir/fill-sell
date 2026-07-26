@@ -1,30 +1,9 @@
-import { useEffect } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getPostBySlug } from '../blog/posts';
+import useSeo from '../lib/seo';
 import './blog.css';
-
-function useSEO({ title, description, ogImage }) {
-  useEffect(() => {
-    const prev = document.title;
-    document.title = title;
-    const setMeta = (attr, name, content) => {
-      let el = document.querySelector(`meta[${attr}="${name}"]`);
-      if (!el) { el = document.createElement('meta'); el.setAttribute(attr, name); document.head.appendChild(el); }
-      el.setAttribute('content', content);
-      return el;
-    };
-    const metas = [
-      setMeta('name', 'description', description),
-      setMeta('property', 'og:title', title),
-      setMeta('property', 'og:description', description),
-      setMeta('property', 'og:type', 'article'),
-      ...(ogImage ? [setMeta('property', 'og:image', `https://fillsell.app${ogImage}`)] : []),
-    ];
-    return () => { document.title = prev; metas.forEach(el => el.remove()); };
-  }, [title, description, ogImage]);
-}
 
 function formatDate(dateStr, lang) {
   try {
@@ -40,9 +19,13 @@ export default function BlogPost() {
   const { slug } = useParams();
   const post = getPostBySlug(slug);
 
-  useSEO({
+  // Slug inconnu : la vue redirige vers /blog juste en dessous, donc on ne pose
+  // pas un canonical sur une URL qui n'existe pas — on annonce déjà /blog.
+  useSeo({
+    path: post ? `/blog/${post.slug}` : '/blog',
     title: post ? `${post.title} — FillSell` : 'Article introuvable — FillSell',
     description: post?.description ?? '',
+    ogType: 'article',
     ogImage: post?.og_image ?? null,
   });
 

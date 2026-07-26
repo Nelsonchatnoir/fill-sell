@@ -43,6 +43,12 @@
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, follow" }
       ]
+    },
+    {
+      "source": "/auth/callback",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
+      ]
     }
   ],
   "redirects": [
