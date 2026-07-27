@@ -497,6 +497,30 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
 // créé un cycle (StockTab importe déjà ListingPreviewScreen).
 const RM_PLATFORMS = ["vinted", "leboncoin", "beebs", "ebay"];
 
+// ── listing_url manquant : transitoire ou définitif ? (2026-07-27) ───────────
+// L'extension re-capture les listing_url manquants à chaque cycle de poll via
+// « Mes annonces » (recoverMissingListingUrls, background.js) : plateformes
+// leboncoin/beebs/ebay, fenêtre de 48 h après le dépôt, titre requis. Rien
+// n'est écrit en base quand une tentative échoue — le seul signal fiable côté
+// app est donc dérivé : publié il y a < 48 h sur une plateforme couverte
+// = la récupération est en cours ou à venir (état TRANSITOIRE, prouvé en logs :
+// l'URL arrive puis l'annonce redevient retirable). Au-delà, ou hors
+// plateformes couvertes (vinted n'a pas de page de récupération), l'échec est
+// définitif → consigne d'action manuelle. Ces deux constantes MIROIR doivent
+// suivre LISTING_URL_RECOVERY_PAGES / LISTING_URL_RECOVERY_MAX_AGE_MS du
+// background.
+const URL_RECOVERY_PLATFORMS = ["leboncoin", "beebs", "ebay"];
+const URL_RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function isListingUrlRecoverable(platform, pubJob) {
+  return (
+    URL_RECOVERY_PLATFORMS.includes(platform) &&
+    !!pubJob?.title &&
+    !!pubJob?.created_at &&
+    Date.now() - Date.parse(pubJob.created_at) < URL_RECOVERY_WINDOW_MS
+  );
+}
+
 // ── Modal de retrait ciblé (2026-07-19, remplace window.confirm) ─────────────
 // Ouvert par un tap sur n'importe quel logo de plateforme d'une carte stock.
 // Liste LES 4 plateformes avec leur état réel (en ligne / retrait en cours /
@@ -630,6 +654,10 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             const isPublished = published.includes(p);
             const state = removalState[p];
             const noUrl = isPublished && !state && !latestPubByPlatform[p]?.listing_url;
+            // Transitoire vs définitif : tant que l'extension retente la
+            // re-capture (fenêtre 48 h), pas de consigne manuelle — l'annonce
+            // deviendra retirable ici même dès que l'URL est récupérée.
+            const urlRecovering = noUrl && isListingUrlRecoverable(p, latestPubByPlatform[p]);
             const online = isPublished && !state && !noUrl;
             const busy = busyPlatform === p;
             const armed = confirming === p;
@@ -646,7 +674,8 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                     {online && armed && <span style={{ color:"#8C2F28", fontWeight:600 }}>{fr ? `Retirer de ${label} ?` : `Remove from ${label}?`}</span>}
                     {state === "removing" && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Retrait en cours…" : "Removing…"}</span>}
                     {state === "removed" && <span>{fr ? "Retirée" : "Removed"}</span>}
-                    {noUrl && <span>{fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`}</span>}
+                    {noUrl && urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Récupération du lien en cours…" : "Recovering listing link…"}</span>}
+                    {noUrl && !urlRecovering && <span>{fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`}</span>}
                     {!isPublished && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
                   </div>
                 </div>
