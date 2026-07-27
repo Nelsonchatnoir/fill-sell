@@ -17,6 +17,73 @@ const MUTE      = '#6B7A75';
 
 const LENS_PLATFORMS = Object.keys(PLATFORM_LABELS);
 
+// Feuille bas-écran « Prendre une photo / Choisir dans la photothèque »,
+// partagée entre l'écran de scan (viseur) et l'écran résultat (grille photos).
+// Portail vers document.body OBLIGATOIRE : rendue en place elle vivrait dans
+// le conteneur scroll (.wrap.page-pad, -webkit-overflow-scrolling:touch) et le
+// WKWebView iOS peint les position:fixed d'un scroller touch DANS la couche du
+// scroller — la tab bar (.bnav) et le FAB micro passaient devant quel que soit
+// le z-index. zIndex 10000 : au-dessus du FAB (1000), aligné feuille bug
+// report. Le <style> embarqué rend la feuille autonome : l'animation est
+// disponible quel que soit l'écran qui la monte.
+function PhotoSourceSheet({ open, onClose, onCamera, onGallery, lang, maxPhotos }) {
+  if (!open) return null;
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{ position:'fixed', inset:0, zIndex:10000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+    >
+      <style>{`
+        @keyframes lensSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .lens-photo-sheet { animation: lensSheetUp 0.22s cubic-bezier(0.2,0.8,0.3,1); }
+      `}</style>
+      <div
+        className="lens-photo-sheet"
+        onClick={e => e.stopPropagation()}
+        style={{ width:'100%', maxWidth:520, boxSizing:'border-box', background:UI.paper, border:`1px solid ${UI.border}`, borderBottom:'none', borderRadius:'24px 24px 0 0', padding:'20px 20px calc(16px + env(safe-area-inset-bottom))', boxShadow:'0 -18px 50px rgba(16,32,27,0.25)', fontFamily:'inherit' }}
+      >
+        <div style={{ width:40, height:4, borderRadius:999, background:'#D8D2C4', margin:'0 auto 16px' }} />
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <button
+            onClick={onCamera}
+            style={{ display:'flex', alignItems:'center', gap:12, width:'100%', boxSizing:'border-box', padding:'14px 14px', borderRadius:16, background:UI.card, border:`1px solid ${UI.border}`, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}
+          >
+            <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})` }}>
+              <Camera size={19} color="#FFFFFF" strokeWidth={2} />
+            </span>
+            <span style={{ fontSize:15, fontWeight:600, color:INK }}>
+              {lang === 'en' ? 'Take a photo' : 'Prendre une photo'}
+            </span>
+          </button>
+          <button
+            onClick={onGallery}
+            style={{ display:'flex', alignItems:'center', gap:12, width:'100%', boxSizing:'border-box', padding:'14px 14px', borderRadius:16, background:UI.card, border:`1px solid ${UI.border}`, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}
+          >
+            <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:UI.chip }}>
+              <ImageIcon size={19} color={TEAL_DEEP} strokeWidth={2} />
+            </span>
+            <span style={{ display:'flex', flexDirection:'column' }}>
+              <span style={{ fontSize:15, fontWeight:600, color:INK }}>
+                {lang === 'en' ? 'Choose from library' : 'Choisir dans la photothèque'}
+              </span>
+              <span style={{ fontSize:12, color:MUTE }}>
+                {lang === 'en' ? `Up to ${maxPhotos} photos` : `Jusqu'à ${maxPhotos} photos`}
+              </span>
+            </span>
+          </button>
+          <button
+            onClick={onClose}
+            style={{ width:'100%', boxSizing:'border-box', padding:'13px 0', borderRadius:999, background:'#FFFFFF', border:`1px solid ${UI.border}`, cursor:'pointer', fontSize:14, fontWeight:600, color:MUTE, fontFamily:'inherit', marginTop:2 }}
+          >
+            {lang === 'en' ? 'Cancel' : 'Annuler'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function PlatformMarquee() {
   const list = [...LENS_PLATFORMS, ...LENS_PLATFORMS];
   return (
@@ -74,8 +141,6 @@ function LensScanHome({
         }
         .lens-ring-pulse { animation: lensRingPulse 2.8s cubic-bezier(0.2,0.6,0.4,1) infinite; }
         .lens-ring-pulse-delay { animation-delay: 0.9s; }
-        @keyframes lensSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .lens-photo-sheet { animation: lensSheetUp 0.22s cubic-bezier(0.2,0.8,0.3,1); }
       `}</style>
 
       <input ref={lensFileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleLensPhoto} />
@@ -195,64 +260,15 @@ function LensScanHome({
         </div>
       </div>
 
-      {/* ── Feuille de choix caméra / photothèque (natif uniquement) ──
-          Portail vers document.body OBLIGATOIRE : rendue en place, la feuille
-          vit dans le conteneur scroll (.wrap.page-pad, -webkit-overflow-
-          scrolling:touch) et le WKWebView iOS peint ses position:fixed DANS la
-          couche du scroller — la tab bar (.bnav, z-index 50) et le FAB micro
-          (.fab-new, z-index 1000), frères du scroller, passaient devant quel
-          que soit le z-index. zIndex 10000 : au-dessus du FAB (1000), aligné
-          sur les autres feuilles bas-écran (bug report). */}
-      {showPhotoSheet && createPortal(
-        <div
-          onClick={() => setShowPhotoSheet(false)}
-          style={{ position:'fixed', inset:0, zIndex:10000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
-        >
-          <div
-            className="lens-photo-sheet"
-            onClick={e => e.stopPropagation()}
-            style={{ width:'100%', maxWidth:520, boxSizing:'border-box', background:UI.paper, border:`1px solid ${UI.border}`, borderBottom:'none', borderRadius:'24px 24px 0 0', padding:'20px 20px calc(16px + env(safe-area-inset-bottom))', boxShadow:'0 -18px 50px rgba(16,32,27,0.25)', fontFamily:'inherit' }}
-          >
-            <div style={{ width:40, height:4, borderRadius:999, background:'#D8D2C4', margin:'0 auto 16px' }} />
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <button
-                onClick={openCamera}
-                style={{ display:'flex', alignItems:'center', gap:12, width:'100%', boxSizing:'border-box', padding:'14px 14px', borderRadius:16, background:UI.card, border:`1px solid ${UI.border}`, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}
-              >
-                <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})` }}>
-                  <Camera size={19} color="#FFFFFF" strokeWidth={2} />
-                </span>
-                <span style={{ fontSize:15, fontWeight:600, color:INK }}>
-                  {lang === 'en' ? 'Take a photo' : 'Prendre une photo'}
-                </span>
-              </button>
-              <button
-                onClick={openGallery}
-                style={{ display:'flex', alignItems:'center', gap:12, width:'100%', boxSizing:'border-box', padding:'14px 14px', borderRadius:16, background:UI.card, border:`1px solid ${UI.border}`, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}
-              >
-                <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:UI.chip }}>
-                  <ImageIcon size={19} color={TEAL_DEEP} strokeWidth={2} />
-                </span>
-                <span style={{ display:'flex', flexDirection:'column' }}>
-                  <span style={{ fontSize:15, fontWeight:600, color:INK }}>
-                    {lang === 'en' ? 'Choose from library' : 'Choisir dans la photothèque'}
-                  </span>
-                  <span style={{ fontSize:12, color:MUTE }}>
-                    {lang === 'en' ? `Up to ${maxPhotos} photos` : `Jusqu'à ${maxPhotos} photos`}
-                  </span>
-                </span>
-              </button>
-              <button
-                onClick={() => setShowPhotoSheet(false)}
-                style={{ width:'100%', boxSizing:'border-box', padding:'13px 0', borderRadius:999, background:'#FFFFFF', border:`1px solid ${UI.border}`, cursor:'pointer', fontSize:14, fontWeight:600, color:MUTE, fontFamily:'inherit', marginTop:2 }}
-              >
-                {lang === 'en' ? 'Cancel' : 'Annuler'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* ── Feuille de choix caméra / photothèque (natif uniquement) ── */}
+      <PhotoSourceSheet
+        open={showPhotoSheet}
+        onClose={() => setShowPhotoSheet(false)}
+        onCamera={openCamera}
+        onGallery={openGallery}
+        lang={lang}
+        maxPhotos={maxPhotos}
+      />
 
       {/* ── Notice « Comment ça marche ? » ── */}
       {showLensHelp && (
@@ -546,6 +562,13 @@ const LensTab = memo(function LensTab({
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
   const [showExtReminder,setShowExtReminder]=useState(false);
+  // Ajout de photos depuis l'écran résultat : même feuille de choix
+  // caméra/photothèque que le viseur (2026-07-27, remplace les deux tuiles
+  // pointillées 📷/🖼️ de 501c26c). Sur le web, l'input file couvre déjà les
+  // deux chemins via la feuille du navigateur.
+  const [showPhotoSheet,setShowPhotoSheet]=useState(false);
+  const nativePicker=isNative&&handleLensCameraNative&&handleLensPhotoNative;
+  const openLensPicker=()=>nativePicker?setShowPhotoSheet(true):lensFileRef.current?.click();
   // Ligne inventaire restaurée depuis sessionStorage (lensInventaireId vit dans
   // App et n'a pas de setter ici) : fallback utilisé uniquement à la reprise.
   const [restoredInvId,setRestoredInvId]=useState(null);
@@ -664,6 +687,15 @@ const LensTab = memo(function LensTab({
         {userCountry&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>📍 {userCountry.name}</div>}
       </div>
 
+      <PhotoSourceSheet
+        open={showPhotoSheet}
+        onClose={()=>setShowPhotoSheet(false)}
+        onCamera={()=>{setShowPhotoSheet(false);handleLensCameraNative();}}
+        onGallery={()=>{setShowPhotoSheet(false);handleLensPhotoNative();}}
+        lang={lang}
+        maxPhotos={5}
+      />
+
       {/* ── Zone photo ── */}
       <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
         <input
@@ -688,63 +720,20 @@ const LensTab = memo(function LensTab({
                   >×</button>
                 </div>
               ))}
-              {lensPhotos.length<5&&(isNative&&handleLensCameraNative&&handleLensPhotoNative?(
-                /* Natif (reprise S5) : deux tuiles distinctes — caméra directe
-                   (une photo) et photothèque (multi-sélection). */
-                <>
-                  <button
-                    onClick={handleLensCameraNative}
-                    style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
-                  >
-                    <span style={{fontSize:22}}>📷</span>
-                    {lang==="en"?"Camera":"Photo"}
-                  </button>
-                  <button
-                    onClick={handleLensPhotoNative}
-                    style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
-                  >
-                    <span style={{fontSize:22}}>🖼️</span>
-                    {lang==="en"?"Library":"Photothèque"}
-                  </button>
-                </>
-              ):(
+              {lensPhotos.length<5&&(
                 <button
-                  onClick={()=>lensFileRef.current?.click()}
-                  style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",fontSize:11,fontWeight:700,flexShrink:0,fontFamily:"inherit"}}
+                  onClick={openLensPicker}
+                  style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",flexShrink:0,fontFamily:"inherit"}}
                 >
-                  <span style={{fontSize:22}}>➕</span>
-                  {lang==="en"?"Add":"Ajouter"}
+                  <Plus size={22} color="#8A8578" />
                 </button>
-              ))}
+              )}
             </div>
             <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/5 {lang==="en"?"photos":"photos"}</div>
           </div>
-        ):(isNative&&handleLensCameraNative&&handleLensPhotoNative?(
-          /* Natif (reprise S5) : deux boutons distincts — caméra directe et
-             photothèque multi-sélection (jusqu'à 5). */
-          <div style={{display:"flex",gap:10,marginBottom:12}}>
-            <button
-              onClick={handleLensCameraNative}
-              style={{flex:1,padding:"24px 12px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:"inherit"}}
-            >
-              <span style={{fontSize:32}}>📷</span>
-              <div style={{fontSize:13,fontWeight:700,color:"#6B7A75"}}>
-                {lang==="en"?"Take a photo":"Prendre une photo"}
-              </div>
-            </button>
-            <button
-              onClick={handleLensPhotoNative}
-              style={{flex:1,padding:"24px 12px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:"inherit"}}
-            >
-              <span style={{fontSize:32}}>🖼️</span>
-              <div style={{fontSize:13,fontWeight:700,color:"#6B7A75"}}>
-                {lang==="en"?"From library (up to 5)":"Photothèque (jusqu'à 5)"}
-              </div>
-            </button>
-          </div>
         ):(
           <button
-            onClick={()=>lensFileRef.current?.click()}
+            onClick={openLensPicker}
             style={{width:"100%",padding:"32px 20px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:10,transition:"all 0.15s",marginBottom:12}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor="#1B6E62";e.currentTarget.style.background="#F0FDF4";}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,0.12)";e.currentTarget.style.background="#F9FAFB";}}
@@ -757,7 +746,7 @@ const LensTab = memo(function LensTab({
               {lang==="en"?"Tap to open camera or gallery":"Appuie pour ouvrir l'appareil photo ou la galerie"}
             </div>
           </button>
-        ))}
+        )}
 
         {/* Champ description optionnel + mic */}
         <div style={{position:"relative",marginBottom:10}}>
