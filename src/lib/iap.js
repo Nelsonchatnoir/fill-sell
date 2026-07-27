@@ -62,19 +62,6 @@ export const initIAP = async () => {
   }
 };
 
-// ── DEBUG TEMPORAIRE (2026-07-27) — diagnostic « pro2.sub introuvable » ──────
-// À RETIRER après diagnostic. iOS uniquement. AFFICHAGE PUR (alert natif,
-// visible sans devtools) : aucun comportement d'achat modifié — les alerts
-// s'intercalent, tout le flux (throw, cancelled, retour) reste identique.
-const IAP_DEBUG = Capacitor.getPlatform() === 'ios';
-const iapDebugAlert = (title, lines) => {
-  if (!IAP_DEBUG) return;
-  try { window.alert(`[DEBUG IAP] ${title}\n${lines.join('\n')}`); } catch { /* jamais bloquant */ }
-};
-const iapDebugDump = (e) => {
-  try { return JSON.stringify(e, Object.getOwnPropertyNames(e ?? {})); } catch { return String(e); }
-};
-
 export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined) => {
   try {
     const { products } = await NativePurchases.getProducts({
@@ -82,12 +69,6 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
       productType: 'subs',
     });
     console.log('[IAP] getProducts result:', JSON.stringify(products));
-    // DEBUG TEMPORAIRE — réponse brute de StoreKit avant toute décision.
-    iapDebugAlert('getProducts', [
-      `ID demandé : «${productId}» (${productId.length} car.)`,
-      `Produits retournés : ${products?.length ?? 0}`,
-      `IDs : ${(products ?? []).map(p => p?.productIdentifier ?? '?').join(', ') || '(liste vide)'}`,
-    ]);
     if (!products || products.length === 0) throw new Error('Produit introuvable — product not found in Play Console');
     const product = products[0];
     // Android Billing v5+ exige planIdentifier (basePlanId) pour les subs
@@ -108,13 +89,6 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     return { isPremium, receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
   } catch (e) {
     console.error('[IAP] purchasePremium error — code:', e?.code, 'message:', e?.message, 'full:', JSON.stringify(e));
-    // DEBUG TEMPORAIRE — code d'erreur StoreKit exact, pas juste le message.
-    iapDebugAlert('erreur', [
-      `ID demandé : «${productId}»`,
-      `code : ${e?.code ?? '(aucun)'}`,
-      `message : ${e?.message ?? '(aucun)'}`,
-      `brut : ${iapDebugDump(e)}`,
-    ]);
     if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null, cancelled: true };
     throw e;
   }
