@@ -288,6 +288,12 @@ function extensionVersion() {
 
 function reportSelectorHealth(platform, key, resolvedVia, assertPassed) {
   try {
+    // Garde-fou runtime (2026-07-27) : hors runtime extension (chrome.runtime
+    // absent — harnais Node/jsdom, tests), AUCUNE émission. Vécu : les smoke
+    // tests de la session du 27/07 ont poussé 2 lignes en PROD via le repli
+    // d'URL codé en dur de telemetryConfig (install_id éphémère,
+    // extension_version null). La télémétrie ne mesure que le réel.
+    if (!globalThis.chrome?.runtime?.id) return;
     const dedupeKey = `${platform}/${key}/${resolvedVia}/${assertPassed}`;
     const last = telemetrySent.get(dedupeKey);
     const now = Date.now();
