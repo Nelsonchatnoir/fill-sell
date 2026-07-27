@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-19-pont-ecrasant (reponse needs_user/stepper prime TOUJOURS : le pont vintedAspects→champ dedie ecrase sans condition — la garde si-vide laissait la valeur invalide d'origine bloquer la reponse utilisateur, needs_user « Etat » Beaute en boucle infinie, job c48be67a) + pont-color + needs-user";
+const VINTED_BUILD = "2026-07-27-registre-selecteurs (migration clé par clé vers chrome-extension/selectors — resolve.js en cascade + télémétrie selector_health, import dynamique du module)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -141,6 +141,45 @@ async function readServerValidationErrors() {
 // donc même si l'hypothèse est fausse pour un champ donné, au pire on perd
 // le timeout en délai, sans casser le flux.
 const DROPDOWN_PANEL_SELECTOR = ".input-dropdown__content";
+
+// ── Registre de sélecteurs (chantier observatoire, 2026-07-27) ───────────────
+// Les clés MIGRÉES ne portent plus leur littéral ici : il vit dans
+// chrome-extension/selectors/vinted.registry.js et se résout par
+// chrome-extension/selectors/resolve.js (cascade + télémétrie selector_health).
+// Les content scripts sont des scripts CLASSIQUES (manifest sans type module) :
+// l'import du module est forcément DYNAMIQUE — d'où l'entrée
+// web_accessible_resources posée dans manifest.json pour selectors/*.js.
+// ⚠️ Hors extension (injection manuelle « dry-run piloté », garde typeof chrome
+// plus bas) : chrome.runtime n'existe pas, ce module est inaccessible et les
+// chemins MIGRÉS lèvent — l'injection standalone ne couvre plus que les chemins
+// non migrés. Assumé, signalé ici.
+let __selectorsPromise = null;
+function sel() {
+  if (!__selectorsPromise) {
+    __selectorsPromise = import(chrome.runtime.getURL("selectors/resolve.js"));
+  }
+  return __selectorsPromise;
+}
+
+// Attente d'une clé du registre — l'équivalent de waitForElement pour les clés
+// migrées. Sonde resolveSelector SANS télémétrie d'échec (reportFailure:false :
+// un -1 émis pendant le rendu SPA différé serait un faux signal de dégradation)
+// et n'émet le -1 qu'à l'échec FINAL, par une dernière résolution non
+// suppressée qui lève la SelectorResolutionError.
+async function waitForKey(key, { timeoutMs = 10_000, params } = {}) {
+  const S = await sel();
+  const probe = () => {
+    try {
+      return S.resolveSelector("vinted", key, { params, reportFailure: false }).el;
+    } catch (e) {
+      if (e?.name === "SelectorResolutionError") return null;
+      throw e; // erreur de configuration : casser bruyamment, pas attendre
+    }
+  };
+  const found = await waitForElement(probe, timeoutMs, `vinted/${key}`).catch(() => null);
+  if (found) return found;
+  return S.resolveSelector("vinted", key, { params }).el; // émet le -1 puis lève
+}
 
 // ── Communication avec le background ──────────────────────────────────────────
 
@@ -836,8 +875,17 @@ async function fillListingForm(job) {
   // uploadPhotos complète désormais toujours à 3, mais si Vinted durcit sa
   // règle, on la DÉTECTE au lieu de croire à une publication réussie — le job
   // repart en needsUser plutôt qu'en published fantôme.
-  const photoModal = Array.from(document.querySelectorAll("h2, h3, [role='dialog']"))
-    .some((el) => /ajoute des photos à cette annonce/i.test(el.textContent || ""));
+  // publish.field_dialog_headers (migré au registre) : lecture de détection —
+  // une liste vide (page déjà en cours de redirection) est tolérée comme avant,
+  // on avale la SelectorResolutionError sans télémétrie d'échec (reportFailure:
+  // false : l'absence de tout h2/h3/dialog ici n'est pas un sélecteur cassé).
+  let enTetes = [];
+  try {
+    enTetes = (await sel()).resolveSelectorAll("vinted", "publish.field_dialog_headers", { reportFailure: false }).els;
+  } catch (e) {
+    if (e?.name !== "SelectorResolutionError") throw e;
+  }
+  const photoModal = enTetes.some((el) => /ajoute des photos à cette annonce/i.test(el.textContent || ""));
   if (photoModal) {
     return {
       success: false,
@@ -1130,22 +1178,40 @@ async function typeHuman(el, text) {
 }
 
 // Attend qu'un élément apparaisse dans le DOM (pages SPA à rendu différé).
-function waitForElement(selector, timeoutMs = 10_000) {
+// `target` : sélecteur CSS, ou fonction-sonde () => Element|null (clés du
+// registre — cf. waitForKey) ; `label` ne sert qu'au message d'erreur.
+function waitForElement(target, timeoutMs = 10_000, label = undefined) {
+  const probe = typeof target === "function" ? target : () => document.querySelector(target);
+  const desc = label ?? (typeof target === "function" ? "sonde de clé" : target);
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector(selector);
-    if (existing) return resolve(existing);
-
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector(selector);
-      if (el) {
-        observer.disconnect();
-        clearTimeout(timer);
-        resolve(el);
+    let observer = null;
+    let timer = null;
+    const settle = (fn, value) => {
+      if (observer) observer.disconnect();
+      if (timer) clearTimeout(timer);
+      fn(value);
+    };
+    const check = () => {
+      let el = null;
+      try {
+        el = probe();
+      } catch (e) {
+        settle(reject, e); // erreur de configuration de la sonde : jamais avalée
+        return true;
       }
+      if (el) {
+        settle(resolve, el);
+        return true;
+      }
+      return false;
+    };
+    if (check()) return;
+    observer = new MutationObserver(() => {
+      check();
     });
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       observer.disconnect();
-      reject(new Error(`Élément introuvable: ${selector}`));
+      reject(new Error(`Élément introuvable: ${desc}`));
     }, timeoutMs);
     observer.observe(document.body, { childList: true, subtree: true });
   });
@@ -1172,12 +1238,14 @@ async function waitForStableElement(selector, timeoutMs = 5000, settleMs = 200) 
 
 // Attend qu'un élément disparaisse du DOM ou devienne invisible (offsetParent
 // null — couvre le cas où Vinted le laisse monté mais masqué pendant
-// l'animation de fermeture). Ne rejette jamais : au pire on attend le
-// timeout puis on continue, pour ne pas bloquer indéfiniment si l'hypothèse
+// l'animation de fermeture). `target` : sélecteur CSS ou fonction-sonde
+// () => Element|null (clés du registre). Ne rejette jamais : au pire on attend
+// le timeout puis on continue, pour ne pas bloquer indéfiniment si l'hypothèse
 // de sélecteur est fausse pour un champ donné.
-function waitForElementGone(selector, timeoutMs = 3000) {
+function waitForElementGone(target, timeoutMs = 3000) {
+  const probe = typeof target === "function" ? target : () => document.querySelector(target);
   const isGone = () => {
-    const el = document.querySelector(selector);
+    const el = probe();
     return !el || el.offsetParent === null;
   };
   return new Promise((resolve) => {

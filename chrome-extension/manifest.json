@@ -33,6 +33,19 @@
       "128": "assets/icons/icon-128.png"
     }
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["selectors/*.js"],
+      "matches": [
+        "https://*.vinted.fr/*",
+        "https://*.vinted.com/*",
+        "https://*.leboncoin.fr/*",
+        "https://*.ebay.fr/*",
+        "https://*.ebay.com/*",
+        "https://*.beebs.app/*"
+      ]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["https://fillsell.app/*"],
