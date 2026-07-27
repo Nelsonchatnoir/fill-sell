@@ -68,7 +68,6 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
       productIdentifiers: [productId],
       productType: 'subs',
     });
-    console.log('[IAP] getProducts result:', JSON.stringify(products));
     if (!products || products.length === 0) throw new Error('Produit introuvable — product not found in Play Console');
     const product = products[0];
     // Android Billing v5+ exige planIdentifier (basePlanId) pour les subs
@@ -81,14 +80,12 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     const purchaseOptions = { productIdentifier: productId, productType: 'subs' };
     if (planId) purchaseOptions.planIdentifier = planId;
     if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
-    console.log('[IAP] purchaseProduct options:', JSON.stringify(purchaseOptions));
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
-    console.log('[IAP] purchaseProduct result:', JSON.stringify(result));
     const isPremium = result?.productIdentifier === productId;
     // receipt = iOS only ; purchaseToken = Android only (cf. @capgo/native-purchases types)
     return { isPremium, receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
   } catch (e) {
-    console.error('[IAP] purchasePremium error — code:', e?.code, 'message:', e?.message, 'full:', JSON.stringify(e));
+    console.error('[IAP] purchasePremium error — code:', e?.code, 'message:', e?.message);
     if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null, cancelled: true };
     throw e;
   }
@@ -101,9 +98,7 @@ export const purchaseCoins = async (productId, appAccountToken = undefined) => {
   try {
     const purchaseOptions = { productIdentifier: productId, productType: 'inapp' };
     if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
-    console.log('[IAP] purchaseCoins options:', JSON.stringify(purchaseOptions));
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
-    console.log('[IAP] purchaseCoins result:', JSON.stringify(result));
     // iOS StoreKit 2 : sur appareil réel (TestFlight/App Store), le reçu classique
     // (appStoreReceiptURL) est fréquemment absent — le plugin ne fournit alors que
     // `jwsRepresentation`. On remonte les DEUX : validate-coin-purchase valide le
