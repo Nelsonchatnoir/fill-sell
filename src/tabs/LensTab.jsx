@@ -1,4 +1,5 @@
 import { memo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, HelpCircle, X, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
@@ -194,11 +195,18 @@ function LensScanHome({
         </div>
       </div>
 
-      {/* ── Feuille de choix caméra / photothèque (natif uniquement) ── */}
-      {showPhotoSheet && (
+      {/* ── Feuille de choix caméra / photothèque (natif uniquement) ──
+          Portail vers document.body OBLIGATOIRE : rendue en place, la feuille
+          vit dans le conteneur scroll (.wrap.page-pad, -webkit-overflow-
+          scrolling:touch) et le WKWebView iOS peint ses position:fixed DANS la
+          couche du scroller — la tab bar (.bnav, z-index 50) et le FAB micro
+          (.fab-new, z-index 1000), frères du scroller, passaient devant quel
+          que soit le z-index. zIndex 10000 : au-dessus du FAB (1000), aligné
+          sur les autres feuilles bas-écran (bug report). */}
+      {showPhotoSheet && createPortal(
         <div
           onClick={() => setShowPhotoSheet(false)}
-          style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+          style={{ position:'fixed', inset:0, zIndex:10000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
         >
           <div
             className="lens-photo-sheet"
@@ -242,7 +250,8 @@ function LensScanHome({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Notice « Comment ça marche ? » ── */}
