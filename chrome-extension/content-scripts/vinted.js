@@ -137,10 +137,16 @@ async function readServerValidationErrors() {
 
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
 // supposé partagé avec Marque/Taille/État/Couleur/Matière, mêmes composants
-// Vinted). waitForElementGone dessus ne bloque jamais (résout au timeout),
-// donc même si l'hypothèse est fausse pour un champ donné, au pire on perd
-// le timeout en délai, sans casser le flux.
-const DROPDOWN_PANEL_SELECTOR = ".input-dropdown__content";
+// Vinted) : clé publish.dropdown_panel du registre — OPTIONAL, l'absence du
+// panneau est un état nominal, d'où tryResolveSelector (jamais de -1 émis).
+// waitForElementGone dessus ne bloque jamais (résout au timeout), donc même si
+// l'hypothèse est fausse pour un champ donné, au pire on perd le timeout en
+// délai, sans casser le flux. La sonde est SYNCHRONE (exigence de
+// waitForElement/waitForElementGone) : elle se construit après résolution du
+// module (S = await sel()).
+function dropdownPanelProbe(S) {
+  return () => S.tryResolveSelector("vinted", "publish.dropdown_panel")?.el ?? null;
+}
 
 // ── Registre de sélecteurs (chantier observatoire, 2026-07-27) ───────────────
 // Les clés MIGRÉES ne portent plus leur littéral ici : il vit dans
@@ -487,7 +493,9 @@ async function fillListingForm(job) {
   // affiche un formulaire d'authentification, on s'arrête AVANT tout
   // remplissage : needsUser (ré-armement borné côté background, jamais de
   // retry immédiat), aucune interaction sur une page de connexion.
-  if (!location.pathname.startsWith("/items/new") || document.querySelector('input[type="password"]')) {
+  // auth.password_guard : clé OPTIONAL du registre, sémantique inversée —
+  // la PRÉSENCE du champ mot de passe signifie « page de connexion » ⇒ needsUser.
+  if (!location.pathname.startsWith("/items/new") || (await sel()).tryResolveSelector("vinted", "auth.password_guard")) {
     return {
       success: false,
       needsUser: true,
@@ -1463,12 +1471,13 @@ function askBackground(msg) {
 }
 
 async function openDropdown(triggerSelector) {
+  const S = await sel();
   // Filet de sécurité : si le panneau précédent (ex: Catégorie) n'a pas fini
   // de se fermer, cliquer le trigger suivant tout de suite peut rater le clic
   // ou ouvrir/refermer le mauvais panneau. Ce cas est censé être déjà réglé
   // par l'attente dans confirmDropdownIfNeeded ; ceci est redondant mais
   // gratuit (no-op si le panneau est déjà absent).
-  await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
+  await waitForElementGone(dropdownPanelProbe(S), 2000);
   // waitForStableElement : certains champs (ex: #brand, dont les suggestions
   // dépendent de la catégorie tout juste choisie — ids "suggested-brand-*" du
   // rapport DOM) peuvent être remontés par React juste après la fermeture de
@@ -1484,7 +1493,7 @@ async function openDropdown(triggerSelector) {
   const opened = await clickUntilPanelOpens(trigger);
   if (!opened) {
     throw new Error(
-      `Le clic sur ${triggerSelector} n'a pas ouvert de panneau (${DROPDOWN_PANEL_SELECTOR}) ` +
+      `Le clic sur ${triggerSelector} n'a pas ouvert de panneau (${S.selectorFor("vinted", "publish.dropdown_panel")}) ` +
       `après plusieurs tentatives.`
     );
   }
@@ -1493,9 +1502,11 @@ async function openDropdown(triggerSelector) {
 }
 
 async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 300 } = {}) {
+  const S = await sel();
+  const panneau = dropdownPanelProbe(S);
   for (let i = 0; i < attempts; i++) {
     simulateFullClick(trigger);
-    const opened = await waitForElement(DROPDOWN_PANEL_SELECTOR, perAttemptMs).catch(() => null);
+    const opened = await waitForElement(panneau, perAttemptMs, "vinted/publish.dropdown_panel").catch(() => null);
     if (opened) return true;
   }
   return false;
@@ -1532,7 +1543,7 @@ async function confirmDropdownIfNeeded() {
   // fixe : hypothèse confirmée par test réel — le clic sur #brand juste
   // après "Fait" (250 ms fixes) tombait sur la modale Catégorie encore en
   // train de se démonter, #brand-search-input n'apparaissait jamais.
-  if (!(await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 3000))) {
+  if (!(await waitForElementGone(dropdownPanelProbe(await sel()), 3000))) {
     await closeAnyOpenDropdown(); // "Fait" cliqué mais panneau récalcitrant
   }
   await humanPause();
@@ -1693,12 +1704,14 @@ async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000, opts
 //   - séquence souris COMPLÈTE (simulateFullClick) sur un élément EXTÉRIEUR au
 //     panneau → FERME. C'est la seule voie qui marche.
 async function closeAnyOpenDropdown() {
-  if (!document.querySelector(DROPDOWN_PANEL_SELECTOR)) return;
+  const S = await sel();
+  const panneau = dropdownPanelProbe(S);
+  if (!panneau()) return;
 
   const done = findButtonByExactText("Fait");
   if (done) {
     done.click();
-    if (await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000)) {
+    if (await waitForElementGone(panneau, 2000)) {
       await humanPause();
       return;
     }
@@ -1707,11 +1720,11 @@ async function closeAnyOpenDropdown() {
   // Clic extérieur RÉALISTE : un élément qui n'est ni dans le panneau ni un
   // champ (le titre du formulaire fait un point de sortie neutre), avec la
   // séquence pointer/mouse complète.
-  const panel = document.querySelector(DROPDOWN_PANEL_SELECTOR);
+  const panel = panneau();
   const outside = Array.from(document.querySelectorAll("h1, h2, header"))
     .find((el) => el.offsetParent !== null && !panel?.contains(el)) ?? document.body;
   simulateFullClick(outside);
-  await waitForElementGone(DROPDOWN_PANEL_SELECTOR, 2000);
+  await waitForElementGone(panneau, 2000);
   await humanPause();
 }
 
@@ -2084,9 +2097,9 @@ async function uploadPhotos(photos) {
 // sens getComputedStyle), jamais par libellé exact. EXCLUSIONS Vinted — on ne
 // ferme JAMAIS :
 //   · un dialogue portant des contrôles du flux de dépôt (input photos,
-//     bouton Publier, options catalogue id^="catalog-", panneau
-//     .input-dropdown__content) : c'est un PICKER de champ, pas un
-//     interstitiel — le fermer casserait le remplissage ;
+//     bouton Publier, options catalogue id^="catalog-", panneau dropdown —
+//     clé publish.dropdown_panel du registre) : c'est un PICKER de champ, pas
+//     un interstitiel — le fermer casserait le remplissage ;
 //   · la modale POST-PUBLICATION (.web_ui__Dialog__content) : attendue par le
 //     flux et gérée par closePostPublishModal — hors fenêtre d'appel de toute
 //     façon (dismiss appelé à l'arrivée seulement), exclue par structure via
@@ -2102,7 +2115,12 @@ function visibleSansLayoutV(el) {
   }
   return true;
 }
-function findBlockingDialogsVinted() {
+async function findBlockingDialogsVinted() {
+  // Sélecteur composé : morceaux hors registre + littéral du panneau dropdown
+  // lu au registre (selectorFor — le moteur de détection reste ici, seul le
+  // littéral a déménagé).
+  const S = await sel();
+  const panneauSel = S.selectorFor("vinted", "publish.dropdown_panel");
   const bruts = Array.from(
     document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]')
   )
@@ -2111,14 +2129,14 @@ function findBlockingDialogsVinted() {
     .filter((d) =>
       !d.querySelector(
         '[data-testid="add-photos-input"], [data-testid="upload-form-save-button"], ' +
-        '.input-dropdown__content, [id^="catalog-"], input[data-testid$="--input"]'
+        panneauSel + ', [id^="catalog-"], input[data-testid$="--input"]'
       )
     )
-    .filter((d) => !d.closest(".input-dropdown__content"));
+    .filter((d) => !d.closest(panneauSel));
   return bruts.filter((d) => !bruts.some((autre) => autre !== d && autre.contains(d)));
 }
 async function dismissInterstitials(contexte) {
-  const dialogs = findBlockingDialogsVinted();
+  const dialogs = await findBlockingDialogsVinted();
   if (!dialogs.length) return { present: false, restants: 0 };
   for (const d of dialogs) {
     const boutons = Array.from(d.querySelectorAll("button")).filter(visibleSansLayoutV);
@@ -2145,7 +2163,7 @@ async function dismissInterstitials(contexte) {
     }
     if (!ferme) console.warn(`[vinted] interstitiel NON fermé (${contexte}) — aucun candidat n'a eu d'effet ; le flux continue`);
   }
-  return { present: true, restants: findBlockingDialogsVinted().length };
+  return { present: true, restants: (await findBlockingDialogsVinted()).length };
 }
 
 // ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
