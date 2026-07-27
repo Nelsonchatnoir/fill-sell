@@ -894,7 +894,10 @@ async function fillListingForm(job) {
   // throw → job failed honnête, AUCUN clic avec price: null.
   if (job.price != null) await ensurePriceCommitted(job.price);
 
-  const publishBtn = await waitForElement('[data-testid="upload-form-save-button"]');
+  // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
+  // de l'audit ; l'assert du registre — visible au sens getComputedStyle +
+  // enabled — s'applique désormais avant le clic).
+  const publishBtn = await waitForKey("publish.submit");
   publishBtn.click();
   await sleep(2500);
 
@@ -2135,13 +2138,18 @@ async function uploadPhotos(photos) {
   }
 
   const files = await Promise.all(source.map((p, i) => urlToFile(p.url, i)));
-  const input = await waitForElement('input[data-testid="add-photos-input"]');
+  // publish.photo_input (migré au registre — criticité red, clé SANS fallback,
+  // §8 de l'audit).
+  const input = await waitForKey("publish.photo_input");
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   const vignettesAvant = photoPreviewCount();
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
+  // TODO(observatory): succès non confirmé — cf. SELECTOR_AUDIT.md §7.1 : si le
+  // signal de prévisualisation n'est pas constaté, le budget historique
+  // (1500 ms × n) s'épuise puis le flux CONTINUE sans preuve d'upload.
   const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "vinted");
   return { count: files.length, duplicated, photoNote: signal.note };
 }
@@ -2180,9 +2188,12 @@ async function findBlockingDialogsVinted() {
   )
     .filter(visibleSansLayoutV)
     // Contrôles du flux de dépôt à l'intérieur ⇒ picker légitime, pas un interstitiel.
+    // Le fragment [data-testid="add-photos-input"] (sans préfixe input) est la
+    // variante DÉTECTION de ce composite, distincte du littéral photo_input du
+    // registre — laissé tel quel ; le bouton Publier vient, lui, du registre.
     .filter((d) =>
       !d.querySelector(
-        '[data-testid="add-photos-input"], [data-testid="upload-form-save-button"], ' +
+        '[data-testid="add-photos-input"], ' + S.selectorFor("vinted", "publish.submit") + ', ' +
         panneauSel + ', [id^="catalog-"], input[data-testid$="--input"]'
       )
     )
