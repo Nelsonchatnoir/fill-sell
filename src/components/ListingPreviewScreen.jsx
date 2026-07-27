@@ -7,7 +7,7 @@ import PepiteIcon from "./PepiteIcon";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
@@ -1836,7 +1836,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -1861,6 +1861,43 @@ function StepPublish({ selected, setSelected, platformListings, publishError, la
       <h1 style={{ margin:"6px 0 16px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepPublishTitle")}
       </h1>
+
+      {/* Sessions plateformes (chantier onboarding 2026-07-27) : relevé des
+          sondes de l'extension (profiles.extension_sessions). INFORMATIF
+          seulement — on ne bloque jamais la publication. On n'affiche que ce
+          qu'on SAIT : true → vert, false → rouge avec lien de connexion,
+          null/périmé → rien (jamais de fausse assurance, cas Beebs SPA). */}
+      {platformSessions && chips.some(p => platformSessions[p] === false) && (
+        <div style={{ padding:"11px 14px", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8C2F28" }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
+            {lang === "en" ? "Not signed in on some platforms" : "Connexion manquante sur certaines plateformes"}
+          </div>
+          {chips.filter(p => platformSessions[p] === false).map(p => (
+            <div key={p} style={{ display:"flex", alignItems:"center", gap:8, marginTop:4 }}>
+              <span style={{ width:8, height:8, borderRadius:"50%", background:"#C0392B", flexShrink:0 }} />
+              <span style={{ flex:1 }}>
+                {lang === "en"
+                  ? `${PLATFORM_LABELS[p] ?? p}: not signed in — the listing will wait until you sign in.`
+                  : `${PLATFORM_LABELS[p] ?? p} : non connecté — l'annonce attendra que tu te connectes.`}
+              </span>
+              <a href={PLATFORM_LOGIN_URLS[p]} target="_blank" rel="noopener noreferrer"
+                style={{ fontWeight:700, color:"#8C2F28", textDecoration:"underline", textUnderlineOffset:2, whiteSpace:"nowrap" }}>
+                {lang === "en" ? "Sign in" : "Se connecter"}
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+      {platformSessions && chips.some(p => platformSessions[p] === true) && !chips.some(p => platformSessions[p] === false) && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
+          {chips.filter(p => platformSessions[p] === true).map(p => (
+            <span key={p} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:999, background:"#E7F3F0", border:"1px solid #BFDCD5", fontSize:12, fontWeight:600, color:"#1B6E62" }}>
+              <span style={{ width:7, height:7, borderRadius:"50%", background:"#2F9E90" }} />
+              {(PLATFORM_LABELS[p] ?? p)} {lang === "en" ? "signed in" : "connecté"}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Bandeau de maintenance (Phase B) : une plateforme sélectionnée est en
           pause. Ton NEUTRE/info (pas rouge), rassurant, aucune action requise.
@@ -2286,6 +2323,25 @@ export default function ListingPreviewScreen({
 
   const [step, setStep]         = useState(draft?.step ?? 0);
   const [initializing, setInit] = useState(true);
+
+  // Sessions plateformes relevées par l'extension (profiles.extension_sessions,
+  // sondes du background ~10 min — chantier onboarding 2026-07-27). Lues à
+  // l'ENTRÉE de l'étape Publier, purement informatif : on n'empêche jamais de
+  // publier (choisir 2 plateformes sur 4 est légitime). Relevé absent ou
+  // périmé (> 30 min) → aucun badge, jamais de fausse assurance.
+  const [platformSessions, setPlatformSessions] = useState(null);
+  useEffect(() => {
+    if (step !== 3 || !supabase || !userId) return;
+    let stale = false;
+    supabase.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle()
+      .then(({ data }) => {
+        if (stale) return;
+        const s = data?.extension_sessions;
+        const fresh = s?.checked_at && (Date.now() - Date.parse(s.checked_at)) < 30 * 60 * 1000;
+        setPlatformSessions(fresh ? s : null);
+      });
+    return () => { stale = true; };
+  }, [step, supabase, userId]);
 
   // Ligne inventaire liée à cette annonce : peut ne pas encore exister si l'article
   // n'a pas encore été ajouté au stock (switch "Ajouter au stock" à l'étape Publier).
@@ -4653,6 +4709,7 @@ export default function ListingPreviewScreen({
           <StepPublish
             selected={selected}
             setSelected={setSelected}
+            platformSessions={platformSessions}
             platformListings={platformListings}
             publishError={publishError}
             lang={lang}

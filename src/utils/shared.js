@@ -4,6 +4,18 @@
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+// Pages de connexion des plateformes (chantier onboarding 2026-07-27) —
+// badges de session de l'écran Publier + messages d'échec actionnables du
+// Stock. La cible « brouillon LBC en cours » est la page de dépôt : c'est là
+// que le wizard montre le brouillon à publier ou supprimer.
+export const PLATFORM_LOGIN_URLS = {
+  vinted: 'https://www.vinted.fr/member/signup/select_type?ref_url=%2F',
+  leboncoin: 'https://auth.leboncoin.fr/login',
+  ebay: 'https://signin.ebay.fr/',
+  beebs: 'https://www.beebs.app/fr/login',
+};
+export const LBC_DEPOSIT_URL = 'https://www.leboncoin.fr/deposer-une-annonce';
+
 export const C = {
   primary:"#1D9E75",
   dark:"#0F6E56",

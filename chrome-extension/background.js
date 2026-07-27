@@ -964,6 +964,12 @@ async function pollAndProcessJobsUnlocked() {
     console.error("[background] recoverStaleProcessingJobs:", e)
   );
 
+  // Sondes de session plateformes (throttlées ~10 min) : fire-and-forget,
+  // le poll n'attend pas et un échec de sonde n'affecte jamais les jobs.
+  reportPlatformSessions(session.access_token).catch((e) =>
+    console.warn("[background] reportPlatformSessions (non bloquant) :", String(e?.message ?? e))
+  );
+
   let jobs;
   try {
     // build : télémétrie de version (profiles.extension_build via
@@ -4086,6 +4092,81 @@ async function lireEtatAnnonce(url, platform) {
 
 // PostgREST direct (RLS user via JWT) : lecture des published à vérifier et
 // tampon last_checked_at — pas de nouvelle edge function pour si peu.
+// ── Sondes de session plateformes (chantier onboarding, 2026-07-27) ──────────
+// Écrit profiles.extension_sessions pour que l'app affiche connecté / non
+// connecté AVANT publication (cas pstephanie1005 : 4 échecs « connexion
+// requise » incompréhensibles). Signaux STRICTEMENT repris des handlers :
+//   - Vinted : /api/v2/users/current — la sonde de vintedSessionEtat
+//     (vinted.js) : 200 connecté, 401 déconnecté, sinon indéterminé.
+//   - Leboncoin / eBay : la page de dépôt redirige vers l'auth quand le compte
+//     est déconnecté (auth.leboncoin.fr / signin.ebay.fr — exactement le test
+//     d'entrée de leur fillListingForm).
+//   - Beebs : SPA — seule une redirection login OBSERVÉE prouve la
+//     déconnexion ; un 200 sur /fr/listing ne prouve rien (redirection
+//     client) → null (indéterminé), jamais un faux « connecté ».
+// Tri-état true/false/null par plateforme. Fire-and-forget : une sonde qui
+// échoue ne bloque JAMAIS le traitement des jobs.
+let lastSessionProbeAt = 0;
+const SESSION_PROBE_INTERVAL_MS = 10 * 60 * 1000;
+
+function decodeJwtSub(token) {
+  try {
+    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(base64))?.sub ?? null;
+  } catch { return null; }
+}
+
+async function probePlatformSessions() {
+  const probe = async (fn) => { try { return await fn(); } catch { return null; } };
+  const [vinted, leboncoin, ebay, beebs] = await Promise.all([
+    probe(async () => {
+      const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
+        headers: { Accept: "application/json" }, credentials: "include",
+      });
+      if (r.status === 401) return false;
+      return r.ok ? true : null;
+    }),
+    probe(async () => {
+      const r = await fetch("https://www.leboncoin.fr/deposer-une-annonce", {
+        credentials: "include", redirect: "follow",
+      });
+      const u = new URL(r.url);
+      if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) return false;
+      return u.pathname.startsWith("/deposer-une-annonce") ? true : null;
+    }),
+    probe(async () => {
+      const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
+        credentials: "include", redirect: "follow",
+      });
+      const u = new URL(r.url);
+      if (/(^|\.)signin\.ebay\./.test(u.hostname)) return false;
+      return /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null;
+    }),
+    probe(async () => {
+      const r = await fetch("https://www.beebs.app/fr/listing", {
+        credentials: "include", redirect: "follow",
+      });
+      const u = new URL(r.url);
+      if (/login|signin|connexion/i.test(u.pathname)) return false;
+      return null;
+    }),
+  ]);
+  return { checked_at: new Date().toISOString(), vinted, leboncoin, ebay, beebs };
+}
+
+async function reportPlatformSessions(accessToken) {
+  if (Date.now() - lastSessionProbeAt < SESSION_PROBE_INTERVAL_MS) return;
+  lastSessionProbeAt = Date.now();
+  const sub = decodeJwtSub(accessToken);
+  if (!sub) return;
+  const sessions = await probePlatformSessions();
+  await restRequest(`profiles?id=eq.${sub}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify({ extension_sessions: sessions }),
+  });
+  console.log("[background] sessions plateformes relevées :", JSON.stringify(sessions));
+}
+
 async function restRequest(path, accessToken, init = {}) {
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/${path}`, {
     ...init,

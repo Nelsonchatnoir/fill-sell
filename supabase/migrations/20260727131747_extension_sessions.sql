@@ -1,0 +1,14 @@
+-- profiles.extension_sessions — sondes de session plateformes (chantier UX
+-- onboarding publication, 2026-07-27, cas pstephanie1005 : 4 échecs « connexion
+-- requise » incompréhensibles pour une nouvelle inscrite).
+--
+-- Écrit par le background de l'extension à chaque poll (throttlé ~10 min) avec
+-- les MÊMES signaux que les handlers (sonde /api/v2/users/current Vinted,
+-- redirection auth des pages de dépôt LBC/eBay). Lu par l'app sur l'écran
+-- Publier pour afficher connecté / non connecté AVANT le clic.
+--
+-- Format : { "checked_at": "2026-07-27T…Z",
+--            "vinted": true|false|null, "leboncoin": …, "ebay": …, "beebs": … }
+-- null = indéterminé (sonde impossible, ou Beebs dont la SPA ne permet de
+-- prouver QUE la déconnexion). L'app ignore les relevés périmés (> 30 min).
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS extension_sessions jsonb;
