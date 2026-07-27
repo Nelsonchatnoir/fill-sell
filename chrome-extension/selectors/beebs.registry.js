@@ -5,6 +5,10 @@
 // Aucun sélecteur inventé — mêmes conventions de maillons que vinted.registry.js.
 // Rappel post-migration Tailwind (22-23/07) : les classes __category/__valueButton
 // sont MORTES ; les sélecteurs génériques ci-dessous sont l'état prod.
+//
+// Clés optional: true (A1 — sémantique inversée, d'après les notes déjà
+// portées par le registre ; se résolvent par tryResolveSelector) :
+//   - auth.password_guard (présence = needsUser, absence = état sain)
 
 export const BEEBS_SELECTORS = {
   "status.my_ads_probe": {
@@ -39,8 +43,8 @@ export const BEEBS_SELECTORS = {
     chain: [
       { type: "css", value: '[role="dialog"], [class*="modal" i]', note: "2 formes" },
     ],
-    assert: { textMatches: "supprimer mon annonce" },
-    source: "beebs.js:216",
+    assert: { textMatches: "supprimer mon annonce", flags: "i" },
+    source: "beebs.js:216 (filtre /supprimer mon annonce/i, relevé code 27/07)",
     note: "attente du dialogue — texte « supprimer mon annonce » exigé dans le dialogue",
   },
 
@@ -73,6 +77,7 @@ export const BEEBS_SELECTORS = {
 
   "auth.password_guard": {
     criticality: "red",
+    optional: true,
     workflows: ["publish"],
     chain: [{ type: "css", value: 'input[type="password"]' }],
     source: "beebs.js:353",

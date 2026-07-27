@@ -14,9 +14,17 @@
 //   text     — éléments de `scope` filtrés par regex `textMatches` sur textContent
 //   template — sélecteur CSS à trous {param} (value + params), résolu avec des
 //              paramètres fournis à l'appel
-//   dynamic  — construit par une fonction du content script (construction) ; non
-//              résolvable déclarativement sans params.selector
+//   dynamic  — construit par une fonction du content script (construction) ;
+//              résolu via la fonction nommée par `fn` (enregistrée par le
+//              content script propriétaire, cf. registerDynamicResolver) ou
+//              via params.selector
 //   signal   — pas un élément : signal de preuve (URL, réseau, texte de page)
+//
+// Clés optional: true (A1 — absence nominale ou sémantique inversée, d'après
+// les notes déjà portées par le registre ; se résolvent par tryResolveSelector,
+// jamais resolveSelector) :
+//   - publish.dropdown_panel  (l'absence du panneau est un état normal)
+//   - auth.password_guard     (sémantique inversée : présence = needsUser)
 
 export const VINTED_SELECTORS = {
   "publish.field_input": {
@@ -25,9 +33,10 @@ export const VINTED_SELECTORS = {
     chain: [
       {
         type: "dynamic",
+        fn: "vintedFieldSelector",
         construction:
           "vintedFieldSelector(code) — map spéciale '#brand, [data-testid=\"brand-select-dropdown-input\"]' / model / color / condition / size / material, sinon motif générique category-<code>-… (ex. réel l.614 : '#sim_lock, [data-testid=\"category-sim_lock-single-list-input\"]')",
-        note: "chaque entrée de la map est déjà une paire #id, [data-testid=…] (fallback interne)",
+        note: "chaque entrée de la map est déjà une paire #id, [data-testid=…] (fallback interne) ; fn à enregistrer par vinted.js via registerDynamicResolver",
       },
     ],
     source: "vinted.js:52-68, 94, 100, 614, 679",
@@ -45,6 +54,7 @@ export const VINTED_SELECTORS = {
 
   "publish.dropdown_panel": {
     criticality: "orange",
+    optional: true,
     workflows: ["publish"],
     chain: [{ type: "css", value: ".input-dropdown__content" }],
     source: "vinted.js:143, 1620, 1634 (DROPDOWN_PANEL_SELECTOR)",
@@ -174,6 +184,7 @@ export const VINTED_SELECTORS = {
 
   "auth.password_guard": {
     criticality: "red",
+    optional: true,
     workflows: ["publish"],
     chain: [{ type: "css", value: 'input[type="password"]' }],
     source: "vinted.js:451 (fillListingForm, garde de session)",
@@ -198,12 +209,13 @@ export const VINTED_SELECTORS = {
       {
         type: "text",
         scope: "button, a, [role='button'], [role='menuitem']",
-        textMatches: null,
-        note: "filtrage par texte via findDeleteByText — libellé exact non littéralisé dans l'audit, ne pas l'inventer ici",
+        textMatches: "^supprimer( l['’]annonce)?$",
+        flags: "i",
+        note: "libellé complété le 27/07 depuis le code (vinted.js:409 : /^supprimer( l['’]annonce)?$/i) — l'audit ne le littéralisait pas",
       },
     ],
     source: "vinted.js:408 (findDeleteByText)",
-    note: "aucun fallback structurel (texte seul) ; vérif post : gate DELETE_DRY_RUN",
+    note: "aucun fallback structurel (texte seul) ; vérif post : gate DELETE_DRY_RUN ; ⚠ findDeleteByText n'est APPELÉE NULLE PART (code mort, grep 27/07) — la suppression Vinted passe par l'API",
   },
 
   "status.price_input": {

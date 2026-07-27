@@ -4,6 +4,11 @@
 // Source de vérité : docs/SELECTOR_AUDIT.md (audit du 2026-07-26, HEAD 73ac223), §3
 // (content-scripts/ebay.js + confirmations dans background.js).
 // Aucun sélecteur inventé — mêmes conventions de maillons que vinted.registry.js.
+//
+// Clés optional: true (A1 — absence nominale ou sémantique inversée, d'après
+// les notes déjà portées par le registre ; se résolvent par tryResolveSelector) :
+//   - auth.password_guard (présence = needsUser, absence = état sain)
+//   - publish.notices     (l'absence est un état normal pré-clic)
 
 export const EBAY_SELECTORS = {
   "delete.listing_row": {
@@ -79,6 +84,7 @@ export const EBAY_SELECTORS = {
 
   "auth.password_guard": {
     criticality: "red",
+    optional: true,
     workflows: ["publish"],
     chain: [{ type: "css", value: 'input[type="password"]' }],
     source: "ebay.js:308, 364 (gardes de session)",
@@ -267,6 +273,7 @@ export const EBAY_SELECTORS = {
 
   "publish.notices": {
     criticality: "red",
+    optional: true,
     workflows: ["publish"],
     chain: [
       { type: "css", value: '.page-notice, [role="alert"], [role="dialog"], [class*="lightbox" i]', note: "4 formes" },

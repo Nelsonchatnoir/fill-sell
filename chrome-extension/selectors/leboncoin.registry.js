@@ -3,6 +3,10 @@
 // FICHIER DE DONNÉES PUR — aucune logique, aucun import applicatif.
 // Source de vérité : docs/SELECTOR_AUDIT.md (audit du 2026-07-26, HEAD 73ac223), §2.
 // Aucun sélecteur inventé — mêmes conventions de maillons que vinted.registry.js.
+//
+// Clés optional: true (A1 — sémantique inversée, d'après les notes déjà
+// portées par le registre ; se résolvent par tryResolveSelector) :
+//   - auth.password_guard (présence = needsUser, absence = état sain)
 
 export const LEBONCOIN_SELECTORS = {
   "status.my_ads_heading": {
@@ -73,6 +77,7 @@ export const LEBONCOIN_SELECTORS = {
 
   "auth.password_guard": {
     criticality: "red",
+    optional: true,
     workflows: ["publish"],
     chain: [{ type: "css", value: 'input[type="password"]' }],
     source: "leboncoin.js:542 (fillListingForm)",
@@ -149,19 +154,22 @@ export const LEBONCOIN_SELECTORS = {
         type: "text",
         scope: "button, a[role='button'], a",
         textMatches: "déposer sans booster",
+        flags: "i",
         note: "régex n°1 de findFreeCta",
       },
       {
         type: "text",
         scope: "button, a[role='button'], a",
-        textMatches: "continuer sans",
-        note: "régex n°2 « continuer sans/… » — cascade complète dans findFreeCta (lbc.js:974-980), libellés élidés dans l'audit",
+        textMatches: "continuer sans|sans option|non merci|déposer sans",
+        flags: "i",
+        note: "régex n°2 — littéral complété le 27/07 depuis le code (lbc.js:992), l'audit l'élidait",
       },
       {
         type: "text",
         scope: "button, a[role='button'], a",
-        textMatches: "déposer mon annonce",
-        note: "régex n°3 « déposer mon annonce/… » — idem, libellés élidés dans l'audit",
+        textMatches: "déposer (mon |l['’])annonce|publier l['’]annonce|valider et déposer",
+        flags: "i",
+        note: "régex n°3 — littéral complété le 27/07 depuis le code (lbc.js:993), l'audit l'élidait",
       },
     ],
     assert: { visible: true, enabled: true },
