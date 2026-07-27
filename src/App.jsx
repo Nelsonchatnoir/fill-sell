@@ -6,7 +6,7 @@ const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, PRODUCT_IDS } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS } from './lib/iap';
 import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -2030,26 +2030,46 @@ export default function App({ loginOnly = false }){
   async function handleIAPPurchase(tier){
     const isProPurchase=tier==='pro';
     console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isProPurchase?'pro':'premium');
-    // ── Garde anti-double-abonnement Android (2026-07-23) ────────────────────
-    // @capgo/native-purchases (8.6.4 vérifié) n'expose PAS SubscriptionUpdateParams
-    // (oldPurchaseToken/replacementMode) : impossible d'upgrader l'abonnement Play
-    // en place — un achat Pro par un Premium actif créerait un SECOND abonnement
-    // facturé en parallèle (idem si son Premium vient de Stripe web). On bloque
-    // et on guide. iOS non bloqué : StoreKit remplace automatiquement au sein
-    // d'un même subscription group (config ASC à confirmer).
+    // ── Upgrade Premium→Pro Android (2026-07-27, remplace la garde du 23/07) ──
+    // L'ancienne garde bloquait TOUT Premium Android — y compris les comped/
+    // promus à la main qui n'ont AUCUN abonnement à doublonner. On regarde
+    // désormais la source réelle :
+    //  - abo Premium Google Play actif (interrogé en direct via getPurchases,
+    //    jamais les colonnes locales seules) → upgrade EN PLACE : oldPurchaseToken
+    //    + prorata via le plugin patché (patches/@capgo+native-purchases)
+    //  - sinon client Stripe → l'upgrade se fait sur fillsell.app (pas de
+    //    paiement carte déclenché depuis l'app : règles Play)
+    //  - sinon (comped/manuel) → achat Pro normal, rien à doublonner.
+    // Trou restant assumé : Premium Apple actif utilisé sur Android (rare).
+    let upgradeOldToken=null;
     if(isProPurchase&&platform==='android'&&isPremium&&!isPro){
-      setToast({visible:true,message:lang==='fr'
-        ?"Pour passer Pro : si tu es abonné par carte, fais l'upgrade sur fillsell.app (automatique). Si ton Premium vient de Google Play, résilie-le d'abord dans Play Store puis reprends Pro ici."
-        :"To go Pro: if you subscribed by card, upgrade on fillsell.app (automatic). If your Premium is via Google Play, cancel it in the Play Store first, then get Pro here."});
-      setTimeout(()=>setToast({visible:false,message:''}),10000);
-      return;
+      setIapLoading(true);
+      try{upgradeOldToken=await findActivePlayPremiumSub();}
+      catch(e){console.warn('[IAP] lecture abos Play:',e?.message);}
+      if(!upgradeOldToken){
+        let prof=null;
+        try{const{data}=await supabase.from('profiles').select('stripe_customer_id,google_purchase_token,google_product_id').eq('id',user.id).single();prof=data;}catch{}
+        if(prof?.google_purchase_token&&prof?.google_product_id!==PRODUCT_IDS.pro){
+          // Repli si getPurchases est muet (autre compte Google sur l'appareil…) :
+          // on tente l'upgrade avec le token connu — si l'abo est mort, Google
+          // refuse le flow proprement, jamais de double facturation.
+          upgradeOldToken=prof.google_purchase_token;
+        }else if(prof?.stripe_customer_id){
+          setIapLoading(false);
+          setToast({visible:true,message:lang==='fr'
+            ?"Ton Premium est payé par carte : passe Pro sur fillsell.app, l'upgrade y est automatique (prorata inclus)."
+            :"Your Premium is billed by card: upgrade to Pro on fillsell.app — it's automatic there (prorated)."});
+          setTimeout(()=>setToast({visible:false,message:''}),8000);
+          return;
+        }
+      }
     }
     setIapLoading(true);
     // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
     // Il reste référencé dans restorePurchases pour les Founders existants.
     const productId=isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
     try{
-      const {cancelled,purchaseToken}=await purchasePremium(productId,user.id);
+      const {cancelled,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
       if(cancelled) return;
       if(platform==='android'){
         // Android : succès Play Billing côté client → écriture directe + sauvegarde du token
@@ -2298,6 +2318,27 @@ export default function App({ loginOnly = false }){
         const body=await r.json().catch(()=>({}));
         if(!r.ok||body.error) throw new Error(body.error||`HTTP ${r.status}`);
       }).then(h=>{coinRecoveryHandle=h;}).catch(e=>console.error('[IAP] listener rattrapage:',e?.message));
+    }
+    // Filet de rattrapage Android (2026-07-27) : pas de Transaction.updates ici,
+    // on interroge Play directement au lancement (achats inapp non consommés)
+    // et on rejoue la validation idempotente AVANT de consumer. Vécu le 27/07 :
+    // pack de Pépites débité (achat probablement passé PENDING pendant la
+    // feuille Google) jamais crédité, zéro appel serveur.
+    if(isNative&&platform==='android'){
+      supabase.auth.getSession().then(async({data:{session:rcSess}})=>{
+        const rcToken=rcSess?.access_token;
+        if(!rcToken) return; // session pas encore restaurée → prochain lancement
+        const recovered=await recoverAndroidCoinPurchases(async(p)=>{
+          const r=await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':`Bearer ${rcToken}`,'apikey':supabaseAnonKey},
+            body:JSON.stringify({platform:'android',productId:p.productIdentifier,purchaseToken:p.purchaseToken}),
+          });
+          const body=await r.json().catch(()=>({}));
+          if(!r.ok||body.error) throw new Error(body.error||`HTTP ${r.status}`);
+        });
+        if(recovered>0&&rcSess?.user?.id) fetchAll(rcSess.user.id,{silencieux:true});
+      }).catch(e=>console.error('[IAP] rattrapage Android:',e?.message));
     }
     const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       const u=session?.user??null;

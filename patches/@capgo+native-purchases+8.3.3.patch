@@ -1,0 +1,34 @@
+diff --git a/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java b/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
+index 0855c02..f337d57 100644
+--- a/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
++++ b/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
+@@ -424,6 +424,12 @@ public class NativePurchasesPlugin extends Plugin {
+         final String accountIdentifier = appAccountToken != null && !appAccountToken.isEmpty() ? appAccountToken : null;
+         boolean isConsumable = call.getBoolean("isConsumable", false);
+         boolean autoAcknowledgePurchases = call.getBoolean("autoAcknowledgePurchases", true);
++        // FillSell patch (2026-07-27): in-place subscription upgrade support.
++        // oldPurchaseToken = token of the subscription being replaced;
++        // replacementMode = BillingFlowParams.SubscriptionUpdateParams.ReplacementMode
++        // (2 = CHARGE_PRORATED_PRICE). Upstream 8.x does not forward these.
++        final String oldPurchaseToken = call.getString("oldPurchaseToken");
++        final int replacementMode = call.getInt("replacementMode", 2);
+ 
+         Log.d(TAG, "Product identifier: " + productIdentifier);
+         Log.d(TAG, "Plan identifier: " + planIdentifier);
+@@ -544,6 +550,16 @@ public class NativePurchasesPlugin extends Plugin {
+                         if (accountIdentifier != null && !accountIdentifier.isEmpty()) {
+                             billingFlowBuilder.setObfuscatedAccountId(accountIdentifier);
+                         }
++                        // FillSell patch (2026-07-27): replace an existing subscription in place.
++                        if (oldPurchaseToken != null && !oldPurchaseToken.isEmpty() && productType.equals("subs")) {
++                            Log.d(TAG, "Applying SubscriptionUpdateParams (replacementMode=" + replacementMode + ")");
++                            billingFlowBuilder.setSubscriptionUpdateParams(
++                                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
++                                    .setOldPurchaseToken(oldPurchaseToken)
++                                    .setSubscriptionReplacementMode(replacementMode)
++                                    .build()
++                            );
++                        }
+                         BillingFlowParams billingFlowParams = billingFlowBuilder.build();
+                         // Launch the billing flow
+                         Log.d(TAG, "Launching billing flow");

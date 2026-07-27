@@ -62,7 +62,7 @@ export const initIAP = async () => {
   }
 };
 
-export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined) => {
+export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null } = {}) => {
   try {
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [productId],
@@ -80,6 +80,15 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     const purchaseOptions = { productIdentifier: productId, productType: 'subs' };
     if (planId) purchaseOptions.planIdentifier = planId;
     if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
+    // Upgrade Play EN PLACE (2026-07-27) : oldPurchaseToken + replacementMode
+    // sont lus par notre patch du plugin (patches/@capgo+native-purchases) —
+    // la version publiée ne les transmet pas au Billing Client.
+    // 2 = CHARGE_PRORATED_PRICE : cycle conservé, différence facturée au prorata
+    // (même comportement que l'upgrade Stripe in situ). Android uniquement.
+    if (oldPurchaseToken && Capacitor.getPlatform() === 'android') {
+      purchaseOptions.oldPurchaseToken = oldPurchaseToken;
+      purchaseOptions.replacementMode = 2;
+    }
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     const isPremium = result?.productIdentifier === productId;
     // receipt = iOS only ; purchaseToken = Android only (cf. @capgo/native-purchases types)
@@ -98,6 +107,13 @@ export const purchaseCoins = async (productId, appAccountToken = undefined) => {
   try {
     const purchaseOptions = { productIdentifier: productId, productType: 'inapp' };
     if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
+    // Android (2026-07-27) : ne JAMAIS acknowledge côté client. C'est la
+    // validation serveur qui acknowledge (validate-coin-purchase), puis le
+    // client consomme (consumeCoinPurchase). Si la validation n'aboutit
+    // jamais, l'achat reste non-acknowledged → Google rembourse sous 3 jours
+    // au lieu de laisser l'utilisateur débité sans crédit. iOS inchangé :
+    // le finish y est couvert par listenCoinTransactionUpdates.
+    if (Capacitor.getPlatform() === 'android') purchaseOptions.autoAcknowledgePurchases = false;
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     // iOS StoreKit 2 : sur appareil réel (TestFlight/App Store), le reçu classique
     // (appStoreReceiptURL) est fréquemment absent — le plugin ne fournit alors que
@@ -109,6 +125,51 @@ export const purchaseCoins = async (productId, appAccountToken = undefined) => {
     if (e?.code === 'USER_CANCELLED') return { receipt: null, jwsRepresentation: null, purchaseToken: null, cancelled: true };
     throw e;
   }
+};
+
+// Consomme un pack de pièces APRÈS validation serveur réussie. Consumer =
+// acknowledge implicite + le SKU redevient achetable (« item already owned »
+// sinon) + il disparaît de getPurchases (le rattrapage ne le reverra plus).
+export const consumeCoinPurchase = (purchaseToken) =>
+  NativePurchases.consumePurchase({ purchaseToken: String(purchaseToken) });
+
+// Filet de rattrapage Android (2026-07-27) : Transaction.updates n'existe pas
+// ici — un achat payé dont la validation n'a jamais abouti (achat passé
+// PENDING pendant la feuille Google puis confirmé après coup → le plugin
+// reject 'Purchase is pending' ; app tuée entre purchaseProduct et la
+// validation…) reste « owned » non consommé dans Play. Au lancement :
+// getPurchases(inapp) → validation serveur (idempotente sur google:<orderId>)
+// PUIS consumePurchase — jamais l'inverse : consommé avant validation
+// réussie, l'achat serait définitivement perdu. Vécu le 27/07 au soir :
+// pack débité, jamais crédité, zéro appel à validate-coin-purchase.
+export const recoverAndroidCoinPurchases = async (validate) => {
+  if (Capacitor.getPlatform() !== 'android') return 0;
+  const { purchases } = await NativePurchases.getPurchases({ productType: 'inapp' });
+  let recovered = 0;
+  for (const p of purchases ?? []) {
+    if (!COIN_PRODUCT_IDS.includes(p?.productIdentifier) || !p?.purchaseToken) continue;
+    try {
+      await validate(p);
+      await consumeCoinPurchase(p.purchaseToken);
+      recovered++;
+      console.log('[IAP] achat Pépites rattrapé et consommé:', p.productIdentifier);
+    } catch (e) {
+      console.error('[IAP] rattrapage Pépites échoué (retenté au prochain lancement):', p?.productIdentifier, e?.message);
+    }
+  }
+  return recovered;
+};
+
+// Abonnement Premium (non-Pro) actif sur le compte Google Play de l'appareil →
+// purchaseToken à passer en oldPurchaseToken pour l'upgrade Pro en place.
+export const findActivePlayPremiumSub = async () => {
+  const { purchases } = await NativePurchases.getPurchases({ productType: 'subs' });
+  const premiumIds = [PRODUCT_IDS.sub, PRODUCT_IDS.standard];
+  const tx = (purchases ?? []).find(p =>
+    premiumIds.includes(p?.productIdentifier) && p?.purchaseToken &&
+    (p.isActive === true || (p.expirationDate && new Date(p.expirationDate) > new Date()) || p.purchaseState === '1')
+  );
+  return tx?.purchaseToken ?? null;
 };
 
 export const restorePurchases = async (source) => {

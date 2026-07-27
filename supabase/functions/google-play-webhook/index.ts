@@ -122,7 +122,31 @@ serve(async (req) => {
       });
     }
 
+    // ── Garde upgrade en place (2026-07-27) ─────────────────────────────────
+    // Quand un abonnement est REMPLACÉ (upgrade Premium→Pro via
+    // SubscriptionUpdateParams), Google émet un événement OFF (EXPIRED…) sur
+    // l'ANCIEN token — parfois APRÈS le PURCHASED du nouveau (ordre Pub/Sub
+    // non garanti). Sans garde, cet événement posthume écraserait is_premium
+    // du Pro fraîchement activé. Règle : un événement OFF ne compte que s'il
+    // porte sur le token COURANT du profil ; les événements ON réécrivent le
+    // token courant (le client le fait aussi, mais le webhook peut arriver
+    // avant).
+    if (!isPremium) {
+      const { data: prof } = await supabaseAdmin
+        .from("profiles").select("google_purchase_token").eq("id", userId).single();
+      if (prof?.google_purchase_token && prof.google_purchase_token !== purchaseToken) {
+        console.log(`[google-play-webhook] OFF ignoré : token remplacé (type=${notificationType} product=${subscriptionId} userId=${userId})`);
+        return new Response(JSON.stringify({ ok: true, skipped: "stale_token_replaced" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const update: Record<string, unknown> = { is_premium: isPremium };
+    if (isPremium) {
+      update.google_purchase_token = purchaseToken;
+      update.google_product_id = subscriptionId;
+    }
     if (isPremium && subscriptionId === FOUNDER_PRODUCT_ID) update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
     if (subscriptionId === PRO_PRODUCT_ID) update.is_pro = isPremium;

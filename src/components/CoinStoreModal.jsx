@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { purchaseCoins } from "../lib/iap";
+import { purchaseCoins, consumeCoinPurchase } from "../lib/iap";
 import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import PepiteIcon from "./PepiteIcon";
 import { PACKS } from "./coinPacks";
@@ -39,6 +39,13 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
         });
         const body = await r.json();
         if (!r.ok || body.error) throw new Error(body.error || `HTTP ${r.status}`);
+        // Android : consumer APRÈS validation réussie (le serveur a acknowledgé).
+        // Échec ici = non bloquant, le filet recoverAndroidCoinPurchases du
+        // prochain lancement consommera (validation idempotente, zéro double crédit).
+        if (platform === "android" && res.purchaseToken) {
+          try { await consumeCoinPurchase(res.purchaseToken); }
+          catch (err) { console.warn("[coins] consume différé au prochain lancement:", err?.message); }
+        }
         setMsg({ ok: true, text: lang === "en" ? `+${pack.coins} Nuggets added!` : `+${pack.coins} Pépites créditées !` });
         onPurchased?.();
       } else {
