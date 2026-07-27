@@ -41,7 +41,9 @@ const ZIP_DIR = path.join(ROOT, 'build');
 
 // Versions déjà acceptées par le Chrome Web Store.
 // 0.4.1 n'y figure PAS : jamais soumise (sautée au profit de la 0.4.2).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3'];
+// 0.4.4 ajoutée le 27/07 : paquet remis à Nico pour téléversement — la 0.4.5
+// la remplace, la re-packager ne servirait qu'à se faire rejeter par le CWS.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
