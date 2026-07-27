@@ -43,8 +43,12 @@ android {
         // cours… » tant que la re-capture listing_url est retentée (fenêtre
         // 48 h), consigne manuelle réservée à l'échec définitif). 2.3.3 :
         // correctif seul, iOS inchangé, 2.4 toujours réservée.
-        versionCode 23
-        versionName "2.3.3"
+        // 23 → 24 (27/07 soir : multi-select photos Android — Photo Picker
+        // natif dans le stepper via pickImages, gate getPlatform()==='android',
+        // iOS/web strictement inchangés). 2.3.4 : correctif seul, iOS
+        // inchangé, 2.4 toujours réservée.
+        versionCode 24
+        versionName "2.3.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
