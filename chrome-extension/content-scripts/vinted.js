@@ -1031,11 +1031,17 @@ async function closePostPublishModal() {
   try {
     // offsetParent est null en fenêtre minimisée (aucun layout) : on prendrait
     // toujours « aucune modale ». On prend la première du DOM — best-effort.
-    const dialog = document.querySelector('[role="dialog"], .web_ui__Dialog__content');
+    // publish.post_publish_modal (migré au registre) : chaîne à 3 ÉTAGES SCOPÉS
+    // (conteneur → bouton de fermeture DANS le conteneur → repli tous boutons),
+    // PAS une cascade de fallbacks du même élément — resolveSelector ne
+    // s'applique pas sans en changer le sens ; les littéraux viennent du
+    // registre via selectorFor, absence de modale tolérée comme avant.
+    const S = await sel();
+    const dialog = document.querySelector(S.selectorFor("vinted", "publish.post_publish_modal", 0));
     if (!dialog) return;
     const closer =
-      dialog.querySelector('[data-testid*="close"], button[aria-label*="Fermer" i], button[aria-label*="Close" i]') ??
-      Array.from(dialog.querySelectorAll("button")).find((b) =>
+      dialog.querySelector(S.selectorFor("vinted", "publish.post_publish_modal", 1)) ??
+      Array.from(dialog.querySelectorAll(S.selectorFor("vinted", "publish.post_publish_modal", 2))).find((b) =>
         /^(plus tard|non merci|fermer|ok|compris|continuer)$/i.test((b.textContent || "").trim())
       );
     if (closer) {
@@ -1519,12 +1525,20 @@ async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 300 
 // n'existe pas pour ce champ (ex: Marque semble se fermer seule au clic sur
 // une option, à confirmer). Recherche document-wide par texte exact : un
 // seul popup est ouvert à la fois, pas de risque de collision.
-function findButtonByExactText(text) {
-  const candidates = document.querySelectorAll('button, [role="button"]');
-  for (const el of candidates) {
-    if (el.textContent.trim() === text) return el;
+// publish.done_button (migré au registre — texte ^Fait$ sans flag i, fidèle à
+// l'ancienne comparaison stricte). L'absence du bouton est NOMINALE ici
+// (panneaux multi-sélection sans « Fait ») mais la clé n'est pas optional au
+// registre (l'audit ne portait pas cette note) : on préserve le comportement
+// historique (null) en avalant SelectorResolutionError, et reportFailure:false
+// pour ne pas émettre un faux -1 à chaque panneau qui n'a pas de « Fait ».
+async function findDoneButton() {
+  const S = await sel();
+  try {
+    return S.resolveSelector("vinted", "publish.done_button", { reportFailure: false }).el;
+  } catch (e) {
+    if (e?.name === "SelectorResolutionError") return null;
+    throw e;
   }
-  return null;
 }
 
 // Valide ET FERME le panneau. Le "Fait" n'existe pas partout (Matière/Couleur
@@ -1533,7 +1547,7 @@ function findButtonByExactText(text) {
 // il recouvre le bouton Publier — bug constaté en publication réelle du
 // 2026-07-11.
 async function confirmDropdownIfNeeded() {
-  const doneBtn = findButtonByExactText("Fait");
+  const doneBtn = await findDoneButton();
   if (!doneBtn) {
     await closeAnyOpenDropdown();
     return;
@@ -1708,7 +1722,7 @@ async function closeAnyOpenDropdown() {
   const panneau = dropdownPanelProbe(S);
   if (!panneau()) return;
 
-  const done = findButtonByExactText("Fait");
+  const done = await findDoneButton();
   if (done) {
     done.click();
     if (await waitForElementGone(panneau, 2000)) {
@@ -1801,9 +1815,12 @@ function findVintedModelOption(optionSelector, rawWanted) {
 
 // Clique la LIGNE cliquable de l'option (#model-<id> [role=button]) et non le
 // <span> --title : seule la ligne commite la sélection (prouvé en direct).
-function clickModelOption(titleEl) {
-  const row =
-    titleEl.closest('[role="button"], [data-testid^="model-"]:not([data-testid$="--title"])') || titleEl;
+// publish.model_option (migré au registre) : remontée par closest() — hors du
+// périmètre de resolveSelector (résolution descendante) ; le littéral vient du
+// registre via selectorFor.
+async function clickModelOption(titleEl) {
+  const S = await sel();
+  const row = titleEl.closest(S.selectorFor("vinted", "publish.model_option")) || titleEl;
   row.click();
 }
 
@@ -1846,7 +1863,7 @@ async function selectVintedModel(wanted, warnings) {
     }
     if (match) {
       await humanPause();
-      clickModelOption(match.el);
+      await clickModelOption(match.el);
       await humanPause();
       await confirmDropdownIfNeeded();
       if (match.stage !== "exact") {
@@ -1914,10 +1931,13 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
 // Les erreurs listent les options réellement affichées par Vinted à ce niveau :
 // c'est le retour dont on a besoin pendant les dry-runs pour corriger les
 // libellés draft de vintedCategories.js (côté app) sans naviguer à la main.
-const CATALOG_OPTION_SELECTOR = 'li.web_ui__Item__item [role="button"][id^="catalog-"]';
-
-function visibleCatalogLabels(limit = 20) {
-  return Array.from(document.querySelectorAll(CATALOG_OPTION_SELECTOR))
+// publish.catalog_option (migré au registre) : le littéral vit dans
+// vinted.registry.js ; le moteur de matching par texte (findOptionByText et sa
+// cascade) reste ICI et reçoit le sélecteur en paramètre (pattern
+// publish.option_item de l'audit) — selectorFor, pas resolveSelector.
+async function visibleCatalogLabels(limit = 20) {
+  const S = await sel();
+  return Array.from(document.querySelectorAll(S.selectorFor("vinted", "publish.catalog_option")))
     .map((o) => o.textContent.trim())
     .filter(Boolean)
     .slice(0, limit);
@@ -1941,6 +1961,7 @@ function isChevronOption(option) {
 }
 
 async function selectCategory(path) {
+  const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
   await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]');
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
@@ -1948,11 +1969,11 @@ async function selectCategory(path) {
 
     let option;
     try {
-      option = await waitForOptionByText(CATALOG_OPTION_SELECTOR, levelLabel);
+      option = await waitForOptionByText(catalogOptionSel, levelLabel);
     } catch {
       throw new Error(
         `Catégorie: niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
-        `Options affichées par Vinted à ce niveau: ${JSON.stringify(visibleCatalogLabels())}. ` +
+        `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}. ` +
         `Corriger le chemin dans vintedCategories.js avec un de ces libellés.`
       );
     }
@@ -1976,7 +1997,7 @@ async function selectCategory(path) {
       await sleep(400);
       throw new Error(
         `Catégorie: le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
-        `Sous-niveaux proposés par Vinted: ${JSON.stringify(visibleCatalogLabels())}. ` +
+        `Sous-niveaux proposés par Vinted: ${JSON.stringify(await visibleCatalogLabels())}. ` +
         `Ajouter le niveau terminal manquant dans vintedCategories.js.`
       );
     }
@@ -2034,14 +2055,24 @@ async function selectColors(colorNames, warnings = []) {
 async function selectPackageSize(size = "Petit") {
   const map = { Petit: 1, Moyen: 2, Grand: 3 };
   const n = map[size] || 1;
-  const radio = await waitForElement(`[data-testid="package_type_selector_${n}--input"]`);
+  // publish.package_type (migré au registre) : maillon template {n}, n = 1..3.
+  const radio = await waitForKey("publish.package_type", { params: { n } });
   if (!radio.checked) {
     simulateFullClick(radio);
     await humanPause();
   }
   // Vérification : le format retenu doit être celui demandé (sinon on publierait
   // avec des frais de port faux, invisible jusqu'à la première vente).
-  const after = document.querySelector(`[data-testid="package_type_selector_${n}--input"]`);
+  // Relecture DÉLIBÉRÉE du DOM (le nœud peut avoir été remonté par React) — un
+  // nœud détaché entre-temps est toléré comme avant (after = null) :
+  // SelectorResolutionError avalée, reportFailure:false (pas un sélecteur cassé).
+  const S = await sel();
+  let after = null;
+  try {
+    after = S.resolveSelector("vinted", "publish.package_type", { params: { n }, reportFailure: false }).el;
+  } catch (e) {
+    if (e?.name !== "SelectorResolutionError") throw e;
+  }
   if (after && !after.checked) {
     console.warn(`[vinted] ⚠️ format de colis : "${size}" n'a pas pris (radio non coché après clic)`);
   }
@@ -2100,8 +2131,8 @@ async function uploadPhotos(photos) {
 //     bouton Publier, options catalogue id^="catalog-", panneau dropdown —
 //     clé publish.dropdown_panel du registre) : c'est un PICKER de champ, pas
 //     un interstitiel — le fermer casserait le remplissage ;
-//   · la modale POST-PUBLICATION (.web_ui__Dialog__content) : attendue par le
-//     flux et gérée par closePostPublishModal — hors fenêtre d'appel de toute
+//   · la modale POST-PUBLICATION (clé publish.post_publish_modal) : attendue
+//     par le flux et gérée par closePostPublishModal — hors fenêtre d'appel de toute
 //     façon (dismiss appelé à l'arrivée seulement), exclue par structure via
 //     la première règle si Vinted la montait plus tôt.
 // Chaque fermeture est VÉRIFIÉE (dialogue détaché ou devenu invisible) et
