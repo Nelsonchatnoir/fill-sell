@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -18,7 +19,26 @@ import {
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
+  PLATFORM_LOGIN_URLS, LBC_DEPOSIT_URL,
 } from '../utils/shared';
+
+// ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
+// Les erreurs « connexion requise » et « brouillon LBC en cours » portent déjà
+// la marche à suivre (messages humanisés côté extension) — mais elles étaient
+// enfermées dans un window.alert sans lien. On y accroche l'action directe.
+const CONN_ERR_RE = /connexion|se connecter|login|sign[- ]?in|identifi/i;
+const DRAFT_LBC_RE = /brouillon/i;
+function failJobAction(job, lang) {
+  const err = job?.error || '';
+  if (job?.platform === 'leboncoin' && DRAFT_LBC_RE.test(err)) {
+    return { url: LBC_DEPOSIT_URL, label: lang === 'en' ? 'Open the Leboncoin draft' : 'Ouvrir le brouillon Leboncoin' };
+  }
+  if (CONN_ERR_RE.test(err) && PLATFORM_LOGIN_URLS[job?.platform]) {
+    const name = PLATFORM_LABELS[job.platform] || job.platform;
+    return { url: PLATFORM_LOGIN_URLS[job.platform], label: lang === 'en' ? `Sign in to ${name}` : `Se connecter à ${name}` };
+  }
+  return null;
+}
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
 // Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
@@ -839,6 +859,9 @@ const StockTab = memo(function StockTab({
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
   // à RIEN : le job reste needs_user, le badge reste affiché.
   const [needsUserJob, setNeedsUserJob] = useState(null);
+  // Job échoué dont on montre l'erreur complète + action directe (remplace le
+  // window.alert du 19/07 — chantier onboarding 2026-07-27).
+  const [failJobModal, setFailJobModal] = useState(null);
   const [voiceInputMode, setVoiceInputMode] = useState('write');
   const [examplesOpen, setExamplesOpen] = useState(false);
 
@@ -1800,7 +1823,7 @@ const StockTab = memo(function StockTab({
                                   onClick={e=>{
                                     e.stopPropagation();
                                     if(j.platform_fields?.needsUserField){setNeedsUserJob(j);}
-                                    else if(j.error){window.alert(`${PLATFORM_LABELS[j.platform]||j.platform} — ${j.error}`);}
+                                    else if(j.error){setFailJobModal(j);}
                                   }}
                                   style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
                                 >
@@ -1812,7 +1835,7 @@ const StockTab = memo(function StockTab({
                                   key={"fail-"+j.platform}
                                   className="micon"
                                   title={j.error||undefined}
-                                  onClick={e=>{e.stopPropagation();if(j.error)window.alert(`${PLATFORM_LABELS[j.platform]||j.platform} — ${j.error}`);}}
+                                  onClick={e=>{e.stopPropagation();if(j.error)setFailJobModal(j);}}
                                   style={{background:"#FBEDEC",border:"1px solid #EFC2BE",color:"#8C2F28",cursor:j.error?"pointer":"default"}}
                                 >
                                   ⚠️ {lang==="en"?"Failed":"Échec"} {PLATFORM_LABELS[j.platform]||j.platform}
@@ -1906,6 +1929,37 @@ const StockTab = memo(function StockTab({
           badge reste. Après validation : patch LOCAL immédiat (le badge
           s'éteint sans attendre le poll de 20 s), la relecture périodique
           confirme ensuite l'état réel. */}
+      {/* Échec détaillé + action directe (chantier onboarding 2026-07-27).
+          Portail document.body OBLIGATOIRE : StockTab vit dans le conteneur
+          scroll (.wrap.page-pad) et le WKWebView iOS peint les position:fixed
+          d'un scroller touch SOUS la tab bar / le FAB (même piège que la
+          feuille photo Lens, fix 41c2b2d). Le message d'erreur est déjà
+          humanisé côté extension ; on y ajoute le lien de connexion ou du
+          brouillon LBC quand il s'applique. */}
+      {failJobModal&&createPortal(
+        <div onClick={()=>setFailJobModal(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(16,32,27,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px",width:"min(92vw,440px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",fontFamily:"inherit"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <PlatformLogo platform={failJobModal.platform} size={24}/>
+              <div style={{fontSize:16,fontWeight:700,color:"#10201B"}}>
+                {(PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform)} — {lang==="en"?"not published":"non publiée"}
+              </div>
+            </div>
+            <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>{failJobModal.error}</div>
+            {(()=>{const a=failJobAction(failJobModal,lang);return a?(
+              <a href={a.url} target="_blank" rel="noopener noreferrer"
+                style={{display:"block",textAlign:"center",padding:"12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:14,fontWeight:700,textDecoration:"none",marginBottom:8}}>
+                {a.label} ↗
+              </a>
+            ):null;})()}
+            <button onClick={()=>setFailJobModal(null)}
+              style={{width:"100%",padding:"11px",borderRadius:999,background:"#fff",border:"1px solid #E7E3D8",fontSize:13.5,fontWeight:600,color:"#6B7A75",cursor:"pointer",fontFamily:"inherit"}}>
+              {lang==="en"?"Close":"Fermer"}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
       {needsUserJob&&(
         <NeedsUserModal
           job={needsUserJob}
