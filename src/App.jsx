@@ -4103,7 +4103,9 @@ export default function App({ loginOnly = false }){
           :'Camera access denied.\n\nGo to Settings › FillSell › Enable Camera.');
         return;
       }
-      // Plugin absent ou erreur interne → fallback silencieux vers file input
+      // Plugin absent ou erreur interne → fallback vers file input, JAMAIS
+      // muet (même diagnostic que le repli pickImages ci-dessous).
+      console.error('[lens] getPhoto failed, fallback input', e?.message, e);
       lensFileRef.current?.click();
     }
   }
@@ -4166,7 +4168,10 @@ export default function App({ loginOnly = false }){
           :'Photos access denied.\n\nGo to Settings › FillSell › Enable Photos.');
         return;
       }
-      // Plugin absent ou erreur interne → fallback silencieux vers file input
+      // Plugin absent ou erreur interne → fallback vers file input, JAMAIS
+      // muet : ce log est la preuve (ou l'exclusion) de l'hypothèse « pickImages
+      // échoue et retombe sur l'input » du diagnostic multi-select Android.
+      console.error('[lens] pickImages failed, fallback input', e?.message, e);
       lensFileRef.current?.click();
     }
   }

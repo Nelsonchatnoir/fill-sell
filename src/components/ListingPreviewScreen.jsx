@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
+import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
 import PepiteIcon from "./PepiteIcon";
@@ -53,6 +55,51 @@ const MIN_PHOTOS = 3;
 // de leurs plafonds (Vinted 20, eBay 24…), sans exploser le payload des jobs.
 const MAX_PHOTOS = 10;
 const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOUCHED
+
+// ── Multi-select photos sur ANDROID uniquement (2026-07-27) ──────────────────
+// L'<input type="file" multiple> de la WebView part en ACTION_GET_CONTENT vers
+// la galerie du constructeur, dont le multi-select exige un appui long — un tap
+// simple retourne UNE photo (bug « un seul fichier retenu », stepper + scan).
+// Camera.pickImages force le Photo Picker système (cases à cocher), sans
+// permission (l'alias photos est toujours granted sur Android).
+// iOS et web NE PASSENT JAMAIS ici : gate Capacitor.getPlatform() === 'android'
+// aux points d'appel — l'<input> reste dans le DOM et reste leur seul chemin,
+// comportement inchangé y compris en erreur (iOS validé par Nico le 27/07).
+const IS_ANDROID = Capacitor.getPlatform() === "android";
+
+// Convertit les GalleryPhoto (webPath) en File STRICTEMENT équivalents à ceux
+// de l'input — MIME réel lu sur le blob (pas un jpeg présumé), extension
+// assortie, octets intacts (aucune recompression ici : fetch du webPath tel
+// quel) — puis les remet au MÊME point d'entrée que l'input (onFiles = le
+// callback que l'onChange de l'input appelle déjà). Cas limites alignés sur
+// l'input : annulation ou sélection vide ⇒ no-op silencieux ; échec du
+// plugin ⇒ repli sur l'input existant, JAMAIS muet (console.error).
+async function pickPhotosAndroid(remaining, onFiles, fallbackClick) {
+  if (remaining <= 0) return; // même garde que le bouton (masqué à MAX_PHOTOS)
+  let res;
+  try {
+    res = await CapCamera.pickImages({ quality: 90, limit: remaining });
+  } catch (e) {
+    const msg = (e?.message || "").toLowerCase();
+    if (msg.includes("cancel")) return; // = refermer l'input sans rien choisir
+    console.error("[stepper] pickImages failed, fallback input", e?.message, e);
+    fallbackClick();
+    return;
+  }
+  const picked = (res?.photos ?? []).slice(0, remaining);
+  if (!picked.length) return;
+  const files = [];
+  for (let i = 0; i < picked.length; i++) {
+    const ph = picked[i];
+    try {
+      const blob = await fetch(ph.webPath).then(r => r.blob());
+      const mime = blob.type || (ph.format ? `image/${ph.format}` : "image/jpeg");
+      const ext = ph.format || mime.split("/")[1] || "jpg";
+      files.push(new File([blob], `photo_${Date.now()}_${i}.${ext}`, { type: mime }));
+    } catch (_) { /* photo illisible : sautée, les autres passent */ }
+  }
+  if (files.length) onFiles(files);
+}
 
 // ── Champs partagés taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──────
 // UNE valeur source par champ (canonicalisée côté generate-listing), deux
@@ -922,7 +969,9 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
         })}
         {count < MAX && (
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => IS_ANDROID
+              ? pickPhotosAndroid(MAX - count, onAdd, () => fileRef.current?.click())
+              : fileRef.current?.click()}
             style={{ aspectRatio:"1", borderRadius:12, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
           >
             <Plus size={20} color={T.mute} />
@@ -1097,7 +1146,9 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         })}
         {photos.length < MAX && (
           <button
-            onClick={() => addRef.current?.click()}
+            onClick={() => IS_ANDROID
+              ? pickPhotosAndroid(MAX - photos.length, onAddPhotos, () => addRef.current?.click())
+              : addRef.current?.click()}
             style={{ aspectRatio:"1", borderRadius:12, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
           >
             <Plus size={20} color={T.mute} />
