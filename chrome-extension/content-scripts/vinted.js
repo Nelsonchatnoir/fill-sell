@@ -288,12 +288,20 @@ async function deleteClickReact(el, trace) {
 
 // Jeton CSRF Vinted : dans un <script> inline, en JSON échappé
 // (\"csrf_token\":\"…\"). Relevé en direct le 2026-07-18. Repli meta.
-function extractVintedCsrfToken() {
-  for (const s of document.querySelectorAll("script:not([src])")) {
+// delete.csrf_token (migré au registre) : cascade pilotée par le CONTENU — le
+// maillon 1 « résout » dès qu'il existe un script inline, c'est la regex sur
+// textContent qui décide, et le repli meta ne joue que si AUCUN script ne
+// porte le jeton. Irreprésentable par resolveSelector sans en changer le
+// sens : les littéraux viennent du registre via selectorFor, le moteur reste
+// ici. L'absence de jeton est un état GÉRÉ (needsUser / déjà supprimé), pas
+// une anomalie de sélecteur.
+async function extractVintedCsrfToken() {
+  const S = await sel();
+  for (const s of document.querySelectorAll(S.selectorFor("vinted", "delete.csrf_token", 0))) {
     const m = (s.textContent || "").match(/\\?"csrf[_-]?token\\?"\s*:\s*\\?"([^"\\]+)\\?"/i);
     if (m) return m[1];
   }
-  const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf_token"]');
+  const meta = document.querySelector(S.selectorFor("vinted", "delete.csrf_token", 1));
   return meta ? meta.getAttribute("content") : null;
 }
 function getVintedCookie(name) {
@@ -369,7 +377,7 @@ async function deleteListing(job) {
   }
   t(`page annonce ok : item ${itemId}`);
 
-  const csrf = extractVintedCsrfToken();
+  const csrf = await extractVintedCsrfToken();
   const anonId = getVintedCookie("anon_id");
   t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
 
@@ -449,9 +457,20 @@ async function deleteListing(job) {
   }
 }
 
-function findDeleteByText() {
-  return Array.from(document.querySelectorAll("button, a, [role='button'], [role='menuitem']"))
-    .find((el) => /^supprimer( l['’]annonce)?$/i.test(el.textContent.trim())) ?? null;
+// delete.card_button (migré au registre — scope + regex /^supprimer( l['’]
+// annonce)?$/i désormais littéralisés dans vinted.registry.js). ⚠️ Fonction
+// JAMAIS APPELÉE (code mort, grep 27/07 : aucune référence hors définition —
+// la suppression Vinted passe par l'API depuis le 18/07) ; conservée à
+// comportement identique (null si introuvable), reportFailure:false car un -1
+// émis par du code mort serait un faux signal.
+async function findDeleteByText() {
+  const S = await sel();
+  try {
+    return S.resolveSelector("vinted", "delete.card_button", { reportFailure: false }).el;
+  } catch (e) {
+    if (e?.name === "SelectorResolutionError") return null;
+    throw e;
+  }
 }
 
 // waitFor local à la suppression (vinted.js n'avait que waitForElement, à
@@ -1349,6 +1368,10 @@ async function fillPriceField(value) {
   // Saisie complète, ré-exécutable telle quelle (le nœud peut être remonté par
   // React entre deux poses : on le re-résout à chaque appel).
   const typeIntoPrice = async () => {
+    // status.price_input : clé NON migrée dans cette passe — le MÊME littéral
+    // vit aussi côté background.js (readVintedPriceState/commitVintedPrice via
+    // executeScript, hors périmètre vinted.js). Migrer ici seulement
+    // dupliquerait la source de vérité ; à faire d'un bloc avec le background.
     const el = await waitForElement('#price, [data-testid="price-input--input"]');
     await humanPause();
     el.focus();
