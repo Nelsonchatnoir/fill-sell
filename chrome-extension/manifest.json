@@ -41,7 +41,6 @@
         "https://*.vinted.com/*",
         "https://*.leboncoin.fr/*",
         "https://*.ebay.fr/*",
-        "https://*.ebay.com/*",
         "https://*.beebs.app/*"
       ]
     }

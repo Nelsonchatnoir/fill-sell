@@ -53,8 +53,8 @@ export const EBAY_SELECTORS = {
       {
         type: "text",
         scope: "button",
-        textMatches: "^Mettre fin à l['’]annonce$",
-        note: "boutons du dialogue par texte exact « Mettre fin à l'annonce »",
+        textMatches: "^Mettre fin à l'annonce$",
+        note: "source = comparaison STRICTE === (ebay.js:233) : casse exacte, apostrophe droite U+0027 seule, aucun flag — vérifié au code le 27/07 (la classe ['’] antérieure élargissait le contrat)",
       },
     ],
     assert: { visible: true, enabled: true },
@@ -66,20 +66,32 @@ export const EBAY_SELECTORS = {
     criticality: "orange",
     workflows: ["delete"],
     chain: [
-      { type: "text", scope: "button", textMatches: "Annuler|Fermer" },
+      {
+        type: "text",
+        scope: "button",
+        textMatches: "^annuler$",
+        flags: "i",
+        note: "source ebay.js:211 : /^annuler$/i sur le texte ; la branche OR /fermer|close/i porte sur l'ARIA-LABEL, non représentable en maillon text (textContent seul)",
+      },
     ],
-    source: "ebay.js:209 (closeDialog, abandon propre)",
-    note: "vérif post : état loggé si introuvable",
+    source: "ebay.js:208-219 (closeDialog, abandon propre)",
+    note: "vérif post : état loggé si introuvable ; flags restaurés au code le 27/07",
   },
 
   "nav.sell_entry": {
     criticality: "orange",
     workflows: ["publish"],
     chain: [
-      { type: "text", scope: "a", textMatches: "Vendre", note: "querySelectorAll(\"a\") par texte depuis la home" },
+      {
+        type: "text",
+        scope: "a",
+        textMatches: "^vendre$",
+        flags: "i",
+        note: "source ebay.js:314 : textContent.trim().toLowerCase() === \"vendre\" (≡ ^vendre$/i) ; la branche OR sur href /\\/sl\\/sell|\\/sl\\/list|sell\\.ebay\\./ (ebay.js:313) n'est pas représentable en maillon text",
+      },
     ],
-    source: "ebay.js:311 (goToSellFromHome)",
-    note: "vérif post : URL du formulaire attendue ensuite",
+    source: "ebay.js:307-324 (goToSellFromHome)",
+    note: "vérif post : URL du formulaire attendue ensuite ; flags restaurés au code le 27/07",
   },
 
   "auth.password_guard": {
@@ -226,7 +238,12 @@ export const EBAY_SELECTORS = {
     workflows: ["publish"],
     chain: [
       { type: "css", value: 'button[aria-haspopup="listbox"]' },
-      { type: "text", scope: '[role="option"]', textMatches: "Achat immédiat", note: "option par texte" },
+      {
+        type: "text",
+        scope: '[role="option"]',
+        textMatches: "^Achat immédiat$",
+        note: "source ebay.js:1412 : comparaison STRICTE === « Achat immédiat » — casse exacte, aucun flag, ancrage restauré au code le 27/07",
+      },
     ],
     source: "ebay.js:1380, 1390 (ensureAchatImmediat)",
     note: "⚠ offsetParent l.1391 (§9c)",
@@ -262,12 +279,20 @@ export const EBAY_SELECTORS = {
       {
         type: "text",
         scope: "button",
-        textMatches: "Mettre en vente",
-        note: "« Mettre en vente… » (libellé élidé dans l'audit) — relocalisé sur le nœud VIVANT à chaque usage (retrouveListBtn)",
+        textMatches: "mettre en vente avec les frais",
+        flags: "i",
+        note: "régex n°1 de retrouveListBtn (ebay.js:861) — littéral complété au code le 27/07, l'audit l'élidait",
+      },
+      {
+        type: "text",
+        scope: "button",
+        textMatches: "^mettre en vente",
+        flags: "i",
+        note: "régex n°2 de retrouveListBtn (ebay.js:864), repli — relocalisé sur le nœud VIVANT à chaque usage",
       },
     ],
     assert: { visible: true, enabled: true },
-    source: "ebay.js:859-862 (retrouveListBtn)",
+    source: "ebay.js:859-865 (retrouveListBtn)",
     note: "pas de fallback structurel (texte seul) ; vérif post : détection d'effet (URL quittée / bouton détaché·désactivé / notice ou dialogue apparu, surveilleNotices l.826), re-clic unique sinon, verdict final délégué au background",
   },
 

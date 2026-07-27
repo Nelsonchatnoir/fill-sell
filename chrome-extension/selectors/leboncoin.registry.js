@@ -189,7 +189,7 @@ export const LEBONCOIN_SELECTORS = {
             kind: "text",
             target: "document.body.textContent",
             pattern:
-              "Nous avons bien reçu votre annonce|votre annonce (est|sera) (en ligne|publiée|bientôt en ligne)",
+              "Nous avons bien reçu votre annonce|votre annonce (?:est|sera) (?:en ligne|publiée|bientôt en ligne)",
             flags: "i",
           },
         ],
