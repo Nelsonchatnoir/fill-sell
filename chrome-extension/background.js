@@ -966,8 +966,15 @@ async function pollAndProcessJobsUnlocked() {
 
   // Sondes de session plateformes (throttlées ~10 min) : fire-and-forget,
   // le poll n'attend pas et un échec de sonde n'affecte jamais les jobs.
+  // console.error, pas warn : un échec ici veut dire que la détection de
+  // connexion aux plateformes n'est JAMAIS remontée en base (vécu : 403
+  // silencieux pendant que l'onboarding attendait extension_sessions).
   reportPlatformSessions(session.access_token).catch((e) =>
-    console.warn("[background] reportPlatformSessions (non bloquant) :", String(e?.message ?? e))
+    console.error(
+      "[background] reportPlatformSessions : ÉCHEC — profiles.extension_sessions non écrit, " +
+      "l'app ne verra pas l'état de connexion aux plateformes :",
+      String(e?.message ?? e)
+    )
   );
 
   let jobs;
