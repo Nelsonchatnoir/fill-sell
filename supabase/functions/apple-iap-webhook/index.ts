@@ -7,11 +7,17 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
+// Pro iOS : app.fillsell.pro.sub est resté bloqué en review Apple sans jamais
+// être rattaché à un binaire (piège App Store Connect) — remplacé par
+// app.fillsell.pro2.sub, soumis avec la 2.3 (2026-07-27). L'ancien id reste
+// reconnu ici : des achats sandbox de dev peuvent exister, et ça ne coûte
+// rien. Google Play garde app.fillsell.pro.sub — produit distinct, ce webhook
+// n'en voit jamais.
+const PRO_PRODUCT_IDS = ["app.fillsell.pro2.sub", "app.fillsell.pro.sub"];
 const PREMIUM_PRODUCT_IDS = [
   "app.fillsell.premium.sub",
   "app.fillsell.premium.standard",
-  PRO_PRODUCT_ID,
+  ...PRO_PRODUCT_IDS,
 ];
 
 const PREMIUM_ON  = ["SUBSCRIBED", "DID_RENEW", "RESUBSCRIBE"];
@@ -170,7 +176,7 @@ serve(async (req) => {
         const upd: Record<string, unknown> = { is_premium: true };
         if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
         if (renewalProductId === "app.fillsell.premium.sub") upd.is_founder = true;
-        if (renewalProductId === PRO_PRODUCT_ID) upd.is_pro = true;
+        if (PRO_PRODUCT_IDS.includes(renewalProductId)) upd.is_pro = true;
         const { error } = await supabaseAdmin.from("profiles").update(upd).eq("id", renewalToken);
         if (error) {
           console.error("[apple-iap-webhook] DB error:", error.message);
@@ -253,7 +259,7 @@ serve(async (req) => {
     if (originalTransactionId) update.apple_original_transaction_id = originalTransactionId;
     if (isPremium && productId === "app.fillsell.premium.sub") update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
-    if (productId === PRO_PRODUCT_ID) update.is_pro = isPremium;
+    if (PRO_PRODUCT_IDS.includes(productId)) update.is_pro = isPremium;
 
     const { error } = await supabaseAdmin
       .from("profiles")
@@ -272,7 +278,7 @@ serve(async (req) => {
     // upgrade_monthly_grant (2026-07-23) : grant plein si mois vierge, sinon
     // top-up de la différence de tier (upgrade Premium→Pro en cours de mois).
     if (isPremium) {
-      const grantTier = productId === PRO_PRODUCT_ID ? "pro" : "premium";
+      const grantTier = PRO_PRODUCT_IDS.includes(productId) ? "pro" : "premium";
       const { error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: appAccountToken,
         p_tier: grantTier,

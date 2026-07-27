@@ -1,9 +1,15 @@
 import { NativePurchases } from '@capgo/native-purchases';
+import { Capacitor } from '@capacitor/core';
 
 export const PRODUCT_IDS = {
   sub: 'app.fillsell.premium.sub',        // Founder (fermé aux nouveaux, gardé pour restore)
   standard: 'app.fillsell.premium.standard',
-  pro: 'app.fillsell.pro.sub',            // Pro 29,99 €/mois
+  // Pro 29,99 €/mois — id DIFFÉRENT par store (2026-07-27) : l'abonnement ASC
+  // app.fillsell.pro.sub est resté bloqué en review sans binaire rattaché
+  // (piège App Store Connect) → app.fillsell.pro2.sub créé propre et soumis
+  // avec la 2.3. Google Play garde app.fillsell.pro.sub, produit distinct et
+  // fonctionnel — ne JAMAIS aligner les deux.
+  pro: Capacitor.getPlatform() === 'ios' ? 'app.fillsell.pro2.sub' : 'app.fillsell.pro.sub',
 };
 
 // Packs consumables — mêmes ids que CoinStoreModal et validate-coin-purchase.

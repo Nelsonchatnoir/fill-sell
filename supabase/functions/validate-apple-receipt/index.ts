@@ -16,14 +16,20 @@ const supabaseAdmin = createClient(
 const BUNDLE_ID = "app.fillsell.app";
 const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
 const STANDARD_PRODUCT_ID = "app.fillsell.premium.standard";
-const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
-const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, PRO_PRODUCT_ID];
+// Pro iOS : app.fillsell.pro.sub est resté bloqué en review Apple sans jamais
+// être rattaché à un binaire — remplacé par app.fillsell.pro2.sub (soumis avec
+// la 2.3, 2026-07-27). L'ancien id reste reconnu (achats sandbox de dev
+// possibles). Fonction Apple-only : le produit Google Play homonyme n'arrive
+// jamais ici.
+const PRO_PRODUCT_IDS = ["app.fillsell.pro2.sub", "app.fillsell.pro.sub"];
+const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, ...PRO_PRODUCT_IDS];
 
 // Prix TTC/mois par produit — Founder = tarif legacy grandfathered
 const PRODUCT_PRICES: Record<string, number> = {
   [FOUNDER_PRODUCT_ID]: 9.99,
   [STANDARD_PRODUCT_ID]: 12.99,
-  [PRO_PRODUCT_ID]: 29.99,
+  "app.fillsell.pro2.sub": 29.99,
+  "app.fillsell.pro.sub": 29.99,
 };
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {
@@ -121,7 +127,7 @@ serve(async (req) => {
 
     const isPremium = !!activeSub;
     const isFounderPurchase = isPremium && activeSub!.product_id === FOUNDER_PRODUCT_ID;
-    const isProPurchase = isPremium && activeSub!.product_id === PRO_PRODUCT_ID;
+    const isProPurchase = isPremium && PRO_PRODUCT_IDS.includes(activeSub!.product_id);
 
     // Même logique que apple-iap-webhook : is_pro suit l'abonnement Pro actif,
     // et l'originalTransactionId est capturé dès qu'il est présent (tout produit).

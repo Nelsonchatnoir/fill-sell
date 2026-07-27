@@ -2024,7 +2024,8 @@ export default function App({ loginOnly = false }){
     }
   }
 
-  // tier : 'pro' → abonnement Pro (app.fillsell.pro.sub) ; toute autre valeur
+  // tier : 'pro' → abonnement Pro (app.fillsell.pro2.sub sur iOS,
+  // app.fillsell.pro.sub sur Google Play — cf. PRODUCT_IDS) ; toute autre valeur
   // (undefined, event de clic…) → Premium standard. Comparaison stricte voulue.
   async function handleIAPPurchase(tier){
     const isProPurchase=tier==='pro';
