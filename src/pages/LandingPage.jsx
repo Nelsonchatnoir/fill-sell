@@ -78,8 +78,8 @@ const COPY = {
     priceKicker: 'Tarifs', priceTitle: 'Un plan pour chaque volume.',
     priceSub: 'Commence gratuitement. Passe Premium ou Pro quand tu veux vendre plus, sans engagement.',
     perMonth: '/ mois', freeTag: 'Pour se lancer', priceFree: '0 €', freeCoins: '30 Pépites / mois',
-    popular: 'Le plus populaire', priceP: '12,99 €', pCoins: '150 Pépites / mois',
-    pricePro: '29,99 €', proCoins: '600 Pépites / mois — 4× plus',
+    popular: 'Le plus populaire', priceP: '12,99 €', pCoins: '300 Pépites / mois',
+    pricePro: '29,99 €', proCoins: '800 Pépites / mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
     coinsTitle: 'Les Pépites, ta monnaie', coinsPublish: 'Publier : 3 à 35 Pépites',
     coinsLens: 'Analyse Lens : 6 Pépites', coinsPacks: 'Packs dès 4,99 €',
@@ -141,8 +141,8 @@ const COPY = {
     priceKicker: 'Pricing', priceTitle: 'A plan for every volume.',
     priceSub: 'Start free. Move to Premium or Pro whenever you want to sell more — no commitment.',
     perMonth: '/ mo', freeTag: 'To get started', priceFree: '€0', freeCoins: '30 Pépites / mo',
-    popular: 'Most popular', priceP: '€12.99', pCoins: '150 Pépites / mo',
-    pricePro: '€29.99', proCoins: '600 Pépites / mo — 4× more',
+    popular: 'Most popular', priceP: '€12.99', pCoins: '300 Pépites / mo',
+    pricePro: '€29.99', proCoins: '800 Pépites / mo',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
     coinsTitle: 'Pépites, your currency', coinsPublish: 'Publish: 3 to 35 Pépites',
     coinsLens: 'Lens analysis: 6 Pépites', coinsPacks: 'Packs from €4.99',
@@ -181,7 +181,11 @@ const FEATURES = {
 
 /* La publication auto sur les 4 plateformes est le moteur commun aux 3 paliers :
    le libellé est donc volontairement identique sur les 3 cartes. Ce qui distingue
-   les paliers, c'est le volume de Pépites (30 / 150 / 600), pas la fonctionnalité. */
+   les paliers, c'est le volume de Pépites (30 / 300 / 800), pas la fonctionnalité.
+   ⚠️ Ces trois nombres sont écrits EN DUR sur cette page (cartes de prix + FAQ),
+   contrairement à l'app qui les lit dans coin_config : la landing est servie
+   statiquement, sans session Supabase. Tout changement de grant impose donc de
+   repasser ici — c'est le seul endroit du repo dans ce cas. */
 const PUBLISH_LINE = {
   fr: 'Publication auto sur Vinted, Leboncoin, eBay & Beebs',
   en: 'Auto-publishing to Vinted, Leboncoin, eBay & Beebs',
@@ -202,19 +206,19 @@ const PLANS = {
 
 const FAQ = {
   fr: [
-    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre (30 en Free, 150 en Premium, 600 en Pro) et tu les dépenses pour publier une annonce (3 à 35 Pépites selon le type) ou lancer une analyse Lens (6 Pépites). Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
+    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre (30 en Free, 300 en Premium, 800 en Pro) et tu les dépenses pour publier une annonce (3 à 35 Pépites selon le type) ou lancer une analyse Lens (6 Pépites). Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
     ['Comment marche la publication automatique ?', 'Tu ajoutes un article à ton inventaire, puis FillSell génère l’annonce et la publie sur les 4 plateformes en même temps. Rien à recopier ni à re-téléverser.'],
     ['Et si un article se vend ?', 'FillSell détecte la vente, retire l’annonce des 3 autres plateformes et met à jour tes marges, ton stock et tes stats — automatiquement. Zéro risque de double-vente.'],
-    ['Lens, c’est illimité ?', 'Non — chaque analyse Lens coûte 6 Pépites, quel que soit ton palier. Le Pro reçoit simplement bien plus de Pépites (600/mois) pour en faire davantage.'],
+    ['Lens, c’est illimité ?', 'Non — chaque analyse Lens coûte 6 Pépites, quel que soit ton palier. Le Pro reçoit simplement bien plus de Pépites (800/mois) pour en faire davantage.'],
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
-    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan (30 on Free, 150 on Premium, 600 on Pro) and spend them to publish a listing (3 to 35 Pépites depending on type) or run a Lens analysis (6 Pépites). Need more? Packs start at €4.99.'],
+    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan (30 on Free, 300 on Premium, 800 on Pro) and spend them to publish a listing (3 to 35 Pépites depending on type) or run a Lens analysis (6 Pépites). Need more? Packs start at €4.99.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
     ['How does automatic publishing work?', 'You add an item to your inventory, then FillSell builds the listing and posts it to all 4 marketplaces at once. Nothing to copy or re-upload.'],
     ['What happens when an item sells?', 'FillSell detects the sale, pulls the listing from the other 3 marketplaces and updates your margins, stock and stats — automatically. Zero double-sale risk.'],
-    ['Is Lens unlimited?', 'No — each Lens analysis costs 6 Pépites, on every tier. Pro simply gets far more Pépites (600/mo) so you can run more of them.'],
+    ['Is Lens unlimited?', 'No — each Lens analysis costs 6 Pépites, on every tier. Pro simply gets far more Pépites (800/mo) so you can run more of them.'],
     ['Can I cancel anytime?', 'Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.'],
   ],
 };

@@ -92,31 +92,45 @@ complet images comprises, sans outil).
 
 ---
 
-## 4. Coût mensuel et marge sur un abonnement à 9,99 €/mois
+## 4. Coût mensuel et marge par abonnement
 
-| Scans/mois | Coût typique | Fourchette | Marge sur 9,99 € brut | Marge sur ~7,08 € net* |
+⚠️ **Grants relevés le 28/07/2026 : free 30, premium 300, pro 800**
+(`coin_config`, migration 20260728180000 — auparavant 150/600). Prix réels des
+abonnements : **Premium 12,99 €**, **Pro 29,99 €**.
+
+| Scans/mois | Coût typique | Fourchette | Ce que ça représente |
+|---|---|---|---|
+| 5 (= grant Free, 30 Pépites) | 0,27 € | 0,12 – 0,90 € | coût d'acquisition d'un inscrit |
+| 50 (= grant Premium, 300 Pépites) | 2,65 € | 1,20 – 9,00 € | plafond de consommation Premium |
+| 133 (= grant Pro, 800 Pépites) | 7,05 € | 3,20 – 24,00 € | plafond de consommation Pro |
+
+Marge si l'abonné consomme **tout** son grant en analyses Lens (le pire des cas —
+en pratique une partie part en publications, moins chères) :
+
+| Offre | Prix TTC | Net après TVA 20 % + 15 % store | Coût max Lens | Marge plancher |
 |---|---|---|---|---|
-| 25 (= grant Premium, 150 Pépites) | 1,33 € | 0,60 – 4,50 € | **8,66 € (87 %)** | 5,75 € |
-| 100 (= grant Pro, 600 Pépites) | 5,30 € | 2,40 – 18,00 € | **4,69 € (47 %)** | 1,78 € |
-| 150 (utilisateur intensif) | 7,95 € | 3,60 – 27,00 € | **2,04 € (20 %)** | **−0,87 €** |
+| Premium | 12,99 € | ≈ 9,20 € | 2,65 € | **6,55 € (71 %)** |
+| Pro | 29,99 € | ≈ 21,24 € | 7,05 € | **14,19 € (67 %)** |
 
-\* Net = 9,99 € TTC − TVA 20 % − commission store 15 % (small business) ≈ 7,08 €.
-Avec la commission à 30 %, le net tombe à ≈ 5,83 € et le seuil de rentabilité
-passe sous ~110 scans/mois.
+Avec une commission store à 30 %, le net tombe à ≈ 7,57 € (Premium) et 17,49 €
+(Pro) : les marges plancher restent à 4,92 € et 10,44 €.
 
-### Nuance décisive : 150 scans ne sont PAS couverts par l'abonnement
+### Le passage à 300/800 ne met pas le modèle en danger
 
-Le grant Premium (150 Pépites) couvre **25 scans**, le grant Pro (600) en couvre
-**100**. Un intensif à 150 scans achète les 50–125 scans excédentaires en packs :
-6 Pépites ≈ **0,30 €** au pack 100 (4,99 €), ≈ 0,23 € au pack 1 300. Chaque scan
-hors grant rapporte donc 0,23–0,30 € pour ~0,05 € de coût — **marge ~80 %**. Le
-modèle tient : c'est le scan *inclus dans le grant* qui est un coût sec, et le
-grant Pro (100 scans ≈ 5,30 €) reste absorbable si l'abonnement Pro est > 9,99 €.
+Même en scénario HAUT (0,18 €/scan, 5 photos et 4 recherches à chaque fois),
+un Premium qui brûlerait ses 300 Pépites en Lens coûterait 9 € pour 9,20 € net —
+à l'équilibre, et seulement dans un cas d'usage extrême et improbable. Le Pro
+resterait à 24 € de coût pour 21,24 € net, soit une perte théorique de 2,76 €
+que le levier n°1 (redimensionner les photos, cf. section 5) suffit à effacer.
 
-Verdict : **le modèle 6 Pépites/scan tient économiquement.** Le seul point de
-vigilance est le grant Pro à 600 Pépites si l'abonnement Pro était vendu 9,99 € :
-un Pro qui consomme tout son grant en scénario haut (18 €) coûterait plus que
-son abonnement net.
+Au-delà du grant, chaque scan est acheté en pack : 6 Pépites ≈ **0,30 €** au
+pack 100 (4,99 €), ≈ 0,23 € au pack 1 300 — pour ~0,05 € de coût réel, soit une
+**marge de ~80 %** sur tout le volume hors abonnement.
+
+Verdict : **le modèle tient**, et la hausse des grants restaure la cohérence
+tarifaire voulue — l'abonnement redevient l'option la moins chère à la Pépite
+(Premium 0,033 €/pépite contre 0,045 pour le pack 220), ce qui était l'objet
+même du changement.
 
 ---
 

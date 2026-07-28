@@ -13,8 +13,9 @@
 //
 // Chiffres : mêmes sources que les cartes de ConversionModal — grants et coûts
 // lus dans coin_config à l'ouverture (repli COIN_CONFIG_FALLBACK), grant Pro
-// compris depuis le 2026-07-23 (migration 20260723170000, base à 600 — l'ex-
-// exception d'affichage DISPLAY_GRANT_PRO est retirée).
+// compris depuis le 2026-07-23 (l'ex-exception d'affichage DISPLAY_GRANT_PRO
+// est retirée). Rien n'est écrit en dur ici : le passage à 300/800 du
+// 2026-07-28 s'est fait sans toucher ce fichier.
 import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge } from './PlanBadge';
 import PepiteIcon from './PepiteIcon';
