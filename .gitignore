@@ -43,3 +43,15 @@ _tmp_*.mjs
 # App Store Connect et Play Console) : sortis du repo pour ne pas l'alourdir.
 # Le générateur, lui, est versionné (marketing/).
 assets/
+
+# Sauvegardes de base — DONNÉES PERSONNELLES de ~497 utilisateurs (soldes de
+# Pépites, coin_ledger, inventaire, comptes auth). Elles vivent hors du dépôt,
+# dans C:\Users\nicol\fillsell-backups\. Ce filet n'existe que pour rattraper une
+# fausse manœuvre : rien de tout ça ne doit jamais entrer dans git.
+fillsell-backups/
+*.sql
+# …SAUF les migrations, qui SONT du code versionné. Sans ces exceptions, toute
+# nouvelle migration serait silencieusement ignorée par git add — y compris la
+# future baseline.
+!supabase/migrations/*.sql
+!supabase/migrations_archive/*.sql
