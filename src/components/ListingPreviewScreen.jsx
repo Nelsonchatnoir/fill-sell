@@ -1055,7 +1055,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
 function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, publishedSet, lang,
-  modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null,
+  modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
@@ -1298,6 +1298,23 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         </div>
       )}
 
+      {/* ── Identification en échec (2026-07-28) ────────────────────────────
+          Le parcours n'est JAMAIS bloqué par un identify raté (erreur API,
+          timeout, plafond global atteint, JSON invalide) — mais on ne fait pas
+          semblant que ça a marché. Sans cette mention, generate-listing invente
+          à partir d'un contexte vide et l'utilisateur croit lire une analyse de
+          ses photos, exactement le comportement qu'on supprime. */}
+      {identifyFailed && (
+        <div style={{ marginBottom:16, display:"flex", alignItems:"flex-start", gap:8, padding:"10px 12px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
+          <span style={{ fontSize:14, lineHeight:1.3 }}>ℹ️</span>
+          <div style={{ fontSize:12, color:T.mute2, lineHeight:1.45 }}>
+            {lang === "en"
+              ? "Your photos could not be analysed — check the fields before publishing."
+              : "Les photos n'ont pas pu être analysées — vérifie les champs avant de publier."}
+          </div>
+        </div>
+      )}
+
       {/* ── Modèle à confirmer (2026-07-28) ─────────────────────────────────
           L'IA propose une référence qu'elle n'a PAS lue sur l'objet : elle l'a
           reconnue à la forme, ou ramenée d'une recherche web. Tant que
@@ -1486,7 +1503,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang,
-  price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null }) {
+  price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
+  onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null }) {
   const { t } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -1584,6 +1602,9 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
   // Phase B — review with collapsible cards
   const platforms = [...selected].filter(p => platformListings?.platforms?.[p]);
+  // Même seuil que la garde de publication (≥ 1 €) : ce qui est mis en avant
+  // ici est exactement ce qui bloquerait plus tard.
+  const prixManquant = price == null || String(price).trim() === "" || !(Number(price) >= 1);
 
   return (
     <div>
@@ -1612,19 +1633,63 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
-      {/* Prix de vente central — s'applique aux plateformes non personnalisées */}
-      <div style={{ marginBottom:16, background:T.paper, border:`1px solid ${T.border}`, borderRadius:16, padding:"14px 15px" }}>
+      {/* ── Prix de vente central ─────────────────────────────────────────────
+          Depuis le mode identify (2026-07-28), c'est le SEUL champ qu'une
+          identification gratuite ne remplit pas — et la publication reste
+          bloquée sous 1 € (garde du 13/07, job 3d194668 parti à price=NULL).
+          Cet écran doit donc en faire un moment de vente, pas un message
+          d'erreur : champ mis en avant, focus automatique, et juste dessous
+          l'accès au scan complet qui, lui, produit un prix. Aucun message
+          bloquant ici — la garde ne parle qu'au moment de publier. */}
+      <div style={{ marginBottom:16, background:T.paper, border:`1px solid ${prixManquant ? T.teal : T.border}`, borderRadius:16, padding:"14px 15px", boxShadow: prixManquant ? "0 0 0 3px rgba(47,158,144,0.12)" : "none" }}>
         <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:T.mute, marginBottom:6 }}>
           {t("fieldSalePriceLabel")}
         </div>
         <input
           type="number"
           inputMode="decimal"
+          autoFocus={prixManquant}
           value={price ?? ""}
           onChange={ev => applyCentralPrice(ev.target.value)}
-          placeholder="—"
-          style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:17, fontWeight:700, fontFamily:"inherit", outline:"none", background:"#fff", color:T.ink, boxSizing:"border-box" }}
+          placeholder={prixManquant ? (lang === "en" ? "Your price, in €" : "Ton prix, en €") : "—"}
+          style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${prixManquant ? T.teal : T.border}`, fontSize:17, fontWeight:700, fontFamily:"inherit", outline:"none", background:"#fff", color:T.ink, boxSizing:"border-box" }}
         />
+        {prixManquant && onEstimatePrice && (
+          <>
+            <button
+              onClick={onEstimatePrice}
+              disabled={estimating}
+              style={{
+                width:"100%", marginTop:10, padding:"11px", borderRadius:12,
+                border:`1.5px solid ${T.tealDeep}`, background:"none", color:T.tealDeep,
+                fontSize:13, fontWeight:700, fontFamily:"inherit",
+                cursor: estimating ? "not-allowed" : "pointer", opacity: estimating ? 0.6 : 1,
+                display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6,
+              }}
+            >
+              {estimating
+                ? (lang === "en" ? "Checking the market…" : "Analyse du marché…")
+                : <>
+                    {lang === "en" ? "Not sure? Estimate" : "Pas sûr du prix ? Estimer"}
+                    {estimateCost != null && <> · <PepiteIcon size={13} /> {estimateCost}</>}
+                  </>}
+            </button>
+            <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
+              {lang === "en"
+                ? "Searches actual listings on the same photos and fills the price."
+                : "Cherche les annonces réelles sur les mêmes photos et remplit le prix."}
+            </div>
+          </>
+        )}
+        {estimateError && (
+          <div style={{ fontSize:12, fontWeight:600, color:"#B0645A", marginTop:8 }}>{estimateError}</div>
+        )}
+        {!prixManquant && estimateResult?.fourchette_min != null && estimateResult?.fourchette_max != null && (
+          <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
+            {lang === "en" ? "Market range: " : "Fourchette marché : "}
+            <strong style={{ color:T.tealDeep }}>{estimateResult.fourchette_min} – {estimateResult.fourchette_max} €</strong>
+          </div>
+        )}
         <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
           {lang === "en"
             ? "Applied to every selected platform. Change a card's price to set it apart."
@@ -2420,6 +2485,10 @@ export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
   isPremium = false, isPro = false, onUpgrade = () => {},
   createStockItem = null, alreadyInStock = false,
+  // Parcours identify (2026-07-28) : l'identification gratuite a échoué et le
+  // stepper s'ouvre avec des champs vides. On le DIT, discrètement, plutôt que
+  // de laisser croire à une analyse réussie.
+  identifyFailed = false,
   // Plateformes où cet article est DÉJÀ en ligne (Stock uniquement ; Lens publie
   // toujours du neuf). FillSell ne republie JAMAIS une annonce existante :
   // relancer une plateforme déjà "published" créait un SECOND job pour la même
@@ -2907,7 +2976,24 @@ export default function ListingPreviewScreen({
       setPhotoAnalysis(res);
       refreshWallet();
       // Prix par défaut : la valeur de marché estimée, jamais le prix d'achat.
-      if (res?.prix_vente_suggere != null) setPrice(res.prix_vente_suggere);
+      if (res?.prix_vente_suggere != null) {
+        const estime = res.prix_vente_suggere;
+        setPrice(estime);
+        // Même propagation que le champ central de StepGeneration (2026-07-28) :
+        // l'estimation peut désormais être lancée DEPUIS cet écran, où les
+        // cartes plateformes sont déjà rendues. Sans ça, elles affichaient un
+        // prix vide alors que le champ central venait de se remplir (la
+        // publication, elle, retombait bien sur le prix central).
+        // Une carte au prix personnalisé n'est jamais écrasée.
+        setEdited(prev => {
+          const next = { ...prev };
+          for (const p of Object.keys(next)) {
+            if (customPriced.has(p)) continue;
+            next[p] = { ...next[p], price: estime };
+          }
+          return next;
+        });
+      }
     } catch (e) {
       setAnalysisError(e.message || t("genericError"));
     } finally {
@@ -4835,6 +4921,7 @@ export default function ListingPreviewScreen({
             modelePropose={initialListing?.modele ?? null}
             modeleSource={initialListing?.modele_source ?? null}
             onConfirmModele={setModeleConfirme}
+            identifyFailed={identifyFailed}
           />
         )}
         {step === 2 && (
@@ -4856,6 +4943,14 @@ export default function ListingPreviewScreen({
             setCustomPriced={setCustomPriced}
             articleIcon={articleIcon}
             photoOption={photoOption}
+            // Le scan complet, proposé LÀ OÙ il a une valeur : le seul endroit
+            // de l'app où l'utilisateur a une raison de vouloir dépenser.
+            // Même moteur, même débit serveur, même 402 que la carte du step 1.
+            onEstimatePrice={handleAnalyzePhotos}
+            estimating={analyzing}
+            estimateCost={coinPrices?.lens_overflow ?? null}
+            estimateError={analysisError}
+            estimateResult={photoAnalysis}
           />
         )}
         {step === 3 && (

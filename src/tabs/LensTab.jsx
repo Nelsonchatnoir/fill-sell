@@ -106,7 +106,7 @@ function LensScanHome({
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
-  analyzeLens, lensLoading,
+  analyzeLens, lensLoading, onCreateListing, creatingListing,
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -127,7 +127,8 @@ function LensScanHome({
   const openPicker  = () => (isNative && handleLensCameraNative && handleLensPhotoNative ? setShowPhotoSheet(true) : lensFileRef.current?.click());
   const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
 
-  const analyzeDisabled = !lensPhotos.length || lensLoading;
+  const analyzeDisabled = !lensPhotos.length || lensLoading || creatingListing;
+  const createDisabled  = !lensPhotos.length || lensLoading || creatingListing;
 
   return (
     <div style={{ width:'100%', maxWidth:520, margin:'0 auto' }}>
@@ -217,14 +218,26 @@ function LensScanHome({
             </button>
           </div>
 
+          {/* ── Deux CTA (2026-07-28) ────────────────────────────────────────
+              PRIMAIRE « Créer l'annonce » : GRATUIT. Il déclenche le mode
+              identify de lens-analysis (lecture des photos sans recherche web,
+              incluse dans le prix de publication) puis ouvre le stepper avec
+              les champs pré-remplis. Mesuré sur 7 articles : marque 7/7
+              identique au scan complet, taille 7/7 exploitable, description
+              égale ou meilleure — seul le PRIX manque.
+              SECONDAIRE « Analyser le deal · 6 🥜 » : le flux historique, scan
+              complet + écran verdict/score/fourchette, strictement inchangé.
+              C'est le prix qui reste à vendre, il garde donc son bouton. */}
           <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:12 }}>
             <button
-              onClick={analyzeLens}
-              disabled={analyzeDisabled}
-              style={{ flex:1, boxSizing:'border-box', borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: analyzeDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
+              onClick={onCreateListing}
+              disabled={createDisabled}
+              style={{ flex:1, boxSizing:'border-box', borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: createDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
             >
               <Sparkles size={16} strokeWidth={2.2} />
-              {lensLoading ? t('lensAnalyzing') : t('lensAnalyzeCta')}
+              {creatingListing
+                ? (lang === 'en' ? 'Reading your photos…' : 'Lecture des photos…')
+                : (lang === 'en' ? 'Create the listing' : "Créer l'annonce")}
             </button>
             {/* Notice « ? » — explique le fonctionnement (photo → scan IA → fiche) */}
             <button
@@ -238,6 +251,16 @@ function LensScanHome({
             </button>
           </div>
 
+          <button
+            onClick={analyzeLens}
+            disabled={analyzeDisabled}
+            style={{ width:'100%', boxSizing:'border-box', borderRadius:999, padding:'13px 0', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:14, fontWeight:600, fontFamily:'inherit', background:'none', border:`1.5px solid ${TEAL_DEEP}`, color:TEAL_DEEP, cursor: analyzeDisabled ? 'not-allowed' : 'pointer', opacity: analyzeDisabled ? 0.6 : 1 }}
+          >
+            {lensLoading
+              ? t('lensAnalyzing')
+              : <>{lang === 'en' ? 'Analyse the deal' : 'Analyser le deal'} · <PepiteIcon size={12} /> 6</>}
+          </button>
+
           {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22) — et depuis le
               2026-07-23 (payant-par-scan), c'est LA seule information de coût :
               chaque analyse débite 6 Pépites côté serveur, il n'y a plus de
@@ -245,9 +268,11 @@ function LensScanHome({
               ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
               <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
               qui suit dans LensTab n'est atteint qu'une fois un résultat obtenu. */}
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:10, color:'#A6A192' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:8, textAlign:'center', color:'#A6A192' }}>
             <PepiteIcon size={11} />
-            {t('lensPricePerScan')}
+            {lang === 'en'
+              ? 'Price estimate + deal verdict — the listing itself is free'
+              : "Estimation du prix + verdict du deal — l'annonce, elle, est gratuite"}
           </div>
         </div>
 
@@ -573,6 +598,14 @@ const LensTab = memo(function LensTab({
   // App et n'a pas de setter ici) : fallback utilisé uniquement à la reprise.
   const [restoredInvId,setRestoredInvId]=useState(null);
   const effectiveInvId=lensInventaireId??restoredInvId;
+  // ── Parcours identify (2026-07-28) ──────────────────────────────────────
+  // Résultat de l'identification GRATUITE, tenu LOCALEMENT et jamais poussé
+  // dans le lensResult de App : ce dernier pilote l'écran de résultat
+  // verdict/score/fourchette, qui n'a aucun sens sans prix. Fermer le stepper
+  // depuis ce parcours doit ramener au viseur, pas sur un écran de deal vide.
+  const [identifyResult,setIdentifyResult]=useState(null);
+  const [identifyEchec,setIdentifyEchec]=useState(false);
+  const listingSource=identifyResult??lensResult;
 
   // Reprise du stepper après remount (reload d'onglet Chrome ou navigation
   // interne) : le blob hôte écrit à l'ouverture permet de le REMONTER avec les
@@ -582,7 +615,10 @@ const LensTab = memo(function LensTab({
     const h=readStepperHost('lens');
     if(!h)return;
     setLensListingPhotos(h.photos||[]);
-    if(h.lensResult)setLensResult(h.lensResult);
+    // viaIdentify : le blob vient du parcours gratuit → on restaure dans l'état
+    // LOCAL, sinon le lensResult de App ressusciterait l'écran de deal.
+    if(h.lensResult){ if(h.viaIdentify)setIdentifyResult(h.lensResult); else setLensResult(h.lensResult); }
+    if(h.identifyEchec)setIdentifyEchec(true);
     if(h.inventaireId)setRestoredInvId(h.inventaireId);
     setShowListingPreview(true);
     onStepperOpenChange?.(true);
@@ -605,23 +641,88 @@ const LensTab = memo(function LensTab({
     });
   }
 
+  /** Upload des photos du viseur vers listing-photos (bucket durable). */
+  async function televerserPhotos(){
+    const uploadedUrls=[];
+    const ts=Date.now();
+    for(let i=0;i<lensPhotos.length;i++){
+      const photo=lensPhotos[i];
+      const res=await fetch(photo.preview);
+      const rawBlob=await res.blob();
+      const blob=await compressImage(rawBlob);
+      const path=`${user.id}/raw/${ts}_${i}.jpg`;
+      const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:'image/jpeg',upsert:true});
+      if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
+    }
+    return uploadedUrls;
+  }
+
+  // ── « Créer l'annonce » — parcours GRATUIT (2026-07-28) ───────────────────
+  // Photos → identify (aucune Pépite débitée) → stepper pré-rempli. L'identify
+  // tourne sur les URLs listing-photos DÉFINITIVES, pas sur le bucket temporaire
+  // lens-temp du scan complet : ce sont les mêmes que le stepper utilisera
+  // ensuite, et la clé du cache d'idempotence (hash des URLs triées) reste donc
+  // stable si l'utilisateur revient sur le même article.
+  // ⚠️ L'échec ne bloque JAMAIS : erreur API, 429, JSON invalide → on continue
+  // vers le stepper avec des champs vides et une mention discrète. Ce qu'on ne
+  // fait pas, c'est faire SEMBLANT que ça a marché : sans cette mention,
+  // generate-listing invente et l'utilisateur croit lire une analyse de ses
+  // photos — exactement ce que ce chantier supprime.
+  async function handleIdentifyAndCreate(){
+    setGeneratingListing(true);
+    setListingError('');
+    setIdentifyEchec(false);
+    try{
+      const uploadedUrls=await televerserPhotos();
+      if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+
+      let identification=null;
+      let echec=false;
+      try{
+        const{data:res,error:fnErr}=await supabase.functions.invoke('lens-analysis',{
+          body:{
+            urls:uploadedUrls,
+            description:lensDesc.trim()||null,
+            prixAchat:parseFloat(lensBuy)||null,
+            lang,
+            userCountry,
+            mode:'identify',
+          },
+        });
+        if(fnErr)throw fnErr;
+        if(res?.error)throw new Error(res.error);
+        identification=res??null;
+      }catch(e){
+        // 429 (plafond utilisateur ou plafond global), 5xx, timeout, JSON
+        // invalide : tous traités pareil — on note et on continue.
+        console.warn('[lens][identify] échec, parcours continué sans analyse :',e?.message||e);
+        echec=true;
+      }
+      if(!identification)echec=true;
+
+      // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
+      // blob hôte de CETTE session de publication.
+      clearStepperPersistence();
+      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult:identification,viaIdentify:true,identifyEchec:echec,inventaireId:lensInventaireId??null});
+      setIdentifyResult(identification);
+      setIdentifyEchec(echec);
+      setLensListingPhotos(uploadedUrls);
+      setShowListingPreview(true);
+      onStepperOpenChange?.(true);
+    }catch(e){
+      setListingError(e.message||'Erreur inattendue');
+    }finally{
+      setGeneratingListing(false);
+    }
+  }
+
   async function handleCreateListing(){
     setGeneratingListing(true);
     setListingError('');
     try{
       // L'ajout au stock est décidé plus tard (switch "Ajouter au stock" à l'étape
       // Publier) : on ne crée pas la ligne inventaire ici, on upload juste les photos.
-      const uploadedUrls=[];
-      const ts=Date.now();
-      for(let i=0;i<lensPhotos.length;i++){
-        const photo=lensPhotos[i];
-        const res=await fetch(photo.preview);
-        const rawBlob=await res.blob();
-        const blob=await compressImage(rawBlob);
-        const path=`${user.id}/raw/${ts}_${i}.jpg`;
-        const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:'image/jpeg',upsert:true});
-        if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
-      }
+      const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
 
       // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
@@ -645,14 +746,17 @@ const LensTab = memo(function LensTab({
           inventaireId={effectiveInvId}
           userId={user.id}
           initialPhotos={lensListingPhotos}
-          initialListing={lensResult}
-          onClose={()=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);onStepperOpenChange?.(false);}}
+          initialListing={listingSource}
+          identifyFailed={identifyEchec}
+          onClose={()=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
           onUpgrade={openUpgradeModal}
-          createStockItem={saveLensItemForListing}
+          // Le parcours identify n'alimente pas le lensResult de App : on lui
+          // passe explicitement la source de CETTE session de publication.
+          createStockItem={(prixAchat)=>saveLensItemForListing(prixAchat,listingSource)}
           alreadyInStock={!!effectiveInvId}
         />
       </div>
@@ -661,14 +765,43 @@ const LensTab = memo(function LensTab({
 
   if (!lensResult) {
     return (
-      <LensScanHome
-        lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
-        lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
-        lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
-        lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
-        lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
-        analyzeLens={analyzeLens} lensLoading={lensLoading}
-      />
+      <>
+        <LensScanHome
+          lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
+          lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
+          lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
+          lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
+          lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
+          analyzeLens={analyzeLens} lensLoading={lensLoading}
+          onCreateListing={()=>shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate()}
+          creatingListing={generatingListing}
+        />
+        {listingError&&(
+          <div style={{maxWidth:520,margin:"10px auto 0",padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
+            {listingError}
+          </div>
+        )}
+        {/* Rappel extension : le viseur DOIT le monter lui aussi — il vit plus
+            bas dans l'écran de résultat, que ce parcours ne traverse jamais. */}
+        {showExtReminder&&(
+          <ExtensionReminderModal
+            lang={lang}
+            onClose={()=>setShowExtReminder(false)}
+            onContinue={()=>{setShowExtReminder(false);handleIdentifyAndCreate();}}
+          />
+        )}
+        {generatingListing&&(
+          <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,padding:"0 40px"}}>
+            <Loader size={40} thickness={3} />
+            <div style={{color:UI.ink,fontWeight:600,fontSize:17,textAlign:"center"}}>
+              {lang==="en"?"Reading your photos...":"Lecture de tes photos..."}
+            </div>
+            <div style={{color:UI.mute2,fontSize:13,textAlign:"center",lineHeight:1.6}}>
+              {lang==="en"?"Brand, size, material, condition\n~10 sec · free":"Marque, taille, matière, état\n~10 s · gratuit"}
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 

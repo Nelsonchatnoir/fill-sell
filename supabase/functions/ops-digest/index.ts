@@ -212,6 +212,43 @@ serve(async (req) => {
     );
   }
 
+  // 7. Plafond GLOBAL du mode identify (2026-07-28). Identify est gratuit :
+  // il ouvre un chemin API sans contrepartie de revenu, et c'est la SEULE garde
+  // du produit qui regarde un total plutôt qu'un utilisateur. Le seuil est
+  // recopié ici depuis lens-analysis (PLAFOND_IDENTIFY_GLOBAL) — deux
+  // constantes à garder alignées, une seule décision. On alerte dès 80 % : à
+  // 100 %, l'identify est déjà court-circuité pour tout le monde.
+  const PLAFOND_IDENTIFY_GLOBAL = 3000;
+  const identifyRows: string[] = [];
+  try {
+    // Journée en heure de PARIS, jamais d'UTC brut (cf. CLAUDE.md).
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).formatToParts(new Date());
+    const nb = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+    const debutJour = new Date(now - ((nb("hour") * 3600 + nb("minute") * 60 + nb("second")) * 1000)).toISOString();
+    const { count, error: e7 } = await supabase
+      .from("usage_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("feature", "lens_identify")
+      .gte("created_at", debutJour);
+    if (e7) throw new Error(e7.message);
+    const n = count ?? 0;
+    if (n >= PLAFOND_IDENTIFY_GLOBAL) {
+      identifyRows.push(
+        `PLAFOND ATTEINT : ${n}/${PLAFOND_IDENTIFY_GLOBAL} identifies aujourd'hui — le mode identify est COURT-CIRCUITÉ pour tout le monde (les parcours continuent sans analyse, champs vides).`,
+      );
+    } else if (n >= Math.floor(PLAFOND_IDENTIFY_GLOBAL * 0.8)) {
+      identifyRows.push(
+        `${n}/${PLAFOND_IDENTIFY_GLOBAL} identifies aujourd'hui (${Math.round((n / PLAFOND_IDENTIFY_GLOBAL) * 100)} %) — au-delà du plafond, identify se coupe.`,
+      );
+    }
+  } catch (e) {
+    identifyRows.push(
+      `Compteur identify indisponible (${String((e as Error)?.message ?? e)}) — plafond global non vérifiable aujourd'hui.`,
+    );
+  }
+
   const queryErrors = [e1, e2, e3, e4].filter(Boolean).map((e) => e!.message);
   if (queryErrors.length > 0) {
     return new Response(JSON.stringify({ error: queryErrors }), {
@@ -227,6 +264,7 @@ serve(async (req) => {
     beebs_unavailable_7d: beebsWatch.length,
     iap_alerts: iapAlerts.length,
     awaiting_payment: awaitingRows.length,
+    lens_identify: identifyRows.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -284,6 +322,19 @@ serve(async (req) => {
       ${awaitingRows.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
     </ul>`
   }
+    ${
+    identifyRows.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔴 Lens identify — plafond global journalier (${identifyRows.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Le mode identify est gratuit pour l'utilisateur : c'est la seule garde du produit
+      qui regarde un TOTAL et non un utilisateur. ~0,010 € l'appel.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${identifyRows.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
   </div>
 </body></html>`;
 
@@ -296,7 +347,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify})`,
       html,
     }),
   });

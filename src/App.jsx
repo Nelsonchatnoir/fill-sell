@@ -4360,19 +4360,26 @@ export default function App({ loginOnly = false }){
     });
   }
 
-  async function saveLensItemForListing(prixAchatSaisi){
+  // `source` (2026-07-28) : le parcours « Créer l'annonce » du viseur passe par
+  // le mode identify, dont le résultat vit LOCALEMENT dans LensTab et n'alimente
+  // jamais lensResult (qui pilote l'écran de deal). Il se passe donc
+  // explicitement ici. Sans paramètre → comportement historique (lensResult).
+  async function saveLensItemForListing(prixAchatSaisi, source = null){
     if(lensInventaireId)return lensInventaireId;
-    if(!lensResult?.titre||lensResult.est_vendu)return null;
+    const src=source??lensResult;
+    if(!src?.titre||src.est_vendu)return null;
     try{
       const saisi=prixAchatSaisi!=null&&prixAchatSaisi!==""?parseFloat(String(prixAchatSaisi).replace(",","."))||null:null;
       const mapped=await vaActions.addItem({
-        nom:lensResult.titre||"Article",
-        marque:lensResult.marque||null,
-        categorie:lensResult.categorie||"Autre",
-        description:lensResult.description||(lensDesc.trim()||null),
+        nom:src.titre||"Article",
+        marque:src.marque||null,
+        categorie:src.categorie||"Autre",
+        description:src.description||(lensDesc.trim()||null),
         // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
-        prix_achat:saisi??lensResult.prix_achat_reel??null,
-        prix_vente:lensResult.prix_vente_suggere||null,
+        prix_achat:saisi??src.prix_achat_reel??null,
+        // null en identify : aucun prix de marché n'est produit. Le prix saisi au
+        // stepper est persisté sur la ligne inventaire à la publication.
+        prix_vente:src.prix_vente_suggere||null,
         quantite:1,
       });
       setLensInventaireId(mapped.id);
