@@ -177,9 +177,14 @@ serve(async (req) => {
     }).catch(() => {});
   }
 
-  // Renouvellements d'abonnement : re-crédit mensuel des pièces incluses
-  // (idempotent par mois). ⚠️ Nécessite d'activer l'événement invoice.paid
-  // sur l'endpoint webhook dans le dashboard Stripe.
+  // Renouvellements d'abonnement : re-crédit des pièces incluses, idempotent
+  // par période. Activation de l'événement VÉRIFIÉE dans le dashboard le
+  // 2026-07-28 — l'endpoint « Fill & Sell webhook » écoute bien les quatre
+  // événements que ce fichier traite : checkout.session.completed,
+  // customer.subscription.deleted, customer.subscription.updated, invoice.paid.
+  // C'est la configuration Stripe qui fait foi : si quelqu'un la modifie, les
+  // abonnés cessent d'être crédités et ops-digest le signale (section 6,
+  // « renouvellement non constaté »).
   if (event.type === "invoice.paid") {
     const invoice = event.data.object as Stripe.Invoice;
     const customerId = invoice.customer as string;

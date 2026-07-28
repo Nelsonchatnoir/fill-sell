@@ -6,7 +6,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Appelée par pg_cron à 8h50 UTC (avant l'email-tunnel de 9h), header
 // x-cron-secret sur le modèle d'email-tunnel. Déployer avec --no-verify-jwt.
 //
-// Cinq sections :
+// Six sections (la 6e : abonnés dont le renouvellement n'est pas constaté —
+// échéance dépassée de plus de 3 jours sans événement de paiement, via la RPC
+// coins_awaiting_payment qui porte la même condition que la garde SQL) :
 //   1. jobs 'failed' des dernières 24 h (approximé par created_at : pas de
 //      failed_at en base ; les jobs sont traités dans les minutes qui suivent
 //      leur création, un failed plus vieux a déjà été signalé la veille) ;
@@ -190,6 +192,26 @@ serve(async (req) => {
     );
   }
 
+  // 6. Abonnés que le filet refuse de créditer faute d'événement de paiement
+  // (cycle par utilisateur du 28/07). Soit un past_due légitime, soit un
+  // webhook de renouvellement qui ne parvient plus — dans les deux cas un
+  // client payant cesse de recevoir ses Pépites, ça ne doit pas se découvrir
+  // par hasard. La RPC porte la même condition que la garde SQL.
+  const awaitingRows: string[] = [];
+  try {
+    const { data: awaiting, error: e6 } = await supabase.rpc("coins_awaiting_payment");
+    if (e6) throw new Error(e6.message);
+    for (const a of (awaiting ?? []) as Array<Record<string, unknown>>) {
+      awaitingRows.push(
+        `${a.tier} ${a.canal} — ${a.email ?? a.user_id} — échéance ${String(a.next_grant_at).slice(0, 10)}, ${a.jours_retard} j de retard — aucun grant depuis`,
+      );
+    }
+  } catch (e) {
+    awaitingRows.push(
+      `Contrôle des renouvellements indisponible (${String((e as Error)?.message ?? e)}) — vérifier la RPC coins_awaiting_payment.`,
+    );
+  }
+
   const queryErrors = [e1, e2, e3, e4].filter(Boolean).map((e) => e!.message);
   if (queryErrors.length > 0) {
     return new Response(JSON.stringify({ error: queryErrors }), {
@@ -204,6 +226,7 @@ serve(async (req) => {
     delete_overdue: (deletesOverdue ?? []).length,
     beebs_unavailable_7d: beebsWatch.length,
     iap_alerts: iapAlerts.length,
+    awaiting_payment: awaitingRows.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -248,6 +271,19 @@ serve(async (req) => {
       ${iapAlerts.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
     </ul>`
   }
+    ${
+    awaitingRows.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔴 Abonnés non recrédités — renouvellement non constaté (${awaitingRows.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Échéance dépassée de plus de 3 jours sans événement de paiement : soit l'abonnement
+      ne se renouvelle plus (past_due, résiliation), soit le webhook du store ne parvient plus.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${awaitingRows.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
   </div>
 </body></html>`;
 
@@ -260,7 +296,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment})`,
       html,
     }),
   });
