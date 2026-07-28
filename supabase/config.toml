@@ -8,6 +8,17 @@
 
 project_id = "tojihnuawsoohlolangc"
 
+# lens-analysis : verify_jwt = TRUE, état d'origine à préserver. Déclaré ici
+# explicitement après un incident du 2026-07-28 : un `deploy --no-verify-jwt`
+# passé par erreur a basculé la fonction à false, et un redéploiement SANS le
+# flag ne l'a PAS restaurée (le CLI conserve le dernier réglage appliqué au
+# lieu de revenir au défaut). La déclaration ci-dessous est donc le seul moyen
+# fiable de reposer l'état voulu — et elle protège des prochaines fois.
+# La fonction vérifie de toute façon le JWT dans son code (getUser → 401), le
+# gateway n'était pas le seul rempart.
+[functions.lens-analysis]
+verify_jwt = true
+
 # Auth applicative interne (Bearer user vérifié dans le code) — gateway ouvert.
 [functions.voice-intent]
 verify_jwt = false

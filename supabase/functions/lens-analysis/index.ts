@@ -205,6 +205,31 @@ serve(async (req) => {
   // Pièces débitées pour cette analyse — remboursées si elle n'est pas livrée.
   let paidWithCoins = 0;
 
+  // ── Télémétrie du scan (2026-07-28) ─────────────────────────────────────
+  // Sommée sur TOUS les tours : appel initial, relances pause_turn, repli sans
+  // outil et passe de réparation. Un seul tour observé ne dirait rien — c'est
+  // justement l'empilement des tours qui coûte cher, et que le cache vise.
+  // Déclaré dans le scope de la requête, jamais au niveau module : les
+  // requêtes concurrentes partagent l'isolat Deno et mélangeraient les
+  // compteurs de deux scans simultanés.
+  const stats = { in: 0, out: 0, cache_w: 0, cache_r: 0, recherches: 0, tours: 0, photos: 0 };
+  const trackUsage = (d: unknown) => {
+    const u = (d as {
+      usage?: {
+        input_tokens?: number; output_tokens?: number;
+        cache_creation_input_tokens?: number; cache_read_input_tokens?: number;
+        server_tool_use?: { web_search_requests?: number };
+      };
+    })?.usage;
+    if (!u) return;
+    stats.in         += u.input_tokens ?? 0;
+    stats.out        += u.output_tokens ?? 0;
+    stats.cache_w    += u.cache_creation_input_tokens ?? 0;
+    stats.cache_r    += u.cache_read_input_tokens ?? 0;
+    stats.recherches += u.server_tool_use?.web_search_requests ?? 0;
+    stats.tours      += 1;
+  };
+
   // Relâche ce que la tentative a coûté (idempotent, best-effort : un échec de
   // remboursement ne doit jamais masquer l'erreur d'origine). La ligne
   // usage_logs posée par spend_coins_for_lens reste en place : elle n'ouvre
@@ -252,6 +277,46 @@ serve(async (req) => {
     );
   }
   paidWithCoins = spend.price ?? 0;
+
+  // Ligne usage_logs que spend_coins_for_lens vient de poser : on la retient
+  // pour y écrire la télémétrie du scan une fois les appels API terminés. Le
+  // RPC ne renvoie pas son id, on relit donc la plus récente de cet
+  // utilisateur — sans risque de confusion, elle a été créée à l'instant dans
+  // la même requête. Best-effort : on n'enrichit que la ligne du scan courant.
+  let logId: number | null = null;
+  let logMeta: Record<string, unknown> = {};
+  try {
+    const { data: ligne } = await adminClient
+      .from("usage_logs").select("id, metadata")
+      .eq("user_id", user.id).eq("feature", "lens")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (ligne) { logId = ligne.id as number; logMeta = (ligne.metadata as Record<string, unknown>) ?? {}; }
+  } catch { /* télémétrie seulement : ne doit jamais empêcher le scan */ }
+
+  // Écrit la télémétrie dans la ligne 'lens' déjà posée, en FUSIONNANT avec
+  // son metadata (coins, model) plutôt qu'en l'écrasant. Appelée aussi bien
+  // sur succès que sur échec : un scan raté consomme de l'API, son coût doit
+  // se voir. Best-effort de bout en bout.
+  async function enregistrerTelemetrie(issue: string) {
+    if (logId == null) return;
+    try {
+      await adminClient.from("usage_logs").update({
+        metadata: {
+          ...logMeta,
+          issue,
+          photos: stats.photos,
+          tours: stats.tours,
+          input_tokens: stats.in,
+          output_tokens: stats.out,
+          cache_creation_input_tokens: stats.cache_w,
+          cache_read_input_tokens: stats.cache_r,
+          web_search_requests: stats.recherches,
+        },
+      }).eq("id", logId);
+    } catch (e) {
+      console.error("[lens-analysis] télémétrie:", (e as Error)?.message);
+    }
+  }
 
   try {
     const body = await req.json();
@@ -303,10 +368,33 @@ serve(async (req) => {
     // ajoutable côté client (handlers cappés à 5), donc bug à 2 étages : ici +
     // handlers App.jsx. Les deux corrigés ensemble. Free/Premium n'envoient
     // jamais > 5 (grille UI 5). ⚠️ Déploiement nécessaire pour prendre effet.
-    const imageContent = (urls as string[]).slice(0, 8).map(url => ({
+    // ── Cache de prompt (2026-07-28) — facturation seule, comportement nul ──
+    // Un scan enchaîne 2 à 5 tours quand web_search s'active, et CHAQUE tour
+    // re-facture plein tarif tout le préfixe : définitions d'outil, prompt
+    // système et surtout les images. Le marqueur ci-dessous met ce préfixe en
+    // cache : le 1er tour l'écrit à 1,25×, les suivants le relisent à 0,1×.
+    // Le modèle reçoit EXACTEMENT le même contenu, dans le même ordre.
+    //
+    // UN SEUL point de rupture, sur la DERNIÈRE image : tout ce qui précède
+    // (outils + système + toutes les images) est mis en cache, tout ce qui
+    // suit (note utilisateur, contenu assistant partiel, résultats de
+    // recherche qui s'accumulent au fil des tours) reste hors cache.
+    //
+    // ⚠️ Pourquoi PAS un second point sur le prompt système : le minimum
+    // cachable de Haiku 4.5 est de 4096 tokens — le plus élevé du catalogue.
+    // Outils + système pèsent ~2 200 tokens : un point de rupture placé là ne
+    // cacherait JAMAIS rien (l'API ignore silencieusement un préfixe trop
+    // court, sans erreur). Il faut les images pour franchir le seuil.
+    const imageContent = (urls as string[]).slice(0, 8).map((url, i, arr) => ({
       type: "image",
       source: { type: "url", url },
+      // Ordre strictement déterministe : il suit celui du tableau `urls` reçu,
+      // jamais un tri ni une itération d'objet — un ordre instable ferait
+      // manquer le cache à chaque tour.
+      ...(i === arr.length - 1 ? { cache_control: { type: "ephemeral" } } : {}),
     }));
+
+    stats.photos = imageContent.length;
 
     const initialMessages = [
       { role: "user", content: [...imageContent, { type: "text", text: userText }] },
@@ -319,7 +407,13 @@ serve(async (req) => {
       model: "claude-haiku-4-5-20251001",
       max_tokens: 2500,
       temperature: 0,
-      system: systemPrompt,
+      // Passé en bloc de contenu (au lieu d'une chaîne) pour faire partie du
+      // préfixe cachable. Contenu identique au caractère près — un `system`
+      // chaîne et un `system` [{type:"text"}] sont équivalents pour le modèle.
+      // Le prompt ne contient AUCUNE variable par appel (ni horodatage, ni
+      // identifiant, ni compteur) : seuls le pays, la langue et le nombre de
+      // photos le font varier, et ces trois-là sont constants pendant un scan.
+      system: [{ type: "text", text: systemPrompt }],
     };
 
     // Analyse unifiée : web_search pour tout le monde (prix marché en direct),
@@ -341,6 +435,7 @@ serve(async (req) => {
         tools: [{ type: "web_search_20250305", name: "web_search" }],
         messages: wsMessages,
       }, "web-search-2025-03-05");
+      trackUsage(data);
 
       for (let i = 0; i < 3 && data.stop_reason === "pause_turn"; i++) {
         wsMessages.push({ role: "assistant", content: data.content });
@@ -349,9 +444,13 @@ serve(async (req) => {
           tools: [{ type: "web_search_20250305", name: "web_search" }],
           messages: wsMessages,
         }, "web-search-2025-03-05");
+        trackUsage(data);
       }
     } catch {
+      // Repli sans outil : le préfixe diffère (plus de définition d'outil), il
+      // ne peut donc pas réutiliser le cache écrit par le tour précédent.
       data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
+      trackUsage(data);
     }
 
     const rawText = (data.content as any[] ?? [])
@@ -397,6 +496,7 @@ serve(async (req) => {
               { role: "assistant", content: "{" },
             ],
           });
+          trackUsage(repair);
           const suite = (repair.content as any[] ?? [])
             .filter((b: any) => b.type === "text")
             .map((b: any) => b.text as string)
@@ -416,6 +516,13 @@ serve(async (req) => {
     // Si l'utilisateur a fourni son prix d'achat, on ne retourne pas prix_achat_suggere
     if (prixAchat != null) itemData.prix_achat_suggere = null;
 
+    await enregistrerTelemetrie("ok");
+    console.log(
+      `[lens-analysis][usage] user=${user.id} photos=${stats.photos} tours=${stats.tours}`
+      + ` in=${stats.in} out=${stats.out} cache_w=${stats.cache_w} cache_r=${stats.cache_r}`
+      + ` recherches=${stats.recherches}`
+    );
+
     return new Response(JSON.stringify(itemData), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
@@ -425,6 +532,9 @@ serve(async (req) => {
     // solde « acheté », cf. refund_coins). La reprise depuis le bouton
     // « Analyser avec l'IA » de LensTab est donc gratuite de fait : la
     // tentative ratée n'a rien coûté.
+    // Un scan raté a tout de même consommé de l'API : sa télémétrie doit être
+    // enregistrée, sinon le coût réel du Lens est sous-estimé.
+    await enregistrerTelemetrie("echec");
     await releaseAttempt("lens_analysis_failed");
     if (err?.isAiUnavailable) {
       return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
