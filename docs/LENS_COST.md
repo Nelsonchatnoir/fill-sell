@@ -1,4 +1,4 @@
-# Coût réel d'un scan Lens (€)
+# Coût réel des appels IA — Lens et génération d'annonce (€)
 
 **Date d'analyse : 28/07/2026** — tarifs publics Anthropic relevés le jour même sur
 `platform.claude.com/docs/en/docs/about-claude/pricing` (USD) et
@@ -165,3 +165,64 @@ Par ordre d'impact :
 
 Leviers 1+2+3 combinés : scan typique estimé à **~0,03 €** (−45 %), scénario
 haut ramené sous 0,08 €.
+
+---
+
+# 6. Coût de `generate-listing` — l'action à 3 / 12 / 35 Pépites
+
+**Instrumenté le 28/07/2026.** C'était le seul appel payant ni facturé ni tracé
+alors que c'est le plus fréquent : il part à CHAQUE génération d'annonce, y
+compris quand l'utilisateur ne publie jamais derrière. Chaque appel écrit
+désormais une ligne `usage_logs` (feature `generate_listing`) avec ses tokens,
+son nombre d'images et son coût en dollars, plus une ligne de log
+`[generate-listing][cost]`.
+
+## Ce qu'un appel déclenche
+
+| Poste | Détail |
+|---|---|
+| Claude | `claude-haiku-4-5` — jusqu'à 4 appels : genre eBay (`max_tokens` 50, conditionnel), aspects eBay (400, conditionnel), icône de catégorie (20), **rédaction des annonces (900)**. La rédaction tourne en `Promise.all` sur les plateformes sélectionnées : 1 appel par plateforme. |
+| Prompts système | 8 blocs selon la plateforme et le rôle, de 525 à 5 384 caractères (~1 350 tokens pour le plus gros, eBay). |
+| GPT Image 2 | `/images/edits`, uniquement si `photo_option ≠ original` : `quality: "low"` en ia_light, `"medium"` en ia_advanced. Cappé à 5 photos. |
+| Web search | aucun — contrairement à Lens. |
+
+## Coût par option (tarifs du 28/07/2026, 1 € = 1,08 $)
+
+Hypothèses : 4 plateformes sélectionnées, ~1 400 tokens d'entrée par appel de
+rédaction (prompt système + contexte article), ~350 tokens de sortie, plus les
+2 appels eBay conditionnels. Haiku 4.5 à 1 $/MTok en entrée et 5 $/MTok en
+sortie. GPT Image 2 ≈ 0,01 $ l'image en `low`, ≈ 0,04 $ en `medium`.
+
+| Option | Prix payé | Claude | Images | Coût total | Marge |
+|---|---|---|---|---|---|
+| **original** (3 Pép.) | ~0,10 € | ≈ 0,010 € | 0 | **≈ 0,010 €** | ~90 % |
+| **ia_light** (12 Pép.) | ~0,40 € | ≈ 0,010 € | 5 × low ≈ 0,046 € | **≈ 0,056 €** | ~86 % |
+| **ia_advanced** (35 Pép.) | ~1,17 € | ≈ 0,010 € | 5 × medium ≈ 0,185 € | **≈ 0,195 €** | ~83 % |
+
+Prix payé = Pépites × 0,033 €/Pépite (tarif Premium à 300 Pépites pour 12,99 €).
+
+## Ce que ça dit des rapports 3 / 12 / 35
+
+Les trois marges sont proches (83–90 %), donc la grille est **cohérente** : le
+rapport des prix suit à peu près le rapport des coûts réels. Deux observations :
+
+- **Le poste Claude est quasi constant** (~0,01 €) quelle que soit l'option :
+  la rédaction des annonces coûte la même chose qu'on retouche ou non les
+  photos. C'est l'image qui fait tout l'écart, et elle est bien facturée en
+  conséquence.
+- **ia_advanced est le seul poste à surveiller** : à 0,195 € il coûte ~4× un
+  scan Lens typique, et son coût est proportionnel au nombre de photos. Le cap
+  à 5 photos est donc une protection réelle, pas cosmétique.
+
+⚠️ Ces chiffres sont **estimés à partir des prompts et des tarifs**, comme la
+section Lens. Les premières lignes `usage_logs` en production donneront les
+valeurs mesurées — requête de contrôle :
+
+```sql
+select photo_option, count(*),
+       round(avg((metadata->>'cost_usd')::numeric), 4) as usd_moyen,
+       round(avg((metadata->>'claude_input_tokens')::numeric)) as tok_in_moyen
+from usage_logs
+where feature = 'generate_listing' and created_at > now() - interval '7 days'
+group by 1 order by 1;
+```

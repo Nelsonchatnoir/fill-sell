@@ -263,6 +263,24 @@ function json(data: unknown, status = 200) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
+  // ── Mesure du coût API (2026-07-28) ──────────────────────────────────────
+  // Cette fonction était le seul appel payant NI facturé NI tracé : elle part
+  // à chaque génération, y compris quand l'utilisateur ne publie pas ensuite,
+  // et c'est l'action la plus fréquente du produit. Sans mesure, les rapports
+  // 3/12/35 Pépites étaient fixés à l'aveugle.
+  // L'accumulateur est déclaré ICI, dans le scope de la requête : les quatre
+  // appels Claude et la retouche GPT Image vivent tous dans ce handler, donc
+  // aucune variable de module (qui serait partagée entre requêtes concurrentes
+  // dans le même isolat Deno et mélangerait les compteurs).
+  const cost = { claude_in: 0, claude_out: 0, claude_calls: 0, images: 0, image_quality: "" };
+  const trackClaude = (data: unknown) => {
+    const u = (data as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
+    if (!u) return;
+    cost.claude_in += u.input_tokens ?? 0;
+    cost.claude_out += u.output_tokens ?? 0;
+    cost.claude_calls += 1;
+  };
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
@@ -346,6 +364,7 @@ serve(async (req) => {
         });
         if (res.ok) {
           const data = await res.json();
+          trackClaude(data);
           const text: string = data.content?.[0]?.text ?? "";
           const m = text.match(/"genre"\s*:\s*"(Femme|Homme|Fille|Garçon|Bébé)"/);
           return json({ genre: m ? m[1] : null });
@@ -423,6 +442,7 @@ serve(async (req) => {
         });
         if (res.ok) {
           const data = await res.json();
+          trackClaude(data);
           const text: string = data.content?.[0]?.text ?? "";
           const m = text.match(/\{[\s\S]*\}/);
           if (m) {
@@ -554,6 +574,7 @@ serve(async (req) => {
         });
         if (res.ok) {
           const data = await res.json();
+          trackClaude(data);
           const text: string = data.content?.[0]?.text ?? "";
           const m = text.match(/"icon"\s*:\s*"([^"]+)"/);
           const icon = m?.[1];
@@ -645,6 +666,8 @@ serve(async (req) => {
           }
 
           const resData = await res.json();
+          cost.images += 1;
+          cost.image_quality = qualityToUse;
           const b64 = resData.data?.[0]?.b64_json;
           if (!b64) {
             console.error(`[gpt-image] photo ${idx}: no b64_json in response`);
@@ -734,6 +757,7 @@ serve(async (req) => {
 
           if (claudeRes.ok) {
             const claudeData = await claudeRes.json();
+            trackClaude(claudeData);
             const text: string = claudeData.content?.[0]?.text ?? "";
             const firstBrace = text.indexOf("{");
             const lastBrace = text.lastIndexOf("}");
@@ -806,6 +830,40 @@ serve(async (req) => {
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo
     // et la génération). null → champ OMIS → fallback client detectObjectIcon.
     const category_icon = await categoryIconPromise;
+
+    // ── Coût de l'appel (2026-07-28) ─────────────────────────────────────────
+    // Tarifs Haiku 4.5 : 1 $/MTok in, 5 $/MTok out. GPT Image 2 /images/edits :
+    // ~0,01 $ l'image en quality "low", ~0,04 $ en "medium" (l'option de
+    // retouche choisie décide, cf. qualityToUse).
+    // Tracé DANS usage_logs (feature 'generate_listing') et non dans
+    // coin_ledger : aucune Pépite n'est débitée ici, c'est de la télémétrie de
+    // coût, pas un mouvement de solde. Insert best-effort — une génération
+    // réussie ne doit jamais échouer parce que la mesure n'a pas pu s'écrire.
+    const claudeUsd = (cost.claude_in / 1e6) * 1 + (cost.claude_out / 1e6) * 5;
+    const imageUsd = cost.images * (cost.image_quality === "low" ? 0.01 : 0.04);
+    const totalUsd = claudeUsd + imageUsd;
+    console.log(
+      `[generate-listing][cost] user=${user.id} platforms=${platforms.length} option=${photo_option}`
+      + ` claude=${cost.claude_calls} appels ${cost.claude_in}in/${cost.claude_out}out`
+      + ` images=${cost.images}@${cost.image_quality || "-"}`
+      + ` usd=${totalUsd.toFixed(4)} (claude ${claudeUsd.toFixed(4)} + image ${imageUsd.toFixed(4)})`
+    );
+    adminClient.from("usage_logs").insert({
+      user_id: user.id,
+      feature: "generate_listing",
+      metadata: {
+        platforms: platforms.length,
+        photo_option,
+        claude_calls: cost.claude_calls,
+        claude_input_tokens: cost.claude_in,
+        claude_output_tokens: cost.claude_out,
+        images: cost.images,
+        image_quality: cost.image_quality || null,
+        cost_usd: Number(totalUsd.toFixed(4)),
+      },
+    }).then(({ error }) => {
+      if (error) console.error("[generate-listing] usage_logs:", error.message);
+    });
 
     // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
     return json({
