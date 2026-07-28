@@ -337,7 +337,14 @@ serve(async (req) => {
     // post-génération (voir après le Promise.all).
     const canonicalIn = body.canonical_fields && typeof body.canonical_fields === "object" ? body.canonical_fields : {};
     const canonicalProvided: Record<string, string> = {};
-    for (const k of ["taille", "couleur", "matiere", "marque"]) {
+    // "etat" ajouté le 2026-07-28 (lot 1) : l'état LU par le Lens (etat_estime)
+    // n'avait AUCUN chemin jusqu'ici — ni item_data ni la table inventaire ne le
+    // portent (inventaire.statut vaut stock|vendu, c'est autre chose). Le
+    // rédacteur le réinventait donc à chaque fois.
+    // ⚠️ INERTE TANT QUE LE FRONT N'ENVOIE PAS LA CLÉ : ListingPreviewScreen ne
+    // met encore que taille/couleur/matiere/marque dans canonical_fields. Le
+    // serveur est prêt, le client suivra au déploiement Vercel.
+    for (const k of ["taille", "couleur", "matiere", "marque", "etat"]) {
       const v = canonicalIn[k];
       if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
     }
@@ -720,15 +727,38 @@ serve(async (req) => {
     // prompt plateforme doit les recopier tels quels au lieu de ré-inférer
     // (4 inférences indépendantes divergeaient : taille "M" Vinted/Beebs vs
     // "L" eBay/LBC sur le même article, job du 2026-07-11 09:56).
-    const canonicalCtx = Object.entries(canonicalProvided).map(
-      ([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v} (valeur CONFIRMÉE — recopie-la TELLE QUELLE dans platform_fields.${k}, ne la ré-infère pas)`
+    // ⚠️ `etat` a une consigne DIFFÉRENTE des quatre autres champs canoniques.
+    // « Recopie TELLE QUELLE » y serait dangereux : les 5 plateformes ont des
+    // listes fermées DIFFÉRENTES (Vinted « Satisfaisant » vs LBC « État
+    // satisfaisant » vs Beebs « État moyen » ; « Neuf avec étiquette » vs
+    // « Neuf, avec étiquette » vs « État neuf »), et la valeur du Lens est du
+    // texte libre non normalisé (« Bon », « bon », « Bon état », « Très bon »
+    // relevés le 28/07). Une recopie littérale enverrait donc des valeurs hors
+    // liste à LBC et Beebs. On demande le rapprochement dans la liste de CHAQUE
+    // plateforme, sans table de correspondance (celle-ci viendra avec le front).
+    const canonicalCtx = Object.entries(canonicalProvided).map(([k, v]) =>
+      k === "etat"
+        ? `État réel de l'article, LU sur les photos: ${v} (choisis dans TA liste fermée la valeur la plus proche de cette lecture et mets-la dans platform_fields.etat ; ne conclus JAMAIS au neuf si cette lecture ne dit pas neuf)`
+        : `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v} (valeur CONFIRMÉE — recopie-la TELLE QUELLE dans platform_fields.${k}, ne la ré-infère pas)`
     );
     const itemContext = [
       item.marque && `Marque: ${item.marque}`,
       item.titre && `Article: ${item.titre}`,
       item.type && `Type: ${item.type}`,
       item.description && `Description: ${item.description}`,
-      item.statut && `État: ${item.statut}`,
+      // ⚠️ `item.statut` VOLONTAIREMENT ABSENT du contexte (2026-07-28, lot 2).
+      // Il était envoyé sous le libellé « État: stock » — or c'est le STATUT
+      // D'INVENTAIRE (inventaire.statut : stock | vendu, ou le littéral "stock"
+      // posé par le client), PAS l'état de l'article. Le rédacteur lisait une
+      // ligne « État: » dans son contexte, en tirait « en stock = jamais porté »
+      // et concluait « Neuf sans étiquette » (Vinted) / « État neuf » (LBC) sur
+      // un article que le Lens avait lu en « Bon état ». Un état faux sur une
+      // annonce, c'est un litige acheteur.
+      // Retirée plutôt que renommée : savoir qu'un article est en stock ou vendu
+      // n'apporte RIEN à la rédaction d'une annonce, et un simple renommage
+      // laisserait le mot « État » ambigu dans un contexte déjà chargé.
+      // En l'absence de signal, les 4 prompts appliquent leur défaut déjà écrit :
+      // « Très bon état » (même défaut que DEFAULT_CONDITION côté client).
       // ⚠️ prix_vente VOLONTAIREMENT absent du contexte (2026-07-25, S3) : le
       // LLM recopiait le prix dans la description ("Prix: 10€" mesuré sur 12
       // des 46 descriptions en base) alors qu'il a son champ dédié sur chaque
