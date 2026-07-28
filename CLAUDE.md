@@ -41,6 +41,7 @@ Toutes les fonctions webhook et cron doivent être déployées avec `--no-verify
 - stripe-webhook
 - tiktok-event
 - apple-subscription-status
+- apple-notification-history
 - ops-digest
 - handler-watch
 

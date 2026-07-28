@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { AppleKeyError, genererJWTApple } from "../_shared/apple-jwt.ts";
+import { AppleKeyError, chargerCléApple, genererJWTApple } from "../_shared/apple-jwt.ts";
 
 // Relecture de l'historique App Store Server Notifications V2 (180 jours max).
 // Créée le 2026-07-28 (incident raraajaws : pack de Pépites payé jamais
@@ -16,7 +16,6 @@ import { AppleKeyError, genererJWTApple } from "../_shared/apple-jwt.ts";
 
 const BUNDLE_ID      = "app.fillsell.app";
 const APPLE_PROD_URL = "https://api.storekit.itunes.apple.com";
-const CRON_SECRET    = "fs-cron-2026-tunnel";
 
 // Chargement de la clé : voir ../_shared/apple-jwt.ts (nettoyages candidats +
 // diagnostic explicite). La clé DOIT venir de la section « Achat intégré »
@@ -34,7 +33,14 @@ function decodeJWSPayload(jws: string): Record<string, unknown> {
 
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
-  if (req.headers.get("x-cron-secret") !== CRON_SECRET) {
+  // Secret lu dans l'environnement (même convention qu'email-tunnel,
+  // handler-watch et ops-digest) : cette fonction expose des appAccountToken
+  // (= identifiants utilisateurs), des transactionId et des montants — sa garde
+  // n'a rien à faire en clair dans le dépôt.
+  // Absence de secret = refus, jamais d'ouverture par défaut.
+  const expected = Deno.env.get("CRON_SECRET");
+  if (!expected || req.headers.get("x-cron-secret") !== expected) {
+    if (!expected) console.error("[apple-notification-history] CRON_SECRET absent — accès refusé");
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401, headers: { "Content-Type": "application/json" },
     });
@@ -93,7 +99,11 @@ serve(async (req) => {
       pages++;
     } while (paginationToken && pages < 50);
 
-    return new Response(JSON.stringify({ count: notifications.length, pages, notifications }), {
+    // keyVariant : quel nettoyage a rendu le secret lisible. « brut/entête-strict/
+    // base64 » = le secret en base est propre ; toute autre valeur = il n'a été
+    // sauvé que par le filet, mieux vaut le re-poser proprement.
+    const { variante: keyVariant } = await chargerCléApple();
+    return new Response(JSON.stringify({ count: notifications.length, pages, keyVariant, notifications }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {

@@ -154,6 +154,11 @@ export async function chargerCléApple(): Promise<{ clé: CryptoKey; variante: s
     if (k) {
       clé = k;
       variante = c.nom;
+      // Tracé UNE fois par instance : dit si le secret en base est propre
+      // (« brut/entête-strict/base64 ») ou s'il n'a été rattrapé que par un
+      // nettoyage permissif — auquel cas il vaut mieux le re-poser proprement
+      // que dépendre du filet. Aucun élément secret ici, juste le nom.
+      console.log(`[apple-jwt] clé chargée via la variante « ${variante} » (${der.length} octets)`);
       return { clé, variante };
     }
     trace.import = "aucune clé P-256 exploitable";

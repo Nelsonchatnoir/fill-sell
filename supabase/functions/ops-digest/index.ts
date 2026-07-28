@@ -26,10 +26,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 //      crédité) : notifications ONE_TIME_CHARGE des 48 h relues via
 //      apple-notification-history, chaque transactionId doit avoir sa ligne
 //      coin_ledger kind='purchase' ref='apple:<txid>'. Si la relecture est
-//      indisponible (secret APPLE_API_PRIVATE_KEY corrompu — constaté le
-//      28/07), l'alerte le dit chaque jour jusqu'à réparation. Google n'a pas
-//      d'équivalent relisible : couvert par google-play-webhook (crédit
-//      server-side) + filet client au lancement.
+//      indisponible, l'alerte le dit chaque jour jusqu'à réparation — la cause
+//      trouvée le 28/07 était qu'aucune clé « Achat intégré » n'existait dans
+//      App Store Connect (les clés d'équipe ne signent pas pour cette API).
+//      Google n'a pas d'équivalent relisible : couvert par google-play-webhook
+//      (crédit server-side) + filet client au lancement.
 
 const RESEND_API = "https://api.resend.com/emails";
 const FROM = "FillSell <support@fillsell.app>";
@@ -160,7 +161,7 @@ serve(async (req) => {
       `${Deno.env.get("SUPABASE_URL")}/functions/v1/apple-notification-history`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-cron-secret": "fs-cron-2026-tunnel" },
+        headers: { "Content-Type": "application/json", "x-cron-secret": expectedSecret },
         body: JSON.stringify({
           startDate: new Date(now - 48 * 3_600_000).toISOString(),
           notificationType: "ONE_TIME_CHARGE",
@@ -188,7 +189,7 @@ serve(async (req) => {
     }
   } catch (e) {
     iapAlerts.push(
-      `Relecture Apple indisponible (${String((e as Error)?.message ?? e)}) — croisement impossible. Vérifier le secret APPLE_API_PRIVATE_KEY (corrompu au 28/07).`,
+      `Relecture Apple indisponible (${String((e as Error)?.message ?? e)}) — croisement impossible. Pistes : la clé APPLE_API_PRIVATE_KEY doit être une clé « Achat intégré » d'App Store Connect (une clé d'équipe donne un 401), et le message d'erreur ci-dessus porte le diagnostic du chargeur.`,
     );
   }
 
