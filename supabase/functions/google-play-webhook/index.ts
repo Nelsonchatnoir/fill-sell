@@ -10,6 +10,16 @@ const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
 const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
 const PREMIUM_PRODUCT_IDS = ["app.fillsell.premium.sub", "app.fillsell.premium.standard", PRO_PRODUCT_ID];
 
+// Packs de Pépites (consumables) — montants crédités par product id. Doit
+// rester aligné avec validate-coin-purchase et src/components/coinPacks.js.
+// Le SKU .1150 crédite 1300 (rebalance 2026-07-14, SKU non renommable en prod).
+const COIN_PRODUCTS: Record<string, number> = {
+  "app.fillsell.coins.100": 100,
+  "app.fillsell.coins.220": 220,
+  "app.fillsell.coins.460": 460,
+  "app.fillsell.coins.1150": 1300,
+};
+
 // Génère un JWT signé avec le service account Google pour appeler l'API Publisher
 async function getGoogleAccessToken(): Promise<string> {
   const email = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")!;
@@ -64,8 +74,94 @@ serve(async (req) => {
     const notification = JSON.parse(atob(dataB64));
     const { packageName, subscriptionNotification } = notification;
 
+    // ── Consumables : packs de Pépites (2026-07-28) ───────────────────────
+    // Miroir du fix apple-iap-webhook du même jour : Play envoie un
+    // oneTimeProductNotification pour chaque achat consumable, jusqu'ici
+    // jeté (« not a subscription event »). Le filet client au lancement
+    // (recoverAndroidCoinPurchases) compense, mais seulement si l'app est
+    // rouverte — le crédit server-side ferme le trou pour de bon. Même
+    // mécanique et même ref idempotente que validate-coin-purchase
+    // (google:<orderId>) : rejeu croisé webhook/client/filet sans double
+    // crédit. Pas de consume ici (opération client Billing) : l'achat reste
+    // « owned » et le filet du prochain lancement le consommera
+    // (validation → already_credited → consume).
+    const otp = notification.oneTimeProductNotification;
+    if (otp) {
+      const otpToken = otp.purchaseToken as string | undefined;
+      const sku = otp.sku as string | undefined;
+      if (!sku || COIN_PRODUCTS[sku] == null) {
+        console.warn("[google-play-webhook] oneTimeProduct inconnu — skipped —", JSON.stringify(otp));
+        return new Response(JSON.stringify({ ok: true, skipped: "unknown_one_time_product" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      // notificationType : 1 = ONE_TIME_PRODUCT_PURCHASED, 2 = CANCELED
+      if (otp.notificationType !== 1 || !otpToken) {
+        console.warn("[google-play-webhook] oneTimeProduct non crédité — skipped —", JSON.stringify(otp));
+        return new Response(JSON.stringify({ ok: true, skipped: `one_time_type_${otp.notificationType}` }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const accessToken = await getGoogleAccessToken();
+      const apiUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/products/${sku}/tokens/${otpToken}`;
+      const apiRes = await fetch(apiUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!apiRes.ok) {
+        // 500 → Pub/Sub réessaie (transitoire couvert)
+        console.error("[google-play-webhook] Publisher API (products):", await apiRes.text());
+        return new Response(JSON.stringify({ error: "Publisher API failed" }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const purchase = await apiRes.json();
+      // purchaseState 0 = purchased (1 = cancelled, 2 = pending). Un PENDING
+      // confirmé plus tard revient comme nouvelle notification PURCHASED.
+      if (purchase.purchaseState !== 0) {
+        console.log(`[google-play-webhook] oneTimeProduct state=${purchase.purchaseState} — skipped (sku=${sku})`);
+        return new Response(JSON.stringify({ ok: true, skipped: `purchase_state_${purchase.purchaseState}` }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const coinUserId = (purchase?.obfuscatedExternalAccountId
+        ?? purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId) as string | undefined;
+      if (!coinUserId) {
+        // Payload complet : seule trace permettant un crédit manuel a posteriori.
+        console.error("[google-play-webhook] oneTimeProduct sans obfuscatedExternalAccountId —", JSON.stringify(purchase));
+        return new Response(JSON.stringify({ ok: true, skipped: "no_user_id" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      // Acknowledge best-effort (sinon Google rembourse au bout de 3 jours) —
+      // même geste que validate-coin-purchase, idempotent côté Google.
+      if (purchase.acknowledgementState === 0) {
+        await fetch(`${apiUrl}:acknowledge`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: "{}",
+        }).catch((e) => console.error("[google-play-webhook] acknowledge:", e));
+      }
+      const ref = `google:${purchase.orderId ?? otpToken}`;
+      const { data: credit, error: rpcErr } = await supabaseAdmin.rpc("credit_purchased_coins", {
+        p_user_id: coinUserId,
+        p_amount: COIN_PRODUCTS[sku],
+        p_ref: ref,
+        p_metadata: { productId: sku, platform: "android", source: "google-play-webhook" },
+      });
+      if (rpcErr) {
+        console.error("[google-play-webhook] credit_purchased_coins:", rpcErr.message, "—", JSON.stringify(otp));
+        return new Response(JSON.stringify({ error: "credit_failed" }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[google-play-webhook] oneTimeProduct crédité → userId=${coinUserId} sku=${sku} ref=${ref} →`, JSON.stringify(credit));
+      return new Response(JSON.stringify({ ok: true, credited: COIN_PRODUCTS[sku] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const sub = subscriptionNotification;
     if (!sub) {
+      // Payload loggé : ne plus jamais jeter une notification en aveugle.
+      console.log("[google-play-webhook] not a subscription event — skipped —", JSON.stringify(notification));
       return new Response(JSON.stringify({ ok: true, skipped: "not a subscription event" }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
