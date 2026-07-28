@@ -1255,13 +1255,20 @@ serve(async (req) => {
         if (_norm.includes(key)) return value;
       }
 
-      // Sonnet pour tout le reste
+      // Modèle IA pour tout le reste. Haiku 4.5 depuis le 2026-07-28 : l'ancien
+      // claude-sonnet-4-20250514 est DÉPRÉCIÉ (retrait annoncé mi-2026) — le
+      // jour de la coupure, la correction de marque serait tombée en erreur
+      // pour tout le monde. La tâche est une correction phonétique de 20
+      // tokens en sortie, sur du savoir général (noms de marques) : elle ne
+      // demande aucun raisonnement, Haiku 4.5 la couvre et c'est déjà le
+      // modèle du reste de ce fichier. Prompt, paramètres et parsing sont
+      // inchangés — et en cas d'échec, le repli rend le texte brut, comme avant.
       try {
         const _res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
+            model: "claude-haiku-4-5-20251001",
             max_tokens: 20,
             temperature: 0,
             messages: [{ role: "user", content: `Voice transcription distorted this brand name: '${rawBrand}'. Return ONLY the exact official brand name, nothing else. No explanation, no parentheses.` }],
@@ -1310,7 +1317,10 @@ serve(async (req) => {
         if (_norm.includes(key)) return value;
       }
 
-      // Sonnet fallback si le mot ne ressemble à aucun mot-clé connu
+      // Repli IA si le mot ne ressemble à aucun mot-clé connu. Haiku 4.5
+      // depuis le 2026-07-28 (même motif que _validateBrand : sortie de la
+      // dépréciation de Sonnet 4). Le prompt porte déjà deux exemples
+      // few-shot qui cadrent la réponse ; paramètres et parsing inchangés.
       const _knownRoots = ["portant", "sac", "carton", "bac", "etagere", "cave", "bureau", "garage", "salon", "vinted"];
       const _looksDistorted = !_knownRoots.some(w => _norm.includes(w));
       if (_looksDistorted) {
@@ -1319,7 +1329,7 @@ serve(async (req) => {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-api-key": apiKey!, "anthropic-version": "2023-06-01" },
             body: JSON.stringify({
-              model: "claude-sonnet-4-20250514",
+              model: "claude-haiku-4-5-20251001",
               max_tokens: 20,
               temperature: 0,
               messages: [{ role: "user", content: `This is a storage location name from a voice transcription app for resellers. It may contain phonetic errors.\nRaw: '${rawEmplacement}'\nReturn ONLY the corrected storage location name.\nExamples: 'sac aux rangs' → 'Sac orange', 'portant un' → 'Portant 1'\nOne name only, no explanation.` }],

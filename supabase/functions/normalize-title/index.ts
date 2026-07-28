@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -58,6 +59,20 @@ serve(async (req) => {
     });
   }
 
+  // Observation + garde-fou (2026-07-28). Seuil 200/jour : le maximum réel
+  // observé en base est de 29 créations d'article par jour et par utilisateur
+  // (p95 = 11), donc ~7× la pointe constatée. Inatteignable autrement qu'avec
+  // une boucle ou un script.
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  if (!(await appelAutorise(admin, user.id, "normalize_title", 200))) {
+    console.warn(`[normalize-title] garde-fou atteint pour ${user.id}`);
+    // 429 explicite : l'appelant sait déjà se rabattre sur le titre brut,
+    // comme il le fait quand l'IA échoue — aucun parcours n'est bloqué.
+    return new Response(JSON.stringify({ error: "rate_limited" }), {
+      status: 429, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
   try {
     const { titre } = await req.json();
     if (!titre) {
@@ -97,6 +112,8 @@ serve(async (req) => {
 
     const data = await response.json();
     const nom = (data?.content?.[0]?.text ?? "").trim().replace(/["'\n.→]/g, "").trim();
+
+    await loggerAppelIA(admin, user.id, "normalize_title", tokensDe(data));
 
     return new Response(JSON.stringify({ nom: nom || titre }), {
       headers: { "Content-Type": "application/json", ...CORS },

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -619,6 +620,18 @@ serve(async (req) => {
     });
   }
 
+  // Observation + garde-fou (2026-07-28). Seuil 300/jour : le maximum réel
+  // observé est de 71 interactions vocales par jour et par utilisateur
+  // (p95 = 18), soit ~4× la pointe. C'est la fonction la plus lourde du lot
+  // (max_tokens 8192), d'où un plafond quand même large mais explicite.
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  if (!(await appelAutorise(admin, user.id, "voice_parse", 300))) {
+    console.warn(`[voice-parse] garde-fou atteint pour ${user.id}`);
+    return new Response(JSON.stringify({ error: "rate_limited" }), {
+      status: 429, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
   try {
     const { text, lang } = await req.json();
     const _lang = lang === "en" ? "en" : "fr";
@@ -673,6 +686,8 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    // Loggé dès la réponse reçue : l'appel a coûté, qu'il soit parsable ou non.
+    await loggerAppelIA(admin, user.id, "voice_parse", tokensDe(data));
     const raw = (data?.content?.[0]?.text ?? "")
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")

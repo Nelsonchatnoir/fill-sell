@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -84,6 +85,17 @@ serve(async (req) => {
     });
   }
 
+  // Observation + garde-fou (2026-07-28). Seuil 100/jour : répartir le prix
+  // d'un lot est une action ponctuelle, faite une fois par lot acheté — aucun
+  // usage plausible n'en approche. Le plafond ne vise qu'une boucle.
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  if (!(await appelAutorise(admin, user.id, "lot_distribute", 100))) {
+    console.warn(`[lot-distribute] garde-fou atteint pour ${user.id}`);
+    return new Response(JSON.stringify({ error: "rate_limited" }), {
+      status: 429, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
   try {
     const { lotTotal, items, lang } = await req.json();
     const _lang = lang === "en" ? "en" : "fr";
@@ -138,6 +150,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    await loggerAppelIA(admin, user.id, "lot_distribute", tokensDe(data));
     const raw = (data?.content?.[0]?.text ?? "")
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -41,6 +42,37 @@ serve(async (req) => {
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
+  }
+
+  // Observation + garde-fou (2026-07-28). Seuil 100/jour : l'analyse est
+  // déclenchée par la consultation de l'écran Stats (et par la voix) — un
+  // utilisateur très actif l'ouvre quelques dizaines de fois par jour au plus.
+  //
+  // ⚠️ Cette fonction est la seule des quatre à ne PAS extraire l'utilisateur :
+  // elle se contente du JWT exigé par le gateway (verify_jwt = true) sans
+  // jamais le décoder. On l'identifie donc ici, mais de façon STRICTEMENT NON
+  // BLOQUANTE : un échec d'identification laisse passer l'appel exactement
+  // comme avant. Le contrat d'API est inchangé — les deux appelants (StatsTab
+  // et voiceEngine) transmettent déjà ce Bearer.
+  let statsUserId: string | null = null;
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
+      const { data: { user } } = await userClient.auth.getUser();
+      statsUserId = user?.id ?? null;
+    }
+  } catch { /* identification impossible : on continue sans compter */ }
+
+  if (!(await appelAutorise(admin, statsUserId, "stats_analysis", 100))) {
+    console.warn(`[stats-analysis] garde-fou atteint pour ${statsUserId}`);
+    return new Response(JSON.stringify({ error: "rate_limited" }), {
+      status: 429, headers: { "Content-Type": "application/json", ...CORS },
+    });
   }
 
   try {
@@ -203,6 +235,8 @@ Si des données de plateformes sont fournies : mentionner la meilleure/pire plat
 
     const data = await response.json();
     const analysis = data?.content?.[0]?.text?.trim() ?? null;
+
+    await loggerAppelIA(admin, statsUserId, "stats_analysis", tokensDe(data));
 
     return new Response(JSON.stringify({ analysis }), {
       headers: { "Content-Type": "application/json", ...CORS },

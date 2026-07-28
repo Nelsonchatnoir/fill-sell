@@ -1,37 +1,31 @@
-# Config déclarative Supabase CLI — verify_jwt par fonction.
-# ⚠️ Source de vérité pour `supabase functions deploy <nom>` : le CLI lit ce
-# fichier, plus AUCUN flag --no-verify-jwt à retenir pour les fonctions listées
-# ici (le piège documenté dans CLAUDE.md : un deploy sans le flag repassait
-# verify_jwt à true et cassait les appels externes en 401).
-# État relevé en prod le 2026-07-17 (list_edge_functions) — ne mettre ici QUE
-# des fonctions dont verify_jwt=false est l'état voulu et constaté.
+# Config déclarative Supabase CLI — verify_jwt de CHAQUE fonction.
+#
+# ⚠️ SOURCE DE VÉRITÉ pour `supabase functions deploy <nom>`. Le CLI lit ce
+# fichier : plus aucun flag --no-verify-jwt à retenir, et surtout plus aucune
+# fonction dont le réglage dépend de ce qu'on a tapé la dernière fois.
+#
+# POURQUOI TOUTES LES FONCTIONS SONT LISTÉES (2026-07-28) : le CLI CONSERVE le
+# dernier réglage appliqué. Une fonction non déclarée ici garde donc
+# indéfiniment la valeur du dernier deploy — un flag passé par erreur devient
+# permanent, et invisible. C'est exactement ce qui est arrivé à lens-analysis
+# le 2026-07-28 : un `--no-verify-jwt` de trop l'a basculée à false, et un
+# redéploiement SANS le flag ne l'a pas restaurée. Déclarer l'état attendu de
+# chaque fonction rend l'erreur impossible : le fichier réimpose la valeur à
+# chaque déploiement.
+#
+# État relevé en prod le 2026-07-28 via list_edge_functions — ces valeurs sont
+# constatées, pas supposées. Toute nouvelle fonction doit être ajoutée ici.
 
 project_id = "tojihnuawsoohlolangc"
 
-# lens-analysis : verify_jwt = TRUE, état d'origine à préserver. Déclaré ici
-# explicitement après un incident du 2026-07-28 : un `deploy --no-verify-jwt`
-# passé par erreur a basculé la fonction à false, et un redéploiement SANS le
-# flag ne l'a PAS restaurée (le CLI conserve le dernier réglage appliqué au
-# lieu de revenir au défaut). La déclaration ci-dessous est donc le seul moyen
-# fiable de reposer l'état voulu — et elle protège des prochaines fois.
-# La fonction vérifie de toute façon le JWT dans son code (getUser → 401), le
-# gateway n'était pas le seul rempart.
-[functions.lens-analysis]
-verify_jwt = true
+# ═══════════════════════════════════════════════════════════════════════════
+# verify_jwt = false — le gateway laisse passer, l'authentification est faite
+# ailleurs (signature du store, x-cron-secret, ou JWT vérifié dans le code).
+# ═══════════════════════════════════════════════════════════════════════════
 
-# Auth applicative interne (Bearer user vérifié dans le code) — gateway ouvert.
-[functions.voice-intent]
-verify_jwt = false
-
-# check-listing-status : appelé par l'app avec un JWT user, mais vérifié dans le
-# code (getUser) — état prod verify_jwt=false, à préserver.
-[functions.check-listing-status]
-verify_jwt = false
-
-# Webhooks / cron externes (liste CLAUDE.md) : Apple, Google, Stripe, pg_net…
-[functions.email-tunnel]
-verify_jwt = false
-
+# Webhooks de store : authentifiés par SIGNATURE (JWS Apple, Pub/Sub Google,
+# signature Stripe). Un verify_jwt à true les casserait en 401 — les stores
+# n'envoient évidemment pas de JWT Supabase. Liste CLAUDE.md.
 [functions.apple-iap-webhook]
 verify_jwt = false
 
@@ -41,11 +35,117 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
-[functions.send-merine-reply]
+# Cron / appels internes : gardés par le header x-cron-secret.
+[functions.email-tunnel]
+verify_jwt = false
+
+[functions.ops-digest]
+verify_jwt = false
+
+[functions.handler-watch]
+verify_jwt = false
+
+[functions.apple-notification-history]
+verify_jwt = false
+
+[functions.apple-subscription-status]
 verify_jwt = false
 
 [functions.tiktok-event]
 verify_jwt = false
 
-[functions.apple-subscription-status]
+# Auth applicative interne : Bearer utilisateur vérifié DANS le code (getUser).
+[functions.voice-intent]
 verify_jwt = false
+
+[functions.check-listing-status]
+verify_jwt = false
+
+# Envois d'e-mails déclenchés côté serveur / outils ponctuels.
+[functions.send-relance]
+verify_jwt = false
+
+[functions.send-batch-notifications]
+verify_jwt = false
+
+[functions.email-blast]
+verify_jwt = false
+
+[functions.send-merine-reply]
+verify_jwt = false
+
+[functions.send-merine-reward]
+verify_jwt = false
+
+[functions.send-thomas-reply]
+verify_jwt = false
+
+[functions.qa-img-quality-test]
+verify_jwt = false
+
+# ═══════════════════════════════════════════════════════════════════════════
+# verify_jwt = true — appelées par l'app avec un JWT utilisateur. Le gateway
+# rejette avant même d'atteindre le code : c'est le premier rempart, et il ne
+# doit jamais tomber par accident.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Fonctions IA (coûtent de l'argent à chaque appel — le gateway est la
+# première barrière contre un appel non authentifié).
+[functions.lens-analysis]
+verify_jwt = true
+
+[functions.generate-listing]
+verify_jwt = true
+
+[functions.deal-analysis]
+verify_jwt = true
+
+[functions.voice-transcribe]
+verify_jwt = true
+
+[functions.voice-parse]
+verify_jwt = true
+
+[functions.stats-analysis]
+verify_jwt = true
+
+[functions.normalize-title]
+verify_jwt = true
+
+[functions.lot-distribute]
+verify_jwt = true
+
+# Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.cancel-subscription]
+verify_jwt = true
+
+[functions.validate-coin-purchase]
+verify_jwt = true
+
+[functions.validate-apple-receipt]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.check-early-adopter]
+verify_jwt = true
+
+# Publication / extension.
+[functions.get-pending-jobs]
+verify_jwt = true
+
+[functions.update-job-status]
+verify_jwt = true
+
+[functions.fetch-ebay-aspects]
+verify_jwt = true
+
+[functions.extension-session]
+verify_jwt = true
+
+[functions.send-bug-report]
+verify_jwt = true
