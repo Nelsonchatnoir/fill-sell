@@ -336,13 +336,19 @@ serve(async (req) => {
     }
 
     // Pièces incluses au 1er achat et à chaque renouvellement.
-    // upgrade_monthly_grant (2026-07-23) : grant plein si mois vierge, sinon
-    // top-up de la différence de tier (upgrade Premium→Pro en cours de mois).
+    // Cycle par utilisateur (2026-07-28) : expiresDate — déjà présent dans le
+    // signedTransactionInfo qu'on vient de vérifier — devient l'échéance du
+    // prochain grant. C'est le store qui décide quand il encaisse, on ne
+    // calcule jamais la date nous-mêmes. p_source "payment" : cet événement
+    // EST la preuve de paiement (le sweep, lui, ne rattrape que 3 jours).
     if (isPremium) {
       const grantTier = PRO_PRODUCT_IDS.includes(productId) ? "pro" : "premium";
+      const expiresDate = tx.expiresDate as number | undefined;
       const { error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: appAccountToken,
         p_tier: grantTier,
+        p_period_end: expiresDate ? new Date(expiresDate).toISOString() : null,
+        p_source: "payment",
       });
       if (grantErr) console.error("[apple-iap-webhook] upgrade_monthly_grant:", grantErr.message);
     }

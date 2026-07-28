@@ -235,7 +235,7 @@ serve(async (req) => {
       const target = live.find((s: Stripe.Subscription) => !isProSub(s));
       if (target) {
         const item = target.items.data[0];
-        await stripe.subscriptions.update(target.id, {
+        const upgraded = await stripe.subscriptions.update(target.id, {
           items: [{ id: item.id, price: priceId }],
           proration_behavior: "always_invoice",
           payment_behavior: "error_if_incomplete",
@@ -252,9 +252,19 @@ serve(async (req) => {
           .from("profiles")
           .update({ is_premium: true, is_pro: true, stripe_customer_id: existingCustomerId })
           .eq("id", authUser.id);
+        // L'upgrade en place ouvre une période neuve : current_period_end de
+        // l'abonnement modifié réaligne l'échéance du grant sur la nouvelle
+        // facturation (cycle par utilisateur, 2026-07-28). proration_behavior
+        // "always_invoice" déclenchera aussi invoice.paid, qui poserait la même
+        // date — les deux chemins sont idempotents, celui-ci évite juste de
+        // dépendre de l'activation de cet événement côté dashboard Stripe.
         const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
           p_user_id: authUser.id,
           p_tier: "pro",
+          p_period_end: upgraded?.current_period_end
+            ? new Date(upgraded.current_period_end * 1000).toISOString()
+            : null,
+          p_source: "payment",
         });
         if (grantErr) console.error("[checkout] upgrade grant failed:", grantErr.message);
         else console.log("[checkout] upgraded sub", target.id, "to pro — grant:", JSON.stringify(grantRes));

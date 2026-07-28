@@ -256,13 +256,19 @@ serve(async (req) => {
     }
 
     // Pièces incluses au 1er achat et à chaque renouvellement.
-    // upgrade_monthly_grant (2026-07-23) : grant plein si mois vierge, sinon
-    // top-up de la différence de tier (upgrade Premium→Pro en cours de mois).
+    // Cycle par utilisateur (2026-07-28) : expiryTime — déjà présent dans la
+    // réponse subscriptionsv2 récupérée plus haut — devient l'échéance du
+    // prochain grant. C'est le store qui décide quand il encaisse, on ne
+    // calcule jamais la date nous-mêmes. p_source "payment" : cet événement
+    // EST la preuve de paiement (le sweep, lui, ne rattrape que 3 jours).
     if (isPremium) {
       const grantTier = subscriptionId === PRO_PRODUCT_ID ? "pro" : "premium";
+      const expiryTime = purchase?.lineItems?.[0]?.expiryTime as string | undefined;
       const { error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: userId,
         p_tier: grantTier,
+        p_period_end: expiryTime ?? null,
+        p_source: "payment",
       });
       if (grantErr) console.error("[google-play-webhook] upgrade_monthly_grant:", grantErr.message);
     }

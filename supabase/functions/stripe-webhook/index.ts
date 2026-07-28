@@ -142,14 +142,30 @@ serve(async (req) => {
         await supabase.rpc("increment_founder_slots");
       }
 
-      // Pièces incluses créditées dès l'activation. upgrade_monthly_grant
-      // (2026-07-23) : grant plein si mois vierge, sinon top-up de la
-      // différence de tier (un abonné du mois déjà crédité plus bas n'attend
-      // plus le 1er).
+      // Pièces incluses créditées dès l'activation. Depuis le cycle par
+      // utilisateur (2026-07-28), on transmet AUSSI l'échéance réelle du
+      // store : current_period_end de l'abonnement fraîchement créé fixe la
+      // date du prochain grant. Sans elle, le cycle retomberait sur la date
+      // d'inscription — pas faux, mais décalé par rapport à la facturation.
+      // Lecture tolérante : un échec ici ne doit jamais empêcher le crédit,
+      // la RPC sait retomber sur l'ancrage.
+      let periodEnd: string | null = null;
+      try {
+        if (session.subscription) {
+          const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+          if (sub?.current_period_end) {
+            periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+          }
+        }
+      } catch (e) {
+        console.error("[webhook] current_period_end illisible:", (e as Error)?.message);
+      }
       const grantTier = planType === "pro" ? "pro" : "premium";
       const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: users[0].id,
         p_tier: grantTier,
+        p_period_end: periodEnd,
+        p_source: "payment",
       });
       if (grantErr) console.error("[webhook] upgrade_monthly_grant:", grantErr.message);
     }
@@ -178,9 +194,16 @@ serve(async (req) => {
       // d'un upgrade sert de filet si le top-up synchrone de
       // create-checkout-session a raté (idempotent, no-op sinon).
       const tier = profs[0].is_pro ? "pro" : "premium";
+      // Fin de la période facturée = échéance du prochain grant. C'est LE
+      // signal de renouvellement : depuis le cycle par utilisateur, un compte
+      // à canal de paiement n'est plus crédité que sur cet événement (le sweep
+      // ne rattrape qu'un retard de 3 jours). D'où p_source: "payment".
+      const invPeriodEnd = invoice.lines?.data?.[0]?.period?.end ?? invoice.period_end;
       const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: profs[0].id,
         p_tier: tier,
+        p_period_end: invPeriodEnd ? new Date(invPeriodEnd * 1000).toISOString() : null,
+        p_source: "payment",
       });
       if (grantErr) console.error("[webhook] invoice.paid grant:", grantErr.message);
       else console.log(`[webhook] invoice.paid grant → user=${profs[0].id} tier=${tier}`);
