@@ -110,7 +110,7 @@ authenticated (service_role intact, aucun flux serveur cassé).
 - **Migrations Supabase** : appliquées directement en prod (irréversible, normal).
 - **Edge Functions webhook/cron** : toujours déployées `--no-verify-jwt`
   (email-tunnel, apple-iap-webhook, google-play-webhook, stripe-webhook,
-  send-merine-reply, tiktok-event, apple-subscription-status).
+  tiktok-event, apple-subscription-status, ops-digest, handler-watch).
 - **Méthode** : investigation **avec preuve** avant tout fix ; **jamais de test
   applicatif automatique après un fix** (Nico teste manuellement).
 - **Réponses** : contenu dans un bloc de code (copier-coller).

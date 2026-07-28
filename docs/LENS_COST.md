@@ -34,9 +34,22 @@ Périmètre : l'appel `lens-analysis` seul. La dictée vocale de la note
 `web_search` est un outil **serveur** : chaque recherche ajoute une itération
 d'échantillonnage dans la même requête, et **chaque itération re-facture tout
 l'input** (système + toutes les images + les résultats de recherche déjà
-accumulés). Sans prompt caching — et il n'y a **aucun** `cache_control` dans le
-code — tout est au plein tarif à chaque itération. Les images sont donc
-facturées 2 à 5 fois par scan.
+accumulés). Les images sont donc facturées 2 à 5 fois par scan.
+
+> **CORRECTIF 2026-07-28.** Deux affirmations de cette section ont été
+> invalidées par la mesure :
+> 1. « il n'y a aucun `cache_control` dans le code » — **plus vrai** : le
+>    marqueur est posé sur la dernière image depuis le commit `c0d57ec`.
+> 2. Le mécanisme par lequel ce cache est relu, décrit plus bas (levier 2)
+>    comme « les itérations 2+ **et les relances `pause_turn`** », est **faux**
+>    sur sa seconde moitié : **aucune relance `pause_turn` n'a été déclenchée**
+>    pendant l'audit du 28/07, sur 7 scans complets — `stop_reason` valait
+>    `end_turn` à chaque fois, un seul appel HTTP par scan. Le cache est relu
+>    par les **itérations internes de l'outil serveur**, à l'intérieur de cette
+>    unique requête. Le gain, lui, est bien réel et mesuré : 10 019 à
+>    114 890 tokens lus par scan à 0,1× au lieu du plein tarif. Sur le G-Shock
+>    (7 recherches), ces 114 890 tokens auraient coûté 0,115 $ sans cache, ils
+>    en coûtent 0,011 $. Le gain est réel, il est simplement ailleurs qu'écrit.
 
 ---
 
@@ -172,12 +185,19 @@ Par ordre d'impact :
    L'économie se **multiplie par le nombre d'itérations** (2 à 5). Impact
    typique : −15 à −25 % du coût total, zéro risque qualité (le modèle ne voit
    déjà que du 1 568 px max).
-2. **Prompt caching** — aucun `cache_control` aujourd'hui. Minimum cacheable
-   Haiku 4.5 = 4 096 tokens : le système seul (~2 700) ne passe pas, mais un
-   breakpoint sur le **dernier bloc image** (système + images ≈ 7 450 tok)
-   passe le seuil. Les itérations 2+ et les relances pause_turn liraient ce
-   préfixe à 0,1×. Impact typique : −30 à −40 % du poste input (−0,01 à
-   −0,015 €/scan), une ligne de code.
+2. **Prompt caching** — ~~aucun `cache_control` aujourd'hui~~ **FAIT** (commit
+   `c0d57ec`). Minimum cacheable Haiku 4.5 = 4 096 tokens : le système seul
+   (~2 700) ne passe pas, mais un breakpoint sur le **dernier bloc image**
+   (système + images ≈ 7 450 tok) passe le seuil. Ce sont les **itérations
+   internes de l'outil serveur** qui relisent ce préfixe à 0,1× — *pas* les
+   relances `pause_turn` comme écrit initialement (aucune n'a été déclenchée en
+   7 scans, cf. correctif §1). Gain mesuré le 28/07 : 10 019 à 114 890 tokens
+   lus par scan.
+   ⚠️ **En mode `identify`, le marqueur est RETIRÉ** (28/07) : sans web_search
+   il n'y a qu'un tour, `cache_read` valait **0 sur 7 appels sur 7**, et
+   l'écriture du préfixe à 1,25× coûtait **+24,9 % d'entrée facturée et +16,4 %
+   de coût pour zéro bénéfice**. La pose est désormais conditionnée à la
+   présence de l'outil.
 3. **Capper la recherche web : `max_uses: 2`** sur l'outil. Rien ne borne
    aujourd'hui le nombre de recherches ; chaque recherche évitée économise
    0,01 $ + ~3 000 tokens d'input re-facturés sur chaque itération suivante.
@@ -192,6 +212,53 @@ Par ordre d'impact :
 
 Leviers 1+2+3 combinés : scan typique estimé à **~0,03 €** (−45 %), scénario
 haut ramené sous 0,08 €.
+
+---
+
+## 5bis. Coûts MESURÉS du 28/07/2026 — scan complet et mode identify
+
+Tout ce qui précède est **estimé** à partir des prompts et des tarifs. Les
+chiffres ci-dessous sont **MESURÉS** : relevés dans les blocs `usage` renvoyés
+par l'API sur **7 articles réels** (photos utilisateurs du bucket
+`listing-photos`, fichiers `raw/`), chacun passé une fois dans chaque mode.
+Méthode et détail complet : `docs/AUDIT_LENS_IDENTIFY_2026-07-28.md`.
+
+| Mode | Tours | Recherches | Coût moyen | Fourchette | Latence |
+|---|---:|---:|---:|---|---:|
+| **Scan complet** (6 Pépites) | 1 | 3,0 | **0,0716 €** | 0,049 – 0,151 € | 16 s |
+| **Identify** (inclus dans la publication) | 1 | 0 | **0,0101 €** | 0,0092 – 0,0110 € | 9 s |
+
+> **Un identify coûte 0,010 € — un septième d'un scan complet.** Et sa
+> fourchette est beaucoup plus serrée : sans recherche web, le coût devient
+> **prévisible** (un seul tour, un seul jeu d'images facturé une fois, aucun
+> frais fixe de recherche). C'est la mesure qui remplace toute estimation
+> antérieure du coût de ce mode — il n'y en avait aucune dans ce document.
+
+Effet sur la marge de la publication, qui inclut désormais un identify :
+
+| Option | Prix payé (0,033 €/Pép.) | Coût sans identify | Coût avec identify | Marge |
+|---|---:|---:|---:|---:|
+| original (3 Pép.) | 0,10 € | 0,010 € | **0,020 €** | **80 %** |
+| ia_light (12 Pép.) | 0,40 € | 0,056 € | 0,066 € | 84 % |
+| ia_advanced (35 Pép.) | 1,17 € | 0,195 € | 0,205 € | 82 % |
+
+Au tarif du pack d'entrée (0,05 €/Pépite), la publication `original` rapporte
+0,15 € pour 0,020 € : **marge 87 %**. Le modèle tient, y compris dans
+l'hypothèse la plus défavorable.
+
+Requête de contrôle (les deux modes écrivent leur télémétrie) :
+
+```sql
+select feature,
+       count(*) as appels,
+       round(avg((metadata->>'input_tokens')::numeric))  as tok_in_moyen,
+       round(avg((metadata->>'output_tokens')::numeric)) as tok_out_moyen,
+       round(avg((metadata->>'web_search_requests')::numeric), 1) as recherches
+from usage_logs
+where feature in ('lens', 'lens_identify', 'lens_identify_cache')
+  and created_at > (now() at time zone 'Europe/Paris')::date - interval '7 days'
+group by 1 order by 1;
+```
 
 ---
 

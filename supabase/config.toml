@@ -68,20 +68,15 @@ verify_jwt = false
 [functions.send-batch-notifications]
 verify_jwt = false
 
-[functions.email-blast]
-verify_jwt = false
-
-[functions.send-merine-reply]
-verify_jwt = false
-
-[functions.send-merine-reward]
-verify_jwt = false
-
-[functions.send-thomas-reply]
-verify_jwt = false
-
-[functions.qa-img-quality-test]
-verify_jwt = false
+# ── SUPPRIMÉES EN PROD LE 2026-07-28 ──────────────────────────────────────
+# email-blast, send-merine-reply, send-merine-reward, send-thomas-reply et
+# qa-img-quality-test étaient encore déployées, toutes en verify_jwt = false,
+# dont un envoyeur d'e-mails EN MASSE (email-blast). Vérifié avant suppression :
+# aucun code applicatif, aucun cron pg_cron et aucun webhook ne les appelait —
+# les trois « send-* » étaient des réponses ponctuelles à un utilisateur nommé,
+# écrites une fois et jamais réutilisées.
+# ⚠️ handler-watch, elle, N'EST PAS supprimée : le job pg_cron
+# « handler-watch-3min » (jobid 5) l'appelle toutes les 3 minutes.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # verify_jwt = true — appelées par l'app avec un JWT utilisateur. Le gateway
