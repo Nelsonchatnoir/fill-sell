@@ -32,3 +32,28 @@ index 0855c02..f337d57 100644
                          BillingFlowParams billingFlowParams = billingFlowBuilder.build();
                          // Launch the billing flow
                          Log.d(TAG, "Launching billing flow");
+diff --git a/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift b/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift
+index 9ab52f2..8c66364 100644
+--- a/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift
++++ b/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift
+@@ -50,7 +50,19 @@ public class NativePurchasesPlugin: CAPPlugin, CAPBridgedPlugin {
+                         jwsRepresentation: result.jwsRepresentation,
+                         alwaysIncludeWillCancel: true
+                     )
+-                    await transaction.finish()
++                    // FillSell patch (2026-07-28) : les consumables Pépites ne sont
++                    // PAS finis ici. finish() avant notifyListeners rendait le filet
++                    // JS inopérant : si la validation serveur échouait (session pas
++                    // restaurée, listener pas encore enregistré), la transaction
++                    // était déjà finalisée et StoreKit ne la représentait JAMAIS —
++                    // achat payé, jamais crédité (incident du 28/07). Le JS valide
++                    // côté serveur PUIS finit via acknowledgePurchase ; en cas
++                    // d'échec la transaction reste en file et revient au prochain
++                    // lancement. Les abonnements gardent le comportement d'origine.
++                    let isFillSellCoinProduct = transaction.productID.hasPrefix("app.fillsell.coins.")
++                    if !isFillSellCoinProduct {
++                        await transaction.finish()
++                    }
+                     try? await Task.sleep(nanoseconds: 500_000_000)
+                     await MainActor.run {
+                         self?.notifyListeners("transactionUpdated", data: payload)
