@@ -77,9 +77,9 @@ const COPY = {
 
     priceKicker: 'Tarifs', priceTitle: 'Un plan pour chaque volume.',
     priceSub: 'Commence gratuitement. Passe Premium ou Pro quand tu veux vendre plus, sans engagement.',
-    perMonth: '/ mois', freeTag: 'Pour se lancer', priceFree: '0 €', freeCoins: '30 Pépites / mois',
-    popular: 'Le plus populaire', priceP: '12,99 €', pCoins: '300 Pépites / mois',
-    pricePro: '29,99 €', proCoins: '800 Pépites / mois',
+    perMonth: '/ mois', freeTag: 'Pour se lancer', priceFree: '0 €', freeCoins: '{FREE} Pépites / mois',
+    popular: 'Le plus populaire', priceP: '12,99 €', pCoins: '{PREMIUM} Pépites / mois',
+    pricePro: '29,99 €', proCoins: '{PRO} Pépites / mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
     coinsTitle: 'Les Pépites, ta monnaie', coinsPublish: 'Publier : 3 à 35 Pépites',
     coinsLens: 'Analyse Lens : 6 Pépites', coinsPacks: 'Packs dès 4,99 €',
@@ -140,9 +140,9 @@ const COPY = {
 
     priceKicker: 'Pricing', priceTitle: 'A plan for every volume.',
     priceSub: 'Start free. Move to Premium or Pro whenever you want to sell more — no commitment.',
-    perMonth: '/ mo', freeTag: 'To get started', priceFree: '€0', freeCoins: '30 Pépites / mo',
-    popular: 'Most popular', priceP: '€12.99', pCoins: '300 Pépites / mo',
-    pricePro: '€29.99', proCoins: '800 Pépites / mo',
+    perMonth: '/ mo', freeTag: 'To get started', priceFree: '€0', freeCoins: '{FREE} Pépites / mo',
+    popular: 'Most popular', priceP: '€12.99', pCoins: '{PREMIUM} Pépites / mo',
+    pricePro: '€29.99', proCoins: '{PRO} Pépites / mo',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
     coinsTitle: 'Pépites, your currency', coinsPublish: 'Publish: 3 to 35 Pépites',
     coinsLens: 'Lens analysis: 6 Pépites', coinsPacks: 'Packs from €4.99',
@@ -181,11 +181,9 @@ const FEATURES = {
 
 /* La publication auto sur les 4 plateformes est le moteur commun aux 3 paliers :
    le libellé est donc volontairement identique sur les 3 cartes. Ce qui distingue
-   les paliers, c'est le volume de Pépites (30 / 300 / 800), pas la fonctionnalité.
-   ⚠️ Ces trois nombres sont écrits EN DUR sur cette page (cartes de prix + FAQ),
-   contrairement à l'app qui les lit dans coin_config : la landing est servie
-   statiquement, sans session Supabase. Tout changement de grant impose donc de
-   repasser ici — c'est le seul endroit du repo dans ce cas. */
+   les paliers, c'est le volume de Pépites, pas la fonctionnalité. Ces volumes
+   sont lus dans coin_config au chargement (cf. GRANTS_FALLBACK ci-dessous) :
+   la page ne peut donc plus promettre un volume qu'on ne sert pas. */
 const PUBLISH_LINE = {
   fr: 'Publication auto sur Vinted, Leboncoin, eBay & Beebs',
   en: 'Auto-publishing to Vinted, Leboncoin, eBay & Beebs',
@@ -206,22 +204,45 @@ const PLANS = {
 
 const FAQ = {
   fr: [
-    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre (30 en Free, 300 en Premium, 800 en Pro) et tu les dépenses pour publier une annonce (3 à 35 Pépites selon le type) ou lancer une analyse Lens (6 Pépites). Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
+    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour publier une annonce (3 à 35 Pépites selon le type) ou lancer une analyse Lens (6 Pépites). Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
     ['Comment marche la publication automatique ?', 'Tu ajoutes un article à ton inventaire, puis FillSell génère l’annonce et la publie sur les 4 plateformes en même temps. Rien à recopier ni à re-téléverser.'],
     ['Et si un article se vend ?', 'FillSell détecte la vente, retire l’annonce des 3 autres plateformes et met à jour tes marges, ton stock et tes stats — automatiquement. Zéro risque de double-vente.'],
-    ['Lens, c’est illimité ?', 'Non — chaque analyse Lens coûte 6 Pépites, quel que soit ton palier. Le Pro reçoit simplement bien plus de Pépites (800/mois) pour en faire davantage.'],
+    ['Lens, c’est illimité ?', 'Non — chaque analyse Lens coûte 6 Pépites, quel que soit ton palier. Le Pro reçoit simplement bien plus de Pépites ({PRO}/mois) pour en faire davantage.'],
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
-    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan (30 on Free, 300 on Premium, 800 on Pro) and spend them to publish a listing (3 to 35 Pépites depending on type) or run a Lens analysis (6 Pépites). Need more? Packs start at €4.99.'],
+    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to publish a listing (3 to 35 Pépites depending on type) or run a Lens analysis (6 Pépites). Need more? Packs start at €4.99.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
     ['How does automatic publishing work?', 'You add an item to your inventory, then FillSell builds the listing and posts it to all 4 marketplaces at once. Nothing to copy or re-upload.'],
     ['What happens when an item sells?', 'FillSell detects the sale, pulls the listing from the other 3 marketplaces and updates your margins, stock and stats — automatically. Zero double-sale risk.'],
-    ['Is Lens unlimited?', 'No — each Lens analysis costs 6 Pépites, on every tier. Pro simply gets far more Pépites (800/mo) so you can run more of them.'],
+    ['Is Lens unlimited?', 'No — each Lens analysis costs 6 Pépites, on every tier. Pro simply gets far more Pépites ({PRO}/mo) so you can run more of them.'],
     ['Can I cancel anytime?', 'Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.'],
   ],
 };
+
+/* ── Grants mensuels affichés ───────────────────────────────────────────────
+   Les cartes de prix et la FAQ portent des jetons {FREE} / {PREMIUM} / {PRO},
+   remplacés au rendu par les valeurs lues dans coin_config (même source que
+   l'app : la base fait autorité, cf. ConversionModal). La landing est publique
+   et non authentifiée — la lecture passe par le rôle anon, qui a SELECT sur
+   coin_config (et, depuis le 2026-07-28, plus AUCUN droit d'écriture).
+
+   FILET, PAS SOURCE : si la requête échoue (hors ligne, Supabase indisponible,
+   coupure réseau au premier rendu), on affiche ces valeurs plutôt qu'un blanc,
+   un zéro ou un squelette — une page tarifaire vide coûte plus cher qu'une
+   page légèrement datée. À tenir à jour au fil des changements de grant, mais
+   ce n'est JAMAIS ce qui s'affiche quand la base répond. */
+const GRANTS_FALLBACK = { FREE: 30, PREMIUM: 300, PRO: 800 };
+
+/* Remplace les jetons d'un texte par les grants courants. Appliqué aux libellés
+   des cartes ET aux réponses de la FAQ, où les nombres sont noyés dans la
+   phrase. Un texte sans jeton traverse la fonction inchangé. */
+const fillGrants = (texte, g) =>
+  String(texte)
+    .replace(/\{FREE\}/g, g.FREE)
+    .replace(/\{PREMIUM\}/g, g.PREMIUM)
+    .replace(/\{PRO\}/g, g.PRO);
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
 /* Le dégradé est inliné dans CHAQUE SVG (id unique via useId) : iOS/WebKit ne
@@ -324,9 +345,37 @@ export default function LandingPage() {
   const [lang, setLang] = useState(getInitialLang);
   const [openFaq, setOpenFaq] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [grants, setGrants] = useState(GRANTS_FALLBACK);
 
   const t = COPY[lang];
   const isNative = Capacitor.isNativePlatform();
+
+  // Grants lus dans coin_config, comme le reste de l'app. Import dynamique du
+  // client Supabase : la landing est la première page servie aux visiteurs, on
+  // ne charge donc le client que pour cette requête, sans l'ajouter au chemin
+  // critique du premier rendu. Aucun état d'attente : les valeurs de repli sont
+  // affichées d'emblée puis remplacées si la base répond — le visiteur ne voit
+  // jamais ni blanc ni squelette à la place d'un tarif.
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      try {
+        const { supabase } = await import('../lib/supabase');
+        const { data, error } = await supabase
+          .from('coin_config')
+          .select('key, value')
+          .in('key', ['monthly_grant_free', 'monthly_grant_premium', 'monthly_grant_pro']);
+        if (error || !data?.length || !vivant) return;
+        const parKey = Object.fromEntries(data.map((r) => [r.key, r.value]));
+        setGrants({
+          FREE:    parKey.monthly_grant_free    ?? GRANTS_FALLBACK.FREE,
+          PREMIUM: parKey.monthly_grant_premium ?? GRANTS_FALLBACK.PREMIUM,
+          PRO:     parKey.monthly_grant_pro     ?? GRANTS_FALLBACK.PRO,
+        });
+      } catch { /* hors ligne ou client indisponible : le repli reste affiché */ }
+    })();
+    return () => { vivant = false; };
+  }, []);
 
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
   useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
@@ -892,7 +941,7 @@ export default function LandingPage() {
               <div className="lp-plan__name">Free</div>
               <div className="lp-plan__tag">{t.freeTag}</div>
               <div className="lp-plan__price"><b>{t.priceFree}</b></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{t.freeCoins}</div>
+              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.freeCoins, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].free.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check /><span>{f}</span></div>
@@ -912,7 +961,7 @@ export default function LandingPage() {
                 <span className="lp-plan__chip-label">Premium</span>
               </div>
               <div className="lp-plan__price"><b>{t.priceP}</b><span>{t.perMonth}</span></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{t.pCoins}</div>
+              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.pCoins, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].premium.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check /><span>{f}</span></div>
@@ -931,7 +980,7 @@ export default function LandingPage() {
                 <span className="lp-plan__chip-label lp-plan__chip-label--gold">Pro</span>
               </div>
               <div className="lp-plan__price"><b>{t.pricePro}</b><span>{t.perMonth}</span></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{t.proCoins}</div>
+              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.proCoins, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].pro.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check color="#F2C98A" /><span>{f}</span></div>
@@ -973,7 +1022,7 @@ export default function LandingPage() {
                     <span>{q}</span>
                     <span className="lp-faq__plus" aria-hidden="true">+</span>
                   </button>
-                  {open && <div className="lp-faq__a" id={`lp-faq-${i}`}>{a}</div>}
+                  {open && <div className="lp-faq__a" id={`lp-faq-${i}`}>{fillGrants(a, grants)}</div>}
                 </div>
               );
             })}
