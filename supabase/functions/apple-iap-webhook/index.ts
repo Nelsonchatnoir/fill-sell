@@ -23,6 +23,16 @@ const PREMIUM_PRODUCT_IDS = [
 const PREMIUM_ON  = ["SUBSCRIBED", "DID_RENEW", "RESUBSCRIBE"];
 const PREMIUM_OFF = ["EXPIRED", "REFUND", "REVOKE", "DID_FAIL_TO_RENEW"];
 
+// Packs de Pépites (consumables) — montants crédités par product id. Doit
+// rester aligné avec validate-coin-purchase et src/components/coinPacks.js.
+// Le SKU .1150 crédite 1300 (rebalance 2026-07-14, SKU non renommable en prod).
+const COIN_PRODUCTS: Record<string, number> = {
+  "app.fillsell.coins.100": 100,
+  "app.fillsell.coins.220": 220,
+  "app.fillsell.coins.460": 460,
+  "app.fillsell.coins.1150": 1300,
+};
+
 // SHA-256 fingerprint of Apple Root CA - G3 (valid 2014–2039)
 // Source: https://www.apple.com/certificateauthority/ + confirmed via developer.apple.com forums
 const APPLE_ROOT_CA_G3_SHA256 = "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179";
@@ -218,14 +228,65 @@ serve(async (req) => {
     );
 
     if (!appAccountToken) {
-      console.warn("[apple-iap-webhook] No appAccountToken — cannot identify user");
+      // Payload complet : c'est la SEULE trace qui permette un crédit manuel
+      // a posteriori (transactionId + productId) quand l'utilisateur est
+      // inidentifiable ici. Ne jamais réduire ce log.
+      console.error("[apple-iap-webhook] No appAccountToken — cannot identify user — tx=", JSON.stringify(tx));
       return new Response(JSON.stringify({ ok: true, skipped: "no appAccountToken" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
+    // ── Consumables : packs de Pépites (2026-07-28) ───────────────────────
+    // Apple envoie ONE_TIME_CHARGE pour chaque achat consumable. Jusqu'ici la
+    // notification était jetée (« Unhandled type ») : si le client échouait
+    // après facturation (app tuée, purchaseProduct rejeté pendant la feuille
+    // de paiement) ET que le filet StoreKit ratait — il rate structurellement,
+    // le plugin finish() la transaction AVANT de notifier le JS —, l'achat
+    // était payé sans jamais être crédité. Vécu le 28/07 (pack 100 débité,
+    // zéro appel à validate-coin-purchase, notification reçue ici et jetée).
+    // Crédit avec la MÊME ref idempotente que validate-coin-purchase
+    // (apple:<transactionId>) : webhook, client et filet peuvent tous rejouer,
+    // credit_purchased_coins ne crédite qu'une seule fois.
+    if (COIN_PRODUCTS[productId] != null) {
+      if (notificationType !== "ONE_TIME_CHARGE") {
+        // REFUND/CONSUMPTION_REQUEST d'un pack… : jamais de crédit ici, mais
+        // payload loggé en entier (un remboursement de pack se traite à la main).
+        console.warn(`[apple-iap-webhook] coin product, type=${notificationType} — skipped — tx=`, JSON.stringify(tx));
+        return new Response(JSON.stringify({ ok: true, skipped: `coin_${notificationType}` }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const transactionId = tx.transactionId as string | undefined;
+      if (!transactionId) {
+        console.error("[apple-iap-webhook] ONE_TIME_CHARGE sans transactionId — tx=", JSON.stringify(tx));
+        return new Response(JSON.stringify({ ok: true, skipped: "coin_no_transaction_id" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const { data: credit, error: rpcErr } = await supabaseAdmin.rpc("credit_purchased_coins", {
+        p_user_id: appAccountToken,
+        p_amount: COIN_PRODUCTS[productId],
+        p_ref: `apple:${transactionId}`,
+        p_metadata: { productId, platform: "ios", source: "apple-iap-webhook" },
+      });
+      if (rpcErr) {
+        // 500 → Apple réessaie (transitoire couvert). already_credited n'est
+        // PAS une erreur RPC : rejeu client/webhook → réponse 200 idempotente.
+        console.error("[apple-iap-webhook] credit_purchased_coins:", rpcErr.message, "— tx=", JSON.stringify(tx));
+        return new Response(JSON.stringify({ error: "credit_failed" }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[apple-iap-webhook] ONE_TIME_CHARGE crédité → userId=${appAccountToken} product=${productId} ref=apple:${transactionId} →`, JSON.stringify(credit));
+      return new Response(JSON.stringify({ ok: true, credited: COIN_PRODUCTS[productId] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (!PREMIUM_PRODUCT_IDS.includes(productId)) {
+      console.warn(`[apple-iap-webhook] unknown product ${productId} — skipped — tx=`, JSON.stringify(tx));
       return new Response(JSON.stringify({ ok: true, skipped: "non-premium product" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -248,7 +309,7 @@ serve(async (req) => {
     }
 
     if (isPremium === null) {
-      console.log(`[apple-iap-webhook] Unhandled type: ${notificationType} — skipping`);
+      console.log(`[apple-iap-webhook] Unhandled type: ${notificationType} — skipping — tx=`, JSON.stringify(tx));
       return new Response(JSON.stringify({ ok: true, skipped: notificationType }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
