@@ -4,7 +4,7 @@
   "version": "2.4",
   "type": "module",
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
     "dev": "vite",
     "check:legal-permissions": "node scripts/check-legal-permissions.mjs",
     "prebuild": "node scripts/check-legal-permissions.mjs",
