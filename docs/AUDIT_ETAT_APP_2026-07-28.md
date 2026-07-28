@@ -62,7 +62,11 @@ prod mais n'a **jamais rencontré un vrai utilisateur** :
    Le backfill est vérifié (495 wallets, soldes inchangés) mais le mécanisme
    complet — échéance → crédit → nouvelle échéance — n'a tourné qu'une fois,
    sur un compte créé aujourd'hui.
-2. **Les grants 300/800** : aucun compte ne les a encore reçus.
+2. ~~**Les grants 300/800** : aucun compte ne les a encore reçus.~~
+   **ANNULÉS le soir même** (migration `20260728230000`, retour à 150/600) —
+   et précisément parce qu'aucun compte ne les avait reçus, l'annulation n'a
+   demandé aucun rattrapage ni claw-back. Motif tarifaire en section 4 de
+   `LENS_COST.md`.
 3. **Le plafond de report à 2×** : jamais déclenché.
 4. **La garde « pas de paiement, pas de grant »** : jamais déclenchée non plus
    (aucune échéance n'a encore été dépassée de 3 jours).
@@ -95,7 +99,9 @@ prod mais n'a **jamais rencontré un vrai utilisateur** :
 - **Cycle de grant par utilisateur** : plus aucun crédit calendaire au 1er du
   mois. 495 wallets pourvus d'une échéance, réparties sur 31 jours (pic de 70
   comptes/jour contre 496 d'un coup auparavant).
-- **Grants 300/800** en `coin_config`, plafond de report dérivé (600/1600).
+- **Grants 150/600** en `coin_config`, plafond de report dérivé (300/1200).
+  (Passés à 300/800 dans la journée, revenus à 150/600 le soir — motif
+  tarifaire en section 4 de `LENS_COST.md`.)
 - **Monitoring** : ops-digest porte 6 sections, dont deux nouvelles — achats
   store sans crédit, et abonnés dont le renouvellement n'est pas constaté.
 - **Mail immédiat à chaque encaissement**, sur les trois canaux, avec un mail

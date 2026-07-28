@@ -94,43 +94,70 @@ complet images comprises, sans outil).
 
 ## 4. Coût mensuel et marge par abonnement
 
-⚠️ **Grants relevés le 28/07/2026 : free 30, premium 300, pro 800**
-(`coin_config`, migration 20260728180000 — auparavant 150/600). Prix réels des
-abonnements : **Premium 12,99 €**, **Pro 29,99 €**.
+⚠️ **Grants en vigueur au 28/07/2026 : free 30, premium 150, pro 600**
+(`coin_config`). Ils sont passés à 300/800 dans la journée (20260728180000)
+puis **revenus à 150/600 le soir même** (20260728230000) — motif en fin de
+section. Prix réels des abonnements : **Premium 12,99 €**, **Pro 29,99 €**.
 
 | Scans/mois | Coût typique | Fourchette | Ce que ça représente |
 |---|---|---|---|
 | 5 (= grant Free, 30 Pépites) | 0,27 € | 0,12 – 0,90 € | coût d'acquisition d'un inscrit |
-| 50 (= grant Premium, 300 Pépites) | 2,65 € | 1,20 – 9,00 € | plafond de consommation Premium |
-| 133 (= grant Pro, 800 Pépites) | 7,05 € | 3,20 – 24,00 € | plafond de consommation Pro |
+| 25 (= grant Premium, 150 Pépites) | 1,33 € | 0,60 – 4,50 € | plafond de consommation Premium |
+| 100 (= grant Pro, 600 Pépites) | 5,30 € | 2,40 – 18,00 € | plafond de consommation Pro |
 
 Marge si l'abonné consomme **tout** son grant en analyses Lens (le pire des cas —
 en pratique une partie part en publications, moins chères) :
 
 | Offre | Prix TTC | Net après TVA 20 % + 15 % store | Coût max Lens | Marge plancher |
 |---|---|---|---|---|
-| Premium | 12,99 € | ≈ 9,20 € | 2,65 € | **6,55 € (71 %)** |
-| Pro | 29,99 € | ≈ 21,24 € | 7,05 € | **14,19 € (67 %)** |
+| Premium | 12,99 € | ≈ 9,20 € | 1,33 € | **7,87 € (86 %)** |
+| Pro | 29,99 € | ≈ 21,24 € | 5,30 € | **15,94 € (75 %)** |
 
 Avec une commission store à 30 %, le net tombe à ≈ 7,57 € (Premium) et 17,49 €
-(Pro) : les marges plancher restent à 4,92 € et 10,44 €.
+(Pro) : les marges plancher restent à 6,24 € (82 %) et 12,19 € (70 %).
 
-### Le passage à 300/800 ne met pas le modèle en danger
+### Le scénario catastrophe
 
-Même en scénario HAUT (0,18 €/scan, 5 photos et 4 recherches à chaque fois),
-un Premium qui brûlerait ses 300 Pépites en Lens coûterait 9 € pour 9,20 € net —
-à l'équilibre, et seulement dans un cas d'usage extrême et improbable. Le Pro
-resterait à 24 € de coût pour 21,24 € net, soit une perte théorique de 2,76 €
-que le levier n°1 (redimensionner les photos, cf. section 5) suffit à effacer.
+En scénario HAUT (0,18 €/scan — 5 photos et 4 recherches à *chaque* analyse,
+tout le grant passé en Lens), un Premium coûterait 4,50 € pour 9,20 € net, et
+un Pro 18,00 € pour 21,24 € net. Les deux restent positifs. Le seul point qui
+bascule est **le Pro, chez un store à 30 %** : 18,00 € de coût pour 17,49 € net,
+soit −0,51 €. Cas d'usage extrême et improbable, et le levier n°1
+(redimensionner les photos, cf. section 5) l'efface à lui seul.
 
 Au-delà du grant, chaque scan est acheté en pack : 6 Pépites ≈ **0,30 €** au
 pack 100 (4,99 €), ≈ 0,23 € au pack 1 300 — pour ~0,05 € de coût réel, soit une
 **marge de ~80 %** sur tout le volume hors abonnement.
 
-Verdict : **le modèle tient**, et la hausse des grants restaure la cohérence
-tarifaire voulue — l'abonnement redevient l'option la moins chère à la Pépite
-(Premium 0,033 €/pépite contre 0,045 pour le pack 220), ce qui était l'objet
-même du changement.
+### Pourquoi 150/600 et pas 300/800
+
+La règle tarifaire, posée le 28/07 : **les Pépites incluses doivent valoir
+MOINS que le prix de l'abonnement — la différence, c'est le prix de la
+fonctionnalité** (inventaire illimité, vocal, publication multi-plateformes).
+Le prix de référence d'une Pépite est celui du pack d'entrée : 4,99 € les 100,
+soit ≈ 0,05 €.
+
+| Grant testé | Valeur au tarif pack d'entrée | Prix de l'abonnement | Verdict |
+|---|---|---|---|
+| Premium 300 | ≈ 15,00 € | 12,99 € | **au-dessus du prix** → refusé |
+| Premium 150 | ≈ 7,49 € | 12,99 € | 58 % du prix → il reste 5,50 € de fonctionnalité |
+| Pro 800 | ≈ 39,90 € | 29,99 € | **au-dessus du prix** → refusé |
+| Pro 600 | ≈ 29,94 € | 29,99 € | à la limite haute (voir ci-dessous) |
+
+À 300, un Premium offrait plus de Pépites qu'il ne coûtait : l'inventaire
+illimité devenait un cadeau. Et à 300/800 le rapport Pro/Premium tombait à
+2,7× pour 2,3× le prix — **Pro n'avait plus rien à vendre face à Premium**.
+À 150/600 il retrouve 4× les Pépites pour 2,3× le prix.
+
+Nuance à connaître sur le Pro : au tarif du pack d'entrée, ses 600 Pépites
+valent ≈ 29,94 € pour un abonnement à 29,99 € — la règle est respectée de
+justesse. Au tarif du plus gros pack (0,038 €/Pépite, le vrai comparable pour
+un gros consommateur) elles valent ≈ 23,07 €, soit 77 % du prix, ce qui laisse
+une vraie marge de fonctionnalité. Le Pro est donc calibré au plafond assumé,
+pas au milieu de la fourchette.
+
+Verdict : **le modèle tient**, avec une marge plancher au-dessus de 70 % dans
+tous les cas de figure raisonnables.
 
 ---
 
@@ -199,7 +226,11 @@ sortie. GPT Image 2 ≈ 0,01 $ l'image en `low`, ≈ 0,04 $ en `medium`.
 | **ia_light** (12 Pép.) | ~0,40 € | ≈ 0,010 € | 5 × low ≈ 0,046 € | **≈ 0,056 €** | ~86 % |
 | **ia_advanced** (35 Pép.) | ~1,17 € | ≈ 0,010 € | 5 × medium ≈ 0,185 € | **≈ 0,195 €** | ~83 % |
 
-Prix payé = Pépites × 0,033 €/Pépite (tarif Premium à 300 Pépites pour 12,99 €).
+Prix payé = Pépites × 0,033 €/Pépite. C'est le tarif d'un GROS consommateur
+(pack 1 300 à 49,99 € ≈ 0,038 €, arrondi vers le bas) — l'hypothèse la plus
+défavorable pour la marge. Un abonné Premium paie en réalité ses Pépites
+incluses ≈ 0,087 € pièce (12,99 € pour 150), et un acheteur du pack d'entrée
+0,05 € : dans les deux cas les marges du tableau sont sous-estimées.
 
 ## Ce que ça dit des rapports 3 / 12 / 35
 

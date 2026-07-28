@@ -233,7 +233,7 @@ const FAQ = {
    un zéro ou un squelette — une page tarifaire vide coûte plus cher qu'une
    page légèrement datée. À tenir à jour au fil des changements de grant, mais
    ce n'est JAMAIS ce qui s'affiche quand la base répond. */
-const GRANTS_FALLBACK = { FREE: 30, PREMIUM: 300, PRO: 800 };
+const GRANTS_FALLBACK = { FREE: 30, PREMIUM: 150, PRO: 600 };
 
 /* Remplace les jetons d'un texte par les grants courants. Appliqué aux libellés
    des cartes ET aux réponses de la FAQ, où les nombres sont noyés dans la

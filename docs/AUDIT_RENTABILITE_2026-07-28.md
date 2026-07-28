@@ -1,5 +1,18 @@
 # Audit de rentabilité — grants 30 / 300 / 800
 
+> ⚠️ **ERRATUM DU 28/07/2026 AU SOIR — cet audit porte sur des grants qui
+> n'ont pas survécu à la journée.** Les grants sont revenus à **30 / 150 /
+> 600** (migration `20260728230000`) pour une raison qui n'est pas de coût
+> mais de cohérence tarifaire : à 300 Pépites, un Premium à 12,99 € offrait
+> ≈ 15 € de Pépites au tarif du pack d'entrée — plus que l'abonnement
+> lui-même — et à 300/800 le Pro n'avait plus d'écart à vendre face au
+> Premium. Le raisonnement complet est en section 4 de `LENS_COST.md`.
+>
+> Le document est conservé **tel quel**, sans recalcul : c'est un instantané
+> daté, et sa conclusion reste valable *a fortiori* — si le modèle tenait à
+> 300/800, il tient à 150/600, où le coût plafond par abonné est deux fois
+> moindre. Pour les chiffres à jour, lire `LENS_COST.md` section 4.
+
 **28/07/2026.** Tarifs API relevés le jour même. Volumes réels lus en base sur
 30 jours glissants. Change 1 € = 1,08 $.
 

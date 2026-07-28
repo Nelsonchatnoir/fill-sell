@@ -15,7 +15,8 @@
 // lus dans coin_config à l'ouverture (repli COIN_CONFIG_FALLBACK), grant Pro
 // compris depuis le 2026-07-23 (l'ex-exception d'affichage DISPLAY_GRANT_PRO
 // est retirée). Rien n'est écrit en dur ici : le passage à 300/800 du
-// 2026-07-28 s'est fait sans toucher ce fichier.
+// 2026-07-28 PUIS le retour à 150/600 le soir même se sont faits sans toucher
+// ce fichier — seule coin_config a bougé.
 import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge } from './PlanBadge';
 import PepiteIcon from './PepiteIcon';

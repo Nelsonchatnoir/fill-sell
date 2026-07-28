@@ -9,8 +9,9 @@ import { supabase } from '../lib/supabase';
 // 2026-07-14, avec CORRECTION des valeurs : la BASE fait autorité, jamais le
 // design. Divergences relevées et corrigées (vérifiées le 2026-07-14) :
 //   • Pépites/mois Pro : écart affichage/base résolu le 2026-07-23 — tout se
-//     lit en base désormais. Grants portés à 300 (Premium) / 800 (Pro) le
-//     2026-07-28 : aucun code à toucher, seule coin_config a changé.
+//     lit en base désormais. Éprouvé le 2026-07-28 : les grants sont passés à
+//     300/800 puis SONT REVENUS à 150/600 le même jour, sans qu'une seule
+//     ligne d'affichage ait besoin de changer — seule coin_config a bougé.
 //   • le design étiquetait « Annonce avancée : 12 Pépites » → 12 est le coût de
 //     la retouche LÉGÈRE (price_ia_light). Origine = 3, avancée = 35.
 //   • le design promettait « Lens illimité » en Pro → FAUX : Lens coûte des
@@ -49,7 +50,7 @@ const ANIM = `
 
 // ⚠️ REPLI UNIQUEMENT — utilisé si la lecture de coin_config échoue (réseau).
 // Le chemin normal lit TOUJOURS la table. Ces valeurs sont celles constatées en
-// base le 2026-07-14 ; si elles divergent un jour, c'est la base qui a raison.
+// base le 2026-07-28 ; si elles divergent un jour, c'est la base qui a raison.
 // Exporté pour PlanDetailsModal (modale « mon plan » du badge header), qui lit
 // coin_config avec le même repli.
 export const COIN_CONFIG_FALLBACK = {
@@ -57,15 +58,24 @@ export const COIN_CONFIG_FALLBACK = {
   price_ia_light: 12,
   price_ia_advanced: 35,
   price_lens_overflow: 6,
-  monthly_grant_premium: 300,
-  monthly_grant_pro: 800,
+  monthly_grant_premium: 150,
+  monthly_grant_pro: 600,
 };
 
 // L'ex-DISPLAY_GRANT_PRO (un grant Pro affiché en avance sur la base) est mort
 // le 2026-07-23 : le grant Pro se lit en base comme le Premium. Les valeurs
 // ci-dessus ne sont qu'un REPLI réseau — la base fait toujours autorité, et
-// c'est ce qui a permis de passer à 300/800 le 2026-07-28 par simple migration
-// de coin_config (20260728180000), sans redéployer une ligne de front.
+// c'est ce qui a permis de passer à 300/800 le 2026-07-28 (20260728180000)
+// PUIS de revenir à 150/600 le soir même (20260728230000) par simple migration
+// de coin_config, sans redéployer une ligne de front.
+//
+// POURQUOI 150/600 et pas plus — logique à ne pas remettre en cause : un pack
+// de 100 Pépites se vend 5 €, donc une Pépite vaut 5 centimes. À 300, un
+// Premium à 12,99 € offrirait 15 € de Pépites, soit plus que l'abonnement
+// lui-même, et l'inventaire illimité deviendrait un cadeau. Les Pépites
+// incluses doivent valoir MOINS que l'abonnement : la différence, c'est le
+// prix de la fonctionnalité. À 300, Pro n'avait de surcroît plus rien à
+// vendre face à Premium.
 
 // Prix des abonnements — ils vivent chez Stripe / Apple / Google, pas en base.
 // Vérifiés côté Stripe le 2026-07-14 : « Standard Plan » 1299 c, « FillSell Pro
@@ -433,10 +443,10 @@ export default function ConversionModal({
 
   const K = cfg || COIN_CONFIG_FALLBACK;
   const lensCost  = K.price_lens_overflow;
-  const grantPrem = K.monthly_grant_premium;      // lu en base (300 depuis le 2026-07-28)
-  const grantPro  = K.monthly_grant_pro;          // lu en base (800 depuis le 2026-07-28)
+  const grantPrem = K.monthly_grant_premium;      // lu en base (150)
+  const grantPro  = K.monthly_grant_pro;          // lu en base (600)
   // Estimation d'analyses Lens permises par le grant mensuel — CALCULÉE, jamais
-  // écrite en dur : à 800 Pépites et 6 par analyse, cela fait 133 analyses.
+  // écrite en dur : à 600 Pépites et 6 par analyse, cela fait 100 analyses.
   const lensPerMonth = (grant) => (lensCost > 0 ? Math.floor(grant / lensCost) : 0);
   const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
 
