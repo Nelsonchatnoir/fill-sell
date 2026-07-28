@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { AppleKeyError, genererJWTApple } from "../_shared/apple-jwt.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -10,60 +11,21 @@ const BUNDLE_ID       = "app.fillsell.app";
 const APPLE_PROD_URL  = "https://api.storekit.itunes.apple.com";
 const APPLE_SBX_URL   = "https://api.storekit-sandbox.itunes.apple.com";
 
-// Supabase secrets required:
-//   APPLE_API_KEY_ID       — Key ID from App Store Connect → Users & Access → Keys
-//   APPLE_ISSUER_ID        — Issuer ID (same page, top of the Keys tab)
-//   APPLE_API_PRIVATE_KEY  — Full PEM content of the .p8 file (BEGIN PRIVATE KEY … END PRIVATE KEY)
-async function generateAppleJWT(): Promise<string> {
-  const keyId    = Deno.env.get("APPLE_API_KEY_ID")!;
-  const issuerId = Deno.env.get("APPLE_ISSUER_ID")!;
-  const pem      = Deno.env.get("APPLE_API_PRIVATE_KEY")!;
-
-  const pemContent = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\s/g, "");
-
-  const der = Uint8Array.from(atob(pemContent), (c) => c.charCodeAt(0));
-
-  const privateKey = await crypto.subtle.importKey(
-    "pkcs8",
-    der,
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["sign"]
-  );
-
-  const now = Math.floor(Date.now() / 1000);
-
-  const b64url = (obj: object) =>
-    btoa(JSON.stringify(obj)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const headerB64  = b64url({ alg: "ES256", kid: keyId, typ: "JWT" });
-  const payloadB64 = b64url({
-    iss: issuerId,
-    iat: now,
-    exp: now + 1200,
-    aud: "appstoreconnect-v1",
-    bid: BUNDLE_ID,
-  });
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const rawSig = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    privateKey,
-    new TextEncoder().encode(signingInput)
-  );
-
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(rawSig)))
-    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  return `${signingInput}.${sigB64}`;
-}
+// Secrets Supabase requis :
+//   APPLE_API_KEY_ID       — Key ID de la clé « Achat intégré » (App Store
+//                            Connect → Utilisateurs et accès → Intégrations →
+//                            Achat intégré). PAS une clé d'équipe : celles-ci
+//                            ne peuvent pas signer un JWT à claim `bid` pour
+//                            l'App Store Server API (401). Constaté le 28/07 :
+//                            la section était vide, aucune clé n'existait, et
+//                            cette fonction n'a donc JAMAIS pu répondre.
+//   APPLE_ISSUER_ID        — Issuer ID de la même page
+//   APPLE_API_PRIVATE_KEY  — contenu du .p8 (le chargeur partagé tolère les
+//                            formats mangés, cf. ../_shared/apple-jwt.ts)
 
 async function fetchAppleStatus(originalTransactionId: string, sandbox = false): Promise<Response> {
   const base = sandbox ? APPLE_SBX_URL : APPLE_PROD_URL;
-  const jwt  = await generateAppleJWT();
+  const jwt  = await genererJWTApple(BUNDLE_ID);
   return fetch(`${base}/inApps/v1/subscriptions/${originalTransactionId}`, {
     headers: { Authorization: `Bearer ${jwt}` },
   });
@@ -170,8 +132,9 @@ serve(async (req) => {
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[apple-subscription-status] Error:", msg);
-    return new Response(JSON.stringify({ error: msg }), {
+    const diag = err instanceof AppleKeyError ? err.diag : undefined;
+    console.error("[apple-subscription-status] Error:", msg, diag ? JSON.stringify(diag) : "");
+    return new Response(JSON.stringify({ error: msg, ...(diag ? { diag } : {}) }), {
       status: 500,
       headers: { ...CORS, "Content-Type": "application/json" },
     });
