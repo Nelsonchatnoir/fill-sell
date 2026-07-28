@@ -6,7 +6,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Appelée par pg_cron à 8h50 UTC (avant l'email-tunnel de 9h), header
 // x-cron-secret sur le modèle d'email-tunnel. Déployer avec --no-verify-jwt.
 //
-// Quatre sections :
+// Cinq sections :
 //   1. jobs 'failed' des dernières 24 h (approximé par created_at : pas de
 //      failed_at en base ; les jobs sont traités dans les minutes qui suivent
 //      leur création, un failed plus vieux a déjà été signalé la veille) ;
@@ -19,7 +19,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 //   4. veille Beebs (dossier « annonces qui disparaissent », dette D4) :
 //      jobs Beebs 'published' des 7 derniers jours portant le drapeau
 //      platform_fields.unavailable_since — suspects n°1 de disparition
-//      silencieuse pendant les premiers jours de volume réel.
+//      silencieuse pendant les premiers jours de volume réel ;
+//   5. croisement IAP Apple (incident raraajaws 28/07 : pack payé jamais
+//      crédité) : notifications ONE_TIME_CHARGE des 48 h relues via
+//      apple-notification-history, chaque transactionId doit avoir sa ligne
+//      coin_ledger kind='purchase' ref='apple:<txid>'. Si la relecture est
+//      indisponible (secret APPLE_API_PRIVATE_KEY corrompu — constaté le
+//      28/07), l'alerte le dit chaque jour jusqu'à réparation. Google n'a pas
+//      d'équivalent relisible : couvert par google-play-webhook (crédit
+//      server-side) + filet client au lancement.
 
 const RESEND_API = "https://api.resend.com/emails";
 const FROM = "FillSell <support@fillsell.app>";
@@ -140,6 +148,48 @@ serve(async (req) => {
     (j) => j.platform_fields?.unavailable_since != null,
   );
 
+  // 5. Croisement IAP Apple : tout ONE_TIME_CHARGE des 48 h sans ligne
+  // purchase correspondante = un client qui a payé sans être crédité. Un
+  // échec de relecture ne fait JAMAIS échouer le digest : il devient une
+  // alerte (visible chaque jour tant que le secret Apple n'est pas re-posé).
+  const iapAlerts: string[] = [];
+  try {
+    const histRes = await fetch(
+      `${Deno.env.get("SUPABASE_URL")}/functions/v1/apple-notification-history`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-cron-secret": "fs-cron-2026-tunnel" },
+        body: JSON.stringify({
+          startDate: new Date(now - 48 * 3_600_000).toISOString(),
+          notificationType: "ONE_TIME_CHARGE",
+        }),
+      },
+    );
+    const hist = await histRes.json();
+    if (!histRes.ok || hist.error) throw new Error(hist.error ?? `HTTP ${histRes.status}`);
+    const txs = (hist.notifications ?? []).filter(
+      (n: Record<string, unknown>) => n.transactionId != null,
+    ) as Array<Record<string, unknown>>;
+    if (txs.length > 0) {
+      const refs = txs.map((n) => `apple:${n.transactionId}`);
+      const { data: credited, error: e5 } = await supabase
+        .from("coin_ledger").select("ref").eq("kind", "purchase").in("ref", refs);
+      if (e5) throw new Error(e5.message);
+      const have = new Set((credited ?? []).map((r: { ref: string }) => r.ref));
+      for (const n of txs) {
+        if (!have.has(`apple:${n.transactionId}`)) {
+          iapAlerts.push(
+            `Apple ${n.productId} — tx ${n.transactionId} — user ${n.appAccountToken ?? "INCONNU"} — acheté ${n.purchasedAt ?? "?"} — AUCUNE ligne purchase dans coin_ledger`,
+          );
+        }
+      }
+    }
+  } catch (e) {
+    iapAlerts.push(
+      `Relecture Apple indisponible (${String((e as Error)?.message ?? e)}) — croisement impossible. Vérifier le secret APPLE_API_PRIVATE_KEY (corrompu au 28/07).`,
+    );
+  }
+
   const queryErrors = [e1, e2, e3, e4].filter(Boolean).map((e) => e!.message);
   if (queryErrors.length > 0) {
     return new Response(JSON.stringify({ error: queryErrors }), {
@@ -153,6 +203,7 @@ serve(async (req) => {
     stuck_processing: stuck.length,
     delete_overdue: (deletesOverdue ?? []).length,
     beebs_unavailable_7d: beebsWatch.length,
+    iap_alerts: iapAlerts.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -188,6 +239,15 @@ serve(async (req) => {
         `unavailable_since : ${esc(j.platform_fields?.unavailable_since)}`,
     )
   }
+    ${
+    iapAlerts.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔴 IAP — achats store sans crédit Pépites (${iapAlerts.length})
+    </h2>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${iapAlerts.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
   </div>
 </body></html>`;
 
@@ -200,7 +260,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts})`,
       html,
     }),
   });
