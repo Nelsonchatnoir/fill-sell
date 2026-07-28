@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
+import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -232,6 +233,19 @@ serve(async (req) => {
       // a posteriori (transactionId + productId) quand l'utilisateur est
       // inidentifiable ici. Ne jamais réduire ce log.
       console.error("[apple-iap-webhook] No appAccountToken — cannot identify user — tx=", JSON.stringify(tx));
+      // Payload inexploitable : de l'argent a pu être encaissé sans qu'on
+      // sache pour qui. C'est exactement le cas à ne jamais laisser passer.
+      if (COIN_PRODUCTS[productId] != null || PREMIUM_PRODUCT_IDS.includes(productId)) {
+        await alerterPaiementNonCredite({
+          canal: "apple",
+          type: COIN_PRODUCTS[productId] != null ? "pack" : "abonnement",
+          produit: productId,
+          ref: (tx.transactionId as string) ?? null,
+          erreur: "appAccountToken absent : impossible d'identifier le compte. "
+                + "Retrouver l'utilisateur via la transaction dans App Store Connect.",
+          rpc: null,
+        });
+      }
       return new Response(JSON.stringify({ ok: true, skipped: "no appAccountToken" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -258,9 +272,17 @@ serve(async (req) => {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
+      const montant = tx.price != null && tx.currency
+        ? `${(Number(tx.price) / 1000).toFixed(2)} ${tx.currency}`
+        : null;
       const transactionId = tx.transactionId as string | undefined;
       if (!transactionId) {
         console.error("[apple-iap-webhook] ONE_TIME_CHARGE sans transactionId — tx=", JSON.stringify(tx));
+        await alerterPaiementNonCredite({
+          canal: "apple", type: "pack", user_id: appAccountToken, produit: productId,
+          montant, ref: null, rpc: null,
+          erreur: "ONE_TIME_CHARGE sans transactionId : aucune référence idempotente possible.",
+        });
         return new Response(JSON.stringify({ ok: true, skipped: "coin_no_transaction_id" }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
@@ -275,11 +297,24 @@ serve(async (req) => {
         // 500 → Apple réessaie (transitoire couvert). already_credited n'est
         // PAS une erreur RPC : rejeu client/webhook → réponse 200 idempotente.
         console.error("[apple-iap-webhook] credit_purchased_coins:", rpcErr.message, "— tx=", JSON.stringify(tx));
+        await alerterPaiementNonCredite({
+          canal: "apple", type: "pack", user_id: appAccountToken, produit: productId,
+          montant, ref: `apple:${transactionId}`, rpc: null, erreur: rpcErr.message,
+        });
         return new Response(JSON.stringify({ error: "credit_failed" }), {
           status: 500, headers: { "Content-Type": "application/json" },
         });
       }
       console.log(`[apple-iap-webhook] ONE_TIME_CHARGE crédité → userId=${appAccountToken} product=${productId} ref=apple:${transactionId} →`, JSON.stringify(credit));
+      // Mail UNIQUEMENT si une ligne a réellement été créée : Apple rejoue sa
+      // notification jusqu'à recevoir un 200, et credited=false signale
+      // précisément un rejeu déjà idempotent (already_credited).
+      if ((credit as { credited?: boolean })?.credited === true) {
+        await notifierPaiement({
+          canal: "apple", type: "pack", user_id: appAccountToken, produit: productId,
+          montant, pepites: COIN_PRODUCTS[productId], ref: `apple:${transactionId}`, rpc: credit,
+        });
+      }
       return new Response(JSON.stringify({ ok: true, credited: COIN_PRODUCTS[productId] }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -344,13 +379,30 @@ serve(async (req) => {
     if (isPremium) {
       const grantTier = PRO_PRODUCT_IDS.includes(productId) ? "pro" : "premium";
       const expiresDate = tx.expiresDate as number | undefined;
-      const { error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
+      const montantAbo = tx.price != null && tx.currency
+        ? `${(Number(tx.price) / 1000).toFixed(2)} ${tx.currency}`
+        : null;
+      const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: appAccountToken,
         p_tier: grantTier,
         p_period_end: expiresDate ? new Date(expiresDate).toISOString() : null,
         p_source: "payment",
       });
-      if (grantErr) console.error("[apple-iap-webhook] upgrade_monthly_grant:", grantErr.message);
+      if (grantErr) {
+        console.error("[apple-iap-webhook] upgrade_monthly_grant:", grantErr.message);
+        await alerterPaiementNonCredite({
+          canal: "apple", type: "abonnement", user_id: appAccountToken, produit: productId,
+          montant: montantAbo, ref: originalTransactionId ?? null, rpc: null, erreur: grantErr.message,
+        });
+      } else if ((grantRes as { granted?: boolean })?.granted === true) {
+        // granted=false = déjà crédité pour ce cycle (rejeu Apple) → pas de mail.
+        await notifierPaiement({
+          canal: "apple", type: "abonnement", user_id: appAccountToken, produit: productId,
+          montant: montantAbo,
+          pepites: (grantRes as { amount?: number })?.amount ?? null,
+          ref: originalTransactionId ?? null, rpc: grantRes,
+        });
+      }
     }
 
     console.log(

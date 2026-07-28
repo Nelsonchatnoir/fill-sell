@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -94,10 +95,40 @@ serve(async (req) => {
           p_ref: `stripe:${session.id}`,
           p_metadata: { pack: session.metadata?.coin_pack ?? null, amount_total: session.amount_total },
         });
-        if (creditErr) console.error("[webhook] credit coins failed:", creditErr.message);
-        else console.log(`[webhook] coins pack → user=${packUserId} coins=${coins}`, JSON.stringify(credit));
+        const montantPack = session.amount_total != null
+          ? `${(session.amount_total / 100).toFixed(2)} ${(session.currency ?? "eur").toUpperCase()}`
+          : null;
+        if (creditErr) {
+          console.error("[webhook] credit coins failed:", creditErr.message);
+          await alerterPaiementNonCredite({
+            canal: "stripe", type: "pack", user_id: packUserId, email: email ?? null,
+            produit: session.metadata?.coin_pack ?? `${coins} Pépites`,
+            montant: montantPack, ref: `stripe:${session.id}`, rpc: null, erreur: creditErr.message,
+          });
+        } else {
+          console.log(`[webhook] coins pack → user=${packUserId} coins=${coins}`, JSON.stringify(credit));
+          // credited=false = event Stripe rejoué, déjà crédité → pas de mail.
+          if ((credit as { credited?: boolean })?.credited === true) {
+            await notifierPaiement({
+              canal: "stripe", type: "pack", user_id: packUserId, email: email ?? null,
+              produit: session.metadata?.coin_pack ?? `${coins} Pépites`,
+              montant: montantPack, pepites: coins, ref: `stripe:${session.id}`, rpc: credit,
+            });
+          }
+        }
       } else {
         console.error("[webhook] coins session without user_id/coins metadata:", session.id);
+        // Paiement encaissé par Stripe mais métadonnées inexploitables : sans
+        // user_id ni montant de Pépites, aucun crédit possible automatiquement.
+        await alerterPaiementNonCredite({
+          canal: "stripe", type: "pack", email: email ?? null,
+          produit: session.metadata?.coin_pack ?? null,
+          montant: session.amount_total != null
+            ? `${(session.amount_total / 100).toFixed(2)} ${(session.currency ?? "eur").toUpperCase()}`
+            : null,
+          ref: `stripe:${session.id}`, rpc: null,
+          erreur: "Session de pack sans user_id ou sans nombre de Pépites dans les métadonnées.",
+        });
       }
       await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
         method: "POST",
@@ -161,13 +192,30 @@ serve(async (req) => {
         console.error("[webhook] current_period_end illisible:", (e as Error)?.message);
       }
       const grantTier = planType === "pro" ? "pro" : "premium";
-      const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
+      const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: users[0].id,
         p_tier: grantTier,
         p_period_end: periodEnd,
         p_source: "payment",
       });
-      if (grantErr) console.error("[webhook] upgrade_monthly_grant:", grantErr.message);
+      const montantAbo = session.amount_total != null
+        ? `${(session.amount_total / 100).toFixed(2)} ${(session.currency ?? "eur").toUpperCase()}`
+        : null;
+      if (grantErr) {
+        console.error("[webhook] upgrade_monthly_grant:", grantErr.message);
+        await alerterPaiementNonCredite({
+          canal: "stripe", type: "abonnement", user_id: users[0].id, email: email ?? null,
+          produit: planType, montant: montantAbo, ref: `stripe:${session.id}`,
+          rpc: null, erreur: grantErr.message,
+        });
+      } else if ((grantRes as { granted?: boolean })?.granted === true) {
+        await notifierPaiement({
+          canal: "stripe", type: "abonnement", user_id: users[0].id, email: email ?? null,
+          produit: planType, montant: montantAbo,
+          pepites: (grantRes as { amount?: number })?.amount ?? null,
+          ref: `stripe:${session.id}`, rpc: grantRes,
+        });
+      }
     }
 
     await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
@@ -204,14 +252,34 @@ serve(async (req) => {
       // à canal de paiement n'est plus crédité que sur cet événement (le sweep
       // ne rattrape qu'un retard de 3 jours). D'où p_source: "payment".
       const invPeriodEnd = invoice.lines?.data?.[0]?.period?.end ?? invoice.period_end;
-      const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
+      const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: profs[0].id,
         p_tier: tier,
         p_period_end: invPeriodEnd ? new Date(invPeriodEnd * 1000).toISOString() : null,
         p_source: "payment",
       });
-      if (grantErr) console.error("[webhook] invoice.paid grant:", grantErr.message);
-      else console.log(`[webhook] invoice.paid grant → user=${profs[0].id} tier=${tier}`);
+      const montantFacture = invoice.amount_paid != null
+        ? `${(invoice.amount_paid / 100).toFixed(2)} ${(invoice.currency ?? "eur").toUpperCase()}`
+        : null;
+      if (grantErr) {
+        console.error("[webhook] invoice.paid grant:", grantErr.message);
+        await alerterPaiementNonCredite({
+          canal: "stripe", type: "abonnement", user_id: profs[0].id, produit: tier,
+          montant: montantFacture, ref: invoice.id ?? null, rpc: null, erreur: grantErr.message,
+        });
+      } else {
+        console.log(`[webhook] invoice.paid grant → user=${profs[0].id} tier=${tier}`);
+        // granted=false : facture de proration ou event rejoué sur un cycle
+        // déjà crédité — le renouvellement n'a rien ajouté, donc pas de mail.
+        if ((grantRes as { granted?: boolean })?.granted === true) {
+          await notifierPaiement({
+            canal: "stripe", type: "abonnement", user_id: profs[0].id, produit: tier,
+            montant: montantFacture,
+            pepites: (grantRes as { amount?: number })?.amount ?? null,
+            ref: invoice.id ?? null, rpc: grantRes,
+          });
+        }
+      }
     }
   }
 

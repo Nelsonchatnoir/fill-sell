@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API = "https://api.resend.com/emails";
 const FROM = "FillSell <support@fillsell.app>";
+// Destinataire des alertes internes — même boîte que l'ops-digest.
+const TO_OPS = "support@fillsell.app";
 const LOGO_URL = "https://fillsell.app/logo.png";
 
 // ── HTML Templates ─────────────────────────────────────────────────────────────
@@ -488,6 +490,61 @@ serve(async (req) => {
     } catch {
       return false;
     }
+  }
+
+  // ── Alerte de paiement (2026-07-28) ────────────────────────────────────
+  // Appelée par les trois webhooks de paiement (Apple, Google, Stripe) à
+  // chaque encaissement : « paiement reçu » quand le crédit a créé une
+  // nouvelle ligne, « PAIEMENT NON CRÉDITÉ » dès que quelque chose cloche.
+  // Motif : l'incident du 28/07 (pack Apple encaissé, notification jetée,
+  // découvert uniquement parce que le client a écrit). Sans ce mail, un
+  // paiement perdu ne se voit qu'au digest du lendemain — ou jamais.
+  //
+  // Répond TOUJOURS 200, y compris si Resend échoue : l'appelant est un
+  // webhook de store, et son code HTTP doit rester piloté par le crédit,
+  // jamais par l'envoi d'un mail (un 500 ici ferait rejouer Apple pour rien).
+  if (body?.payment_alert) {
+    const a = body.payment_alert as Record<string, unknown>;
+    const ok = a.ok === true;
+    const lignes: Array<[string, unknown]> = [
+      ["Canal", a.canal],
+      ["Type", a.type],
+      ["Compte", a.user_id ?? "INCONNU"],
+      ["Email", a.email ?? "—"],
+      ["Produit / plan", a.produit ?? "—"],
+      ["Montant store", a.montant ?? "—"],
+      ["Pépites créditées", a.pepites ?? "—"],
+      ["Référence transaction", a.ref ?? "—"],
+      ["Retour RPC", a.rpc == null ? "—" : JSON.stringify(a.rpc)],
+    ];
+    const esc = (v: unknown) =>
+      String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#F2F2EE;">
+  <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
+    <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:${ok ? "#111827" : "#B91C1C"};">
+      ${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON CRÉDITÉ"}
+    </h1>
+    <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
+      ${esc(new Date().toISOString())}${ok ? "" : " — le client a payé, la Pépite n'est pas arrivée. Créditer à la main."}
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
+      ${lignes.map(([k, v]) => `<tr>
+        <td style="padding:6px 10px 6px 0;color:#6B7280;white-space:nowrap;vertical-align:top;">${esc(k)}</td>
+        <td style="padding:6px 0;color:#111827;word-break:break-all;"><strong>${esc(v)}</strong></td>
+      </tr>`).join("")}
+    </table>
+    ${a.erreur ? `<p style="margin:14px 0 0;padding:10px;background:#FEF2F2;border-radius:8px;font-family:sans-serif;font-size:12.5px;color:#B91C1C;">${esc(a.erreur)}</p>` : ""}
+  </div>
+</body></html>`;
+    const envoye = await sendEmail(
+      TO_OPS,
+      `${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON CRÉDITÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
+      html,
+    );
+    return new Response(JSON.stringify({ ok: true, mail_envoye: envoye }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
   }
 
   // ── Immediate welcome (fired from handle_new_user DB trigger) ───────────

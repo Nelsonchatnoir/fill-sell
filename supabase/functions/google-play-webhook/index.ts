@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -126,6 +127,12 @@ serve(async (req) => {
       if (!coinUserId) {
         // Payload complet : seule trace permettant un crédit manuel a posteriori.
         console.error("[google-play-webhook] oneTimeProduct sans obfuscatedExternalAccountId —", JSON.stringify(purchase));
+        await alerterPaiementNonCredite({
+          canal: "google", type: "pack", produit: sku,
+          ref: (purchase?.orderId as string) ?? otpToken, rpc: null,
+          erreur: "obfuscatedExternalAccountId absent : compte non identifiable. "
+                + "Retrouver l'acheteur via l'orderId dans la Play Console.",
+        });
         return new Response(JSON.stringify({ ok: true, skipped: "no_user_id" }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
@@ -148,11 +155,22 @@ serve(async (req) => {
       });
       if (rpcErr) {
         console.error("[google-play-webhook] credit_purchased_coins:", rpcErr.message, "—", JSON.stringify(otp));
+        await alerterPaiementNonCredite({
+          canal: "google", type: "pack", user_id: coinUserId, produit: sku,
+          ref, rpc: null, erreur: rpcErr.message,
+        });
         return new Response(JSON.stringify({ error: "credit_failed" }), {
           status: 500, headers: { "Content-Type": "application/json" },
         });
       }
       console.log(`[google-play-webhook] oneTimeProduct crédité → userId=${coinUserId} sku=${sku} ref=${ref} →`, JSON.stringify(credit));
+      // Google rejoue jusqu'au 200 : mail seulement si une ligne a été créée.
+      if ((credit as { credited?: boolean })?.credited === true) {
+        await notifierPaiement({
+          canal: "google", type: "pack", user_id: coinUserId, produit: sku,
+          pepites: COIN_PRODUCTS[sku], ref, rpc: credit,
+        });
+      }
       return new Response(JSON.stringify({ ok: true, credited: COIN_PRODUCTS[sku] }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -264,13 +282,26 @@ serve(async (req) => {
     if (isPremium) {
       const grantTier = subscriptionId === PRO_PRODUCT_ID ? "pro" : "premium";
       const expiryTime = purchase?.lineItems?.[0]?.expiryTime as string | undefined;
-      const { error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
+      const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: userId,
         p_tier: grantTier,
         p_period_end: expiryTime ?? null,
         p_source: "payment",
       });
-      if (grantErr) console.error("[google-play-webhook] upgrade_monthly_grant:", grantErr.message);
+      if (grantErr) {
+        console.error("[google-play-webhook] upgrade_monthly_grant:", grantErr.message);
+        await alerterPaiementNonCredite({
+          canal: "google", type: "abonnement", user_id: userId, produit: subscriptionId,
+          ref: purchaseToken, rpc: null, erreur: grantErr.message,
+        });
+      } else if ((grantRes as { granted?: boolean })?.granted === true) {
+        // granted=false = cycle déjà crédité (rejeu Pub/Sub) → pas de mail.
+        await notifierPaiement({
+          canal: "google", type: "abonnement", user_id: userId, produit: subscriptionId,
+          pepites: (grantRes as { amount?: number })?.amount ?? null,
+          ref: purchaseToken, rpc: grantRes,
+        });
+      }
     }
 
     console.log(`[google-play-webhook] type=${notificationType} product=${subscriptionId} → userId=${userId} is_premium=${isPremium} is_founder=${update.is_founder ?? false}`);
