@@ -108,6 +108,21 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
   },
 };
 
+// ── Langue de sortie (2026-07-28, BUG PRÉEXISTANT) ─────────────────────────
+// Aucun des cinq prompts ci-dessus ne dit dans quelle langue rédiger "title"
+// et "description" : le ton et les listes fermées sont écrits en français,
+// mais rien n'INTERDIT une sortie anglaise. Et cette fonction ne voit AUCUNE
+// photo — son seul contexte est du texte, dont la description produite par
+// lens-analysis, qui ressort elle-même parfois en anglais (audit du 28/07 :
+// cyrillus, momcozy, montre). Une description anglaise en entrée donnait donc
+// un titre d'annonce anglais sur un article français.
+// Adossée à cfg.lang, jamais codée en dur : eBay reste volontairement en
+// anglais (c'est sa fiche), Vinted/LBC/Beebs/Vestiaire en français.
+const LANG_DIRECTIVE: Record<string, string> = {
+  fr: `LANGUE DE SORTIE : "title" et "description" doivent être rédigés EN FRANÇAIS, quelle que soit la langue du contexte article reçu — un contexte rédigé en anglais ne change RIEN, traduis-le. Les valeurs de platform_fields gardent les libellés exacts imposés ci-dessus.`,
+  en: `OUTPUT LANGUAGE: "title" and "description" must be written IN ENGLISH, whatever the language of the item context you receive — a French context changes NOTHING, translate it. platform_fields values keep the exact French labels required above.`,
+};
+
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
 // uniquement — les codes photo par catégorie n'entrent pas en jeu à ce niveau).
@@ -750,7 +765,7 @@ serve(async (req) => {
             body: JSON.stringify({
               model: "claude-haiku-4-5-20251001",
               max_tokens: 900,
-              system: cfg.system,
+              system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}`,
               messages: [{ role: "user", content: userMsg }],
             }),
           });

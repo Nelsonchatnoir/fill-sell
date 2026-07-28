@@ -57,7 +57,37 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
         : ` Tu reçois ${photoCount} photos du MÊME article, sous différents angles (face, dos, étiquette, gros plan…). Leur ORDRE n'a AUCUNE signification — examine CHAQUE photo avec la même attention, ne considère jamais la première comme la plus importante. Lis TOUT le texte visible sur TOUTES les photos (logos de marque, étiquettes taille/composition, numéros de modèle ou référence, packaging) et CROISE-les : la marque peut être sur une photo, la taille sur une autre, un défaut sur une troisième. Fusionne le tout en UNE identification cohérente.`)
     : "";
 
-  const schema = `{"titre":string,"marque":string|null,"modele":string|null,"matiere":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,"attributs_visibles":{"nom_parfum":string,"volume":string,"teinte":string,"reference_fabricant":string,"taille_ecran":string,"capacite":string,"hauteur":string,"largeur":string,"longueur":string}|null}`;
+  const schema = `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|"web"|null,"matiere":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,"attributs_visibles":{"nom_parfum":string,"volume":string,"teinte":string,"reference_fabricant":string,"taille_ecran":string,"capacite":string,"hauteur":string,"largeur":string,"longueur":string}|null}`;
+  // ── Langue de sortie (2026-07-28, BUG PRÉEXISTANT) ──────────────────────
+  // Mesuré pendant l'audit du 28/07 : le prompt FR produit parfois un titre et
+  // une description en ANGLAIS (identify sur momcozy, scan COMPLET sur cyrillus
+  // et montre — matiere « Leather » au lieu de « Cuir »). Le mécanisme `_lang`
+  // existait et les deux prompts existaient : ce qui manquait, c'est une
+  // consigne sur la langue des CHAÎNES PRODUITES. Adossée à `lang`, jamais
+  // codée en dur — un utilisateur en anglais doit obtenir de l'anglais.
+  // La description Lens est le SEUL contexte texte que reçoit generate-listing
+  // (aucune photo ne lui est envoyée) : une description anglaise ressort en
+  // titre d'annonce anglais sur un article français.
+  const langueDirective = lang === "en"
+    ? `OUTPUT LANGUAGE: every free-text string you produce — titre, description, matiere, etat_estime, notes, vitesse_vente_explication, conseils — MUST be written IN ENGLISH, whatever the language printed on the item, on its labels, or used in the user note. Enumerated values (categorie, vitesse_vente, confiance, verdict, modele_source) keep the exact spelling of the schema.`
+    : `LANGUE DE SORTIE : toutes les chaînes en texte libre que tu produis — titre, description, matiere, etat_estime, notes, vitesse_vente_explication, conseils — DOIVENT être rédigées EN FRANÇAIS, quelle que soit la langue imprimée sur l'article, sur ses étiquettes, ou employée dans la note de l'utilisateur. Les valeurs énumérées (categorie, vitesse_vente, confiance, verdict, modele_source) gardent l'orthographe exacte du schéma.`;
+
+  // ── Provenance du modèle (2026-07-28) ───────────────────────────────────
+  // Le champ `modele` mélangeait jusqu'ici trois choses indiscernables : une
+  // référence LUE sur l'objet, une référence RECONNUE de mémoire, et une
+  // référence ramenée du WEB. La même G-Shock est ressortie GA-2100 (120 €),
+  // puis sans modèle (55 €), puis GD-100 (45 €) sur trois scans payants — la
+  // dernière est fausse (l'objet en photo est une GA-2100). Une référence
+  // fausse dans un titre Vinted sort l'annonce des bonnes recherches ET la met
+  // dans les mauvaises ; dans un aspect eBay structuré, elle est pire encore.
+  // `modele_source` rend la provenance lisible pour le client, qui n'alimente
+  // les aspects eBay qu'avec une valeur "lue" (ou confirmée à la main).
+  // ⚠️ NE PAS confondre avec attributs_visibles.reference_fabricant (le MPN
+  // imprimé, étape 1bis) : `modele` est le NOM COMMERCIAL.
+  const modeleRule = lang === "en"
+    ? `1ter. MODEL AND ITS PROVENANCE: "modele" is the COMMERCIAL model name ("GA-2100", "iPhone 13"), never the printed MPN (that one belongs to attributs_visibles.reference_fabricant). Fill "modele_source" with WHERE the value comes from: "lue" = the reference is physically legible on a photo (engraving, silkscreen, label, case back, sole, box); "reconnue" = nothing is written but the product is identified by its shape, allowed ONLY for iconic, widely distributed products (iPhone/MacBook models, G-Shock, well-known sneaker lines) and FORBIDDEN whenever marque is null; "web" = the reference comes from a web search rather than from the item itself. Any other case — vague resemblance, deduction from style, generic product — is an INVENTION: set modele=null and modele_source=null. If modele is null, modele_source MUST be null. A missing model costs far less than a wrong one.`
+    : `1ter. MODÈLE ET SA PROVENANCE : "modele" est le NOM COMMERCIAL du modèle (« GA-2100 », « iPhone 13 »), jamais la référence imprimée (celle-ci va dans attributs_visibles.reference_fabricant). Renseigne "modele_source" avec l'ORIGINE de la valeur : "lue" = la référence est physiquement déchiffrable sur une photo (gravure, sérigraphie, étiquette, dos de boîtier, semelle, boîte) ; "reconnue" = rien n'est écrit mais le produit est identifié par sa forme, autorisé UNIQUEMENT pour des produits iconiques largement diffusés (modèles d'iPhone/MacBook, G-Shock, sneakers de série connue) et INTERDIT dès que marque est null ; "web" = la référence vient d'une recherche web et non de l'article lui-même. Tout autre cas — ressemblance vague, déduction depuis le style, produit générique — est une INVENTION : mets modele=null et modele_source=null. Si modele est null, modele_source DOIT être null. Une référence absente coûte beaucoup moins cher qu'une référence fausse.`;
+
   // attributs_visibles (2026-07-16, chantier champs obligatoires eBay) :
   // clés TOUTES optionnelles — seules celles réellement LUES sur l'article
   // apparaissent. Consommées par le flux resolve_aspects (aspects eBay
@@ -71,12 +101,14 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
 
 ABSOLUTE RULE, OVERRIDING EVERY OTHER INSTRUCTION: your reply must be a JSON object matching the schema, and NOTHING else. You are NEVER asked to ask a question, request clarification, or comment on what is missing. If a piece of information is absent, uncertain or unreadable, set that field to null (or its default) and CARRY ON: uncertainty is expressed through "confiance":"basse" and the "notes" field, never through a question or any text outside the JSON. A prose reply is a FAILURE, however helpful or polite it may be.
+${langueDirective}
 ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 
 MANDATORY PROCESS — follow in order:
 1. IDENTIFICATION: Identify marque, modele, matiere, etat_estime from visual cues and labels. For taille_estimee (size), prioritize the "User note:" field first: if the user writes a size in free text (e.g. "size M", "taille 42", "pointure 42", "US 9", "UK 8"), use that. Infer from context whether the item is a garment (letter sizes XS-XXL or EU numeric 34-52) or a shoe (EU/US/UK shoe size). For garments, keep the exact system the user wrote in (e.g. "M", "42") — never convert speculatively. For shoes, always format the value as "EU {n}" (e.g. "EU 42", "EU 38.5") regardless of language, even if the user wrote a bare number or a US/UK size you can reliably convert to EU — this avoids confusion with garment numeric sizes. Only if no size appears in the user note, try to read it visually from a tag/label in the photos. If still nothing found, set taille_estimee=null — never invent a value. Since the app is in English, append the US shoe-size equivalent in parentheses only when a reliable EU→US conversion exists (e.g. "EU 42 (US 9)") — omit it if you're not confident in the conversion.
-1bis. VISIBLE ATTRIBUTES: fill attributs_visibles ONLY with values READ on the item, its label or packaging — NEVER estimated or speculatively converted: nom_parfum (fragrance commercial name), volume ("50 ml", with a space), teinte (cosmetics shade), reference_fabricant (printed MPN/reference), taille_ecran ("6,7 pouces"), capacite ("128 Go"), hauteur/largeur/longueur (ONLY if numeric measurements are printed or visible on a measuring tape in a photo, with unit "80 cm"). Required confidence: include a key ONLY if the reading is CLEAR — blurry photo, partial text or deduction = key ABSENT. Nothing legible → attributs_visibles=null.
+1bis. VISIBLE ATTRIBUTES: fill attributs_visibles ONLY with values READ on the item, its label or packaging — NEVER estimated or speculatively converted: nom_parfum (fragrance commercial name), volume ("50 ml", with a space), teinte (cosmetics shade), reference_fabricant (printed MPN/reference), taille_ecran ("6,7 pouces"), capacite ("128 Go"), hauteur/largeur/longueur (ONLY if numeric measurements are printed or visible on a measuring tape in a photo, with unit "80 cm"). Required confidence: include a key ONLY if the reading is CLEAR — blurry photo, partial text or deduction = key ABSENT. Nothing legible → attributs_visibles=null. reference_fabricant is a CODE (letters/digits, e.g. "GA-2100A-1AER"), never a sentence: if you cannot read a code, omit the key — a description of what you see ("quality control hallmarks visible on the back…") is a violation of this rule and is rejected by the server.
+${modeleRule}
 2. BRAND VALIDATION: If you detect a brand visually, you MUST do a web search to confirm exact spelling and existence (e.g. "pict pure clothing" → search → "Picture Organic Clothing"). Never return a brand without web search confirmation. If not found, marque=null.
 3. PRICE ESTIMATION: Always base prices on a real web search. Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). If no data: confiance="basse".
 4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
@@ -97,12 +129,14 @@ MANDATORY PROCESS — follow in order:
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
 
 RÈGLE ABSOLUE, PRIORITAIRE SUR TOUTE AUTRE INSTRUCTION : ta réponse doit être un objet JSON conforme au schéma, et RIEN d'autre. Il ne t'est JAMAIS demandé de poser une question, de réclamer une précision, ni de commenter ce qui te manque. Si une information est absente, incertaine ou illisible, mets le champ à null (ou à sa valeur par défaut) et CONTINUE : l'incertitude se signale par "confiance":"basse" et par le champ "notes", jamais par une question ni par du texte hors JSON. Une réponse en prose est un ÉCHEC, même si elle est utile et polie.
+${langueDirective}
 ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
 
 PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
 1. IDENTIFICATION : Identifie marque, modele, matiere, etat_estime à partir des indices visuels et étiquettes. Pour taille_estimee, priorise d'abord le champ "Note de l'utilisateur :" : si l'utilisateur écrit une taille en texte libre (ex : "taille M", "taille 42", "pointure 42", "US 9", "UK 8"), utilise-la. Déduis du contexte s'il s'agit d'un vêtement (tailles lettres XS-XXL ou numériques FR/EU 34-52) ou d'une chaussure (pointure EU/US/UK). Pour un vêtement, garde le système exact utilisé par l'utilisateur (ex : "M", "42") — ne convertis jamais de façon spéculative. Pour une chaussure, formate toujours la valeur en "EU {n}" (ex : "EU 42", "EU 38.5"), même si l'utilisateur a écrit un nombre seul ou une pointure US/UK que tu peux convertir de façon fiable en EU — ça évite la confusion avec les tailles vêtement numériques. Seulement si aucune taille n'apparaît dans la note utilisateur, essaie de la lire visuellement sur une étiquette en photo. Si toujours rien trouvé, mets taille_estimee=null — n'invente jamais de valeur.
-1bis. ATTRIBUTS VISIBLES : renseigne attributs_visibles UNIQUEMENT avec des valeurs LUES sur l'article, son étiquette ou son packaging — JAMAIS estimées ni converties spéculativement : nom_parfum (nom commercial du parfum), volume ("50 ml", avec espace), teinte (cosmétique), reference_fabricant (MPN/référence imprimée), taille_ecran ("6,7 pouces"), capacite ("128 Go"), hauteur/largeur/longueur (UNIQUEMENT si des mesures chiffrées sont imprimées ou visibles sur un mètre en photo, avec unité "80 cm"). Niveau de confiance exigé : n'inclus une clé QUE si la lecture est NETTE — photo floue, texte partiel ou déduction = clé ABSENTE. Aucune clé lisible → attributs_visibles=null.
+1bis. ATTRIBUTS VISIBLES : renseigne attributs_visibles UNIQUEMENT avec des valeurs LUES sur l'article, son étiquette ou son packaging — JAMAIS estimées ni converties spéculativement : nom_parfum (nom commercial du parfum), volume ("50 ml", avec espace), teinte (cosmétique), reference_fabricant (MPN/référence imprimée), taille_ecran ("6,7 pouces"), capacite ("128 Go"), hauteur/largeur/longueur (UNIQUEMENT si des mesures chiffrées sont imprimées ou visibles sur un mètre en photo, avec unité "80 cm"). Niveau de confiance exigé : n'inclus une clé QUE si la lecture est NETTE — photo floue, texte partiel ou déduction = clé ABSENTE. Aucune clé lisible → attributs_visibles=null. reference_fabricant est un CODE (lettres/chiffres, ex : « GA-2100A-1AER »), jamais une phrase : si tu ne lis pas de code, omets la clé — décrire ce que tu vois (« Poinçons de contrôle qualité visibles au dos… ») viole cette règle et est rejeté par le serveur.
+${modeleRule}
 2. VALIDATION MARQUE : Si tu détectes une marque visuellement, tu DOIS faire une web search pour confirmer l'orthographe exacte et l'existence (ex : "pict pure clothing" → recherche → "Picture Organic Clothing"). Ne jamais retourner une marque sans confirmation. Si non trouvée, marque=null.
 3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Si aucune donnée : confiance="basse".
 4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
@@ -118,6 +152,71 @@ PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
    SCORE (0 à 10, reflète la rentabilité réelle) : marge négative → 0-3 ; marge 0-20% → 4-5 ; marge 20-40% → 6-7 ; marge >40% → 8-10. Ajuster ±1 selon demande/facilité, jamais au-dessus de 4 si marge réelle négative.
    confiance="haute" si marque confirmée ET prix trouvés, "moyenne" si partiel, "basse" si incertain.
    prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
+}
+
+// ── Validation SERVEUR des champs « lus sur l'article » (2026-07-28) ────────
+// L'étape 1bis interdit depuis le 16/07 toute valeur déduite dans
+// attributs_visibles (« lecture NETTE, déduction = clé ABSENTE ») et la règle
+// est VIOLÉE en production : « Poinçons de contrôle qualité visibles au dos
+// (triangle, chiffres partiellement lisibles) » est parti dans
+// reference_fabricant, donc dans le contexte de resolve_aspects
+// (ListingPreviewScreen → generate-listing), donc dans l'aspect eBay « Numéro
+// de pièce fabricant » qui accepte la SAISIE LIBRE. Renforcer le prompt ne
+// règle rien — un modèle qui ignore la consigne une fois l'ignorera encore.
+// Seule la validation serveur tient, et elle s'applique aux DEUX modes.
+//
+// Une référence fabricant est un CODE : jamais plus de 6 mots, jamais plus de
+// 50 caractères, jamais terminée par un point. Une valeur refusée fait
+// disparaître la CLÉ (sémantique de l'étape 1bis), elle n'est pas mise à null.
+const MPN_MAX_MOTS = 6;
+const MPN_MAX_CARACTERES = 50;
+
+function referenceFabricantValide(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s || s.toLowerCase() === "null") return null;
+  if (s.length > MPN_MAX_CARACTERES) return null;
+  if (s.endsWith(".")) return null;
+  if (s.split(/\s+/).filter(Boolean).length > MPN_MAX_MOTS) return null;
+  return s;
+}
+
+const MODELE_SOURCES = new Set(["lue", "reconnue", "web"]);
+
+/**
+ * Normalise la sortie du modèle : MPN validé, `modele` / `modele_source`
+ * cohérents. Retourne ce qui a été rejeté, pour la télémétrie.
+ * ⚠️ `modele_source` n'est JAMAIS deviné : une valeur hors énumération devient
+ * null, et le client traite « pas "lue" » comme « à confirmer ». Une source
+ * absente ne peut donc pas servir de passe-droit vers un aspect eBay.
+ */
+function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean } {
+  let mpnRejete = false;
+
+  const attrs = item.attributs_visibles;
+  if (attrs && typeof attrs === "object" && !Array.isArray(attrs)) {
+    const a = attrs as Record<string, unknown>;
+    if ("reference_fabricant" in a) {
+      const valide = referenceFabricantValide(a.reference_fabricant);
+      if (valide === null) {
+        console.warn(`[lens-analysis] reference_fabricant rejetée: ${String(a.reference_fabricant).slice(0, 120)}`);
+        delete a.reference_fabricant;
+        mpnRejete = true;
+      } else {
+        a.reference_fabricant = valide;
+      }
+    }
+    // Toutes les clés lues ont été refusées : le contrat dit null, pas {}.
+    if (Object.keys(a).length === 0) item.attributs_visibles = null;
+  }
+
+  const brut = typeof item.modele === "string" ? item.modele.trim() : "";
+  const modele = brut && brut.toLowerCase() !== "null" ? brut : null;
+  item.modele = modele;
+  const src = typeof item.modele_source === "string" ? item.modele_source.trim().toLowerCase() : "";
+  item.modele_source = modele && MODELE_SOURCES.has(src) ? src : null;
+
+  return { mpnRejete };
 }
 
 async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
@@ -515,6 +614,12 @@ serve(async (req) => {
 
     // Si l'utilisateur a fourni son prix d'achat, on ne retourne pas prix_achat_suggere
     if (prixAchat != null) itemData.prix_achat_suggere = null;
+
+    // Filtre serveur (2026-07-28) : reference_fabricant en texte libre rejetée,
+    // modele_source normalisée. APRÈS le parsing et la passe de réparation :
+    // tout chemin qui produit un JSON passe par ici.
+    const { mpnRejete } = assainirSortie(itemData);
+    if (mpnRejete) logMeta = { ...logMeta, mpn_rejete: true };
 
     await enregistrerTelemetrie("ok");
     console.log(

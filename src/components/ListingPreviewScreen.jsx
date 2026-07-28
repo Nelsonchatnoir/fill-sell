@@ -709,6 +709,41 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
   return result;
 }
 
+// ── Provenance du modèle (2026-07-28) ─────────────────────────────────────────
+// lens-analysis renvoie désormais `modele_source` : "lue" (référence
+// physiquement déchiffrée sur une photo), "reconnue" (produit identifié par sa
+// forme), "web" (référence ramenée d'une recherche), null (inconnue ou hors
+// énumération). SEULE "lue" alimente directement les champs structurés.
+// Tout le reste demande une CONFIRMATION de l'utilisateur — il a l'objet en
+// main, c'est un tap — parce qu'une référence fausse dans le champ Modèle
+// Vinted ou dans un aspect eBay sort l'annonce des bonnes recherches ET la met
+// dans les mauvaises. Preuve : la même G-Shock GA-2100 est ressortie
+// « GA-2100 », puis sans modèle, puis « GD-100 » sur trois scans payants.
+// null est inclus dans « à confirmer » : une source absente n'est pas un
+// passe-droit — ça couvre aussi les brouillons d'AVANT le 28/07 (un tap de
+// plus, jamais une valeur fausse de plus).
+const MODELE_SOURCE_SURE = "lue";
+const modeleDoitEtreConfirme = (lensResult) =>
+  !!(lensResult?.modele) && lensResult?.modele_source !== MODELE_SOURCE_SURE;
+
+// Une référence fabricant est un CODE, jamais une phrase — MÊME règle que la
+// validation serveur de lens-analysis (6 mots / 50 caractères / pas de point
+// final). Filet CLIENT pour les analyses produites AVANT le 28/07, dont le blob
+// lensResult persisté peut encore porter « Poinçons de contrôle qualité
+// visibles au dos… » et l'injecter dans un aspect eBay en saisie libre.
+function assainirAttributsVisibles(attributs) {
+  if (!attributs || typeof attributs !== "object") return null;
+  const out = {};
+  for (const [k, v] of Object.entries(attributs)) {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (!s || s.toLowerCase() === "null") continue;
+    if (k === "reference_fabricant" &&
+        (s.length > 50 || s.endsWith(".") || s.split(/\s+/).filter(Boolean).length > 6)) continue;
+    out[k] = s;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ url, onClose }) {
@@ -1020,6 +1055,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
 function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, publishedSet, lang,
+  modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
@@ -1259,6 +1295,41 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               ? "Objet fidèle (logo, couleurs, défauts) — seul le fond change. Sur un vêtement, les faux plis sont légèrement défroissés."
               : "Item kept faithful (logo, colors, flaws) — only the background changes. On a garment, storage creases are lightly smoothed."}
           </p>
+        </div>
+      )}
+
+      {/* ── Modèle à confirmer (2026-07-28) ─────────────────────────────────
+          L'IA propose une référence qu'elle n'a PAS lue sur l'objet : elle l'a
+          reconnue à la forme, ou ramenée d'une recherche web. Tant que
+          l'utilisateur n'a pas tranché, cette valeur ne remplit AUCUN champ
+          structuré (Modèle Vinted, aspect eBay) — il a l'objet en main, c'est
+          un tap. Une référence absente coûte moins cher qu'une référence
+          fausse : une mauvaise ref sort l'annonce des bonnes recherches ET la
+          met dans les mauvaises. */}
+      {modeleAConfirmer && modelePropose && (
+        <div style={{ marginBottom:16, background:"#FFFBEB", border:"1px solid #FCD34D", borderRadius:16, padding:"14px 15px" }}>
+          <div style={{ fontSize:13, fontWeight:700, color:T.ink, marginBottom:3 }}>
+            {lang === "en" ? "Is this the right model?" : "C'est bien ce modèle ?"}
+          </div>
+          <div style={{ fontSize:12, color:T.mute2, lineHeight:1.45, marginBottom:10 }}>
+            {lang === "en"
+              ? `The AI suggests "${modelePropose}"${modeleSource === "web" ? " from a web search" : ""} — it could not read it on the item itself. Confirm it and it goes into the listing fields; otherwise it stays out.`
+              : `L'IA propose « ${modelePropose} »${modeleSource === "web" ? " depuis une recherche web" : ""} — elle ne l'a pas lu sur l'article. Confirme et il remplit les champs de l'annonce ; sinon il n'y entre pas.`}
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button
+              onClick={() => onConfirmModele?.(true)}
+              style={{ flex:1, padding:"11px", borderRadius:12, border:"none", background:T.tealDeep, color:"#FFFFFF", fontSize:13, fontWeight:700, fontFamily:"inherit", cursor:"pointer" }}
+            >
+              {lang === "en" ? "Yes, that's it" : "Oui, c'est ça"}
+            </button>
+            <button
+              onClick={() => onConfirmModele?.(false)}
+              style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${T.border}`, background:"#FFFFFF", color:T.mute2, fontSize:13, fontWeight:700, fontFamily:"inherit", cursor:"pointer" }}
+            >
+              {lang === "en" ? "No / not sure" : "Non / pas sûr"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -2452,6 +2523,27 @@ export default function ListingPreviewScreen({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
 
+  // ── Modèle à confirmer (2026-07-28) ───────────────────────────────────────
+  // Tri-état : null = pas encore tranché (la carte s'affiche, le modèle est
+  // RETENU hors des champs structurés), true = confirmé par l'utilisateur
+  // (le modèle redevient une valeur de plein droit), false = refusé (modèle
+  // définitivement écarté, carte masquée).
+  const [modeleConfirme, setModeleConfirme] = useState(draft?.modeleConfirme ?? null);
+  const modeleAConfirmer = modeleDoitEtreConfirme(initialListing) && modeleConfirme === null;
+  // Copie du résultat Lens telle que la voient les champs structurés et les
+  // micro-appels resolve_aspects : le `modele` non confirmé y est retiré, et
+  // les attributs lus repassent par le filtre MPN. C'est le SEUL objet qui doit
+  // atteindre platform_fields.modele et le contexte des aspects eBay.
+  const lensPourChamps = useMemo(() => {
+    if (!initialListing) return initialListing;
+    const modeleUtilisable = modeleDoitEtreConfirme(initialListing) ? modeleConfirme === true : true;
+    return {
+      ...initialListing,
+      modele: modeleUtilisable ? initialListing.modele : null,
+      attributs_visibles: assainirAttributsVisibles(initialListing.attributs_visibles),
+    };
+  }, [initialListing, modeleConfirme]);
+
   // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
     draft?.photoOption ?? (isPro ? "ia_advanced" : isPremium ? "ia_light" : "original")
@@ -2532,6 +2624,7 @@ export default function ListingPreviewScreen({
         invKey: invKeyRef.current,
         step, invId, addToStock, prixAchatSaisi, notes,
         photos, price, customPriced: [...customPriced], photoAnalysis,
+        modeleConfirme,
         photoOption, background,
         platformListings, processedPhotos, edited,
         sharedFields,
@@ -2540,7 +2633,7 @@ export default function ListingPreviewScreen({
       }));
     } catch { /* quota plein : le stepper continue, seul le brouillon saute */ }
   }, [initializing, done, step, invId, addToStock, prixAchatSaisi, notes, photos, price,
-      customPriced, photoAnalysis, photoOption, background, platformListings,
+      customPriced, photoAnalysis, modeleConfirme, photoOption, background, platformListings,
       processedPhotos, edited, sharedFields, sharedOverrides, selected]);
 
   // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
@@ -2924,7 +3017,10 @@ export default function ListingPreviewScreen({
           description:     data.platforms[p]?.description     ?? "",
           platform_fields: mergeFieldsWithLens(
             data.platforms[p]?.platform_fields ?? {},
-            initialListing,
+            // lensPourChamps, PAS initialListing : un `modele` non confirmé
+            // (source "reconnue"/"web"/absente) ne doit pas remplir le champ
+            // Modèle de Vinted ni l'aspect eBay du même nom.
+            lensPourChamps,
             platformFieldsConfig[p] ?? []
           ),
           price: data.price ?? price ?? null,
@@ -3545,14 +3641,16 @@ export default function ListingPreviewScreen({
               // Contexte enrichi (Phase 1) : modèle/matière/couleur aident
               // l'IA à extraire les obligatoires extractibles (Nom de parfum
               // souvent = modèle, Volume/Taille d'écran dans le titre…).
-              modele:      src.platform_fields?.modele || initialListing?.modele || null,
+              // lensPourChamps (2026-07-28) : modèle non confirmé retiré et
+              // reference_fabricant repassée au filtre MPN — c'est CE contexte
+              // qui alimente les aspects eBay en saisie libre.
+              modele:      src.platform_fields?.modele || lensPourChamps?.modele || null,
               matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
               couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
               description: src.description || initialListing?.description || null,
               type:        initialListing?.categorie || null,
-              // attributs_visibles de lens-analysis (Phase 2) — null tant
-              // que la fonction n'est pas redéployée (deploy gated).
-              attributs:   initialListing?.attributs_visibles ?? null,
+              // attributs_visibles de lens-analysis (Phase 2), assainis.
+              attributs:   lensPourChamps?.attributs_visibles ?? null,
             },
           },
         });
@@ -3919,12 +4017,12 @@ export default function ListingPreviewScreen({
               item_data: {
                 titre:       src.title || initialListing?.titre || "",
                 marque:      src.platform_fields?.marque || initialListing?.marque || null,
-                modele:      src.platform_fields?.modele || initialListing?.modele || null,
+                modele:      src.platform_fields?.modele || lensPourChamps?.modele || null,
                 matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
                 couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
                 description: src.description || initialListing?.description || null,
                 type:        initialListing?.categorie || null,
-                attributs:   initialListing?.attributs_visibles ?? null,
+                attributs:   lensPourChamps?.attributs_visibles ?? null,
               },
             },
           });
@@ -4733,6 +4831,10 @@ export default function ListingPreviewScreen({
             // Article venant de Lens : il a déjà prix et attributs → on ne
             // propose PAS une seconde analyse payante pour le même article.
             analysisHidden={initialListing?.prix_vente_suggere != null || initialListing?.taille_estimee != null}
+            modeleAConfirmer={modeleAConfirmer}
+            modelePropose={initialListing?.modele ?? null}
+            modeleSource={initialListing?.modele_source ?? null}
+            onConfirmModele={setModeleConfirme}
           />
         )}
         {step === 2 && (
