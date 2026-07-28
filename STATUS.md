@@ -3,6 +3,21 @@
 > Photo de l'état actuel de l'app (pas un changelog). Mise à jour : 2026-07-23.
 > À relire en début de session pour se recontextualiser vite.
 
+## ⛔ `supabase db push` est INTERDIT (posé le 28/07/2026)
+
+Tant que la baseline n'est pas refaite, **ne jamais lancer `supabase db push`**
+sur ce projet.
+
+Les historiques de migrations divergent : 29 fichiers locaux ne sont pas
+enregistrés côté distant, ~35 versions distantes n'ont pas de fichier local. Un
+push rejouerait des migrations **non idempotentes**, dont :
+- un `cron.schedule('handler-watch-3min')` → job planifié **en double** ;
+- un revert de grants → **soldes utilisateurs modifiés**.
+
+Les migrations s'appliquent **une par une**, après vérification de leur effet
+réel en prod. Interdits également tant que ce bandeau est là : `db reset`,
+`db remote commit`.
+
 ## 1. Vue d'ensemble
 
 FillSell est une app pour revendeurs : calcul de marges, cross-posting et suivi

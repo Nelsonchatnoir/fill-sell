@@ -1,5 +1,20 @@
 # FillSell — Instructions Claude
 
+## ⛔ `supabase db push` est INTERDIT
+
+Tant que la baseline n'est pas refaite, **ne jamais lancer `supabase db push`**
+sur ce projet.
+
+Les historiques de migrations divergent : 29 fichiers locaux ne sont pas
+enregistrés côté distant, ~35 versions distantes n'ont pas de fichier local. Un
+push rejouerait des migrations **non idempotentes**, dont :
+- un `cron.schedule('handler-watch-3min')` → job planifié **en double** ;
+- un revert de grants → **soldes utilisateurs modifiés**.
+
+Les migrations s'appliquent **une par une**, après vérification de leur effet
+réel en prod. Interdits également tant que ce bandeau est là : `db reset`,
+`db remote commit`.
+
 ## Dossier de travail — UN SEUL, sans exception
 
 - Le SEUL dossier de travail est `C:\Users\nicol\fill-and-sell\`. Il n'en
