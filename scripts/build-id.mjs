@@ -16,43 +16,80 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // re-flaggait donc TOUTES les extensions installées, même quand
 // chrome-extension/ n'avait pas bougé d'une ligne (vécu : build parti en
 // review Chrome Web Store le 23/07, flaggé « pas à jour » dès le déploiement
-// web suivant). La comparaison se fait désormais contre CETTE constante :
-// l'horodatage UTC du dernier commit qui touche chrome-extension/.
-// À BUMPER dans le même commit que tout changement sous chrome-extension/ —
-// assertExtensionMinBuildCurrent() (appelé par vite.config.js) fait échouer
-// le build local si on l'oublie.
-// 2026-07-29 : bump RATTRAPAGE — les deux commits Beebs du jour (24b2881
-// « format de colis déduit de la catégorie », 9000cdf « chaussures à 1 kg »)
-// touchent chrome-extension/ sans avoir bumpé la constante ; tout `npm run
-// build` LOCAL échouait depuis (Vercel, lui, skippe la garde : clone shallow).
-// ⚠️ Effet visible : la bannière « extension obsolète » se rallume pour tout le
-// parc, y compris la 0.4.5 du CWS — c'est exact (le fix Beebs n'est dans aucune
-// extension publiée) mais ça n'a de sens qu'une fois le nouveau zip téléversé.
-export const EXTENSION_MIN_BUILD = '2026-07-29T15:00:00Z';
+// web suivant). La comparaison se fait désormais contre une constante figée,
+// jamais contre le BUILD_ID du web — cf. les DEUX constantes ci-dessous.
+// assertExtensionMinBuildCurrent() (appelé par vite.config.js) fait échouer le
+// build local si l'une des deux est en retard ou incohérente.
+//
+// ── DEUX constantes, DEUX sens (scindées le 2026-07-29) ─────────────────────
+// Une seule constante portait les deux jusqu'ici, et c'est précisément ce qui
+// a fait mentir la bannière ce soir-là. Le bump de rattrapage à
+// 2026-07-29T15:00:00Z (les deux commits Beebs du jour, 24b2881 et 9000cdf,
+// touchaient chrome-extension/ sans bump : `npm run build` LOCAL échouait —
+// Vercel, lui, skippe la garde, clone shallow) a satisfait la garde au build
+// ET, du même geste, allumé « extension obsolète » pour les 6 installs actives
+// du parc, dont 4 déjà sur la 0.4.5 du CWS : un bandeau exact à la lettre mais
+// qui ne menait nulle part, le bouton « Mettre à jour » renvoyant sur la même
+// version. Ce n'était pas un accident, c'était mécanique.
+//
+// EXTENSION_LAST_COMMIT = horodatage UTC du dernier commit touchant
+//   chrome-extension/. Sert UNIQUEMENT aux gardes de build (celle ci-dessous,
+//   et la vérification du paquet dans package-extension.mjs). À BUMPER dans le
+//   même commit que tout changement sous chrome-extension/.
+//
+// EXTENSION_MIN_BUILD = build de la dernière extension RÉELLEMENT INSTALLABLE
+//   par un utilisateur (version publiée sur le Chrome Web Store). C'est LUI
+//   que la bannière compare au build installé (App.jsx). À ne bumper qu'après
+//   une publication ACCEPTÉE par le CWS — sinon on demande aux utilisateurs
+//   d'installer quelque chose qui n'existe pas encore.
+//
+// Séquence de publication : bumper LAST_COMMIT au fil des commits extension →
+// package:extension → téléverser + « Envoyer pour examen » → une fois la
+// review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
+// prévenu au bon moment, avec une version à aller chercher).
+export const EXTENSION_LAST_COMMIT = '2026-07-29T15:00:00Z';
+// 2026-07-27T17:50:06Z = build du commit de release 0faa5e5 « extension 0.4.5,
+// Android 2.3.3 » — la version que servait le CWS ce soir-là (4 des 6 installs
+// actives remontaient exactement ce build via profiles.extension_build).
+export const EXTENSION_MIN_BUILD = '2026-07-27T17:50:06Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
-// postérieur à EXTENSION_MIN_BUILD (constante pas bumpée → la bannière
-// mentirait dans l'autre sens : extensions périmées jamais flaggées).
+// postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié
+// pourrait ne pas contenir le dernier code, et le jour de la promotion vers
+// EXTENSION_MIN_BUILD la bannière ne flaggerait jamais les extensions
+// antérieures à ce commit).
+// Vérifie AUSSI l'invariant MIN_BUILD <= LAST_COMMIT : une bannière ne doit
+// jamais exiger un build postérieur au dernier code committé, faute de quoi
+// elle réclame une version que personne ne peut installer — le bug du 29/07.
 // Skippé quand git est absent ou le clone superficiel (Vercel : le commit
 // frontière d'un shallow clone « introduit » tous les fichiers et produirait
 // un faux échec) — la validation fait foi au build LOCAL avant push.
 export function assertExtensionMinBuildCurrent(cwd = process.cwd()) {
+  const lastCommit = Date.parse(EXTENSION_LAST_COMMIT);
+  const min = Date.parse(EXTENSION_MIN_BUILD);
+  if (Number.isFinite(lastCommit) && Number.isFinite(min) && min > lastCommit) {
+    throw new Error(
+      `EXTENSION_MIN_BUILD (${EXTENSION_MIN_BUILD}) est POSTÉRIEUR à ` +
+      `EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT}) : la bannière ` +
+      `« extension obsolète » exigerait un build qui n'existe dans aucun ` +
+      `commit, donc dans aucun paquet installable. Corriger scripts/build-id.mjs.`
+    );
+  }
   let lastIso;
   try {
     const shallow = execSync('git rev-parse --is-shallow-repository', { cwd }).toString().trim();
     if (shallow === 'true') return;
     lastIso = execSync('git log -1 --format=%cI -- chrome-extension/', { cwd }).toString().trim();
   } catch {
-    return; // pas de git (Vercel) : la constante committée fait foi
+    return; // pas de git (Vercel) : les constantes committées font foi
   }
   const last = Date.parse(lastIso);
-  const min = Date.parse(EXTENSION_MIN_BUILD);
-  if (Number.isFinite(last) && Number.isFinite(min) && last > min) {
+  if (Number.isFinite(last) && Number.isFinite(lastCommit) && last > lastCommit) {
     throw new Error(
-      `EXTENSION_MIN_BUILD (${EXTENSION_MIN_BUILD}) est antérieur au dernier commit ` +
-      `touchant chrome-extension/ (${lastIso}). Bumper la constante dans ` +
-      `scripts/build-id.mjs — sinon la bannière « extension obsolète » ne ` +
-      `flaggera jamais les extensions antérieures à ce commit.`
+      `EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT}) est antérieur au dernier ` +
+      `commit touchant chrome-extension/ (${lastIso}). Bumper la constante dans ` +
+      `scripts/build-id.mjs — sinon le paquet publié peut ne pas contenir ce ` +
+      `commit, et la bannière ne flaggera jamais les extensions antérieures.`
     );
   }
 }

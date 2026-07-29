@@ -16,9 +16,11 @@
 //      from scratch ;
 //   3. le BUILD_ID du paquet contient bien le hash de HEAD, n'est pas -dirty, et
 //      le jeton __FILLSELL_BUILD_ID__ a été substitué dans TOUS les .js ;
-//   4. l'horodatage du build est >= EXTENSION_MIN_BUILD, sinon le paquet neuf
-//      serait lui-même flaggé « extension pas à jour » par l'app web (vécu le
-//      26/07 : constante bumpée à un horodatage postérieur au build) ;
+//   4. l'horodatage du build est >= EXTENSION_LAST_COMMIT, c'est-à-dire que le
+//      paquet contient bien le dernier commit touchant chrome-extension/ —
+//      c'est LA garantie qui manquait le 24/07. (Avant le 29/07 la comparaison
+//      portait sur EXTENSION_MIN_BUILD, qui désigne depuis la scission le
+//      dernier build PUBLIÉ : la comparer ici ne garantissait plus rien.) ;
 //   5. la version du manifest n'a pas déjà été publiée — le Web Store rejette un
 //      renvoi de la même version. La liste ci-dessous est tenue à la main : la
 //      compléter à CHAQUE publication acceptée ;
@@ -33,7 +35,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
-import { EXTENSION_MIN_BUILD } from './build-id.mjs';
+import { EXTENSION_LAST_COMMIT, EXTENSION_MIN_BUILD } from './build-id.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'build', 'extension');
@@ -87,12 +89,13 @@ for (const f of jsFiles) {
 if (!buildId.includes(head)) die(`le BUILD_ID (${buildId}) ne contient pas le hash de HEAD (${head})`);
 if (buildId.includes('-dirty') && !allowDirty) die(`BUILD_ID -dirty : ${buildId}`);
 
-// 4. le paquet neuf ne doit pas être flaggé par sa propre constante
+// 4. le paquet contient bien le dernier code extension committé
 const iso = buildId.split('+')[0];
-if (Date.parse(iso) < Date.parse(EXTENSION_MIN_BUILD)) {
-  die(`le build (${iso}) est ANTÉRIEUR à EXTENSION_MIN_BUILD (${EXTENSION_MIN_BUILD}) :
-  l'app web afficherait « extension pas à jour » sur le paquet neuf lui-même.
-  Corrige la constante dans scripts/build-id.mjs, ou attends que l'heure passe.`);
+if (Date.parse(iso) < Date.parse(EXTENSION_LAST_COMMIT)) {
+  die(`le build (${iso}) est ANTÉRIEUR à EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT}) :
+  le paquet ne contient pas le dernier commit touchant chrome-extension/ —
+  exactement le 24/07 (deux jours d'utilisateurs sur du code d'avant le fix).
+  Rebuild, ou corrige la constante dans scripts/build-id.mjs si elle est en avance.`);
 }
 
 // 5. version jamais publiée
@@ -100,7 +103,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'),
 if (ALREADY_PUBLISHED.includes(manifest.version)) {
   die(`manifest en ${manifest.version}, déjà téléversée : le Chrome Web Store rejettera
   le paquet. Bumpe "version" dans chrome-extension/manifest.json (et
-  EXTENSION_MIN_BUILD dans le même commit), puis ajoute l'ancienne version à
+  EXTENSION_LAST_COMMIT dans le même commit), puis ajoute l'ancienne version à
   ALREADY_PUBLISHED ici.`);
 }
 
@@ -129,4 +132,10 @@ console.log(`  HEAD             : ${head}   (${git('log -1 --format=%cI')})`);
 console.log(`  entrées          : ${count} (manifest.json à la racine)`);
 console.log(`  taille           : ${(fs.statSync(zipPath).size / 1024).toFixed(0)} Ko`);
 console.log(`  chemin           : ${zipPath}`);
-console.log(`\n  Après une publication ACCEPTÉE : ajouter "${manifest.version}" à ALREADY_PUBLISHED.`);
+console.log(`\n  Après une publication ACCEPTÉE, DEUX gestes dans scripts/ :`);
+console.log(`    1. ajouter "${manifest.version}" à ALREADY_PUBLISHED (package-extension.mjs) ;`);
+console.log(`    2. dans build-id.mjs, recopier EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT})`);
+console.log(`       dans EXTENSION_MIN_BUILD (actuellement ${EXTENSION_MIN_BUILD}) puis pousser`);
+console.log(`       le web : c'est CE geste qui allume la bannière « extension obsolète ».`);
+console.log(`       Tant qu'il n'est pas fait, personne n'est prévenu ; fait trop tôt, tout`);
+console.log(`       le parc voit un bandeau sans version à installer (vécu le 29/07).`);

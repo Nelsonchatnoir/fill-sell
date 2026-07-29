@@ -6,9 +6,11 @@ import { computeBuildId, EXTENSION_MIN_BUILD, assertExtensionMinBuildCurrent } f
 // BUILD_ID calculé UNE fois par build et partagé entre le zip public de
 // l'extension et l'app web (__FILLSELL_APP_BUILD__). La bannière « extension
 // obsolète » ne compare PLUS à cet id (chaque déploiement web re-flaggait
-// toutes les extensions, cf. build-id.mjs) mais à EXTENSION_MIN_BUILD —
-// le garde-fou ci-dessous fait échouer le build si la constante est en retard
-// sur un commit touchant chrome-extension/.
+// toutes les extensions, cf. build-id.mjs) mais à EXTENSION_MIN_BUILD, qui
+// désigne depuis le 29/07 le dernier build PUBLIÉ (installable), et non le
+// dernier commit — ce rôle est tenu par EXTENSION_LAST_COMMIT. Le garde-fou
+// ci-dessous fait échouer le build si LAST_COMMIT est en retard sur un commit
+// touchant chrome-extension/, ou si MIN_BUILD lui est postérieur.
 assertExtensionMinBuildCurrent()
 const FILLSELL_BUILD_ID = computeBuildId()
 
