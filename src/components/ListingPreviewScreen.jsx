@@ -2037,7 +2037,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, stockLocked = false, addToStock, setAddToStock, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, stockLocked = false, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2111,12 +2111,22 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         </div>
       ))}
 
+      {/* ── Ajout au stock : PLUS UN CHOIX (2026-07-29) ───────────────────────
+          Toute publication crée désormais l'article dans l'inventaire. Le
+          toggle « Ajouter au stock » (et donc le refus d'ajouter) est retiré ;
+          `addToStock` vaut true en dur. On affiche l'état, pas une question.
+          ⚠️ Ne pas confondre avec le cas ci-dessous : `stockLocked` = l'article
+          est DÉJÀ dans l'inventaire (publication depuis le Stock, ou ligne
+          créée par le Lens). Il ne doit surtout PAS être recréé — sinon
+          doublon. Les deux cas restent mutuellement exclusifs :
+          canToggleStock = !invId && !alreadyInStock, stockLocked = l'inverse. */}
       {canToggleStock && (
         <StockToggle
-          checked={addToStock}
-          onChange={setAddToStock}
+          checked
+          disabled
+          onChange={() => {}}
           label={t("stepPublishAddToStockLabel")}
-          hint={addToStock ? t("stepPublishAddToStockHintOn") : t("stepPublishAddToStockHintOff")}
+          hint={t("stepPublishAddToStockHintAlways")}
         />
       )}
 
@@ -2134,7 +2144,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         />
       )}
 
-      {canToggleStock && addToStock && (
+      {canToggleStock && (
         <div style={{ marginTop:-10, marginBottom:20 }}>
           <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
             {t("stepPublishBuyPriceLabel")}
@@ -2556,7 +2566,11 @@ export default function ListingPreviewScreen({
   // (StockTab passe inventaireId) ; alreadyInStock l'est par Lens quand l'article
   // a déjà été ajouté. Dans les deux cas il est déjà en stock → toggle verrouillé.
   const stockLocked = !!invId || alreadyInStock;
-  const [addToStock, setAddToStock] = useState(draft?.addToStock ?? true);
+  // Ajout au stock : PLUS UN CHOIX depuis le 2026-07-29 — toute publication
+  // crée l'article dans l'inventaire. Constante et non plus un état : il n'y a
+  // plus de toggle, donc plus rien à basculer. Le cas « déjà en stock » est
+  // porté par invId/alreadyInStock (stockLocked), pas par cette valeur.
+  const addToStock = true;
   const [prixAchatSaisi, setPrixAchatSaisi] = useState(draft?.prixAchatSaisi ?? "");
 
   // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
@@ -4169,6 +4183,19 @@ export default function ListingPreviewScreen({
     } : prev);
   }
 
+  // Prix d'achat OBLIGATOIRE (2026-07-29), et ZÉRO EST UNE RÉPONSE VALIDE :
+  // beaucoup d'utilisateurs vident leur armoire et n'ont rien payé. On exige
+  // un champ REMPLI, pas un montant > 0 — bloquer sur « 0 interdit » serait
+  // pire que le problème qu'on règle. Ne s'applique QUE quand on s'apprête à
+  // créer la ligne d'inventaire (canToggleStock) : un article déjà en stock
+  // porte déjà son prix d'achat, on ne le redemande pas.
+  // Déclaré AVANT handlePublish, qui le lit : la closure suffirait, mais le
+  // garder au-dessus évite toute zone morte temporelle à la relecture.
+  const prixAchatNum = Number(String(prixAchatSaisi ?? "").replace(",", "."));
+  const prixAchatManquant =
+    canToggleStock &&
+    (String(prixAchatSaisi ?? "").trim() === "" || !Number.isFinite(prixAchatNum) || prixAchatNum < 0);
+
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
@@ -4183,6 +4210,13 @@ export default function ListingPreviewScreen({
     const prixNum = Number(price);
     if (price == null || String(price).trim() === "" || !Number.isFinite(prixNum) || prixNum < 1) {
       setPublishError(t("stepPublishPriceMissing"));
+      return;
+    }
+    // Prix d'achat : même défense en profondeur que le prix de vente. Le CTA est
+    // déjà gris (requiredBlocking), ce re-check attrape un état périmé ou une
+    // course. Zéro est valide — seul un champ VIDE bloque.
+    if (prixAchatManquant) {
+      setPublishError(t("stepPublishBuyPriceRequired"));
       return;
     }
     setPublishing(true);
@@ -4222,7 +4256,19 @@ export default function ListingPreviewScreen({
       // cross_post_jobs.inventaire_id pointe vers la bonne ligne dès l'insert.
       let currentInvId = invId;
       if (addToStock && !currentInvId && createStockItem) {
-        currentInvId = await createStockItem(prixAchatSaisi);
+        try {
+          currentInvId = await createStockItem(prixAchatSaisi);
+        } catch (e) {
+          // Inventaire plein (compte Free à 20 articles). Depuis que l'ajout au
+          // stock est systématique, c'est un mur de publication et plus un
+          // simple refus d'ajout — il mérite une proposition, pas « Une erreur
+          // est survenue ». La ConversionModal Premium est déjà ouverte par
+          // vaActions.addItem ; ce message explique ce qui vient de se passer.
+          if (String(e?.message) === "INVENTORY_LIMIT") {
+            throw new Error(t("stepPublishInventoryFull"));
+          }
+          throw e;
+        }
         if (!currentInvId) throw new Error(t("genericError"));
         setInvId(currentInvId);
       }
@@ -4775,6 +4821,7 @@ export default function ListingPreviewScreen({
     (ebayRequiredStatus ?? []).some(a => a.state === "missing" || a.state === "invalid") ||
     Object.values(genericRequiredStatus ?? {}).some(list => list.some(a => a.state === "missing" || a.state === "invalid")) ||
     missingSharedFields.length > 0 ||
+    prixAchatManquant ||
     vintedGenreBlocked;
 
   const ctaDisabled =
@@ -4984,8 +5031,6 @@ export default function ListingPreviewScreen({
             lang={lang}
             canToggleStock={canToggleStock}
             stockLocked={stockLocked}
-            addToStock={addToStock}
-            setAddToStock={setAddToStock}
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
             missingSharedFields={missingSharedFields}

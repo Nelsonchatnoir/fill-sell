@@ -4387,6 +4387,22 @@ export default function App({ loginOnly = false }){
       return mapped.id;
     }catch(e){
       console.error('[saveLensItemForListing]',e);
+      // ── Limite d'inventaire : on la REMONTE, on ne l'avale pas (2026-07-29) ──
+      // Depuis que toute publication crée l'article dans l'inventaire, un compte
+      // Free à 20 articles ne peut plus publier du tout — cas qui n'existait pas
+      // tant que l'ajout au stock était optionnel. Ce catch retournait null, et
+      // l'appelant en faisait un « Une erreur est survenue » : le message le plus
+      // inutile possible sur le seul mur qui se franchit en payant.
+      // vaActions.addItem ouvre DÉJÀ la ConversionModal Premium ; il ne manquait
+      // que le message. On marque l'erreur pour que le stepper la reconnaisse.
+      // Les deux libellés sont couverts : la pré-garde client (« Limite gratuite
+      // atteinte » / « Free plan limit reached ») ET le trigger serveur
+      // check_inventory_limit, qui lève LIMIT_REACHED si la liste locale est
+      // périmée. Toute AUTRE erreur garde le comportement historique (null).
+      const msg=String(e?.message??"");
+      if(/LIMIT_REACHED|Limite gratuite atteinte|Free plan limit reached/i.test(msg)){
+        throw new Error("INVENTORY_LIMIT");
+      }
       return null;
     }
   }
