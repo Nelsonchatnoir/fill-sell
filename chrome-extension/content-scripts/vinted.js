@@ -633,25 +633,14 @@ async function fillListingForm(job) {
   }
   if (photoResult?.photoNote) warnings.push(photoResult.photoNote);
 
+  // Marque : catalogue d'abord, CRÉATION de la marque en repli — et plus
+  // jamais de champ sauté (2026-07-29, job « Mela & Adorna » : marque hors
+  // catalogue → champ laissé vide → 400 code 99 au dépôt, maquillé en refus
+  // plateforme). selectVintedBrand LÈVE si même la création échoue : Vinted
+  // refusera de toute façon un dépôt sans marque, autant échouer AVANT, avec
+  // un message qui dit que c'est le handler qui n'a pas rempli le champ.
   if (fields.marque) {
-    // Deux sections dans le menu marque avec des ids différents :
-    // "Marques populaires" (id="brand-XXX") et "Suggestions"
-    // (id="suggested-brand-XXX"). L'aria-label porte le nom exact de la
-    // marque dans les deux → on matche dessus (flag "i" : insensible à la
-    // casse), au lieu du préfixe d'id qui ratait les suggestions.
-    try {
-      await selectSimpleOption(
-        '#brand, [data-testid="brand-select-dropdown-input"]',
-        `[role="button"][aria-label="${CSS.escape(fields.marque)}" i]`,
-        fields.marque,
-        { searchInputSelector: "#brand-search-input" }
-      );
-    } catch (e) {
-      const note = `marque: champ sauté — ${e.message}`;
-      console.warn(`[vinted] ⚠️ ${note}`);
-      warnings.push(note);
-      await closeAnyOpenDropdown();
-    }
+    await selectVintedBrand(fields.marque, warnings);
   }
 
   // ── High-Tech (2026-07-13, relevé RÉEL du formulaire Téléphones portables —
@@ -1794,6 +1783,78 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   option.click();
   await humanPause();
   await confirmDropdownIfNeeded();
+}
+
+// ── Marque : catalogue d'abord, création en repli (2026-07-29) ────────────────
+// Cas réel (job du 29/07 23h18, « Mela & Adorna ») : marque absente du
+// catalogue → l'option aria-label ne matche jamais → champ vide → 400 code 99
+// au dépôt. Or Vinted PERMET de créer une marque. Séquence PROUVÉE en session
+// réelle le 2026-07-29 sur /items/new (catégorie Robes d'été) :
+//   1. frappe du nom COMPLET dans #brand-search-input ;
+//   2. le panneau rend une ligne « Utiliser "X" comme marque »
+//      (#custom-select-brand — role=button, SANS aria-label ni data-testid,
+//      d'où une clé DÉDIÉE du registre, hors du sélecteur aria-label du
+//      catalogue) ;
+//   3. clic sur la ligne : elle DISPARAÎT (la sélection est enregistrée côté
+//      React) mais #brand reste vide ;
+//   4. « Fait » (confirmDropdownIfNeeded) : c'est la FERMETURE du panneau qui
+//      commite la valeur dans #brand — jamais le clic seul. Vérif post
+//      obligatoire sur #brand.value.
+// JAMAIS de repli générique ou « Autre » : la marque est créée telle que
+// détectée. Échec du repli = throw (le job échoue AVANT soumission) — un
+// dépôt sans marque finit en 400 déguisé en refus plateforme.
+async function selectVintedBrand(marque, warnings) {
+  const trigger = '#brand, [data-testid="brand-select-dropdown-input"]';
+  // 1er essai — marque du catalogue (comportement historique inchangé) :
+  // sections "Marques populaires" (id="brand-XXX") et "Suggestions"
+  // (id="suggested-brand-XXX"), aria-label = nom exact dans les deux
+  // (flag "i" : insensible à la casse).
+  try {
+    await selectSimpleOption(
+      trigger,
+      `[role="button"][aria-label="${CSS.escape(marque)}" i]`,
+      marque,
+      { searchInputSelector: "#brand-search-input" }
+    );
+    return;
+  } catch (e) {
+    console.warn(`[vinted] marque "${marque}" absente du catalogue (${e.message}) — repli : création de la marque`);
+  }
+  try {
+    // selectSimpleOption vient d'échouer en laissant le panneau OUVERT avec la
+    // recherche déjà tapée : la ligne de création est en général déjà rendue —
+    // on la prend telle quelle. waitForKey porte la télémétrie observatoire.
+    let custom = null;
+    try {
+      custom = await waitForKey("publish.custom_brand_option", { timeoutMs: 3000 });
+    } catch { /* panneau refermé ou état incertain : on rejoue proprement */ }
+    if (!custom) {
+      await closeAnyOpenDropdown();
+      await openDropdown(trigger);
+      const search = await waitForElement("#brand-search-input", 5000);
+      await typeHuman(search, marque);
+      custom = await waitForKey("publish.custom_brand_option", { timeoutMs: 8000 });
+    }
+    await humanPause(); // temps de "lecture" avant le clic, comme partout
+    custom.click();
+    await humanPause();
+    await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand
+    // Vérif post : le champ Marque ne doit JAMAIS rester vide à la soumission.
+    const input = document.querySelector(trigger);
+    if (!(input?.value ?? "").trim()) {
+      throw new Error("la ligne de création a été cliquée mais #brand est resté vide après fermeture du panneau");
+    }
+    const note = `marque: "${marque}" absente du catalogue Vinted — créée via « Utiliser "${marque}" comme marque »`;
+    console.warn(`[vinted] ${note}`);
+    warnings.push(note);
+  } catch (e) {
+    await closeAnyOpenDropdown();
+    throw new Error(
+      `Le handler n'a pas pu renseigner le champ Marque avec "${marque}" : ` +
+      `introuvable au catalogue Vinted ET création via « Utiliser "${marque}" comme marque » impossible (${e.message}). ` +
+      `Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, l'annonce n'a pas été soumise.`
+    );
+  }
 }
 
 // ── Modèle Vinted : champ à RECHERCHE sur liste virtualisée ────────────────────

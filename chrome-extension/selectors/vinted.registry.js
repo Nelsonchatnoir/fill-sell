@@ -84,6 +84,20 @@ export const VINTED_SELECTORS = {
     note: "fallback interne : cascade exact → normalisé → includes ; normalisation espaces insécables (U+00A0)",
   },
 
+  "publish.custom_brand_option": {
+    criticality: "orange",
+    workflows: ["publish"],
+    chain: [{ type: "css", value: "#custom-select-brand" }],
+    assert: { visible: true },
+    source: "vinted.js (selectVintedBrand, repli création de marque)",
+    note:
+      "relevé EN DIRECT le 2026-07-29 sur /items/new (catégorie Robes d'été, marque « Mela & Adorna ») : " +
+      "role=button, classes web_ui__Cell__cell/clickable, SANS aria-label ni data-testid, texte « Utiliser \"X\" comme marque » ; " +
+      "n'apparaît qu'après frappe d'une marque HORS catalogue dans #brand-search-input ; " +
+      "le clic seul ne commite PAS #brand (la ligne disparaît, valeur vide) — c'est la fermeture du panneau par « Fait » qui commite ; " +
+      "vérif post : relecture de #brand.value non vide, sinon throw (le job échoue avant soumission)",
+  },
+
   "publish.model_option": {
     criticality: "orange",
     workflows: ["publish"],
