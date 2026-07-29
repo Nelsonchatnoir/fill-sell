@@ -21,7 +21,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // À BUMPER dans le même commit que tout changement sous chrome-extension/ —
 // assertExtensionMinBuildCurrent() (appelé par vite.config.js) fait échouer
 // le build local si on l'oublie.
-export const EXTENSION_MIN_BUILD = '2026-07-27T17:50:00Z';
+// 2026-07-29 : bump RATTRAPAGE — les deux commits Beebs du jour (24b2881
+// « format de colis déduit de la catégorie », 9000cdf « chaussures à 1 kg »)
+// touchent chrome-extension/ sans avoir bumpé la constante ; tout `npm run
+// build` LOCAL échouait depuis (Vercel, lui, skippe la garde : clone shallow).
+// ⚠️ Effet visible : la bannière « extension obsolète » se rallume pour tout le
+// parc, y compris la 0.4.5 du CWS — c'est exact (le fix Beebs n'est dans aucune
+// extension publiée) mais ça n'a de sens qu'une fois le nouveau zip téléversé.
+export const EXTENSION_MIN_BUILD = '2026-07-29T15:00:00Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_MIN_BUILD (constante pas bumpée → la bannière
