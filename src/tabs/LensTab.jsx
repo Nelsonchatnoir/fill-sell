@@ -581,6 +581,7 @@ const LensTab = memo(function LensTab({
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative, analyzeLens, addLensItem, openLensEditModal,
   openUpgradeModal,
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
+  resetLensParcours,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
@@ -748,7 +749,12 @@ const LensTab = memo(function LensTab({
           initialPhotos={lensListingPhotos}
           initialListing={listingSource}
           identifyFailed={identifyEchec}
-          onClose={()=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);onStepperOpenChange?.(false);}}
+          // published=true : le bouton de l'écran ✅ du stepper — on purge TOUT
+          // le parcours (état App : photos, analyse, description, prix d'achat,
+          // ligne inventaire) pour revenir au viseur vide. Sans argument
+          // (retour arrière au step 0), on garde l'état : c'est un abandon,
+          // l'utilisateur peut vouloir reprendre.
+          onClose={(published)=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);if(published){setRestoredInvId(null);resetLensParcours?.();}onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}

@@ -4407,6 +4407,19 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  // ── Purge du parcours Lens après publication (2026-07-29) ──────────────────
+  // Fermer le stepper après un publish réussi ramenait sur l'analyse de
+  // l'article qui venait de partir : photos, analyse, description, prix d'achat
+  // restaient posés, et « Créer une annonce » permettait de relancer le même
+  // article (refusé in extremis par la garde already_published du RPC, mais au
+  // bout du tunnel entier). lensInventaireId DOIT être purgé lui aussi : sinon
+  // saveLensItemForListing le réutilise tel quel et rattache l'article SUIVANT
+  // à la ligne inventaire du précédent.
+  function resetLensParcours(){
+    setLensPhotos([]);setLensResult(null);setLensAdded(false);
+    setLensDesc("");setLensBuy("");setLensInventaireId(null);
+  }
+
   async function addLensItem(){
     if(!lensResult?.titre||lensAdded)return;
     try{
@@ -4792,6 +4805,7 @@ export default function App({ loginOnly = false }){
             supabase={supabase}
             saveLensItemForListing={saveLensItemForListing}
             lensInventaireId={lensInventaireId}
+            resetLensParcours={resetLensParcours}
             onStepperOpenChange={setListingStepperOpen}
           />
         )}

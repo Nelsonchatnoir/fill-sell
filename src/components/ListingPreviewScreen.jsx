@@ -4991,7 +4991,12 @@ export default function ListingPreviewScreen({
         {t("doneSubtitle")}
       </div>
       <button
-        onClick={onClose}
+        // onClose(true) = fermeture APRÈS publication réussie — l'hôte Lens
+        // purge alors tout le parcours (photos, analyse, prix) au lieu de
+        // ré-afficher l'analyse de l'article qui vient de partir. Le retour
+        // arrière (handleBack) appelle onClose() sans argument : un abandon
+        // conserve l'état pour reprendre. StockTab ignore l'argument.
+        onClick={() => onClose(true)}
         style={{
           marginTop:28, padding:"14px 40px", borderRadius:999,
           background:`linear-gradient(120deg,${T.teal},${T.tealDeep})`,
