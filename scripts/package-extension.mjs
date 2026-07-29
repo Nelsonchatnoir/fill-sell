@@ -45,7 +45,9 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // 0.4.1 n'y figure PAS : jamais soumise (sautée au profit de la 0.4.2).
 // 0.4.4 ajoutée le 27/07 : paquet remis à Nico pour téléversement — la 0.4.5
 // la remplace, la re-packager ne servirait qu'à se faire rejeter par le CWS.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4'];
+// 0.4.5 ajoutée le 30/07 : en ligne au CWS, la 0.4.6 la remplace (fix marque
+// Vinted 1f31a04 + observatoire).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
