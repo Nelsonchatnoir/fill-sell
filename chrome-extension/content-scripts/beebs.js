@@ -461,6 +461,48 @@ async function fillListingForm(job) {
     "Grand colis":      "Poids jusqu'à 5 kg max",
     "Très grand colis": "Poids jusqu'à 10 kg max",
   };
+
+  // ── Défaut DÉRIVÉ DE LA CATÉGORIE (2026-07-29, bug utilisatrice) ───────────
+  // Le défaut était « 1 kg max » pour TOUT article sans format_colis — et
+  // format_colis est NULL sur la quasi-totalité des jobs (l'app ne le remplit
+  // que si l'utilisateur le choisit). Conséquence : un t-shirt partait déclaré
+  // 1 kg, et le vendeur payait un port de 1 kg.
+  // Les 7 paliers réels (allowed_values relevés en base) sont : 200g, 500g,
+  // 1 kg, 2 kg, 5 kg, 10 kg, 15 kg — les deux plus légers n'étaient même pas
+  // atteignables par la table ci-dessus.
+  // Règle volontairement GROSSIÈRE et prudente : on ne descend que là où le
+  // poids réel est franchement sous le palier, et on MONTE pour les chaussures
+  // et les manteaux, aujourd'hui SOUS-déclarés à 1 kg (une paire de baskets
+  // adulte avec sa boîte dépasse couramment 1 kg — sous-déclarer coûte plus
+  // cher qu'un palier de trop : surtaxe ou refus au dépôt).
+  // Toute catégorie non reconnue garde 1 kg : comportement inchangé.
+  const sansAccents = (s) => String(s ?? "")
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const defautColisPourCategorie = (chemin) => {
+    const p = sansAccents(Array.isArray(chemin) ? chemin.join(" > ") : chemin);
+    if (!p) return "Poids jusqu'à 1 kg max";
+    // Lourd : chaussures (avec boîte) et gros manteaux.
+    if (/chaussure|basket|bottes?|bottine|sneaker|sandale|espadrille|mocassin|escarpin|manteau|doudoune|parka|blouson|combinaison de ski/.test(p)) {
+      return "Poids jusqu'à 2 kg max";
+    }
+    // Très léger : petits accessoires portés au poignet/au cou.
+    if (/montre|bijou|collier|bracelet|bague|boucle|lunette/.test(p)) {
+      return "Poids jusqu'à 200g max";
+    }
+    // Sacs et bagagerie : rangés sous « Accessoires » chez Beebs, donc captés
+    // par la règle « léger » ci-dessous s'ils ne sortent pas ici — or un sac à
+    // main dépasse couramment 500 g. Ils restent au palier historique.
+    if (/\bsacs?\b|bagagerie|valise|cartable|sac a dos|trousse/.test(p)) {
+      return "Poids jusqu'à 1 kg max";
+    }
+    // Léger : hauts fins, sous-vêtements, accessoires textiles.
+    if (/t-shirt|tee.?shirt|debardeur|\btop\b|chemise|chemisier|blouse|polo|lingerie|sous-vetement|pyjama|chaussette|collant|maillot|bikini|chapeau|casquette|bonnet|echarpe|foulard|gant|ceinture|cravate|bandeau|accessoires?\b/.test(p)) {
+      return "Poids jusqu'à 500g max";
+    }
+    // Tout le reste (robes, pantalons, jeans, pulls, sweats, blazers, jupes,
+    // sacs…) : palier historique, inchangé.
+    return "Poids jusqu'à 1 kg max";
+  };
   const packageField = findField("Format du colis");
   if (packageField) {
     const current = (packageField.trigger.textContent || "").trim();
@@ -473,11 +515,12 @@ async function fillListingForm(job) {
       // liste relevée (allowed_values du catalogue) — le faire retomber sur le
       // défaut 1 kg trahirait le choix de l'utilisateur (un « 5 kg » choisi
       // partait en 1 kg).
+      const parDefaut = defautColisPourCategorie(fields.beebsCategoryPath);
       const mapped =
         BEEBS_PACKAGE_BY_FORMAT[rawFormat] ??
-        (/^poids/i.test(rawFormat) ? rawFormat : "Poids jusqu'à 1 kg max");
+        (/^poids/i.test(rawFormat) ? rawFormat : parDefaut);
       if (!BEEBS_PACKAGE_BY_FORMAT[rawFormat] && !/^poids/i.test(rawFormat)) {
-        const note = `format du colis: aucune donnée de format exploitable (format_colis="${rawFormat}") — défaut prudent "${mapped}"`;
+        const note = `format du colis: aucun format_colis exploitable ("${rawFormat}") — défaut déduit de la catégorie : "${mapped}"`;
         console.warn(`[beebs] ⚠️ ${note}`);
         warnings.push(note);
       }
