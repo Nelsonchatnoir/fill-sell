@@ -3040,6 +3040,12 @@ export default function ListingPreviewScreen({
         taille:      initialListing?.taille_estimee ?? initialListing?.taille ?? photoAnalysis?.taille_estimee ?? null,
         couleur:     initialListing?.couleur     ?? photoAnalysis?.couleur     ?? null,
         matiere:     initialListing?.matiere     ?? photoAnalysis?.matiere     ?? null,
+        // État LU par le Lens (2026-07-29). Seule source : etat_estime — la
+        // table inventaire ne porte pas l'état (statut vaut stock|vendu, c'est
+        // autre chose). Depuis le 29/07 la valeur est garantie dans la liste
+        // fermée des 5 états (validation serveur lens-analysis), ce qui rend
+        // le rapprochement vers la liste de chaque plateforme fiable.
+        etat:        initialListing?.etat_estime ?? photoAnalysis?.etat_estime ?? null,
         prixVente:   price ?? initialListing?.prix_vente_suggere ?? photoAnalysis?.prix_vente_suggere ?? null,
       };
       // Tant que l'article n'est pas en stock (invId absent), on envoie ses infos
@@ -3065,6 +3071,7 @@ export default function ListingPreviewScreen({
             couleur: src.couleur,
             matiere: src.matiere,
             marque:  src.marque,
+            etat:    src.etat,
           },
           photos,
           platforms,
