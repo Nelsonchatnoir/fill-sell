@@ -141,8 +141,22 @@ const SHARED_PROPAGATION = {
 };
 const SHARED_GUARD = {
   taille:  ["vinted", "beebs", "ebay"],
+  // MATIÈRE — "vinted" RETIRÉ le 2026-07-29 (bug utilisatrice, job a87f8e84).
+  // Vinted ne l'exige nulle part : nos propres relevés DOM le disent depuis
+  // toujours — platform_category_aspects, platform='vinted', field_key
+  // 'material' : 17 lignes, TOUTES required=false, et le libellé relevé est
+  // « Matériau (recommandé) ». La garde statique bloquait pourtant la
+  // publication ; l'utilisatrice a tapé « ? » pour passer, et le point
+  // d'interrogation est parti tel quel chez Vinted.
+  // Pourquoi le chemin data-driven ne rattrapait pas : genericAspectsCatalog
+  // n'est peuplé QU'AVEC les lignes required=true, et les plateformes sans
+  // aucun requis sont retirées de l'objet — « catégorie sans requis » et
+  // « catégorie jamais relevée » y sont indistinguables, donc on retombe sur
+  // cette carte statique (cf. guardPlatforms).
+  // beebs RESTE : ses relevés portent bien un « Matière » required=true
+  // (Jeux, jouets et loisirs > Figurines).
   couleur: ["vinted", "beebs", "ebay"],
-  matiere: ["vinted", "beebs", "leboncoin", "ebay"],
+  matiere: ["beebs", "leboncoin", "ebay"],
   marque:  ["vinted", "beebs", "leboncoin", "ebay"],
 };
 // Icônes beauté PRODUIT (mêmes 4 que generate-listing) : la Couleur n'y est
