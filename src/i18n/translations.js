@@ -191,6 +191,11 @@ export const translations = {
     stepPublishGenericRequiredTitle:"Champs obligatoires {platform} pour cette catégorie :",
     stepPublishGenericAspectMissing:"à compléter ci-dessous",
     stepPublishGenericAspectInvalid:"valeur hors liste, choisis ci-dessous",
+    // 2026-07-29 — doctrine « une liste relevée est une SUGGESTION » : ce
+    // libellé remplace les deux ci-dessus quand la liste ne fait PAS foi (tout
+    // Vinted/LBC/Beebs, et eBay FREE_TEXT). Ton d'INFORMATION, pas d'erreur :
+    // rien n'est bloqué, la valeur part telle quelle.
+    stepPublishAspectOffListWarn:"absente de la liste qu'on connaît — envoyée quand même",
     stepPublishGenericAspectPrefilled:"rempli automatiquement",
     stepPublishGenericRequiredMissing:"{platform} exige pour cette catégorie : {fields}. Complète ce(s) champ(s) dans l'encart, puis relance la publication.",
     stepPublishSingleValueMsg:"cette catégorie n'accepte que « {value} » côté {platform}.",
@@ -491,6 +496,7 @@ export const translations = {
     stepPublishGenericRequiredTitle:"{platform} required fields for this category:",
     stepPublishGenericAspectMissing:"fill it in below",
     stepPublishGenericAspectInvalid:"value not in the list, pick below",
+    stepPublishAspectOffListWarn:"not in the list we know — sent anyway",
     stepPublishGenericAspectPrefilled:"filled automatically",
     stepPublishGenericRequiredMissing:"{platform} requires the following for this category: {fields}. Fill in the field(s) in the box, then publish again.",
     stepPublishSingleValueMsg:"this category only accepts “{value}” on {platform}.",

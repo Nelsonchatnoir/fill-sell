@@ -1926,6 +1926,35 @@ const isEbayClosedList = (allowedValues, mode) => {
   const n = Array.isArray(allowedValues) ? allowedValues.length : 0;
   return n > 0 && (n <= EBAY_CLOSED_LIST_MAX || mode === "SELECTION_ONLY");
 };
+
+// ── DOCTRINE « une liste relevée est une SUGGESTION » (2026-07-29) ───────────
+// BLOCAGE PROD constaté ce jour : platform_category_aspects, beebs / Marque /
+// « Mode > Homme > Accessoires (homme) > Chapeaux et casquettes (homme) » porte
+// 60 valeurs — 10 marques populaires puis l'alphabet ARRÊTÉ à « American
+// Apparel / Amazonas / Amina / Amisu ». La liste Beebs se charge à la demande
+// (scroll/recherche) : l'observatoire n'a relevé que la portion VISIBLE au
+// moment de la capture. Toute marque après « Am » (Volcom, Nike, Zara…) tombait
+// donc en « valeur hors liste » → chip ✗ → CTA Publier gris. Des CENTAINES de
+// marques légitimes, sur 5 catégories, depuis que allowed_values a commencé à
+// être rempli (~26/07).
+//
+// RÈGLE, désormais non négociable et valable pour TOUS les champs de TOUTES les
+// plateformes : une liste RELEVÉE (DOM, panneau, refus serveur — tout ce qui
+// vient de platform_category_aspects) est une AIDE À LA SAISIE. Elle ne
+// constitue JAMAIS une liste blanche. Une valeur absente n'empêche jamais la
+// publication : au pire un avertissement, et la saisie libre passe.
+// Notre relevé peut être partiel — il ne peut pas prouver qu'une valeur
+// n'existe pas.
+//
+// UNE SEULE exception, et c'est une liste qui n'est PAS relevée : les aspects
+// eBay déclarés `mode="SELECTION_ONLY"` par la Taxonomy API. Là, ce n'est pas
+// nous qui avons observé une liste, c'est eBay qui DÉCLARE que le champ n'admet
+// rien d'autre — et la Taxonomy est exhaustive par contrat. Les aspects eBay
+// `FREE_TEXT` (498 requis en base, contre 110 SELECTION_ONLY) redeviennent
+// eux aussi non bloquants : eBay dit lui-même que le champ accepte du texte
+// libre, le seuil ≤200 qui les traitait en listes fermées était une heuristique
+// à nous, contredite par la déclaration d'eBay.
+const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECTION_ONLY";
 // Normalisation partagée valeur↔liste (mêmes règles que normalizeFuzzy de
 // ebay.js : trim + minuscules + accents retirés).
 // Séparateur décimal unifié À LA COMPARAISON (2026-07-20) : Vinted lui-même
@@ -2006,16 +2035,36 @@ function nearestAllowedValue(val, allowedValues) {
 // (cas réel : Taille "Unique" vs « Taille unique », casquette 52365, 18/07).
 // Export nommé (2026-07-19, socle needs_user) : réutilisé par le mini-éditeur
 // « À compléter » de StockTab — même contrôle, mêmes règles de rendu.
+// `strict` (2026-07-29) : ne vaut plus que pour une liste QUI FAIT FOI (eBay
+// SELECTION_ONLY). Partout ailleurs le <select> garde une porte de sortie
+// « Autre valeur… » : la liste est un relevé, potentiellement partiel (cas
+// Beebs/Marque coupé à « Am »), et un sélecteur fermé sur un relevé partiel
+// EMPRISONNE l'utilisateur — c'est exactement ce que la doctrine interdit.
+// Pourquoi une option d'échappement plutôt qu'un simple <input list=datalist>
+// pour les petites listes : <datalist> n'est PAS supporté par Safari iOS, et
+// l'app tourne en Capacitor — on y perdrait toute suggestion sur mobile.
+const OTHER_SENTINEL = "__fs_other__";
 export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
+  const [libre, setLibre] = useState(false);
   const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
-  if (n > 0 && (strict || n <= closedMax)) {
+  if (n > 0 && (strict || n <= closedMax) && !libre) {
+    // Valeur courante hors du relevé : on l'ajoute en tête plutôt que de la
+    // faire disparaître du <select> (sinon le champ paraît vide alors que le
+    // job porte bien une valeur — « Volcom » effacé sous les yeux).
+    const horsListe = value && !vals.some(v => normAspectVal(v) === normAspectVal(value));
     return (
-      <select value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+      <select value={value ?? ""}
+        onChange={ev => {
+          if (ev.target.value === OTHER_SENTINEL) { setLibre(true); return; }
+          onChange(ev.target.value);
+        }}
         style={{ ...base, background:T.chip, color: value ? T.ink : T.mute }}>
         <option value="">—</option>
+        {horsListe && <option value={value}>{value}</option>}
         {vals.map(v => <option key={v} value={v}>{v}</option>)}
+        {!strict && <option value={OTHER_SENTINEL}>Autre valeur…</option>}
       </select>
     );
   }
@@ -2184,19 +2233,25 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         <div style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
           <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>{t("stepPublishEbayRequiredTitle")}</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {ebayRequiredStatus.map(({ name, state }) => (
+            {ebayRequiredStatus.map(({ name, state, blocking }) => {
+              // « hors liste » NON bloquant (2026-07-29) : jaune d'avertissement,
+              // pas rouge d'erreur — rien n'est cassé, la publication part.
+              const avert = state === "invalid" && blocking !== true;
+              const bg  = state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : avert ? "#FFFBEB" : "#FEF2F2";
+              const bd  = state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : avert ? "#FDE68A" : "#FECACA";
+              const fg  = state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : avert ? "#92400E" : "#B91C1C";
+              return (
               <span key={name} style={{
                 padding:"3px 9px", borderRadius:10, fontSize:12,
-                background: state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : "#FEF2F2",
-                border: `1px solid ${state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : "#FECACA"}`,
-                color: state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : "#B91C1C",
+                background: bg, border: `1px solid ${bd}`, color: fg,
               }}>
-                {state === "ok" ? "✓ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{name}
+                {state === "ok" ? "✓ " : avert ? "⚠ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{name}
                 {state === "prefilled" ? ` — ${t("stepPublishEbayAspectPrefilled")}` : ""}
                 {state === "missing" ? ` — ${t("stepPublishEbayAspectMissing")}` : ""}
-                {state === "invalid" ? ` — ${t("stepPublishEbayAspectInvalid")}` : ""}
+                {state === "invalid" ? ` — ${t(avert ? "stepPublishAspectOffListWarn" : "stepPublishEbayAspectInvalid")}` : ""}
               </span>
-            ))}
+              );
+            })}
           </div>
           {/* Fallback UI générique (Phase 3) : saisie inline des obligatoires
               sans source — select pour toute liste FERMÉE au sens de la garde
@@ -2212,8 +2267,11 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               {ebayRequiredStatus.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => (
                 <div key={a.name}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
+                  {/* Sans rapprochement, on montre la VALEUR RÉELLE du job
+                      (2026-07-29) : afficher "" laissait croire à un champ vide
+                      alors que la valeur part bien à la publication. */}
                   <AspectValueInput
-                    value={a.state === "invalid" ? (a.suggested ?? "") : a.value}
+                    value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
                     allowedValues={a.allowedValues}
                     strict={a.mode === "SELECTION_ONLY"}
                     closedMax={EBAY_CLOSED_LIST_MAX}
@@ -2241,19 +2299,25 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
             {tpl("stepPublishGenericRequiredTitle", { platform: PLATFORM_LABELS[gp] ?? gp })}
           </div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {list.map(({ key, label, state }) => (
+            {list.map(({ key, label, state, blocking }) => {
+              // Vinted/LBC/Beebs : blocking est TOUJOURS false ici (aucune de
+              // leurs listes ne fait foi) — donc toujours l'avertissement jaune.
+              const avert = state === "invalid" && blocking !== true;
+              const bg  = state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : avert ? "#FFFBEB" : "#FEF2F2";
+              const bd  = state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : avert ? "#FDE68A" : "#FECACA";
+              const fg  = state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : avert ? "#92400E" : "#B91C1C";
+              return (
               <span key={key} style={{
                 padding:"3px 9px", borderRadius:10, fontSize:12,
-                background: state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : "#FEF2F2",
-                border: `1px solid ${state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : "#FECACA"}`,
-                color: state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : "#B91C1C",
+                background: bg, border: `1px solid ${bd}`, color: fg,
               }}>
-                {state === "ok" ? "✓ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
+                {state === "ok" ? "✓ " : avert ? "⚠ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
                 {state === "prefilled" ? ` — ${t("stepPublishGenericAspectPrefilled")}` : ""}
                 {state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
-                {state === "invalid" ? ` — ${t("stepPublishGenericAspectInvalid")}` : ""}
+                {state === "invalid" ? ` — ${t(avert ? "stepPublishAspectOffListWarn" : "stepPublishGenericAspectInvalid")}` : ""}
               </span>
-            ))}
+              );
+            })}
           </div>
           {/* state "invalid" (2026-07-19, cas réel Medik8) : un champ DÉDIÉ
               rempli avec une valeur hors de la liste fermée du catalogue
@@ -2301,7 +2365,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                   <div key={a.key}>
                     <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
                     <AspectValueInput
-                      value={a.state === "invalid" ? (a.suggested ?? "") : a.value}
+                      value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
                       allowedValues={a.allowedValues}
                       strict={false}
                       onChange={v => (a.state === "invalid" && a.dedicatedTarget && onPlatformDedicatedChange)
@@ -3619,6 +3683,11 @@ export default function ListingPreviewScreen({
           return {
             name, state: "invalid", sharedKey: src.key, value: srcVal,
             suggested: nearestAllowedValue(sendVal, allowedValues),
+            // `blocking` (2026-07-29, doctrine « liste = suggestion ») : seule
+            // une liste QUI FAIT FOI grise le CTA. eBay SELECTION_ONLY = eBay
+            // déclare le champ fermé → on bloque. FREE_TEXT = eBay déclare le
+            // champ libre → on avertit, on propose la liste, on laisse passer.
+            blocking: listeFaitFoi("ebay", mode),
             allowedValues, mode,
           };
         }
@@ -4058,6 +4127,15 @@ export default function ListingPreviewScreen({
           // rapprochement auto. Les lignes SANS allowed_values (découvertes
           // DOM, listes partielles) ne bloquent jamais : présence = ok, comme
           // avant — on ne refuse une valeur que contre une liste qu'on a.
+          //
+          // ⚠️ 2026-07-29 — CE BLOC A CAUSÉ LE BLOCAGE PROD BEEBS/MARQUE.
+          // La prémisse « liste du catalogue ≤ 200 ⇒ liste fermée » est FAUSSE :
+          // ces valeurs sont RELEVÉES sur le DOM et une liste à chargement
+          // paresseux n'en livre que la portion visible (Marque Beebs : 60
+          // valeurs, alphabet coupé à « Amisu » — Volcom, Nike, Zara hors
+          // liste). `blocking: false` : le signalement RESTE (chip ⚠ + vrai
+          // sélecteur + rapprochement auto, tout ce qui aide), mais il
+          // n'interdit plus la publication. Cf. `listeFaitFoi` plus haut.
           const target = genericDedicatedTarget(platform, key);
           if (target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX &&
               !allowedValues.some(v => normAspectVal(v) === normAspectVal(src))) {
@@ -4065,6 +4143,9 @@ export default function ListingPreviewScreen({
               key, label, state: "invalid", value: src,
               dedicatedTarget: target,
               suggested: nearestAllowedValue(src, allowedValues),
+              // Vinted/LBC/Beebs : AUCUNE liste ne fait foi, ce sont toutes des
+              // relevés. Jamais bloquant.
+              blocking: listeFaitFoi(platform, null),
               allowedValues,
             };
           }
@@ -4638,9 +4719,14 @@ export default function ListingPreviewScreen({
         // sait la taper — bloquer "MaMarqueDeNiche123" ici refuserait une
         // publication qu'eBay aurait acceptée). FREE_TEXT + liste > 200 ou
         // liste vide → la présence suffit, comme avant ce patch.
-        // Même constante que l'UI (2026-07-18) : si l'encart propose un
-        // sélecteur pour une liste, la garde accepte forcément le choix fait.
-        const CLOSED_LIST_MAX = EBAY_CLOSED_LIST_MAX;
+        // ⚠️ RÉVISÉ le 2026-07-29 (doctrine « liste = suggestion ») : le seuil
+        // ≤200 ci-dessus était une HEURISTIQUE à nous pour deviner si un aspect
+        // FREE_TEXT était « en fait » fermé. eBay, lui, le DIT : `mode`. Quand
+        // eBay déclare FREE_TEXT, refuser une valeur ici revenait à interdire
+        // une publication qu'eBay aurait acceptée — 498 aspects requis en base
+        // sont dans ce cas, contre 110 SELECTION_ONLY. Seul SELECTION_ONLY
+        // reste un refus ; le reste devient un avertissement en console, la
+        // publication part.
         // Deux cas DISTINCTS depuis le 2026-07-15 (bug réel : taille en mois
         // sur la catégorie 51581 « Robes Fille 2-16 ans » — le message
         // unique « Complète ce(s) champ(s) » laissait croire à un champ
@@ -4663,10 +4749,9 @@ export default function ListingPreviewScreen({
           const val = known ? String(known.value() ?? "").trim() || genericVal : genericVal;
           if (!val) { missingEmpty.push(aspect.name); continue; }
           const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
-          const closedList = allowed.length &&
-            (allowed.length <= CLOSED_LIST_MAX || aspect.mode === "SELECTION_ONLY");
-          if (!closedList) continue;
+          if (!allowed.length) continue;
           if (allowed.some(v => normFuzzy(v) === normFuzzy(val))) continue;
+          const faitFoi = listeFaitFoi("ebay", aspect.mode);
           // Rapprochement AUTO au moment du publish (2026-07-19, casquette
           // 52365 : Taille « Unique » absente de la liste mais « Taille
           // unique » y EXISTE — la garde jetait quand même, avec en
@@ -4681,6 +4766,13 @@ export default function ListingPreviewScreen({
             if (known?.set) known.set(nearest);
             else pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [aspect.name]: nearest };
             console.log(`[publish] eBay ${aspect.name} : « ${val} » rapproché en « ${nearest} » (liste fermée de la catégorie)`);
+            continue;
+          }
+          // Aucun rapprochement sûr. Liste NON autoritaire (eBay FREE_TEXT) :
+          // avertissement, jamais un refus — la valeur part telle quelle, eBay
+          // l'accepte en saisie libre et l'extension sait la taper.
+          if (!faitFoi) {
+            console.warn(`[publish] eBay ${aspect.name} : « ${val} » absent de la liste (${allowed.length} valeurs, mode=${aspect.mode ?? "?"}) — envoyé tel quel, la liste n'est qu'une suggestion.`);
             continue;
           }
           const ageLike = /\b(mois|ans)\b/i.test(val);
@@ -4817,9 +4909,16 @@ export default function ListingPreviewScreen({
   // reste gris tant que l'encart (eBay, générique, champs partagés, genre
   // Vinted bloqué) signale un manque. Les états "prefilled"/"generic"/"ok"
   // ne bloquent pas ; seuls les "missing" comptent.
+  // ⚠️ 2026-07-29 : "invalid" ne bloque plus QUE s'il vient d'une liste qui fait
+  // foi (a.blocking === true, cf. `listeFaitFoi`). Un « hors liste » jugé contre
+  // un RELEVÉ potentiellement partiel n'est qu'un avertissement — c'est la
+  // doctrine posée après le blocage prod Beebs/Marque. "missing" (champ VIDE
+  // exigé par la plateforme) reste bloquant : c'est une absence de valeur, pas
+  // un désaccord avec une liste.
+  const estBloquant = a => a.state === "missing" || (a.state === "invalid" && a.blocking === true);
   const requiredBlocking =
-    (ebayRequiredStatus ?? []).some(a => a.state === "missing" || a.state === "invalid") ||
-    Object.values(genericRequiredStatus ?? {}).some(list => list.some(a => a.state === "missing" || a.state === "invalid")) ||
+    (ebayRequiredStatus ?? []).some(estBloquant) ||
+    Object.values(genericRequiredStatus ?? {}).some(list => list.some(estBloquant)) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
     vintedGenreBlocked;

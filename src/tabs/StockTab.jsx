@@ -452,10 +452,24 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
               : "Valeurs indisponibles — une relance est nécessaire. Une saisie libre serait refusée par la plateforme, on ne te la propose donc pas. Relance la publication : le prochain passage lit la liste et te proposera les vrais choix."}
           </div>
         ) : (
+          /* strict (2026-07-29, doctrine « une liste relevée est une
+             SUGGESTION ») : le SELECT FERMÉ n'est plus imposé dès qu'on a une
+             liste. Ces valeurs viennent d'un RELEVÉ (options du panneau, ou
+             catalogue platform_category_aspects) qui peut être PARTIEL — cas
+             prod du 29/07 : Beebs/Marque coupée à « Amisu », donc « Volcom »
+             introuvable dans le select et l'utilisateur enfermé, sans aucun
+             moyen de trancher le champ que ce modal existe précisément pour
+             trancher. strict=false laisse AspectValueInput ajouter l'issue
+             « Autre valeur… ». La liste reste proposée en premier : c'est une
+             aide à la saisie, pas une barrière.
+             La divergence assumée du 19/07 avec le stepper (« ici le select est
+             FERMÉ ») tombe donc : ce qu'elle protégeait — ne pas envoyer une
+             valeur que la plateforme refusera — ne vaut que si notre relevé est
+             complet, et il ne l'est pas. */
           <AspectValueInput
             value={value}
             allowedValues={allowed ?? []}
-            strict={Boolean(allowed?.length)}
+            strict={false}
             onChange={setValue}
             T={NU_T}
             idBase={`nu-${job.id}`}
