@@ -83,8 +83,8 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
   // peut pas halluciner un champ qu'on n'a pas à produire — et ça raccourcit
   // d'autant la sortie facturée. Le code les force à null de toute façon.
   const schema = estIdentify
-    ? `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|null,"matiere":string|null,"couleur":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"confiance":"basse"|"moyenne"|"haute","notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`
-    : `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|"web"|null,"matiere":string|null,"couleur":string|null,"etat_estime":string|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`;
+    ? `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|null,"matiere":string|null,"couleur":string|null,"etat_estime":"Neuf avec étiquette"|"Neuf sans étiquette"|"Très bon état"|"Bon état"|"Satisfaisant"|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"confiance":"basse"|"moyenne"|"haute","notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`
+    : `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|"web"|null,"matiere":string|null,"couleur":string|null,"etat_estime":"Neuf avec étiquette"|"Neuf sans étiquette"|"Très bon état"|"Bon état"|"Satisfaisant"|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`;
   // ── Langue de sortie (2026-07-28, BUG PRÉEXISTANT) ──────────────────────
   // Mesuré pendant l'audit du 28/07 : le prompt FR produit parfois un titre et
   // une description en ANGLAIS (identify sur momcozy, scan COMPLET sur cyrillus
@@ -96,8 +96,8 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
   // (aucune photo ne lui est envoyée) : une description anglaise ressort en
   // titre d'annonce anglais sur un article français.
   const langueDirective = lang === "en"
-    ? `OUTPUT LANGUAGE: every free-text string you produce — titre, description, matiere, etat_estime, notes, vitesse_vente_explication, conseils — MUST be written IN ENGLISH, whatever the language printed on the item, on its labels, or used in the user note. Enumerated values (categorie, vitesse_vente, confiance, verdict, modele_source) keep the exact spelling of the schema.`
-    : `LANGUE DE SORTIE : toutes les chaînes en texte libre que tu produis — titre, description, matiere, etat_estime, notes, vitesse_vente_explication, conseils — DOIVENT être rédigées EN FRANÇAIS, quelle que soit la langue imprimée sur l'article, sur ses étiquettes, ou employée dans la note de l'utilisateur. Les valeurs énumérées (categorie, vitesse_vente, confiance, verdict, modele_source) gardent l'orthographe exacte du schéma.`;
+    ? `OUTPUT LANGUAGE: every free-text string you produce — titre, description, matiere, notes, vitesse_vente_explication, conseils — MUST be written IN ENGLISH, whatever the language printed on the item, on its labels, or used in the user note. Enumerated values (categorie, etat_estime, vitesse_vente, confiance, verdict, modele_source) keep the exact spelling of the schema — etat_estime therefore stays in French even here.`
+    : `LANGUE DE SORTIE : toutes les chaînes en texte libre que tu produis — titre, description, matiere, notes, vitesse_vente_explication, conseils — DOIVENT être rédigées EN FRANÇAIS, quelle que soit la langue imprimée sur l'article, sur ses étiquettes, ou employée dans la note de l'utilisateur. Les valeurs énumérées (categorie, etat_estime, vitesse_vente, confiance, verdict, modele_source) gardent l'orthographe exacte du schéma.`;
 
   // ── Provenance du modèle (2026-07-28) ───────────────────────────────────
   // Le champ `modele` mélangeait jusqu'ici trois choses indiscernables : une
@@ -174,7 +174,7 @@ ${schema}
 ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 
 MANDATORY PROCESS — follow in order:
-1. IDENTIFICATION: Identify marque, modele, matiere, etat_estime from visual cues and labels. For taille_estimee (size), prioritize the "User note:" field first: if the user writes a size in free text (e.g. "size M", "taille 42", "pointure 42", "US 9", "UK 8"), use that. Infer from context whether the item is a garment (letter sizes XS-XXL or EU numeric 34-52) or a shoe (EU/US/UK shoe size). For garments, keep the exact system the user wrote in (e.g. "M", "42") — never convert speculatively. For shoes, always format the value as "EU {n}" (e.g. "EU 42", "EU 38.5") regardless of language, even if the user wrote a bare number or a US/UK size you can reliably convert to EU — this avoids confusion with garment numeric sizes. Only if no size appears in the user note, try to read it visually from a tag/label in the photos. If still nothing found, set taille_estimee=null — never invent a value. Since the app is in English, append the US shoe-size equivalent in parentheses only when a reliable EU→US conversion exists (e.g. "EU 42 (US 9)") — omit it if you're not confident in the conversion.${couleurRule}
+1. IDENTIFICATION: Identify marque, modele, matiere, etat_estime from visual cues and labels. Fill "etat_estime" with EXACTLY one of the five schema values, never free text: "Neuf avec étiquette" and "Neuf sans étiquette" ONLY when the photos or the user note state the item is new and never worn — a brand, size or composition label sewn onto a garment is NOT proof of newness, it stays in place on a worn item; "Très bon état" when no wear is visible, "Bon état" when wear is visible but light, "Satisfaisant" when wear is obvious. etat_estime=null if the photos do not settle it — never guess a condition. For taille_estimee (size), prioritize the "User note:" field first: if the user writes a size in free text (e.g. "size M", "taille 42", "pointure 42", "US 9", "UK 8"), use that. Infer from context whether the item is a garment (letter sizes XS-XXL or EU numeric 34-52) or a shoe (EU/US/UK shoe size). For garments, keep the exact system the user wrote in (e.g. "M", "42") — never convert speculatively. For shoes, always format the value as "EU {n}" (e.g. "EU 42", "EU 38.5") regardless of language, even if the user wrote a bare number or a US/UK size you can reliably convert to EU — this avoids confusion with garment numeric sizes. Only if no size appears in the user note, try to read it visually from a tag/label in the photos. If still nothing found, set taille_estimee=null — never invent a value. Since the app is in English, append the US shoe-size equivalent in parentheses only when a reliable EU→US conversion exists (e.g. "EU 42 (US 9)") — omit it if you're not confident in the conversion.${couleurRule}
 1bis. VISIBLE ATTRIBUTES: fill attributs_visibles ONLY with values READ on the item, its label or packaging — NEVER estimated or speculatively converted: nom_parfum (fragrance commercial name), volume ("50 ml", with a space), teinte (cosmetics shade), reference_fabricant (printed MPN/reference), taille_ecran ("6,7 pouces"), capacite ("128 Go"), hauteur/largeur/longueur (ONLY if numeric measurements are printed or visible on a measuring tape in a photo, with unit "80 cm"). Required confidence: include a key ONLY if the reading is CLEAR — blurry photo, partial text or deduction = key ABSENT. Nothing legible → attributs_visibles=null. reference_fabricant is a CODE (letters/digits, e.g. "GA-2100A-1AER"), never a sentence: if you cannot read a code, omit the key — a description of what you see ("quality control hallmarks visible on the back…") is a violation of this rule and is rejected by the server.
 ${modeleRule}
 ${etape2}
@@ -209,7 +209,7 @@ ${schema}
 ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platforms}
 
 PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
-1. IDENTIFICATION : Identifie marque, modele, matiere, etat_estime à partir des indices visuels et étiquettes. Pour taille_estimee, priorise d'abord le champ "Note de l'utilisateur :" : si l'utilisateur écrit une taille en texte libre (ex : "taille M", "taille 42", "pointure 42", "US 9", "UK 8"), utilise-la. Déduis du contexte s'il s'agit d'un vêtement (tailles lettres XS-XXL ou numériques FR/EU 34-52) ou d'une chaussure (pointure EU/US/UK). Pour un vêtement, garde le système exact utilisé par l'utilisateur (ex : "M", "42") — ne convertis jamais de façon spéculative. Pour une chaussure, formate toujours la valeur en "EU {n}" (ex : "EU 42", "EU 38.5"), même si l'utilisateur a écrit un nombre seul ou une pointure US/UK que tu peux convertir de façon fiable en EU — ça évite la confusion avec les tailles vêtement numériques. Seulement si aucune taille n'apparaît dans la note utilisateur, essaie de la lire visuellement sur une étiquette en photo. Si toujours rien trouvé, mets taille_estimee=null — n'invente jamais de valeur.${couleurRule}
+1. IDENTIFICATION : Identifie marque, modele, matiere, etat_estime à partir des indices visuels et étiquettes. Renseigne "etat_estime" avec EXACTEMENT une des cinq valeurs du schéma, jamais du texte libre : « Neuf avec étiquette » et « Neuf sans étiquette » UNIQUEMENT si les photos ou la note utilisateur affirment que l'article est neuf et jamais porté — une étiquette de marque, de taille ou de composition cousue sur un vêtement n'est PAS une preuve de neuf, elle reste en place sur un article porté ; « Très bon état » si aucune usure n'est visible, « Bon état » si l'usure est visible mais légère, « Satisfaisant » si l'usure est marquée. etat_estime=null si les photos ne permettent pas de trancher — ne devine jamais un état. Pour taille_estimee, priorise d'abord le champ "Note de l'utilisateur :" : si l'utilisateur écrit une taille en texte libre (ex : "taille M", "taille 42", "pointure 42", "US 9", "UK 8"), utilise-la. Déduis du contexte s'il s'agit d'un vêtement (tailles lettres XS-XXL ou numériques FR/EU 34-52) ou d'une chaussure (pointure EU/US/UK). Pour un vêtement, garde le système exact utilisé par l'utilisateur (ex : "M", "42") — ne convertis jamais de façon spéculative. Pour une chaussure, formate toujours la valeur en "EU {n}" (ex : "EU 42", "EU 38.5"), même si l'utilisateur a écrit un nombre seul ou une pointure US/UK que tu peux convertir de façon fiable en EU — ça évite la confusion avec les tailles vêtement numériques. Seulement si aucune taille n'apparaît dans la note utilisateur, essaie de la lire visuellement sur une étiquette en photo. Si toujours rien trouvé, mets taille_estimee=null — n'invente jamais de valeur.${couleurRule}
 1bis. ATTRIBUTS VISIBLES : renseigne attributs_visibles UNIQUEMENT avec des valeurs LUES sur l'article, son étiquette ou son packaging — JAMAIS estimées ni converties spéculativement : nom_parfum (nom commercial du parfum), volume ("50 ml", avec espace), teinte (cosmétique), reference_fabricant (MPN/référence imprimée), taille_ecran ("6,7 pouces"), capacite ("128 Go"), hauteur/largeur/longueur (UNIQUEMENT si des mesures chiffrées sont imprimées ou visibles sur un mètre en photo, avec unité "80 cm"). Niveau de confiance exigé : n'inclus une clé QUE si la lecture est NETTE — photo floue, texte partiel ou déduction = clé ABSENTE. Aucune clé lisible → attributs_visibles=null. reference_fabricant est un CODE (lettres/chiffres, ex : « GA-2100A-1AER »), jamais une phrase : si tu ne lis pas de code, omets la clé — décrire ce que tu vois (« Poinçons de contrôle qualité visibles au dos… ») viole cette règle et est rejeté par le serveur.
 ${modeleRule}
 ${etape2Fr}
@@ -247,6 +247,90 @@ function referenceFabricantValide(v: unknown): string | null {
 
 const MODELE_SOURCES = new Set(["lue", "reconnue", "web"]);
 
+// ── État : LISTE FERMÉE de 5 valeurs (2026-07-29) ──────────────────────────
+// Jusqu'ici etat_estime était du TEXTE LIBRE, et generate-listing le
+// documentait déjà comme tel : « Bon », « bon », « Bon état », « Très bon »
+// relevés en prod le 28/07 pour un même niveau. Conséquence : le rédacteur de
+// generate-listing recevait une lecture non normalisée et devait la rapprocher
+// lui-même de la liste fermée de CHAQUE plateforme — un rapprochement de plus,
+// donc une occasion de plus de sortir de la liste (Vinted « Satisfaisant » vs
+// LBC « État satisfaisant » vs Beebs « État moyen »).
+// Les 5 valeurs sont celles du formulaire Vinted, orthographe EXACTE reprise de
+// PLATFORM_CFG.vinted dans generate-listing (« étiquette » au SINGULIER).
+// Elles restent en français quelle que soit la langue de sortie : c'est une
+// énumération, pas du texte libre — comme categorie (« Mode », « Beauté »).
+const ETATS = [
+  "Neuf avec étiquette",
+  "Neuf sans étiquette",
+  "Très bon état",
+  "Bon état",
+  "Satisfaisant",
+] as const;
+
+/** Minuscules, sans accents ni ponctuation, espaces compactés. */
+function aplatir(s: string): string {
+  return s
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Table de rapprochement. L'ORDRE DES TESTS COMPTE et il est vérifié par les
+// cas réels : « très bon état » contient « bon », « comme neuf » contient
+// « neuf ». Le plus spécifique passe donc toujours en premier.
+const ETAT_SYNONYMES: Array<[RegExp, typeof ETATS[number]]> = [
+  // Neuf AVEC étiquette — exige les deux signaux.
+  [/\bneuf\b.*\bavec\b.*\betiquette/, "Neuf avec étiquette"],
+  [/\bnew\b.*\bwith\b.*\btag/, "Neuf avec étiquette"],
+  [/^nwt$/, "Neuf avec étiquette"],
+  // Neuf SANS étiquette.
+  [/\bneuf\b.*\bsans\b.*\betiquette/, "Neuf sans étiquette"],
+  [/\bnew\b.*\bwithout\b.*\btag/, "Neuf sans étiquette"],
+  [/^nwot$/, "Neuf sans étiquette"],
+  // « Comme neuf » / « like new » ne sont PAS du neuf : Vinted n'a pas ce
+  // niveau, et le voisin honnête est « Très bon état ». Testé AVANT « neuf ».
+  [/\bcomme neuf\b|\blike new\b|\bquasi neuf\b|\bpresque neuf\b/, "Très bon état"],
+  [/\btres bon\b|\btres bonne\b|\btbe\b|\bexcellent\b|\bvery good\b|\bmint\b|\bparfait etat\b/, "Très bon état"],
+  [/\bbon etat\b|\bbonne condition\b|\bgood condition\b|^bon$|^bonne$|^good$/, "Bon état"],
+  // « used » anglais est VOLONTAIREMENT absent : tout article d'occasion est
+  // « used », ce n'est pas un niveau d'usure — le mapper dégraderait à tort.
+  [/\bsatisfaisant\b|\bcorrect\b|\bmoyen\b|\bacceptable\b|\bfair\b|\busagee?\b|\busee?\b|\bworn\b|\bmauvais\b|\bpoor\b|\bpassable\b/, "Satisfaisant"],
+  // Neuf NU, en dernier : le modèle affirme le neuf sans parler d'étiquette.
+  // On retient la variante SANS étiquette — c'est la moins engageante des deux
+  // (elle n'ajoute pas une allégation d'étiquette que personne n'a vue).
+  [/\bneuf\b|\bneuve\b|\bbrand new\b|^new$|\bjamais porte\b|\bjamais utilise\b|\bnever worn\b/, "Neuf sans étiquette"],
+];
+
+/**
+ * Ramène etat_estime dans la liste fermée, ou null.
+ *
+ * ⚠️ Une valeur non reconnue devient null, JAMAIS une valeur par défaut : c'est
+ * la même doctrine que modele_source (« n'est JAMAIS deviné ») et que le MPN.
+ * Un état inventé descend jusque dans platform_fields.etat des 5 plateformes ;
+ * un état absent laisse simplement le rédacteur faire son travail.
+ */
+function etatEstimeNormalise(v: unknown): { valeur: string | null; rejete: boolean } {
+  if (v == null) return { valeur: null, rejete: false };
+  if (typeof v !== "string") return { valeur: null, rejete: true };
+  const brut = v.trim();
+  if (!brut || brut.toLowerCase() === "null") return { valeur: null, rejete: false };
+
+  // Déjà canonique (chemin nominal une fois le prompt suivi).
+  const exact = ETATS.find((e) => e === brut);
+  if (exact) return { valeur: exact, rejete: false };
+
+  const plat = aplatir(brut);
+  // Canonique à la casse/aux accents près (« tres bon etat », « BON ÉTAT »).
+  const quasi = ETATS.find((e) => aplatir(e) === plat);
+  if (quasi) return { valeur: quasi, rejete: false };
+
+  for (const [motif, cible] of ETAT_SYNONYMES) {
+    if (motif.test(plat)) return { valeur: cible, rejete: false };
+  }
+  return { valeur: null, rejete: true };
+}
+
 /**
  * Normalise la sortie du modèle : MPN validé, `modele` / `modele_source`
  * cohérents. Retourne ce qui a été rejeté, pour la télémétrie.
@@ -254,7 +338,7 @@ const MODELE_SOURCES = new Set(["lue", "reconnue", "web"]);
  * null, et le client traite « pas "lue" » comme « à confirmer ». Une source
  * absente ne peut donc pas servir de passe-droit vers un aspect eBay.
  */
-function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean } {
+function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean; etatRejete: boolean } {
   let mpnRejete = false;
 
   const attrs = item.attributs_visibles;
@@ -280,7 +364,15 @@ function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean } {
   const src = typeof item.modele_source === "string" ? item.modele_source.trim().toLowerCase() : "";
   item.modele_source = modele && MODELE_SOURCES.has(src) ? src : null;
 
-  return { mpnRejete };
+  // État ramené dans la liste fermée. S'applique aux DEUX modes : etat_estime
+  // figure dans le schéma identify comme dans le schéma complet.
+  const etat = etatEstimeNormalise(item.etat_estime);
+  if (etat.rejete) {
+    console.warn(`[lens-analysis] etat_estime hors liste, mis à null : ${String(item.etat_estime).slice(0, 120)}`);
+  }
+  item.etat_estime = etat.valeur;
+
+  return { mpnRejete, etatRejete: etat.rejete };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -302,7 +394,7 @@ const PLAFOND_IDENTIFY_GLOBAL = 3000;
 // Version du prompt : elle entre dans la clé du cache d'idempotence. À BUMPER
 // à chaque modification des prompts ou du schéma, sinon on continue de servir
 // un résultat produit par l'ancienne version.
-const VERSION_PROMPT = "2026-07-28";
+const VERSION_PROMPT = "2026-07-29";
 
 // Champs de marché forcés à null en identify — dans le CODE, pas seulement par
 // consigne de prompt (ils ne figurent déjà plus dans le schéma identify).
@@ -895,10 +987,12 @@ serve(async (req) => {
     if (prixAchat != null) itemData.prix_achat_suggere = null;
 
     // Filtre serveur (2026-07-28) : reference_fabricant en texte libre rejetée,
-    // modele_source normalisée. APRÈS le parsing et la passe de réparation :
-    // tout chemin qui produit un JSON passe par ici.
-    const { mpnRejete } = assainirSortie(itemData);
+    // modele_source normalisée, etat_estime ramené dans sa liste fermée
+    // (2026-07-29). APRÈS le parsing et la passe de réparation : tout chemin
+    // qui produit un JSON passe par ici.
+    const { mpnRejete, etatRejete } = assainirSortie(itemData);
     if (mpnRejete) logMeta = { ...logMeta, mpn_rejete: true };
+    if (etatRejete) logMeta = { ...logMeta, etat_rejete: true };
 
     // ── Identify : champs de marché forcés à null DANS LE CODE ──────────────
     // Pas seulement par consigne de prompt. Un prix produit sans donnée marché
@@ -920,6 +1014,7 @@ serve(async (req) => {
         duree_ms: Date.now() - debutMs,
         modele_source: itemData.modele_source ?? null,
         ...(mpnRejete ? { mpn_rejete: true } : {}),
+        ...(etatRejete ? { etat_rejete: true } : {}),
       });
     } else {
       await enregistrerTelemetrie("ok");
