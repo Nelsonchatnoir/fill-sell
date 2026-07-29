@@ -471,18 +471,21 @@ async function fillListingForm(job) {
   // 1 kg, 2 kg, 5 kg, 10 kg, 15 kg — les deux plus légers n'étaient même pas
   // atteignables par la table ci-dessus.
   // Règle volontairement GROSSIÈRE et prudente : on ne descend que là où le
-  // poids réel est franchement sous le palier, et on MONTE pour les chaussures
-  // et les manteaux, aujourd'hui SOUS-déclarés à 1 kg (une paire de baskets
-  // adulte avec sa boîte dépasse couramment 1 kg — sous-déclarer coûte plus
-  // cher qu'un palier de trop : surtaxe ou refus au dépôt).
+  // poids réel est franchement sous le palier. Seuls les MANTEAUX montent à
+  // 2 kg — un manteau d'hiver, une doudoune ou une parka dépassent le kilo.
+  // ⚠️ LES CHAUSSURES RESTENT À 1 kg (arbitrage Nico, 2026-07-29). Elles
+  // étaient passées à 2 kg dans la 1re version de cette règle : retiré. Une
+  // paire sans boîte pèse ~800 g, et monter d'un palier renchérit le port
+  // AFFICHÉ À L'ACHETEUR — on préfère le risque du palier juste à un port
+  // dissuasif sur toutes les paires.
   // Toute catégorie non reconnue garde 1 kg : comportement inchangé.
   const sansAccents = (s) => String(s ?? "")
     .normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   const defautColisPourCategorie = (chemin) => {
     const p = sansAccents(Array.isArray(chemin) ? chemin.join(" > ") : chemin);
     if (!p) return "Poids jusqu'à 1 kg max";
-    // Lourd : chaussures (avec boîte) et gros manteaux.
-    if (/chaussure|basket|bottes?|bottine|sneaker|sandale|espadrille|mocassin|escarpin|manteau|doudoune|parka|blouson|combinaison de ski/.test(p)) {
+    // Lourd : gros manteaux uniquement (chaussures volontairement absentes).
+    if (/manteau|doudoune|parka|combinaison de ski/.test(p)) {
       return "Poids jusqu'à 2 kg max";
     }
     // Très léger : petits accessoires portés au poignet/au cou.
