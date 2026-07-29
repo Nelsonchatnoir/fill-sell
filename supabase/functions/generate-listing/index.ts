@@ -86,7 +86,13 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
     // champ, OBLIGATOIRE là-bas, restait vide.
     // Aucune liste fermée pour matiere/couleur : les listes Beebs n'ont pas été
     // crawlées, le handler matche en fuzzy.
-    system: `Tu es un revendeur sur Beebs. Ton: court, punchy, 2-3 lignes max, quelques emojis 🔥, style jeune. Infère taille, état, marque, matière et couleur depuis le contexte. Pour "genre" (rayon Beebs, il résout la catégorie): pour TOUT article de mode (vêtement, chaussure, accessoire), réponds TOUJOURS une valeur en tranchant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle): "Femme" ou "Homme" pour un article adulte, "Fille", "Garçon" ou "Bébé" pour un article enfant. Beebs n'a NI rayon Enfant NI rayon Mixte: ne réponds jamais ces valeurs — pour un article enfant unisexe choisis "Bébé" si taille < 3 ans, sinon tranche Fille/Garçon au moindre signal, et null en dernier recours. null aussi pour les objets hors mode. Pour "matiere", donne la matière DOMINANTE en un seul mot courant (ex: "Plastique", "Coton", "Bois", "Métal"), jamais de valeur composée; null si non déductible. Pour "couleur", donne la couleur DOMINANTE en un seul mot courant (ex: "Noir", "Rouge"), jamais deux couleurs; null si non déductible. Pour "age" (tranche d'âge, champ OBLIGATOIRE sur les jouets et figurines), choisis EXACTEMENT une valeur de cette liste fermée (libellés réels du formulaire Beebs) — jamais de texte libre ("10 ans et plus" est invalide, la liste dit "8 ans - 12 ans"): 0-6 mois|6-12 mois|12-24 mois|2 ans - 3 ans|3 ans - 4 ans|4 ans - 6 ans|6 ans - 8 ans|8 ans - 12 ans|12 ans - 16 ans|16 ans et +. Si l'article n'a pas d'âge cible (vêtement adulte, accessoire, objet du quotidien), utilise null. Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Beebs, avec la virgule — "Satisfaisant" et "État correct" n'existent PAS chez Beebs, le plus bas est "État moyen"). Pour "taille", ne devine JAMAIS : donne une taille SEULEMENT si elle est lisible ou déductible du contexte ; si aucune taille n'est déductible, null — jamais de "M" par défaut. Pour un article ENFANT (genre Fille/Garçon/Bébé), la taille utilise EXCLUSIVEMENT le référentiel enfant : "Prématuré", "Naissance", "N mois" (1, 3, 6, 9, 12, 18, 24 ou 36) ou "N ans" (2 à 16) pour un vêtement, "EU N" (15 à 41) pour une pointure — JAMAIS un nombre nu ("3" est invalide, écris "3 ans" ; "31" est invalide, écris "EU 31"), jamais une taille lettre adulte (XS-XXL) sur un enfant. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Si un champ ne s'applique pas, utilise null. Pour "etat" toujours : une étiquette visible ou mentionnée ne suffit JAMAIS à conclure "Neuf, avec étiquette" ni "Neuf, sans étiquette" — une étiquette de marque, de taille ou de composition reste cousue sur un article porté ; réserve ces valeurs au cas où le contexte affirme EXPLICITEMENT que l'article est neuf, jamais porté. En l'absence de signal fort et non ambigu d'un article neuf, choisis "Très bon état". INTERDIT dans "title" et "description", sans AUCUNE exception : le prix de vente (n'écris jamais de montant, même si le contexte article en mentionne un — le prix a son champ dédié sur Beebs) et la retranscription des chiffres d'une étiquette photographiée ou décrite (codes taille étrangers type EUR/USA/MEX, prix imprimé). Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|<enfant: Prématuré|Naissance|N mois|N ans|EU N>|null","etat":"Neuf, avec étiquette|Neuf, sans étiquette|Très bon état|Bon état|État moyen","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|null","matiere":"...ou null","couleur":"...ou null","age":"<valeur de la liste>|null"}}`,
+    // « 2-3 lignes max » RETIRÉ le 2026-07-29 : cette borne contredisait
+    // frontalement la cible de rédaction (350-700 caractères) posée par
+    // redactionDirective — deux consignes opposées dans le même system prompt,
+    // le modèle aurait suivi la plus restrictive. Le ton punchy, lui, reste :
+    // c'est le registre Beebs, ce sont les phrases qui sont courtes, pas la
+    // description.
+    system: `Tu es un revendeur sur Beebs. Ton: punchy et direct, phrases courtes, quelques emojis 🔥, style jeune. Infère taille, état, marque, matière et couleur depuis le contexte. Pour "genre" (rayon Beebs, il résout la catégorie): pour TOUT article de mode (vêtement, chaussure, accessoire), réponds TOUJOURS une valeur en tranchant dès le moindre signal (taille genrée, coupe, style, rayon habituel du modèle): "Femme" ou "Homme" pour un article adulte, "Fille", "Garçon" ou "Bébé" pour un article enfant. Beebs n'a NI rayon Enfant NI rayon Mixte: ne réponds jamais ces valeurs — pour un article enfant unisexe choisis "Bébé" si taille < 3 ans, sinon tranche Fille/Garçon au moindre signal, et null en dernier recours. null aussi pour les objets hors mode. Pour "matiere", donne la matière DOMINANTE en un seul mot courant (ex: "Plastique", "Coton", "Bois", "Métal"), jamais de valeur composée; null si non déductible. Pour "couleur", donne la couleur DOMINANTE en un seul mot courant (ex: "Noir", "Rouge"), jamais deux couleurs; null si non déductible. Pour "age" (tranche d'âge, champ OBLIGATOIRE sur les jouets et figurines), choisis EXACTEMENT une valeur de cette liste fermée (libellés réels du formulaire Beebs) — jamais de texte libre ("10 ans et plus" est invalide, la liste dit "8 ans - 12 ans"): 0-6 mois|6-12 mois|12-24 mois|2 ans - 3 ans|3 ans - 4 ans|4 ans - 6 ans|6 ans - 8 ans|8 ans - 12 ans|12 ans - 16 ans|16 ans et +. Si l'article n'a pas d'âge cible (vêtement adulte, accessoire, objet du quotidien), utilise null. Pour "etat", choisis EXACTEMENT une valeur de la liste (libellés réels du formulaire Beebs, avec la virgule — "Satisfaisant" et "État correct" n'existent PAS chez Beebs, le plus bas est "État moyen"). Pour "taille", ne devine JAMAIS : donne une taille SEULEMENT si elle est lisible ou déductible du contexte ; si aucune taille n'est déductible, null — jamais de "M" par défaut. Pour un article ENFANT (genre Fille/Garçon/Bébé), la taille utilise EXCLUSIVEMENT le référentiel enfant : "Prématuré", "Naissance", "N mois" (1, 3, 6, 9, 12, 18, 24 ou 36) ou "N ans" (2 à 16) pour un vêtement, "EU N" (15 à 41) pour une pointure — JAMAIS un nombre nu ("3" est invalide, écris "3 ans" ; "31" est invalide, écris "EU 31"), jamais une taille lettre adulte (XS-XXL) sur un enfant. Pour "marque", donne la marque exacte si elle est déductible du contexte, sinon null (ne devine pas). Si un champ ne s'applique pas, utilise null. Pour "etat" toujours : une étiquette visible ou mentionnée ne suffit JAMAIS à conclure "Neuf, avec étiquette" ni "Neuf, sans étiquette" — une étiquette de marque, de taille ou de composition reste cousue sur un article porté ; réserve ces valeurs au cas où le contexte affirme EXPLICITEMENT que l'article est neuf, jamais porté. En l'absence de signal fort et non ambigu d'un article neuf, choisis "Très bon état". INTERDIT dans "title" et "description", sans AUCUNE exception : le prix de vente (n'écris jamais de montant, même si le contexte article en mentionne un — le prix a son champ dédié sur Beebs) et la retranscription des chiffres d'une étiquette photographiée ou décrite (codes taille étrangers type EUR/USA/MEX, prix imprimé). Retourne UNIQUEMENT du JSON valide: {"title":"...","description":"...","platform_fields":{"taille":"XS|S|M|L|XL|XXL|Unique|<enfant: Prématuré|Naissance|N mois|N ans|EU N>|null","etat":"Neuf, avec étiquette|Neuf, sans étiquette|Très bon état|Bon état|État moyen","marque":"...ou null","genre":"Femme|Homme|Fille|Garçon|Bébé|null","matiere":"...ou null","couleur":"...ou null","age":"<valeur de la liste>|null"}}`,
   },
   ebay: {
     lang: "en",
@@ -122,6 +128,149 @@ const LANG_DIRECTIVE: Record<string, string> = {
   fr: `LANGUE DE SORTIE : "title" et "description" doivent être rédigés EN FRANÇAIS, quelle que soit la langue du contexte article reçu — un contexte rédigé en anglais ne change RIEN, traduis-le. Les valeurs de platform_fields gardent les libellés exacts imposés ci-dessus.`,
   en: `OUTPUT LANGUAGE: "title" and "description" must be written IN ENGLISH, whatever the language of the item context you receive — a French context changes NOTHING, translate it. platform_fields values keep the exact French labels required above.`,
 };
+
+// ── Version du prompt de rédaction (2026-07-29) ─────────────────────────────
+// Sert de repère dans les logs pour savoir quelle consigne a produit une
+// annonce donnée : le NUMÉRO DE VERSION Supabase (v65, v66…) ne dit rien du
+// contenu du prompt, il s'incrémente à chaque deploy même sans changement de
+// texte. À bumper à CHAQUE modification de PLATFORM_CFG.system, de
+// REDACTION_DIRECTIVE ou de PLATFORM_LIMITS.
+const VERSION_PROMPT = "2026-07-29b";
+
+// ── Limites de caractères par plateforme (2026-07-29) ───────────────────────
+// PROVENANCE de chaque chiffre — à mettre à jour avec la source, jamais « de
+// mémoire » :
+//  · vinted   titre 100 / description 2000 — documentation OFFICIELLE Vinted Pro
+//    (pro-docs.svc.vinted.com, schéma ItemProperties : « Must be between 5 and
+//    100 characters » / « between 5 and 2000 characters », endpoints
+//    CreateItems + UpdateItems). Chiffre le plus fiable des quatre.
+//  · ebay     titre 80 — limite dure eBay, refus à la saisie au-delà ; déjà
+//    appliquée côté extension (ebay.js l.467, `slice(0, 80)`). Description :
+//    eBay accepte du HTML jusqu'à 500 000 caractères, donc AUCUNE contrainte
+//    réelle — on plafonne à 2000 par prudence rédactionnelle, pas par limite.
+//  · leboncoin titre 200 — RELEVÉ DOM RÉEL sur le formulaire de dépôt
+//    (docs/leboncoin-form-survey.md, 05/07 : `input[name="subject"]`, 200 car.
+//    max). Description : pas de maxlength relevé sur `textarea#body` ; les
+//    règles publiques Leboncoin parlent de 10 000 caractères pour l'annonce —
+//    on plafonne à 3000, très en dessous.
+//  · beebs    AUCUNE source : ni documentation publique, ni maxlength relevé.
+//    Valeurs PRUDENTES, calées sur ce qui passe déjà en prod (description la
+//    plus longue publiée : 861 caractères, sans incident). À remplacer par un
+//    relevé DOM du formulaire Beebs dès qu'une session le permet.
+// Ces plafonds ne sont PAS la cible de rédaction (cf. `cible` ci-dessous) :
+// ce sont des filets. Le tronquage serveur (clampToWord) ne doit jamais avoir
+// à agir si le modèle respecte sa cible.
+const PLATFORM_LIMITS: Record<string, { titre: number; desc: number; cible: [number, number]; hashtags: boolean }> = {
+  // `cible` = fourchette INDICATIVE de longueur pour la description.
+  // ABAISSÉE le 29/07 (arbitrage Nico) : les cibles hautes du premier jet
+  // (500-1000 sur Vinted, 450-900 ailleurs) poussaient le modèle à broder pour
+  // atteindre le compte — c'est exactement comme ça qu'on fabrique une
+  // provenance ou une garantie de fonctionnement inventées. Mieux vaut COURT
+  // et vrai : une cible qu'on n'atteint pas ne coûte rien, une phrase inventée
+  // coûte un litige acheteur. Le prompt dit maintenant explicitement qu'un
+  // texte de 200 caractères entièrement vrai est un bon texte.
+  // `hashtags` = arbitrage produit de Nico (29/07) : OUI sur les places de
+  // marché mode/communauté (Vinted, Beebs), NON sur les petites annonces
+  // généralistes et sur eBay, où ça fait spam.
+  vinted:    { titre: 100, desc: 2000, cible: [300, 650], hashtags: true },
+  beebs:     { titre: 100, desc: 1500, cible: [250, 500], hashtags: true },
+  leboncoin: { titre: 200, desc: 3000, cible: [300, 600], hashtags: false },
+  ebay:      { titre: 80,  desc: 2000, cible: [300, 600], hashtags: false },
+  vestiaire: { titre: 100, desc: 2000, cible: [300, 600], hashtags: false },
+};
+
+// ── Consigne de RÉDACTION, commune aux 5 plateformes (2026-07-29) ───────────
+// Avant : les prompts ne disaient RIEN de la structure ni de la longueur d'une
+// description — d'où des textes de 2 lignes, génériques, interchangeables
+// d'un article à l'autre (moyennes en base : 232 car. sur Leboncoin, 324 sur
+// Beebs, 327 sur eBay).
+// Le point dur n'est pas « écrire plus », c'est « écrire plus SANS inventer » :
+// cette fonction ne voit AUCUNE photo, son seul contexte est du texte (titre,
+// type, description Lens, champs canoniques confirmés). Étoffer sans garde-fou
+// produirait exactement ce qu'une annonce ne doit pas contenir — une matière,
+// une mesure, une provenance ou une année plausibles mais fausses, c'est-à-dire
+// un litige acheteur. D'où un garde-fou formulé en INTERDICTION EXPLICITE
+// plutôt qu'en encouragement à la prudence.
+//
+// RÉVISION 2026-07-29b, après lecture des sorties réelles du premier jet :
+//  · le garde-fou était placé APRÈS la structure — le modèle avait déjà rempli
+//    ses 5 points avant de lire l'interdiction. Il passe DEVANT : on dit ce
+//    qu'on n'a pas le droit d'écrire avant de dire quoi écrire.
+//  · la clause « ce pour quoi la marque est connue » (point 2) est SUPPRIMÉE :
+//    c'était une invitation ouverte à sortir du contexte, et elle a produit
+//    exactement ça (Patagonia → « la marque outdoor de référence »).
+//  · trois interdits sont désormais NOMMÉS, parce qu'ils sont apparus dans les
+//    sorties : provenance, garantie de fonctionnement (Casio → « fonctionnement
+//    garantis », alors que la fonction ne voit aucune photo et n'a testé rien),
+//    superlatif de notoriété. Un interdit générique ne suffit pas : le modèle
+//    ne range pas spontanément « de référence » dans « inventer un fait ».
+//  · les cibles de longueur sont abaissées (cf. PLATFORM_LIMITS) et présentées
+//    comme indicatives : on ne pousse plus à écrire long.
+//  · hashtags : l'échappatoire « pas de hashtag si tu n'en as pas 3 de
+//    légitimes » est RETIRÉE — elle expliquait le 0 hashtag sur la casquette
+//    Volcom (contexte pauvre → le modèle a préféré n'en mettre aucun, alors
+//    que marque + type + couleur en fournissaient trois sans rien affirmer).
+function redactionDirective(platform: string, lang: string): string {
+  const lim = PLATFORM_LIMITS[platform];
+  if (!lim) return "";
+  const [bas, haut] = lim.cible;
+  if (lang === "en") {
+    const tagsEn = lim.hashtags
+      ? `HASHTAGS — MANDATORY on this platform: always end the description with 3 to 6 hashtags on a SEPARATE FINAL LINE, written #keyword with no space and no accent ("#zara", "#denimjacket"). They are not extra claims: build them only from what you already wrote — the brand, the item type, the colour, the department (women/men/girls/boys). Those always give you three, so there is NO case where you leave them out. Never a hashtag asserting something absent from the context (no "#vintage", "#leather", "#new" without a source).`
+      : `HASHTAGS — NONE on this platform: no hashtag, anywhere in the description. Buyers here do not search that way and it reads like spam.`;
+    return `
+WRITING THE DESCRIPTION.
+ABSOLUTE GUARD-RAIL — READ THIS BEFORE WRITING ANYTHING. Every single fact you write must come from the item context or the confirmed fields you were given. Nothing else exists: if it is not in the context or the fields, it does not exist and you say nothing about it.
+It is FORBIDDEN to invent, infer or imply:
+- a material or composition;
+- any measurement whatsoever (cm, size, weight);
+- PROVENANCE: country of manufacture, "made in", origin, where or when it was bought;
+- ANY WORKING GUARANTEE: never state or suggest that the item works, functions, has been tested, is authentic, is complete or is free of defects — not even for electronics, not even in passing;
+- ANY REPUTATION SUPERLATIVE: "a must-have", "the reference", "iconic", "cult", "legendary", "timeless", "renowned", and more generally any sentence about the brand's reputation, standing, expertise or what it is known for;
+- a year or era, a collection name, a retail price, a defect, a care instruction.
+Never write "probably", "certainly" or "must be" to smuggle in a guess. A SHORTER description always beats an invented sentence: when in doubt, cut.
+STRUCTURE — flowing sentences, no bullet lists, no headings. Work through these points in order, SKIPPING without hesitation every point the context gives you nothing for:
+1. A hook: what the item IS, in one concrete sentence.
+2. The detail that sets THIS piece apart — model, colourway, finish, marking — exactly as it appears in the context. Nothing in the context: skip this point.
+3. How to wear or use it: one or two concrete pairings/occasions. Skip entirely for non-fashion items.
+4. Cut, fit and material ONLY when the context states them; condition, in the words the context uses.
+5. One short closing line on shipping/handover.
+LENGTH — ${bas} to ${haut} characters WHEN the material allows it, and no further: never pad, never stretch to reach a number. A 200-character description that is entirely true is a GOOD description. Hard cap: ${lim.desc} characters; the title must never exceed ${lim.titre} characters.
+${tagsEn}`;
+  }
+  const hashtagBloc = lim.hashtags
+    ? `HASHTAGS — OBLIGATOIRES sur cette plateforme : termine TOUJOURS la description par 3 à 6 hashtags, sur une DERNIÈRE LIGNE séparée, format #motclé collé sans espace ni accent (« #zara », « #vestemijeans »). Ce ne sont pas des affirmations de plus : construis-les uniquement à partir de ce que tu as DÉJÀ écrit — la marque, le type d'article, la couleur, le rayon (femme/homme/fille/garçon). Ces quatre-là en fournissent toujours trois, donc il n'existe AUCUN cas où tu n'en mets pas. Jamais un hashtag qui affirme quelque chose d'absent du contexte (pas de « #vintage », « #cuir » ni « #neuf » sans source).`
+    : `HASHTAGS — NON sur cette plateforme : aucun hashtag, nulle part dans la description. Les acheteurs n'y cherchent pas comme ça et ça fait annonce spam.`;
+  return `
+RÉDACTION DE LA DESCRIPTION.
+GARDE-FOU ABSOLU — À LIRE AVANT D'ÉCRIRE QUOI QUE CE SOIT. Chaque fait écrit doit venir du contexte article ou des champs confirmés qu'on t'a donnés. Rien d'autre n'existe : si l'information n'est pas dans les photos décrites ou dans les champs, elle n'existe pas et tu n'en parles pas.
+Il est INTERDIT d'inventer, de déduire ou de laisser entendre :
+- une matière, une composition ;
+- une mesure quelle qu'elle soit (cm, taille, poids) ;
+- une PROVENANCE : pays de fabrication, « made in », origine, lieu ou date d'achat ;
+- TOUTE GARANTIE DE FONCTIONNEMENT : n'écris ni ne suggère jamais que l'article marche, fonctionne, a été testé, est authentique, est complet ou est sans défaut — même pour un objet électronique, même en passant ;
+- TOUT SUPERLATIF DE NOTORIÉTÉ : « incontournable », « de référence », « iconique », « culte », « légendaire », « intemporel », « réputé », et plus généralement toute phrase sur la réputation, le rang, le savoir-faire de la marque ou ce pour quoi elle est connue ;
+- une année ou une époque, un nom de collection, un prix d'origine, un défaut, une consigne d'entretien.
+N'écris jamais « probablement », « sans doute » ni « doit être » pour faire passer une supposition. Une description plus COURTE vaut toujours mieux qu'une phrase inventée : au moindre doute, coupe.
+STRUCTURE — phrases suivies, sans liste à puces ni titres de section. Traite ces points dans cet ordre, en SAUTANT sans hésiter tout point pour lequel le contexte ne te donne rien :
+1. Une accroche : ce qu'est l'article, en une phrase concrète.
+2. Le détail qui distingue CETTE pièce — modèle, coloris, finition, marquage — tel qu'il apparaît dans le contexte. Rien dans le contexte : saute ce point.
+3. Comment la porter : une ou deux associations ou occasions concrètes. À sauter entièrement pour un objet hors mode (électronique, maison, jouet…).
+4. Coupe, tombé et matière SEULEMENT si le contexte les donne ; l'état, avec les mots du contexte.
+5. Une courte ligne de fin sur l'envoi ou la remise.
+LONGUEUR — ${bas} à ${haut} caractères QUAND la matière le permet, pas davantage : n'allonge jamais, ne remplis jamais pour atteindre un nombre. Un texte de 200 caractères entièrement vrai est un BON texte. Plafond dur : ${lim.desc} caractères ; le titre ne dépasse JAMAIS ${lim.titre} caractères.
+${hashtagBloc}`;
+}
+
+// Tronquage de sécurité au dernier mot entier (jamais au milieu d'un mot, et
+// jamais au milieu d'un hashtag : on coupe sur une frontière d'espace).
+function clampToWord(s: string, max: number): string {
+  const v = String(s ?? "");
+  if (v.length <= max) return v;
+  const coupe = v.slice(0, max);
+  const dernierEspace = coupe.lastIndexOf(" ");
+  return (dernierEspace > max * 0.6 ? coupe.slice(0, dernierEspace) : coupe).trimEnd();
+}
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -769,6 +918,7 @@ serve(async (req) => {
       ...canonicalCtx,
     ].filter(Boolean).join("\n");
 
+    console.log(`[generate-listing] rédaction prompt ${VERSION_PROMPT} — plateformes: ${(platforms as string[]).join(", ")}`);
     const fallbackTitle = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "Article";
     const platformListings: Record<string, { title: string; description: string; platform_fields: Record<string, string | null> }> = {};
 
@@ -794,8 +944,16 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               model: "claude-haiku-4-5-20251001",
-              max_tokens: 900,
-              system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}`,
+              // 1400 (2026-07-29) : 900 tenait juste pour des descriptions de
+              // ~300 caractères ; les cibles montent à 300-650 caractères selon
+              // la plateforme, plus le JSON et platform_fields. Un `max_tokens`
+              // trop court coupe la réponse EN PLEIN JSON → parse en erreur →
+              // repli titre brut, description vide. Marge volontairement large,
+              // et conservée après l'abaissement des cibles (29/07b) : on ne
+              // paie que les tokens réellement produits, un plafond haut ne
+              // coûte rien alors qu'un plafond juste casse la réponse.
+              max_tokens: 1400,
+              system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`,
               messages: [{ role: "user", content: userMsg }],
             }),
           });
@@ -809,9 +967,19 @@ serve(async (req) => {
             if (firstBrace !== -1 && lastBrace > firstBrace) {
               try {
                 const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+                // Filet de longueur (2026-07-29) : le modèle a sa cible dans le
+                // prompt, mais une consigne n'est pas une garantie — et un titre
+                // de 105 caractères se fait refuser par Vinted, pas tronquer.
+                // Plafonds : cf. PLATFORM_LIMITS (chaque chiffre y est sourcé).
+                const lim = PLATFORM_LIMITS[platform];
+                const brutTitle = String(parsed.title ?? fallbackTitle);
+                const brutDesc = String(parsed.description ?? "");
+                if (lim && (brutTitle.length > lim.titre || brutDesc.length > lim.desc)) {
+                  console.warn(`[generate-listing] ${platform} hors gabarit (titre ${brutTitle.length}/${lim.titre}, desc ${brutDesc.length}/${lim.desc}) — tronqué, prompt ${VERSION_PROMPT}`);
+                }
                 platformListings[platform] = {
-                  title: String(parsed.title ?? fallbackTitle),
-                  description: String(parsed.description ?? ""),
+                  title: lim ? clampToWord(brutTitle, lim.titre) : brutTitle,
+                  description: lim ? clampToWord(brutDesc, lim.desc) : brutDesc,
                   platform_fields: parsed.platform_fields ?? {},
                 };
               } catch (parseErr) {
