@@ -43,5 +43,11 @@ export function computeRemovalInfo(jobsAll) {
     else if (del.status === "pending" || del.status === "processing") removalState[p] = "removing";
   }
   const publishedActive = published.filter(p => removalState[p] !== "removed");
-  return { published, removalState, publishedActive, latestPubByPlatform };
+  // Jobs publish encore en file (pending/processing) : la plateforme est en
+  // COURS de publication. La garde serveur already_published refuse déjà un
+  // nouveau job dans cet état — ce champ permet au stepper de le dire AVANT le
+  // tunnel. Champ séparé de publishedActive : les pastilles du Stock, elles,
+  // ne montrent que le réellement en ligne.
+  const queued = [...new Set(jobs.filter(j => j.status === "pending" || j.status === "processing").map(j => j.platform))];
+  return { published, removalState, publishedActive, queued, latestPubByPlatform };
 }

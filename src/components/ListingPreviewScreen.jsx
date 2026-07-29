@@ -1068,7 +1068,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, publishedSet, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
@@ -1454,13 +1454,20 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           // seule action possible sur cette plateforme est le retrait, depuis
           // la carte du Stock.
           const dejaEnLigne = publishedSet?.has(p) ?? false;
-          const disabled = support !== "supported" || dejaEnLigne;
+          // Job publish encore en file (pending/processing) : même verrou que
+          // « déjà en ligne » — la garde serveur already_published refuserait le
+          // job de toute façon — mais libellé DISTINCT : l'annonce n'est pas
+          // encore en ligne, dire « en ligne » serait mentir sur l'état.
+          const enCours = !dejaEnLigne && (queuedSet?.has(p) ?? false);
+          const disabled = support !== "supported" || dejaEnLigne || enCours;
           return (
             <button
               key={p}
               disabled={disabled}
               title={dejaEnLigne
                 ? (lang === 'en' ? `Already live on ${PLATFORM_LABELS[p]}` : `Déjà en ligne sur ${PLATFORM_LABELS[p]}`)
+                : enCours
+                ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
                 : disabled
                 ? t(support === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])
                 : undefined}
@@ -1489,15 +1496,20 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                   · {lang === 'en' ? 'live' : 'en ligne'}
                 </span>
               )}
+              {enCours && (
+                <span style={{ fontSize:11, fontWeight:600 }}>
+                  · {lang === 'en' ? 'in progress' : 'en cours'}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
-      {PLATFORMS_DEFAULT.filter(p => publishedSet?.has(p)).length > 0 && (
+      {PLATFORMS_DEFAULT.filter(p => (publishedSet?.has(p) || queuedSet?.has(p))).length > 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {lang === 'en'
-            ? "Platforms already live stay untouched — only the remaining ones will be published."
-            : "Les plateformes déjà en ligne ne sont pas retouchées — seules les manquantes seront publiées."}
+            ? "Platforms already live or being published stay untouched — only the remaining ones will be published."
+            : "Les plateformes déjà en ligne ou en cours de publication ne sont pas retouchées — seules les manquantes seront publiées."}
         </p>
       )}
       {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
@@ -2736,10 +2748,16 @@ export default function ListingPreviewScreen({
   // computeRemovalInfo), et la publication reste verrouillée tant que cette
   // lecture n'a pas répondu (cf. publishedStateLoaded dans ctaDisabled).
   const [fetchedPublished, setFetchedPublished] = useState(null); // null = lecture pas encore aboutie
+  // Plateformes avec un job publish encore en file (pending/processing) pour la
+  // même ligne : verrouillées comme les publiées — le RPC les refuserait de
+  // toute façon (already_published bloque aussi ces statuts), autant griser le
+  // chip plutôt que laisser refaire tout le tunnel pour un refus au bout.
+  const [fetchedQueued, setFetchedQueued] = useState([]);
   useEffect(() => {
-    if (!invId) { setFetchedPublished([]); return; } // article hors stock : rien à relire
+    if (!invId) { setFetchedPublished([]); setFetchedQueued([]); return; } // article hors stock : rien à relire
     let cancelled = false;
     setFetchedPublished(null);
+    setFetchedQueued([]);
     (async () => {
       const { data, error } = await supabase
         .from("cross_post_jobs")
@@ -2750,7 +2768,9 @@ export default function ListingPreviewScreen({
       // Lecture en erreur : on débloque quand même (liste vide) — la garde du
       // RPC spend_coins_and_publish (already_published) reste le filet de
       // vérité, on ne condamne pas la publication sur un aléa réseau.
-      setFetchedPublished(error || !data ? [] : computeRemovalInfo(data).publishedActive);
+      const info = error || !data ? null : computeRemovalInfo(data);
+      setFetchedPublished(info?.publishedActive ?? []);
+      setFetchedQueued(info?.queued ?? []);
     })();
     return () => { cancelled = true; };
   }, [invId, supabase]);
@@ -2763,11 +2783,21 @@ export default function ListingPreviewScreen({
   const alreadyPublishedKey = [...alreadyPublished, ...(fetchedPublished ?? [])].sort().join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const publishedSet = useMemo(() => new Set([...alreadyPublished, ...(fetchedPublished ?? [])]), [alreadyPublishedKey]);
+  // En file (pending/processing) : set SÉPARÉ de publishedSet — même verrou,
+  // mais le libellé du chip dit « en cours », pas « en ligne » : tant que
+  // l'extension n'a pas traité le job, l'annonce n'existe pas encore.
+  const queuedKey = (fetchedQueued ?? []).slice().sort().join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const queuedSet = useMemo(() => new Set(fetchedQueued ?? []), [queuedKey]);
+  // Union bloquante : tout ce qui interdit un nouveau job publish sur la ligne.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet]), [alreadyPublishedKey, queuedKey]);
 
   // Step 3 — sélection plateformes (chips) + publication
-  // Les plateformes déjà en ligne ne sont JAMAIS pré-cochées — y compris à la
-  // reprise d'un brouillon (une publication a pu aboutir entre-temps).
-  const [selected, setSelected]         = useState(() => new Set((draft?.selected ?? PLATFORMS_DEFAULT).filter(p => !publishedSet.has(p))));
+  // Les plateformes déjà en ligne ou en file ne sont JAMAIS pré-cochées — y
+  // compris à la reprise d'un brouillon (une publication a pu aboutir ou
+  // partir en file entre-temps).
+  const [selected, setSelected]         = useState(() => new Set((draft?.selected ?? PLATFORMS_DEFAULT).filter(p => !lockedSet.has(p))));
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
@@ -2816,15 +2846,16 @@ export default function ListingPreviewScreen({
       return next.size === prev.size ? prev : next;
     });
   }, [platformSupport]);
-  // Même filet pour les plateformes déjà en ligne : si l'une d'elles bascule en
-  // "published" pendant que le stepper est ouvert, elle sort de la sélection
-  // séance tenante. Aucun job ne peut partir vers une annonce existante.
+  // Même filet pour les plateformes déjà en ligne OU en file : si l'une d'elles
+  // bascule en "published" (ou si la relecture révèle un job pending) pendant
+  // que le stepper est ouvert, elle sort de la sélection séance tenante. Aucun
+  // job ne peut partir vers une annonce existante ou déjà en file.
   useEffect(() => {
     setSelected(prev => {
-      const next = new Set([...prev].filter(p => !publishedSet.has(p)));
+      const next = new Set([...prev].filter(p => !lockedSet.has(p)));
       return next.size === prev.size ? prev : next;
     });
-  }, [publishedSet]);
+  }, [lockedSet]);
 
   // Modale de conversion (solde de Pépites insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -5080,6 +5111,7 @@ export default function ListingPreviewScreen({
             onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
             publishedSet={publishedSet}
+            queuedSet={queuedSet}
             lang={lang}
             onAnalyze={handleAnalyzePhotos}
             analyzing={analyzing}
