@@ -34,6 +34,33 @@ const config: CapacitorConfig = {
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
+    // ── Capgo live updates (2026-07-29) ─────────────────────────────────────
+    // AUCUN SECRET ICI, et il n'en faut aucun : au runtime l'app s'identifie
+    // par son appId auprès de plugin.capgo.app (updateUrl par défaut, laissé
+    // tel quel). La clé API Capgo ne sert QU'AU CLI, à l'upload d'un bundle,
+    // côté CI — jamais embarquée dans le binaire.
+    CapacitorUpdater: {
+      // 'atBackground' = le défaut du plugin, et le moins brutal : le bundle
+      // est téléchargé en tâche de fond, puis appliqué au PROCHAIN passage en
+      // arrière-plan. L'utilisateur ne voit jamais l'app se recharger sous ses
+      // doigts en pleine publication. ('always' appliquerait immédiatement à
+      // chaque retour au premier plan — à proscrire ici : un cross-post en
+      // cours ne doit pas être interrompu par un rechargement de webview.)
+      autoUpdate: 'atBackground',
+      // Le canal doit EXISTER sous ce nom exact côté Capgo, sinon le serveur
+      // ne renvoie jamais de bundle et les updates ne partent tout simplement
+      // pas — en silence, sans erreur visible côté app.
+      defaultChannel: 'production',
+      // Fenêtre de rollback : délai laissé au JS pour appeler notifyAppReady
+      // (src/main.jsx, 1re instruction). Au-delà, le natif considère le bundle
+      // comme mort-né et revient au précédent. 10 s = le défaut, largement
+      // suffisant ici puisque l'acquittement part avant tout appel réseau.
+      appReadyTimeout: 10000,
+      // Une mise à jour NATIVE (nouveau binaire App Store / Play) purge les
+      // bundles OTA téléchargés. C'est le comportement voulu : le code livré
+      // par le store fait toujours autorité sur un OTA plus ancien.
+      resetWhenUpdate: true,
+    },
   },
 };
 

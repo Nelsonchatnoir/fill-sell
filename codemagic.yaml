@@ -35,6 +35,20 @@ workflows:
           </dict>
           </plist>
           EOF
+      # ⚠️ CETTE ÉTAPE ÉCRASE le fichier que `npx cap sync ios` vient de
+      # générer. Tout plugin ajouté au projet DOIT donc être répercuté ICI À LA
+      # MAIN, sinon il est absent du binaire iOS alors que tout est correct
+      # côté sources — panne silencieuse, invisible en local.
+      # Le seul contenu qui justifie l'écrasement est AppleSignInPlugin
+      # (plugin natif maison, ios/App/App/AppleSignInPlugin.swift, que cap sync
+      # ne peut pas connaître).
+      # DETTE CONNUE (2026-07-29) : le bloc SplashScreen ci-dessous a dérivé de
+      # capacitor.config.ts (backgroundColor #1D9E75 ici, #10201B en source
+      # depuis le 26/07 ; launchAutoHide / launchFadeOutDuration /
+      # androidScaleType absents). NON corrigé volontairement — ce serait un
+      # changement visuel non demandé dans le build soumis ce soir. À traiter à
+      # part, idéalement en remplaçant cet écrasement par un patch jq du
+      # fichier généré.
       - name: Fix capacitor.config.json
         script: |
           cat > ios/App/App/capacitor.config.json << 'EOF'
@@ -48,6 +62,12 @@ workflows:
                 "launchShowDuration": 2000,
                 "backgroundColor": "#1D9E75",
                 "showSpinner": false
+              },
+              "CapacitorUpdater": {
+                "autoUpdate": "atBackground",
+                "defaultChannel": "production",
+                "appReadyTimeout": 10000,
+                "resetWhenUpdate": true
               }
             },
             "packageClassList": [
@@ -56,6 +76,7 @@ workflows:
               "CAPCameraPlugin",
               "CameraPlugin",
               "SplashScreenPlugin",
+              "CapacitorUpdaterPlugin",
               "NativePurchasesPlugin",
               "AppleSignInPlugin"
             ]
@@ -65,6 +86,17 @@ workflows:
         script: |
           echo "=== capacitor.config.json content ==="
           cat ios/App/App/capacitor.config.json
+          # Garde (2026-07-29) : l'étape précédente écrase un fichier généré.
+          # Un plugin oublié dans packageClassList ne casse RIEN au build — il
+          # produit un binaire où le plugin n'existe pas, constat repoussé à
+          # TestFlight. On échoue ici, tout de suite, plutôt que là-bas.
+          for classe in CapacitorUpdaterPlugin NativePurchasesPlugin AppleSignInPlugin; do
+            if ! grep -q "\"$classe\"" ios/App/App/capacitor.config.json; then
+              echo "ERREUR : $classe absent de packageClassList — plugin non embarqué dans le binaire iOS"
+              exit 1
+            fi
+          done
+          echo "packageClassList : plugins critiques présents"
       - name: Set build number
         script: |
           # 2.3 = la soumission SUIVANTE (la review 2.2 est en cours sur ASC —
@@ -102,6 +134,38 @@ workflows:
             --scheme App \
             --config Release \
             --export-options-plist /tmp/ExportOptions.plist
+      # ══════════════════════════════════════════════════════════════════════
+      # CAPGO — UPLOAD DU BUNDLE OTA : DÉSACTIVÉ (2026-07-29)
+      # ══════════════════════════════════════════════════════════════════════
+      # NE PAS activer tant que le binaire CONTENANT le runtime Capgo n'est pas
+      # réellement en production sur l'App Store. Avant ça, un bundle uploadé
+      # n'est servi à personne : le parc installé tourne sur des binaires sans
+      # le plugin, qui n'interrogent jamais Capgo.
+      #
+      # À faire avant de décommenter :
+      #   1. créer CAPGO_TOKEN dans un groupe de variables CHIFFRÉ Codemagic
+      #      (Settings > Environment variables) — JAMAIS en dur dans ce fichier ;
+      #   2. déclarer le groupe sous environment: groups: [capgo] ;
+      #   3. créer le canal « production » dans le dashboard Capgo — il doit
+      #      correspondre exactement à defaultChannel de capacitor.config.ts,
+      #      sinon le serveur ne renvoie jamais de bundle, sans erreur visible ;
+      #   4. VÉRIFIER LA VERSION DU BUNDLE. Le CLI la prend par défaut dans
+      #      package.json ("version": "2.4" aujourd'hui) alors que ce workflow
+      #      fige la marketing version iOS à 2.3 (étape « Set build number »).
+      #      Capgo compare la version du bundle à celle installée : un bundle
+      #      numéroté plus bas que le natif n'est pas servi. Aligner les deux,
+      #      ou forcer explicitement avec --bundle <version>.
+      #
+      # - name: Upload Capgo bundle
+      #   script: |
+      #     npx @capgo/cli@latest bundle upload app.fillsell.app \
+      #       --apikey "$CAPGO_TOKEN" \
+      #       --path dist \
+      #       --channel production \
+      #       --comment "$CM_COMMIT"
+      #   # Le CLI refuse l'upload s'il ne trouve pas notifyAppReady() dans les
+      #   # sources (garde intégrée). Si ça arrive, c'est une régression de
+      #   # src/main.jsx — corriger, surtout ne pas passer --no-code-check.
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
