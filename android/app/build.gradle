@@ -51,11 +51,11 @@ android {
         // (@capgo/capacitor-updater, notifyAppReady en 1re instruction de
         // main.jsx) + tout le main du 29-30/07 : purge du parcours Lens après
         // publication, verrou pending/processing du stepper, prix d'achat
-        // obligatoire / inventaire systématique). versionName 2.4.0 : la
-        // release commune longtemps réservée — le web est en 2.4
-        // (package.json) et ce binaire embarque ce bundle-là.
+        // obligatoire / inventaire systématique). versionName 2.3.6 (décision
+        // Nico 30/07) : la lignée 2.3.x continue, iOS inchangé — 2.4 reste
+        // réservée à la prochaine release commune.
         versionCode 26
-        versionName "2.4.0"
+        versionName "2.3.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
