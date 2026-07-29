@@ -44,9 +44,14 @@ serve(async (req) => {
     return new Response("ok", { headers: CORS });
   }
 
-  // Observation + garde-fou (2026-07-28). Seuil 100/jour : l'analyse est
-  // déclenchée par la consultation de l'écran Stats (et par la voix) — un
-  // utilisateur très actif l'ouvre quelques dizaines de fois par jour au plus.
+  // Observation + garde-fou (2026-07-28). Seuil ABAISSÉ de 100 à 30/jour le
+  // 2026-07-29 : l'analyse est déclenchée par la consultation de l'écran Stats
+  // (et par la voix) — un utilisateur très actif l'ouvre quelques dizaines de
+  // fois par jour au plus. 100 laissait passer une boucle presque entière avant
+  // de mordre ; 30 reste au-dessus de tout usage humain observé et coupe la
+  // boucle trois fois plus tôt. Le garde ne bloque JAMAIS un utilisateur non
+  // identifié ni un comptage en échec (cf. appelAutorise) : son seul rôle est
+  // d'arrêter une boucle authentifiée.
   //
   // ⚠️ Cette fonction est la seule des quatre à ne PAS extraire l'utilisateur :
   // elle se contente du JWT exigé par le gateway (verify_jwt = true) sans
@@ -68,7 +73,7 @@ serve(async (req) => {
     }
   } catch { /* identification impossible : on continue sans compter */ }
 
-  if (!(await appelAutorise(admin, statsUserId, "stats_analysis", 100))) {
+  if (!(await appelAutorise(admin, statsUserId, "stats_analysis", 30))) {
     console.warn(`[stats-analysis] garde-fou atteint pour ${statsUserId}`);
     return new Response(JSON.stringify({ error: "rate_limited" }), {
       status: 429, headers: { "Content-Type": "application/json", ...CORS },
