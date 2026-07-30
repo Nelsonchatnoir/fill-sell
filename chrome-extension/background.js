@@ -1258,6 +1258,14 @@ async function processJob(rawJob, accessToken) {
       }
       // Action utilisateur requise (adresse Leboncoin absente, brouillon LBC
       // à terminer, connexion). Ré-armement BORNÉ (voir rearmBounded).
+      // « Connexion X requise » = le handler a VU la page de login après une
+      // navigation réelle : signal sûr, répercuté dans extension_sessions
+      // (noterSessionDeconnectee) — c'est désormais la SEULE source d'un
+      // false pour Vinted (le 401 de la sonde est ambigu, cf. sonde).
+      if (/^Connexion\s+\S+\s+requise/i.test(String(result.error ?? ""))) {
+        noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
+          console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+      }
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
     } else if (result?.success) {
@@ -4308,9 +4316,11 @@ async function lireEtatAnnonce(url, platform) {
 // ── Sondes de session plateformes (chantier onboarding, 2026-07-27) ──────────
 // Écrit profiles.extension_sessions pour que l'app affiche connecté / non
 // connecté AVANT publication (cas pstephanie1005 : 4 échecs « connexion
-// requise » incompréhensibles). Signaux STRICTEMENT repris des handlers :
-//   - Vinted : /api/v2/users/current — la sonde de vintedSessionEtat
-//     (vinted.js) : 200 connecté, 401 déconnecté, sinon indéterminé.
+// requise » incompréhensibles). Signaux :
+//   - Vinted : /api/v2/users/current — 200 connecté, TOUT LE RESTE
+//     indéterminé (2026-07-30 : le 401 est AMBIGU depuis un service worker,
+//     cf. commentaire de la sonde ; false ne vient plus que de
+//     noterSessionDeconnectee).
 //   - Leboncoin / eBay : la page de dépôt redirige vers l'auth quand le compte
 //     est déconnecté (auth.leboncoin.fr / signin.ebay.fr — exactement le test
 //     d'entrée de leur fillListingForm).
@@ -4330,41 +4340,79 @@ function decodeJwtSub(token) {
 }
 
 async function probePlatformSessions() {
-  const probe = async (fn) => { try { return await fn(); } catch { return null; } };
+  const probe = async (fn) => { try { return await fn(); } catch { return { etat: null, http: null }; } };
   const [vinted, leboncoin, ebay, beebs] = await Promise.all([
     probe(async () => {
       const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
         headers: { Accept: "application/json" }, credentials: "include",
       });
-      if (r.status === 401) return false;
-      return r.ok ? true : null;
+      // ⚠️ 401 ≠ déconnecté (faux « non connecté » du 30/07 21:13, prouvé en
+      // base : bandeau rouge puis dépôt réussi, sonde true 50 s après) : un
+      // cookie access_token_web PÉRIMÉ rend 401 alors que refresh_token_web
+      // est valide — c'est la PAGE Vinted qui rafraîchit le token à son
+      // chargement, jamais un fetch de service worker. Le 401 est donc
+      // INDÉTERMINÉ (null, pas de bandeau) ; false ne vient plus que du
+      // signal sûr noterSessionDeconnectee (garde d'entrée du handler,
+      // après navigation réelle de l'onglet de travail). On perd un peu de
+      // détection de vraie déconnexion, on supprime tous les faux positifs.
+      return { etat: r.ok ? true : null, http: r.status };
     }),
     probe(async () => {
       const r = await fetch("https://www.leboncoin.fr/deposer-une-annonce", {
         credentials: "include", redirect: "follow",
       });
       const u = new URL(r.url);
-      if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) return false;
-      return u.pathname.startsWith("/deposer-une-annonce") ? true : null;
+      if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) return { etat: false, http: r.status };
+      return { etat: u.pathname.startsWith("/deposer-une-annonce") ? true : null, http: r.status };
     }),
     probe(async () => {
       const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
         credentials: "include", redirect: "follow",
       });
       const u = new URL(r.url);
-      if (/(^|\.)signin\.ebay\./.test(u.hostname)) return false;
-      return /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null;
+      if (/(^|\.)signin\.ebay\./.test(u.hostname)) return { etat: false, http: r.status };
+      return { etat: /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null, http: r.status };
     }),
     probe(async () => {
       const r = await fetch("https://www.beebs.app/fr/listing", {
         credentials: "include", redirect: "follow",
       });
       const u = new URL(r.url);
-      if (/login|signin|connexion/i.test(u.pathname)) return false;
-      return null;
+      return { etat: /login|signin|connexion/i.test(u.pathname) ? false : null, http: r.status };
     }),
   ]);
-  return { checked_at: new Date().toISOString(), vinted, leboncoin, ebay, beebs };
+  return {
+    checked_at: new Date().toISOString(),
+    vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat,
+    // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
+    // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
+    // 403 (challenge) ou d'un échec réseau (null).
+    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, beebs: beebs.http },
+  };
+}
+
+// Traçabilité (2026-07-30) : le relevé PRÉCÉDENT est conservé sous `previous`
+// (débarrassé de son propre historique — un seul niveau, la colonne ne grossit
+// pas). Le faux « non connecté » du 30/07 21:13 avait été ÉCRASÉ par la sonde
+// suivante : il n'a pu être établi que par inférence. Désormais prouvable :
+//   extension_sessions->'previous'->>'vinted', ->'http'->>'vinted'
+function sessionsSansHistorique(s) {
+  if (!s || typeof s !== "object") return null;
+  const { previous, ...rest } = s;
+  return rest;
+}
+
+async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
+  if (previous === undefined) {
+    try {
+      const rows = await restRequest(`profiles?id=eq.${sub}&select=extension_sessions`, accessToken);
+      previous = sessionsSansHistorique(rows?.[0]?.extension_sessions);
+    } catch { previous = null; } // l'historique est un confort, jamais bloquant
+  }
+  await restRequest(`profiles?id=eq.${sub}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify({ extension_sessions: { ...releve, ...(previous ? { previous } : {}) } }),
+  });
 }
 
 async function reportPlatformSessions(accessToken) {
@@ -4373,11 +4421,33 @@ async function reportPlatformSessions(accessToken) {
   const sub = decodeJwtSub(accessToken);
   if (!sub) return;
   const sessions = await probePlatformSessions();
-  await restRequest(`profiles?id=eq.${sub}`, accessToken, {
-    method: "PATCH",
-    body: JSON.stringify({ extension_sessions: sessions }),
-  });
+  await ecrireExtensionSessions(accessToken, sub, sessions);
   console.log("[background] sessions plateformes relevées :", JSON.stringify(sessions));
+}
+
+// Signal SÛR de déconnexion (2026-07-30) : la garde d'entrée d'un handler
+// vient d'observer une redirection login / un formulaire d'auth APRÈS une
+// navigation réelle de l'onglet de travail — contrairement au 401 de la
+// sonde (ambigu), c'est une preuve. Répercuté immédiatement dans
+// extension_sessions (hors throttle : l'événement est rare et précieux) pour
+// que le bandeau de l'app dise vrai sans attendre le prochain cycle.
+async function noterSessionDeconnectee(accessToken, platform) {
+  const sub = decodeJwtSub(accessToken);
+  if (!sub) return;
+  let base = null;
+  try {
+    const rows = await restRequest(`profiles?id=eq.${sub}&select=extension_sessions`, accessToken);
+    base = sessionsSansHistorique(rows?.[0]?.extension_sessions);
+  } catch { /* base = null : on écrit quand même le signal sûr */ }
+  const releve = {
+    vinted: null, leboncoin: null, ebay: null, beebs: null,
+    ...(base ?? {}),
+    [platform]: false,
+    checked_at: new Date().toISOString(),
+    http: { ...(base?.http ?? {}), [platform]: "login_redirect_observee" },
+  };
+  await ecrireExtensionSessions(accessToken, sub, releve, base);
+  console.log(`[background] session ${platform} : DÉCONNEXION observée par le handler — extension_sessions mis à jour`);
 }
 
 async function restRequest(path, accessToken, init = {}) {
