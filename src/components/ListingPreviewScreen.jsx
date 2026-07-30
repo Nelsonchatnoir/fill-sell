@@ -7,6 +7,7 @@ import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
 import PepiteIcon from "./PepiteIcon";
 import PlatformLogo from "./platform-logos/PlatformLogo";
+import AnalyseMarche from "./AnalyseMarche";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS } from "../utils/shared";
@@ -1531,14 +1532,14 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
-  onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null }) {
+  onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
+  prixAchat = null }) {
   const { t } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
   const [openCards, setOpenCards] = useState(new Set());
-  // Sources de l'estimation (2026-07-30) : replié par défaut — le prix reste
-  // l'information principale, les annonces sont la preuve dépliable.
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  // (Le repli des sources de l'estimation vit désormais dans AnalyseMarche,
+  // partagé avec l'écran Lens — plus d'état local ici.)
 
   // Prix central (2026-07-14) : écrit le prix dans TOUTES les plateformes
   // sélectionnées d'un coup. Une plateforme dont le prix a été édité à la main
@@ -1722,65 +1723,20 @@ function StepGeneration({ generating, generateError, platformListings, processed
         {estimateError && (
           <div style={{ fontSize:12, fontWeight:600, color:"#B0645A", marginTop:8 }}>{estimateError}</div>
         )}
-        {/* Une seule annonce retenue = un POINT, pas un marché (2026-07-30,
-            casquette Volcom : « Fourchette marché : 18 – 28 € » assise sur UNE
-            annonce à 29 €). Dans ce cas on montre le point et on le dit —
-            jamais une fourchette déguisée en donnée de marché. */}
-        {!prixManquant && (() => {
-          const annonces = Array.isArray(estimateResult?.annonces_marche)
-            ? estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix))
-            : [];
-          if (annonces.length !== 1) return null;
-          const a = annonces[0];
-          return (
-            <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
-              {lang === "en"
-                ? <>Single comparable listing found — not a market range: {a.titre} at <strong style={{ color:T.tealDeep }}>{a.prix} €</strong>{a.plateforme ? ` (${a.plateforme})` : ""}. Double-check the price.</>
-                : <>Une seule annonce comparable trouvée — pas une fourchette de marché : {a.titre} à <strong style={{ color:T.tealDeep }}>{a.prix} €</strong>{a.plateforme ? ` (${a.plateforme})` : ""}. Vérifie le prix.</>}
-            </div>
-          );
-        })()}
-        {!prixManquant && estimateResult?.fourchette_min != null && estimateResult?.fourchette_max != null
-          && !(Array.isArray(estimateResult?.annonces_marche) && estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix)).length === 1) && (
-          <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
-            {lang === "en" ? "Market range: " : "Fourchette marché : "}
-            <strong style={{ color:T.tealDeep }}>{estimateResult.fourchette_min} – {estimateResult.fourchette_max} €</strong>
-          </div>
+        {/* ── L'analyse déjà payée, ICI (2026-07-31) ────────────────────────
+            MÊME composant que l'écran Lens, variante « publication » : une
+            ligne repliée sous le champ prix, dépliable pour qui veut
+            vérifier. Une seule source — la réponse lens-analysis déjà
+            facturée — et aucun nouvel appel. Avant, 6 Pépites de contenu se
+            réduisaient ici à une ligne de titre. */}
+        {!prixManquant && estimateResult && (
+          <AnalyseMarche
+            result={estimateResult}
+            prixAchat={prixAchat}
+            lang={lang}
+            variant="publication"
+          />
         )}
-        {/* Sources de l'estimation (chantier 2026-07-30) : les annonces que le
-            scan dit avoir RETENUES pour la fourchette (annonces_marche,
-            assainies serveur — titre + prix garantis, plateforme optionnelle).
-            Replié par défaut ; ni vignettes, ni liens, ni images. Champ absent
-            ou vide → rien du tout (pas de bloc vide, pas de message). Une
-            annonce UNIQUE est traitée par le bloc « point isolé » ci-dessus. */}
-        {!prixManquant && Array.isArray(estimateResult?.annonces_marche) && estimateResult.annonces_marche.length > 0 && (() => {
-          const annonces = estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix));
-          if (annonces.length < 2) return null;
-          const prix = annonces.map(a => a.prix);
-          const min = Math.min(...prix), max = Math.max(...prix);
-          return (
-            <div style={{ marginTop:4 }}>
-              <button
-                onClick={() => setSourcesOpen(o => !o)}
-                style={{ background:"none", border:"none", padding:0, fontFamily:"inherit", fontSize:11.5, fontWeight:600, color:T.mute, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:4 }}
-              >
-                <span style={{ display:"inline-block", transform: sourcesOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }}>▸</span>
-                {lang === "en"
-                  ? `Based on ${annonces.length} listing${annonces.length > 1 ? "s" : ""} (${min} – ${max} €)`
-                  : `Basée sur ${annonces.length} annonce${annonces.length > 1 ? "s" : ""} (${min} – ${max} €)`}
-              </button>
-              {sourcesOpen && (
-                <div style={{ marginTop:6, display:"flex", flexDirection:"column", gap:4 }}>
-                  {annonces.map((a, i) => (
-                    <div key={i} style={{ fontSize:11.5, color:T.mute2, lineHeight:1.45 }}>
-                      {a.titre} — <span style={{ fontWeight:700, color:T.ink }}>{a.prix} €</span>{a.plateforme ? ` · ${a.plateforme}` : ""}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
         <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
           {lang === "en"
             ? "Applied to every selected platform. Change a card's price to set it apart."
@@ -3760,15 +3716,11 @@ export default function ListingPreviewScreen({
     [missingSharedFieldsDetailed]
   );
 
-  // Clé → « Vinted, Beebs » : plateformes sélectionnées qui EXIGENT ce champ,
-  // affichées à côté du libellé dans l'encart rouge (miroir de l'encart bleu).
-  const missingSharedFieldPlatforms = useMemo(() => {
-    const m = {};
-    for (const f of missingSharedFieldsDetailed) {
-      m[f.key] = f.platforms.map(p => PLATFORM_LABELS[p] ?? p).join(", ");
-    }
-    return m;
-  }, [missingSharedFieldsDetailed]);
+  // (La table clé → « Vinted, Beebs » de l'encart rouge est calculée par
+  // redSharedFieldPlatforms, plus bas : depuis la règle d'unicité du
+  // 2026-07-30, l'encart ne rend qu'un SOUS-ENSEMBLE des champs manquants —
+  // dériver ses libellés de la liste complète laissait une entrée par champ
+  // masqué, jamais lue.)
 
   // Axes de tailles enfant du champ partagé Taille (encart inline de
   // StepPublish) : UNION des axes autorisés par les genres enfant des
@@ -5600,6 +5552,10 @@ export default function ListingPreviewScreen({
             estimateCost={coinPrices?.lens_overflow ?? null}
             estimateError={analysisError}
             estimateResult={photoAnalysis}
+            // Prix d'achat pour la marge : la saisie du step Publier d'abord,
+            // sinon celui déjà porté par l'article. Absent = mode chine, et
+            // AnalyseMarche rend le prix plafond au lieu d'un verdict.
+            prixAchat={prixAchatSaisi || initialListing?.prix_achat || null}
           />
         )}
         {step === 3 && (

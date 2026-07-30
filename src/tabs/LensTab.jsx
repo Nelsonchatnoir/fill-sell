@@ -5,7 +5,8 @@ import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readSte
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
-import { getRotatingLensPlaceholders, formatCurrency, getTypeStyle, typeLabel } from '../utils/shared';
+import { getRotatingLensPlaceholders, getTypeStyle, typeLabel } from '../utils/shared';
+import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
 import { useTranslation } from '../i18n/useTranslation';
 import { UI, Loader, PrimaryButton, PremiumButton } from '../components/ui';
 
@@ -362,29 +363,20 @@ function LensScanHome({
   );
 }
 
-const scoreColor = s => s>=6.5?'#16A34A':s>=4?'#D97706':'#DC2626';
-const scoreBg    = s => s>=6.5?'#F0FDF4':s>=4?'#FFFBEB':'#FFF5F5';
-const scoreBd    = s => s>=6.5?'rgba(22,163,74,0.2)':s>=4?'rgba(217,119,6,0.2)':'rgba(220,38,38,0.2)';
-const scoreLabel = (s,lang) => s>=6.5?(lang==='en'?'Good deal':'Bon deal'):s>=4?(lang==='en'?'Average':'Mitigé'):(lang==='en'?'Avoid':'Éviter');
-
-const VERDICT_INFO = {
-  excellent:{ icon:'🔥', fr:'Excellent', en:'Excellent', bg:'#F0FDF4', color:'#1B6E62', border:'#BFE0D9' },
-  bon:      { icon:'✅', fr:'Bon deal',  en:'Good deal', bg:'#EFF6FF', color:'#2563EB', border:'#BFDBFE' },
-  moyen:    { icon:'⚠️', fr:'Moyen',    en:'Average',   bg:'#FFFBEB', color:'#D97706', border:'#FCD34D' },
-  eviter:   { icon:'❌', fr:'À éviter', en:'Avoid',     bg:'#FFF5F5', color:'#DC2626', border:'#FED7D7' },
-};
-const VITESSE_INFO = {
-  rapide:{ icon:'⚡', fr:'Vente rapide',  en:'Fast sale',    color:'#1B6E62' },
-  moyen: { icon:'🕐', fr:'Vente moyenne', en:'Average sale', color:'#D97706' },
-  lent:  { icon:'🐢', fr:'Vente lente',   en:'Slow sale',    color:'#DC2626' },
-};
-
 // Qualité d'analyse unifiée (2026-07) : plus de gating par tier — chaque bloc
 // s'affiche si le champ est présent dans la réponse, identique pour tous.
+//
+// ⚠️ 2026-07-31 : tout le rendu de MARCHÉ (prix, verdict, fourchette, sources,
+// vitesse, plateformes, conseils, description, notes) a quitté ce fichier pour
+// AnalyseMarche — le composant que le stepper partage. Ce qui reste ici est
+// l'IDENTIFICATION (titre, pills marque/modèle/état/matière/catégorie/
+// confiance) et les actions. Les constantes VERDICT_INFO / VITESSE_INFO /
+// score* sont parties avec les blocs qu'elles habillaient : le verdict est
+// désormais DÉRIVÉ de la marge dans AnalyseMarche (jamais lu depuis la
+// réponse : un « Excellent » à côté d'une perte était possible), et le deal
+// score est supprimé (nombre sans échelle, tassé entre 4 et 6, redondant avec
+// le verdict — décision Nico du 30/07).
 function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset }) {
-  // Sources de l'estimation (2026-07-30) : replié par défaut. Déclaré AVANT le
-  // retour anticipé d'erreur (règle des hooks).
-  const [sourcesOpen, setSourcesOpen] = useState(false);
   if (result.error) {
     return (
       <>
@@ -398,23 +390,15 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
     );
   }
 
-  const hasBuy = parseFloat(lensBuy) > 0;
-  const v = VERDICT_INFO[result.verdict] || VERDICT_INFO.moyen;
-  const sc = result.score != null ? scoreColor(result.score) : '#6B7A75';
-  const vi = result.vitesse_vente ? (VITESSE_INFO[result.vitesse_vente] || VITESSE_INFO.moyen) : null;
-
   return (
     <div style={{animation:'vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both'}}>
       <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.08)',marginBottom:10,boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
 
-        {/* Titre + verdict badge */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12,gap:8}}>
+        {/* Titre. Le badge verdict qui vivait ici est parti dans AnalyseMarche,
+            où il porte la MARGE en clair : un verdict nu, détaché du chiffre
+            qui le justifie, ne décidait rien. */}
+        <div style={{display:'flex',marginBottom:12}}>
           <div style={{fontWeight:700,fontSize:16,color:'#10201B',flex:1,lineHeight:1.3}}>{result.titre||'Article'}</div>
-          {result.verdict&&(
-            <div style={{flexShrink:0,padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700,background:v.bg,color:v.color,border:`1px solid ${v.border}`}}>
-              {v.icon} {lang==='en'?v.en:v.fr}
-            </div>
-          )}
         </div>
 
         {/* 🏷️ Identification pills */}
@@ -435,178 +419,20 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
           )}
         </div>
 
-        {/* 💰 Prix de vente conseillé */}
-        <div style={{background:'#F8FFFE',borderRadius:12,padding:'12px 14px',marginBottom:12,border:'1px solid rgba(29,158,117,0.15)'}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>
-            💰 {lang==='en'?'Suggested sell price':'Prix de vente conseillé'}
-          </div>
-          <div style={{display:'flex',alignItems:'baseline',gap:8}}>
-            <div style={{fontSize:32,fontWeight:700,color:'#1B6E62',letterSpacing:'-0.02em'}}>{formatCurrency(result.prix_vente_suggere??0,currency)}</div>
-            {(result.fourchette_min!=null||result.fourchette_max!=null)&&(
-              <div style={{fontSize:12,color:'#8A8578',fontWeight:600}}>({formatCurrency(result.fourchette_min??0,currency)} – {formatCurrency(result.fourchette_max??0,currency)})</div>
-            )}
-          </div>
-          {hasBuy?(
-            <div style={{fontSize:12,color:'#6B7A75',marginTop:6}}>
-              {lang==='en'?'Your purchase price:':'Ton prix d\'achat :'}{' '}
-              <strong style={{color:'#F59E0B'}}>{formatCurrency(parseFloat(lensBuy),currency)}</strong>
-            </div>
-          ):result.prix_achat_suggere!=null&&(
-            <div style={{fontSize:12,color:'#6B7A75',marginTop:6}}>
-              {lang==='en'?'Suggested buy price:':'Prix d\'achat conseillé :'}{' '}
-              <strong style={{color:'#F59E0B'}}>{formatCurrency(result.prix_achat_suggere,currency)}</strong>
-            </div>
-          )}
-        </div>
+        {/* ── Analyse de marché — composant UNIQUE, partagé avec le stepper ──
+            Prix conseillé, verdict avec la marge, fiabilité, puis tout le
+            reste replié. Le prix d'achat SAISI (lensBuy) pilote la marge ;
+            sans lui on est en chine et le composant rend le prix plafond à la
+            place d'un verdict qui serait circulaire. */}
+        <AnalyseMarche
+          result={result}
+          prixAchat={lensBuy}
+          lang={lang}
+          currency={currency}
+          variant="verdict"
+        />
 
-        {/* 📊 Fourchette marché. Une seule annonce retenue = un POINT, pas un
-            marché (2026-07-30) : on remplace les trois tuiles par le point,
-            dit comme tel — jamais une fourchette déguisée. */}
-        {result.fourchette_marche&&(()=>{
-          const retenues=Array.isArray(result.annonces_marche)
-            ?result.annonces_marche.filter(a=>a?.titre&&Number.isFinite(a?.prix))
-            :[];
-          if(retenues.length===1){
-            const a=retenues[0];
-            return(
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
-                  📊 {lang==='en'?'Market data':'Donnée marché'}
-                </div>
-                <div style={{fontSize:12,color:'#6B7A75',lineHeight:1.5}}>
-                  {lang==='en'
-                    ?<>Single comparable listing found — not a market range: {a.titre} at <strong style={{color:'#1B6E62'}}>{formatCurrency(a.prix,currency)}</strong>{a.plateforme?` (${a.plateforme})`:''}. Double-check the price.</>
-                    :<>Une seule annonce comparable trouvée — pas une fourchette de marché : {a.titre} à <strong style={{color:'#1B6E62'}}>{formatCurrency(a.prix,currency)}</strong>{a.plateforme?` (${a.plateforme})`:''}. Vérifie le prix.</>}
-                </div>
-              </div>
-            );
-          }
-          return(
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
-              📊 {lang==='en'?'Market range':'Fourchette marché'}
-            </div>
-            <div style={{display:'flex',gap:8}}>
-              {[
-                {key:'bas',  fr:'Bas',   en:'Low',  bg:'#FFF5F5',color:'#DC2626',border:'#FED7D7'},
-                {key:'moyen',fr:'Moyen', en:'Mid',  bg:'#FFFBEB',color:'#D97706',border:'#FCD34D'},
-                {key:'haut', fr:'Haut',  en:'High', bg:'#F0FDF4',color:'#1B6E62',border:'#BFE0D9'},
-              ].map(({key,fr,en,bg,color,border})=>(
-                <div key={key} style={{flex:1,background:bg,border:`1px solid ${border}`,borderRadius:8,padding:'8px',textAlign:'center'}}>
-                  <div style={{fontSize:9,fontWeight:700,color,textTransform:'uppercase',marginBottom:2}}>{lang==='en'?en:fr}</div>
-                  <div style={{fontSize:15,fontWeight:700,color}}>{formatCurrency(result.fourchette_marche[key],currency)}</div>
-                </div>
-              ))}
-            </div>
-            {/* Sources de l'estimation (chantier 2026-07-30) : les annonces que
-                le scan dit avoir RETENUES pour la fourchette (annonces_marche,
-                assainies serveur). Repliées par défaut, aucune vignette, aucun
-                lien ; champ absent ou vide → rien du tout. */}
-            {Array.isArray(result.annonces_marche)&&result.annonces_marche.length>0&&(()=>{
-              const annonces=result.annonces_marche.filter(a=>a?.titre&&Number.isFinite(a?.prix));
-              if(!annonces.length)return null;
-              const prix=annonces.map(a=>a.prix);
-              const min=Math.min(...prix),max=Math.max(...prix);
-              return(
-                <div style={{marginTop:8}}>
-                  <button
-                    onClick={()=>setSourcesOpen(o=>!o)}
-                    style={{background:'none',border:'none',padding:0,fontFamily:'inherit',fontSize:11.5,fontWeight:600,color:'#6B7A75',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}
-                  >
-                    <span style={{display:'inline-block',transform:sourcesOpen?'rotate(90deg)':'none',transition:'transform 0.15s'}}>▸</span>
-                    {lang==='en'
-                      ?`Based on ${annonces.length} listing${annonces.length>1?'s':''} (${formatCurrency(min,currency)} – ${formatCurrency(max,currency)})`
-                      :`Basée sur ${annonces.length} annonce${annonces.length>1?'s':''} (${formatCurrency(min,currency)} – ${formatCurrency(max,currency)})`}
-                  </button>
-                  {sourcesOpen&&(
-                    <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:4}}>
-                      {annonces.map((a,i)=>(
-                        <div key={i} style={{fontSize:11.5,color:'#8A8578',lineHeight:1.45}}>
-                          {a.titre} — <span style={{fontWeight:700,color:'#10201B'}}>{formatCurrency(a.prix,currency)}</span>{a.plateforme?` · ${a.plateforme}`:''}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-          );
-        })()}
 
-        {/* ⚡ Vitesse de vente */}
-        {vi&&(
-          <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:12,background:'#F9FAFB',borderRadius:10,padding:'10px 12px'}}>
-            <span style={{fontSize:18}}>{vi.icon}</span>
-            <div>
-              <div style={{fontSize:12,fontWeight:700,color:vi.color}}>{lang==='en'?vi.en:vi.fr}</div>
-              {result.vitesse_vente_explication&&<div style={{fontSize:12,color:'#4B5563',marginTop:2,lineHeight:1.4}}>{result.vitesse_vente_explication}</div>}
-            </div>
-          </div>
-        )}
-
-        {/* 🛍️ Plateformes */}
-        {result.plateformes?.length>0&&(
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
-              🛍️ {lang==='en'?'Best platforms':'Meilleures plateformes'}
-            </div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              {result.plateformes.map((p,i)=>(
-                <span key={i} style={{padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:700,
-                  background:i===0?'#E7F3F0':'#F2F0E9',color:i===0?'#1B6E62':'#4B5563',
-                  border:`1px solid ${i===0?'#BFE0D9':'rgba(0,0,0,0.08)'}`}}>
-                  {i===0?'⭐ ':''}{p}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 💡 Conseils */}
-        {result.conseils?.length>0&&(
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
-              💡 {lang==='en'?'Tips to sell faster':'Conseils pour vendre mieux'}
-            </div>
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {result.conseils.map((c,i)=>(
-                <div key={i} style={{display:'flex',gap:8,background:'#F9FAFB',borderRadius:8,padding:'8px 12px'}}>
-                  <span style={{color:'#1B6E62',fontWeight:700,flexShrink:0}}>{i+1}.</span>
-                  <span style={{fontSize:12,color:'#374151',lineHeight:1.45}}>{c}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 🎯 Score */}
-        {result.score!=null&&(
-          <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4}}>
-            <div style={{flexShrink:0}}>
-              <div style={{fontSize:9,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>DEAL SCORE</div>
-              <div style={{fontSize:24,fontWeight:700,color:sc,letterSpacing:'-0.02em',lineHeight:1}}>
-                {Number(result.score).toFixed(1)}<span style={{fontSize:11,fontWeight:600,color:'#A3A9A6'}}>/10</span>
-              </div>
-            </div>
-            <div style={{flex:1}}>
-              <div style={{height:8,background:'#F2F0E9',borderRadius:4,overflow:'hidden'}}>
-                <div style={{height:'100%',background:sc,width:`${(result.score/10)*100}%`,borderRadius:4}}/>
-              </div>
-              <div style={{fontSize:10,fontWeight:700,color:sc,marginTop:2}}>{scoreLabel(result.score,lang)}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Notes source */}
-        {result.notes&&(
-          <div style={{fontSize:11,color:'#8A8578',marginTop:8,fontStyle:'italic'}}>{result.notes}</div>
-        )}
-
-        {/* Description */}
-        {result.description&&(
-          <div style={{fontSize:13,color:'#374151',lineHeight:1.6,marginTop:8}}>{result.description}</div>
-        )}
       </div>
 
       {result.titre&&(
@@ -1024,6 +850,16 @@ const LensTab = memo(function LensTab({
                 jamais « Créer une annonce » depuis Lens, exactement comme dans
                 StockTab. Tout le monde cross-poste ; la différenciation se fait
                 aux Pépites, côté serveur. */}
+            {/* CTA ADAPTATIF, DEUX ÉTATS (2026-07-31) — jamais plus, pour ne
+                pas faire varier le bouton à chaque nuance :
+                  · au moins une annonce retenue → « Créer une annonce » ;
+                  · AUCUNE → « Fixe ton prix » : l'écran vient de dire qu'il
+                    ne connaît pas le prix, l'inviter à publier se
+                    contredirait. Même destination (le stepper porte le champ
+                    prix central, éditable et mis en avant) — c'est le LIBELLÉ
+                    qui dit la vérité sur ce qu'il reste à faire.
+                Un prix fragile mais sourcé (1 annonce) garde « Créer une
+                annonce » : le prix existe, l'avertissement le dit déjà. */}
             {!lensResult.error&&(
               <>
                 <PrimaryButton
@@ -1031,7 +867,9 @@ const LensTab = memo(function LensTab({
                   disabled={generatingListing}
                   style={{marginTop:8}}
                 >
-                  ✨ {lang==="en"?"Create a listing":"Créer une annonce"}
+                  {analyseFiabilite(lensResult).niveau==='aucune'
+                    ? (lang==="en"?"Set your price":"Fixe ton prix")
+                    : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
                 </PrimaryButton>
                 {listingError&&(
                   <div style={{marginTop:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
