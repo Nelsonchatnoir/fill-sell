@@ -2088,12 +2088,15 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   };
 
   // ── Inventaire plein (Free) : écran de CONVERSION, pas une erreur ──────────
-  // Le CTA du footer devient « Passer Premium » (cf. ctaLabel/handleNext dans
-  // le composant hôte) ; ici on remplace l'UI de publication entière — les
+  // Le CTA du footer devient « Passer au niveau supérieur » (cf. ctaLabel/
+  // handleNext dans le composant hôte — libellé neutre : la modale propose
+  // Premium ET Pro) ; ici on remplace l'UI de publication entière — les
   // plateformes, champs requis et bandeaux n'ont aucun sens tant qu'aucune
-  // place en stock n'existe. Trois blocs, dans l'ordre : ce qui est atteint
-  // (20/20), ce que Premium débloque, la sortie alternative (libérer une place
-  // dans le Stock) — clairement affichée, jamais cachée : pas de dark pattern.
+  // place en stock n'existe. Deux blocs seulement : ce qui est atteint (20/20)
+  // et la sortie alternative (libérer une place dans le Stock), clairement
+  // affichée, jamais cachée — pas de dark pattern. PAS de liste d'avantages
+  // ici : la comparaison des plans (grants réels lus en base) appartient à la
+  // ConversionModal, cet écran annonce le blocage et les sorties.
   if (inventoryFull) {
     const n = stockCount ?? FREE_STOCK_LIMIT;
     return (
@@ -2123,24 +2126,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           </div>
         </div>
 
-        {/* 2. Ce que Premium débloque — faits vérifiables uniquement (stock
-            illimité + grant mensuel coin_config : 150 Pépites Premium) */}
-        <div style={{ background:"#E7F3F0", border:"1px solid #BFDCD5", borderRadius:16, padding:18, marginBottom:12 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#1B6E62", marginBottom:8 }}>
-            {lang === "en" ? "With Premium" : "Avec Premium"}
-          </div>
-          {[
-            lang === "en" ? "Unlimited stock — this listing goes out right away" : "Stock illimité — cette annonce part tout de suite",
-            lang === "en" ? "Your current items stay exactly where they are" : "Tes articles actuels restent en place",
-            lang === "en" ? "150 Nuggets included every month" : "150 Pépites incluses chaque mois",
-          ].map(txt => (
-            <div key={txt} style={{ display:"flex", gap:8, alignItems:"flex-start", marginTop:6, fontSize:13, color:"#1B6E62", lineHeight:1.5 }}>
-              <span style={{ flexShrink:0 }}>✓</span><span>{txt}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* 3. La sortie alternative — rester en gratuit est un choix respecté */}
+        {/* 2. La sortie alternative — rester en gratuit est un choix respecté */}
         <div style={{ fontSize:12.5, color:T.mute2, lineHeight:1.6, marginBottom:12 }}>
           {lang === "en"
             ? "Prefer to stay on the free plan? Free up a slot from the Stock tab (delete an item, or mark one as sold), then come back — your listings will still be here."
@@ -4972,8 +4958,9 @@ export default function ListingPreviewScreen({
     }
     if (step === 3) {
       // Inventaire plein (Free) : le CTA ne propose plus de publier — il ouvre
-      // le passage Premium (écran de conversion dans StepPublish).
-      if (inventoryFull) return lang === "en" ? "Go Premium — unlimited stock" : "Passer Premium — stock illimité";
+      // la modale de plans. Libellé NEUTRE quant au plan (la modale propose
+      // Premium ET Pro, le CTA ne préjuge pas du choix).
+      if (inventoryFull) return lang === "en" ? "Move up a plan" : "Passer au niveau supérieur";
       if (publishing) return t("ctaPublishing");
       const n = publishChips.length;
       return tpl("ctaPublishOnPlatforms", { n });
