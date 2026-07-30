@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -1413,6 +1413,27 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
     const typed = [...menu.querySelectorAll(optionSelector)]
       .find((o) => normalizeFuzzy(o.textContent).includes(normalizeFuzzy(String(rawValue))));
     if (typed) match = { el: typed, label: typed.textContent.trim(), stage: "saisie-libre" };
+  }
+  if (!match && search && !sizeField) {
+    // DOCTRINE « valeur hors liste » (2026-07-30, cas Type "Bottines") : le
+    // champ affiche « Recherchez ou AJOUTEZ des détails » — vocabulaire
+    // OUVERT, la saisie libre est un chemin LÉGITIME. Quand eBay ne
+    // matérialise pas la saisie en option cliquable (re-scan ci-dessus vide),
+    // on la VALIDE PAR ENTRÉE au lieu d'abandonner la ligne : c'est le geste
+    // utilisateur standard de ce composant. Sans risque : la relecture de
+    // fillSpecificSafe ne conclut que si la valeur a réellement PRIS — sur un
+    // champ réellement fermé, Entrée ne pose rien et l'échec reste l'échec
+    // instrumenté d'avant (« ne persiste pas », avec dump de la ligne).
+    // Jamais pour une taille (sizeField) : listes fermées, même garde
+    // anti-collision que la cascade.
+    const note = `${fieldName}: "${rawValue}" hors des options affichées — saisie libre validée par Entrée (vocabulaire ouvert), relecture décide`;
+    console.log(`[ebay] ${note}`);
+    warnings.push(note);
+    dispatchKey(search, "keydown", "Enter");
+    dispatchKey(search, "keypress", "Enter");
+    dispatchKey(search, "keyup", "Enter");
+    await sleep(1500);
+    return;
   }
   if (!match) {
     const available = [...menu.querySelectorAll(optionSelector)]
