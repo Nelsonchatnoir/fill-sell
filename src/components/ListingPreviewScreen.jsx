@@ -5276,7 +5276,12 @@ export default function ListingPreviewScreen({
           isPremium={isPremium}
           isPro={isPro}
           coinBalance={quotaModal.coinBalance ?? coinBalance}
-          coinPrice={quotaModal.coinPrice ?? coinPriceFor(photoOption)}
+          // ⚠️ coinPrice non-null = la modale bascule en CAS « Pépites
+          // insuffisantes » (isCoinCase) et n'affiche PAS les cartes de plans.
+          // Le déclencheur stock (inventaire plein) n'est pas une histoire de
+          // Pépites : coinPrice DOIT être null pour atteindre le CAS 3, qui
+          // empile les deux cartes Premium + Pro (PlansStack).
+          coinPrice={quotaModal.trigger === "stock" ? null : (quotaModal.coinPrice ?? coinPriceFor(photoOption))}
           onUseCoins={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
         />
       )}
