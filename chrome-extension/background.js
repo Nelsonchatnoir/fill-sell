@@ -4424,7 +4424,12 @@ async function persistDiscoveredAspects(accessToken, job, discovered) {
       field_label: d.label ? String(d.label).slice(0, 200) : null,
       required: d.required !== false,
       input_type: d.inputType ? String(d.inputType).slice(0, 40) : null,
-      allowed_values: Array.isArray(d.options) && d.options.length ? d.options.slice(0, 200) : null,
+      // trim (2026-07-30) : les options viennent de textContent DOM et
+      // certaines portaient des espaces finaux (« Boutique italienne  ») —
+      // recommittés tels quels par les sélecteurs de l'app dans les jobs.
+      allowed_values: Array.isArray(d.options) && d.options.length
+        ? d.options.slice(0, 200).map((v) => String(v).trim()).filter(Boolean)
+        : null,
       source: d.source === "server_400" || d.source === "manual" ? d.source : "dom",
       last_seen_at: new Date().toISOString(),
     });

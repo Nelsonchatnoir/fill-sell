@@ -2124,6 +2124,51 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
     marque:  { key:"marque",  label:t("fieldBrandLabel"),    type:"text" },
   };
 
+  // ── FIX « valeurs d'une seule lettre » (2026-07-30) ────────────────────────
+  // 8 jobs en base portaient une valeur d'EXACTEMENT un caractère (couleur
+  // "V", matière "C"/"V"/"?", marque "B"/"E"/"S") — jamais deux ni trois.
+  // Cause : les encarts rouge (champs partagés manquants) et bleu (requis
+  // génériques) ne rendaient leurs inputs QUE tant que le champ était
+  // manquant/invalide. Or la PREMIÈRE frappe remplit la canonique ET toutes
+  // les copies (setSharedField / setPlatformAspect), la liste dérivée se
+  // recalcule, et l'input est DÉMONTÉ sous les doigts — focus perdu, la suite
+  // du mot part dans le vide. Le démontage étant déterministe à la première
+  // frappe, on n'observe JAMAIS 2-3 caractères : c'est la signature du bug.
+  // Parade : un champ APPARU dans un encart y RESTE tant que le step est
+  // monté (ensembles cumulatifs) — il passe à l'état rempli au lieu de
+  // disparaître. Les ensembles se réinitialisent avec le step (état local).
+  const [stickyShared, setStickyShared] = useState(() => new Set());
+  useEffect(() => {
+    if (missingSharedFields.some(k => !stickyShared.has(k))) {
+      setStickyShared(prev => new Set([...prev, ...missingSharedFields]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingSharedFields]);
+  const sharedFieldsToRender = [...new Set([...stickyShared, ...missingSharedFields])]
+    .filter(k => sharedFieldCfg[k]);
+
+  const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
+  useEffect(() => {
+    if (!genericRequiredStatus) return;
+    setStickyGeneric(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [gp, list] of Object.entries(genericRequiredStatus)) {
+        const cur = prev[gp] ?? new Set();
+        const add = list.filter(a =>
+          (a.state === "missing" || a.state === "invalid" || a.source === "generic") && !cur.has(a.key));
+        if (add.length) {
+          next[gp] = new Set([...cur, ...add.map(a => a.key)]);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [genericRequiredStatus]);
+  const genericEditable = (gp, a) =>
+    a.state === "missing" || a.state === "invalid" || a.source === "generic" ||
+    Boolean(stickyGeneric[gp]?.has(a.key));
+
   // ── Inventaire plein (Free) : écran de CONVERSION, pas une erreur ──────────
   // Le CTA du footer devient « Passer au niveau supérieur » (cf. ctaLabel/
   // handleNext dans le composant hôte — libellé neutre : la modale propose
@@ -2370,9 +2415,13 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               s'édite ici en vrai sélecteur — l'écriture va au champ dédié de
               la copie plateforme (onPlatformDedicatedChange), jamais au canal
               générique, sinon la gate extension relirait l'ancienne valeur. */}
-          {onPlatformAspectChange && list.some(a => a.state === "missing" || a.state === "invalid" || a.source === "generic") && (
+          {/* genericEditable et non le filtre direct missing/invalid/generic :
+              une fois qu'un aspect a été éditable ici, il le RESTE (sticky) —
+              sinon l'input se démonte à la première frappe quand l'état passe
+              à "ok" (fix « une seule lettre », 2026-07-30). */}
+          {onPlatformAspectChange && list.some(a => genericEditable(gp, a)) && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {list.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => {
+              {list.filter(a => genericEditable(gp, a)).map(a => {
                 // Valeur catalogue UNIQUE (2026-07-19, cas réel Medik8 :
                 // Vinted Beauté n'accepte qu'un État « Neuf avec étiquette ») :
                 // ni sélecteur à une seule option, ni pose silencieuse —
@@ -2427,17 +2476,20 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         </div>
       ))}
 
-      {missingSharedFields.length > 0 && (
+      {sharedFieldsToRender.length > 0 && (
         // Encart inline (Sujet 4) : les champs partagés manquants se
         // complètent ICI, sans quitter le step — l'écriture passe par
         // onSharedFieldChange qui met à jour la SOURCE canonique (donc
         // toutes les copies plateformes non éditées à la main d'un coup).
+        // Rendu depuis sharedFieldsToRender (cumulatif) et PAS
+        // missingSharedFields : un champ en cours de saisie ne doit jamais
+        // être démonté à la première frappe (fix « une seule lettre »).
         <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, marginBottom:12 }}>
           <div style={{ fontSize:13, color:"#B91C1C", fontWeight:600, marginBottom:10 }}>
             {t("stepPublishSharedMissingTitle")}
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            {missingSharedFields.map((key, fi) => {
+            {sharedFieldsToRender.map((key, fi) => {
               const field = sharedFieldCfg[key];
               const val = sharedFields[key] ?? "";
               // Tailles enfant (2026-07-15) : le référentiel enfant
@@ -2448,7 +2500,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               const fieldGroups = field.childGroups && sharedChildAxes
                 ? [...field.childGroups.filter(g => g.axis === "shoes" || sharedChildAxes[g.axis]), ...field.groups]
                 : field.groups;
-              const isLastOdd = fi === missingSharedFields.length - 1 && missingSharedFields.length % 2 !== 0;
+              const isLastOdd = fi === sharedFieldsToRender.length - 1 && sharedFieldsToRender.length % 2 !== 0;
               // Origine : la/les plateforme(s) sélectionnée(s) qui exigent ce
               // champ (ex. « Vinted, Beebs ») — pour que l'utilisateur sache
               // pourquoi « Taille » est demandé, comme l'encart bleu au-dessus.
@@ -4209,7 +4261,12 @@ export default function ListingPreviewScreen({
       const status = rows.map((r) => {
         const key = r.field_key;
         const label = r.field_label || key;
-        const allowedValues = Array.isArray(r.allowed_values) ? r.allowed_values.slice(0, 1000) : [];
+        // trim : les allowed_values sont des relevés DOM et certains portent
+        // des espaces finaux (« Boutique italienne  » retrouvé tel quel dans
+        // un job du 30/07 — la valeur venait de la liste, pas d'une saisie).
+        const allowedValues = Array.isArray(r.allowed_values)
+          ? r.allowed_values.slice(0, 1000).map(v => String(v).trim()).filter(Boolean)
+          : [];
         // « title » (appris par un 400 serveur sur Montres homme Vinted) : le
         // job porte TOUJOURS un titre (edited[platform].title, édité au step
         // Génération et posé tel quel à l'insert) — ce n'est jamais un requis
@@ -4249,7 +4306,10 @@ export default function ListingPreviewScreen({
               allowedValues,
             };
           }
-          return { key, label, state: "ok", allowedValues };
+          // `value: src` (2026-07-30) : avec le rendu sticky, une ligne passée
+          // à "ok" reste affichée — sans valeur, son input paraissait vide
+          // alors que le champ est rempli.
+          return { key, label, state: "ok", value: src, allowedValues };
         }
         const generic = String(aspects[key] ?? "").trim();
         if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues };
@@ -4305,13 +4365,49 @@ export default function ListingPreviewScreen({
       if (!catKey || genericResolvedFor.current[gp] === catKey) continue;
       // Valeur catalogue unique exclue (2026-07-19) : réservée à la
       // confirmation explicite du bloc générique, jamais posée par l'IA.
-      const missing = list.filter(a => a.state === "missing" && (a.allowedValues?.length ?? 0) !== 1);
-      if (!missing.length) continue;
+      const missingAll = list.filter(a => a.state === "missing" && (a.allowedValues?.length ?? 0) !== 1);
+      if (!missingAll.length) continue;
       genericResolvedFor.current[gp] = catKey;
+      const src = edited[gp] ?? {};
+      // ── FIX « marques fantômes » (2026-07-30, jobs des 29-30/07 :
+      // inventaire Springfield → Beebs "Levi's", Maje → Beebs "H&M",
+      // Sans marque → Vinted "Boutique italienne ") ────────────────────────
+      // 1. Une valeur DÉJÀ CONNUE de l'article (copie, canonique, IA
+      //    d'origine) est posée DIRECTEMENT sur le champ dédié : on ne
+      //    demande jamais à l'IA une information qu'on possède. Avant, une
+      //    Marque « manquante » sur la copie partait en resolve_aspects avec
+      //    la liste RELEVÉE de la catégorie — partielle par construction
+      //    (chargement paresseux : 10 marques populaires + alphabet coupé à
+      //    « Am ») — et l'IA choisissait une marque plausible DANS la liste
+      //    (sa tête : Levi's, H&M ; son début d'alphabet : Agnès b) au lieu
+      //    de la marque réelle absente du relevé.
+      const KNOWN_BY_TARGET = {
+        marque:  src.platform_fields?.marque  || sharedFields.marque  || initialListing?.marque  || null,
+        matiere: src.platform_fields?.matiere || sharedFields.matiere || initialListing?.matiere || null,
+        couleur: src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || sharedFields.couleur || initialListing?.couleur || null,
+        taille:  src.platform_fields?.taille  || sharedFields.taille  || null,
+        modele:  src.platform_fields?.modele  || lensPourChamps?.modele || null,
+      };
+      const missing = [];
+      for (const a of missingAll) {
+        const known = a.dedicatedTarget ? String(KNOWN_BY_TARGET[a.dedicatedTarget] ?? "").trim() : "";
+        if (known) setPlatformDedicatedField(gp, a.dedicatedTarget, known);
+        else missing.push(a);
+      }
+      if (!missing.length) continue;
       (async () => {
         try {
-          const details = missing.map(a => ({ name: a.label, allowedValues: (a.allowedValues ?? []).slice(0, 60) }));
-          const src = edited[gp] ?? {};
+          // 2. Marque/Modèle : vocabulaire OUVERT — transmettre une liste
+          //    relevée (partielle) invite l'IA à choisir dedans. Doctrine du
+          //    29/07 : une liste relevée est une suggestion, jamais une liste
+          //    blanche — l'IA extrait du contexte ou répond null, point.
+          const OPEN_VOCAB_TARGETS = new Set(["marque", "modele"]);
+          const details = missing.map(a => ({
+            name: a.label,
+            allowedValues: OPEN_VOCAB_TARGETS.has(a.dedicatedTarget)
+              ? []
+              : (a.allowedValues ?? []).slice(0, 60),
+          }));
           const { data: res } = await supabase.functions.invoke("generate-listing", {
             body: {
               resolve_aspects: true,
@@ -4537,6 +4633,90 @@ export default function ListingPreviewScreen({
         if (!autoGenre) autoGenre = "Femme";
       }
 
+      // ── Garde-fou d'insert (2026-07-30) : aucune valeur manifestement
+      // incomplète ou non voulue ne part en prod sans trace. Deux classes
+      // réellement observées en base (8 jobs, 3 comptes, 27→30/07) :
+      //   · valeur d'UNE lettre ("V", "C", "B", "?") — input démonté à la
+      //     première frappe (fix racine dans StepPublish, ceci est le filet) ;
+      //   · marque DIVERGENTE de celle de l'article sans édition explicite
+      //     ("Springfield" → "Levi's") — résolution IA sur liste partielle
+      //     (fix racine dans l'effet resolve_aspects, ceci est le filet).
+      // Toute valeur écartée/corrigée laisse une trace REQUÊTABLE :
+      //   platform_fields->'suspect_values' IS NOT NULL
+      // Format : { "<champ>": { rejected, kept, reason } }.
+      // Tourne AVANT les branches par plateforme : la normalisation Vinted
+      // des couleurs (colors) repart d'un pf.couleur déjà assaini.
+      const flagSuspect = (pf, field, rejected, kept, reason) => {
+        pf.suspect_values = { ...(pf.suspect_values ?? {}), [field]: { rejected, kept: kept ?? null, reason } };
+      };
+      // Une lettre seule (ou "?") n'est une valeur plausible pour aucun champ
+      // texte libre — mais "S"/"M"/"L" sont des TAILLES légitimes et "9" une
+      // pointure : les clés taille/pointure/âge et les chiffres sont exclus.
+      const SUSPECT_SINGLE_RE = /^[A-Za-zÀ-ÿ?]$/;
+      const SIZE_LIKE_KEY_RE = /taille|size|pointure|age|âge/i;
+      const brandChannelKey = (platform, k) =>
+        (platform === "vinted" && k === "brand") ||
+        (platform === "leboncoin" && /_brand$/.test(k)) ||
+        ((platform === "beebs" || platform === "ebay") && k === "Marque");
+      // eBay a le même canal d'aspects (ebayAspects, rempli par la même
+      // résolution IA) : même exposition, même filet. Le "p" tapé en Marque
+      // du run réel du 12/07 était exactement cette classe.
+      const ASPECTS_PF_KEY = { ...GENERIC_ASPECTS_PF_KEY, ebay: "ebayAspects" };
+      const sanitizeJobFields = (platform, pf) => {
+        const OPEN_TEXT_KEYS = ["marque", "matiere", "couleur", "modele"];
+        // Espaces parasites des relevés/committs ("Boutique italienne ").
+        for (const k of OPEN_TEXT_KEYS) if (typeof pf[k] === "string") pf[k] = pf[k].trim();
+        // 1. Valeurs d'une lettre sur les champs dédiés — restauration depuis
+        // l'article (valeur IA d'origine) quand elle existe, sinon retrait :
+        // mieux vaut un requis manquant VISIBLE qu'une marque "B" publiée.
+        for (const k of OPEN_TEXT_KEYS) {
+          const v = pf[k];
+          if (typeof v === "string" && SUSPECT_SINGLE_RE.test(v)) {
+            const restore = String(initialListing?.[k] ?? "").trim();
+            const kept = restore.length > 1 ? restore : null;
+            flagSuspect(pf, k, v, kept, "single_char");
+            if (kept) pf[k] = kept; else delete pf[k];
+          }
+        }
+        // 1bis. Même règle sur le canal d'aspects (vintedAspects/lbcAspects/
+        // beebsAspects/ebayAspects), clés de type taille exclues.
+        const aspectsKey = ASPECTS_PF_KEY[platform];
+        const aspects = aspectsKey && pf[aspectsKey] && typeof pf[aspectsKey] === "object" ? { ...pf[aspectsKey] } : null;
+        if (aspects) {
+          for (const [k, v] of Object.entries(aspects)) {
+            if (typeof v !== "string") continue;
+            const t = v.trim();
+            if (t !== v) aspects[k] = t;
+            if (SUSPECT_SINGLE_RE.test(t) && !SIZE_LIKE_KEY_RE.test(k)) {
+              flagSuspect(pf, `${aspectsKey}.${k}`, t, null, "single_char");
+              delete aspects[k];
+            }
+          }
+        }
+        // 2. Marque divergente sans édition explicite de CETTE copie : la
+        // marque de l'article prime (sharedOverrides trace les éditions
+        // manuelles par plateforme ; les écritures IA n'en posent pas).
+        const canonicalMarque = String(sharedFields.marque || initialListing?.marque || "").trim();
+        const overridden = Boolean(sharedOverrides[platform]?.has("marque"));
+        if (canonicalMarque.length > 1 && !overridden) {
+          if (typeof pf.marque === "string" && pf.marque &&
+              normAspectVal(pf.marque) !== normAspectVal(canonicalMarque)) {
+            flagSuspect(pf, "marque", pf.marque, canonicalMarque, "brand_mismatch");
+            pf.marque = canonicalMarque;
+          }
+          if (aspects) {
+            for (const [k, v] of Object.entries(aspects)) {
+              if (typeof v === "string" && v && brandChannelKey(platform, k) &&
+                  normAspectVal(v) !== normAspectVal(canonicalMarque)) {
+                flagSuspect(pf, `${aspectsKey}.${k}`, v, canonicalMarque, "brand_mismatch");
+                aspects[k] = canonicalMarque;
+              }
+            }
+          }
+        }
+        if (aspects) pf[aspectsKey] = aspects;
+      };
+
       const rows = [...selected].map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         // Dernier filet avant l'insert du job : un état vidé à la main (ou un
@@ -4546,6 +4726,7 @@ export default function ListingPreviewScreen({
           if (isConditionKey(field.key) && !String(pf[field.key] ?? "").trim())
             pf[field.key] = defaultConditionFor(field);
         }
+        sanitizeJobFields(platform, pf);
         if (platform === "leboncoin") {
           const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
           const lbcPath = getLbcCategoryPath(icon);
