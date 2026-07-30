@@ -1889,39 +1889,9 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
 // ── Toggle piste + rond (teal quand ON) ──────────────────────────────────────
 
-function StockToggle({ checked, onChange, label, hint, disabled = false }) {
-  return (
-    <div style={{
-      display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-      background: disabled ? T.paper : T.card, border:`1px solid ${T.border}`, borderRadius:16,
-      padding:14, marginBottom:20, opacity: disabled ? 0.75 : 1,
-    }}>
-      <div style={{ minWidth:0 }}>
-        <div style={{ fontSize:14, fontWeight:600, color: disabled ? T.mute2 : T.ink }}>{label}</div>
-        {hint && <div style={{ fontSize:12, color:T.mute2, marginTop:2, lineHeight:1.4 }}>{hint}</div>}
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => !disabled && onChange(!checked)}
-        style={{
-          flexShrink:0, width:44, height:26, borderRadius:999, border:"none", padding:3,
-          background: disabled ? "#CFCABA" : checked ? T.teal : "#D8D2C4",
-          cursor: disabled ? "not-allowed" : "pointer", position:"relative", transition:"background 0.2s",
-        }}
-      >
-        <span style={{
-          display:"block", width:20, height:20, borderRadius:"50%", background:"#FFFFFF",
-          transform: checked ? "translateX(18px)" : "translateX(0)",
-          transition:"transform 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.25)",
-        }} />
-      </button>
-    </div>
-  );
-}
-
 // ── Step 3 — Publier (chips + croix) ─────────────────────────────────────────
+// (StockToggle supprimé le 2026-07-30 : l'ajout au stock n'est plus affiché du
+// tout — toute publication ajoute l'article à l'inventaire, cf. StepPublish.)
 
 // id de <datalist> valide et stable dérivé du nom d'aspect (accents/espaces/
 // apostrophes retirés) — "Capacité de stockage" → "capacite-de-stockage".
@@ -2098,7 +2068,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, stockLocked = false, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2116,6 +2086,69 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
     matiere: { key:"matiere", label:t("fieldMaterialLabel"), type:"text" },
     marque:  { key:"marque",  label:t("fieldBrandLabel"),    type:"text" },
   };
+
+  // ── Inventaire plein (Free) : écran de CONVERSION, pas une erreur ──────────
+  // Le CTA du footer devient « Passer Premium » (cf. ctaLabel/handleNext dans
+  // le composant hôte) ; ici on remplace l'UI de publication entière — les
+  // plateformes, champs requis et bandeaux n'ont aucun sens tant qu'aucune
+  // place en stock n'existe. Trois blocs, dans l'ordre : ce qui est atteint
+  // (20/20), ce que Premium débloque, la sortie alternative (libérer une place
+  // dans le Stock) — clairement affichée, jamais cachée : pas de dark pattern.
+  if (inventoryFull) {
+    const n = stockCount ?? FREE_STOCK_LIMIT;
+    return (
+      <div>
+        <Eyebrow>{t("stepPublishEyebrow")}</Eyebrow>
+        <h1 style={{ margin:"6px 0 16px", fontSize:22, fontWeight:600, color:T.ink }}>
+          {lang === "en" ? "Your free stock is complete" : "Ton stock gratuit est complet"}
+        </h1>
+
+        {/* 1. Ce qui est atteint — constat neutre, jauge pleine, pas de rouge */}
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:18, marginBottom:12 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+            <span style={{ fontSize:13, fontWeight:700, color:T.ink }}>
+              {lang === "en" ? "Free plan stock" : "Stock du plan gratuit"}
+            </span>
+            <span style={{ fontSize:13, fontWeight:700, color:T.teal }}>
+              {Math.min(n, FREE_STOCK_LIMIT)}/{FREE_STOCK_LIMIT} {lang === "en" ? "items" : "articles"}
+            </span>
+          </div>
+          <div style={{ height:8, borderRadius:99, background:T.chip, overflow:"hidden", marginBottom:12 }}>
+            <div style={{ width:"100%", height:"100%", background:T.teal }} />
+          </div>
+          <div style={{ fontSize:13.5, color:T.ink, lineHeight:1.6 }}>
+            {lang === "en"
+              ? "Your listings are ready — all that's missing is a stock slot. Every listing adds the item to your inventory, and the free plan holds 20 active items."
+              : "Tes annonces sont prêtes — il ne manque qu'une place en stock. Chaque publication ajoute l'article à ton inventaire, et le plan gratuit s'arrête à 20 articles actifs."}
+          </div>
+        </div>
+
+        {/* 2. Ce que Premium débloque — faits vérifiables uniquement (stock
+            illimité + grant mensuel coin_config : 150 Pépites Premium) */}
+        <div style={{ background:"#E7F3F0", border:"1px solid #BFDCD5", borderRadius:16, padding:18, marginBottom:12 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#1B6E62", marginBottom:8 }}>
+            {lang === "en" ? "With Premium" : "Avec Premium"}
+          </div>
+          {[
+            lang === "en" ? "Unlimited stock — this listing goes out right away" : "Stock illimité — cette annonce part tout de suite",
+            lang === "en" ? "Your current items stay exactly where they are" : "Tes articles actuels restent en place",
+            lang === "en" ? "150 Nuggets included every month" : "150 Pépites incluses chaque mois",
+          ].map(txt => (
+            <div key={txt} style={{ display:"flex", gap:8, alignItems:"flex-start", marginTop:6, fontSize:13, color:"#1B6E62", lineHeight:1.5 }}>
+              <span style={{ flexShrink:0 }}>✓</span><span>{txt}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* 3. La sortie alternative — rester en gratuit est un choix respecté */}
+        <div style={{ fontSize:12.5, color:T.mute2, lineHeight:1.6, marginBottom:12 }}>
+          {lang === "en"
+            ? "Prefer to stay on the free plan? Free up a slot from the Stock tab (delete an item, or mark one as sold), then come back — your listings will still be here."
+            : "Tu préfères rester en gratuit ? Libère une place depuis l'onglet Stock (supprime un article, ou marque-en un vendu), puis reviens — tes annonces t'attendent ici."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -2172,41 +2205,18 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         </div>
       ))}
 
-      {/* ── Ajout au stock : PLUS UN CHOIX (2026-07-29) ───────────────────────
-          Toute publication crée désormais l'article dans l'inventaire. Le
-          toggle « Ajouter au stock » (et donc le refus d'ajouter) est retiré ;
-          `addToStock` vaut true en dur. On affiche l'état, pas une question.
-          ⚠️ Ne pas confondre avec le cas ci-dessous : `stockLocked` = l'article
-          est DÉJÀ dans l'inventaire (publication depuis le Stock, ou ligne
-          créée par le Lens). Il ne doit surtout PAS être recréé — sinon
-          doublon. Les deux cas restent mutuellement exclusifs :
-          canToggleStock = !invId && !alreadyInStock, stockLocked = l'inverse. */}
-      {canToggleStock && (
-        <StockToggle
-          checked
-          disabled
-          onChange={() => {}}
-          label={t("stepPublishAddToStockLabel")}
-          hint={t("stepPublishAddToStockHintAlways")}
-        />
-      )}
-
-      {/* Article venant du Stock : le toggle n'a aucun sens (il y est déjà).
-          Il était jusqu'ici purement ABSENT — on l'affiche désormais grisé et
-          coché, pour que l'utilisateur voie que la question est réglée plutôt
-          que de se demander où est passée l'option. */}
-      {stockLocked && (
-        <StockToggle
-          checked
-          disabled
-          onChange={() => {}}
-          label={t("stepPublishAddToStockLabel")}
-          hint={lang === "en" ? "Already in your stock" : "Déjà dans ton stock"}
-        />
-      )}
+      {/* ── Ajout au stock : PLUS UN CHOIX (2026-07-29, UI retirée 2026-07-30)
+          Toute publication crée l'article dans l'inventaire, sans question ni
+          affichage : le toggle « Ajouter au stock » (montré grisé/coché depuis
+          le 29/07) est SUPPRIMÉ de l'écran — `addToStock` vaut true en dur
+          dans la logique de publication.
+          ⚠️ Le mécanisme anti-doublon reste ENTIER et distinct : un article
+          DÉJÀ dans l'inventaire (invId posé par le Stock, ou alreadyInStock
+          posé par le Lens) ne doit surtout PAS être recréé au publish —
+          canToggleStock = !invId && !alreadyInStock garde ce contrat. */}
 
       {canToggleStock && (
-        <div style={{ marginTop:-10, marginBottom:20 }}>
+        <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
             {t("stepPublishBuyPriceLabel")}
           </div>
@@ -2574,12 +2584,18 @@ function readStepperDraft(invKey) {
     // inventaire, ou flux Lens sans ligne dans les deux cas) : un brouillon
     // d'un autre article ne doit jamais fuiter dans un stepper fraîchement
     // ouvert. Le second test couvre le brouillon ouvert SANS ligne inventaire
-    // dont la ligne a été créée en cours de route (switch « Ajouter au stock »)
+    // dont la ligne a été créée en cours de route (ajout au stock du publish)
     // et que l'hôte remonte ensuite avec ce nouvel id.
     if ((d.invKey ?? null) !== (invKey ?? null) && (d.invId ?? null) !== (invKey ?? null)) return null;
     return d;
   } catch { return null; }
 }
+
+// ── Plafond inventaire du plan gratuit ───────────────────────────────────────
+// MIROIR de check_inventory_limit (migration 20260725180000) et du compteur du
+// Dashboard (DashboardTab, freeActive) : 20 articles NON vendus. À faire
+// évoluer ENSEMBLE si la règle serveur change.
+const FREE_STOCK_LIMIT = 20;
 
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
@@ -2634,20 +2650,50 @@ export default function ListingPreviewScreen({
     return () => { stale = true; };
   }, [step, supabase, userId]);
 
-  // Ligne inventaire liée à cette annonce : peut ne pas encore exister si l'article
-  // n'a pas encore été ajouté au stock (switch "Ajouter au stock" à l'étape Publier).
+  // Ligne inventaire liée à cette annonce : peut ne pas encore exister — elle
+  // est créée au moment du publish (l'ajout au stock est systématique).
   const [invId, setInvId] = useState(inventaireId || draft?.invId || null);
+  // canToggleStock = l'article n'est PAS ENCORE dans l'inventaire (ni invId du
+  // Stock, ni alreadyInStock du Lens) : la publication devra créer sa ligne.
+  // C'est le mécanisme anti-doublon « déjà dans ton stock » — il survit à la
+  // suppression du toggle (2026-07-30) : un article déjà en stock n'est jamais
+  // recréé au publish, seul l'affichage de la question a disparu.
   const canToggleStock = typeof createStockItem === "function" && !invId && !alreadyInStock;
-  // Provenance de l'article : invId est posé quand on publie DEPUIS le Stock
-  // (StockTab passe inventaireId) ; alreadyInStock l'est par Lens quand l'article
-  // a déjà été ajouté. Dans les deux cas il est déjà en stock → toggle verrouillé.
-  const stockLocked = !!invId || alreadyInStock;
   // Ajout au stock : PLUS UN CHOIX depuis le 2026-07-29 — toute publication
-  // crée l'article dans l'inventaire. Constante et non plus un état : il n'y a
-  // plus de toggle, donc plus rien à basculer. Le cas « déjà en stock » est
-  // porté par invId/alreadyInStock (stockLocked), pas par cette valeur.
+  // crée l'article dans l'inventaire. Constante et non plus un état ; depuis le
+  // 2026-07-30 plus rien ne l'affiche (toggle retiré de StepPublish).
   const addToStock = true;
   const [prixAchatSaisi, setPrixAchatSaisi] = useState(draft?.prixAchatSaisi ?? "");
+
+  // ── Inventaire plein : blocage COHÉRENT, en écran de conversion (2026-07-30)
+  // Avant : le compte Free à 20 articles voyait le CTA « Publier » vert et
+  // actif, cliquait, et récoltait un bandeau rouge (INVENTORY_LIMIT remonté par
+  // createStockItem) — une erreur pour un état parfaitement prévisible.
+  // Maintenant : le compte est relu à l'ENTRÉE de l'étape Publier (miroir de
+  // check_inventory_limit : articles NON vendus, cf. FREE_STOCK_LIMIT), et si
+  // le plafond est atteint, StepPublish affiche un écran de conversion et le
+  // CTA devient « Passer Premium » (ouvre la ConversionModal, trigger stock).
+  // Seul le cas où la publication doit CRÉER la ligne est concerné
+  // (canToggleStock) : republier un article DÉJÀ en stock n'insère rien, le
+  // trigger serveur ne le bloque pas — on ne le bloque pas non plus.
+  // Lecture best-effort : en cas d'échec, stockCount reste null → comportement
+  // historique (le serveur tranche au publish, bandeau rouge en dernier
+  // recours).
+  const [stockCount, setStockCount] = useState(null);
+  useEffect(() => {
+    if (step !== 3 || !supabase || !userId || !canToggleStock || isPremium || isPro) return;
+    let stale = false;
+    supabase.from("inventaire")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .neq("statut", "vendu")
+      .then(({ count, error }) => {
+        if (!stale && !error && typeof count === "number") setStockCount(count);
+      });
+    return () => { stale = true; };
+  }, [step, supabase, userId, canToggleStock, isPremium, isPro]);
+  const inventoryFull =
+    !isPremium && !isPro && canToggleStock && stockCount != null && stockCount >= FREE_STOCK_LIMIT;
 
   // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
   // de maintenance dans StepPublish. Lecture TOLÉRANTE (rafraîchie à
@@ -4311,6 +4357,10 @@ export default function ListingPreviewScreen({
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
+    // Défense en profondeur (inventaire plein) : handleNext route déjà vers la
+    // ConversionModal — au cas où, on ne tente jamais un publish qui créerait
+    // la 21e ligne (le trigger serveur le refuserait de toute façon).
+    if (inventoryFull) return;
     // Défense en profondeur (S7) : le CTA est déjà désactivé tant que la
     // relecture des plateformes en ligne n'a pas répondu — on ne publie pas
     // sans connaître l'état publié de l'article.
@@ -4363,9 +4413,10 @@ export default function ListingPreviewScreen({
         }
       }
 
-      // Switch "Ajouter au stock" ON et article pas encore en stock : on le crée
-      // maintenant, juste avant de générer les jobs de publication, pour que
-      // cross_post_jobs.inventaire_id pointe vers la bonne ligne dès l'insert.
+      // Article pas encore en stock : on crée sa ligne inventaire maintenant
+      // (ajout systématique), juste avant de générer les jobs de publication,
+      // pour que cross_post_jobs.inventaire_id pointe vers la bonne ligne dès
+      // l'insert.
       let currentInvId = invId;
       if (addToStock && !currentInvId && createStockItem) {
         try {
@@ -4920,6 +4971,9 @@ export default function ListingPreviewScreen({
       return t("ctaContinueToPublish");
     }
     if (step === 3) {
+      // Inventaire plein (Free) : le CTA ne propose plus de publier — il ouvre
+      // le passage Premium (écran de conversion dans StepPublish).
+      if (inventoryFull) return lang === "en" ? "Go Premium — unlimited stock" : "Passer Premium — stock illimité";
       if (publishing) return t("ctaPublishing");
       const n = publishChips.length;
       return tpl("ctaPublishOnPlatforms", { n });
@@ -4961,7 +5015,9 @@ export default function ListingPreviewScreen({
     // !publishedStateLoaded (S7) : pas de clic Publier tant que la relecture
     // des plateformes déjà en ligne n'a pas répondu — sinon une fenêtre de
     // quelques centaines de ms permettait de lancer une republication.
-    (step === 3 && (publishChips.length === 0 || publishing || requiredBlocking || !publishedStateLoaded));
+    // inventoryFull court-circuite ces gardes : le CTA ne publie plus, il
+    // ouvre le passage Premium — il doit rester cliquable.
+    (step === 3 && !inventoryFull && (publishChips.length === 0 || publishing || requiredBlocking || !publishedStateLoaded));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
@@ -4978,7 +5034,14 @@ export default function ListingPreviewScreen({
       return;
     }
     if (step === 2) { if (platformListings) { setStep(3); } return; }
-    if (step === 3) { handlePublish(); }
+    if (step === 3) {
+      // Inventaire plein : le CTA est un passage Premium, jamais un publish.
+      if (inventoryFull) {
+        setQuotaModal({ open: true, trigger: "stock", targetTiers: ["premium", "pro"] });
+        return;
+      }
+      handlePublish();
+    }
   }
 
   // Bouton retour unique du header : retourne à l'étape précédente, ou ferme
@@ -5166,7 +5229,8 @@ export default function ListingPreviewScreen({
             publishError={publishError}
             lang={lang}
             canToggleStock={canToggleStock}
-            stockLocked={stockLocked}
+            inventoryFull={inventoryFull}
+            stockCount={stockCount}
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
             missingSharedFields={missingSharedFields}
@@ -5193,7 +5257,7 @@ export default function ListingPreviewScreen({
         <PrimaryButton
           disabled={ctaDisabled}
           onClick={handleNext}
-          icon={step === 3 && !ctaDisabled && !publishing ? Check : undefined}
+          icon={step === 3 && !ctaDisabled && !publishing && !inventoryFull ? Check : undefined}
         >
           {ctaLabel()}
         </PrimaryButton>
@@ -5206,6 +5270,8 @@ export default function ListingPreviewScreen({
           onUpgrade={tier => { setQuotaModal(m => ({ ...m, open: false })); onUpgrade(tier); }}
           trigger={quotaModal.trigger}
           targetTiers={quotaModal.targetTiers}
+          itemCount={quotaModal.trigger === "stock" ? stockCount : null}
+          stockLimit={FREE_STOCK_LIMIT}
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}

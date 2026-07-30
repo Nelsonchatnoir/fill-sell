@@ -721,8 +721,8 @@ const LensTab = memo(function LensTab({
     setGeneratingListing(true);
     setListingError('');
     try{
-      // L'ajout au stock est décidé plus tard (switch "Ajouter au stock" à l'étape
-      // Publier) : on ne crée pas la ligne inventaire ici, on upload juste les photos.
+      // L'ajout au stock a lieu plus tard, au publish (systématique depuis le
+      // 2026-07-29) : on ne crée pas la ligne inventaire ici, on upload juste les photos.
       const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
 
