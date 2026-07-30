@@ -1125,9 +1125,12 @@ async function processJob(rawJob, accessToken) {
     // recoverStaleProcessingJobs pour repêcher un job dont le worker est mort en
     // route. Sans lui, la reprise se baserait sur created_at — qui peut être bien
     // plus ancien que le début réel du traitement (job resté en file).
-    await updateJobStatus(accessToken, job.id, "processing", {
-      platform_fields: { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() },
-    });
+    // Muté sur la COPIE MÉMOIRE aussi (2026-07-30) : update-job-status écrase
+    // platform_fields en entier, et les écritures suivantes (relevé fenêtre
+    // ci-dessous, extras de fin) repartent de job.platform_fields — sans cette
+    // fusion, elles effaceraient processing_since en base.
+    job.platform_fields = { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
 
     // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
     // neuf par job (voir getOrCreateWorkTab : DataDome a suspendu la session
@@ -1144,6 +1147,17 @@ async function processJob(rawJob, accessToken) {
     // (workTabId est déclaré HORS du try : le catch en a besoin pour demander à
     // la sonde si l'annonce a malgré tout été créée — cf. canal coupé.)
     tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
+
+    // ── Observation fenêtre de travail (2026-07-30, mesure DataDome) ─────────
+    // État RÉEL fenêtre/onglet au démarrage du job, persisté tout de suite :
+    // si le job meurt en route, l'état de départ est déjà sur la ligne.
+    // Observation SEULE — voir releverEtatFenetreTravail. Jamais bloquant.
+    stampEtatFenetre(job, "at_start", await releverEtatFenetreTravail(job.platform));
+    if (job.platform_fields?.work_window_state) {
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields })
+        .catch((e) => console.warn(`[background] Job ${job.id} : relevé fenêtre non persisté —`, String(e?.message ?? e)));
+    }
+
     if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
     // ⚠️ eBay : onglet PEINT pendant le remplissage (2026-07-12, non encore
@@ -1397,7 +1411,10 @@ async function processJob(rawJob, accessToken) {
       return { status: "retry", error: msg };
     }
     console.error(`[background] Job ${job.id} en échec:`, e);
-    await updateJobStatus(accessToken, job.id, "failed", { error: msg })
+    // Observation fenêtre (2026-07-30) : re-relevé sur le failed sec aussi —
+    // platform_fields joint pour porter work_window_state.at_end en base.
+    stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg, platform_fields: job.platform_fields })
       .catch((err) => console.error("[background] update-job-status failed:", err));
     return { status: "failed", error: msg };
   }
@@ -1463,10 +1480,19 @@ async function rearmBounded(accessToken, job, errorMsg) {
     return;
   }
 
+  // Observation fenêtre (2026-07-30) : re-relevé au moment où le job échoue ou
+  // repart en needsUser — croisable en SQL avec at_start. Jamais bloquant.
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+
   const attempts = (job.platform_fields?.needsUserAttempts ?? 0) + 1;
   if (attempts >= MAX_NEEDS_USER_RETRIES) {
     console.warn(`[background] Job ${job.id} : cause toujours présente après ${attempts} tentatives → failed (sort de la boucle) — ${errorMsg}`);
-    await updateJobStatus(accessToken, job.id, "failed", { error: errorMsg });
+    // platform_fields joint depuis le 2026-07-30 : porte le relevé fenêtre
+    // (work_window_state.at_end) sur la ligne failed, comme la branche pending.
+    await updateJobStatus(accessToken, job.id, "failed", {
+      error: errorMsg,
+      platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
+    });
   } else {
     console.warn(`[background] Job ${job.id} : ré-armement (tentative ${attempts}/${MAX_NEEDS_USER_RETRIES}) — ${errorMsg}`);
     await updateJobStatus(accessToken, job.id, "pending", {
@@ -1499,6 +1525,10 @@ async function markNeedsUser(accessToken, job, result) {
     );
     return;
   }
+
+  // Observation fenêtre (2026-07-30) : re-relevé au passage en needs_user —
+  // l'écriture ci-dessous repart de job.platform_fields et l'emporte.
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
 
   const f = result.needsUserField;
   let allowed = Array.isArray(f.allowed_values) && f.allowed_values.length ? f.allowed_values : null;
@@ -1898,6 +1928,57 @@ async function moveTabToWorkWindow(tabId) {
     console.warn(`[background] Rapatriement de l'onglet ${tabId} impossible :`, String(e?.message ?? e));
     return tabId;
   }
+}
+
+// ── Observation : état RÉEL de la fenêtre de travail, par job (2026-07-30) ───
+// Hypothèse à MESURER, pas à corriger : une fenêtre de travail restaurée /
+// affichée au premier plan (constatée sur macOS, en plein écran) changerait le
+// comportement observable par DataDome par rapport à la fenêtre minimisée
+// prévue par le code. On relève donc l'état réel (windows.get : state,
+// focused ; tabs.get : active) au DÉBUT de chaque job, et à nouveau quand un
+// job se termine en échec ou en needsUser (rearmBounded / markNeedsUser /
+// failed sec — y compris le motif CHALLENGE DATADOME). Persisté dans
+// platform_fields.work_window_state, requêtable en SQL :
+//   platform_fields->'work_window_state'->'at_start'->>'window_state'
+//   platform_fields->'work_window_state'->'at_end'->>'window_focused'
+// ⚠️ Observation SEULE : aucune re-minimisation forcée, aucun avertissement,
+// aucun blocage si la fenêtre est visible — le comportement ne change en rien.
+async function releverEtatFenetreTravail(platform) {
+  try {
+    const store = await chrome.storage.session.get([WORK_WINDOW_KEY, workTabKey(platform)]).catch(() => ({}));
+    const dedicatedId = store[WORK_WINDOW_KEY] ?? null;
+    const tabId = store[workTabKey(platform)] ?? null;
+    const tab = tabId != null ? await chrome.tabs.get(tabId).catch(() => null) : null;
+    // Fenêtre RÉELLE de l'onglet en priorité (repli « fenêtre courante » de
+    // createWorkTabInWorkWindow : l'onglet peut vivre hors fenêtre dédiée).
+    const winId = tab?.windowId ?? dedicatedId;
+    if (winId == null) return null;
+    const win = await chrome.windows.get(winId).catch(() => null);
+    if (!win && !tab) return null;
+    return {
+      at: new Date().toISOString(),
+      window_id: win?.id ?? null,
+      window_state: win?.state ?? null, // "minimized" attendu ; "normal"/"fullscreen" = fenêtre visible
+      window_focused: win?.focused ?? null,
+      tab_active: tab?.active ?? null,
+      tab_in_dedicated_window: tab && dedicatedId != null ? tab.windowId === dedicatedId : null,
+    };
+  } catch (e) {
+    console.warn("[background] releverEtatFenetreTravail :", String(e?.message ?? e));
+    return null;
+  }
+}
+
+// Pose le relevé sur la COPIE MÉMOIRE du job
+// (platform_fields.work_window_state.<phase>) : update-job-status écrase
+// platform_fields en entier, donc toute écriture ultérieure qui repart de
+// job.platform_fields emporte le relevé. Jamais bloquant (relevé null = rien).
+function stampEtatFenetre(job, phase, releve) {
+  if (!releve) return;
+  job.platform_fields = {
+    ...(job.platform_fields ?? {}),
+    work_window_state: { ...(job.platform_fields?.work_window_state ?? {}), [phase]: releve },
+  };
 }
 
 async function getOrCreateWorkTab(platform, url) {
@@ -4782,16 +4863,25 @@ async function processDeleteJob(job, accessToken) {
 
   try {
     // Même horodatage que la publication (cf. recoverStaleProcessingJobs) : un
-    // job delete peut lui aussi mourir en route.
-    await updateJobStatus(accessToken, job.id, "processing", {
-      platform_fields: { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() },
-    });
+    // job delete peut lui aussi mourir en route. Muté sur la copie mémoire
+    // aussi (2026-07-30, même raison que processJob : update-job-status écrase
+    // platform_fields en entier).
+    job.platform_fields = { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
 
     const target = DELETE_TARGETS[job.platform]?.(job);
     if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
     // Même onglet de travail persistant que la publication (anti-DataDome).
     const tabId = await getOrCreateWorkTab(job.platform, target);
+
+    // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
+    // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
+    stampEtatFenetre(job, "at_start", await releverEtatFenetreTravail(job.platform));
+    if (job.platform_fields?.work_window_state) {
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields })
+        .catch((e2) => console.warn(`[background] Job ${job.id} : relevé fenêtre non persisté —`, String(e2?.message ?? e2)));
+    }
 
     // Onglet activé DANS la fenêtre de travail dédiée (aucun impact chez
     // l'utilisateur — cf. paintTab v2). ⚠️ La fenêtre étant minimisée, la
@@ -4919,7 +5009,9 @@ async function processDeleteJob(job, accessToken) {
       return { status: "retry", error: msg };
     }
     console.error(`[background] Job ${job.id} (delete) en échec:`, e);
-    await updateJobStatus(accessToken, job.id, "failed", { error: msg })
+    // Observation fenêtre (2026-07-30) : même relevé de fin que la publication.
+    stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg, platform_fields: job.platform_fields })
       .catch((err) => console.error("[background] update-job-status failed:", err));
     return { status: "failed", error: msg };
   }
