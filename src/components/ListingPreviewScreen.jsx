@@ -1583,6 +1583,14 @@ function StepGeneration({ generating, generateError, platformListings, processed
     return s;
   });
 
+  // Même classe que le fix « une seule lettre » des encarts de StepPublish
+  // (2026-07-30) : visibleFields ne montre un champ NON pertinent pour
+  // l'icône que tant qu'il porte une valeur — le VIDER (dernier retour
+  // arrière d'une correction) le démontait sous les doigts, focus perdu.
+  // Un champ affiché une fois le RESTE pour la vie du composant (ref :
+  // mutation idempotente au rendu, pas de re-render déclenché).
+  const shownFieldsRef = useRef({});
+
   // Phase A — loading
   if (generating || (!platformListings && !generateError)) {
     // « Photos originales » : aucune retouche IA ne tourne — ni « Retouche des
@@ -1768,11 +1776,15 @@ function StepGeneration({ generating, generateError, platformListings, processed
           // Champs AFFICHÉS = pertinents pour la catégorie réelle de l'article,
           // ou déjà remplis. Les données envoyées à l'extension, elles, restent
           // complètes (mergeFieldsWithLens n'est pas filtré).
-          const fieldConfigs = visibleFields(
+          const fieldConfigsVisible = visibleFields(
             platformFieldsConfig[p] ?? [],
             articleIcon,
             e.platform_fields ?? {}
           );
+          // Union sticky (cf. shownFieldsRef) dans l'ordre de la config.
+          const shownSet = shownFieldsRef.current[p] ?? (shownFieldsRef.current[p] = new Set());
+          for (const f of fieldConfigsVisible) shownSet.add(f.key);
+          const fieldConfigs = (platformFieldsConfig[p] ?? []).filter(f => shownSet.has(f.key));
           const etatField = fieldConfigs.find(f => f.key === "etat" || f.key === "condition");
           const etatVal = etatField ? (e.platform_fields?.[etatField.key] ?? "") : "";
           const summaryParts = [
@@ -2169,6 +2181,21 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
     a.state === "missing" || a.state === "invalid" || a.source === "generic" ||
     Boolean(stickyGeneric[gp]?.has(a.key));
 
+  // Même motif, même parade pour l'encart eBay : la voie sharedKey
+  // (onEbaySharedFieldChange — Marque, Taille, Couleur, Matière) écrit le
+  // champ DÉDIÉ, l'aspect passe à "ok" SANS source:"generic", et la ligne
+  // sortait du filtre → input démonté à la première frappe.
+  const [stickyEbay, setStickyEbay] = useState(() => new Set());
+  useEffect(() => {
+    if (!ebayRequiredStatus) return;
+    const add = ebayRequiredStatus.filter(a =>
+      (a.state === "missing" || a.state === "invalid" || a.source === "generic") && !stickyEbay.has(a.name));
+    if (add.length) setStickyEbay(prev => new Set([...prev, ...add.map(a => a.name)]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ebayRequiredStatus]);
+  const ebayEditable = (a) =>
+    a.state === "missing" || a.state === "invalid" || a.source === "generic" || stickyEbay.has(a.name);
+
   // ── Inventaire plein (Free) : écran de CONVERSION, pas une erreur ──────────
   // Le CTA du footer devient « Passer au niveau supérieur » (cf. ctaLabel/
   // handleNext dans le composant hôte — libellé neutre : la modale propose
@@ -2352,9 +2379,12 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               DÉDIÉ (taille/couleur/matière…) rempli avec une valeur hors liste
               fermée s'édite désormais ICI en vrai sélecteur — fini le message
               d'erreur avec exemples inutiles sans moyen de choisir. */}
-          {onEbayAspectChange && ebayRequiredStatus.some(a => a.state === "missing" || a.state === "invalid" || a.source === "generic") && (
+          {/* ebayEditable (sticky) et non le filtre direct : sans lui, l'input
+              d'un aspect à sharedKey se démontait à la première frappe (fix
+              « une seule lettre », 2026-07-30). */}
+          {onEbayAspectChange && ebayRequiredStatus.some(a => ebayEditable(a)) && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {ebayRequiredStatus.filter(a => a.state === "missing" || a.state === "invalid" || a.source === "generic").map(a => (
+              {ebayRequiredStatus.filter(a => ebayEditable(a)).map(a => (
                 <div key={a.name}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
                   {/* Sans rapprochement, on montre la VALEUR RÉELLE du job
@@ -3843,7 +3873,9 @@ export default function ListingPreviewScreen({
             allowedValues, mode,
           };
         }
-        return { name, state: "ok", allowedValues, mode };
+        // `value: srcVal` (2026-07-30) : avec le rendu sticky de l'encart, une
+        // ligne passée à "ok" reste affichée — elle doit montrer sa valeur.
+        return { name, state: "ok", value: srcVal, allowedValues, mode };
       }
       const generic = String(pf.ebayAspects?.[name] ?? "").trim();
       // source:"generic" : valeur venue de resolve_aspects/du fallback UI —
@@ -3967,10 +3999,19 @@ export default function ListingPreviewScreen({
     (async () => {
       try {
         // allowedValues déjà portées par la preview (même fetch) : pas de
-        // relecture de la table.
+        // relecture de la table. Transmises à l'IA UNIQUEMENT quand la liste
+        // FAIT FOI (SELECTION_ONLY — exhaustive par contrat Taxonomy). Les
+        // aspects FREE_TEXT (Marque en tête) ne portent que des valeurs
+        // RECOMMANDÉES, non exhaustives : les transmettre invitait l'IA à
+        // choisir une marque plausible dans la liste au lieu d'extraire du
+        // contexte ou de répondre null (même mécanisme que les marques
+        // fantômes Vinted/Beebs du 29-30/07, doctrine « liste = suggestion »).
         const details = (ebayRequiredStatus ?? [])
           .filter(a => missing.includes(a.name))
-          .map(a => ({ name: a.name, allowedValues: (a.allowedValues ?? []).slice(0, 60) }));
+          .map(a => ({
+            name: a.name,
+            allowedValues: a.mode === "SELECTION_ONLY" ? (a.allowedValues ?? []).slice(0, 60) : [],
+          }));
         if (!details.length) return;
         const src = edited.ebay ?? {};
         const { data: res } = await supabase.functions.invoke("generate-listing", {
@@ -4397,14 +4438,23 @@ export default function ListingPreviewScreen({
       if (!missing.length) continue;
       (async () => {
         try {
-          // 2. Marque/Modèle : vocabulaire OUVERT — transmettre une liste
-          //    relevée (partielle) invite l'IA à choisir dedans. Doctrine du
-          //    29/07 : une liste relevée est une suggestion, jamais une liste
-          //    blanche — l'IA extrait du contexte ou répond null, point.
-          const OPEN_VOCAB_TARGETS = new Set(["marque", "modele"]);
+          // 2. Vocabulaire OUVERT : transmettre une liste relevée (partielle)
+          //    invite l'IA à choisir dedans. Doctrine du 29/07 : une liste
+          //    relevée est une suggestion, jamais une liste blanche — l'IA
+          //    extrait du contexte ou répond null, point.
+          //    · marque/modele : ouvert sur les 3 plateformes ;
+          //    · matiere : ouvert AUSSI sur LBC (jamais relevé en base,
+          //      combobox) et Beebs (relevé d'un panneau à chargement
+          //      paresseux — 7 valeurs vues, complétude improuvable). PAS sur
+          //      Vinted : sa liste material vient de la config serveur
+          //      /attributes (55 valeurs, complète par construction) — elle
+          //      aide l'IA sans l'enfermer dans un relevé partiel.
+          const openVocab = (target) =>
+            target === "marque" || target === "modele" ||
+            (target === "matiere" && gp !== "vinted");
           const details = missing.map(a => ({
             name: a.label,
-            allowedValues: OPEN_VOCAB_TARGETS.has(a.dedicatedTarget)
+            allowedValues: openVocab(a.dedicatedTarget)
               ? []
               : (a.allowedValues ?? []).slice(0, 60),
           }));
@@ -4641,13 +4691,27 @@ export default function ListingPreviewScreen({
       //   · marque DIVERGENTE de celle de l'article sans édition explicite
       //     ("Springfield" → "Levi's") — résolution IA sur liste partielle
       //     (fix racine dans l'effet resolve_aspects, ceci est le filet).
+      //     ⚠️ TRACE SANS ÉCRASER (décision 30/07 soir) : 10 jobs en base
+      //     portaient une VRAIE marque lue sur l'article (étiquette en photo,
+      //     description) alors que l'inventaire disait « Sans marque » —
+      //     divergente ≠ suspecte. Le critère qui discriminerait est la
+      //     PROVENANCE (lue sur l'article vs choisie dans une liste relevée),
+      //     qu'on ne marque pas aujourd'hui ; la source empoisonnée (listes
+      //     partielles transmises à l'IA) étant tarie à l'amont, écraser ici
+      //     détruirait plus d'information correcte qu'il n'en protégerait.
       // Toute valeur écartée/corrigée laisse une trace REQUÊTABLE :
       //   platform_fields->'suspect_values' IS NOT NULL
       // Format : { "<champ>": { rejected, kept, reason } }.
       // Tourne AVANT les branches par plateforme : la normalisation Vinted
       // des couleurs (colors) repart d'un pf.couleur déjà assaini.
-      const flagSuspect = (pf, field, rejected, kept, reason) => {
-        pf.suspect_values = { ...(pf.suspect_values ?? {}), [field]: { rejected, kept: kept ?? null, reason } };
+      // `expected` (optionnel) : valeur attendue quand on trace une
+      // divergence SANS la corriger (brand_mismatch) — rejected === kept
+      // signifie « rien retiré, la valeur part telle quelle ».
+      const flagSuspect = (pf, field, rejected, kept, reason, expected) => {
+        pf.suspect_values = {
+          ...(pf.suspect_values ?? {}),
+          [field]: { rejected, kept: kept ?? null, reason, ...(expected !== undefined ? { expected } : {}) },
+        };
       };
       // Une lettre seule (ou "?") n'est une valeur plausible pour aucun champ
       // texte libre — mais "S"/"M"/"L" sont des TAILLES légitimes et "9" une
@@ -4693,23 +4757,25 @@ export default function ListingPreviewScreen({
             }
           }
         }
-        // 2. Marque divergente sans édition explicite de CETTE copie : la
-        // marque de l'article prime (sharedOverrides trace les éditions
-        // manuelles par plateforme ; les écritures IA n'en posent pas).
+        // 2. Marque divergente de celle de l'article sans édition explicite
+        // de CETTE copie (sharedOverrides trace les éditions manuelles ; les
+        // écritures IA n'en posent pas) : TRACÉE, JAMAIS écrasée — une marque
+        // lue sur l'article (étiquette, description) diverge légitimement
+        // d'un inventaire « Sans marque » (cf. bloc de tête du garde-fou).
+        // `rejected: null` = rien retiré, la valeur part telle quelle ;
+        // `expected` = la marque de l'article, pour compter/comparer en SQL.
         const canonicalMarque = String(sharedFields.marque || initialListing?.marque || "").trim();
         const overridden = Boolean(sharedOverrides[platform]?.has("marque"));
         if (canonicalMarque.length > 1 && !overridden) {
           if (typeof pf.marque === "string" && pf.marque &&
               normAspectVal(pf.marque) !== normAspectVal(canonicalMarque)) {
-            flagSuspect(pf, "marque", pf.marque, canonicalMarque, "brand_mismatch");
-            pf.marque = canonicalMarque;
+            flagSuspect(pf, "marque", pf.marque, pf.marque, "brand_mismatch", canonicalMarque);
           }
           if (aspects) {
             for (const [k, v] of Object.entries(aspects)) {
               if (typeof v === "string" && v && brandChannelKey(platform, k) &&
                   normAspectVal(v) !== normAspectVal(canonicalMarque)) {
-                flagSuspect(pf, `${aspectsKey}.${k}`, v, canonicalMarque, "brand_mismatch");
-                aspects[k] = canonicalMarque;
+                flagSuspect(pf, `${aspectsKey}.${k}`, v, v, "brand_mismatch", canonicalMarque);
               }
             }
           }
