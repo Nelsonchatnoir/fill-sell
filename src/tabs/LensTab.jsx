@@ -459,8 +459,29 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
           )}
         </div>
 
-        {/* 📊 Fourchette marché */}
-        {result.fourchette_marche&&(
+        {/* 📊 Fourchette marché. Une seule annonce retenue = un POINT, pas un
+            marché (2026-07-30) : on remplace les trois tuiles par le point,
+            dit comme tel — jamais une fourchette déguisée. */}
+        {result.fourchette_marche&&(()=>{
+          const retenues=Array.isArray(result.annonces_marche)
+            ?result.annonces_marche.filter(a=>a?.titre&&Number.isFinite(a?.prix))
+            :[];
+          if(retenues.length===1){
+            const a=retenues[0];
+            return(
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
+                  📊 {lang==='en'?'Market data':'Donnée marché'}
+                </div>
+                <div style={{fontSize:12,color:'#6B7A75',lineHeight:1.5}}>
+                  {lang==='en'
+                    ?<>Single comparable listing found — not a market range: {a.titre} at <strong style={{color:'#1B6E62'}}>{formatCurrency(a.prix,currency)}</strong>{a.plateforme?` (${a.plateforme})`:''}. Double-check the price.</>
+                    :<>Une seule annonce comparable trouvée — pas une fourchette de marché : {a.titre} à <strong style={{color:'#1B6E62'}}>{formatCurrency(a.prix,currency)}</strong>{a.plateforme?` (${a.plateforme})`:''}. Vérifie le prix.</>}
+                </div>
+              </div>
+            );
+          }
+          return(
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:'#6B7A75',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
               📊 {lang==='en'?'Market range':'Fourchette marché'}
@@ -510,7 +531,8 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
               );
             })()}
           </div>
-        )}
+          );
+        })()}
 
         {/* ⚡ Vitesse de vente */}
         {vi&&(

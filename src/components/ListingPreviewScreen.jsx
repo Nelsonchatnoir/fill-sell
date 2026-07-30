@@ -1722,7 +1722,26 @@ function StepGeneration({ generating, generateError, platformListings, processed
         {estimateError && (
           <div style={{ fontSize:12, fontWeight:600, color:"#B0645A", marginTop:8 }}>{estimateError}</div>
         )}
-        {!prixManquant && estimateResult?.fourchette_min != null && estimateResult?.fourchette_max != null && (
+        {/* Une seule annonce retenue = un POINT, pas un marché (2026-07-30,
+            casquette Volcom : « Fourchette marché : 18 – 28 € » assise sur UNE
+            annonce à 29 €). Dans ce cas on montre le point et on le dit —
+            jamais une fourchette déguisée en donnée de marché. */}
+        {!prixManquant && (() => {
+          const annonces = Array.isArray(estimateResult?.annonces_marche)
+            ? estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix))
+            : [];
+          if (annonces.length !== 1) return null;
+          const a = annonces[0];
+          return (
+            <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
+              {lang === "en"
+                ? <>Single comparable listing found — not a market range: {a.titre} at <strong style={{ color:T.tealDeep }}>{a.prix} €</strong>{a.plateforme ? ` (${a.plateforme})` : ""}. Double-check the price.</>
+                : <>Une seule annonce comparable trouvée — pas une fourchette de marché : {a.titre} à <strong style={{ color:T.tealDeep }}>{a.prix} €</strong>{a.plateforme ? ` (${a.plateforme})` : ""}. Vérifie le prix.</>}
+            </div>
+          );
+        })()}
+        {!prixManquant && estimateResult?.fourchette_min != null && estimateResult?.fourchette_max != null
+          && !(Array.isArray(estimateResult?.annonces_marche) && estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix)).length === 1) && (
           <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
             {lang === "en" ? "Market range: " : "Fourchette marché : "}
             <strong style={{ color:T.tealDeep }}>{estimateResult.fourchette_min} – {estimateResult.fourchette_max} €</strong>
@@ -1732,10 +1751,11 @@ function StepGeneration({ generating, generateError, platformListings, processed
             scan dit avoir RETENUES pour la fourchette (annonces_marche,
             assainies serveur — titre + prix garantis, plateforme optionnelle).
             Replié par défaut ; ni vignettes, ni liens, ni images. Champ absent
-            ou vide → rien du tout (pas de bloc vide, pas de message). */}
+            ou vide → rien du tout (pas de bloc vide, pas de message). Une
+            annonce UNIQUE est traitée par le bloc « point isolé » ci-dessus. */}
         {!prixManquant && Array.isArray(estimateResult?.annonces_marche) && estimateResult.annonces_marche.length > 0 && (() => {
           const annonces = estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix));
-          if (!annonces.length) return null;
+          if (annonces.length < 2) return null;
           const prix = annonces.map(a => a.prix);
           const min = Math.min(...prix), max = Math.max(...prix);
           return (
@@ -2861,7 +2881,18 @@ export default function ListingPreviewScreen({
   // initialListing SANS le remplacer : le contrat (prix_vente_suggere +
   // canonical_fields taille/couleur/matiere/marque) est celui que le stepper
   // consomme déjà depuis Lens — on le REMPLIT, on ne le change pas.
-  const [photoAnalysis, setPhotoAnalysis] = useState(draft?.photoAnalysis ?? null);
+  //
+  // ENSEMENCEMENT (2026-07-30, casquette Volcom) : un article qui ARRIVE avec
+  // un scan complet (initialListing = réponse lens-analysis, prix_vente_suggere
+  // présent) a déjà UNE estimation, payée. La laisser hors de photoAnalysis,
+  // c'est afficher un écran de génération muet sur le marché — et un second
+  // scan lancé ici produit une SECONDE vérité (14 € / 5 annonces sur l'écran
+  // Lens, 21 € / 1 annonce à la génération, à quelques minutes d'écart, 6
+  // Pépites chaque fois). Une estimation par article : celle qui existe.
+  const [photoAnalysis, setPhotoAnalysis] = useState(
+    draft?.photoAnalysis
+    ?? (initialListing?.prix_vente_suggere != null ? initialListing : null)
+  );
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
 
