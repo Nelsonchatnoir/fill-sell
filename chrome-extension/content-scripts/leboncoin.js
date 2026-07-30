@@ -496,6 +496,26 @@ function findLbcDelete(root) {
   );
 }
 
+// ── Challenge anti-bot (DataDome) sur le DOM vivant (2026-07-30) ─────────────
+// Copie locale d'estPageBotShield (background.js) — les content scripts sont
+// autonomes, pas de module partagé (OBSERVATORY.md ADR-03). Le background
+// teste un HTML de fetch ; ici on teste la page réellement rendue, avec deux
+// adaptations :
+//   · le motif nu /datadome/ du background est volontairement ÉCARTÉ : les
+//     pages NORMALES de leboncoin.fr embarquent le tag JS DataDome, le mot
+//     apparaît donc dans le HTML hors de tout challenge — le garder aurait
+//     déclaré un captcha sur chaque dépôt ;
+//   · un formulaire de dépôt présent (titre, description, prix) vaut absence
+//     de challenge quels que soient les motifs textuels — seule l'iframe du
+//     challenge (geo.captcha-delivery.com, relevée sur les 403 leboncoin.fr
+//     du 2026-07-13) est décisive à elle seule.
+function estPageBotShieldLbc() {
+  if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"]')) return true;
+  if (document.querySelector('input[name="subject"], textarea#body, #body, #price_cents')) return false;
+  const debut = String(document.documentElement?.innerHTML ?? "").slice(0, 4000);
+  return /geo\.captcha|captcha-delivery|\bAre you a human\b|Vérification que vous n/i.test(debut);
+}
+
 // ── Remplissage du wizard ────────────────────────────────────────────────────
 //
 // Architecture relevée sur le vrai formulaire (docs/leboncoin-form-survey.md,
@@ -535,6 +555,26 @@ async function fillListingForm(job) {
   // vides (cf. BUG 2 du 2026-07-09). Les autres critères LBC sont
   // explicitement non bloquants (cf. commentaire de fillCriterionSafe).
   const unfilledRequired = [];
+
+  // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
+  // page d'interception DataDome servie à la place du formulaire n'a ni input
+  // password ni redirection d'auth — elle partait en « Connexion Leboncoin
+  // requise », indistinguable d'une vraie déconnexion et invisible en base.
+  // Motif dédié, reconnaissable en SQL sur cross_post_jobs :
+  //   error LIKE 'CHALLENGE DATADOME%'
+  // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
+  // — un captcha ne déclenche jamais le ré-armement « transitoire », seulement
+  // le needsUser borné classique (MAX_NEEDS_USER_RETRIES), comme la connexion.
+  if (estPageBotShieldLbc()) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "CHALLENGE DATADOME : Leboncoin affiche une vérification anti-robot à la place du " +
+        "formulaire de dépôt. Ouvrir leboncoin.fr dans Chrome et résoudre la vérification " +
+        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+    };
+  }
 
   // Session : le background vient de naviguer l'onglet de travail sur
   // /deposer-une-annonce (même règle que Vinted : un seul onglet persistant,
