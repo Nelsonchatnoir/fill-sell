@@ -2137,7 +2137,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [] }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2366,11 +2366,17 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           catégorie résolue, AVANT le clic Publier — plus de « Longueur de
           la robe » découverte via l'échec du job. Présence seule (la
           validation allowedValues reste à la garde du publish). */}
-      {ebayRequiredStatus && ebayRequiredStatus.length > 0 && (
+      {ebayRequiredStatus && (() => {
+        // Règle d'unicité (2026-07-30) : une ligne dont le champ partagé est
+        // PORTÉ par l'encart rouge (redOwnedSharedKeys) ne s'affiche pas ici —
+        // ni chip ni input. Un champ = un seul endroit de saisie.
+        const ebayVisibles = ebayRequiredStatus.filter(a => !(a.sharedKey && redOwnedSharedKeys?.has(a.sharedKey)));
+        if (!ebayVisibles.length) return null;
+        return (
         <div style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
           <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>{t("stepPublishEbayRequiredTitle")}</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {ebayRequiredStatus.map(({ name, state, blocking }) => {
+            {ebayVisibles.map(({ name, state, blocking }) => {
               // « hors liste » NON bloquant (2026-07-29) : jaune d'avertissement,
               // pas rouge d'erreur — rien n'est cassé, la publication part.
               const avert = state === "invalid" && blocking !== true;
@@ -2402,9 +2408,9 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           {/* ebayEditable (sticky) et non le filtre direct : sans lui, l'input
               d'un aspect à sharedKey se démontait à la première frappe (fix
               « une seule lettre », 2026-07-30). */}
-          {onEbayAspectChange && ebayRequiredStatus.some(a => ebayEditable(a)) && (
+          {onEbayAspectChange && ebayVisibles.some(a => ebayEditable(a)) && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {ebayRequiredStatus.filter(a => ebayEditable(a)).map(a => (
+              {ebayVisibles.filter(a => ebayEditable(a)).map(a => (
                 <div key={a.name}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
                   {/* Sans rapprochement, on montre la VALEUR RÉELLE du job
@@ -2426,14 +2432,22 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Encart générique Vinted/LBC/Beebs (chantier 1.A, 2026-07-16) : les
           requis appris par le catalogue platform_category_aspects, AVANT le
           clic Publier — miroir exact du bloc eBay ci-dessus. Un requis sans
           source se complète ICI (select si liste d'options relevée, texte
-          libre sinon) ; tant qu'un ✗ reste, le CTA Publier est désactivé. */}
-      {genericRequiredStatus && Object.entries(genericRequiredStatus).map(([gp, list]) => list.length > 0 && (
+          libre sinon) ; tant qu'un ✗ reste, le CTA Publier est désactivé.
+          Règle d'unicité (2026-07-30) : les lignes dont le champ partagé est
+          porté par l'encart rouge sont masquées ici, comme côté eBay. */}
+      {genericRequiredStatus && Object.entries(genericRequiredStatus).map(([gp, listBrute]) => {
+        const list = listBrute.filter(a => {
+          const sk = genericFieldToSharedKey(gp, a.key);
+          return !(sk && redOwnedSharedKeys?.has(sk));
+        });
+        return list.length > 0 && (
         <div key={gp} style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
           <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>
             {tpl("stepPublishGenericRequiredTitle", { platform: PLATFORM_LABELS[gp] ?? gp })}
@@ -2524,7 +2538,8 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {sharedFieldsToRender.length > 0 && (
         // Encart inline (Sujet 4) : les champs partagés manquants se
@@ -4415,6 +4430,41 @@ export default function ListingPreviewScreen({
     return Object.keys(out).length ? out : null;
   }, [genericAspectsCatalog, selected, edited]);
 
+  // ── Unicité d'affichage des requis (2026-07-30, « Taille demandée 2 fois ») ─
+  // Capture du jour : « ✗ Taille — sans source » dans l'encart BLEU eBay ET
+  // « Taille · eBay » dans l'encart ROUGE — même champ, deux blocs, deux
+  // endroits où saisir. RÈGLE UNIQUE : un champ manquant n'apparaît qu'à UN
+  // endroit, le plus large qui le réclame.
+  //   · ≥ 2 plateformes sélectionnées le réclament → encart ROUGE (une saisie
+  //     sert tout le monde) ; les encarts bleus MASQUENT leur ligne tant que
+  //     le rouge la porte.
+  //   · UNE seule plateforme le réclame ET son encart bleu affiche la ligne
+  //     (référentiel chargé) → encart BLEU seul, le rouge s'efface — la
+  //     saisie bleue écrit de toute façon la canonique (onEbaySharedFieldChange
+  //     / champ dédié), le rouge n'apporte rien de plus.
+  //   · une seule plateforme SANS ligne bleue (référentiel pas chargé, garde
+  //     statique en fallback) → encart ROUGE : seul endroit qui existe.
+  // AFFICHAGE SEULEMENT : la garde du CTA (requiredBlocking) et le re-check du
+  // publish continuent de lire les listes COMPLÈTES — aucun champ ne devient
+  // publiable par ce tri.
+  const redSharedDetailed = useMemo(() => {
+    const couvertParEncartBleu = (key, p) =>
+      p === "ebay"
+        ? (ebayRequiredStatus ?? []).some(a => a.sharedKey === key)
+        : (genericRequiredStatus?.[p] ?? []).some(a => genericFieldToSharedKey(p, a.key) === key);
+    return missingSharedFieldsDetailed.filter(f =>
+      f.platforms.length >= 2 || !couvertParEncartBleu(f.key, f.platforms[0]));
+  }, [missingSharedFieldsDetailed, ebayRequiredStatus, genericRequiredStatus]);
+  const redSharedFields = useMemo(() => redSharedDetailed.map(f => f.key), [redSharedDetailed]);
+  const redSharedFieldPlatforms = useMemo(() => {
+    const m = {};
+    for (const f of redSharedDetailed) m[f.key] = f.platforms.map(p => PLATFORM_LABELS[p] ?? p).join(", ");
+    return m;
+  }, [redSharedDetailed]);
+  // Clés que le rouge PORTE : les encarts bleus n'affichent ni chip ni input
+  // pour elles (l'inverse du filtre ci-dessus).
+  const redOwnedSharedKeys = useMemo(() => new Set(redSharedDetailed.map(f => f.key)), [redSharedDetailed]);
+
   // Pré-sélection auto générique — miroir exact de l'effet eBay (plus haut) :
   // au step Publier, une valeur dédiée hors liste avec un rapprochement sûr
   // est remplacée d'office par le libellé exact de la plateforme ; sans
@@ -5563,8 +5613,11 @@ export default function ListingPreviewScreen({
             stockCount={stockCount}
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
-            missingSharedFields={missingSharedFields}
-            missingSharedFieldPlatforms={missingSharedFieldPlatforms}
+            // Listes FILTRÉES par la règle d'unicité (un champ = un encart) —
+            // la garde du CTA, elle, lit toujours les listes complètes.
+            missingSharedFields={redSharedFields}
+            missingSharedFieldPlatforms={redSharedFieldPlatforms}
+            redOwnedSharedKeys={redOwnedSharedKeys}
             sharedFields={sharedFields}
             onSharedFieldChange={setSharedField}
             sharedChildAxes={sharedChildAxes}
