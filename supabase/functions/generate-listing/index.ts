@@ -135,7 +135,7 @@ const LANG_DIRECTIVE: Record<string, string> = {
 // contenu du prompt, il s'incrémente à chaque deploy même sans changement de
 // texte. À bumper à CHAQUE modification de PLATFORM_CFG.system, de
 // REDACTION_DIRECTIVE ou de PLATFORM_LIMITS.
-const VERSION_PROMPT = "2026-07-30";
+const VERSION_PROMPT = "2026-07-30b";
 
 // ── Limites de caractères par plateforme (2026-07-29) ───────────────────────
 // PROVENANCE de chaque chiffre — à mettre à jour avec la source, jamais « de
@@ -257,7 +257,7 @@ STRUCTURE — flowing sentences, no bullet lists, no headings. Work through thes
 3. How to wear it: one or two concrete STYLE pairings or occasions (outfit, season, everyday look). This point never assigns a sport, an activity or a technical capability — that is a fact, and facts must come from the context (see the guard-rail above). Skip entirely for non-fashion items.
 4. Cut, fit and material ONLY when the context states them; condition, in the words the context uses.
 5. One short closing line on shipping/handover.
-TITLE — COMMERCIAL NAME, NEVER THE SKU: a manufacturer code read on a label (letters-and-digits reference like "U9060CTN" or "DC7350-100") NEVER goes in the title — buyers search the commercial model name ("New Balance 9060"), not the internal reference. Use the commercial name the context gives, or the model line plainly readable inside the code itself ("U9060CTN" → "9060"); otherwise brand + item type + colourway make the title. The exact code may appear ONCE in the description, only if it is present in the context, copied character for character — never completed or guessed.
+TITLE — COMMERCIAL NAME, NEVER THE SKU: a manufacturer code read on a label (letters-and-digits reference like "U9060CTN" or "DC7350-100") NEVER goes in the title — buyers search the commercial model name ("New Balance 9060"), not the internal reference. Use the commercial name the context gives, or the model line plainly readable inside the code itself ("U9060CTN" → "9060"); otherwise brand + item type + colourway make the title. The exact code may appear ONCE in the description, only if it is present in the context, copied character for character — never completed or guessed. THE BRAND APPEARS EXACTLY ONCE in the title: the context often carries it twice (its own "Marque:" line AND inside the "Article:" line) — never write it twice yourself.
 LENGTH — ${bas} to ${haut} characters WHEN the material allows it, and no further: never pad, never stretch to reach a number. A 200-character description that is entirely true is a GOOD description. Hard cap: ${lim.desc} characters; the title must never exceed ${lim.titre} characters.
 ${tagsEn}`;
   }
@@ -282,7 +282,7 @@ STRUCTURE — phrases suivies, sans liste à puces ni titres de section. Traite 
 3. Comment la porter : une ou deux associations de STYLE ou occasions concrètes (tenue, saison, look du quotidien). Ce point n'attribue jamais une pratique sportive ni une capacité technique — c'est un fait, et les faits viennent du contexte (cf. garde-fou ci-dessus). À sauter entièrement pour un objet hors mode (électronique, maison, jouet…).
 4. Coupe, tombé et matière SEULEMENT si le contexte les donne ; l'état, avec les mots du contexte.
 5. Une courte ligne de fin sur l'envoi ou la remise.
-TITRE — RÉFÉRENCE COMMERCIALE, JAMAIS LE SKU : un code fabricant lu sur une étiquette (référence lettres-chiffres type « U9060CTN », « DC7350-100 ») ne va JAMAIS dans le titre — les acheteurs cherchent le nom commercial du modèle (« New Balance 9060 »), pas la référence interne. Utilise le nom commercial donné par le contexte, ou la ligne de modèle lisible telle quelle dans le code (« U9060CTN » → « 9060 ») ; sinon marque + type d'article + coloris font le titre. Le code exact peut figurer UNE fois en description, seulement s'il est présent dans le contexte, recopié caractère pour caractère — jamais complété ni deviné.
+TITRE — RÉFÉRENCE COMMERCIALE, JAMAIS LE SKU : un code fabricant lu sur une étiquette (référence lettres-chiffres type « U9060CTN », « DC7350-100 ») ne va JAMAIS dans le titre — les acheteurs cherchent le nom commercial du modèle (« New Balance 9060 »), pas la référence interne. Utilise le nom commercial donné par le contexte, ou la ligne de modèle lisible telle quelle dans le code (« U9060CTN » → « 9060 ») ; sinon marque + type d'article + coloris font le titre. Le code exact peut figurer UNE fois en description, seulement s'il est présent dans le contexte, recopié caractère pour caractère — jamais complété ni deviné. LA MARQUE APPARAÎT EXACTEMENT UNE FOIS dans le titre : le contexte la porte souvent deux fois (sa ligne « Marque: » ET dans la ligne « Article: ») — ne l'écris jamais deux fois toi-même.
 LONGUEUR — ${bas} à ${haut} caractères QUAND la matière le permet, pas davantage : n'allonge jamais, ne remplis jamais pour atteindre un nombre. Un texte de 200 caractères entièrement vrai est un BON texte. Plafond dur : ${lim.desc} caractères ; le titre ne dépasse JAMAIS ${lim.titre} caractères.
 ${hashtagBloc}`;
 }
@@ -944,7 +944,17 @@ serve(async (req) => {
     ].filter(Boolean).join("\n");
 
     console.log(`[generate-listing] rédaction prompt ${VERSION_PROMPT} — plateformes: ${(platforms as string[]).join(", ")}`);
-    const fallbackTitle = [item.marque, item.titre || item.type].filter(Boolean).join(" ") || "Article";
+    // Marque UNE seule fois dans le titre de repli (2026-07-30, cas réel New
+    // Balance 9060) : le titre Lens contient souvent déjà la marque
+    // (« Chaussures … New Balance U9060CTN marron ») — la préfixer en plus
+    // donnait « New Balance Chaussures … New Balance … ». Déterministe ici, en
+    // plus de la consigne TITRE des prompts (le repli ne passe par aucun LLM).
+    const fallbackTitle = (() => {
+      const base = String(item.titre || item.type || "").trim();
+      const marque = String(item.marque ?? "").trim();
+      const marqueDejaLa = marque && base.toLowerCase().includes(marque.toLowerCase());
+      return [marqueDejaLa ? null : marque, base].filter(Boolean).join(" ") || "Article";
+    })();
     const platformListings: Record<string, { title: string; description: string; platform_fields: Record<string, string | null> }> = {};
 
     await Promise.all(
