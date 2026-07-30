@@ -112,6 +112,30 @@ async function computeVintedRequiredState() {
     // config, pas contre ce que la page a daigné afficher) : il compte vide.
     if (meta.required === true && !filled) unfilled.push(label);
   }
+  // Couleur : la palette relevée dans le picker (selectColors) enrichit le
+  // catalogue — allowed_values n'avait JAMAIS été capturé pour "color"
+  // (relevé du 2026-07-30 : allowed_values=null partout). required est
+  // CORRIGÉ à true : la config attributes le disait false, mais le serveur
+  // refuse un dépôt sans couleur (400 réel "Le champ Couleur doit être
+  // renseigné", job 243097d4) — le 400 prouvé prime sur la config. La
+  // correction ne touche que le CATALOGUE (discovered) : unfilled, calculé
+  // ci-dessus, n'est pas modifié — le blocage du cas « couleur manquante »
+  // est porté par l'échec COULEUR INTROUVABLE du caller, pas par ici.
+  if (paletteCouleursRelevee?.length) {
+    const idx = discovered.findIndex((d) => d.key === "color");
+    if (idx >= 0) {
+      discovered[idx] = { ...discovered[idx], required: true, options: paletteCouleursRelevee };
+    } else {
+      discovered.push({
+        key: "color",
+        label: "Couleur",
+        required: true,
+        inputType: "multi-list",
+        options: paletteCouleursRelevee,
+        source: "dom",
+      });
+    }
+  }
   // hadConfig : avait-on une BASE pour juger les requis ? byCode vide = la sonde
   // n'a capté AUCUNE config /attributes pour cette catégorie (page pré-sonde,
   // timing, CSP) → on ne peut PAS affirmer « tous les requis OK » (bug réel
@@ -744,9 +768,32 @@ async function fillListingForm(job) {
       warnings
     );
   }
-  // platform_fields.colors : posé par l'app à l'insert (couleur IA de la liste
-  // fermée Vinted, éditable, splittée en tableau). Absent sur les jobs anciens.
-  if (fields.colors?.length) await selectColors(fields.colors, warnings);
+  // platform_fields.colors : posé par l'app à l'insert — depuis le 2026-07-30
+  // NORMALISÉ vers la palette fermée Vinted (vintedColors.js : libellés
+  // exacts, 2 max). Absent sur les jobs anciens (valeur libre possible) et
+  // quand rien ne se normalise (color_unmapped posé à la place).
+  // Zéro couleur posée alors que le job en demandait → échec AVANT dépôt,
+  // requêtable : error LIKE 'COULEUR INTROUVABLE%'. Laisser le champ vide
+  // garantissait un 400 aveugle ("Le champ Couleur doit être renseigné",
+  // job 243097d4, couleur "Argent" hors palette). Le retour porte le relevé
+  // discoveredRequired (palette comprise) pour que le catalogue
+  // platform_category_aspects apprenne malgré l'échec.
+  if (fields.colors?.length) {
+    const couleurPosee = await selectColors(fields.colors, warnings);
+    if (!couleurPosee) {
+      const requiredState = await computeVintedRequiredState().catch(() => ({ discovered: [] }));
+      return {
+        success: false,
+        error:
+          `COULEUR INTROUVABLE : aucune option du picker Vinted ne correspond à ` +
+          `${JSON.stringify(fields.colors)}. Palette affichée par Vinted: ` +
+          `${JSON.stringify(paletteCouleursRelevee ?? [])}. Corriger la couleur de ` +
+          `l'article dans l'app puis relancer la publication.`,
+        warnings,
+        discoveredRequired: requiredState.discovered,
+      };
+    }
+  }
 
   if (fields.matiere) {
     // Liste Vinted GLOBALE (55 options identiques toutes catégories,
@@ -2197,30 +2244,55 @@ async function selectCategory(path) {
   await confirmDropdownIfNeeded();
 }
 
+// Palette relevée dans le picker Couleur pendant qu'il est ouvert (2026-07-30,
+// job 243097d4) : remontée au catalogue platform_category_aspects via
+// computeVintedRequiredState → discoveredRequired → persistDiscoveredAspects
+// (background). Avant ça, la ligne "color" du catalogue n'avait JAMAIS
+// d'allowed_values — l'app ne pouvait pas proposer une liste fermée.
+let paletteCouleursRelevee = null;
+
+// Retourne true si AU MOINS une couleur a été posée (ou s'il n'y avait rien à
+// poser / champ absent) ; false si des couleurs étaient demandées et
+// qu'AUCUNE n'a matché — le caller échoue alors AVANT le dépôt, avec la
+// palette relevée dans l'erreur, plutôt que de laisser le champ vide et de
+// prendre un 400 aveugle ("Le champ Couleur doit être renseigné", job
+// 243097d4 : couleur "Argent" hors palette, champ vide, refus serveur).
 async function selectColors(colorNames, warnings = []) {
   // multi-sélection, 2 couleurs maximum côté Vinted — même cascade que les
-  // autres choix fermés, et jamais bloquant (couleur ignorée si introuvable).
+  // autres choix fermés.
   try {
     await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
   } catch (e) {
     const note = `couleur: champ sauté — ${e.message}`;
     console.warn(`[vinted] ⚠️ ${note}`);
     warnings.push(note);
-    return;
+    // Champ absent du formulaire (catégorie sans couleur) : rien à bloquer.
+    return true;
   }
+  // Capture de la palette pendant que le panneau est ouvert. Le sélecteur
+  // attrape aussi le trigger (data-testid="color-select-dropdown-input",
+  // même préfixe) : écarté par le filtre dropdown-input.
+  const options = Array.from(document.querySelectorAll('[data-testid^="color-"]'))
+    .filter((el) => !/dropdown-input/.test(el.getAttribute("data-testid") ?? ""))
+    .map((el) => el.textContent.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+  if (options.length) paletteCouleursRelevee = options;
+  let posees = 0;
   for (const name of colorNames.slice(0, 2)) {
     const match = findOptionCascade(document, '[data-testid^="color-"]', name);
     if (match) {
       await humanPause();
       match.el.click();
       await humanPause();
+      posees++;
       if (match.stage !== "exact") {
         const note = `couleur: "${name}" → option Vinted "${match.label}" (match ${match.stage})`;
         console.warn(`[vinted] ≈ ${note}`);
         warnings.push(note);
       }
     } else {
-      const note = `couleur: "${name}" sans correspondance, ignorée`;
+      const note = `couleur: "${name}" sans correspondance dans le picker`;
       console.warn(`[vinted] ⚠️ ${note}`);
       warnings.push(note);
     }
@@ -2229,6 +2301,7 @@ async function selectColors(colorNames, warnings = []) {
   // panneau (constaté en réel le 2026-07-11, même famille que Matière) — on
   // passe par le clic extérieur complet de closeAnyOpenDropdown.
   await closeAnyOpenDropdown();
+  return posees > 0 || !colorNames.length;
 }
 
 // ⚠️ 2026-07-12 : « Petit » n'est PAS toujours pré-coché — Vinted choisit le

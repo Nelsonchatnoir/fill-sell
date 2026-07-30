@@ -11,6 +11,7 @@ import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
+import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
@@ -4617,15 +4618,25 @@ export default function ListingPreviewScreen({
           // article de mode plutôt que d'une icône hors mapping.
           if (vintedGenreRequired(icon)) pf.vintedGenreRequired = true;
           // L'extension consomme `colors` (tableau, 2 max côté Vinted).
-          // `couleur` (IA ou édité) peut être composé ("Marine et Blanc") :
-          // mêmes séparateurs que la cascade extension, la dominante d'abord.
+          // NORMALISATION vers la palette FERMÉE Vinted (2026-07-30, job
+          // 243097d4 : couleur IA "Argent" ∉ palette → champ laissé vide →
+          // 400 serveur "Le champ Couleur doit être renseigné"). Le split
+          // brut d'avant laissait passer n'importe quel libellé ; désormais
+          // colors ne porte QUE des libellés exacts (variantes normalisées :
+          // Argent→Argenté, Or→Doré…, composés éclatés : "Bleu gris" →
+          // Bleu + Gris, 2 max, dominante d'abord). Rien ne se normalise →
+          // colors ABSENT + color_unmapped = valeur brute, requêtable :
+          //   platform_fields->>'color_unmapped' IS NOT NULL
+          // Vinted UNIQUEMENT : les couleurs LBC/Beebs sont des champs
+          // libres ("Argent" y passe très bien), eBay fait son propre split.
           if (pf.couleur) {
-            const colors = String(pf.couleur)
-              .split(/\s+et\s+|[,/&+]/i)
-              .map(s => s.trim())
-              .filter(Boolean)
-              .slice(0, 2);
-            if (colors.length) pf.colors = colors;
+            const { colors, unmapped } = normalizeVintedColors(pf.couleur);
+            if (colors.length) {
+              pf.colors = colors;
+            } else {
+              delete pf.colors;
+              if (unmapped) pf.color_unmapped = unmapped;
+            }
           }
         }
         if (platform === "ebay") {

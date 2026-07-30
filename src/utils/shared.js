@@ -47,6 +47,15 @@ export function humanizeJobError(job, lang = 'fr') {
   const challenge = raw.match(/^CHALLENGE\s+[A-ZÀ-Ÿ0-9 -]+?\s*:\s*(.+)$/is);
   if (challenge) return challenge[1].trim();
 
+  // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
+  // le détail embarque la palette relevée — l'utilisateur doit juste
+  // corriger la couleur de l'article.
+  if (/^COULEUR INTROUVABLE/i.test(raw)) {
+    return en
+      ? `The item's color does not match any color offered by ${name}. Fix the color on the item, then retry publishing.`
+      : `La couleur de l'article ne correspond à aucune couleur proposée par ${name}. Corriger la couleur dans la fiche de l'article puis relancer la publication.`;
+  }
+
   // Catégorie non posée (sélection en cascade échouée) : le diagnostic liste
   // options DOM et nœuds matchés — l'utilisateur n'en a pas l'usage.
   if (/^Catégorie\s*:/i.test(raw)) {
