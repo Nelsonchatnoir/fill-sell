@@ -135,7 +135,7 @@ const LANG_DIRECTIVE: Record<string, string> = {
 // contenu du prompt, il s'incrémente à chaque deploy même sans changement de
 // texte. À bumper à CHAQUE modification de PLATFORM_CFG.system, de
 // REDACTION_DIRECTIVE ou de PLATFORM_LIMITS.
-const VERSION_PROMPT = "2026-07-29b";
+const VERSION_PROMPT = "2026-07-30";
 
 // ── Limites de caractères par plateforme (2026-07-29) ───────────────────────
 // PROVENANCE de chaque chiffre — à mettre à jour avec la source, jamais « de
@@ -210,6 +210,27 @@ const PLATFORM_LIMITS: Record<string, { titre: number; desc: number; cible: [num
 //    légitimes » est RETIRÉE — elle expliquait le 0 hashtag sur la casquette
 //    Volcom (contexte pauvre → le modèle a préféré n'en mettre aucun, alors
 //    que marque + type + couleur en fournissaient trois sans rien affirmer).
+//
+// RÉVISION 2026-07-30, après le cas réel New Balance 9060 Triple Black :
+//  · TITRE : le titre généré portait « U9060CTN », le SKU lu sur l'étiquette
+//    intérieure — exact mais illisible pour un acheteur et mauvais pour la
+//    recherche. Aucune consigne ne disait quoi que ce soit du CONTENU du titre
+//    (seulement sa longueur) : bloc TITRE ajouté — nom de modèle commercial
+//    d'abord, jamais le code fabricant ; le code peut aller en description,
+//    une fois, seulement s'il est prouvé par le contexte.
+//  · USAGE INVENTÉ : la description qualifiait ces sneakers lifestyle de
+//    « fonctionnelles pour la randonnée ». Pourquoi le garde-fou v66 (prompt
+//    2026-07-29b) ne couvrait pas ce cas : (a) ses interdits énumèrent des
+//    CLASSES de faits nommées (matière, mesure, provenance, garantie de
+//    fonctionnement, notoriété, année/collection/prix) — l'usage/la
+//    destination n'en faisait pas partie, et le modèle ne range pas
+//    spontanément « pour la randonnée » dans « inventer un fait » (même leçon
+//    que « de référence » le 29/07 : un interdit générique ne suffit pas) ;
+//    (b) surtout, le point 3 de la structure INVITAIT à écrire « comment la
+//    porter ou l'utiliser : une ou deux associations ou occasions concrètes »
+//    — une destination sportive se lit précisément comme une « occasion
+//    concrète ». Correctif double : interdit NOMMÉ (pratique sportive, usage
+//    technique) + point 3 restreint aux associations de STYLE.
 function redactionDirective(platform: string, lang: string): string {
   const lim = PLATFORM_LIMITS[platform];
   if (!lim) return "";
@@ -227,14 +248,16 @@ It is FORBIDDEN to invent, infer or imply:
 - PROVENANCE: country of manufacture, "made in", origin, where or when it was bought;
 - ANY WORKING GUARANTEE: never state or suggest that the item works, functions, has been tested, is authentic, is complete or is free of defects — not even for electronics, not even in passing;
 - ANY REPUTATION SUPERLATIVE: "a must-have", "the reference", "iconic", "cult", "legendary", "timeless", "renowned", and more generally any sentence about the brand's reputation, standing, expertise or what it is known for;
+- ANY USE OR PURPOSE the context does not state: never assign the item a sport, an activity or a technical capability ("great for hiking", "perfect for running", "waterproof", "for the trail or the work site") that is absent from the context — lifestyle sneakers never become hiking shoes. Suggesting a style is fine; claiming a performance is a fact, and an invented fact is forbidden;
 - a year or era, a collection name, a retail price, a defect, a care instruction.
 Never write "probably", "certainly" or "must be" to smuggle in a guess. A SHORTER description always beats an invented sentence: when in doubt, cut.
 STRUCTURE — flowing sentences, no bullet lists, no headings. Work through these points in order, SKIPPING without hesitation every point the context gives you nothing for:
 1. A hook: what the item IS, in one concrete sentence.
 2. The detail that sets THIS piece apart — model, colourway, finish, marking — exactly as it appears in the context. Nothing in the context: skip this point.
-3. How to wear or use it: one or two concrete pairings/occasions. Skip entirely for non-fashion items.
+3. How to wear it: one or two concrete STYLE pairings or occasions (outfit, season, everyday look). This point never assigns a sport, an activity or a technical capability — that is a fact, and facts must come from the context (see the guard-rail above). Skip entirely for non-fashion items.
 4. Cut, fit and material ONLY when the context states them; condition, in the words the context uses.
 5. One short closing line on shipping/handover.
+TITLE — COMMERCIAL NAME, NEVER THE SKU: a manufacturer code read on a label (letters-and-digits reference like "U9060CTN" or "DC7350-100") NEVER goes in the title — buyers search the commercial model name ("New Balance 9060"), not the internal reference. Use the commercial name the context gives, or the model line plainly readable inside the code itself ("U9060CTN" → "9060"); otherwise brand + item type + colourway make the title. The exact code may appear ONCE in the description, only if it is present in the context, copied character for character — never completed or guessed.
 LENGTH — ${bas} to ${haut} characters WHEN the material allows it, and no further: never pad, never stretch to reach a number. A 200-character description that is entirely true is a GOOD description. Hard cap: ${lim.desc} characters; the title must never exceed ${lim.titre} characters.
 ${tagsEn}`;
   }
@@ -250,14 +273,16 @@ Il est INTERDIT d'inventer, de déduire ou de laisser entendre :
 - une PROVENANCE : pays de fabrication, « made in », origine, lieu ou date d'achat ;
 - TOUTE GARANTIE DE FONCTIONNEMENT : n'écris ni ne suggère jamais que l'article marche, fonctionne, a été testé, est authentique, est complet ou est sans défaut — même pour un objet électronique, même en passant ;
 - TOUT SUPERLATIF DE NOTORIÉTÉ : « incontournable », « de référence », « iconique », « culte », « légendaire », « intemporel », « réputé », et plus généralement toute phrase sur la réputation, le rang, le savoir-faire de la marque ou ce pour quoi elle est connue ;
+- TOUT USAGE OU DESTINATION que le contexte ne donne pas : n'attribue JAMAIS à l'article une pratique sportive, une activité ou une capacité technique (« fonctionnelles pour la randonnée », « parfaites pour le running », « étanche », « pour le trail ou le chantier ») absentes du contexte — des sneakers lifestyle ne deviennent jamais des chaussures de randonnée. Suggérer un style, oui ; affirmer une performance, c'est un fait, et un fait inventé est interdit ;
 - une année ou une époque, un nom de collection, un prix d'origine, un défaut, une consigne d'entretien.
 N'écris jamais « probablement », « sans doute » ni « doit être » pour faire passer une supposition. Une description plus COURTE vaut toujours mieux qu'une phrase inventée : au moindre doute, coupe.
 STRUCTURE — phrases suivies, sans liste à puces ni titres de section. Traite ces points dans cet ordre, en SAUTANT sans hésiter tout point pour lequel le contexte ne te donne rien :
 1. Une accroche : ce qu'est l'article, en une phrase concrète.
 2. Le détail qui distingue CETTE pièce — modèle, coloris, finition, marquage — tel qu'il apparaît dans le contexte. Rien dans le contexte : saute ce point.
-3. Comment la porter : une ou deux associations ou occasions concrètes. À sauter entièrement pour un objet hors mode (électronique, maison, jouet…).
+3. Comment la porter : une ou deux associations de STYLE ou occasions concrètes (tenue, saison, look du quotidien). Ce point n'attribue jamais une pratique sportive ni une capacité technique — c'est un fait, et les faits viennent du contexte (cf. garde-fou ci-dessus). À sauter entièrement pour un objet hors mode (électronique, maison, jouet…).
 4. Coupe, tombé et matière SEULEMENT si le contexte les donne ; l'état, avec les mots du contexte.
 5. Une courte ligne de fin sur l'envoi ou la remise.
+TITRE — RÉFÉRENCE COMMERCIALE, JAMAIS LE SKU : un code fabricant lu sur une étiquette (référence lettres-chiffres type « U9060CTN », « DC7350-100 ») ne va JAMAIS dans le titre — les acheteurs cherchent le nom commercial du modèle (« New Balance 9060 »), pas la référence interne. Utilise le nom commercial donné par le contexte, ou la ligne de modèle lisible telle quelle dans le code (« U9060CTN » → « 9060 ») ; sinon marque + type d'article + coloris font le titre. Le code exact peut figurer UNE fois en description, seulement s'il est présent dans le contexte, recopié caractère pour caractère — jamais complété ni deviné.
 LONGUEUR — ${bas} à ${haut} caractères QUAND la matière le permet, pas davantage : n'allonge jamais, ne remplis jamais pour atteindre un nombre. Un texte de 200 caractères entièrement vrai est un BON texte. Plafond dur : ${lim.desc} caractères ; le titre ne dépasse JAMAIS ${lim.titre} caractères.
 ${hashtagBloc}`;
 }
