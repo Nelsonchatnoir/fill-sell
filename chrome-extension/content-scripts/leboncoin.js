@@ -618,7 +618,9 @@ async function fillListingForm(job) {
   // (cas réel du 2026-07-06). Les marqueurs d'un stade avancé — #body,
   // #price_cents, critère condition — sont absents de l'étape titre : leur
   // présence signe un brouillon repris. On ne détruit JAMAIS un brouillon
-  // (ce peut être un brouillon manuel de l'utilisateur) — needsUser.
+  // (ce peut être un brouillon manuel de l'utilisateur) — needsUser, SAUF
+  // quand le brouillon est celui de CE job (comparaison de titre ci-dessous,
+  // 2026-07-30) : il est alors repris pour que le job aboutisse.
   const draftMarker = () =>
     document.querySelector('textarea#body, #body, #price_cents, label[for="condition"]');
   let entryState = await waitFor(() => {
@@ -633,270 +635,74 @@ async function fillListingForm(job) {
     await sleep(800);
     if (draftMarker()) entryState = "draft";
   }
+  let repriseBrouillon = false;
   if (entryState !== "step1") {
-    // draftBlocked : le background tente UNE fois ce job dans un onglet
-    // temporaire (si le brouillon vit dans l'état de l'onglet — sessionStorage
-    // — un onglet neuf repart de zéro). S'il est resté bloquant même là
-    // (brouillon de compte), on retombe sur le needsUser classique.
-    return {
-      success: false,
-      needsUser: true,
-      draftBlocked: true,
-      error:
-        "Un brouillon Leboncoin est déjà en cours sur ce compte (le wizard ne repart pas " +
-        "de zéro). Le publier ou le supprimer sur leboncoin.fr, puis relancer.",
-    };
-  }
-  const subjectInput = document.querySelector('input[name="subject"]');
-
-  // ── Étape 1 : titre → catégorie ──────────────────────────────────────────
-  await typeInto(subjectInput, job.title);
-
-  const [root, leaf] = fields.lbcCategoryPath;
-  await selectCategory(root, leaf);
-
-  // ── Étape 2 : photos + critères ──────────────────────────────────────────
-  // ⚠️ WIZARD PAGINÉ (relevé live 2026-07-19, cas réel Medik8 sur Divers >
-  // Autres) : certaines catégories fragmentent le dépôt en PAGES au lieu de
-  // tout révéler progressivement — étape 1 + « Type d'annonce » (Offre/Demande)
-  // → « Ajoutez des photos » (page dédiée, l'input[type=file] y existe) →
-  // « Décrivez votre bien » (titre + #body) → « Quel est votre prix ? »
-  // (#price_cents) → « Remise du bien » (adresse + livraison). L'ancien
-  // waitForElement direct expirait sur l'étape 1 (« Élément introuvable:
-  // input[type=file] ») : il faut cliquer Continuer pour ATTEINDRE les photos.
-  // advanceWizardTo couvre les deux mondes : trouve tout de suite sur les
-  // catégories standard, avance de page en page sur les flux paginés.
-  const photoInput = await advanceWizardTo('input[type="file"]', { probeMs: 6000 });
-  if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
-  if (job.photos?.length) {
-    const photoNote = await uploadPhotos(photoInput, job.photos);
-    if (photoNote) warnings.push(photoNote);
-  }
-
-  // Critères : tous NON bloquants. Un critère que Leboncoin a déjà pré-rempli
-  // (déduction IA titre/photos) n'est conservé QUE s'il matche la valeur du
-  // job — le cas Type="Montre quartz" déduit de "Casio A158" reste accepté ;
-  // mais quand la déduction contredit le job, la donnée produit fait foi et
-  // écrase (cas réel 2026-07-19, job 8ba961f6 : Marque="New Era" et
-  // Univers="Mixte" devinés des photos, conservés à tort par-dessus
-  // Volcom/Homme, sans aucune trace).
-  // Sonde courte préalable (flux paginé) : la page photos dédiée n'a AUCUN
-  // critère combobox — sans cette sonde, chaque fillCriterionSafe empilait son
-  // timeout de 5 s pour rien (~25 s perdues par job Divers).
-  const hasCriteria = await waitFor(
-    () => document.querySelector('label[for="condition"], label[for$="_condition"], label[for$="_brand"], label[for$="_size"], label[for$="_univers"], label[for$="_universe"], label[for$="_material"], label[for$="_type"], label[for="clothing_st"], label[for="baby_age"]'),
-    4000
-  );
-  if (!hasCriteria) {
-    console.log("[leboncoin] Aucun critère combobox sur cette étape (flux paginé ou catégorie sans critères) — remplissages de critères sautés.");
-  }
-  if (hasCriteria && fields.etat) {
-    // Le critère état s'appelle "condition" sur certaines catégories (relevé
-    // Montres & Bijoux) mais "clothing_condition" sur le rayon Vêtements
-    // (relevé campagne 2026-07-08) — même pattern suffixe que _brand/_material.
-    await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
-  }
-  if (hasCriteria && (fields.univers || fields.genre)) {
-    const ok = await fillUnivers(fields.univers || fields.genre, warnings);
-    if (!ok) unfilledRequired.push("univers");
-  }
-  if (hasCriteria && fields.lbcProduit) {
-    // Produit* : critère OBLIGATOIRE dont les options dépendent de
-    // l'univers — d'où le passage APRÈS fillUnivers. Le combobox peut
-    // n'être (ré)injecté qu'une fois l'univers posé : attente courte, puis
-    // saisie non bloquante (un échec remonte en warning et le Continuer
-    // raté le transforme en relevé correctif listant les options réelles).
-    // Critère introuvable → warning EXPLICITE, jamais silencieux (même
-    // leçon que l'univers, 2026-07-06).
-    // ⚠️ Le suffixe du label VARIE par catégorie (relevés réels) :
-    //   - Équipement bébé  : for="baby_equipment_type"     → [for$="_type"]
-    //   - Vêtements bébé   : for="baby_clothing_category"  → AUTRE suffixe !
-    // Bug réel du 2026-07-15 (robe salopette, job publié « CHAMPS
-    // MANQUANTS : produit ») : lbcProduit="Robes & Jupes" était bien posé
-    // par l'app, mais [for$="_type"] ne matche pas baby_clothing_category
-    // → timeout 5 s → champ jamais rempli. Relevé DOM du 2026-07-16.
-    const PRODUIT_LABEL_SELECTOR = 'label[for$="_type"], label[for="baby_clothing_category"]';
-    const produitLabel = await waitFor(() => document.querySelector(PRODUIT_LABEL_SELECTOR), 5000);
-    if (produitLabel) {
-      const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true });
-      if (!ok) unfilledRequired.push("produit");
+    // ── Le brouillon correspond-il au job en cours ? (2026-07-30) ───────────
+    // Sur les échecs LBC historiques, la moitié sont « Brouillon déjà en
+    // cours » : la trace d'un wizard interrompu par NOTRE propre job
+    // (incident du 2026-07-29 23:11). Quand le titre restauré est celui du
+    // job, ce brouillon est une tentative précédente de CE MÊME job : on le
+    // REPREND à l'aperçu (étape 4 : description, prix, adresse, dépôt) sans
+    // intervention utilisateur. Un brouillon qui ne correspond PAS (annonce
+    // saisie à la main ?) n'est JAMAIS touché ni détruit → comportement
+    // historique inchangé (draftBlocked : le background tente UNE fois ce job
+    // dans un onglet temporaire — si le brouillon vit dans sessionStorage,
+    // l'onglet neuf repart de zéro ; brouillon de compte → needsUser).
+    const titreBrouillon = String(
+      document.querySelector('input[name="subject"], input#subject')?.value ?? ""
+    ).trim();
+    const normTitre = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+    const correspond = Boolean(titreBrouillon) && normTitre(titreBrouillon) === normTitre(job.title);
+    // Reprenable = restauré à un stade que l'étape 4 sait piloter : l'aperçu
+    // (#body) ou la page prix d'un flux paginé (#price_cents). Un brouillon
+    // arrêté à l'étape critères (label condition seul) n'est pas repris.
+    const stadeReprenable = Boolean(document.querySelector("textarea#body, #body, #price_cents"));
+    if (correspond && stadeReprenable) {
+      console.log(
+        `[leboncoin] Brouillon restauré = CE job (titre « ${titreBrouillon} ») — reprise automatique à l'aperçu, sans intervention.`
+      );
+      repriseBrouillon = true;
     } else {
-      const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
-      console.warn(`[leboncoin] ⚠️ ${note}`);
-      warnings.push(note);
-      unfilledRequired.push("produit");
+      if (correspond) {
+        console.log(
+          "[leboncoin] Brouillon = CE job, mais restauré à un stade non reprenable (ni #body ni #price_cents) — needsUser inchangé."
+        );
+      } else {
+        console.log(
+          `[leboncoin] Brouillon ≠ job : titre restauré « ${titreBrouillon || "(illisible)"} » vs job « ${job.title} » — jamais touché → needsUser.`
+        );
+      }
+      return {
+        success: false,
+        needsUser: true,
+        draftBlocked: true,
+        error:
+          "Un brouillon Leboncoin est déjà en cours sur ce compte (le wizard ne repart pas " +
+          "de zéro)" +
+          (titreBrouillon && !correspond
+            ? ` — son titre « ${titreBrouillon} » ne correspond pas à ce job`
+            : "") +
+          ". Le publier ou le supprimer sur leboncoin.fr, puis relancer.",
+      };
     }
   }
-  if (hasCriteria && fields.taille) {
-    // Pointure OBLIGATOIRE sur Mode>Chaussures ("Veuillez choisir une
-    // pointure" bloque l'aperçu — relevé campagne 2026-07-08, for="shoe_size").
-    // Sur Vêtements le critère taille s'appelle "clothing_st" (relevé) et
-    // n'est pas obligatoire. Préfixe EU retiré comme sur Vinted/eBay.
-    // Sur Famille > Vêtements bébé, la Taille s'appelle "baby_age" (relevé
-    // DOM 2026-07-16, découvert avec le bug Produit* de la même feuille) —
-    // sans cette entrée, la grille 0-36 mois n'était JAMAIS remplie quand
-    // le titre ne portait pas la taille (l'auto-détection LBC ne se
-    // déclenche que depuis le titre).
-    await fillCriterionSafe(
-      "taille",
-      'label[for$="_size"], label[for="clothing_st"], label[for="baby_age"]',
-      String(fields.taille).replace(/^EU\s*/i, ""),
-      warnings,
-      // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
-      // 98 cm » par contenance, ni « 36 » l'option « 36 mois / 98 cm ».
-      { sizeField: true }
-    );
-  }
-  if (hasCriteria && fields.marque) {
-    await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true });
-  }
-  if (hasCriteria && fields.matiere) {
-    await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
-  }
-
-  // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
-  // platform_fields.lbcAspects = { "<clé for= du label>": "valeur" } — posé par
-  // l'app (saisie manuelle du stepper) pour les critères SANS mapping dédié
-  // ci-dessus. La clé est le nom sémantique du label (ex. watches_jewels_type),
-  // stable contrairement aux ids React — relevé form-survey du 05/07.
-  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
-  if (hasCriteria && fields.lbcAspects && typeof fields.lbcAspects === "object") {
-    for (const [forKey, value] of Object.entries(fields.lbcAspects)) {
-      const val = String(value ?? "").trim();
-      if (!val || handledForKeys.test(forKey)) continue;
-      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true });
-    }
-  }
-
-  // QUANTITÉ (2026-07-12) — critère OBLIGATOIRE sur certaines catégories
-  // (constaté sur la chaise ce soir : « Ce champ est requis », le Continuer ne
-  // passait jamais à l'aperçu et le job mourait là). Il n'était REMPLI NULLE
-  // PART : le mot "quantité" n'existait pas dans ce fichier. Le champ n'apparaît
-  // pas sur toutes les catégories (absent sur Mode) → remplissage best-effort,
-  // jamais bloquant. Valeur : la quantité du job si elle existe, sinon 1 (une
-  // annonce cross-post porte une pièce unique — cf. dette D6 de la Phase B).
-  const quantiteInput = document.querySelector(
-    'input#quantity, input[name="quantity"], input[id$="_quantity"]'
-  );
-  if (quantiteInput) {
-    const qte = String(job.platform_fields?.quantite ?? job.quantite ?? 1);
-    setFieldValue(quantiteInput, qte);
-    await humanPause();
-    if (!String(quantiteInput.value ?? "").trim()) {
-      const note = 'quantité: le champ est resté vide après saisie — LBC bloquera sur "Ce champ est requis"';
-      console.warn(`[leboncoin] ⚠️ ${note}`);
-      warnings.push(note);
-      unfilledRequired.push("quantite");
-    } else {
-      console.log(`[leboncoin] Quantité renseignée : ${quantiteInput.value}`);
-    }
-  }
-
-  // ── Énumération des critères AFFICHÉS (chantier 2026-07-16, 1.B) ───────────
-  // Relevé APRÈS tous les remplissages, AVANT le Continuer : chaque critère
-  // combobox de l'étape 2, avec sa clé sémantique (for=), son libellé humain,
-  // son marqueur requis (astérisque du libellé — motif « Produit* » relevé en
-  // réel) et son état rempli/vide. Nourrit le catalogue cumulatif
-  // platform_category_aspects côté background ; un requis vide ici sera
-  // confirmé (ou infirmé) par la validation du Continuer ci-dessous — LBC
-  // reste le juge, on n'invente aucun blocage en amont.
-  const enumerated = enumerateLbcCriteria();
-
-  // Continuer → interstitiel "juste prix" → aperçu final
-  const continueBtn = findButtonByExactText("Continuer");
-  if (!continueBtn) throw new Error('Bouton "Continuer" introuvable après les critères.');
-  continueBtn.click();
-
-  // L'interstitiel peut durer plusieurs secondes : on attend l'aperçu.
-  let bodyArea;
-  try {
-    bodyArea = await waitForElement("textarea#body, #body", 25000);
-  } catch {
-    // Le wizard n'a pas avancé : un critère obligatoire a été refusé
-    // ("Veuillez choisir un univers de vêtement" — cas réel du 2026-07-06).
-    // ── Routage 1.D (chantier 2026-07-16) : plus JAMAIS un throw opaque —
-    // les messages de validation sont CORRÉLÉS aux critères énumérés (le
-    // message d'erreur d'un critère vit dans son wrapper, cf.
-    // findVisibleFieldError) et le job part en needsUser STRUCTURÉ : libellé
-    // exact + clé sémantique, que l'app présente en saisie manuelle. Les
-    // requis ainsi PROUVÉS par la validation LBC (source de vérité) partent
-    // aussi au catalogue (required=true), même si leur libellé n'avait pas
-    // d'astérisque.
-    const blockedFields = [];
-    for (const f of enumerated) {
-      const input = findCriterionInput(`label[for="${f.key}"]`);
-      const msg = input ? findVisibleFieldError(input) : null;
-      if (msg) blockedFields.push({ ...f, required: true, message: msg });
-    }
-    // Champs à message d'erreur hors énumération (input quantité, radios…) :
-    // relevé générique en complément, jamais en remplacement.
-    const validationMsgs = [...new Set(
-      [...document.querySelectorAll('[role="alert"], [aria-live="assertive"], [aria-live="polite"], [class*="error" i]')]
-        .filter(isHumanMessageNode)
-        .map((el) => el.textContent.trim())
-        .filter((t) => t.length <= 200)
-    )].slice(0, 5);
-
-    for (const f of blockedFields) {
-      if (!unfilledRequired.includes(f.label)) unfilledRequired.push(f.label);
-      const idx = enumerated.findIndex((e) => e.key === f.key);
-      if (idx >= 0) enumerated[idx] = { ...enumerated[idx], required: true };
-    }
-
-    const details = blockedFields.length
-      ? `Leboncoin exige : ${blockedFields.map((f) => `${f.label} (« ${f.message} »)`).join(", ")}. ` +
-        "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication."
-      : "Le wizard n'est pas passé à l'aperçu après Continuer" +
-        (validationMsgs.length
-          ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
-          : " (aucun message de validation visible)") +
-        `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`;
-
-    // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
-    // identifié par la VALIDATION LBC (blockedFields, source de vérité) ou par
-    // un pseudo-requis dédié (univers/produit/quantite). Un champ à la fois :
-    // le suivant re-déclenchera ce même chemin au passage d'après. La cible
-    // d'écriture reproduit le routage du remplissage : clés couvertes par un
-    // bloc dédié → champ racine de platform_fields (le canal générique les
-    // SAUTE, cf. handledForKeys l.407) ; sinon → lbcAspects.<clé for=>.
-    // Aucun champ identifié (wizard bloqué sans message corrélé) → pas de
-    // needsUserField : chemin transitoire (b) inchangé côté background.
-    const lbcTargetFor = (key) => {
-      if (/(_condition$|^condition$)/.test(key)) return { root: null, key: "etat" };
-      if (/(_univers$|_universe$)/.test(key)) return { root: null, key: "univers" };
-      if (/(_type$|^baby_clothing_category$)/.test(key)) return { root: null, key: "lbcProduit" };
-      if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return { root: null, key: "taille" };
-      if (/_brand$/.test(key)) return { root: null, key: "marque" };
-      if (/_material$/.test(key)) return { root: null, key: "matiere" };
-      return { root: "lbcAspects", key };
-    };
-    const LBC_PSEUDO_FIELDS = {
-      univers: { field_key: "univers", field_label: "Univers", target: { root: null, key: "univers" } },
-      produit: { field_key: "produit", field_label: "Produit", target: { root: null, key: "lbcProduit" } },
-      quantite: { field_key: "quantite", field_label: "Quantité", target: { root: null, key: "quantite" } },
-    };
-    const needsUserField = blockedFields.length
-      ? {
-          field_key: blockedFields[0].key,
-          field_label: blockedFields[0].label,
-          target: lbcTargetFor(blockedFields[0].key),
-        }
-      : LBC_PSEUDO_FIELDS[unfilledRequired[0]] ?? null;
-
-    return {
-      success: false,
-      needsUser: true,
-      error: details,
-      warnings,
-      unfilledRequired,
-      discoveredRequired: enumerated,
-      serverRequired: blockedFields.map((f) => ({ key: f.key, label: f.label, message: f.message })),
-      ...(needsUserField ? { needsUserField } : {}),
-    };
+  // ── Étapes 1→3 : voir lbcRemplirJusquAApercu (extraction 2026-07-30) ─────
+  // Reprise d'un brouillon qui correspond au job : le wizard est DÉJÀ au bon
+  // stade, on saute directement à l'étape 4. bodyArea peut alors être null
+  // (brouillon restauré sur la page prix d'un flux paginé : la description a
+  // été posée sur sa propre page) — l'étape 4 le tolère.
+  let bodyArea = null;
+  let enumerated = [];
+  if (repriseBrouillon) {
+    bodyArea = document.querySelector("textarea#body, #body");
+  } else {
+    const avance = await lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired);
+    if (avance.blocked) return avance.blocked;
+    ({ bodyArea, enumerated } = avance);
   }
 
   // ── Étape 4 : aperçu final ───────────────────────────────────────────────
-  if (job.description) {
+  if (job.description && bodyArea) {
     // typeInto (et non setFieldValue) : la description est le plus long champ
     // du wizard, c'est celui dont l'apparition instantanée se voyait le plus.
     // Insérée par blocs à rythme humain (cf. HUMAN_TYPE_MAX_CHARS).
@@ -1146,6 +952,266 @@ async function fillListingForm(job) {
   }
   console.log(`[leboncoin] dépôt CONFIRMÉ (${preuve})`);
   return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
+}
+
+// ── Étapes 1→3 du dépôt : titre → catégorie → photos/critères → Continuer ───
+// Extraites de fillListingForm TEL QUEL (2026-07-30, reprise de brouillon) :
+// quand un brouillon restauré correspond au job, fillListingForm entre
+// directement à l'étape 4 (aperçu) et ce bloc n'est pas exécuté. Retourne
+// { bodyArea, enumerated } une fois l'aperçu atteint, ou
+// { blocked: <résultat needsUser structuré> } si le wizard n'est pas passé
+// (critère obligatoire refusé — routage 1.D inchangé). warnings et
+// unfilledRequired sont mutés en place (tableaux du caller).
+async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
+  const subjectInput = document.querySelector('input[name="subject"]');
+
+  // ── Étape 1 : titre → catégorie ──────────────────────────────────────────
+  await typeInto(subjectInput, job.title);
+
+  const [root, leaf] = fields.lbcCategoryPath;
+  await selectCategory(root, leaf);
+
+  // ── Étape 2 : photos + critères ──────────────────────────────────────────
+  // ⚠️ WIZARD PAGINÉ (relevé live 2026-07-19, cas réel Medik8 sur Divers >
+  // Autres) : certaines catégories fragmentent le dépôt en PAGES au lieu de
+  // tout révéler progressivement — étape 1 + « Type d'annonce » (Offre/Demande)
+  // → « Ajoutez des photos » (page dédiée, l'input[type=file] y existe) →
+  // « Décrivez votre bien » (titre + #body) → « Quel est votre prix ? »
+  // (#price_cents) → « Remise du bien » (adresse + livraison). L'ancien
+  // waitForElement direct expirait sur l'étape 1 (« Élément introuvable:
+  // input[type=file] ») : il faut cliquer Continuer pour ATTEINDRE les photos.
+  // advanceWizardTo couvre les deux mondes : trouve tout de suite sur les
+  // catégories standard, avance de page en page sur les flux paginés.
+  const photoInput = await advanceWizardTo('input[type="file"]', { probeMs: 6000 });
+  if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
+  if (job.photos?.length) {
+    const photoNote = await uploadPhotos(photoInput, job.photos);
+    if (photoNote) warnings.push(photoNote);
+  }
+
+  // Critères : tous NON bloquants. Un critère que Leboncoin a déjà pré-rempli
+  // (déduction IA titre/photos) n'est conservé QUE s'il matche la valeur du
+  // job — le cas Type="Montre quartz" déduit de "Casio A158" reste accepté ;
+  // mais quand la déduction contredit le job, la donnée produit fait foi et
+  // écrase (cas réel 2026-07-19, job 8ba961f6 : Marque="New Era" et
+  // Univers="Mixte" devinés des photos, conservés à tort par-dessus
+  // Volcom/Homme, sans aucune trace).
+  // Sonde courte préalable (flux paginé) : la page photos dédiée n'a AUCUN
+  // critère combobox — sans cette sonde, chaque fillCriterionSafe empilait son
+  // timeout de 5 s pour rien (~25 s perdues par job Divers).
+  const hasCriteria = await waitFor(
+    () => document.querySelector('label[for="condition"], label[for$="_condition"], label[for$="_brand"], label[for$="_size"], label[for$="_univers"], label[for$="_universe"], label[for$="_material"], label[for$="_type"], label[for="clothing_st"], label[for="baby_age"]'),
+    4000
+  );
+  if (!hasCriteria) {
+    console.log("[leboncoin] Aucun critère combobox sur cette étape (flux paginé ou catégorie sans critères) — remplissages de critères sautés.");
+  }
+  if (hasCriteria && fields.etat) {
+    // Le critère état s'appelle "condition" sur certaines catégories (relevé
+    // Montres & Bijoux) mais "clothing_condition" sur le rayon Vêtements
+    // (relevé campagne 2026-07-08) — même pattern suffixe que _brand/_material.
+    await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
+  }
+  if (hasCriteria && (fields.univers || fields.genre)) {
+    const ok = await fillUnivers(fields.univers || fields.genre, warnings);
+    if (!ok) unfilledRequired.push("univers");
+  }
+  if (hasCriteria && fields.lbcProduit) {
+    // Produit* : critère OBLIGATOIRE dont les options dépendent de
+    // l'univers — d'où le passage APRÈS fillUnivers. Le combobox peut
+    // n'être (ré)injecté qu'une fois l'univers posé : attente courte, puis
+    // saisie non bloquante (un échec remonte en warning et le Continuer
+    // raté le transforme en relevé correctif listant les options réelles).
+    // Critère introuvable → warning EXPLICITE, jamais silencieux (même
+    // leçon que l'univers, 2026-07-06).
+    // ⚠️ Le suffixe du label VARIE par catégorie (relevés réels) :
+    //   - Équipement bébé  : for="baby_equipment_type"     → [for$="_type"]
+    //   - Vêtements bébé   : for="baby_clothing_category"  → AUTRE suffixe !
+    // Bug réel du 2026-07-15 (robe salopette, job publié « CHAMPS
+    // MANQUANTS : produit ») : lbcProduit="Robes & Jupes" était bien posé
+    // par l'app, mais [for$="_type"] ne matche pas baby_clothing_category
+    // → timeout 5 s → champ jamais rempli. Relevé DOM du 2026-07-16.
+    const PRODUIT_LABEL_SELECTOR = 'label[for$="_type"], label[for="baby_clothing_category"]';
+    const produitLabel = await waitFor(() => document.querySelector(PRODUIT_LABEL_SELECTOR), 5000);
+    if (produitLabel) {
+      const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true });
+      if (!ok) unfilledRequired.push("produit");
+    } else {
+      const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      unfilledRequired.push("produit");
+    }
+  }
+  if (hasCriteria && fields.taille) {
+    // Pointure OBLIGATOIRE sur Mode>Chaussures ("Veuillez choisir une
+    // pointure" bloque l'aperçu — relevé campagne 2026-07-08, for="shoe_size").
+    // Sur Vêtements le critère taille s'appelle "clothing_st" (relevé) et
+    // n'est pas obligatoire. Préfixe EU retiré comme sur Vinted/eBay.
+    // Sur Famille > Vêtements bébé, la Taille s'appelle "baby_age" (relevé
+    // DOM 2026-07-16, découvert avec le bug Produit* de la même feuille) —
+    // sans cette entrée, la grille 0-36 mois n'était JAMAIS remplie quand
+    // le titre ne portait pas la taille (l'auto-détection LBC ne se
+    // déclenche que depuis le titre).
+    await fillCriterionSafe(
+      "taille",
+      'label[for$="_size"], label[for="clothing_st"], label[for="baby_age"]',
+      String(fields.taille).replace(/^EU\s*/i, ""),
+      warnings,
+      // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
+      // 98 cm » par contenance, ni « 36 » l'option « 36 mois / 98 cm ».
+      { sizeField: true }
+    );
+  }
+  if (hasCriteria && fields.marque) {
+    await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true });
+  }
+  if (hasCriteria && fields.matiere) {
+    await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
+  }
+
+  // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
+  // platform_fields.lbcAspects = { "<clé for= du label>": "valeur" } — posé par
+  // l'app (saisie manuelle du stepper) pour les critères SANS mapping dédié
+  // ci-dessus. La clé est le nom sémantique du label (ex. watches_jewels_type),
+  // stable contrairement aux ids React — relevé form-survey du 05/07.
+  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
+  if (hasCriteria && fields.lbcAspects && typeof fields.lbcAspects === "object") {
+    for (const [forKey, value] of Object.entries(fields.lbcAspects)) {
+      const val = String(value ?? "").trim();
+      if (!val || handledForKeys.test(forKey)) continue;
+      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true });
+    }
+  }
+
+  // QUANTITÉ (2026-07-12) — critère OBLIGATOIRE sur certaines catégories
+  // (constaté sur la chaise ce soir : « Ce champ est requis », le Continuer ne
+  // passait jamais à l'aperçu et le job mourait là). Il n'était REMPLI NULLE
+  // PART : le mot "quantité" n'existait pas dans ce fichier. Le champ n'apparaît
+  // pas sur toutes les catégories (absent sur Mode) → remplissage best-effort,
+  // jamais bloquant. Valeur : la quantité du job si elle existe, sinon 1 (une
+  // annonce cross-post porte une pièce unique — cf. dette D6 de la Phase B).
+  const quantiteInput = document.querySelector(
+    'input#quantity, input[name="quantity"], input[id$="_quantity"]'
+  );
+  if (quantiteInput) {
+    const qte = String(job.platform_fields?.quantite ?? job.quantite ?? 1);
+    setFieldValue(quantiteInput, qte);
+    await humanPause();
+    if (!String(quantiteInput.value ?? "").trim()) {
+      const note = 'quantité: le champ est resté vide après saisie — LBC bloquera sur "Ce champ est requis"';
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      unfilledRequired.push("quantite");
+    } else {
+      console.log(`[leboncoin] Quantité renseignée : ${quantiteInput.value}`);
+    }
+  }
+
+  // ── Énumération des critères AFFICHÉS (chantier 2026-07-16, 1.B) ───────────
+  // Relevé APRÈS tous les remplissages, AVANT le Continuer : chaque critère
+  // combobox de l'étape 2, avec sa clé sémantique (for=), son libellé humain,
+  // son marqueur requis (astérisque du libellé — motif « Produit* » relevé en
+  // réel) et son état rempli/vide. Nourrit le catalogue cumulatif
+  // platform_category_aspects côté background ; un requis vide ici sera
+  // confirmé (ou infirmé) par la validation du Continuer ci-dessous — LBC
+  // reste le juge, on n'invente aucun blocage en amont.
+  const enumerated = enumerateLbcCriteria();
+
+  // Continuer → interstitiel "juste prix" → aperçu final
+  const continueBtn = findButtonByExactText("Continuer");
+  if (!continueBtn) throw new Error('Bouton "Continuer" introuvable après les critères.');
+  continueBtn.click();
+
+  // L'interstitiel peut durer plusieurs secondes : on attend l'aperçu.
+  let bodyArea;
+  try {
+    bodyArea = await waitForElement("textarea#body, #body", 25000);
+  } catch {
+    // Le wizard n'a pas avancé : un critère obligatoire a été refusé
+    // ("Veuillez choisir un univers de vêtement" — cas réel du 2026-07-06).
+    // ── Routage 1.D (chantier 2026-07-16) : plus JAMAIS un throw opaque —
+    // les messages de validation sont CORRÉLÉS aux critères énumérés (le
+    // message d'erreur d'un critère vit dans son wrapper, cf.
+    // findVisibleFieldError) et le job part en needsUser STRUCTURÉ : libellé
+    // exact + clé sémantique, que l'app présente en saisie manuelle. Les
+    // requis ainsi PROUVÉS par la validation LBC (source de vérité) partent
+    // aussi au catalogue (required=true), même si leur libellé n'avait pas
+    // d'astérisque.
+    const blockedFields = [];
+    for (const f of enumerated) {
+      const input = findCriterionInput(`label[for="${f.key}"]`);
+      const msg = input ? findVisibleFieldError(input) : null;
+      if (msg) blockedFields.push({ ...f, required: true, message: msg });
+    }
+    // Champs à message d'erreur hors énumération (input quantité, radios…) :
+    // relevé générique en complément, jamais en remplacement.
+    const validationMsgs = [...new Set(
+      [...document.querySelectorAll('[role="alert"], [aria-live="assertive"], [aria-live="polite"], [class*="error" i]')]
+        .filter(isHumanMessageNode)
+        .map((el) => el.textContent.trim())
+        .filter((t) => t.length <= 200)
+    )].slice(0, 5);
+
+    for (const f of blockedFields) {
+      if (!unfilledRequired.includes(f.label)) unfilledRequired.push(f.label);
+      const idx = enumerated.findIndex((e) => e.key === f.key);
+      if (idx >= 0) enumerated[idx] = { ...enumerated[idx], required: true };
+    }
+
+    const details = blockedFields.length
+      ? `Leboncoin exige : ${blockedFields.map((f) => `${f.label} (« ${f.message} »)`).join(", ")}. ` +
+        "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication."
+      : "Le wizard n'est pas passé à l'aperçu après Continuer" +
+        (validationMsgs.length
+          ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
+          : " (aucun message de validation visible)") +
+        `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`;
+
+    // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
+    // identifié par la VALIDATION LBC (blockedFields, source de vérité) ou par
+    // un pseudo-requis dédié (univers/produit/quantite). Un champ à la fois :
+    // le suivant re-déclenchera ce même chemin au passage d'après. La cible
+    // d'écriture reproduit le routage du remplissage : clés couvertes par un
+    // bloc dédié → champ racine de platform_fields (le canal générique les
+    // SAUTE, cf. handledForKeys l.407) ; sinon → lbcAspects.<clé for=>.
+    // Aucun champ identifié (wizard bloqué sans message corrélé) → pas de
+    // needsUserField : chemin transitoire (b) inchangé côté background.
+    const lbcTargetFor = (key) => {
+      if (/(_condition$|^condition$)/.test(key)) return { root: null, key: "etat" };
+      if (/(_univers$|_universe$)/.test(key)) return { root: null, key: "univers" };
+      if (/(_type$|^baby_clothing_category$)/.test(key)) return { root: null, key: "lbcProduit" };
+      if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return { root: null, key: "taille" };
+      if (/_brand$/.test(key)) return { root: null, key: "marque" };
+      if (/_material$/.test(key)) return { root: null, key: "matiere" };
+      return { root: "lbcAspects", key };
+    };
+    const LBC_PSEUDO_FIELDS = {
+      univers: { field_key: "univers", field_label: "Univers", target: { root: null, key: "univers" } },
+      produit: { field_key: "produit", field_label: "Produit", target: { root: null, key: "lbcProduit" } },
+      quantite: { field_key: "quantite", field_label: "Quantité", target: { root: null, key: "quantite" } },
+    };
+    const needsUserField = blockedFields.length
+      ? {
+          field_key: blockedFields[0].key,
+          field_label: blockedFields[0].label,
+          target: lbcTargetFor(blockedFields[0].key),
+        }
+      : LBC_PSEUDO_FIELDS[unfilledRequired[0]] ?? null;
+
+    return { blocked: {
+      success: false,
+      needsUser: true,
+      error: details,
+      warnings,
+      unfilledRequired,
+      discoveredRequired: enumerated,
+      serverRequired: blockedFields.map((f) => ({ key: f.key, label: f.label, message: f.message })),
+      ...(needsUserField ? { needsUserField } : {}),
+    } };
+  }
+
+  return { bodyArea, enumerated };
 }
 
 // Relevé d'écran joint aux erreurs post-aperçu (2026-07-19) : titres, boutons
