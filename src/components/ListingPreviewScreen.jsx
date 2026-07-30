@@ -2737,22 +2737,40 @@ export default function ListingPreviewScreen({
   const [initializing, setInit] = useState(true);
 
   // Sessions plateformes relevées par l'extension (profiles.extension_sessions,
-  // sondes du background ~10 min — chantier onboarding 2026-07-27). Lues à
-  // l'ENTRÉE de l'étape Publier, purement informatif : on n'empêche jamais de
-  // publier (choisir 2 plateformes sur 4 est légitime). Relevé absent ou
-  // périmé (> 30 min) → aucun badge, jamais de fausse assurance.
+  // sondes du background ~10 min — chantier onboarding 2026-07-27). Purement
+  // informatif : on n'empêche jamais de publier (choisir 2 plateformes sur 4
+  // est légitime). Relevé absent ou périmé → aucun badge, jamais de fausse
+  // assurance.
+  // RELECTURE PÉRIODIQUE (2026-07-30, faux « Vinted : non connecté » de
+  // 21:13) : la lecture unique à l'entrée de l'étape figeait un relevé qui
+  // pouvait avoir 30 min — la sonde suivante a écrit true 50 s après le
+  // bandeau, jamais relu. Désormais : relecture toutes les 60 s tant que
+  // l'étape est affichée + au retour de visibilité, et fenêtre de fraîcheur
+  // ramenée à 12 min (throttle sonde 10 min + marge) — un relevé plus vieux
+  // n'a plus valeur d'affichage.
   const [platformSessions, setPlatformSessions] = useState(null);
   useEffect(() => {
     if (step !== 3 || !supabase || !userId) return;
     let stale = false;
-    supabase.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle()
-      .then(({ data }) => {
-        if (stale) return;
-        const s = data?.extension_sessions;
-        const fresh = s?.checked_at && (Date.now() - Date.parse(s.checked_at)) < 30 * 60 * 1000;
-        setPlatformSessions(fresh ? s : null);
-      });
-    return () => { stale = true; };
+    const FRESH_MS = 12 * 60 * 1000;
+    const lire = () => {
+      supabase.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle()
+        .then(({ data }) => {
+          if (stale) return;
+          const s = data?.extension_sessions;
+          const fresh = s?.checked_at && (Date.now() - Date.parse(s.checked_at)) < FRESH_MS;
+          setPlatformSessions(fresh ? s : null);
+        });
+    };
+    lire();
+    const timer = setInterval(lire, 60 * 1000);
+    const onVisibilite = () => { if (document.visibilityState === "visible") lire(); };
+    document.addEventListener("visibilitychange", onVisibilite);
+    return () => {
+      stale = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilite);
+    };
   }, [step, supabase, userId]);
 
   // Ligne inventaire liée à cette annonce : peut ne pas encore exister — elle
