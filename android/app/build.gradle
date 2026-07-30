@@ -54,8 +54,18 @@ android {
         // obligatoire / inventaire systématique). versionName 2.3.6 (décision
         // Nico 30/07) : la lignée 2.3.x continue, iOS inchangé — 2.4 reste
         // réservée à la prochaine release commune.
-        versionCode 26
-        versionName "2.3.6"
+        // 26 → 27 (30/07 au soir : lot de correctifs app + refonte de l'écran
+        // Lens. Couleurs Vinted normalisées vers la palette fermée (09ddace),
+        // champs du stepper qui ne se démontent plus à la 1re frappe (5d4d93c),
+        // filet marque Beebs en trace seule (a0ad69c), badges de session relus
+        // pendant l'affichage (fce4f2f), règle d'unicité « un champ manquant =
+        // un seul encart » (c4c0e37), et AnalyseMarche (f00f650) : un composant
+        // partagé écran Lens / stepper, deal score supprimé, verdict dérivé de
+        // la marge). versionName 2.3.7 : la lignée 2.3.x continue et 2.4 reste
+        // RÉSERVÉE à la prochaine release commune avec iOS (règle posée le
+        // 22/07, iOS inchangé ce soir).
+        versionCode 27
+        versionName "2.3.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
