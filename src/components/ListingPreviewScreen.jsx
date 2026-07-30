@@ -2897,13 +2897,15 @@ export default function ListingPreviewScreen({
   // canonical_fields taille/couleur/matiere/marque) est celui que le stepper
   // consomme déjà depuis Lens — on le REMPLIT, on ne le change pas.
   //
-  // ENSEMENCEMENT (2026-07-30, casquette Volcom) : un article qui ARRIVE avec
-  // un scan complet (initialListing = réponse lens-analysis, prix_vente_suggere
-  // présent) a déjà UNE estimation, payée. La laisser hors de photoAnalysis,
-  // c'est afficher un écran de génération muet sur le marché — et un second
-  // scan lancé ici produit une SECONDE vérité (14 € / 5 annonces sur l'écran
-  // Lens, 21 € / 1 annonce à la génération, à quelques minutes d'écart, 6
-  // Pépites chaque fois). Une estimation par article : celle qui existe.
+  // ENSEMENCEMENT (2026-07-30, casquette Volcom — prémisse corrigée par Nico) :
+  // un article qui ARRIVE avec un scan complet (initialListing = réponse
+  // lens-analysis, prix_vente_suggere présent) a déjà UNE estimation, payée.
+  // L'app ne peut PAS relancer un scan sur une analyse déjà faite (Estimer
+  // n'existe que sans prix, la carte Analyser est masquée — les « deux scans »
+  // du 30/07 étaient deux uploads volontaires des mêmes photos). Le vrai
+  // défaut : 6 Pépites de contenu réduites à une ligne, le stepper laissait
+  // photoAnalysis null et n'affichait rien du marché. On rend la donnée
+  // disponible à l'affichage — aucun nouvel appel, la réponse déjà payée.
   const [photoAnalysis, setPhotoAnalysis] = useState(
     draft?.photoAnalysis
     ?? (initialListing?.prix_vente_suggere != null ? initialListing : null)
