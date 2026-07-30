@@ -47,7 +47,12 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // la remplace, la re-packager ne servirait qu'à se faire rejeter par le CWS.
 // 0.4.5 ajoutée le 30/07 : en ligne au CWS, la 0.4.6 la remplace (fix marque
 // Vinted 1f31a04 + observatoire).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5'];
+// 0.4.6 ajoutée le 31/07 — geste POST-PUBLICATION oublié en son temps, rattrapé
+// ici : la preuve qu'elle est bien en ligne est en base, 3 installs du parc
+// remontent son build (profiles.extension_build = 2026-07-29T22:15:21Z+fcffcfe,
+// handler_build « … · v0.4.6 »). Sans cette ligne, rien n'empêchait de
+// re-packager une 0.4.6 que le Web Store aurait rejetée.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
