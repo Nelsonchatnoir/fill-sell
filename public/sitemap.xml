@@ -18,9 +18,16 @@
   </url>
   <url>
     <loc>https://fillsell.app/blog</loc>
-    <lastmod>2026-06-27</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://fillsell.app/blog/publier-annonce-plusieurs-plateformes</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://fillsell.app/blog/publier-annonce-plusieurs-plateformes"/>
   </url>
   <url>
     <loc>https://fillsell.app/blog/comment-calculer-profits-vinted</loc>

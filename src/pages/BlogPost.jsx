@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -28,6 +29,33 @@ export default function BlogPost() {
     ogType: 'article',
     ogImage: post?.og_image ?? null,
   });
+
+  // FAQ JSON-LD (2026-07-30) : un article peut porter un frontmatter `faq` —
+  // un tableau JSON SUR UNE SEULE LIGNE de {q, a} (le parseur de posts.js est
+  // ligne à ligne, un JSON multi-lignes serait tronqué). Injecté ici en
+  // <script type="application/ld+json"> FAQPage, retiré au démontage.
+  // Best-effort : JSON invalide ou absent → aucun script, jamais d'erreur.
+  useEffect(() => {
+    if (!post?.faq) return undefined;
+    let entries;
+    try { entries = JSON.parse(post.faq); } catch { return undefined; }
+    if (!Array.isArray(entries) || entries.length === 0) return undefined;
+    const el = document.createElement('script');
+    el.type = 'application/ld+json';
+    el.text = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: entries
+        .filter(e => e && e.q && e.a)
+        .map(e => ({
+          '@type': 'Question',
+          name: e.q,
+          acceptedAnswer: { '@type': 'Answer', text: e.a },
+        })),
+    });
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, [post]);
 
   if (!post) return <Navigate to="/blog" replace />;
 
