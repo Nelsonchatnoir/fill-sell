@@ -504,8 +504,45 @@ async function waitFor(fn, timeoutMs = 5000) {
  *       `packageSize` reste sans source de donnée, câblé en best-effort.
  * @returns {Promise<{success: boolean, dryRun?: boolean, listingUrl?: string, error?: string}>}
  */
+// ── Challenge anti-bot (DataDome) sur le DOM vivant (2026-07-30) ─────────────
+// Copie locale d'estPageBotShieldLbc (leboncoin.js), ADR-03 (content scripts
+// autonomes, duplication par copie). Vinted est bien derrière DataDome —
+// vérifié le 2026-07-30 : la home pose un cookie `datadome` (Set-Cookie relevé
+// en direct), même fournisseur que Leboncoin et Beebs. Mêmes adaptations que
+// LBC :
+//   · motif nu /datadome/ volontairement ÉCARTÉ : le tag JS DataDome est
+//     embarqué sur les pages NORMALES, le mot apparaît hors de tout challenge ;
+//   · formulaire de dépôt présent (champ titre) = pas de challenge ;
+//   · l'iframe du challenge (geo.captcha-delivery.com) est décisive seule.
+function estPageBotShieldVinted() {
+  if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"]')) return true;
+  if (document.querySelector('#title, [data-testid="title--input"]')) return false;
+  const debut = String(document.documentElement?.innerHTML ?? "").slice(0, 4000);
+  return /geo\.captcha|captcha-delivery|\bAre you a human\b|Vérification que vous n/i.test(debut);
+}
+
 async function fillListingForm(job) {
   console.log("[vinted] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
+
+  // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
+  // interception DataDome est servie SOUS LA MÊME URL (/items/new) sans champ
+  // password — elle passait la garde de session puis échouait plus loin en
+  // erreur quelconque, indistinguable d'une déconnexion ou d'un timeout.
+  // Motif dédié, reconnaissable en SQL sur cross_post_jobs :
+  //   error LIKE 'CHALLENGE DATADOME%'
+  // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
+  // — un captcha ne déclenche jamais le ré-armement « transitoire », seulement
+  // le needsUser borné classique (MAX_NEEDS_USER_RETRIES), comme la connexion.
+  if (estPageBotShieldVinted()) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "CHALLENGE DATADOME : Vinted affiche une vérification anti-robot à la place du " +
+        "formulaire de dépôt. Ouvrir vinted.fr dans Chrome et résoudre la vérification " +
+        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+    };
+  }
 
   // Session : le background vient de naviguer l'onglet de travail sur
   // /items/new. Si Vinted a redirigé ailleurs (login, vérification) ou

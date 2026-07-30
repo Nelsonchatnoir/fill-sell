@@ -336,6 +336,26 @@ function goToSellFromHome() {
  *   on complète (photos, specifics, format, prix, description) et on
  *   s'arrête avant la publication.
  */
+// ── Challenge anti-bot eBay sur le DOM vivant (2026-07-30) ───────────────────
+// Pendant homologue d'estPageBotShieldLbc (leboncoin.js), ADR-03 (content
+// scripts autonomes, duplication par copie) — mais motifs PROPRES à eBay,
+// relevés en direct le 2026-07-30 : la protection n'est pas DataDome. eBay
+// redirige vers sa page captcha MAISON /splashui/captcha (form #captcha_form,
+// action captcha_submit, slot .target-icaptcha-slot) ; l'infra bot-detection
+// est Radware Bot Manager (cookies __uzm*, avalon.perfdrive.com en CSP).
+//   · le path /splashui/ est décisif seul (page dédiée, jamais une page
+//     normale de vente) ;
+//   · les marqueurs du formulaire captcha sont décisifs seuls ;
+//   · PAS de motif texte générique « captcha » : le mot apparaît dans les
+//     bundles JS des pages normales — même famille de faux positif que le
+//     motif nu /datadome/ écarté côté LBC.
+function estPageBotShieldEbay() {
+  if (location.pathname.includes("/splashui/")) return true;
+  return Boolean(
+    document.querySelector('#captcha_form, form[action*="captcha_submit"], .target-icaptcha-slot')
+  );
+}
+
 async function fillListingForm(job) {
   console.log("[ebay] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
@@ -357,6 +377,32 @@ async function fillListingForm(job) {
     await fieldSettle();
     return ok;
   };
+
+  // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) —
+  // pendant homologue d'estPageBotShieldLbc (leboncoin.js), motifs PROPRES à
+  // eBay : ce n'est pas DataDome ici. Vérifié le 2026-07-30 en direct sur
+  // ebay.fr : cookies __uzm* + avalon.perfdrive.com dans la CSP (Radware Bot
+  // Manager), et la page de challenge visible est le captcha MAISON
+  // /splashui/captcha (service "splashui", relevé splashui-5.0.1) avec
+  // form #captcha_form / action*="captcha" et slot .target-icaptcha-slot.
+  // Le path /splashui/ est décisif seul : le challenge REDIRIGE vers cette
+  // page (contrairement à DataDome qui sert l'interception sous l'URL
+  // d'origine) — il passait donc pour une simple page inattendue.
+  // Motif dédié, reconnaissable en SQL : error LIKE 'CHALLENGE CAPTCHA%'
+  // (famille commune requêtable : error LIKE 'CHALLENGE %').
+  // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
+  // — needsUser borné classique (MAX_NEEDS_USER_RETRIES), jamais le
+  // ré-armement « transitoire ».
+  if (estPageBotShieldEbay()) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "CHALLENGE CAPTCHA : eBay affiche une vérification anti-robot (page captcha) à la " +
+        "place du formulaire de mise en vente. Ouvrir ebay.fr dans Chrome et résoudre la " +
+        "vérification (l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+    };
+  }
 
   // Session : signin.ebay.fr intercepte la navigation quand le compte n'est
   // pas connecté. Même règle que Vinted/LBC : needsUser (ré-armement borné

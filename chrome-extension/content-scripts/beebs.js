@@ -343,8 +343,46 @@ function findBeebsCardDelete(card) {
     }) ?? null;
 }
 
+// ── Challenge anti-bot (DataDome) sur le DOM vivant (2026-07-30) ─────────────
+// Copie locale d'estPageBotShieldLbc (leboncoin.js), ADR-03 (content scripts
+// autonomes, duplication par copie). Beebs est bien derrière DataDome —
+// vérifié le 2026-07-30 par un GET direct sur www.beebs.app/fr : 403 avec
+// `Server: DataDome`, `X-DataDome: protected`, et un corps d'interception
+// chargeant ct.captcha-delivery.com/c.js avec host geo.captcha-delivery.com
+// et le texte « Please enable JS and disable any ad blocker ». Mêmes
+// adaptations que LBC :
+//   · motif nu /datadome/ volontairement ÉCARTÉ (tag JS sur pages normales) ;
+//   · formulaire de vente présent (champ titre) = pas de challenge ;
+//   · l'iframe/le script du challenge (captcha-delivery) est décisif seul.
+function estPageBotShieldBeebs() {
+  if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], script[src*="captcha-delivery"]')) return true;
+  if (document.querySelector("#title, #description")) return false;
+  const debut = String(document.documentElement?.innerHTML ?? "").slice(0, 4000);
+  return /geo\.captcha|captcha-delivery|\bAre you a human\b|Please enable JS and disable any ad blocker|Vérification que vous n/i.test(debut);
+}
+
 async function fillListingForm(job) {
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
+
+  // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
+  // interception DataDome est servie SOUS LA MÊME URL (/fr/listing), sans
+  // champ password — elle passait la garde de session puis échouait plus loin
+  // en erreur quelconque, indistinguable d'une déconnexion ou d'un timeout.
+  // Motif dédié, reconnaissable en SQL :
+  //   error LIKE 'CHALLENGE DATADOME%'
+  // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
+  // — needsUser borné classique (MAX_NEEDS_USER_RETRIES), jamais le
+  // ré-armement « transitoire ».
+  if (estPageBotShieldBeebs()) {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "CHALLENGE DATADOME : Beebs affiche une vérification anti-robot à la place du " +
+        "formulaire de vente. Ouvrir beebs.app dans Chrome et résoudre la vérification " +
+        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+    };
+  }
 
   // Session : si Beebs a redirigé vers une page de connexion ou affiche un
   // formulaire d'authentification, on s'arrête AVANT tout remplissage :
