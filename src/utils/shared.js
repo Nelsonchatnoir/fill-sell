@@ -16,6 +16,53 @@ export const PLATFORM_LOGIN_URLS = {
 };
 export const LBC_DEPOSIT_URL = 'https://www.leboncoin.fr/deposer-une-annonce';
 
+// ── Erreur de job : message utilisateur vs diagnostic (2026-07-30) ────────────
+// Le 30/07, la modale « non publiée » du Stock a affiché tel quel un message
+// technique (nom de fichier du code, options DOM relevées, dump de réponse
+// Vinted). Règle : cross_post_jobs.error garde le diagnostic COMPLET — c'est
+// la matière du SQL, des logs et du support, on ne l'appauvrit jamais à la
+// source. La traduction en phrase courte se fait ICI, au moment d'afficher.
+// Un message sans marqueur technique (déjà humanisé côté extension : connexion
+// requise, brouillon LBC…) passe tel quel — on ne réécrit pas ce qui est déjà
+// une consigne claire.
+const HUMANIZE_PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+const TECH_ERR_MARKERS_RE = new RegExp([
+  '\\.js\\b',                    // nom de fichier du code (vintedCategories.js…)
+  'https?://',                   // URL d'API sondée
+  '[\\[{]\\s*"',                 // dump JSON (réponse plateforme, liste d'options)
+  '\\bHTTP\\s*/?\\s*[0-9]{3}\\b',
+  '\\b(?:status|statut)\\s*[0-9]{3}\\b',
+  'outerHTML|querySelector|data-testid|sélecteur|selector|chevron',
+  'platform_fields|needsUser|payload',
+].join('|'), 'i');
+
+export function humanizeJobError(job, lang = 'fr') {
+  const raw = String(job?.error ?? '').trim();
+  if (!raw) return '';
+  const en = lang === 'en';
+  const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
+
+  // Challenge anti-robot : le libellé stocké commence par « CHALLENGE <nom> : »
+  // (motif SQL) suivi de la consigne — on ne montre que la consigne.
+  const challenge = raw.match(/^CHALLENGE\s+[A-ZÀ-Ÿ0-9 -]+?\s*:\s*(.+)$/is);
+  if (challenge) return challenge[1].trim();
+
+  // Catégorie non posée (sélection en cascade échouée) : le diagnostic liste
+  // options DOM et nœuds matchés — l'utilisateur n'en a pas l'usage.
+  if (/^Catégorie\s*:/i.test(raw)) {
+    return en
+      ? `The listing category could not be set automatically on ${name}. Retry publishing from the item; the technical detail has been recorded.`
+      : `La catégorie de l'annonce n'a pas pu être posée automatiquement sur ${name}. Relancer la publication depuis la fiche de l'article ; le détail technique est enregistré.`;
+  }
+
+  // Message déjà humain (court, sans marqueur technique) : tel quel.
+  if (!TECH_ERR_MARKERS_RE.test(raw) && raw.length <= 300) return raw;
+
+  return en
+    ? `Publishing on ${name} was interrupted by a technical issue. Retry from the item; the full detail has been recorded for support.`
+    : `La publication sur ${name} a été interrompue par un imprévu technique. Relancer depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
+}
+
 export const C = {
   primary:"#1D9E75",
   dark:"#0F6E56",

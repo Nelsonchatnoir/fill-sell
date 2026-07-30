@@ -19,7 +19,7 @@ import {
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
-  PLATFORM_LOGIN_URLS, LBC_DEPOSIT_URL,
+  PLATFORM_LOGIN_URLS, LBC_DEPOSIT_URL, humanizeJobError,
 } from '../utils/shared';
 
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
@@ -619,7 +619,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose 
                   {enPause && (fr ? " · plateforme en pause (reprise auto)" : " · platform paused (auto-resume)")}
                 </div>
                 {j.error && (
-                  <div style={{ fontSize:11.5, lineHeight:1.45, color:"#8C2F28", marginTop:6 }}>{j.error}</div>
+                  <div style={{ fontSize:11.5, lineHeight:1.45, color:"#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
                 )}
               </div>
             );
@@ -1862,7 +1862,7 @@ const StockTab = memo(function StockTab({
                                 <div
                                   key={"nu-"+j.platform}
                                   className="micon"
-                                  title={j.error||undefined}
+                                  title={j.error?humanizeJobError(j,lang):undefined}
                                   onClick={e=>{
                                     e.stopPropagation();
                                     if(j.platform_fields?.needsUserField){setNeedsUserJob(j);}
@@ -1877,7 +1877,7 @@ const StockTab = memo(function StockTab({
                                 <div
                                   key={"fail-"+j.platform}
                                   className="micon"
-                                  title={j.error||undefined}
+                                  title={j.error?humanizeJobError(j,lang):undefined}
                                   onClick={e=>{e.stopPropagation();if(j.error)setFailJobModal(j);}}
                                   style={{background:"#FBEDEC",border:"1px solid #EFC2BE",color:"#8C2F28",cursor:j.error?"pointer":"default"}}
                                 >
@@ -1988,7 +1988,13 @@ const StockTab = memo(function StockTab({
                 {(PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform)} — {lang==="en"?"not published":"non publiée"}
               </div>
             </div>
-            <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>{failJobModal.error}</div>
+            {/* humanizeJobError (2026-07-30) : la colonne error garde le
+                diagnostic complet (SQL/support), la modale n'affiche que la
+                phrase courte — le message technique brut (fichier, URL d'API,
+                dump JSON) s'affichait ici tel quel. failJobAction, lui,
+                continue de tester l'erreur BRUTE (motifs connexion/brouillon
+                posés côté extension). */}
+            <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>{humanizeJobError(failJobModal,lang)}</div>
             {(()=>{const a=failJobAction(failJobModal,lang);return a?(
               <a href={a.url} target="_blank" rel="noopener noreferrer"
                 style={{display:"block",textAlign:"center",padding:"12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:14,fontWeight:700,textDecoration:"none",marginBottom:8}}>
