@@ -382,6 +382,9 @@ const VITESSE_INFO = {
 // Qualité d'analyse unifiée (2026-07) : plus de gating par tier — chaque bloc
 // s'affiche si le champ est présent dans la réponse, identique pour tous.
 function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset }) {
+  // Sources de l'estimation (2026-07-30) : replié par défaut. Déclaré AVANT le
+  // retour anticipé d'erreur (règle des hooks).
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   if (result.error) {
     return (
       <>
@@ -474,6 +477,38 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
                 </div>
               ))}
             </div>
+            {/* Sources de l'estimation (chantier 2026-07-30) : les annonces que
+                le scan dit avoir RETENUES pour la fourchette (annonces_marche,
+                assainies serveur). Repliées par défaut, aucune vignette, aucun
+                lien ; champ absent ou vide → rien du tout. */}
+            {Array.isArray(result.annonces_marche)&&result.annonces_marche.length>0&&(()=>{
+              const annonces=result.annonces_marche.filter(a=>a?.titre&&Number.isFinite(a?.prix));
+              if(!annonces.length)return null;
+              const prix=annonces.map(a=>a.prix);
+              const min=Math.min(...prix),max=Math.max(...prix);
+              return(
+                <div style={{marginTop:8}}>
+                  <button
+                    onClick={()=>setSourcesOpen(o=>!o)}
+                    style={{background:'none',border:'none',padding:0,fontFamily:'inherit',fontSize:11.5,fontWeight:600,color:'#6B7A75',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}
+                  >
+                    <span style={{display:'inline-block',transform:sourcesOpen?'rotate(90deg)':'none',transition:'transform 0.15s'}}>▸</span>
+                    {lang==='en'
+                      ?`Based on ${annonces.length} listing${annonces.length>1?'s':''} (${formatCurrency(min,currency)} – ${formatCurrency(max,currency)})`
+                      :`Basée sur ${annonces.length} annonce${annonces.length>1?'s':''} (${formatCurrency(min,currency)} – ${formatCurrency(max,currency)})`}
+                  </button>
+                  {sourcesOpen&&(
+                    <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:4}}>
+                      {annonces.map((a,i)=>(
+                        <div key={i} style={{fontSize:11.5,color:'#8A8578',lineHeight:1.45}}>
+                          {a.titre} — <span style={{fontWeight:700,color:'#10201B'}}>{formatCurrency(a.prix,currency)}</span>{a.plateforme?` · ${a.plateforme}`:''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 

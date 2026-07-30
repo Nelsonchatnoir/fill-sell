@@ -1535,6 +1535,9 @@ function StepGeneration({ generating, generateError, platformListings, processed
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
   const [openCards, setOpenCards] = useState(new Set());
+  // Sources de l'estimation (2026-07-30) : replié par défaut — le prix reste
+  // l'information principale, les annonces sont la preuve dépliable.
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   // Prix central (2026-07-14) : écrit le prix dans TOUTES les plateformes
   // sélectionnées d'un coup. Une plateforme dont le prix a été édité à la main
@@ -1716,6 +1719,39 @@ function StepGeneration({ generating, generateError, platformListings, processed
             <strong style={{ color:T.tealDeep }}>{estimateResult.fourchette_min} – {estimateResult.fourchette_max} €</strong>
           </div>
         )}
+        {/* Sources de l'estimation (chantier 2026-07-30) : les annonces que le
+            scan dit avoir RETENUES pour la fourchette (annonces_marche,
+            assainies serveur — titre + prix garantis, plateforme optionnelle).
+            Replié par défaut ; ni vignettes, ni liens, ni images. Champ absent
+            ou vide → rien du tout (pas de bloc vide, pas de message). */}
+        {!prixManquant && Array.isArray(estimateResult?.annonces_marche) && estimateResult.annonces_marche.length > 0 && (() => {
+          const annonces = estimateResult.annonces_marche.filter(a => a?.titre && Number.isFinite(a?.prix));
+          if (!annonces.length) return null;
+          const prix = annonces.map(a => a.prix);
+          const min = Math.min(...prix), max = Math.max(...prix);
+          return (
+            <div style={{ marginTop:4 }}>
+              <button
+                onClick={() => setSourcesOpen(o => !o)}
+                style={{ background:"none", border:"none", padding:0, fontFamily:"inherit", fontSize:11.5, fontWeight:600, color:T.mute, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:4 }}
+              >
+                <span style={{ display:"inline-block", transform: sourcesOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }}>▸</span>
+                {lang === "en"
+                  ? `Based on ${annonces.length} listing${annonces.length > 1 ? "s" : ""} (${min} – ${max} €)`
+                  : `Basée sur ${annonces.length} annonce${annonces.length > 1 ? "s" : ""} (${min} – ${max} €)`}
+              </button>
+              {sourcesOpen && (
+                <div style={{ marginTop:6, display:"flex", flexDirection:"column", gap:4 }}>
+                  {annonces.map((a, i) => (
+                    <div key={i} style={{ fontSize:11.5, color:T.mute2, lineHeight:1.45 }}>
+                      {a.titre} — <span style={{ fontWeight:700, color:T.ink }}>{a.prix} €</span>{a.plateforme ? ` · ${a.plateforme}` : ""}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
           {lang === "en"
             ? "Applied to every selected platform. Change a card's price to set it apart."
