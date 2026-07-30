@@ -67,7 +67,7 @@ export const VINTED_SELECTORS = {
     chain: [{ type: "css", value: 'li.web_ui__Item__item [role="button"][id^="catalog-"]' }],
     assert: { visible: true },
     source: "vinted.js:1828, 1831 (CATALOG_OPTION_SELECTOR)",
-    note: "visibleCatalogLabels, cascade catégorie — match exact-d'abord (findOptionByText), chevron testé via .web_ui__Cell__with-chevron (l.1848-1850)",
+    note: "visibleCatalogLabels, cascade catégorie — match exact-d'abord (findOptionMatch), stabilité 2 lectures + exact-only au niveau racine (waitForStableCatalogOption), chevron testé via .web_ui__Cell__with-chevron avec retry borné",
   },
 
   "publish.option_item": {

@@ -1582,7 +1582,7 @@ async function confirmDropdownIfNeeded() {
 // type "M / 38 / 10"), includes() en repli seulement. Sans ça, "Bon état"
 // sélectionne "Très bon état" (premier dans la liste) et la taille "S"
 // matche "XS / 34 / 6" — textes d'options confirmés par inspection DOM.
-function findOptionByText(root, optionSelector, text) {
+function findOptionMatch(root, optionSelector, text, { exactOnly = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector));
   // \s+ → " " : mêmes espaces insécables que dans la cascade (cf.
   // normalizeFuzzy — « 128 Go » du DOM porte U+00A0, prouvé job 7b67d67f).
@@ -1593,8 +1593,14 @@ function findOptionByText(root, optionSelector, text) {
       normalize(o.textContent) === target ||
       o.textContent.split("/").some((part) => normalize(part) === target)
   );
-  if (exact) return exact;
-  return options.find((o) => normalize(o.textContent).includes(target));
+  if (exact) return { el: exact, stage: "exact" };
+  if (exactOnly) return null;
+  const partial = options.find((o) => normalize(o.textContent).includes(target));
+  return partial ? { el: partial, stage: "includes" } : null;
+}
+
+function findOptionByText(root, optionSelector, text) {
+  return findOptionMatch(root, optionSelector, text)?.el ?? null;
 }
 
 async function waitForOptionByText(optionSelector, text, timeoutMs = 5000) {
@@ -2047,16 +2053,55 @@ function isChevronOption(option) {
   );
 }
 
+// Attend une option du catalogue STABLE : même nœud sur deux lectures espacées
+// de settleMs (modèle waitForStableElement, l.1252) — le panneau Catégorie se
+// remplit par vagues (liste racine, puis bloc suggestions issu du titre/photos,
+// cf. suggested-brand-* l.1502-1506 pour le mécanisme équivalent côté Marque).
+// Retourner le premier nœud dont le TEXTE matche, sans attendre que la liste
+// soit posée, a produit le faux « feuille terminale » du 2026-07-30 (compte
+// Ornella : même chemin, 2 succès / 1 échec) — le chevron était lu sur un état
+// de rendu partiel. exactOnly : au niveau racine les libellés sont connus et
+// courts (« Femmes »…), le repli includes() peut capturer une cellule de
+// suggestion/fil d'Ariane qui CONTIENT le mot — refusé là où il est demandé.
+async function waitForStableCatalogOption(optionSelector, text, { timeoutMs = 5000, settleMs = 250, exactOnly = false } = {}) {
+  const start = Date.now();
+  let prev = null;
+  while (Date.now() - start < timeoutMs) {
+    const match = findOptionMatch(document, optionSelector, text, { exactOnly });
+    if (match && prev && match.el === prev.el && match.el.isConnected) return match;
+    prev = match;
+    await sleep(match ? settleMs : 80);
+  }
+  if (prev?.el?.isConnected) return prev; // trouvé mais jamais revu identique : on rend le dernier état
+  throw new Error(`Option "${text}" introuvable pour ${optionSelector}`);
+}
+
+// Annexe de diagnostic commune aux erreurs de niveau : QUEL nœud a matché
+// (id + extrait d'outerHTML), par quel étage de la cascade, et ce que Vinted
+// affichait réellement — sans ça, impossible de départager post-mortem un
+// mapping faux d'un état de rendu transitoire (leçon du faux « feuille
+// terminale » du 2026-07-30).
+function describeMatchedOption(match) {
+  const el = match?.el;
+  if (!el) return "aucun nœud matché";
+  const html = String(el.outerHTML ?? "").replace(/\s+/g, " ").slice(0, 300);
+  return `nœud matché (${match.stage}) id="${el.id || "?"}" : ${html}`;
+}
+
 async function selectCategory(path) {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
   await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]');
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
     const isLast = i === path.length - 1;
+    // Niveau racine : match EXACT exigé (libellés courts et connus, repli
+    // includes() dangereux — cf. waitForStableCatalogOption). Aux niveaux
+    // suivants le repli reste permis (libellés composés type « Robes midi »).
+    const matchOpts = { exactOnly: i === 0 };
 
-    let option;
+    let match;
     try {
-      option = await waitForOptionByText(catalogOptionSel, levelLabel);
+      match = await waitForStableCatalogOption(catalogOptionSel, levelLabel, matchOpts);
     } catch {
       throw new Error(
         `Catégorie: niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
@@ -2064,15 +2109,33 @@ async function selectCategory(path) {
         `Corriger le chemin dans vintedCategories.js avec un de ces libellés.`
       );
     }
+    let option = match.el;
 
-    const hasChevron = isChevronOption(option);
+    // Chevron absent → JAMAIS terminal sur une seule lecture (même famille de
+    // leçon que LBC 410/200 : un seul relevé ne prime pas). Le nœud peut être
+    // en cours de décoration, ou remplacé par un re-rendu — on re-cherche à
+    // neuf, borné, avant de conclure.
+    let hasChevron = isChevronOption(option);
+    for (let retry = 0; !hasChevron && !isLast && retry < 3; retry++) {
+      await sleep(400);
+      const again = findOptionMatch(document, catalogOptionSel, levelLabel, matchOpts);
+      if (again) {
+        match = again;
+        option = again.el;
+        hasChevron = isChevronOption(option);
+      }
+    }
 
-    // Le chemin continue mais Vinted dit que c'est déjà une feuille :
-    // le mapping a un niveau de trop.
+    // Le chemin continue mais l'option est restée sans chevron après retries.
+    // Deux causes possibles, indécidables sans les annexes ci-dessous : mapping
+    // trop profond (rare : le même chemin peut réussir par ailleurs), ou état
+    // du panneau inattendu (suggestions, pré-sélection, rendu partiel).
     if (!isLast && !hasChevron) {
       throw new Error(
-        `Catégorie: "${levelLabel}" est une feuille terminale mais le chemin continue avec ` +
-        `${JSON.stringify(path.slice(i + 1))}. Retirer les niveaux excédentaires dans vintedCategories.js.`
+        `Catégorie: "${levelLabel}" affiché sans sous-niveaux (pas de chevron, vérifié 4×) alors que ` +
+        `le chemin continue avec ${JSON.stringify(path.slice(i + 1))}. ` +
+        `${describeMatchedOption(match)}. ` +
+        `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}.`
       );
     }
 
