@@ -1813,7 +1813,74 @@ const WORK_WINDOW_KEY = "fillsell_work_window";
 // fenêtres de travail traînent, on rapatrie leurs onglets dans la première et on
 // ferme les surnuméraires. L'invariant « une seule fenêtre » est ainsi rétabli
 // même après un état déjà dégradé.
+//
+// ⚠️ CLIQUET D'ADOPTION (2026-07-30, constaté sur le Mac d'Ornella) : la v2
+// adoptait toute fenêtre contenant AU MOINS UN onglet marqué. Or le repli de
+// createWorkTabInWorkWindow peut égarer un onglet marqué dans la fenêtre de
+// l'UTILISATEUR ; au redémarrage suivant (storage.session vidé), c'est SA
+// fenêtre qui était adoptée — définitivement, puisque moveTabToWorkWindow
+// concluait ensuite « déjà au bon endroit », et la consolidation FERMAIT la
+// vraie fenêtre dédiée. Pire : consolidateWorkWindows faisait windows.remove
+// sur toute fenêtre « en trop » contenant un onglet marqué — fenêtre
+// utilisateur comprise, onglets personnels fermés avec.
+// Règles depuis le 2026-07-30 :
+//   · on n'adopte une fenêtre QUE si elle ne contient AUCUN onglet utilisateur
+//     (onglets marqués + neutres uniquement) ;
+//   · on ne FERME une fenêtre que sous la même condition — sinon on déplace
+//     ses onglets marqués et on la laisse INTACTE ;
+//   · au démarrage de chaque job, si la fenêtre résolue contient des onglets
+//     utilisateur (cliquet hérité), on l'abandonne : id oublié, fenêtre dédiée
+//     neuve, onglets marqués rapatriés ;
+//   · chaque anomalie (repli, adoption, consolidation, minimisation ignorée)
+//     est JOURNALISÉE EN BASE via platform_fields.work_window_state.events —
+//     la console du service worker est éphémère, on ne savait jamais quel
+//     chemin s'était déclenché.
 let workWindowInFlight = null;
+
+// Classification des onglets d'une fenêtre. « Neutre » = about:blank /
+// nouvel onglet : la fenêtre dédiée naît avec un about:blank (l.create) qui ne
+// porte pas le fragment — sans cette classe, la fenêtre dédiée légitime
+// passerait pour une fenêtre utilisateur. Un onglet sans URL commitée
+// (pendingUrl seulement) est classé sur ce qu'on en sait.
+function compterOngletsFenetre(w) {
+  let marques = 0, neutres = 0, utilisateur = 0;
+  for (const t of w.tabs ?? []) {
+    const url = t.url || t.pendingUrl || "";
+    if (url.includes(WORK_TAB_FRAGMENT)) marques++;
+    else if (url === "" || url === "about:blank" || url.startsWith("chrome://newtab")) neutres++;
+    else utilisateur++;
+  }
+  return { marques, neutres, utilisateur };
+}
+
+// ── Journal des événements fenêtre de travail (2026-07-30) ───────────────────
+// Tampon en storage.session (survit aux redémarrages du service worker MV3),
+// drainé dans platform_fields.work_window_state.events au prochain relevé
+// (at_start/at_end d'un job) — donc PERSISTÉ EN BASE, requêtable :
+//   platform_fields->'work_window_state'->'at_start'->'events'
+// Jamais bloquant : un échec de journalisation ne doit pas coûter un job.
+const WORK_WINDOW_EVENTS_KEY = "fillsell_work_window_events";
+async function journaliserEvenementFenetre(type, detail = {}) {
+  console.warn(`[background] fenêtre de travail — ${type}`, JSON.stringify(detail));
+  try {
+    const store = await chrome.storage.session.get(WORK_WINDOW_EVENTS_KEY);
+    const events = Array.isArray(store[WORK_WINDOW_EVENTS_KEY]) ? store[WORK_WINDOW_EVENTS_KEY] : [];
+    events.push({ at: new Date().toISOString(), type, ...detail });
+    await chrome.storage.session.set({ [WORK_WINDOW_EVENTS_KEY]: events.slice(-30) });
+  } catch { /* best-effort */ }
+}
+
+async function drainerEvenementsFenetre() {
+  try {
+    const store = await chrome.storage.session.get(WORK_WINDOW_EVENTS_KEY);
+    const events = store[WORK_WINDOW_EVENTS_KEY];
+    if (!Array.isArray(events) || !events.length) return null;
+    await chrome.storage.session.remove(WORK_WINDOW_EVENTS_KEY);
+    return events.slice(-20);
+  } catch {
+    return null;
+  }
+}
 
 function getOrCreateWorkWindow() {
   if (!workWindowInFlight) {
@@ -1826,10 +1893,23 @@ async function resolveWorkWindow() {
   const store = await chrome.storage.session.get(WORK_WINDOW_KEY);
   const known = store[WORK_WINDOW_KEY];
   if (known != null) {
-    const win = await chrome.windows.get(known).catch(() => null);
+    const win = await chrome.windows.get(known, { populate: true }).catch(() => null);
     if (win) {
-      await consolidateWorkWindows(win.id);
-      return win.id;
+      const { marques, utilisateur } = compterOngletsFenetre(win);
+      if (utilisateur === 0) {
+        await consolidateWorkWindows(win.id);
+        return win.id;
+      }
+      // RÉPARATION DU CLIQUET (2026-07-30) : l'id mémorisé pointe une fenêtre
+      // qui contient des onglets UTILISATEUR — une fenêtre adoptée à tort par
+      // une version antérieure (ou dans laquelle l'utilisateur navigue). On
+      // l'abandonne : id oublié, fenêtre dédiée neuve créée ci-dessous, et la
+      // consolidation post-création rapatrie les onglets marqués. La fenêtre
+      // de l'utilisateur n'est PAS touchée (ses onglets restent).
+      await chrome.storage.session.remove(WORK_WINDOW_KEY);
+      await journaliserEvenementFenetre("cliquet_repare", {
+        window_id: win.id, user_tabs: utilisateur, marked_tabs: marques,
+      });
     }
   }
 
@@ -1840,6 +1920,7 @@ async function resolveWorkWindow() {
   if (adoptee != null) {
     await chrome.storage.session.set({ [WORK_WINDOW_KEY]: adoptee });
     console.log(`[background] Fenêtre de travail ${adoptee} RETROUVÉE (id oublié) — réutilisée, aucune création`);
+    await journaliserEvenementFenetre("fenetre_adoptee", { window_id: adoptee });
     await consolidateWorkWindows(adoptee);
     return adoptee;
   }
@@ -1856,42 +1937,74 @@ async function resolveWorkWindow() {
   // création (fenêtre créée normale puis minimisée juste après). Sans focus.
   await chrome.windows.update(win.id, { state: "minimized", focused: false }).catch(() => {});
   await chrome.storage.session.set({ [WORK_WINDOW_KEY]: win.id });
+  // Vérité terrain (2026-07-30) : windows.create peut RÉSOUDRE en ignorant
+  // state:"minimized" (comportement dépendant de la plateforme, rapporté sur
+  // les trackers Chromium) et l'update de rattrapage ci-dessus avale son
+  // échec — deux chemins muets. On relit donc l'état RÉEL et on journalise
+  // s'il n'est pas celui demandé. Observation seule : pas de re-tentative en
+  // boucle ici, l'état par job est déjà relevé par releverEtatFenetreTravail.
+  const etatReel = await chrome.windows.get(win.id).catch(() => null);
+  if (etatReel && etatReel.state !== "minimized") {
+    await journaliserEvenementFenetre("fenetre_creee_non_minimisee", {
+      window_id: win.id, state: etatReel.state, focused: etatReel.focused,
+    });
+  } else {
+    await journaliserEvenementFenetre("fenetre_creee", { window_id: win.id });
+  }
   console.log(`[background] Fenêtre de travail dédiée ${win.id} CRÉÉE (minimisée, jamais focus)`);
+  // Rapatrie les onglets marqués égarés (repli d'un job précédent, fenêtre
+  // utilisateur refusée à l'adoption) dans la fenêtre neuve.
+  await consolidateWorkWindows(win.id);
   return win.id;
 }
 
-// Une fenêtre est « à nous » si elle contient au moins un onglet portant notre
-// fragment. Aucune fenêtre de l'utilisateur ne peut être adoptée par erreur.
+// Une fenêtre n'est « à nous » que si elle ne contient AUCUN onglet
+// utilisateur : uniquement des onglets marqués (fragment) et neutres
+// (about:blank). Un onglet marqué égaré dans la fenêtre de l'utilisateur ne
+// la fait plus adopter (cliquet du 2026-07-30) — il sera rapatrié par la
+// consolidation qui suit la création d'une fenêtre dédiée neuve.
 async function findExistingWorkWindow() {
   const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
-  const notres = fenetres.filter((w) =>
-    (w.tabs ?? []).some((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))
-  );
-  return notres.length ? notres[0].id : null;
+  for (const w of fenetres) {
+    const { marques, utilisateur } = compterOngletsFenetre(w);
+    if (!marques) continue;
+    if (utilisateur > 0) {
+      await journaliserEvenementFenetre("adoption_refusee_fenetre_utilisateur", {
+        window_id: w.id, user_tabs: utilisateur, marked_tabs: marques,
+      });
+      continue;
+    }
+    return w.id;
+  }
+  return null;
 }
 
-// Répare un état déjà dégradé : plusieurs fenêtres de travail ouvertes. On
-// rapatrie leurs onglets dans celle qu'on garde, puis on ferme les autres.
-// Idempotent et silencieux quand tout va bien (cas normal : aucune fenêtre en
-// trop → aucune action).
+// Répare un état déjà dégradé : des onglets marqués vivent hors de la fenêtre
+// gardée. On les rapatrie, et on ne ferme une fenêtre vidée QUE si elle
+// n'appartient pas à l'utilisateur (aucun onglet non marqué/neutre) — l'ancien
+// windows.remove inconditionnel fermait la fenêtre de l'utilisateur avec tous
+// ses onglets personnels si un seul onglet marqué s'y était égaré (bug grave,
+// 2026-07-30). Idempotent et silencieux quand tout va bien.
 async function consolidateWorkWindows(gardee) {
   const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
-  const enTrop = fenetres.filter(
-    (w) => w.id !== gardee && (w.tabs ?? []).some((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))
-  );
-  if (!enTrop.length) return;
-
-  console.warn(
-    `[background] ${enTrop.length} fenêtre(s) de travail en trop détectée(s) — rapatriement des onglets ` +
-    `dans la fenêtre ${gardee}, puis fermeture (invariant : UNE seule fenêtre)`
-  );
-  for (const w of enTrop) {
+  for (const w of fenetres) {
+    if (w.id === gardee) continue;
+    const { marques, utilisateur } = compterOngletsFenetre(w);
+    if (!marques) continue;
     for (const t of w.tabs ?? []) {
       if ((t.url || "").includes(WORK_TAB_FRAGMENT)) {
         await chrome.tabs.move(t.id, { windowId: gardee, index: -1 }).catch(() => {});
       }
     }
-    await chrome.windows.remove(w.id).catch(() => {});
+    // Fenêtre utilisateur : onglets marqués déplacés, fenêtre laissée INTACTE.
+    // Fenêtre de travail surnuméraire (que des onglets marqués/neutres) :
+    // fermée — Chrome l'a peut-être déjà fermée seul si son dernier onglet
+    // vient d'être déplacé, d'où le .catch.
+    const fermer = utilisateur === 0;
+    if (fermer) await chrome.windows.remove(w.id).catch(() => {});
+    await journaliserEvenementFenetre("consolidation", {
+      kept: gardee, window_id: w.id, moved: marques, closed: fermer, user_tabs: utilisateur,
+    });
   }
 }
 
@@ -1904,10 +2017,14 @@ async function createWorkTabInWorkWindow(url) {
     const windowId = await getOrCreateWorkWindow();
     return await chrome.tabs.create({ url, active: false, windowId });
   } catch (e) {
-    console.warn(
-      "[background] Fenêtre de travail indisponible, onglet créé en arrière-plan dans la fenêtre courante :",
-      String(e?.message ?? e)
-    );
+    // Ce repli plante un onglet MARQUÉ dans la fenêtre courante de
+    // l'utilisateur — c'est l'amorce du cliquet d'adoption (2026-07-30).
+    // L'adoption stricte + la consolidation le rapatrieront, mais sans le
+    // motif EXACT de l'échec en base, impossible de savoir pourquoi il se
+    // déclenche (jamais visible en console de service worker éphémère).
+    await journaliserEvenementFenetre("repli_fenetre_courante", {
+      error: String(e?.message ?? e),
+    });
     return chrome.tabs.create({ url, active: false });
   }
 }
@@ -1944,6 +2061,7 @@ async function moveTabToWorkWindow(tabId) {
 // ⚠️ Observation SEULE : aucune re-minimisation forcée, aucun avertissement,
 // aucun blocage si la fenêtre est visible — le comportement ne change en rien.
 async function releverEtatFenetreTravail(platform) {
+  let releve = null;
   try {
     const store = await chrome.storage.session.get([WORK_WINDOW_KEY, workTabKey(platform)]).catch(() => ({}));
     const dedicatedId = store[WORK_WINDOW_KEY] ?? null;
@@ -1952,21 +2070,28 @@ async function releverEtatFenetreTravail(platform) {
     // Fenêtre RÉELLE de l'onglet en priorité (repli « fenêtre courante » de
     // createWorkTabInWorkWindow : l'onglet peut vivre hors fenêtre dédiée).
     const winId = tab?.windowId ?? dedicatedId;
-    if (winId == null) return null;
-    const win = await chrome.windows.get(winId).catch(() => null);
-    if (!win && !tab) return null;
-    return {
-      at: new Date().toISOString(),
-      window_id: win?.id ?? null,
-      window_state: win?.state ?? null, // "minimized" attendu ; "normal"/"fullscreen" = fenêtre visible
-      window_focused: win?.focused ?? null,
-      tab_active: tab?.active ?? null,
-      tab_in_dedicated_window: tab && dedicatedId != null ? tab.windowId === dedicatedId : null,
-    };
+    const win = winId != null ? await chrome.windows.get(winId).catch(() => null) : null;
+    if (win || tab) {
+      releve = {
+        at: new Date().toISOString(),
+        window_id: win?.id ?? null,
+        window_state: win?.state ?? null, // "minimized" attendu ; "normal"/"fullscreen" = fenêtre visible
+        window_focused: win?.focused ?? null,
+        tab_active: tab?.active ?? null,
+        tab_in_dedicated_window: tab && dedicatedId != null ? tab.windowId === dedicatedId : null,
+      };
+    }
   } catch (e) {
     console.warn("[background] releverEtatFenetreTravail :", String(e?.message ?? e));
-    return null;
   }
+  // Journal des événements fenêtre (repli, adoption, consolidation, cliquet,
+  // minimisation ignorée) accumulé depuis le dernier relevé : embarqué MÊME
+  // sans relevé — c'est précisément quand la fenêtre est introuvable que le
+  // journal explique pourquoi. SQL :
+  //   platform_fields->'work_window_state'->'at_start'->'events'
+  const events = await drainerEvenementsFenetre();
+  if (!releve && !events) return null;
+  return { ...(releve ?? { at: new Date().toISOString() }), ...(events ? { events } : {}) };
 }
 
 // Pose le relevé sur la COPIE MÉMOIRE du job
