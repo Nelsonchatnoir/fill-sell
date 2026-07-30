@@ -445,8 +445,12 @@ const DashboardTab = memo(function DashboardTab({
                   const isSale=a.kind==='sale';
                   return(
                     <div key={a.id} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 0",borderTop:i>0?`1px solid ${UI.border}`:"none"}}>
-                      <div style={{width:34,height:34,borderRadius:11,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,background:isSale?"rgba(47,158,144,0.14)":UI.canvas}}>
-                        {isSale?"💰":"➕"}
+                      {/* Pastille ILLUSTRATIVE, jamais un contrôle (2026-07-30) : l'ancien
+                          « ➕ » sur carré gris était pris pour un bouton d'ajout. Même style
+                          de pastille teintée que « Vendu » (💰 sur teal), avec un 📦 sur
+                          ambre doux pour « Ajouté ». */}
+                      <div style={{width:34,height:34,borderRadius:11,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,background:isSale?"rgba(47,158,144,0.14)":"rgba(217,119,6,0.12)"}}>
+                        {isSale?"💰":"📦"}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:13,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
