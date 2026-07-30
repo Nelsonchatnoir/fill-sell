@@ -84,7 +84,7 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
   // d'autant la sortie facturée. Le code les force à null de toute façon.
   const schema = estIdentify
     ? `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|null,"matiere":string|null,"couleur":string|null,"etat_estime":"Neuf avec étiquette"|"Neuf sans étiquette"|"Très bon état"|"Bon état"|"Satisfaisant"|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"confiance":"basse"|"moyenne"|"haute","notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`
-    : `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|"web"|null,"matiere":string|null,"couleur":string|null,"etat_estime":"Neuf avec étiquette"|"Neuf sans étiquette"|"Très bon état"|"Bon état"|"Satisfaisant"|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`;
+    : `{"titre":string,"marque":string|null,"modele":string|null,"modele_source":"lue"|"reconnue"|"web"|null,"matiere":string|null,"couleur":string|null,"etat_estime":"Neuf avec étiquette"|"Neuf sans étiquette"|"Très bon état"|"Bon état"|"Satisfaisant"|null,"taille_estimee":string|null,"categorie":"Mode"|"High-Tech"|"Maison"|"Sport"|"Musique"|"Beauté"|"Collection"|"Livres"|"Auto-Moto"|"Électroménager"|"Jouets"|"Autre","description":string,"prix_achat_reel":number|null,"prix_achat_suggere":number|null,"prix_vente_suggere":number,"fourchette_min":number,"fourchette_max":number,"fourchette_marche":{"bas":number,"moyen":number,"haut":number}|null,"annonces_marche":[{"titre":string,"prix":number,"plateforme":string}]|null,"vitesse_vente":"rapide"|"moyen"|"lent","vitesse_vente_explication":string|null,"plateformes":string[],"conseils":string[],"confiance":"basse"|"moyenne"|"haute","verdict":"excellent"|"bon"|"moyen"|"eviter","score":number,"notes":string,"est_vendu":boolean,"prix_vente_reel":number|null,${attributsSchema}}`;
   // ── Langue de sortie (2026-07-28, BUG PRÉEXISTANT) ──────────────────────
   // Mesuré pendant l'audit du 28/07 : le prompt FR produit parfois un titre et
   // une description en ANGLAIS (identify sur momcozy, scan COMPLET sur cyrillus
@@ -150,7 +150,7 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
     const etape2 = estIdentify
       ? `2. BRAND — READ, NOT SEARCHED: you have NO web access and NO tool in this mode. The brand is READ on the item: logo, sewn label, hallmark, silkscreen, embossing, packaging. A logo alone is enough (a moulded sole logo, an engraved hallmark). Write it with its usual capitalisation. marque=null ONLY if nothing identifiable is legible on any photo — never because you "could not confirm" it: there is nothing to confirm here.`
       : `2. BRAND VALIDATION: If you detect a brand visually, you MUST do a web search to confirm exact spelling and existence (e.g. "pict pure clothing" → search → "Picture Organic Clothing"). Never return a brand without web search confirmation. If not found, marque=null.`;
-    const etapesMarche = estIdentify ? "" : `3. PRICE ESTIMATION: Always base prices on a real web search. Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). If no data: confiance="basse".
+    const etapesMarche = estIdentify ? "" : `3. PRICE ESTIMATION: Always base prices on a real web search. Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). Also fill "annonces_marche": the INDIVIDUAL listings you actually based the range on — those only, never every raw result — each with titre (the title as it appears in the search results), prix (number, in euros) and plateforme ("Vinted", "eBay", "Leboncoin"…), 8 at most. INVENTING or completing a listing is FORBIDDEN: a listing whose title or price does not appear in the search results is LEFT OUT — omit rather than guess. No usable individual listing → annonces_marche=null, and the range stays set exactly as described above. If no data: confiance="basse".
 4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
 5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 `;
@@ -185,7 +185,7 @@ ${etape8}`;
   const etape2Fr = estIdentify
     ? `2. MARQUE — LUE, PAS CHERCHÉE : dans ce mode tu n'as AUCUN accès web et AUCUN outil. La marque se LIT sur l'article : logo, étiquette cousue, poinçon, sérigraphie, gravure, packaging. Un logo seul suffit (logo moulé dans une semelle, poinçon d'orfèvre gravé). Écris-la avec sa casse usuelle. marque=null UNIQUEMENT si rien d'identifiable n'est lisible sur aucune photo — jamais parce que tu n'as pas pu la « confirmer » : il n'y a rien à confirmer ici.`
     : `2. VALIDATION MARQUE : Si tu détectes une marque visuellement, tu DOIS faire une web search pour confirmer l'orthographe exacte et l'existence (ex : "pict pure clothing" → recherche → "Picture Organic Clothing"). Ne jamais retourner une marque sans confirmation. Si non trouvée, marque=null.`;
-  const etapesMarcheFr = estIdentify ? "" : `3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Si aucune donnée : confiance="basse".
+  const etapesMarcheFr = estIdentify ? "" : `3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Remplis aussi "annonces_marche" : les annonces INDIVIDUELLES sur lesquelles tu as réellement fondé la fourchette — celles-là seulement, jamais tous les résultats bruts — chacune avec titre (le titre tel qu'il apparaît dans les résultats de recherche), prix (nombre, en euros) et plateforme (« Vinted », « eBay », « Leboncoin »…), 8 au maximum. INTERDIT d'inventer ou de compléter une annonce : une annonce dont le titre ou le prix n'apparaît pas dans les résultats de recherche est ÉCARTÉE — omets plutôt que deviner. Aucune annonce individuelle exploitable → annonces_marche=null, et la fourchette reste fixée exactement comme décrit ci-dessus. Si aucune donnée : confiance="basse".
 4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
 5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 `;
@@ -375,6 +375,36 @@ function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean; et
   return { mpnRejete, etatRejete: etat.rejete };
 }
 
+// ── annonces_marche (2026-07-30, chantier « sources de l'estimation ») ───────
+// Les annonces individuelles que le modèle dit avoir RETENUES pour fixer la
+// fourchette. EXPOSITION seulement : la fourchette reste calculée par le
+// modèle exactement comme avant (étape 3 inchangée sur le fond) — ce filtre
+// garantit juste au front des entrées complètes, jamais des données bricolées :
+//   · entrée sans titre lisible ou sans prix fini > 0 → ÉCARTÉE (on omet, on
+//     ne complète pas — règle du chantier : aucune donnée inventée) ;
+//   · plateforme conservée seulement si c'est une chaîne non vide ;
+//   · 10 entrées max (le prompt en demande 8) ;
+//   · rien d'exploitable → null : le front n'affiche alors AUCUN bloc source.
+function assainirAnnoncesMarche(item: Record<string, unknown>): void {
+  const brut = item.annonces_marche;
+  if (!Array.isArray(brut)) { item.annonces_marche = null; return; }
+  const propres = brut
+    .map((a) => {
+      if (!a || typeof a !== "object" || Array.isArray(a)) return null;
+      const o = a as Record<string, unknown>;
+      const titre = typeof o.titre === "string" ? o.titre.trim().slice(0, 160) : "";
+      const prix = typeof o.prix === "number" && Number.isFinite(o.prix) && o.prix > 0 ? o.prix : null;
+      if (!titre || prix == null) return null;
+      const plateforme = typeof o.plateforme === "string" && o.plateforme.trim()
+        ? o.plateforme.trim().slice(0, 40)
+        : null;
+      return { titre, prix, ...(plateforme ? { plateforme } : {}) };
+    })
+    .filter(Boolean)
+    .slice(0, 10);
+  item.annonces_marche = propres.length ? propres : null;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // GARDE-FOUS DU MODE IDENTIFY (2026-07-28)
 // ══════════════════════════════════════════════════════════════════════════
@@ -394,13 +424,13 @@ const PLAFOND_IDENTIFY_GLOBAL = 3000;
 // Version du prompt : elle entre dans la clé du cache d'idempotence. À BUMPER
 // à chaque modification des prompts ou du schéma, sinon on continue de servir
 // un résultat produit par l'ancienne version.
-const VERSION_PROMPT = "2026-07-29c";
+const VERSION_PROMPT = "2026-07-30";
 
 // Champs de marché forcés à null en identify — dans le CODE, pas seulement par
 // consigne de prompt (ils ne figurent déjà plus dans le schéma identify).
 const CHAMPS_MARCHE = [
   "prix_vente_suggere", "prix_achat_suggere", "fourchette_min", "fourchette_max",
-  "fourchette_marche", "vitesse_vente", "vitesse_vente_explication",
+  "fourchette_marche", "annonces_marche", "vitesse_vente", "vitesse_vente_explication",
   "verdict", "score", "plateformes", "conseils",
 ] as const;
 
@@ -993,6 +1023,9 @@ serve(async (req) => {
     const { mpnRejete, etatRejete } = assainirSortie(itemData);
     if (mpnRejete) logMeta = { ...logMeta, mpn_rejete: true };
     if (etatRejete) logMeta = { ...logMeta, etat_rejete: true };
+    // Sources de la fourchette : entrées incomplètes écartées, jamais complétées
+    // (sans objet en identify — le champ y est reforcé à null juste dessous).
+    assainirAnnoncesMarche(itemData);
 
     // ── Identify : champs de marché forcés à null DANS LE CODE ──────────────
     // Pas seulement par consigne de prompt. Un prix produit sans donnée marché
