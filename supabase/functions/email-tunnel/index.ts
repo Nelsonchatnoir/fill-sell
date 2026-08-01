@@ -49,6 +49,16 @@ const RELANCE_TYPE          = "job_pending_relaunch"; // type STABLE dans email_
 const RELANCE_AGE_MIN_H     = 4;    // un job plus jeune n'est pas « bloqué »
 const RELANCE_AGE_MAX_H     = 720;  // 30 j : au-delà on ne réveille pas un fossile
 const RELANCE_EXT_FRAICHE_H = 2;    // extension vue depuis moins de 2 h = CAS 3
+// Délai de garde PAR UTILISATEUR, en plus de la réservation par job. Sans lui,
+// la dédup par job produit l'effet inverse de celui recherché : plus quelqu'un
+// insiste, plus il reçoit de mails identiques (un job relancé ce soir, un
+// deuxième mail demain 8 h pour le job créé entre-temps). Ce sont les
+// utilisateurs les PLUS motivés qui se feraient harceler.
+// 72 h et pas 48 h : le plus grand écart réel entre deux jobs bloqués d'un même
+// compte est de 54,5 h (relevé le 2026-08-01) — 48 h le laisserait passer et
+// enverrait quand même les deux mails. 72 h laisse aussi un délai réaliste pour
+// agir, puisque le cas 1 demande d'aller s'asseoir devant un ORDINATEUR.
+const RELANCE_COOLDOWN_H    = 72;
 const RELANCE_H_DEBUT       = 8;    // pas d'envoi avant 8h00 Paris
 const RELANCE_H_FIN         = 22;   // ni à partir de 22h00 Paris
 const CWS_URL = "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm";
@@ -1349,9 +1359,25 @@ serve(async (req) => {
       : { data: [] as any[] };
     const profilParId = new Map<string, any>((profils ?? []).map((p: any) => [p.id, p]));
 
+    // Dernière relance envoyée par utilisateur — une seule requête pour tout le
+    // lot, pas une par compte. Alimente le délai de garde ci-dessous.
+    const { data: dejaRelances } = parUser.size > 0
+      ? await supabase.from("job_relaunch_log")
+          .select("user_id, created_at")
+          .eq("statut", "sent")
+          .in("user_id", [...parUser.keys()])
+      : { data: [] as any[] };
+    const dernierMailPar = new Map<string, number>();
+    for (const r of (dejaRelances ?? []) as any[]) {
+      const ts = new Date(r.created_at).getTime();
+      if (ts > (dernierMailPar.get(r.user_id) ?? 0)) dernierMailPar.set(r.user_id, ts);
+    }
+
     const apercu: any[] = [];
     const cas3: any[] = [];
+    const enAttente: any[] = [];
     const seuilFrais = t - RELANCE_EXT_FRAICHE_H * 3_600_000;
+    const seuilCooldown = t - RELANCE_COOLDOWN_H * 3_600_000;
 
     for (const [userId, jobsUser] of parUser) {
       const prof = profilParId.get(userId);
@@ -1383,6 +1409,21 @@ serve(async (req) => {
         cas3.push({
           email: prof.email, jobs: jobsUser.length,
           extension_vue: dateParis(prof.extension_last_seen_at),
+        });
+        continue;
+      }
+
+      // DÉLAI DE GARDE PAR UTILISATEUR. Placé APRÈS le cas 3 : un bug de notre
+      // côté continue d'être journalisé même pendant la période de silence.
+      // Les jobs ne sont PAS réservés ici — ils repartiront dans la relance
+      // suivante, une fois le délai passé, et seront alors annoncés ensemble.
+      const dernier = dernierMailPar.get(userId);
+      if (dernier !== undefined && dernier > seuilCooldown) {
+        enAttente.push({
+          email: prof.email, jobs: jobsUser.length,
+          derniere_relance: dateParis(new Date(dernier).toISOString()),
+          rendez_vous: dateParis(
+            new Date(dernier + RELANCE_COOLDOWN_H * 3_600_000).toISOString()),
         });
         continue;
       }
@@ -1441,6 +1482,7 @@ serve(async (req) => {
       jobs_eligibles: jobs?.length ?? 0, utilisateurs: parUser.size,
       envoyes: sent.length, echecs: errors.length,
       cas3_bug_extension: cas3,
+      en_attente_cooldown: enAttente,
       apercu: dryRun ? apercu : undefined,
       sent, errors,
       resend_echecs: resendTrace.filter(
