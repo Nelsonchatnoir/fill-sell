@@ -213,25 +213,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
-  // ⚠️ POINT CRITIQUE (2026-07-20) : une fois que l'extension a SA session, le
-  // pont ne doit PLUS RIEN écrire. Sans ce verrou, le token de l'app viendrait
-  // se réinstaller par-dessus à chaque visite de fillsell.app, et l'extension
-  // se remettrait à faire tourner la famille de l'app — exactement la course
-  // qu'on supprime. Le pont ne sert donc qu'AVANT le premier bootstrap.
+  // ⚠️ POINT CRITIQUE (2026-07-20, révisé 2026-08-01) : une fois que
+  // l'extension a SA session VALIDE, celle-ci reste maîtresse — le token de
+  // l'app ne doit jamais la remplacer, sinon l'extension refait tourner la
+  // famille de refresh de l'app (la course qu'on a supprimée). MAIS la simple
+  // POSSESSION d'un access_token propre ne suffit plus comme critère : une
+  // session propre MORTE (refresh révoqué, token expiré) faisait refuser
+  // toute session fraîche envoyée par l'app — l'utilisateur n'avait AUCUNE
+  // porte de sortie (vécu 2026-08-01 : « FILLSELL_SESSION ignoré » en boucle
+  // pendant que chaque poll échouait en « Token invalide ou expiré »).
+  // La FRAÎCHEUR prime sur la possession : cf. acceptRelayedSession.
   if (msg?.type === "FILLSELL_SESSION" && msg.session?.access_token) {
-    const { SESSION, SESSION_OWN } = FILLSELL_CONFIG.STORAGE_KEYS;
-    chrome.storage.local.get(SESSION_OWN).then((store) => {
-      if (store[SESSION_OWN]?.access_token) {
-        // Déjà autonome : on ignore, en le disant (sinon un futur lecteur de
-        // logs croira le pont cassé).
-        console.log("[background] FILLSELL_SESSION ignoré — l'extension a déjà sa propre session");
-        sendResponse({ ok: true, ignored: true });
-        return;
-      }
-      chrome.storage.local
-        .set({ [SESSION]: msg.session })
-        .then(() => sendResponse({ ok: true }));
-    });
+    acceptRelayedSession(msg.session).then(sendResponse);
     return true;
   }
   if (msg?.type === "POLL_NOW") {
@@ -319,6 +312,12 @@ async function publishSelectedUnlocked(jobIds) {
   try {
     ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, { build: FILLSELL_BUILD_ID }));
   } catch (e) {
+    // 401 : même invalidation que le poll — et « no_session » plutôt que
+    // « fetch_failed » pour que le popup affiche « Se connecter », pas « Échec ».
+    if (e?.status === 401) {
+      await invalidateRejectedSession(session).catch(() => {});
+      return { ok: false, reason: "no_session" };
+    }
     return { ok: false, reason: "fetch_failed", error: String(e?.message ?? e) };
   }
 
@@ -421,37 +420,104 @@ async function bootstrapOwnSession(relayedAccessToken) {
     // d'avant) et on retentera plus tard. Sans cette borne, un bootstrap
     // impossible relancerait un appel toutes les 2 min.
     await chrome.storage.local.set({ [BOOTSTRAP_LAST_FAIL]: Date.now() });
+    // 401 d'extension-session = le token RELAYÉ lui-même est mort (2026-08-01).
+    // Le garder ferait échouer chaque poll avec ce même token pour toujours :
+    // purge — le pont en renverra un frais à la prochaine visite de fillsell.app.
+    if (e?.status === 401) {
+      await chrome.storage.local.remove(FILLSELL_CONFIG.STORAGE_KEYS.SESSION);
+    }
     console.warn("[background] Bootstrap de session propre échoué :", String(e?.message ?? e));
     return null;
   }
 }
 
+// Session fraîche relayée par le pont fillsell-auth.js (2026-08-01).
+// Règles : la copie relayée est TOUJOURS stockée (elle n'est jamais UTILISÉE
+// tant que la session propre vit — getValidSession l'ignore) : c'est le point
+// de reprise quand la session propre meurt. L'ancien verrou la gelait au jour
+// du premier bootstrap, si bien qu'à la mort de la session propre on retombait
+// sur un token vieux de plusieurs jours, mort lui aussi — impasse totale.
+async function acceptRelayedSession(relayed) {
+  const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL } = FILLSELL_CONFIG.STORAGE_KEYS;
+  await chrome.storage.local.set({ [SESSION]: relayed });
+
+  const store = await chrome.storage.local.get(SESSION_OWN);
+  const own = store[SESSION_OWN];
+  if (own?.access_token) {
+    // Critère de VIE, pas de possession : refreshIfNeeded rafraîchit si
+    // l'expiration est proche et PURGE SESSION_OWN si le refresh est mort.
+    const vivante = await refreshIfNeeded(own, SESSION_OWN);
+    if (vivante) {
+      console.log("[background] FILLSELL_SESSION : session propre valide conservée — copie relayée mise à jour en secours");
+      return { ok: true, ignored: true };
+    }
+    console.warn("[background] Session propre morte — la session fraîche de l'app prend la main");
+  }
+
+  // Pas de session propre vivante : re-bootstrap IMMÉDIAT sur le token frais,
+  // sans attendre le prochain poll ni purger le délai anti-rafale à la main.
+  await chrome.storage.local.remove(BOOTSTRAP_LAST_FAIL);
+  const own2 = await bootstrapOwnSession(relayed.access_token);
+  return { ok: true, bootstrapped: Boolean(own2) };
+}
+
+// storage_key voyage avec la session retournée (jamais persisté tel quel) :
+// il dit à invalidateRejectedSession QUELLE clé purger quand le serveur
+// rejette le token malgré une validation locale positive (2026-08-01).
 async function getValidSession() {
   const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL } = FILLSELL_CONFIG.STORAGE_KEYS;
   const store = await chrome.storage.local.get([SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL]);
 
-  // Régime normal : la session PROPRE fait foi, seule, pour toujours.
+  // Régime normal : la session PROPRE fait foi, seule, tant qu'elle vit.
   if (store[SESSION_OWN]?.access_token) {
-    return refreshIfNeeded(store[SESSION_OWN], SESSION_OWN);
+    const own = await refreshIfNeeded(store[SESSION_OWN], SESSION_OWN);
+    if (own) return { ...own, storage_key: SESSION_OWN };
+    // Session propre morte (refresh révoqué → purgée par refreshIfNeeded) :
+    // on retombe TOUT DE SUITE sur la copie relayée si elle est encore là,
+    // au lieu de rendre null et de bloquer le poll (2026-08-01).
   }
 
-  // Pas encore de session propre → on est soit sur une install neuve, soit sur
-  // une install d'avant ce correctif. Le token relayé sert UNE fois à la
-  // bootstrapper, puis ne sert plus jamais.
-  let session = store[SESSION];
+  // Pas de session propre → install neuve, install d'avant ce correctif, ou
+  // session propre qui vient de mourir. Le token relayé sert à bootstrapper,
+  // et de dépannage en attendant que le bootstrap passe.
+  const session = store[SESSION];
   if (!session?.access_token) return null;
-  session = await refreshIfNeeded(session, SESSION);
-  if (!session) return null;
+
+  // ⚠️ JAMAIS de refreshSession sur la copie relayée (fix 2026-08-01) : son
+  // refresh_token appartient à la famille de l'APP web — le consommer ici
+  // vole la rotation à l'app, GoTrue détecte la réutilisation et révoque
+  // l'app ET l'extension d'un coup (mécanique de l'incident du 2026-07-20).
+  // Expirée → purge sèche ; le pont renverra une copie fraîche à la
+  // prochaine visite de fillsell.app.
+  if (session.expires_at && session.expires_at * 1000 - Date.now() < 60 * 1000) {
+    await chrome.storage.local.remove(SESSION);
+    console.warn("[background] Copie relayée expirée — purgée. Ouvrir fillsell.app connecté pour re-fournir une session.");
+    return null;
+  }
 
   const dernierEchec = store[BOOTSTRAP_LAST_FAIL] ?? 0;
   if (Date.now() - dernierEchec > BOOTSTRAP_RETRY_MS) {
     const own = await bootstrapOwnSession(session.access_token);
-    if (own) return own;
+    if (own) return { ...own, storage_key: SESSION_OWN };
   }
-  // Bootstrap indisponible : on reste sur le token relayé plutôt que de bloquer
-  // l'utilisateur. La course d'origine subsiste tant qu'on est dans cet état —
-  // c'est le comportement d'AVANT, pas une régression.
-  return session;
+  // Bootstrap indisponible : on reste sur le token relayé (non expiré) plutôt
+  // que de bloquer l'utilisateur.
+  return { ...session, storage_key: SESSION };
+}
+
+// Un seul refresh EN VOL par clé de storage (2026-08-01) : le popup
+// (GET_VALID_SESSION), le poll (alarme) et le pont (acceptRelayedSession)
+// peuvent appeler refreshIfNeeded en même temps. Deux rotations concurrentes
+// du MÊME refresh token font détecter une réutilisation par GoTrue au-delà de
+// sa fenêtre de grâce → révocation de toute la famille — la session propre
+// meurt sans raison visible. Tous les appelants partagent la même promesse.
+const refreshEnVol = new Map();
+function refreshSessionOnce(storageKey, refreshToken) {
+  if (!refreshEnVol.has(storageKey)) {
+    const p = refreshSession(refreshToken).finally(() => refreshEnVol.delete(storageKey));
+    refreshEnVol.set(storageKey, p);
+  }
+  return refreshEnVol.get(storageKey);
 }
 
 // Refresh maison, inchangé dans sa logique — paramétré par la clé de storage
@@ -462,7 +528,7 @@ async function refreshIfNeeded(session, storageKey) {
   // Refresh si le token expire dans moins de 5 min
   const expiresSoon = session.expires_at && session.expires_at * 1000 - Date.now() < 5 * 60 * 1000;
   if (expiresSoon && session.refresh_token) {
-    const refreshed = await refreshSession(session.refresh_token);
+    const refreshed = await refreshSessionOnce(storageKey, session.refresh_token);
     if (refreshed) {
       session = { ...session, ...refreshed };
       await chrome.storage.local.set({ [storageKey]: session });
@@ -508,6 +574,32 @@ async function refreshSession(refreshToken) {
   }
 }
 
+// Le serveur vient de rejeter (401) un access token que la validation LOCALE
+// (expires_at) jugeait encore bon : session révoquée côté serveur, l'horloge
+// locale ment. Sans ce traitement, le poll rejouait le même token mort toutes
+// les 2 min pour toujours, le popup affichait « Connecté », et la garde
+// FILLSELL_SESSION refusait toute session fraîche (impasse du 2026-08-01).
+// On force un refresh ; s'il échoue, on PURGE la clé — le popup passe
+// « Se connecter » (storage.onChanged) et le pont reprend la main à la
+// prochaine visite de fillsell.app. La copie relayée n'est jamais refreshée
+// (refresh_token de la famille de l'app) : purge directe.
+async function invalidateRejectedSession(session) {
+  const { SESSION_OWN } = FILLSELL_CONFIG.STORAGE_KEYS;
+  const key = session?.storage_key;
+  if (!key) return;
+  if (key === SESSION_OWN && session.refresh_token) {
+    const refreshed = await refreshSessionOnce(SESSION_OWN, session.refresh_token);
+    if (refreshed) {
+      const { storage_key, ...sansTag } = session;
+      await chrome.storage.local.set({ [SESSION_OWN]: { ...sansTag, ...refreshed } });
+      console.warn("[background] Token rejeté par le serveur — refresh forcé réussi, le prochain poll repart");
+      return;
+    }
+  }
+  await chrome.storage.local.remove(key);
+  console.warn(`[background] Token rejeté par le serveur et non rafraîchissable — ${key} purgé, reconnexion via fillsell.app`);
+}
+
 // ── Edge functions ─────────────────────────────────────────────────────────────
 
 async function callEdgeFunction(name, accessToken, body) {
@@ -521,7 +613,13 @@ async function callEdgeFunction(name, accessToken, body) {
     body: JSON.stringify(body ?? {}),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `${name} → HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data?.error || `${name} → HTTP ${res.status}`);
+    // Le statut voyage avec l'erreur : un 401 déclenche l'invalidation de la
+    // session côté appelant (cf. invalidateRejectedSession, 2026-08-01).
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -984,6 +1082,7 @@ async function pollAndProcessJobsUnlocked() {
     ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, { build: FILLSELL_BUILD_ID }));
   } catch (e) {
     console.error("[background] get-pending-jobs:", e);
+    if (e?.status === 401) await invalidateRejectedSession(session).catch(() => {});
     return;
   }
 

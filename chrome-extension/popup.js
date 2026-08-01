@@ -7,7 +7,7 @@
 // La publication réelle passe par le background (POLL_NOW aujourd'hui,
 // PUBLISH_NOW ciblé au commit suivant) — jamais réécrite ici.
 
-const { SESSION, LAST_POLL, RECENT_RESULTS } = FILLSELL_CONFIG.STORAGE_KEYS;
+const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, LAST_POLL, RECENT_RESULTS } = FILLSELL_CONFIG.STORAGE_KEYS;
 
 // Plateformes affichées, de haut en bas. `supported:false` => "Bientôt"
 // (ligne atténuée, non sélectionnable). Beebs passé à true le 2026-07-11 :
@@ -418,7 +418,12 @@ els.acct.addEventListener("click", async () => {
   if (logoutArm) {
     clearTimeout(logoutArm);
     logoutArm = null;
-    await chrome.storage.local.remove(SESSION);
+    // Les DEUX sessions (fix 2026-08-01) : ne retirer que la copie relayée
+    // laissait vivre la session PROPRE (fillsell_session_own) — le popup se
+    // ré-affichait « Connecté » et, pire, une session propre MORTE continuait
+    // de bloquer toute reconnexion (garde FILLSELL_SESSION). La déconnexion
+    // doit être un vrai reset : sessions + délai anti-rafale de bootstrap.
+    await chrome.storage.local.remove([SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL]);
     state.session = null;
     load();
     return;
@@ -558,7 +563,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // RECENT_RESULTS inclus (Sujet 5) : le poll de fond qui termine un job
   // re-render le popup DÉJÀ OUVERT — le live redevient cohérent sans
   // toucher à emitProgress.
-  if (area === "local" && (changes[SESSION] || changes[LAST_POLL] || changes[RECENT_RESULTS]) && !state.publishing) load();
+  // SESSION_OWN inclus (2026-08-01) : c'est la session de régime normal — sa
+  // purge par le background (token rejeté par le serveur) doit faire passer un
+  // popup ouvert à « Se connecter » en direct, pas au prochain clic.
+  if (area === "local" && (changes[SESSION] || changes[SESSION_OWN] || changes[LAST_POLL] || changes[RECENT_RESULTS]) && !state.publishing) load();
 });
 
 load();
