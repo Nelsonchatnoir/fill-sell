@@ -39,6 +39,65 @@ const BLAST_BASES_INTERNES = [
   "nicotest@mail.fr",
 ];
 
+// ── Relance « job en attente, extension absente » (2026-08-01) ────────────────
+// Un job publish resté 'pending' avec handler_build NULL = AUCUNE copie de
+// l'extension ne l'a jamais réclamé. Ce n'est pas un échec de publication,
+// c'est un travail que personne n'est venu chercher. Les deux causes se
+// distinguent par profiles.extension_last_seen_at, stampé à chaque poll par
+// get-pending-jobs.
+const RELANCE_TYPE          = "job_pending_relaunch"; // type STABLE dans email_logs
+const RELANCE_AGE_MIN_H     = 4;    // un job plus jeune n'est pas « bloqué »
+const RELANCE_AGE_MAX_H     = 720;  // 30 j : au-delà on ne réveille pas un fossile
+const RELANCE_EXT_FRAICHE_H = 2;    // extension vue depuis moins de 2 h = CAS 3
+const RELANCE_H_DEBUT       = 8;    // pas d'envoi avant 8h00 Paris
+const RELANCE_H_FIN         = 22;   // ni à partir de 22h00 Paris
+const CWS_URL = "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm";
+
+const PLATEFORME_LABEL: Record<string, string> = {
+  vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs",
+};
+const labelPlateforme = (p: string) => PLATEFORME_LABEL[p] ?? p;
+
+// Heure de Paris via Intl : juste en heure d'été comme d'hiver, sans offset
+// codé en dur. hourCycle 'h23' pour que minuit rende "00" et non "24".
+//
+// ⚠️ formatToParts, PAS format() : en locale fr-FR, format() d'une heure seule
+// rend « 20 h » (avec l'unité), donc Number() rendait NaN — et NaN < 8 comme
+// NaN >= 22 sont FAUX, si bien que la fenêtre de nuit ne bloquait rien du tout
+// et les mails seraient partis à 3 h du matin. Vu au premier dry_run du
+// 2026-08-01, avant tout envoi réel. Ne jamais revenir à format() ici.
+function heureParis(d: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris", hour: "2-digit", hourCycle: "h23",
+  }).formatToParts(d);
+  return Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
+}
+function dateParis(iso: string): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", day: "2-digit", month: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  }).format(new Date(iso));
+}
+function listeNaturelle(xs: string[], lang: string): string {
+  const et = lang === "en" ? "and" : "et";
+  if (xs.length <= 1) return xs[0] ?? "";
+  return `${xs.slice(0, -1).join(", ")} ${et} ${xs[xs.length - 1]}`;
+}
+
+// Boîtes internes et alias de test. Remontée au niveau module (elle vivait dans
+// la branche blast_relaunch) : la relance automatique doit appliquer EXACTEMENT
+// la même liste, sans en maintenir une seconde copie qui divergerait.
+function estInterne(email: string): boolean {
+  const e = email.trim().toLowerCase();
+  if (/@fillsell\.app$/.test(e) || /@example\.(com|org)$/.test(e)) return true;
+  const arobase = e.lastIndexOf("@");
+  if (arobase < 1) return true; // adresse illisible : on n'écrit pas dedans
+  const local = e.slice(0, arobase);
+  const domaine = e.slice(arobase + 1);
+  if (BLAST_BASES_INTERNES.includes(`${local.split("+")[0]}@${domaine}`)) return true;
+  return /\+.*test/.test(local);
+}
+
 // ── HTML Templates ─────────────────────────────────────────────────────────────
 
 function emailHeader(): string {
@@ -471,6 +530,220 @@ function howItWorksHtml(lang: string): string {
     </p>
     ${ctaButton("View my stock")}`;
   return emailWrapper(content, lang);
+}
+
+// ── Relance d'un job jamais pris en charge par l'extension ───────────────────
+// Deux messages, deux causes distinctes, JAMAIS interchangeables :
+//   cas 1 — extension_last_seen_at NULL : elle n'a jamais tourné sur ce compte.
+//   cas 2 — vue, mais pas depuis > 2 h : installée, simplement à l'arrêt.
+// Le cas 3 (extension active ET job dormant) ne produit AUCUN mail : c'est un
+// bug de notre côté, cf. la branche job_relaunch.
+//
+// Promesse « vous n'avez rien à refaire » — VÉRIFIÉE dans le code le
+// 2026-08-01, pas supposée : get-pending-jobs ne filtre les jobs QUE sur
+// status et platform_health.paused (aucun filtre d'âge), et
+// pollAndProcessJobsUnlocked traite la totalité de ce qu'il reçoit, sans
+// plafond. Un job de 5 jours repart donc au premier poll qui suit la
+// connexion de l'extension. Ne pas écrire cette promesse ailleurs sans
+// revérifier ces deux fichiers.
+function relanceHtml(
+  cas: 1 | 2,
+  jobs: Array<{ platform: string; title: string | null; created_at: string }>,
+  extensionVueLe: string | null,
+  lang: string,
+): { sujet: string; html: string } {
+  const isFr = lang !== "en";
+  const esc = (v: unknown) =>
+    String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const plateformes = listeNaturelle(
+    [...new Set(jobs.map((j) => labelPlateforme(j.platform)))], lang,
+  );
+  const titres = [...new Set(jobs.map((j) => (j.title ?? "").trim()).filter(Boolean))];
+  const troisTitres = titres.slice(0, 3).map((t) => `«&nbsp;${esc(t)}&nbsp;»`);
+  const reste = titres.length - troisTitres.length;
+  const articles = titres.length === 0
+    ? (isFr ? "votre annonce" : "your listing")
+    : listeNaturelle(
+        reste > 0
+          ? [...troisTitres, isFr ? `${reste} autre${reste > 1 ? "s" : ""}` : `${reste} more`]
+          : troisTitres,
+        lang,
+      );
+  const multi = titres.length > 1;
+  const depuis = dateParis(jobs[0].created_at);
+
+  const p = "color:#374151;font-size:15px;line-height:1.7;margin:0 0 18px;font-family:sans-serif;";
+  const h1 = "margin:0 0 14px;font-size:24px;font-weight:800;letter-spacing:-0.02em;color:#111827;font-family:sans-serif;";
+  const encadre = "background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 20px;";
+  const titreEncadre = "margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;font-family:sans-serif;";
+  const liste = "margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;line-height:1.8;font-family:sans-serif;";
+  const signature = `
+    <p style="margin:22px 0 0;padding-top:18px;border-top:1px solid #E5E7EB;color:#6B7280;
+      font-size:14px;line-height:1.6;font-family:sans-serif;">
+      ${isFr
+        ? "Un blocage, une question ? Répondez à ce mail, je lis tout."
+        : "Stuck, or a question? Just reply to this email, I read everything."}
+      <br><strong style="color:#111827;">Nico</strong>
+    </p>`;
+
+  if (cas === 1) {
+    const content = isFr ? `
+    <h1 style="${h1}">Votre publication est en attente</h1>
+    <p style="${p}">
+      Vous avez préparé ${articles} pour ${plateformes} le ${depuis}.
+      ${multi ? "Vos annonces sont prêtes" : "L'annonce est prête"}, avec
+      ${multi ? "leurs" : "ses"} photos, ${multi ? "leurs titres" : "son titre"} et
+      ${multi ? "leurs prix" : "son prix"}. Mais
+      ${multi ? "elles ne sont encore parties" : "elle n'est encore partie"} nulle part.
+    </p>
+    <p style="${p}">
+      La raison est simple : sur FillSell, ce n'est pas le site qui publie, c'est l'extension
+      Chrome. Elle remplit les formulaires à votre place sur chaque plateforme. Or elle n'a
+      jamais été lancée sur votre compte — donc personne n'est venu chercher
+      ${multi ? "vos annonces" : "votre annonce"}.
+    </p>
+    <div style="${encadre}">
+      <p style="${titreEncadre}">L'installer prend deux minutes :</p>
+      <ol style="${liste}">
+        <li>Depuis un ordinateur, ajoutez l'extension en un clic depuis le
+          <a href="${CWS_URL}" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a>.</li>
+        <li>Cliquez sur l'icône FillSell, puis «&nbsp;Se connecter&nbsp;» : elle récupère votre
+          session fillsell.app toute seule.</li>
+        <li>Vérifiez que vous êtes connecté à vos comptes ${plateformes} dans CE navigateur.
+          L'extension s'appuie sur ces sessions pour publier en votre nom — elle ne se connecte
+          jamais à votre place, vous gardez la main.</li>
+      </ol>
+    </div>
+    <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 22px;">
+      <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
+        ⚠️ L'extension fonctionne sur ordinateur uniquement, pas sur mobile. Si vous lisez ce
+        mail sur votre téléphone, gardez-le de côté pour votre prochain passage devant un
+        ordinateur.
+      </p>
+    </div>
+    <a href="${CWS_URL}" class="cta"
+       style="display:block;text-align:center;background:#2DD4BF;color:#fff;font-weight:800;
+         font-size:15px;padding:14px 24px;border-radius:12px;text-decoration:none;
+         font-family:sans-serif;margin:0 0 20px;">
+      Installer l'extension
+    </a>
+    <p style="${p}">
+      ${multi ? "Vos annonces ne sont pas perdues" : "Votre annonce n'est pas perdue"} et vous
+      n'avez rien à refaire : dès que l'extension est installée et connectée,
+      ${multi ? "elles partent" : "elle part"} automatiquement.
+    </p>${signature}` : `
+    <h1 style="${h1}">Your listing is on hold</h1>
+    <p style="${p}">
+      You prepared ${articles} for ${plateformes} on ${depuis}.
+      ${multi ? "The listings are ready" : "The listing is ready"}, with photos, title and
+      price. But ${multi ? "they haven't" : "it hasn't"} gone anywhere yet.
+    </p>
+    <p style="${p}">
+      Here's why: on FillSell, the website doesn't do the listing — the Chrome extension does.
+      It fills in the forms for you on each platform. And it has never run on your account, so
+      nobody came to pick up your work.
+    </p>
+    <div style="${encadre}">
+      <p style="${titreEncadre}">Installing it takes two minutes:</p>
+      <ol style="${liste}">
+        <li>From a computer, add the extension in one click from the
+          <a href="${CWS_URL}" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a>.</li>
+        <li>Click the FillSell icon, then «&nbsp;Sign in&nbsp;»: it picks up your fillsell.app
+          session on its own.</li>
+        <li>Make sure you're logged in to your ${plateformes} accounts in THAT browser. The
+          extension relies on those sessions to list on your behalf — it never logs in for you,
+          you stay in control.</li>
+      </ol>
+    </div>
+    <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 22px;">
+      <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
+        ⚠️ The extension only works on a computer, not on mobile. If you're reading this on your
+        phone, keep it aside for your next time at a computer.
+      </p>
+    </div>
+    <a href="${CWS_URL}" class="cta"
+       style="display:block;text-align:center;background:#2DD4BF;color:#fff;font-weight:800;
+         font-size:15px;padding:14px 24px;border-radius:12px;text-decoration:none;
+         font-family:sans-serif;margin:0 0 20px;">
+      Install the extension
+    </a>
+    <p style="${p}">
+      Nothing is lost and there's nothing to redo: as soon as the extension is installed and
+      signed in, ${multi ? "they go" : "it goes"} out automatically.
+    </p>${signature}`;
+    return {
+      sujet: isFr
+        ? "Votre annonce est prête — il ne manque que l'extension"
+        : "Your listing is ready — the extension is all that's missing",
+      html: emailWrapper(content, lang),
+    };
+  }
+
+  const vue = extensionVueLe ? dateParis(extensionVueLe) : null;
+  const content = isFr ? `
+    <h1 style="${h1}">Votre publication est en pause</h1>
+    <p style="${p}">
+      ${articles} ${multi ? "attendent" : "attend"} de partir sur ${plateformes} depuis
+      le ${depuis}.
+    </p>
+    <p style="${p}">
+      Bonne nouvelle : il n'y a rien à réinstaller. Votre extension FillSell est bien en
+      place${vue ? `, je l'ai vue pour la dernière fois le ${vue}` : ""}. Elle ne tourne
+      simplement pas en ce moment — et comme c'est elle qui publie à votre place,
+      ${multi ? "vos annonces patientent" : "votre annonce patiente"}.
+    </p>
+    <div style="${encadre}">
+      <p style="${titreEncadre}">Pour qu'elle reparte :</p>
+      <ul style="${liste}">
+        <li>L'ordinateur sur lequel l'extension est installée doit être allumé.</li>
+        <li>Chrome doit être ouvert (une seule fenêtre suffit, même réduite).</li>
+        <li>Vous devez rester connecté à vos comptes ${plateformes} dans ce navigateur.</li>
+      </ul>
+    </div>
+    <p style="${p}">
+      C'est tout. La publication reprend toute seule, en arrière-plan, sans que vous ayez à
+      recliquer sur «&nbsp;Publier&nbsp;» ni à retoucher
+      ${multi ? "vos annonces" : "votre annonce"}.
+    </p>
+    ${ctaButton("Ouvrir FillSell")}
+    <p style="margin:20px 0 0;color:#6B7280;font-size:14px;line-height:1.65;font-family:sans-serif;">
+      Si votre ordinateur est bien allumé avec Chrome ouvert et que rien ne bouge dans l'heure,
+      répondez à ce mail : c'est alors de mon côté qu'il y a quelque chose à corriger.
+    </p>${signature}` : `
+    <h1 style="${h1}">Your listing is paused</h1>
+    <p style="${p}">
+      ${articles} ${multi ? "have been waiting" : "has been waiting"} to go out on
+      ${plateformes} since ${depuis}.
+    </p>
+    <p style="${p}">
+      Good news: there's nothing to reinstall. Your FillSell extension is in
+      place${vue ? `, I last saw it on ${vue}` : ""}. It simply isn't running right now — and
+      since it's the one doing the listing for you, your work is waiting.
+    </p>
+    <div style="${encadre}">
+      <p style="${titreEncadre}">To get it going again:</p>
+      <ul style="${liste}">
+        <li>The computer where the extension is installed must be switched on.</li>
+        <li>Chrome must be open (a single window is enough, even minimised).</li>
+        <li>You must stay logged in to your ${plateformes} accounts in that browser.</li>
+      </ul>
+    </div>
+    <p style="${p}">
+      That's all. Listing resumes on its own, in the background, without you clicking
+      «&nbsp;Publish&nbsp;» again or touching anything.
+    </p>
+    ${ctaButton("Open FillSell")}
+    <p style="margin:20px 0 0;color:#6B7280;font-size:14px;line-height:1.65;font-family:sans-serif;">
+      If your computer is on with Chrome open and nothing moves within the hour, reply to this
+      email: that would mean something is broken on my side.
+    </p>${signature}`;
+  return {
+    sujet: isFr
+      ? "Votre publication repartira dès que Chrome sera ouvert"
+      : "Your listing will resume as soon as Chrome is open",
+    html: emailWrapper(content, lang),
+  };
 }
 
 // ── Blast de relance août 2026 ────────────────────────────────────────────────
@@ -965,16 +1238,8 @@ serve(async (req) => {
       );
     }
 
-    const interne = (email: string): boolean => {
-      const e = email.trim().toLowerCase();
-      if (/@fillsell\.app$/.test(e) || /@example\.(com|org)$/.test(e)) return true;
-      const arobase = e.lastIndexOf("@");
-      if (arobase < 1) return true; // adresse illisible : on n'écrit pas dedans
-      const local = e.slice(0, arobase);
-      const domaine = e.slice(arobase + 1);
-      if (BLAST_BASES_INTERNES.includes(`${local.split("+")[0]}@${domaine}`)) return true;
-      return /\+.*test/.test(local);
-    };
+    // La règle d'exclusion vit maintenant au niveau module (estInterne) : la
+    // relance automatique des jobs applique la MÊME, sans copie divergente.
 
     // Dédup par user_id : 143 comptes portent PLUSIEURS lignes 'welcome'
     // (doublons historiques d'email_logs). Sans ce Set, ils recevraient le
@@ -982,7 +1247,7 @@ serve(async (req) => {
     const vus = new Set<string>();
     const cibles: Array<{ user_id: string; user_email: string }> = [];
     for (const u of tous as any[]) {
-      if (!u.user_email || interne(u.user_email)) continue;
+      if (!u.user_email || estInterne(u.user_email)) continue;
       if (!ancienWelcome.has(u.user_id)) continue;
       if (dejaBlaste.has(u.user_id)) continue;
       if (vus.has(u.user_id)) continue;
@@ -1037,6 +1302,150 @@ serve(async (req) => {
       }),
       { headers: { "Content-Type": "application/json" } }
     );
+  }
+
+  // ── Relance des jobs jamais pris en charge par l'extension (2026-08-01) ───
+  // Cron horaire 'email-tunnel-job-relaunch-hourly'. Options manuelles :
+  //   {"job_relaunch":true,"dry_run":true} → montre la cible sans rien envoyer
+  //                                          et IGNORE la fenêtre de nuit.
+  if (body?.job_relaunch === true) {
+    const dryRun = body?.dry_run === true;
+    const h = heureParis();
+    // Échec fermé : une heure illisible ne doit JAMAIS autoriser l'envoi —
+    // mieux vaut un créneau manqué qu'un mail à 3 h du matin.
+    if (!dryRun && (!Number.isFinite(h) || h < RELANCE_H_DEBUT || h >= RELANCE_H_FIN)) {
+      // Rien n'est perdu : aucune réservation n'est prise, les jobs restent
+      // éligibles et repartiront au premier créneau de jour.
+      return new Response(JSON.stringify({
+        relance: RELANCE_TYPE, reporte: "fenetre_nuit", heure_paris: h,
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    const t = Date.now();
+    const { data: jobs, error: jobsErr } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, title, created_at")
+      .eq("status", "pending")
+      .is("handler_build", null)
+      .lte("created_at", new Date(t - RELANCE_AGE_MIN_H * 3_600_000).toISOString())
+      .gte("created_at", new Date(t - RELANCE_AGE_MAX_H * 3_600_000).toISOString())
+      .order("created_at", { ascending: true });
+    if (jobsErr) {
+      return new Response(JSON.stringify({ error: `cross_post_jobs: ${jobsErr.message}` }),
+        { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+
+    // Un seul mail par utilisateur, qui mentionne TOUS ses jobs en attente.
+    const parUser = new Map<string, any[]>();
+    for (const j of (jobs ?? []) as any[]) {
+      if (!parUser.has(j.user_id)) parUser.set(j.user_id, []);
+      parUser.get(j.user_id)!.push(j);
+    }
+
+    const { data: profils } = parUser.size > 0
+      ? await supabase.from("profiles")
+          .select("id, email, lang, extension_last_seen_at")
+          .in("id", [...parUser.keys()])
+      : { data: [] as any[] };
+    const profilParId = new Map<string, any>((profils ?? []).map((p: any) => [p.id, p]));
+
+    const apercu: any[] = [];
+    const cas3: any[] = [];
+    const seuilFrais = t - RELANCE_EXT_FRAICHE_H * 3_600_000;
+
+    for (const [userId, jobsUser] of parUser) {
+      const prof = profilParId.get(userId);
+      if (!prof?.email || estInterne(prof.email)) continue;
+
+      const vue = prof.extension_last_seen_at
+        ? new Date(prof.extension_last_seen_at).getTime() : null;
+
+      // CAS 3 — l'extension tourne EN CE MOMENT et le job dort quand même.
+      // Ce n'est pas un oubli de l'utilisateur mais un bug de notre côté : lui
+      // écrire « allumez votre ordinateur » serait faux et le ferait passer
+      // pour un idiot. On journalise (une ligne par job, jamais dupliquée) et
+      // on ne réserve RIEN, pour que le job reparte normalement en cas 2 si
+      // l'extension redevient muette.
+      if (vue !== null && vue >= seuilFrais) {
+        if (!dryRun) {
+          await supabase.from("job_relaunch_log").upsert(
+            jobsUser.map((j) => ({
+              job_id: j.id, user_id: userId, statut: "skipped_extension_active", cas: 3,
+            })),
+            { onConflict: "job_id,statut", ignoreDuplicates: true },
+          );
+        }
+        console.warn("relance_cas3_extension_active", JSON.stringify({
+          email: prof.email, jobs: jobsUser.length,
+          extension_vue: dateParis(prof.extension_last_seen_at),
+          job_le_plus_vieux: dateParis(jobsUser[0].created_at),
+        }));
+        cas3.push({
+          email: prof.email, jobs: jobsUser.length,
+          extension_vue: dateParis(prof.extension_last_seen_at),
+        });
+        continue;
+      }
+
+      const cas: 1 | 2 = vue === null ? 1 : 2;
+      if (dryRun) {
+        apercu.push({
+          email: prof.email, cas, jobs: jobsUser.length,
+          plateformes: [...new Set(jobsUser.map((j) => j.platform))].join(", "),
+          plus_vieux: dateParis(jobsUser[0].created_at),
+          extension_vue: prof.extension_last_seen_at
+            ? dateParis(prof.extension_last_seen_at) : null,
+          lang: prof.lang ?? "fr",
+        });
+        continue;
+      }
+
+      // RÉSERVATION AVANT ENVOI. ignoreDuplicates → ON CONFLICT DO NOTHING, et
+      // .select() ne rend QUE les lignes réellement insérées : deux runs qui se
+      // chevauchent ne peuvent pas réserver le même job, donc pas de double
+      // mail. email_logs n'a aucune contrainte d'unicité, une dédup lue-puis-
+      // écrite ne suffirait pas ici.
+      const { data: claimes, error: claimErr } = await supabase
+        .from("job_relaunch_log")
+        .upsert(
+          jobsUser.map((j) => ({ job_id: j.id, user_id: userId, statut: "sent", cas })),
+          { onConflict: "job_id,statut", ignoreDuplicates: true },
+        )
+        .select("job_id");
+      if (claimErr) {
+        errors.push(`relance_claim:${prof.email}:${claimErr.message}`);
+        continue;
+      }
+
+      const idsClaimes = (claimes ?? []).map((c: any) => c.job_id);
+      const setClaimes = new Set(idsClaimes);
+      const aAnnoncer = jobsUser.filter((j) => setClaimes.has(j.id));
+      if (aAnnoncer.length === 0) continue; // tout était déjà relancé
+
+      const lang = prof.lang ?? "fr";
+      const { sujet, html } = relanceHtml(cas, aAnnoncer, prof.extension_last_seen_at, lang);
+      const ok = await sendEmail(prof.email, sujet, html);
+      if (ok) {
+        await logEmail(userId, RELANCE_TYPE);
+        sent.push(`${RELANCE_TYPE}:cas${cas}:${prof.email}`);
+      } else {
+        // Resend a refusé : on RELÂCHE la réservation pour retenter dans 1 h.
+        await supabase.from("job_relaunch_log").delete()
+          .eq("statut", "sent").in("job_id", idsClaimes);
+        errors.push(`${RELANCE_TYPE}:${prof.email}`);
+      }
+    }
+
+    return new Response(JSON.stringify({
+      relance: RELANCE_TYPE, dry_run: dryRun, heure_paris: h,
+      jobs_eligibles: jobs?.length ?? 0, utilisateurs: parUser.size,
+      envoyes: sent.length, echecs: errors.length,
+      cas3_bug_extension: cas3,
+      apercu: dryRun ? apercu : undefined,
+      sent, errors,
+      resend_echecs: resendTrace.filter(
+        (r) => (r.http as number) < 200 || (r.http as number) >= 300),
+    }), { headers: { "Content-Type": "application/json" } });
   }
 
   // ── Load candidates ────────────────────────────────────────────────────────
