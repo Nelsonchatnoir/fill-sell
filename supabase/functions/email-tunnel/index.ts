@@ -7,6 +7,38 @@ const FROM = "FillSell <support@fillsell.app>";
 const TO_OPS = "support@fillsell.app";
 const LOGO_URL = "https://fillsell.app/logo.png";
 
+// ── Blast de relance août 2026 ────────────────────────────────────────────────
+// Type DISTINCT de 'welcome' : la dédup d'email_logs porte sur
+// (user_id, email_type) et toutes les cibles ont déjà une ligne 'welcome' —
+// réutiliser 'welcome' ferait partir zéro mail.
+const BLAST_TYPE = "blast_relaunch_aout";
+const BLAST_SUBJECT = "FillSell a beaucoup changé depuis ton inscription";
+// Refonte du welcome : commit db3166d, 2026-07-23. Tout 'welcome' antérieur à
+// cette date est l'ANCIENNE version (« Vinted, eBay et Depop », zéro extension).
+const BLAST_WELCOME_AVANT = "2026-07-23T00:00:00Z";
+// Resend : 2 requêtes/seconde par défaut. 2 envois en parallèle puis 1,2 s de
+// pause → ~1,7/s, sous la limite avec de la marge.
+const BLAST_LOT = 2;
+const BLAST_PAUSE_MS = 1200;
+// Plafond par invocation : une Edge Function a un budget de temps mural, et
+// 326 envois à ce rythme le dépasseraient. Chaque envoi réussi écrit sa ligne
+// email_logs, donc relancer reprend exactement là où le run précédent s'est
+// arrêté. La réponse renvoie `restant` : tant qu'il est > 0, relancer.
+const BLAST_LIMITE_DEFAUT = 150;
+// Boîtes internes, forme canonique. La liste d'exclusion d'email_tunnel_candidates
+// est NOMINATIVE : elle bloque nicolas.svobodny@gmail.com mais laissait passer
+// ses alias nicolas.svobodny+test2@ et +test3@, tous deux dans la cible du blast.
+// On compare donc sur l'adresse débarrassée de son alias « +suffixe ».
+const BLAST_BASES_INTERNES = [
+  "nicolas.svobodny@gmail.com",
+  "hoosslocal@gmail.com",
+  "sbooby.stan@gmail.com",
+  "ornella.berthier@gmail.com",
+  "ornellaracano@icloud.com",
+  "bensvo91@hotmail.fr",
+  "nicotest@mail.fr",
+];
+
 // ── HTML Templates ─────────────────────────────────────────────────────────────
 
 function emailHeader(): string {
@@ -441,6 +473,209 @@ function howItWorksHtml(lang: string): string {
   return emailWrapper(content, lang);
 }
 
+// ── Blast de relance août 2026 ────────────────────────────────────────────────
+// Cible : les inscrits qui ont reçu l'ANCIEN welcome (avant la refonte du
+// 2026-07-23, commit db3166d). Cet ancien mail annonçait « Vinted, eBay et
+// Depop » et ne mentionnait pas l'extension Chrome : ces comptes ont une image
+// fausse du produit. Ce template leur redit ce qu'est FillSell aujourd'hui.
+//
+// Volontairement HORS emailWrapper() : c'est un document autonome, validé tel
+// quel, avec son propre design system (canvas #EDEAE0, paper #F6F5F1, ink
+// #10201B, teal #2F9E90/#1B6E62, amber #E8956D). Tables + styles inline
+// uniquement, aucune classe ni balise <style> — compatibilité Gmail/Outlook.
+// Ne pas le « ramener » vers le wrapper des mails du tunnel.
+//
+// Les 4 logos sont les MÊMES assets que welcomeHtml (public/email/*.png servis
+// par fillsell.app) : width/height en attributs HTML, alt renseigné, et
+// styles de police posés sur l'<img> pour que le alt reste lisible quand le
+// client mail bloque les images.
+function blastRelaunchHtml(): string {
+  const logo = (fichier: string, nom: string) =>
+    `<img src="https://fillsell.app/email/${fichier}" width="54" height="54" alt="${nom}" style="display:block; border:0; outline:none; text-decoration:none; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:12px; font-weight:700; color:#10201B;">`;
+  const espaceur = `<td style="width:10px; font-size:1px; line-height:1px;">&nbsp;</td>`;
+  const pastille = (contenu: string) =>
+    `<td align="center" valign="middle" style="background-color:#F6F5F1; border-radius:12px; padding:10px 12px;">${contenu}</td>`;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FillSell</title>
+</head>
+<body style="margin:0; padding:0; background-color:#EDEAE0; -webkit-font-smoothing:antialiased;">
+
+<div style="display:none; max-height:0; overflow:hidden; opacity:0;">Publication automatique sur Vinted, Leboncoin, eBay et Beebs. Voilà ce qui a changé.</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EDEAE0;">
+<tr>
+<td align="center" style="padding:32px 16px;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px; background-color:#F6F5F1; border-radius:16px; overflow:hidden;">
+
+<!-- Bandeau -->
+<tr>
+<td style="background-color:#10201B; padding:40px 32px 36px 32px;">
+<p style="margin:0 0 14px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#2F9E90;">FillSell</p>
+<h1 style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:29px; line-height:1.25; font-weight:700; color:#F6F5F1;">L'app a beaucoup changé depuis ton inscription</h1>
+</td>
+</tr>
+
+<!-- Intro -->
+<tr>
+<td style="padding:32px 32px 8px 32px;">
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.65; color:#10201B;">Salut,</p>
+<p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.65; color:#10201B;">Tu t'es inscrit sur FillSell il y a quelque temps. Depuis, l'app n'a plus grand-chose à voir avec celle que tu as découverte. Voilà ce qui a changé.</p>
+</td>
+</tr>
+
+<!-- Plateformes -->
+<tr>
+<td style="padding:32px 32px 0 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EDEAE0; border-radius:12px;">
+<tr>
+<td style="padding:24px;">
+<p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Quatre plateformes</p>
+<p style="margin:0 0 16px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:19px; line-height:1.4; font-weight:700; color:#10201B;">Une annonce, quatre publications</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+<tr>
+${pastille(logo("logo-vinted.png", "Vinted"))}
+${espaceur}
+${pastille(logo("logo-leboncoin.png", "Leboncoin"))}
+${espaceur}
+${pastille(logo("logo-ebay.png", "eBay"))}
+${espaceur}
+${pastille(logo("logo-beebs.png", "Beebs"))}
+</tr>
+</table>
+<p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Tu prépares ton article une fois. Il part sur les quatre.</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Etapes -->
+<tr>
+<td style="padding:36px 32px 0 32px;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">01</td>
+<td valign="top">
+<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">Tu photographies, l'IA écrit</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Elle identifie la marque, choisit la catégorie, rédige le titre et la description, et propose un prix basé sur ce que l'article vaut vraiment. Une version par plateforme, avec ses règles.</p>
+</td>
+</tr>
+</table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+<tr>
+<td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">02</td>
+<td valign="top">
+<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">La publication se fait toute seule</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est la grosse nouveauté. Notre extension Chrome remplit les formulaires à ta place : marque, taille, état, photos, description, prix. Sur les quatre plateformes, sans que tu touches à rien.</p>
+</td>
+</tr>
+</table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+<tr>
+<td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">03</td>
+<td valign="top">
+<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">Vendu quelque part, retiré partout</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Ton article part sur Vinted ? FillSell le détecte et retire l'annonce des trois autres plateformes. Plus de double vente, plus d'annonces fantômes à nettoyer.</p>
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+
+<!-- Extension -->
+<tr>
+<td style="padding:36px 32px 0 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#10201B; border-radius:12px;">
+<tr>
+<td style="padding:26px;">
+<p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#E8956D;">À savoir avant de démarrer</p>
+<p style="margin:0 0 14px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:18px; font-weight:700; line-height:1.4; color:#F6F5F1;">L'extension s'installe sur ordinateur</p>
+<p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">Elle se pose sur Chrome, sur un PC ou un Mac. Une fois installée, tu pilotes tout depuis ton téléphone — il faut juste que l'ordinateur reste allumé.</p>
+<p style="margin:0 0 22px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">Et tu dois être connecté à tes comptes Vinted, Leboncoin, eBay et Beebs dans ce navigateur.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="background-color:#2F9E90; border-radius:8px;">
+<a href="https://fillsell.app" style="display:inline-block; padding:14px 28px; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; font-weight:700; color:#10201B; text-decoration:none;">Installer l'extension</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Sans extension -->
+<tr>
+<td style="padding:36px 32px 0 32px;">
+<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Sans rien installer</p>
+<p style="margin:0 0 18px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:19px; font-weight:700; line-height:1.4; color:#10201B;">Depuis ton téléphone, tout de suite</p>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="padding:0 0 12px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B; border-bottom:1px solid #EDEAE0;"><strong style="font-weight:700;">Ajoute tes articles à la voix.</strong> Tu parles, ça rentre en stock.</td>
+</tr>
+<tr>
+<td style="padding:12px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B; border-bottom:1px solid #EDEAE0;"><strong style="font-weight:700;">Suis tes bénéfices en temps réel</strong>, article par article.</td>
+</tr>
+<tr>
+<td style="padding:12px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;"><strong style="font-weight:700;">Estime un prix en brocante</strong>, avant même d'acheter.</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- CTA final -->
+<tr>
+<td align="center" style="padding:40px 32px 12px 32px;">
+<p style="margin:0 0 20px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.6; color:#10201B;">Ton compte est toujours actif, et tes pépites t'attendent.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+<tr>
+<td style="background-color:#10201B; border-radius:8px;">
+<a href="https://fillsell.app" style="display:inline-block; padding:16px 40px; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; font-weight:700; color:#F6F5F1; text-decoration:none;">Ouvrir FillSell</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Signature -->
+<tr>
+<td style="padding:32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="border-top:1px solid #EDEAE0; padding-top:24px;">
+<p style="margin:0 0 4px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Une question, un bug, une idée ? Réponds à ce mail, je lis tout.</p>
+<p style="margin:14px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; font-weight:700; color:#10201B;">Nico</p>
+<p style="margin:2px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:14px; color:#1B6E62;">Fondateur de FillSell</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+</table>
+
+<p style="margin:20px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:12px; line-height:1.5; color:#1B6E62; max-width:560px;">Tu reçois ce mail parce que tu as créé un compte sur fillsell.app.</p>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>`;
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -591,6 +826,18 @@ serve(async (req) => {
 
   // ── Test mode: send the 2 tunnel templates to the specified email ─────────
   // N'écrit PAS email_logs — sert aux previews (welcome + comment ça marche).
+  // Avec test_template:"blast_relaunch_aout", envoie CE SEUL template à la
+  // place des deux mails du tunnel (preview visuelle avant le blast de masse).
+  if (testEmail && body?.test_template === BLAST_TYPE) {
+    const ok = await sendEmail(testEmail, BLAST_SUBJECT, blastRelaunchHtml());
+    if (ok) sent.push(`${BLAST_TYPE}:${testEmail}`);
+    else errors.push(`${BLAST_TYPE}:${testEmail}`);
+    return new Response(JSON.stringify({ test: true, template: BLAST_TYPE, sent, errors }), {
+      status: ok ? 200 : 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   if (testEmail) {
     const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
     if (r1) sent.push(`welcome:${testEmail}`); else errors.push(`welcome:${testEmail}`);
@@ -624,6 +871,133 @@ serve(async (req) => {
 
   async function logEmail(userId: string, emailType: string): Promise<void> {
     await supabase.from("email_logs").insert({ user_id: userId, email_type: emailType });
+  }
+
+  // ── Blast de relance août 2026 : envoi ciblé ───────────────────────────────
+  // Déclenché À LA MAIN, jamais par le cron :
+  //   -H "x-cron-secret: …" -d '{"blast_relaunch":true}'
+  // Options : {"dry_run":true} compte la cible sans rien envoyer ;
+  //           {"limit":N} borne le run (défaut 150, cf. BLAST_LIMITE_DEFAUT).
+  if (body?.blast_relaunch === true) {
+    const dryRun = body?.dry_run === true;
+    const limite =
+      Number.isFinite(body?.limit) && body.limit > 0
+        ? Math.floor(body.limit)
+        : BLAST_LIMITE_DEFAUT;
+
+    // Les adresses viennent du RPC du tunnel, qui porte déjà la liste
+    // d'exclusion interne. On y ajoute une garde de DOMAINE : cette liste nomme
+    // 'test@fillsell.app' mais laisserait passer les autres @fillsell.app.
+    const { data: tous, error: tousErr } = await supabase.rpc("email_tunnel_candidates");
+    if (tousErr || !tous) {
+      return new Response(
+        JSON.stringify({ error: tousErr?.message ?? "Failed to fetch candidates" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Pagination explicite : PostgREST plafonne ses réponses et email_logs
+    // dépasse déjà le millier de lignes — un .select() nu tronquerait la cible.
+    async function idsParType(type: string, avant?: string): Promise<Set<string>> {
+      const ids = new Set<string>();
+      const PAGE = 1000;
+      for (let debut = 0; ; debut += PAGE) {
+        let q = supabase
+          .from("email_logs")
+          .select("user_id")
+          .eq("email_type", type)
+          .order("user_id")
+          .range(debut, debut + PAGE - 1);
+        if (avant) q = q.lt("sent_at", avant);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        for (const l of data ?? []) ids.add((l as any).user_id);
+        if (!data || data.length < PAGE) return ids;
+      }
+    }
+
+    let ancienWelcome: Set<string>;
+    let dejaBlaste: Set<string>;
+    try {
+      ancienWelcome = await idsParType("welcome", BLAST_WELCOME_AVANT);
+      dejaBlaste = await idsParType(BLAST_TYPE);
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: `email_logs: ${(e as Error).message}` }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const interne = (email: string): boolean => {
+      const e = email.trim().toLowerCase();
+      if (/@fillsell\.app$/.test(e) || /@example\.(com|org)$/.test(e)) return true;
+      const arobase = e.lastIndexOf("@");
+      if (arobase < 1) return true; // adresse illisible : on n'écrit pas dedans
+      const local = e.slice(0, arobase);
+      const domaine = e.slice(arobase + 1);
+      if (BLAST_BASES_INTERNES.includes(`${local.split("+")[0]}@${domaine}`)) return true;
+      return /\+.*test/.test(local);
+    };
+
+    // Dédup par user_id : 143 comptes portent PLUSIEURS lignes 'welcome'
+    // (doublons historiques d'email_logs). Sans ce Set, ils recevraient le
+    // blast deux fois dans le même run.
+    const vus = new Set<string>();
+    const cibles: Array<{ user_id: string; user_email: string }> = [];
+    for (const u of tous as any[]) {
+      if (!u.user_email || interne(u.user_email)) continue;
+      if (!ancienWelcome.has(u.user_id)) continue;
+      if (dejaBlaste.has(u.user_id)) continue;
+      if (vus.has(u.user_id)) continue;
+      vus.add(u.user_id);
+      cibles.push({ user_id: u.user_id, user_email: u.user_email });
+    }
+
+    if (dryRun) {
+      return new Response(
+        JSON.stringify({
+          blast: BLAST_TYPE,
+          dry_run: true,
+          cibles: cibles.length,
+          apercu: cibles.slice(0, 10).map((c) => c.user_email),
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const html = blastRelaunchHtml();
+    const tranche = cibles.slice(0, limite);
+    for (let i = 0; i < tranche.length; i += BLAST_LOT) {
+      await Promise.all(
+        tranche.slice(i, i + BLAST_LOT).map(async (c) => {
+          const ok = await sendEmail(c.user_email, BLAST_SUBJECT, html);
+          // Resend en échec = AUCUNE ligne email_logs : la cible reste
+          // éligible et repartira au prochain run.
+          if (!ok) {
+            errors.push(`${BLAST_TYPE}:${c.user_email}`);
+            return;
+          }
+          await logEmail(c.user_id, BLAST_TYPE);
+          sent.push(`${BLAST_TYPE}:${c.user_email}`);
+        })
+      );
+      if (i + BLAST_LOT < tranche.length) {
+        await new Promise((r) => setTimeout(r, BLAST_PAUSE_MS));
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        blast: BLAST_TYPE,
+        cibles: cibles.length,
+        envoyes: sent.length,
+        echecs: errors.length,
+        restant: cibles.length - sent.length,
+        sent,
+        errors,
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
   }
 
   // ── Load candidates ────────────────────────────────────────────────────────
