@@ -711,6 +711,13 @@ serve(async (req) => {
   const sent: string[] = [];
   const errors: string[] = [];
 
+  // Trace des retours Resend. sendEmail ne rendait que `res.ok` et jetait le
+  // corps : un mail accepté puis jamais délivré était indiscernable d'un
+  // succès, et on n'avait même pas l'id pour aller vérifier chez Resend.
+  // Diagnostic du 2026-08-01 : la fonction répondait « sent », le mail
+  // n'arrivait pas, et ni la réponse ni les logs ne disaient pourquoi.
+  const resendTrace: Array<Record<string, unknown>> = [];
+
   async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
     try {
       const res = await fetch(RESEND_API, {
@@ -721,10 +728,40 @@ serve(async (req) => {
         },
         body: JSON.stringify({ from: FROM, to: [to], subject, html }),
       });
+      const brut = await res.text();
+      let corps: unknown = brut;
+      try {
+        corps = JSON.parse(brut);
+      } catch {
+        /* Resend a répondu autre chose que du JSON : on garde le texte brut */
+      }
+      const detail = corps && typeof corps === "object" ? corps as Record<string, unknown> : { corps };
+      resendTrace.push({ to, http: res.status, ...detail });
+      if (!res.ok) console.error("resend_echec", JSON.stringify({ to, http: res.status, ...detail }));
       return res.ok;
-    } catch {
+    } catch (e) {
+      resendTrace.push({ to, http: 0, erreur: String(e) });
+      console.error("resend_exception", to, String(e));
       return false;
     }
+  }
+
+  // ── Diagnostic : statut d'un message chez Resend ──────────────────────────
+  // {"resend_lookup":"<id>"} → GET /emails/{id}, rendu mot pour mot.
+  // C'est la seule façon de distinguer « accepté par l'API » de « délivré » :
+  // Resend répond 200 + id même pour une adresse qu'il ne délivrera pas.
+  if (typeof body?.resend_lookup === "string" && body.resend_lookup) {
+    const r = await fetch(`${RESEND_API}/${encodeURIComponent(body.resend_lookup)}`, {
+      headers: { Authorization: `Bearer ${resendKey}` },
+    });
+    const brut = await r.text();
+    let corps: unknown = brut;
+    try {
+      corps = JSON.parse(brut);
+    } catch { /* rendu brut */ }
+    return new Response(JSON.stringify({ http: r.status, resend: corps }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // ── Alerte de paiement (2026-07-28) ────────────────────────────────────
@@ -832,10 +869,10 @@ serve(async (req) => {
     const ok = await sendEmail(testEmail, BLAST_SUBJECT, blastRelaunchHtml());
     if (ok) sent.push(`${BLAST_TYPE}:${testEmail}`);
     else errors.push(`${BLAST_TYPE}:${testEmail}`);
-    return new Response(JSON.stringify({ test: true, template: BLAST_TYPE, sent, errors }), {
-      status: ok ? 200 : 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ test: true, template: BLAST_TYPE, sent, errors, resend: resendTrace }),
+      { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 
   if (testEmail) {
@@ -995,6 +1032,8 @@ serve(async (req) => {
         restant: cibles.length - sent.length,
         sent,
         errors,
+        // Détail Resend des seuls échecs : borné, et c'est ce qu'on veut lire.
+        resend_echecs: resendTrace.filter((t) => (t.http as number) < 200 || (t.http as number) >= 300),
       }),
       { headers: { "Content-Type": "application/json" } }
     );
