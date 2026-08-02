@@ -17,7 +17,7 @@ Cet article décrit précisément ce que fait l'extension Chrome de FillSell, ce
 
 Parce que les acheteurs ne sont pas au même endroit. Un jean se vend très bien sur Vinted, un meuble part sur Leboncoin, une pièce recherchée trouve preneur sur eBay, un vêtement d'enfant sur Beebs. Publier au même moment sur plusieurs sites multiplie l'exposition d'un article sans multiplier le travail — à condition, justement, de ne pas devoir tout recopier à la main.
 
-C'est la partie pénible de la revente : la ressaisie. Chaque plateforme a son formulaire, ses champs obligatoires, ses catégories, ses libellés d'état qui ne correspondent pas d'un site à l'autre (« Très bon état » ici, « État neuf » là). Faire ce travail pour chaque article, c'est ce qui pousse la plupart des vendeurs à se limiter à un seul site.
+C'est la partie pénible de la revente : la ressaisie. Chaque plateforme a son formulaire, ses champs obligatoires, ses catégories, ses libellés d'état qui ne correspondent pas d'un site à l'autre (« Très bon état » ici, « État neuf » là). Faire ce travail pour chaque article, c'est ce qui pousse la plupart des vendeurs à se limiter à un seul site. Cette pratique porte d'ailleurs un nom — le cross-listing — et nous lui avons consacré [un guide pour bien choisir son outil](/blog/cross-listing-vinted-leboncoin), notamment face aux outils de republication qui font un tout autre métier.
 
 ## Comment publier ses annonces sur plusieurs plateformes sans les recopier ?
 

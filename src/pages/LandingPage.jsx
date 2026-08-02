@@ -90,6 +90,7 @@ const COPY = {
     ctaBtn: 'Commencer gratuitement',
     footTag: 'Revente automatisée', footLegal: 'Mentions légales',
     footPrivacy: 'Confidentialité', footContact: 'Contact',
+    footBlog: 'Guides & blog revente',
   },
   en: {
     navPublish: 'Publishing', navVocal: 'Voice', navPricing: 'Pricing',
@@ -153,6 +154,7 @@ const COPY = {
     ctaBtn: 'Start free',
     footTag: 'Automated reselling', footLegal: 'Legal notice',
     footPrivacy: 'Privacy', footContact: 'Contact',
+    footBlog: 'Reselling guides & blog',
   },
 };
 
@@ -1073,6 +1075,10 @@ export default function LandingPage() {
           </div>
 
           <div className="lp-footer__links">
+            {/* Maillage interne (2026-08-02) : la home ne faisait AUCUN lien
+                vers /blog — le blog ne recevait aucun jus de la seule page qui
+                ranke. Ancre descriptive, pas un « cliquez ici ». */}
+            <a href="/blog">{t.footBlog}</a>
             <a href="/legal#mentions">{t.footLegal}</a>
             <a href="/legal#confidentialite">{t.footPrivacy}</a>
             <a href={`mailto:${CONTACT_EMAIL}`}>{t.footContact}</a>

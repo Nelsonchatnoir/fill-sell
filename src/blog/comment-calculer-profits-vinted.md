@@ -82,3 +82,5 @@ Si vous vendez chaque pièce 12 € : `Profit = 12 − 3 − 0,50 = 8,50 €` so
 ## Automatiser ces calculs
 
 Faire ces calculs à la main pour 50 articles par semaine devient vite épuisant — et les erreurs s'accumulent. FillSell automatise tout : vous dictez vos achats par commande vocale, et l'app calcule automatiquement votre marge, votre ROI et vos statistiques de vente en temps réel.
+
+Et une fois la marge maîtrisée, le levier suivant est l'exposition : le même article proposé sur plusieurs plateformes se vend plus vite, au même prix. C'est ce que couvrent nos guides sur [la publication d'une annonce sur plusieurs plateformes en une seule fois](/blog/publier-annonce-plusieurs-plateformes) et [le cross-listing entre Vinted, Leboncoin, eBay et Beebs](/blog/cross-listing-vinted-leboncoin).
