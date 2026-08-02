@@ -31,7 +31,6 @@
     <meta name="twitter:description" content="Une annonce, 4 plateformes. Publication auto, stock vocal, retrait après vente." />
     <meta name="twitter:image" content="https://fillsell.app/og-image-fillsell.png" />
     <meta name="description" content="Publiez une annonce sur Vinted, Leboncoin, eBay et Beebs en une seule fois. Gestion du stock à la voix, analyse photo IA, retrait automatique des annonces après la vente." />
-    <meta name="keywords" content="publier vinted leboncoin ebay beebs, cross-posting vinted, publication multi-plateformes, extension chrome revente, app revendeur français, retrait automatique annonces, gestion stock vocal, analyse photo IA revente" />
     <meta name="author" content="FillSell" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://fillsell.app" />
@@ -132,52 +131,19 @@
     }
     </script>
 
+    <!-- Le FAQPage n'est PLUS ici : en dur dans index.html il fuyait sur toutes
+         les routes SPA (double FAQPage sur les articles de blog à FAQ) et ses
+         réponses avaient dérivé de la FAQ affichée. Il est injecté par
+         LandingPage.jsx depuis la FAQ réellement rendue (2026-08-02). -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "FillSell est-il gratuit ?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Oui, FillSell propose un plan gratuit avec 30 Pépites offertes chaque mois, sans carte bancaire. Les plans Premium et Pro incluent davantage de Pépites chaque mois pour publier et analyser plus."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Sur quelles plateformes FillSell publie-t-il ?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "FillSell publie automatiquement vos annonces sur Vinted, Leboncoin, eBay et Beebs en une seule fois, via l'extension Chrome. Quand un article se vend quelque part, il est retiré automatiquement des autres plateformes."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Comment fonctionne l'IA vocale de FillSell ?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Parlez simplement à l'application : ajoutez un article à votre stock, enregistrez une vente ou demandez un conseil de prix. L'IA comprend le français et l'anglais et exécute les actions automatiquement."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Qu'est-ce que la fonction Lens ?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Lens est une analyse IA par photo : prenez en photo un article et l'IA identifie la marque, estime le prix de revente et vous conseille sur la meilleure plateforme pour le vendre."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "FillSell est-il disponible sur iPhone ?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Oui, FillSell fonctionne sur iPhone et Android directement depuis le navigateur sur fillsell.app, et les applications natives arrivent sur les stores."
-          }
-        }
-      ]
+      "@type": "WebSite",
+      "@id": "https://fillsell.app/#website",
+      "url": "https://fillsell.app",
+      "name": "FillSell",
+      "inLanguage": "fr-FR",
+      "publisher": { "@id": "https://fillsell.app/#organization" }
     }
     </script>
 
