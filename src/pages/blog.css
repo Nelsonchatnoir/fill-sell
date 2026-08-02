@@ -164,6 +164,10 @@
   margin: 32px 0 10px;
 }
 .blog-content p { margin: 0 0 20px; }
+.blog-content img {
+  max-width: 100%; height: auto; border-radius: 12px;
+  display: block; margin: 0 auto 20px;
+}
 .blog-content strong { color: var(--text-strong); font-weight: 700; }
 .blog-content a { color: var(--teal-strong); text-decoration: underline; }
 .blog-content a:hover { color: var(--teal-dark); }
