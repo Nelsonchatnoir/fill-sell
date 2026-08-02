@@ -380,6 +380,28 @@ export default function LandingPage() {
   useEffect(() => { track('page_view', { page: 'landing' }); }, []);
   useEffect(() => { localStorage.setItem('fs_lang', lang); }, [lang]);
 
+  // FAQPage JSON-LD (2026-08-02) : construit depuis la FAQ réellement AFFICHÉE
+  // (même source FAQ[lang], mêmes grants) — jamais un texte parallèle qui
+  // divergerait de la page. Il vivait en dur dans index.html : il fuyait alors
+  // sur TOUTES les routes SPA (un article de blog avec sa propre FAQ portait
+  // DEUX blocs FAQPage) et ses réponses avaient déjà dérivé du rendu. Injecté
+  // au montage, retiré au démontage, même contrat que les scripts de BlogPost.
+  useEffect(() => {
+    const el = document.createElement('script');
+    el.type = 'application/ld+json';
+    el.text = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: FAQ[lang].map(([q, a]) => ({
+        '@type': 'Question',
+        name: q,
+        acceptedAnswer: { '@type': 'Answer', text: fillGrants(a, grants) },
+      })),
+    });
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, [lang, grants]);
+
   /* Apparition au scroll : animation-timeline n'est pas encore partout (Safari). */
   useEffect(() => {
     const obs = new IntersectionObserver((entries) => {
