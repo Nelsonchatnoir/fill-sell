@@ -1,6 +1,6 @@
 ---
-title: "How to Calculate Your Reselling Profits: The Complete Guide"
-description: "Learn how to calculate your true net profit when reselling clothes, sneakers, or electronics — including all fees, packaging costs, and a simple formula."
+title: "Reselling Profit: What You Actually Make Per Sale (Formula + Examples)"
+description: "Most resellers overestimate their profit. Platform fees, payment processing, packaging, shipping: the full formula with worked examples, plus the ROI mistake that eats your margin."
 date: "2026-06-20"
 lang: "en"
 og_image: "/og-image-en.png"
