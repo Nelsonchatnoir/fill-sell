@@ -3,7 +3,7 @@ import { Link, useParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getPostBySlug } from '../blog/posts';
-import useSeo from '../lib/seo';
+import useSeo, { canonicalFor, SITE_ORIGIN } from '../lib/seo';
 import './blog.css';
 
 function formatDate(dateStr, lang) {
@@ -29,6 +29,33 @@ export default function BlogPost() {
     ogType: 'article',
     ogImage: post?.og_image ?? null,
   });
+
+  // Article JSON-LD (2026-08-02) : posé pour TOUS les articles depuis le
+  // frontmatter (title/description/date/og_image). Même contrat que le script
+  // FAQ ci-dessous : injecté au montage, retiré au démontage, jamais d'erreur.
+  useEffect(() => {
+    if (!post) return undefined;
+    const el = document.createElement('script');
+    el.type = 'application/ld+json';
+    el.text = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: post.title,
+      description: post.description ?? '',
+      datePublished: post.date,
+      inLanguage: post.lang ?? 'fr',
+      mainEntityOfPage: canonicalFor(`/blog/${post.slug}`),
+      ...(post.og_image ? { image: SITE_ORIGIN + post.og_image } : {}),
+      author: { '@type': 'Organization', name: 'FillSell', url: SITE_ORIGIN },
+      publisher: {
+        '@type': 'Organization',
+        name: 'FillSell',
+        logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/icon_180x180.png` },
+      },
+    });
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, [post]);
 
   // FAQ JSON-LD (2026-07-30) : un article peut porter un frontmatter `faq` —
   // un tableau JSON SUR UNE SEULE LIGNE de {q, a} (le parseur de posts.js est
