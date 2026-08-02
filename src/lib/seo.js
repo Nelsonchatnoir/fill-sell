@@ -32,7 +32,7 @@ export function canonicalFor(path) {
  *    l'injection côté client est prise en compte — mais elle ne pardonne pas
  *    l'incohérence avec le sitemap.
  */
-export default function useSeo({ path, title, description, ogTitle, ogType, ogImage }) {
+export default function useSeo({ path, title, description, ogTitle, ogType, ogImage, robots }) {
   useEffect(() => {
     const undo = [];
 
@@ -76,6 +76,11 @@ export default function useSeo({ path, title, description, ogTitle, ogType, ogIm
     put('link[rel="canonical"]', linkRel('canonical'), 'href', url);
     put('meta[property="og:url"]', meta('property', 'og:url'), 'content', url);
 
+    // `robots: 'noindex'` pour les pages utilitaires (retours Stripe, reset,
+    // callback OAuth) : sans lui elles héritent du canonical + title de la
+    // home via index.html — deux signaux contradictoires pour Googlebot.
+    put('meta[name="robots"]', meta('name', 'robots'), 'content', robots);
+
     put('meta[name="description"]', meta('name', 'description'), 'content', description);
     put('meta[property="og:description"]', meta('property', 'og:description'), 'content', description);
     put('meta[name="twitter:description"]', meta('name', 'twitter:description'), 'content', description);
@@ -94,5 +99,5 @@ export default function useSeo({ path, title, description, ogTitle, ogType, ogIm
 
     // Ordre inverse de la pose : une balise créée puis mutée revient bien à rien.
     return () => { for (let i = undo.length - 1; i >= 0; i -= 1) undo[i](); };
-  }, [path, title, description, ogTitle, ogType, ogImage]);
+  }, [path, title, description, ogTitle, ogType, ogImage, robots]);
 }
