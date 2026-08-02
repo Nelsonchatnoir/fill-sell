@@ -16,8 +16,8 @@ function formatDate(dateStr, lang) {
 export default function BlogList() {
   useSeo({
     path: '/blog',
-    title: 'Blog — FillSell',
-    description: 'Conseils, guides et astuces pour les revendeurs : calcul de marges, gestion des profits, plateformes de vente.',
+    title: 'Le blog des revendeurs — FillSell',
+    description: 'Guides concrets pour vendre en seconde main : cross-listing, publication multi-plateformes, calcul de marges et gestion de stock. Écrits par l\'équipe FillSell, sans promesses en l\'air.',
     ogType: 'website',
   });
 
