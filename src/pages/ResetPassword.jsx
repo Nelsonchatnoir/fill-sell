@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import useSeo from "../lib/seo";
 
 const TEAL = "#3EACA0";
 const PEACH = "#E8956D";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
+  // Page utilitaire (lien de reset par mail) : jamais à indexer.
+  useSeo({ path: "/reset-password", title: "Nouveau mot de passe — FillSell", robots: "noindex" });
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [msg, setMsg] = useState("");
