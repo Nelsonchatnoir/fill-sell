@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { UI, Loader } from "../components/ui";
+import useSeo from "../lib/seo";
 
 // Atterrissage OAuth web (Apple, Google, tout provider Supabase) — flux PKCE.
 // Le provider redirige ici avec ?code=… ; le client supabase (flowType pkce,
@@ -12,6 +13,8 @@ import { UI, Loader } from "../components/ui";
 export default function AuthCallback() {
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  // Atterrissage OAuth : jamais à indexer.
+  useSeo({ path: "/auth/callback", title: "Connexion — FillSell", robots: "noindex" });
 
   useEffect(() => {
     let cancelled = false;
