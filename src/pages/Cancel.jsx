@@ -1,6 +1,9 @@
 import { useNavigate } from "react-router-dom";
+import useSeo from '../lib/seo';
 export default function Cancel(){
   const nav = useNavigate();
+  // Page de retour Stripe : jamais à indexer.
+  useSeo({ path: '/cancel', title: 'Paiement annulé — FillSell', robots: 'noindex' });
   return(
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#F8F7F4",gap:16}}>
       <div style={{fontSize:48}}>😕</div>
