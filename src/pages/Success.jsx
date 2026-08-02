@@ -1,9 +1,14 @@
 import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import { track } from '../analytics/analytics';
+import useSeo from '../lib/seo';
 
 export default function Success(){
   const nav = useNavigate();
+
+  // Page de retour Stripe : jamais à indexer (sans ça elle hérite du
+  // canonical + title de la home posés par index.html).
+  useSeo({ path: '/success', title: 'Paiement confirmé — FillSell', robots: 'noindex' });
 
   useEffect(() => {
     const sessionId = new URLSearchParams(window.location.search).get('session_id') || '';
