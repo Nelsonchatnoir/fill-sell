@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  WHISPER_BIAS_PROMPT,
+  detecterHallucinationWhisper,
+} from "../_shared/whisper-hallucinations.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -153,7 +157,7 @@ serve(async (req) => {
     outForm.append("file", audioFile, `audio.${ext}`);
     outForm.append("model", "whisper-1");
     outForm.append("language", lang === "en" ? "en" : "fr");
-    outForm.append("prompt", "FillSell, Vinted, eBay, Erborian, Medik8, Stihl, Levi's, Zara, Nike, Adidas, Hermès, Chanel, Louboutin, Patagonia, North Face, Balenciaga, Vestiaire Collective");
+    outForm.append("prompt", WHISPER_BIAS_PROMPT);
 
     const response = await fetchWithRetry("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -170,7 +174,30 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    return new Response(JSON.stringify({ text: data.text ?? "" }), {
+    const texte = String(data.text ?? "").trim();
+
+    // Hallucinations Whisper (2026-08-03) : sur un audio vide/inaudible,
+    // Whisper invente des crédits de sous-titres ou recrache notre prompt de
+    // marques. Le coût Whisper est déjà engagé, mais on coupe ICI : pas
+    // d'appel Haiku derrière (voice-intent), et l'utilisateur reçoit un
+    // message au lieu d'un bouton vocal qui ne fait rien. Le champ `error`
+    // est le message AFFICHÉ tel quel par le front (FAB : throw tErr ; micro
+    // Lens : ❌ json.error) — le garder humain et localisé, jamais un code.
+    const filtre = detecterHallucinationWhisper(texte);
+    if (filtre) {
+      console.warn("[voice-transcribe] hallucination_filtree", JSON.stringify({
+        raison: filtre, texte: texte.slice(0, 120),
+      }));
+      return new Response(JSON.stringify({
+        text: "",
+        filtered: filtre,
+        error: lang === "en"
+          ? "No speech detected — try again closer to the microphone."
+          : "Aucune parole détectée — réessayez en parlant plus près du micro.",
+      }), { headers: { "Content-Type": "application/json", ...CORS } });
+    }
+
+    return new Response(JSON.stringify({ text: texte }), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (err: any) {

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { detecterHallucinationWhisper } from "../_shared/whisper-hallucinations.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -1163,6 +1164,31 @@ serve(async (req) => {
     if (!text?.trim()) {
       return new Response(JSON.stringify({ error: "Missing text" }), {
         status: 400,
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
+    // Hallucinations Whisper (2026-08-03) : ceinture EN PLUS du filtre de
+    // voice-transcribe — les apps Capacitor pas encore à jour envoient encore
+    // le texte halluciné ici. On coupe AVANT l'appel Haiku (seul le Whisper
+    // déjà payé reste perdu) et on trace la raison dans usage_logs pour que
+    // le taux d'hallucinations reste mesurable. Le front affiche « Rien
+    // compris » sur tasks: [] — c'est le comportement voulu.
+    const filtreWhisper = detecterHallucinationWhisper(text.trim());
+    if (filtreWhisper) {
+      console.warn("[voice-intent] hallucination_filtree", JSON.stringify({
+        raison: filtreWhisper, texte: String(text).slice(0, 120),
+      }));
+      if (quotaLogId) {
+        try {
+          await adminClient.from("usage_logs")
+            .update({ metadata: { raw_text: text, filtered: filtreWhisper, tasks: [] } })
+            .eq("id", quotaLogId);
+        } catch (e) {
+          console.error("[voice-intent] usage_logs update failed:", e);
+        }
+      }
+      return new Response(JSON.stringify({ tasks: [], filtered: filtreWhisper }), {
         headers: { "Content-Type": "application/json", ...CORS },
       });
     }

@@ -1452,7 +1452,10 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
 
   useEffect(()=>{
     if(!vaError)return;
-    const t=setTimeout(()=>setVaError(null),2000);
+    // 4 s et pas 2 : depuis le filtre hallucinations (03/08), le serveur rend
+    // une vraie phrase (« Aucune parole détectée — réessayez… ») qui doit
+    // avoir le temps d'être lue — à 2 s le vocal semblait ne « rien faire ».
+    const t=setTimeout(()=>setVaError(null),4000);
     return()=>clearTimeout(t);
   },[vaError]);
 
