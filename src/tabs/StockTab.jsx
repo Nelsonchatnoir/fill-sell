@@ -28,6 +28,7 @@ import {
   ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS,
   lireDernierRunDressing, aDejaSynchroniseDressing,
+  DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
 } from '../utils/vintedSync';
 
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
@@ -1250,6 +1251,105 @@ const StockTab = memo(function StockTab({
     onStepperOpenChange?.(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
+  // ── Détail Vinted au clic « Publier » (2026-08-03 soir) ────────────────────
+  // Un article importé du dressing a ses PHOTOS en base (la sync les écrit)
+  // mais PAS sa description : la liste wardrobe ne la porte pas, elle ne vit
+  // que dans /api/v2/item_upload/items/{id} — endpoint du formulaire d'édition,
+  // autorisé À L'UNITÉ sur ACTION HUMAINE uniquement (décision 2 du chantier).
+  // Le clic « Publier » est ce déclencheur : on demande LE détail de CET
+  // article à l'extension, puis on ouvre le stepper description en place.
+  // GRATUIT (aucune Pépite) : c'est la publication qui est payante, pas la
+  // lecture. Extension absente/ancienne ou réponse en retard → le stepper
+  // s'ouvre quand même (photos + titre déjà là) avec une note douce, jamais un
+  // écran vide sans explication.
+  const [extDetailOk, setExtDetailOk] = useState(false);
+  useEffect(() => {
+    const stop = ecouterPresenceExtension((version) => {
+      setExtDetailOk(versionAuMoins(version, DETAIL_VERSION_MIN));
+    });
+    return stop;
+  }, []);
+  const [detailFetchId, setDetailFetchId] = useState(null); // item.id en cours de récupération
+  const [detailNote, setDetailNote] = useState(null);       // message doux (repli), auto-effacé
+  const detailNoteTimer = useRef(null);
+  useEffect(() => () => { if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current); }, []);
+  const montrerNoteDetail = (message) => {
+    setDetailNote(message);
+    if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current);
+    detailNoteTimer.current = setTimeout(() => setDetailNote(null), 7000);
+  };
+  const DETAIL_TIMEOUT_MS = 12000;
+  const publierAvecDetail = async (item) => {
+    const doitCompleter = item.origine === 'vinted_sync' && item.vinted_item_id && !item.description;
+    // Rien à compléter, ou pas d'extension capable (mobile, extension < 0.5.1) :
+    // ouverture directe — on n'attend JAMAIS un canal qui n'existe pas.
+    if (!doitCompleter || !extDetailOk) {
+      if (doitCompleter) {
+        montrerNoteDetail(lang === 'fr'
+          ? "La description Vinted sera récupérée quand l'extension sera à jour — tu peux la compléter à la main en attendant."
+          : "The Vinted description will be fetched once the extension is updated — you can fill it in manually meanwhile.");
+      }
+      ouvrirStepper(item);
+      return;
+    }
+    if (detailFetchId) return; // une récupération à la fois — jamais de lot
+    setDetailFetchId(item.id);
+    const detail = await new Promise((resolve) => {
+      const timer = setTimeout(() => { stop(); resolve(null); }, DETAIL_TIMEOUT_MS);
+      const stop = ecouterDetailArticleVinted((d) => {
+        if (String(d.vintedItemId) !== String(item.vinted_item_id)) return;
+        clearTimeout(timer); stop(); resolve(d);
+      });
+      demanderDetailArticleVinted(item.vinted_item_id);
+    });
+    setDetailFetchId(null);
+    if (detail?.success && detail.description) {
+      // Persistée pour ne plus jamais re-demander cet article ; la sync ne
+      // réécrit pas `description` (champ à l'utilisateur), elle survivra.
+      await supabase.from('inventaire').update({ description: detail.description })
+        .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
+      ouvrirStepper({ ...item, description: detail.description });
+    } else {
+      montrerNoteDetail(lang === 'fr'
+        ? "La description Vinted n'a pas pu être récupérée cette fois — les photos sont là, tu peux compléter le texte à la main."
+        : "The Vinted description couldn't be fetched this time — photos are in place, you can fill in the text manually.");
+      ouvrirStepper(item);
+    }
+  };
+
+  // ── Prix d'annonce Vinted par article (2026-08-03 soir) ────────────────────
+  // Le prix DEMANDÉ sur l'annonce vit dans vinted_listing_snapshots (relevé
+  // quotidien de la sync), JAMAIS dans inventaire.prix_vente — l'upsert de
+  // sync le réécrirait à chaque run et le confondrait avec le prix déclaré par
+  // l'utilisateur. UNE requête pour toutes les lignes (jamais une par ligne) :
+  // relevés triés du plus récent au plus ancien, premier vu = prix courant.
+  // Même patron éprouvé que `propositions` (VentesTab). Le limit(1000) couvre
+  // ~30 jours de relevés quotidiens pour 30 articles — largement le dernier
+  // relevé de chacun.
+  const [prixAnnonces, setPrixAnnonces] = useState({}); // vinted_item_id -> price | null
+  useEffect(() => {
+    if (!user?.id) return;
+    const ids = [...new Set(items.map(i => i.vinted_item_id).filter(Boolean))]
+      .filter(id => !(id in prixAnnonces));
+    if (!ids.length) return;
+    let annule = false;
+    supabase.from('vinted_listing_snapshots')
+      .select('vinted_item_id,price')
+      .eq('user_id', user.id).in('vinted_item_id', ids)
+      .order('captured_at', { ascending: false }).limit(1000)
+      .then(({ data, error }) => {
+        if (annule) return;
+        // Ids sans relevé notés null — sinon l'effet re-requêterait à chaque rendu.
+        setPrixAnnonces(prev => {
+          const n = { ...prev };
+          for (const id of ids) if (!(id in n)) n[id] = null;
+          if (!error) for (const r of (data || [])) if (n[r.vinted_item_id] == null) n[r.vinted_item_id] = r.price;
+          return n;
+        });
+      });
+    return () => { annule = true; };
+  }, [items, user?.id, prixAnnonces]);
+
   // Article en attente derrière le rappel extension : le clic « Publier » passe
   // d'abord par le modal, l'ouverture du stepper n'a lieu qu'au « Continuer ».
   const [extReminderItem, setExtReminderItem] = useState(null);
@@ -1994,7 +2094,7 @@ const StockTab = memo(function StockTab({
                   // tiret s'affichait en « mauvaise marge ». Gris = pas d'avis.
                   const mc=margeConnue?getMargeColor(item.marginPct):"#A3A9A6";
                   return(
-                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
+                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,_table:'inventaire',frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <div style={{fontWeight:700,fontSize:14,color:"#10201B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -2002,13 +2102,27 @@ const StockTab = memo(function StockTab({
                           {item.marque&&<span style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #BFE0D9"}}>{marqueLabel(item.marque,lang)}</span>}
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
+                          {/* Prix DEMANDÉ sur l'annonce Vinted (dernier relevé) —
+                              distinct du prix de vente déclaré, qui reste la
+                              seule vérité d'encaissement. */}
+                          {item.vinted_item_id&&prixAnnonces[item.vinted_item_id]!=null&&(
+                            <span title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas le prix réellement reçu":"Asking price on the Vinted listing — not the amount actually received"}
+                              style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #BFE0D9"}}>
+                              🏷️ {lang==='fr'?'Annonce':'Listing'} · {fmt(prixAnnonces[item.vinted_item_id])}
+                            </span>
+                          )}
                         </div>
                         {/* PIÈGE : `fmt(item.buy+(item.purchaseCosts||0))` affichait
                             « 0 € » pour un prix d'achat null (fmt lit null comme 0) —
                             l'utilisateur croyait avoir saisi 0 € au lieu de rien.
                             Inconnu → tiret. Un vrai 0 € (article gratuit) s'affiche
                             toujours 0 €. Le prix de VENTE, lui, reste affiché. */}
-                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {prixAchatConnu(item)?fmt(prixAchatNum(item)+(item.purchaseCosts||0)):'—'} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
+                        {/* Vente : même règle d'honnêteté que l'achat — un vendu
+                            importé du dressing n'a PAS de prix de vente tant que
+                            l'utilisateur ne l'a pas enregistré (Vinted ne le
+                            communique pas). `fmt(null*qty)` affichait un faux
+                            « Vente 0,00 € » ; inconnu → tiret. */}
+                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {prixAchatConnu(item)?fmt(prixAchatNum(item)+(item.purchaseCosts||0)):'—'} → {lang==='fr'?'Vente':'Sold'} {item.sell!=null?fmt((item.sell||0)*qty):'—'}</div>
                       </div>
                       <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
                         {/* PIÈGE : `(item.margin||0)*qty` et `fmtp(item.marginPct)`
@@ -2238,6 +2352,10 @@ const StockTab = memo(function StockTab({
                   // « 0 € investi » sur un article dont on ignore le coût.
                   // null ici = « on ne sait pas » ; l'affichage met un tiret.
                   const invested=prixAchatConnu(item)?prixAchatNum(item)*(item.quantite||1)+(item.purchaseCosts||0):null;
+                  // Prix DEMANDÉ sur l'annonce Vinted (dernier relevé) — jamais
+                  // confondu avec prix_vente, qui reste ce que l'utilisateur
+                  // déclare avoir reçu.
+                  const prixAnnonce=item.vinted_item_id?prixAnnonces[item.vinted_item_id]:null;
                   const jobsAll=jobsByInventaire[item.id]||[];
                   // Les jobs de retrait ciblé (action='delete') vivent à part :
                   // mélangés aux publish, un delete pending affichait « En
@@ -2278,7 +2396,9 @@ const StockTab = memo(function StockTab({
                   // du bouton (4/4 = plus rien à publier).
                   const nbEnLigne=publishedActive.length;
                   const toutEnLigne=nbEnLigne>=RM_PLATFORMS.length;
-                  const openEdit=()=>setEditItem({...item,frais:0,sell:item.sell??""});
+                  // _table:'inventaire' — cible d'écriture explicite de la modale
+                  // d'édition (les ids ventes/inventaire se chevauchent).
+                  const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:0,sell:item.sell??""});
                   return(
                     // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
                     <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
@@ -2353,7 +2473,7 @@ const StockTab = memo(function StockTab({
                                 : `Publishing lists 1 unit · ${(item.quantite||1)-1} stay in stock`}
                             </div>
                           )}
-                          {(enLigne||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.plateforme||item.emplacement)&&(
+                          {(enLigne||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.plateforme||item.emplacement||prixAnnonce!=null)&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
@@ -2433,6 +2553,14 @@ const StockTab = memo(function StockTab({
                                 </div>
                               ))}
                               {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
+                              {/* Prix de l'ANNONCE (demandé, pas encaissé) —
+                                  lu dans vinted_listing_snapshots, une seule
+                                  requête pour toute la liste. */}
+                              {prixAnnonce!=null&&(
+                                <div className="micon ic-plateforme" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>
+                                  🏷️ {lang==='fr'?'Annonce Vinted':'Vinted listing'} · {fmt(prixAnnonce)}
+                                </div>
+                              )}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
                             </div>
                           )}
@@ -2466,17 +2594,19 @@ const StockTab = memo(function StockTab({
                                 pièces (402 + prix/solde) au lieu de refuser. */}
                             <button
                                 className={toutEnLigne?"btn-publier is-complete":"btn-publier"}
-                                disabled={toutEnLigne}
+                                disabled={toutEnLigne||detailFetchId===item.id}
                                 onClick={e=>{
                                   e.stopPropagation();
                                   // Garde au niveau du HANDLER, pas seulement visuelle :
                                   // le stepper ne doit pas pouvoir s'ouvrir sans une
                                   // seule plateforme à publier.
-                                  if(toutEnLigne)return;
-                                  if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{ouvrirStepper(item);}
+                                  if(toutEnLigne||detailFetchId)return;
+                                  if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{publierAvecDetail(item);}
                                 }}
                               >
-                                {toutEnLigne
+                                {detailFetchId===item.id
+                                  ?(lang==='fr'?'Récupération…':'Fetching…')
+                                  :toutEnLigne
                                   ?(lang==='fr'?`En ligne (${nbEnLigne}/${RM_PLATFORMS.length})`:`Live (${nbEnLigne}/${RM_PLATFORMS.length})`)
                                   :(lang==='fr'?'Publier':'Publish')}
                               </button>
@@ -2545,7 +2675,7 @@ const StockTab = memo(function StockTab({
         <ExtensionReminderModal
           lang={lang}
           onClose={()=>setExtReminderItem(null)}
-          onContinue={()=>{const it=extReminderItem;setExtReminderItem(null);ouvrirStepper(it);}}
+          onContinue={()=>{const it=extReminderItem;setExtReminderItem(null);publierAvecDetail(it);}}
         />
       )}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
@@ -2560,6 +2690,16 @@ const StockTab = memo(function StockTab({
           feuille photo Lens, fix 41c2b2d). Le message d'erreur est déjà
           humanisé côté extension ; on y ajoute le lien de connexion ou du
           brouillon LBC quand il s'applique. */}
+      {/* Note douce du détail Vinted (repli) — portail à z-index supérieur au
+          stepper : elle doit rester lisible PAR-DESSUS l'écran qui vient de
+          s'ouvrir. Ton invitation, jamais alerte : rien n'a échoué de grave,
+          il manque juste un texte que l'utilisateur peut poser à la main. */}
+      {detailNote&&createPortal(
+        <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:12000,maxWidth:"min(92vw,420px)",background:"#fff",border:"1px solid rgba(47,158,144,0.35)",borderRadius:14,padding:"11px 16px",boxShadow:"0 12px 32px -10px rgba(16,32,27,0.35)",fontSize:12.5,lineHeight:1.5,color:"#10201B",fontFamily:"inherit"}}>
+          💬 {detailNote}
+        </div>,
+        document.body
+      )}
       {failJobModal&&createPortal(
         <div onClick={()=>setFailJobModal(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(16,32,27,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px",width:"min(92vw,440px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",fontFamily:"inherit"}}>
@@ -2644,7 +2784,12 @@ const StockTab = memo(function StockTab({
           userId={user.id}
           alreadyPublished={computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive}
           initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
-            .map(p=>p?.url||p?.original||p?.enhanced||p?.bg_removed)
+            // Deux formats coexistent en base : objets {type,url} (flux photos
+            // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync
+            // du dressing). `p?.url` sur une string rend undefined — le filter
+            // vidait donc les photos des articles importés et le stepper
+            // réclamait un upload à des annonces qui ont déjà leurs photos.
+            .map(p=>typeof p==='string'?p:(p?.url||p?.original||p?.enhanced||p?.bg_removed))
             .filter(Boolean)}
           initialListing={{
             titre:       publishItem.titre       ?? null,

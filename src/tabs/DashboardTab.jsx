@@ -309,8 +309,13 @@ const DashboardTab = memo(function DashboardTab({
     // amount = null quand le montant n'existe pas (pas de prix d'achat → pas de
     // marge) : `s.margin` valait null et l'affichage, qui teste `>=0`, sortait
     // un « +0,00 € » qu'on lisait comme une vente à marge nulle.
+    // date_vente (date || created_at, cf. mapSale) : une vente enregistrée SANS
+    // date (« je ne sais plus », import dressing) doit apparaître ici comme une
+    // activité récente — c'est son enregistrement qui est récent. Trier sur
+    // s.date seul l'envoyait en 1970, donc hors du top 5. `noDate` pilote le
+    // libellé : on affiche « date inconnue », jamais un faux « 1 jan ».
     const soldRows = groupSales(sales).slice(0,5).map(s=>({
-      kind:'sale', id:`s-${s.id}`, date:s.date, title:s.title, marque:s.marque, type:s.type,
+      kind:'sale', id:`s-${s.id}`, date:s.date_vente||s.date, noDate:!s.date, title:s.title, marque:s.marque, type:s.type,
       amount:comptabilisable(s)&&s.margin!=null&&Number.isFinite(Number(s.margin))?Number(s.margin):null, qty:s._qty||1,
     }));
     const addRows = (stock||[])
@@ -487,7 +492,7 @@ const DashboardTab = memo(function DashboardTab({
                           {a.qty>1&&<span style={{background:UI.chip,color:UI.mute2,borderRadius:99,padding:"1px 6px",fontSize:10,fontWeight:600,flexShrink:0}}>×{a.qty}</span>}
                         </div>
                         <div style={{fontSize:11,fontWeight:500,color:UI.mute,marginTop:1}}>
-                          {d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} · {isSale?(lang==='en'?'Sold':'Vendu'):(lang==='en'?'Added':'Ajouté')}
+                          {a.noDate?(lang==='en'?'Unknown date':'Date inconnue'):`${d.getDate()} ${(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}`} · {isSale?(lang==='en'?'Sold':'Vendu'):(lang==='en'?'Added':'Ajouté')}
                         </div>
                       </div>
                       {/* Montant inconnu = tiret. Sans ce test, `a.amount>=0` était

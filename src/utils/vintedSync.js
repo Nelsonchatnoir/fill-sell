@@ -118,6 +118,31 @@ export function demanderSyncDressing() {
   window.postMessage({ __fillsellCmd: 'SYNC_DRESSING' }, window.location.origin);
 }
 
+// ── Détail d'un article Vinted à l'unité (2026-08-03 soir) ──────────────────
+// GET /api/v2/item_upload/items/{id} côté extension — l'endpoint du FORMULAIRE
+// D'ÉDITION de Vinted, le seul qui porte la description. CADRE (décision 2 du
+// chantier sync) : appel À L'UNITÉ, SUR ACTION HUMAINE UNIQUEMENT — ici le clic
+// « Publier ». Jamais en lot, jamais en tâche de fond, jamais « en avance ».
+// Contrairement à la sync, la réponse REVIENT par postMessage (aller-retour
+// relayé par fillsell-auth.js) : un seul article, pas de run à suivre en base.
+// GRATUIT : aucune Pépite — c'est la publication qui est payante, pas la
+// lecture.
+export const DETAIL_VERSION_MIN = '0.5.1';
+
+export function demanderDetailArticleVinted(vintedItemId) {
+  window.postMessage({ __fillsellCmd: 'FETCH_VINTED_ITEM', vintedItemId: String(vintedItemId) }, window.location.origin);
+}
+
+// Pose l'écoute des réponses de détail. Retourne le démontage.
+export function ecouterDetailArticleVinted(onDetail) {
+  const onMessage = (e) => {
+    if (e.source !== window || !e.data?.__fillsellItemDetail) return;
+    onDetail(e.data.__fillsellItemDetail);
+  };
+  window.addEventListener('message', onMessage);
+  return () => window.removeEventListener('message', onMessage);
+}
+
 const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';
 
 // RLS filtre déjà sur auth.uid() ; le `.eq('user_id')` explicite reste pour que

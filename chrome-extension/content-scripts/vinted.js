@@ -236,6 +236,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
     }
+    if (msg?.type === "VINTED_ITEM_DETAIL") {
+      lireDetailArticle(msg.vintedItemId)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -398,6 +404,52 @@ async function lirePageDressing(page, userId) {
   });
 
   return { success: true, articles, pagination, page };
+}
+
+// ── Détail d'UN article (2026-08-03 soir) ────────────────────────────────────
+// GET /api/v2/item_upload/items/{id} — l'endpoint du FORMULAIRE D'ÉDITION,
+// seul porteur de la description (absente de la liste wardrobe, cf. bandeau
+// ⛔ ci-dessus). Il n'est appelé QU'À L'UNITÉ, sur ACTION HUMAINE (clic
+// « Publier » côté site) : jamais de boucle, jamais de lot, jamais de cron —
+// c'est exactement la limite posée par le bandeau, qu'on respecte ici.
+async function lireDetailArticle(vintedItemId) {
+  const id = String(vintedItemId ?? "").trim();
+  if (!id || !/^\d+$/.test(id)) return { success: false, error: "id d'article Vinted manquant ou illisible" };
+  if (estPageBotShieldVinted()) {
+    return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield)" };
+  }
+  let resp;
+  try {
+    resp = await fetch(`/api/v2/item_upload/items/${encodeURIComponent(id)}`, {
+      headers: { Accept: "application/json" }, credentials: "include",
+    });
+  } catch (e) {
+    return { success: false, error: `réseau : ${String(e?.message ?? e)}` };
+  }
+  if (resp.status === 401 || resp.status === 403) {
+    return { success: false, sessionExpiree: true, error: `session Vinted refusée (HTTP ${resp.status})` };
+  }
+  if (resp.status === 404) {
+    return { success: false, error: "annonce introuvable sur Vinted (HTTP 404)" };
+  }
+  const brut = await resp.text();
+  if (!brut.trim().startsWith("{")) {
+    return { success: false, error: `réponse non-JSON (HTTP ${resp.status})` };
+  }
+  let data;
+  try { data = JSON.parse(brut); } catch (e) {
+    return { success: false, error: `JSON illisible : ${String(e?.message ?? e)}` };
+  }
+  const item = data?.item ?? data;
+  const photos = Array.isArray(item?.photos) ? item.photos : [];
+  return {
+    success: true,
+    vintedItemId: id,
+    description: typeof item?.description === "string" && item.description.trim() ? item.description : null,
+    // Filet : les photos sont normalement déjà en base (écrites par la sync) —
+    // on les renvoie quand même, au cas où une ligne ancienne n'en aurait pas.
+    photos: photos.map((p) => p?.full_size_url ?? p?.url ?? null).filter(Boolean),
+  };
 }
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ────────────────────────────────

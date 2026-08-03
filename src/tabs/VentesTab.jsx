@@ -809,6 +809,12 @@ const VentesTab = memo(function VentesTab({
                   </div>
                   <div className="meta">
                     {fr?"Vendu sur Vinted — montants à confirmer":"Sold on Vinted — amounts to confirm"}
+                    {/* Prix DEMANDÉ sur l'annonce (dernier relevé) : dit d'où
+                        vient le pré-remplissage du champ « Vendu (€) », sans
+                        jamais se faire passer pour le prix réellement reçu. */}
+                    {propositions[item.vinted_item_id]!=null&&(
+                      <> · {fr?`annonce à ${fmt(propositions[item.vinted_item_id])}`:`listed at ${fmt(propositions[item.vinted_item_id])}`}</>
+                    )}
                   </div>
                   <div className="pa-line" style={{alignItems:"flex-end"}}>
                     <input type="checkbox" className="pa-check" style={{marginBottom:7}} checked={impSel.has(item.id)}
@@ -886,7 +892,10 @@ const VentesTab = memo(function VentesTab({
             return(
               // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer la vente.
               <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
-                <div className="row in-swipe" onClick={()=>setEditItem({...s,frais:0,sell:s.sell??""})}>
+                {/* _table:'ventes' — cette carte est une ligne de la table `ventes`,
+                    PAS un article d'inventaire : leurs ids se chevauchent, et la
+                    modale d'édition refuse d'écrire sans cible explicite. */}
+                <div className="row in-swipe" onClick={()=>setEditItem({...s,_table:'ventes',frais:0,sell:s.sell??""})}>
                   {/* Icône crayon retirée le 2026-07-14 (comme sur le Stock) :
                       la carte entière est déjà cliquable pour éditer. */}
                   <div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>

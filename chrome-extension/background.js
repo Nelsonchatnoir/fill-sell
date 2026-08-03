@@ -283,6 +283,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .catch((e) => console.error("[sync-dressing]", e?.message ?? e));
     sendResponse({ ok: true, demarre: true });
   }
+  // Détail d'UN article Vinted (2026-08-03 soir), demandé depuis le site au
+  // clic « Publier » (relais fillsell-auth.js). Contrairement à la sync, la
+  // réponse REVIENT par ce canal : un seul article, rien à suivre en base.
+  // À L'UNITÉ, SUR ACTION HUMAINE UNIQUEMENT — jamais de lot ni de cron (cadre
+  // du bandeau ⛔ de lirePageDressing, content-scripts/vinted.js).
+  if (msg?.type === "FETCH_VINTED_ITEM") {
+    fetchVintedItemDetail(msg.vintedItemId).then(
+      (r) => sendResponse(r),
+      (e) => sendResponse({ success: false, error: String(e?.message ?? e) })
+    );
+    return true; // réponse asynchrone
+  }
 });
 
 // Événement de progression poussé vers le popup (ignoré s'il est fermé).
@@ -4770,6 +4782,27 @@ function jourParis(d = new Date()) {
   }).formatToParts(d);
   const g = (t) => p.find((x) => x.type === t)?.value ?? "";
   return `${g("year")}-${g("month")}-${g("day")}`;
+}
+
+// ── Détail d'UN article Vinted (2026-08-03 soir) ─────────────────────────────
+// Un seul article, sur clic « Publier » côté site — le seul déclencheur permis
+// pour /api/v2/item_upload/items/{id} (endpoint du formulaire d'édition, cf.
+// bandeau ⛔ de lirePageDressing). withJobFlowLock : même onglet de travail que
+// les publications et la sync — on ne se le dispute jamais.
+async function fetchVintedItemDetail(vintedItemId) {
+  const id = String(vintedItemId ?? "").trim();
+  if (!id) return { success: false, error: "id d'article Vinted manquant" };
+  return await withJobFlowLock("fetch-vinted-item", async () => {
+    let tabId;
+    try {
+      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+    } catch (e) {
+      return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+    }
+    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_DETAIL", vintedItemId: id })
+      .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
+    return res ?? { success: false, error: "réponse vide du content script" };
+  });
 }
 
 async function syncDressingVinted({ declencheur = "bouton" } = {}) {

@@ -280,10 +280,17 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     return d;
   },[range]);
 
+  // « Tout » n'est PAS une période : c'est le total global, et une vente SANS
+  // date en fait partie. Le `||0` la faisait tomber en 1970 (new Date(0)),
+  // c'est-à-dire AVANT le plancher de « Tout » (setFullYear(2000)) — elle
+  // disparaissait même du total censé tout contenir. Les vraies fenêtres
+  // (1M/3M/6M/1A) continuent de l'exclure : sans date, pas de période.
+  const rangeTout=range==='Tout'||range==='All';
   const filtered=useMemo(()=>sales.filter(s=>{
-    const d=new Date(s.created_at||s.date||0);
-    return d>=cutoff;
-  }),[sales,cutoff]);
+    const brut=s.created_at||s.date;
+    if(!brut) return rangeTout;
+    return new Date(brut)>=cutoff;
+  }),[sales,cutoff,rangeTout]);
 
   // Les ventes dont le prix d'achat est inconnu n'entrent dans AUCUN calcul de
   // bénéfice ni de moyenne — elles restent dans `filtered` pour le CA et les

@@ -725,7 +725,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
 // la règle de comptabilisation les lit (prixAchatConnu), et l'UI s'en sert pour
 // marquer « prix d'achat à compléter » sur les articles importés du dressing.
 // Un champ oublié ici est un champ invisible pour toute l'app.
-function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,prix_achat_inconnu:v.prix_achat_inconnu===true,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,vinted_item_id:v.vinted_item_id||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
+function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,prix_achat_inconnu:v.prix_achat_inconnu===true,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -2464,15 +2464,6 @@ export default function App({ loginOnly = false }){
   const _tmMarge=totalMarge(currentMonthSales);
   const tm={profit:_tmMarge.total,count:currentMonthSales.length,retenues:_tmMarge.retenues,sansAchat:_tmMarge.exclus};
 
-  // Filtre par période pour les graphiques
-  function filterSalesByRange(salesArr,range){
-    const cutoffs={'7j':7,'1M':30,'6M':180,'1A':365};
-    if(range==='YTD') return salesArr.filter(s=>new Date(s.date)>=new Date(now.getFullYear(),0,1));
-    const ms=cutoffs[range]||180;
-    const cutoff=new Date(now.getTime()-ms*86400000);
-    return salesArr.filter(s=>new Date(s.date)>=cutoff);
-  }
-
   function buildChartData(salesArr,range){
     const byMonth=(n)=>Array.from({length:n},(_,i)=>{
       const d=new Date(now.getFullYear(),now.getMonth()-(n-1)+i,1);
@@ -2548,7 +2539,18 @@ export default function App({ loginOnly = false }){
     plugins:{legend:{display:false},tooltip:{..._tip,bodyColor:'#F9A26C',callbacks:{title:([i])=>i.label,label:ctx=>`${(ctx.raw||0).toFixed(1)} %`}}},
     scales:_scales('%'),
   };
-  const salesForKpis=filterSalesByRange(sales,selectedRange);
+  // ── KPIs du dashboard : GLOBAUX, plus jamais fenêtrés (2026-08-03 soir) ──
+  // « Profit net », « Revenu brut · total encaissé » et le compteur de ventes
+  // passaient par filterSalesByRange (défaut 6 mois) alors que leurs libellés
+  // affirment un TOTAL : le sélecteur de période ne pilote désormais que les
+  // graphes (buildChartData), comme le disait déjà son commentaire côté
+  // DashboardTab. Conséquence voulue : une vente SANS date (import dressing,
+  // « date : je ne sais plus ») compte dans ces totaux — avec une date, elle
+  // tombait en janvier 1970 via new Date(null) et sortait de TOUTES les
+  // fenêtres : la saisie semblait n'avoir servi à rien. Les compteurs de
+  // PÉRIODE (tm « ce mois », courbes) continuent, eux, de l'ignorer : c'est
+  // leur définition.
+  const salesForKpis=sales;
   // RÈGLE DE COMPTABILISATION (03/08) : une vente sans prix d'achat connu
   // n'entre dans AUCUN total de bénéfice. `reduce((a,s)=>a+s.margin,0)` lisait
   // un null comme 0 : le bénéfice n'était pas faux de peu, il était calculé sur
@@ -3158,7 +3160,54 @@ export default function App({ loginOnly = false }){
       }
       return;
     }
-    const{error}=await supabase.from('inventaire').update({
+    // ── Cible d'écriture : EXPLICITE, jamais devinée (2026-08-03 soir) ──
+    // `ventes.id` et `inventaire.id` sont deux espaces d'ids DISJOINTS mais qui
+    // se CHEVAUCHENT (les deux dérivent du temps). Ce handler écrivait toujours
+    // dans `inventaire` avec l'id reçu — or VentesTab ouvre cette modale avec
+    // une ligne de `ventes` : l'UPDATE ratait en silence (id inexistant)… et le
+    // jour où un id de vente aurait coïncidé avec un id d'inventaire, éditer
+    // une vente aurait ÉCRASÉ un article. Chaque ouvreur pose donc `_table`
+    // (VentesTab → 'ventes', StockTab/Lens → 'inventaire') ; sans ce marqueur,
+    // on refuse d'écrire et on le DIT — jamais d'écriture au petit bonheur.
+    if(editItem._table==='ventes'){
+      const {margin:benef}=margeUnitaire({prixVente:hasS?s:null,prixAchat:b,sellingFees:f});
+      const{data:updRows,error}=await supabase.from('ventes').update({
+        titre:editItem.title,
+        marque:marqueNorm,
+        type:typeAuto,
+        prix_achat:b,
+        prix_vente:hasS?s:null,
+        benefice:benef,
+        description:editItem.description||null,
+        // Convention des lignes `ventes` : quantite NULL sauf lot (cf. srow).
+        quantite:qty>1?qty:null,
+        emplacement:editItem.emplacement?.trim()||null,
+        // ⚠️ pas de prix_achat_inconnu ici : la colonne n'existe pas sur
+        // `ventes` (schéma vérifié le 03/08), le drapeau vit sur l'article lié.
+      }).eq('id',editItem.id).eq('user_id',user.id).select('id');
+      if(!error&&updRows?.length){
+        setSales(prev=>prev.map(v=>v.id===editItem.id?{...v,title:editItem.title,marque:marqueNorm||"",type:typeAuto,buy:b,prix_achat:b,sell:hasS?s:null,prix_vente:hasS?s:null,margin:benef,marginPct:benef!=null&&hasS&&s>0?(benef/s)*100:null,description:editItem.description||null,quantite:qty>1?qty:null,emplacement:editItem.emplacement?.trim()||null}:v));
+        setEditItem(null);
+        setToast({visible:true,message:lang==='fr'?'✓ Vente modifiée':'✓ Sale updated'});
+        setTimeout(()=>setToast({visible:false,message:''}),3000);
+      }else{
+        setToast({visible:true,message:`⚠️ ${error?.message||(lang==='fr'?'Vente introuvable — rien n’a été modifié':'Sale not found — nothing was changed')}`});
+        setTimeout(()=>setToast({visible:false,message:''}),5000);
+      }
+      return;
+    }
+    if(editItem._table!=='inventaire'){
+      // Cible indéterminée : on échoue BRUYAMMENT plutôt que d'écrire dans la
+      // mauvaise table. Si ce message sort, un appelant de setEditItem n'a pas
+      // posé `_table` — c'est un bug à corriger, pas à contourner.
+      console.error('[handleEditSave] _table absent ou inconnu:',editItem._table,editItem.id);
+      setToast({visible:true,message:lang==='fr'?'⚠️ Modification impossible : origine de la fiche inconnue. Rien n’a été modifié.':'⚠️ Cannot save: unknown record origin. Nothing was changed.'});
+      setTimeout(()=>setToast({visible:false,message:''}),5000);
+      return;
+    }
+    // `.select('id')` : un id qui ne matche AUCUNE ligne (article supprimé
+    // entre-temps) doit se voir, pas réussir en silence.
+    const{data:updRows,error}=await supabase.from('inventaire').update({
       titre:editItem.title,
       marque:marqueNorm,
       type:typeAuto,
@@ -3172,14 +3221,14 @@ export default function App({ loginOnly = false }){
       quantite:qty,
       // Même colonne que l'intention vocale inventory_move (moveToLocation).
       emplacement:editItem.emplacement?.trim()||null,
-    }).eq('id',editItem.id);
-    if(!error){
+    }).eq('id',editItem.id).eq('user_id',user.id).select('id');
+    if(!error&&updRows?.length){
       setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }else{
-      setToast({visible:true,message:`⚠️ ${error.message}`});
+      setToast({visible:true,message:`⚠️ ${error?.message||(lang==='fr'?'Article introuvable — rien n’a été modifié':'Item not found — nothing was changed')}`});
       setTimeout(()=>setToast({visible:false,message:''}),5000);
     }
   }
@@ -4431,6 +4480,7 @@ export default function App({ loginOnly = false }){
     if(!lensResult)return;
     setEditItem({
       _isNew:true,
+      _table:'inventaire',
       title:lensResult.titre||"",
       marque:lensResult.marque||"",
       type:lensResult.categorie||"",

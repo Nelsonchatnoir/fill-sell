@@ -102,6 +102,10 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   // prix d'achat affichait « +0,00 € » comme s'il n'avait rien rapporté.
   const monthMap = {};
   ventesComptables.forEach(s=>{
+    // Vente sans date : new Date(null) = janvier 1970 — sans cette garde, le
+    // « meilleur mois » pouvait afficher Jan 1970. Elle reste dans les totaux
+    // (non périodisés), juste pas dans un classement PAR MOIS.
+    if(!s.date) return;
     const d=new Date(s.date);
     const key=`${d.getFullYear()}-${d.getMonth()}`;
     if(!monthMap[key]) monthMap[key]={profit:0,month:d.getMonth(),year:d.getFullYear()};
