@@ -4983,8 +4983,16 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
       // Les plus récents d'abord : sur republication (2 jobs pour le même
       // article), c'est le dernier id Vinted qui fait foi — first-wins sur
       // une liste triée desc = le job le plus récent gagne.
+      // status in (published, sold) UNIQUEMENT (filtre ajouté après revue du
+      // 03/08) : seuls ces deux statuts prouvent que l'annonce appartient à
+      // l'article. Un job cancelled/deleted/failed peut porter l'URL d'une
+      // annonce morte — voire d'une AUTRE annonce (classe listing_url
+      // croisée) : s'en servir rattacherait un import au mauvais article.
+      // Cas réel : « Chaussures marron cuir enfant », 2 cancelled + 2 deleted
+      // sur des annonces distinctes du même compte.
       const jobsPub = await restRequest(
         `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=eq.publish` +
+        `&status=in.(published,sold)` +
         `&inventaire_id=not.is.null&listing_url=not.is.null` +
         `&select=inventaire_id,platform_listing_id,listing_url&order=created_at.desc&limit=1000`,
         token, { headers: { Prefer: "return=representation" } },
