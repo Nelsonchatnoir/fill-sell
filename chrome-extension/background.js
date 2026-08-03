@@ -5057,7 +5057,7 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   let existants = [];
   try {
     existants = await restRequest(
-      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine,photos`,
+      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine,photos,prix_vente`,
       token, { headers: { Prefer: "return=representation" } },
     ) ?? [];
   } catch (e) {
@@ -5156,6 +5156,23 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   // (deux entrées wardrobe pour le même id feraient un « cannot affect row a
   // second time » — première occurrence seule).
   const vusDansLeLot = new Set();
+
+  // ── Frontière de propriété des PHOTOS (affinée le 2026-08-03 soir) ────────
+  // Ce n'est pas « renseigné vs vide », c'est « hébergé CHEZ NOUS vs hébergé
+  // chez VINTED » :
+  //   · au moins une photo à nous (storage Supabase, posée par le stepper —
+  //     ListingPreviewScreen:5253) → le tableau ENTIER est intouchable ;
+  //   · que des URLs CDN Vinted → la sync RAFRAÎCHIT normalement : Vinted est
+  //     la source de vérité, et figer la première sync laisserait pointer vers
+  //     des fichiers que Vinted supprime quand l'utilisateur remplace ses
+  //     photos (article sans image, en silence).
+  // Détection par DOMAINE d'URL ; les entrées OBJET ({type,url,…}) ne viennent
+  // que de notre pipeline de retouche → à nous par construction.
+  const urlPhoto = (p) => typeof p === "string" ? p : String(p?.url ?? p?.original ?? p?.enhanced ?? p?.bg_removed ?? "");
+  const estCdnVinted = (p) => typeof p === "string" && /^https?:\/\/[^/]*\bvinted\.net\//i.test(p);
+  const photosANous = (arr) => Array.isArray(arr) && arr.length > 0
+    && arr.some((p) => typeof p !== "string" || !estCdnVinted(urlPhoto(p)));
+
   const lignes = articles.filter((a) => {
     if (patchesLegers.has(a.vinted_item_id)) return false;
     if (vusDansLeLot.has(a.vinted_item_id)) return false;
@@ -5172,23 +5189,31 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
       titre: a.titre ?? "Article Vinted",
       // PRIX D'ACHAT VOLONTAIREMENT ABSENT : Vinted ne le connaît pas. Ne
       // JAMAIS mettre 0 ici (cf. règle de comptabilisation du 03/08).
-      prix_vente: null,
-      statut: a.statut === "sold" ? "vendu" : "stock",
+      //
+      // PRIX_VENTE : jamais le prix d'annonce Vinted ici (il vit dans
+      // vinted_listing_snapshots, règle du chantier 4) — mais on ne REMPLACE
+      // plus par NULL une valeur déjà en base (posée par la publication,
+      // bd9a516, ou par l'utilisateur). Renseigné = intouchable ; vide = vide.
+      prix_vente: dejaLa?.prix_vente ?? null,
+      // STATUT : règle ASYMÉTRIQUE (2026-08-03 soir). La sync peut faire
+      // stock → vendu (Vinted dit sold), JAMAIS vendu → stock : un article
+      // vendu hors Vinted (vide-grenier, LBC) dont l'annonce Vinted vit
+      // encore doit RESTER vendu — le rétrograder cassait la comptabilité et
+      // relançait la détection de vente dessus. L'état brut de Vinted reste
+      // lisible dans vinted_status, écrit à chaque run.
+      statut: dejaLa?.statut === "vendu" ? "vendu" : (a.statut === "sold" ? "vendu" : "stock"),
       marque: a.marque ?? null,
-      // PHOTOS : ne JAMAIS écraser des photos déjà en base (2026-08-03 soir).
-      // Après une publication, le stepper réécrit inventaire.photos avec les
-      // photos TRAITÉES hébergées chez nous (ListingPreviewScreen:5253) : les
-      // remplacer au run suivant par les URLs CDN Vinted serait une régression
-      // silencieuse. On réécrit la valeur existante telle quelle (le lot
-      // d'upsert exige les mêmes clés sur toutes les lignes — la colonne doit
-      // rester présente) ; les URLs Vinted ne servent qu'aux lignes qui n'ont
-      // encore rien. `description`, elle, est VOLONTAIREMENT absente de ce
+      // PHOTOS : cf. frontière de propriété ci-dessus. Le lot d'upsert exige
+      // les mêmes clés sur toutes les lignes — la colonne reste présente et
+      // porte l'existant quand il est à nous. Vinted sans photos + existant
+      // CDN Vinted : on GARDE l'existant (un raté de lecture ne vide pas un
+      // article). `description`, elle, est VOLONTAIREMENT absente de ce
       // payload : merge-duplicates ne touche que les colonnes présentes, et la
       // description récupérée au clic « Publier » doit survivre aux runs — ne
       // jamais l'ajouter ici.
-      photos: (Array.isArray(dejaLa?.photos) && dejaLa.photos.length)
+      photos: photosANous(dejaLa?.photos)
         ? dejaLa.photos
-        : (a.photos?.length ? a.photos.map((p) => p.url) : null),
+        : (a.photos?.length ? a.photos.map((p) => p.url) : (dejaLa?.photos ?? null)),
       plateforme: "vinted",
       origine: "vinted_sync",
       vinted_item_id: a.vinted_item_id,
