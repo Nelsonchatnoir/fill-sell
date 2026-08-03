@@ -1,0 +1,57 @@
+/**
+ * Styles de <BrandMark>, EMBARQUÉS AVEC LE COMPOSANT.
+ *
+ * Pourquoi ce fichier existe (incident du 2026-08-03, landing publique cassée
+ * en mobile) : BrandMark rend DEUX <img> — l'icône carrée pour le mobile, le
+ * logo large pour le desktop — et comptait sur `.logo-mobile`/`.logo-desktop`
+ * d'App.css pour n'en montrer qu'une. Le code-splitting par route (commit
+ * 5115c57, 02/08) a détaché App.css de la landing : sur fillsell.app, plus
+ * aucune de ces règles n'était chargée, donc les DEUX images s'affichaient
+ * côte à côte, et `.tb-logo` n'existant pas non plus, le wordmark débordait
+ * par-dessus au lieu de s'aligner en flex.
+ *
+ * La leçon, plus large que ce bug : un composant partagé entre deux bundles ne
+ * peut pas dépendre d'une feuille de style qu'un seul des deux charge. Ses
+ * styles voyagent avec lui — c'est l'import de ce fichier par BrandMark.jsx
+ * qui le garantit, quel que soit le découpage des chunks.
+ *
+ * ⚠️ Valeurs identiques à celles d'App.css (mêmes sélecteurs, même point de
+ * bascule 768px) : dans l'app connectée, les deux feuilles coexistent et
+ * doivent dire exactement la même chose. Toute modification ici se répercute
+ * dans App.css, et réciproquement.
+ */
+
+.tb-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tb-logo .name {
+  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  background: linear-gradient(135deg, #3EACA0 0%, #E8956D 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* UNE SEULE des deux images à la fois — c'est la règle dont l'absence a produit
+   le logo doublé. Portée à `.tb-logo` pour ne rien imposer à d'éventuelles
+   autres images qui porteraient ces classes ailleurs. */
+.tb-logo .logo-desktop { display: block; }
+.tb-logo .logo-mobile { display: none; }
+
+@media (max-width: 768px) {
+  .tb-logo .logo-desktop { display: none; }
+  .tb-logo .logo-mobile { display: block; }
+}

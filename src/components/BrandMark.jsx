@@ -3,14 +3,21 @@
  *
  * Extraite du topbar de l'app connectée (App.jsx) pour que le header public de
  * la landing soit strictement le même : mêmes assets, mêmes classes, donc même
- * typo et mêmes couleurs. Aucun CSS n'est dupliqué — .tb-logo, .tb-logo .name,
- * .logo-desktop et .logo-mobile vivent dans App.css / App.redesign.css, qui
- * sont chargés globalement (App.jsx est importé par AppRouter sur toutes les
- * routes, landing comprise).
+ * typo et mêmes couleurs.
+ *
+ * ⚠️ Le commentaire d'origine affirmait ici qu'« aucun CSS n'est dupliqué »
+ * parce qu'App.css est « chargé globalement sur toutes les routes ». Ce n'est
+ * PLUS vrai depuis le code-splitting par route (5115c57, 02/08) : la landing
+ * ne charge plus App.css, et le 03/08 le logo s'affichait DEUX FOIS sur
+ * fillsell.app en mobile, wordmark par-dessus. Les styles voyagent donc
+ * désormais avec le composant (BrandMark.css) — ne pas les retirer en croyant
+ * dédupliquer.
  *
  * Le reste du topbar (profit du mois, badge de plan, réglages) dépend d'un
  * utilisateur connecté et n'a pas de sens sur la landing : il reste dans App.jsx.
  */
+import './BrandMark.css';
+
 export default function BrandMark({ onClick }) {
   return (
     <button onClick={onClick} className="tb-logo">

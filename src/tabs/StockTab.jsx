@@ -25,7 +25,8 @@ import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilit
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
-  ecouterPresenceExtension, demanderSyncDressing,
+  ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
+  versionAuMoins, SYNC_VERSION_MIN,
   lireDernierRunDressing, aDejaSynchroniseDressing,
 } from '../utils/vintedSync';
 
@@ -850,6 +851,8 @@ function formatDepuis(ts, lang) {
 function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
   const fr = lang !== 'en';
   const [extVue, setExtVue] = useState(false);
+  // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
+  const [extVersion, setExtVersion] = useState(null);
   const [sondeFinie, setSondeFinie] = useState(false);
   const [run, setRun] = useState(null);
   const [dejaSync, setDejaSync] = useState(false);
@@ -862,7 +865,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
   // poll de l'extension (2 min) : bien trop lent pour un bouton qu'on regarde.
   useEffect(() => {
     if (isNative) { setSondeFinie(true); return; }
-    const stop = ecouterPresenceExtension(() => { setExtVue(true); setSondeFinie(true); });
+    const stop = ecouterPresenceExtension((version) => { setExtVue(true); setExtVersion(version); setSondeFinie(true); });
     const t = setTimeout(() => setSondeFinie(true), EXT_SONDE_MS);
     return () => { stop(); clearTimeout(t); };
   }, [isNative]);
@@ -944,7 +947,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
   // diagnostic des jobs — surtout pas un troisième jeu de constantes.
   const seen = Date.parse(extensionStatus?.lastSeenAt ?? '');
   const heartbeatVivant = Number.isFinite(seen) && Date.now() - seen <= EXT_MORT_MS;
-  const extPresente = extVue || heartbeatVivant;
+  // ⚠️ LE HEARTBEAT N'AUTORISE PLUS LE CLIC (correctif 03/08).
+  // Il prouve qu'UNE extension tourne, pas qu'elle sait synchroniser : une
+  // 0.4.x poll toutes les 2 min et rafraîchit extension_last_seen_at tout en
+  // ignorant complètement la commande de sync. Le bouton s'activait donc pour
+  // des gens dont le clic partait dans le vide.
+  // Seule preuve valable : le signal postMessage `__fillsellExt`, qui n'existe
+  // que depuis la 0.5.0 et porte la version du manifest.
+  const extCapable = extVue && versionAuMoins(extVersion, SYNC_VERSION_MIN);
   const enCours = attente || (suivi && run?.status === 'running');
 
   const raisonGrisee = (() => {
@@ -953,8 +963,16 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
         ? "La synchronisation lit ton dressing depuis Chrome, sur ordinateur — elle n'est pas disponible dans l'application mobile."
         : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
     }
-    if (!sondeFinie || extPresente) return null; // tant que la sonde court, on ne conclut RIEN
-    // Heartbeat déjà vu une fois : le diagnostic existant sait quoi dire.
+    if (!sondeFinie || extCapable) return null; // tant que la sonde court, on ne conclut RIEN
+    // Extension présente mais trop ancienne : le cas le plus fréquent au
+    // lendemain d'une mise en ligne du front. On ne dit pas « pas détectée »,
+    // ce serait faux et la personne chercherait à réinstaller pour rien.
+    if (extVue || heartbeatVivant) {
+      return fr
+        ? `Ton extension FillSell${extVersion ? ` (${extVersion})` : ''} est trop ancienne pour lire ton dressing. Elle se met à jour toute seule depuis le Chrome Web Store — reviens un peu plus tard.`
+        : `Your FillSell extension${extVersion ? ` (${extVersion})` : ''} is too old to read your closet. It updates itself from the Chrome Web Store — come back a bit later.`;
+    }
+    // Heartbeat déjà vu par le passé mais éteint : le diagnostic existant sait quoi dire.
     if (Number.isFinite(seen)) {
       const d = diagnostiquerExtension(extensionStatus, lang);
       return `${d.titre} — ${d.detail}`;
@@ -1033,7 +1051,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
         </div>
       </div>
 
-      <SecondaryButton disabled={!extPresente||enCours} onClick={lancer}>
+      <SecondaryButton disabled={!extCapable||enCours} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
           : dejaSync
@@ -2017,18 +2035,24 @@ const StockTab = memo(function StockTab({
                 {/* 5. Import du dressing Vinted — la voie la plus rapide pour
                     qui a déjà un stock en ligne. Sous les CTA de saisie : c'est
                     une alternative, pas le chemin principal. */}
-                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
-                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
-                    {lang==='fr'?'OU':'OR'}
-                  </span>
-                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                </div>
-                <VintedDressingSync
-                  lang={lang} user={user} isNative={isNative}
-                  extensionStatus={extensionStatus}
-                  onDone={rafraichirApresSync}
-                />
+                {/* ⛔ MASQUAGE TEMPORAIRE (03/08) — le séparateur « OU » fait
+                    partie du bloc : sans ça, tout le monde verrait un « OU »
+                    suivi de rien. Retirer la condition ET le fragment quand la
+                    0.5.0 sera servie par le CWS (procédure dans vintedSync.js). */}
+                {syncDressingVisiblePour(user?.email)&&(<>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
+                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                    <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
+                      {lang==='fr'?'OU':'OR'}
+                    </span>
+                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                  </div>
+                  <VintedDressingSync
+                    lang={lang} user={user} isNative={isNative}
+                    extensionStatus={extensionStatus}
+                    onDone={rafraichirApresSync}
+                  />
+                </>)}
 
               </div>
             ):(

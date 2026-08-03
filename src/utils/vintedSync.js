@@ -28,6 +28,57 @@ export const SYNC_POLL_MAX_MS = 10 * 60 * 1000;
 // l'UI, seule l'absence de trace au bout d'un moment tranche.
 export const SYNC_DEMARRAGE_MAX_MS = 30 * 1000;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ MASQUAGE TEMPORAIRE — À RETIRER DÈS QUE LA 0.5.0 EST EN LIGNE SUR LE CWS
+// ═══════════════════════════════════════════════════════════════════════════
+// Posé le 2026-08-03 en urgence : le front est parti sur Vercel avec le bouton,
+// alors que l'extension 0.5.0 (la seule qui sait synchroniser) n'était pas
+// publiée. Les comptes équipés tournaient en 0.4.x — détectée par le heartbeat
+// serveur, donc bouton ACTIF, mais sourde à la commande de sync : un clic dans
+// le vide, exactement le piège des jobs 'pending' qu'on venait de fermer.
+//
+// POUR RETIRER (3 gestes, dans cet ordre) :
+//   1. vérifier que la 0.5.0 est bien SERVIE par le Chrome Web Store ;
+//   2. supprimer BETA_COMPTES et syncDressingVisiblePour ci-dessous ;
+//   3. supprimer l'appel `syncDressingVisiblePour(...)` dans StockTab.jsx.
+// La garde de VERSION (SYNC_VERSION_MIN, plus bas) reste, elle : c'est elle qui
+// évitera que le problème revienne au prochain décalage front / Web Store.
+const BETA_COMPTES = ['nicolas.svobodny@gmail.com', 'hoosslocal@gmail.com'];
+
+/** Le bouton de sync doit-il être rendu du tout ? (masquage temporaire) */
+export function syncDressingVisiblePour(email) {
+  const e = String(email ?? '').trim().toLowerCase();
+  if (!e) return false;
+  // Alias « + » retirés : nicolas.svobodny+test2@gmail.com est le même compte.
+  const arobase = e.lastIndexOf('@');
+  if (arobase < 1) return false;
+  const canonique = `${e.slice(0, arobase).split('+')[0]}@${e.slice(arobase + 1)}`;
+  return BETA_COMPTES.includes(canonique);
+}
+
+// ── Garde de VERSION (permanente) ───────────────────────────────────────────
+// Le bouton testait la PRÉSENCE d'une extension, jamais sa CAPACITÉ. Or :
+//   · le heartbeat serveur (profiles.extension_last_seen_at) prouve qu'UNE
+//     extension tourne — n'importe laquelle, y compris une 0.4.x ;
+//   · le signal postMessage `__fillsellExt` n'existe QUE depuis la 0.5.0, et il
+//     porte la version du manifest.
+// La sync exige donc le signal postMessage AVEC une version suffisante. Le
+// heartbeat ne sert plus qu'à distinguer « extension trop ancienne » de
+// « aucune extension » dans le message affiché — jamais à autoriser le clic.
+export const SYNC_VERSION_MIN = '0.5.0';
+
+/** a >= b sur des versions « x.y.z ». Rend false si l'un des deux est illisible. */
+export function versionAuMoins(a, b) {
+  const parse = (v) => String(v ?? '').trim().split('.').map((n) => parseInt(n, 10));
+  const x = parse(a), y = parse(b);
+  if (!x.length || x.some(Number.isNaN)) return false;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d > 0;
+  }
+  return true; // égales
+}
+
 // Re-provoque l'annonce de présence du content script.
 export function pinguerExtension() {
   try { window.postMessage({ __fillsellPing: true }, window.location.origin); }
