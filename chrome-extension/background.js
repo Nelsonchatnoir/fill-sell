@@ -4969,7 +4969,67 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   const maintenant = new Date().toISOString();
   const aujourdhui = jourParis();
 
-  const lignes = articles.map((a, i) => {
+  // ── Rattrapage : articles publiés VIA FillSell (2026-08-03 soir) ──────────
+  // Leur ligne inventaire n'a PAS de vinted_item_id (elle est née dans l'app,
+  // pas de la sync) — mais leur job de publication porte l'id Vinted :
+  // platform_listing_id, ou listing_url seul pour les jobs historiques (la
+  // colonne n'a jamais été écrite avant ce soir — 32 doublons prouvés sur le
+  // run 04184057). Correspondance par ID VINTED UNIQUEMENT, jamais le titre
+  // (leçon listing_url croisée : 36 % d'homonymes en réel).
+  const orphelins = articles.filter((a) => !parVintedId.has(a.vinted_item_id));
+  const parJob = new Map(); // vinted_item_id → inventaire_id du job de publication
+  if (orphelins.length) {
+    try {
+      // Les plus récents d'abord : sur republication (2 jobs pour le même
+      // article), c'est le dernier id Vinted qui fait foi — first-wins sur
+      // une liste triée desc = le job le plus récent gagne.
+      const jobsPub = await restRequest(
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=eq.publish` +
+        `&inventaire_id=not.is.null&listing_url=not.is.null` +
+        `&select=inventaire_id,platform_listing_id,listing_url&order=created_at.desc&limit=1000`,
+        token, { headers: { Prefer: "return=representation" } },
+      ) ?? [];
+      for (const j of jobsPub) {
+        const idVinted = j.platform_listing_id ?? extractListingId(j.listing_url, "vinted");
+        if (idVinted != null && !parJob.has(String(idVinted))) parJob.set(String(idVinted), j.inventaire_id);
+      }
+    } catch (e) {
+      // Rattrapage indisponible : la sync continue — l'upsert anti-doublon par
+      // vinted_item_id protège toujours, au pire on recrée (état d'avant).
+      console.warn("[sync-dressing] lecture des jobs de publication:", e?.message ?? e);
+    }
+  }
+  // Rattachement : on ADOSSE l'identité Vinted à la ligne EXISTANTE de
+  // l'utilisateur — sans toucher à ses données (titre, marque, photos, prix,
+  // statut, origine) : c'est SON article, la sync n'en est pas la source.
+  const rattaches = new Map(); // vinted_item_id → inventaire_id rattaché avec succès
+  for (const a of orphelins) {
+    const invId = parJob.get(String(a.vinted_item_id));
+    if (invId == null) continue;
+    try {
+      const patched = await restRequest(`inventaire?id=eq.${invId}&user_id=eq.${userId}`, token, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          vinted_item_id: a.vinted_item_id,
+          vinted_view_count: a.vues,
+          vinted_favourite_count: a.favoris,
+          vinted_status: a.statut,
+          last_synced_at: maintenant,
+          disparu_le: null,
+        }),
+      });
+      if (Array.isArray(patched) && patched.length) {
+        rattaches.set(a.vinted_item_id, invId);
+      }
+      // 0 ligne = l'article a été supprimé de FillSell depuis la publication :
+      // il repart en création normale ci-dessous, comme un article inconnu.
+    } catch (e) {
+      console.warn(`[sync-dressing] rattachement ${a.vinted_item_id} → inventaire ${invId}:`, e?.message ?? e);
+    }
+  }
+
+  const lignes = articles.filter((a) => !rattaches.has(a.vinted_item_id)).map((a, i) => {
     const dejaLa = parVintedId.get(a.vinted_item_id);
     return {
       // `inventaire.id` n'a PAS de valeur par défaut en base (pas d'identity) :
@@ -5032,7 +5092,11 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   // jamais détectée. On crée un job DÉJÀ 'published' (l'annonce existe, on ne
   // publie rien) — status terminal, donc invisible pour get-pending-jobs et
   // pour recoverStaleProcessingJobs, qui ne repêche que 'processing'.
-  const aCreer = articles.filter((a) => a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id));
+  // Les rattachés sont EXCLUS : leur job de publication réel existe déjà et
+  // alimente déjà la détection de vente — un synthétique en plus ferait deux
+  // jobs 'published' sur le même platform_listing_id.
+  const aCreer = articles.filter((a) =>
+    a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id) && !rattaches.has(a.vinted_item_id));
   if (aCreer.length) {
     const parId = new Map(lignes.map((l) => [l.vinted_item_id, l.id]));
     const jobs = aCreer.map((a) => ({
@@ -5053,7 +5117,9 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
     }).catch((e) => console.warn("[sync-dressing] jobs de suivi:", e?.message ?? e));
   }
 
-  const crees = articles.filter((a) => !parVintedId.has(a.vinted_item_id)).length;
+  // Un rattachement compte comme une mise à jour : l'article existait, la
+  // sync n'a fait que lui adosser son identité Vinted.
+  const crees = articles.filter((a) => !parVintedId.has(a.vinted_item_id) && !rattaches.has(a.vinted_item_id)).length;
   return { crees, majs: articles.length - crees };
 }
 
@@ -5410,9 +5476,14 @@ async function recoverMissingListingUrls(session) {
         const { url, diag } = await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
         if (url) {
           console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
+          // platform_listing_id accompagne l'URL (même règle que
+          // update-job-status côté serveur) — beebs exclu : son format d'URL
+          // n'a jamais été observé, un id extrait au hasard serait pire que
+          // NULL.
+          const listingId = platform === "beebs" ? null : extractListingId(url, platform);
           await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
             method: "PATCH",
-            body: JSON.stringify({ listing_url: url }),
+            body: JSON.stringify({ listing_url: url, ...(listingId ? { platform_listing_id: listingId } : {}) }),
           }).catch((e) => console.warn("[background] PATCH listing_url:", String(e?.message ?? e)));
         } else {
           stillMissing.push(job);

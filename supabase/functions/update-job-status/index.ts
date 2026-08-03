@@ -49,6 +49,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // chemin ré-armement borné → 'failed'.
 const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cancelled", "dry_run_completed", "deleted", "needs_user"];
 
+// ── platform_listing_id : dérivé ICI, au point de passage unique (2026-08-03) ─
+// La colonne existait depuis le 28/06 sans AUCUN écrivain : chaque publication
+// laissait platform_listing_id NULL, l'id d'annonce ne vivant que dans
+// listing_url. Conséquence prouvée (run 04184057) : la sync dressing Vinted ne
+// pouvait pas rapprocher un article importé de son jumeau publié via FillSell
+// → 32 doublons. Dériver côté serveur couvre TOUS les appelants, y compris
+// les extensions déjà installées.
+// beebs volontairement ABSENT : son format d'URL produit n'a jamais été
+// observé (cf. extractListingId côté extension) — mieux vaut NULL qu'un id
+// extrait au hasard d'un nombre quelconque de l'URL.
+const LISTING_ID_PATTERNS: Record<string, RegExp> = {
+  vinted: /\/items\/(\d+)/,
+  leboncoin: /\/ad\/[^/]+\/(\d+)/,
+  ebay: /\/itm\/[^?#]*?(\d{9,})/,
+};
+
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
 // equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
@@ -133,6 +149,17 @@ serve(async (req) => {
       patch.error = null;
       if (typeof body.listing_url === "string" && body.listing_url) {
         patch.listing_url = body.listing_url;
+        // L'id d'annonce accompagne TOUJOURS l'URL dont il est extrait — les
+        // deux colonnes ne peuvent pas diverger. Lecture du platform du job :
+        // le motif d'extraction en dépend, et le body n'est pas de confiance.
+        const { data: jobRow } = await userClient
+          .from("cross_post_jobs")
+          .select("platform")
+          .eq("id", jobId)
+          .maybeSingle();
+        const re = LISTING_ID_PATTERNS[jobRow?.platform ?? ""];
+        const m = re ? body.listing_url.match(re) : null;
+        if (m) patch.platform_listing_id = m[1];
       }
     } else if (status === "failed") {
       patch.error = typeof body.error === "string" ? body.error.slice(0, 2000) : "Erreur inconnue";
