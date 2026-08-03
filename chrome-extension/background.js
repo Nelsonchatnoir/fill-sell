@@ -4805,16 +4805,44 @@ async function syncDressingUnlocked(declencheur) {
     if (!run) return { ok: false, reason: "run_non_cree" };
   }
 
+  // Progression : best-effort, un raté se rattrape à la page suivante.
   const majRun = (champs) => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
     method: "PATCH",
     body: JSON.stringify({ ...champs, updated_at: new Date().toISOString() }),
   }).catch((e) => console.warn("[sync-dressing] maj run:", e?.message ?? e));
 
+  // CLÔTURE : contrairement à majRun, elle n'a PAS le droit d'échouer en
+  // silence. Une ligne laissée 'running' verrouille le compte : l'index
+  // un_seul_actif interdit tout nouveau run, et le poll du front affiche
+  // « en cours » pour toujours (run 606a9db5 du 03/08 au soir, clos en SQL à
+  // la main). Un retry unique après 2 s ; s'il rate aussi, on le CRIE dans la
+  // console — la reprise au prochain déclenchement reste alors la seule issue.
+  const clore = async (champs) => {
+    const corps = JSON.stringify({ ...champs, finished_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    const patch = () => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: corps });
+    try {
+      await patch();
+    } catch (e1) {
+      console.error("[sync-dressing] clôture du run ratée, retry dans 2 s :", e1?.message ?? e1);
+      await sleep(2000);
+      await patch().catch((e2) =>
+        console.error("[sync-dressing] CLÔTURE PERDUE — la ligne reste 'running' jusqu'à la prochaine reprise :", e2?.message ?? e2));
+    }
+  };
+
   const echec = async (message) => {
     console.error("[sync-dressing] échec:", message);
-    await majRun({ status: "failed", erreur: String(message).slice(0, 500), finished_at: new Date().toISOString() });
+    await clore({ status: "failed", erreur: String(message).slice(0, 500) });
     return { ok: false, reason: "echec", error: message };
   };
+
+  // ── Corps du run ──────────────────────────────────────────────────────────
+  // TOUT le travail entre la création du run et sa fin normale vit dans ce
+  // try : n'importe quelle exception imprévue (upsert inventaire, snapshot,
+  // onglet disparu…) doit CLORE la ligne avec son motif au lieu de laisser un
+  // 'running' orphelin. Les gardes ponctuelles ci-dessous restent : elles
+  // donnent des motifs plus précis que le filet général.
+  try {
 
   // ── Onglet de travail Vinted (fenêtre dédiée, jamais chez l'utilisateur) ──
   let tabId;
@@ -4825,12 +4853,14 @@ async function syncDressingUnlocked(declencheur) {
   }
 
   const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
-    success: false, error: String(e?.message ?? e),
+    success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
   }));
   if (!ident?.success) {
-    return await echec(ident?.sessionExpiree
-      ? "session Vinted expirée — se reconnecter à Vinted dans ce navigateur"
-      : `identité Vinted illisible : ${ident?.error ?? "inconnue"}`);
+    // Le motif précis (session absente HTTP 401, accès refusé HTTP 403,
+    // erreur réseau, bot-shield) vient du content script, code HTTP réel
+    // inclus — on le recopie tel quel dans le run. Le front reconnaît le cas
+    // « session » sur ce texte pour afficher son message actionnable.
+    return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}`);
   }
 
   const vusCetteSync = new Set();
@@ -4850,8 +4880,8 @@ async function syncDressingUnlocked(declencheur) {
       // curseur. Le run reste repérable et la prochaine sync reprendra ici —
       // surtout pas de retry en rafale, c'est ce qui aggrave un challenge.
       if (res?.botShield || res?.sessionExpiree) {
-        await majRun({ status: "interrupted", page_suivante: page, items_vus, items_crees, items_maj,
-          erreur: String(res?.error ?? "").slice(0, 500), finished_at: new Date().toISOString() });
+        await clore({ status: "interrupted", page_suivante: page, items_vus, items_crees, items_maj,
+          erreur: String(res?.error ?? "").slice(0, 500) });
         return { ok: false, reason: res.botShield ? "bot_shield" : "session_vinted", page };
       }
       return await echec(`page ${page} : ${res?.error ?? "erreur inconnue"}`);
@@ -4900,12 +4930,19 @@ async function syncDressingUnlocked(declencheur) {
     }
   }
 
-  await majRun({
+  await clore({
     status: "done", items_vus, items_crees, items_maj,
-    total_entries: totalEntries, finished_at: new Date().toISOString(),
+    total_entries: totalEntries,
   });
   console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
   return { ok: true, items_vus, items_crees, items_maj };
+
+  } catch (e) {
+    // Filet général : c'est CE catch qui garantit qu'aucune fin d'exécution ne
+    // laisse la ligne en 'running' (bug du 03/08 : exception non prévue →
+    // service worker rendu, run figé, compte verrouillé).
+    return await echec(`erreur inattendue : ${e?.message ?? e}`);
+  }
 }
 
 /**

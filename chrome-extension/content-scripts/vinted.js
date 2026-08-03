@@ -270,8 +270,17 @@ async function vintedUtilisateurCourant() {
     const r = await fetch("/api/v2/users/current", {
       headers: { Accept: "application/json" }, credentials: "include",
     });
-    if (r.status === 401 || r.status === 403) {
-      return { success: false, sessionExpiree: true, error: `session Vinted refusée (HTTP ${r.status})` };
+    // Motifs DISTINCTS, code HTTP réel inclus : ils finissent mot pour mot
+    // dans vinted_sync_runs.erreur (clôture du run côté background) et le
+    // front reconnaît le cas « session » sur ce texte. Ici, contrairement à la
+    // sonde du service worker (401 ambigu, cf. probePlatformSessions), la page
+    // vient d'être chargée et a rafraîchi son token : un 401 est un vrai
+    // signal de session absente/expirée.
+    if (r.status === 401) {
+      return { success: false, sessionExpiree: true, error: "session Vinted absente ou expirée (HTTP 401)" };
+    }
+    if (r.status === 403) {
+      return { success: false, accesRefuse: true, error: "accès refusé par Vinted (HTTP 403)" };
     }
     const brut = await r.text();
     if (!brut.trim().startsWith("{")) return { success: false, error: `réponse non-JSON (HTTP ${r.status})` };
@@ -289,7 +298,8 @@ async function vintedUtilisateurCourant() {
       totalItemsCount: Number.isFinite(u.total_items_count) ? u.total_items_count : null,
     };
   } catch (e) {
-    return { success: false, error: String(e?.message ?? e) };
+    // fetch qui lève = pas de réponse HTTP du tout (réseau, DNS, page tuée).
+    return { success: false, error: `erreur réseau : ${String(e?.message ?? e)}` };
   }
 }
 

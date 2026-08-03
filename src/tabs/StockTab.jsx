@@ -913,7 +913,13 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // le clic ; un run 'running' est toujours le bon — l'extension REPREND
       // un run interrompu, dont le started_at est ancien par construction.
       const attenduDepuis = clicAtRef.current;
-      const pertinent = r && (r.status === 'running' || !attenduDepuis || Date.parse(r.started_at) >= attenduDepuis - 5000);
+      // finished_at compte aussi : un run REPRIS puis clos (failed/interrupted)
+      // garde son started_at d'origine, antérieur au clic — sur started_at
+      // seul, sa clôture serait ignorée et on afficherait « pas démarré » à
+      // tort, en cachant le vrai motif d'échec.
+      const pertinent = r && (r.status === 'running' || !attenduDepuis
+        || Date.parse(r.started_at) >= attenduDepuis - 5000
+        || Date.parse(r.finished_at ?? 0) >= attenduDepuis - 5000);
       if (pertinent) {
         setRun(r);
         setAttente(false);
@@ -1027,6 +1033,15 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
       // masque que les pavés techniques (URL, JSON, traces).
       const brut = String(run.erreur ?? '').trim();
+      // Session Vinted absente/expirée : le seul échec que l'utilisateur peut
+      // résoudre seul — message dédié, actionnable, sans code HTTP à l'écran.
+      // Reconnu sur le texte posé par la sonde (vinted.js), qui inclut
+      // « session Vinted … (HTTP 401) ».
+      if (/session vinted|HTTP 401/i.test(brut)) {
+        return { ton: 'orange', texte: fr
+          ? "Tu n'es pas connecté à Vinted dans ce navigateur. Connecte-toi sur vinted.fr, puis relance la synchronisation."
+          : "You're not signed in to Vinted in this browser. Sign in on vinted.fr, then start the sync again." };
+      }
       const lisible = brut && brut.length <= 200 && !/[{}<>]|https?:\/\//.test(brut)
         ? brut
         : (fr ? "un imprévu technique — le détail est enregistré" : 'a technical issue — the detail has been recorded');
