@@ -244,17 +244,39 @@ ${etape8Fr}`;
 // Une référence fabricant est un CODE : jamais plus de 6 mots, jamais plus de
 // 50 caractères, jamais terminée par un point. Une valeur refusée fait
 // disparaître la CLÉ (sémantique de l'étape 1bis), elle n'est pas mise à null.
+//
+// ⚠️ TROIS verdicts, pas deux (investigation du 03/08). L'ancien
+// referenceFabricantValide rendait null aussi bien pour une phrase parasite
+// que pour une valeur JSON null / chaîne vide — et mpn_rejete comptait les
+// deux. Relevé des logs 27/07→03/08 : les 57 rejets de la semaine étaient
+// TOUS « rejetée: null » — zéro phrase parasite. Le taux d'~30 % mesurait la
+// part d'articles SANS référence imprimée (vêtements, cosmétiques…), pas une
+// dérive du modèle. D'où la séparation :
+//   « absente »  = null / vide / "null" : l'article n'a pas de référence,
+//                  réponse correcte sur le fond (le modèle pose la clé à null
+//                  au lieu de l'omettre — écart de forme, pas signalé) ;
+//   « invalide » = une vraie valeur qui viole les règles du code : c'est LE
+//                  cas pour lequel le garde-fou existe, le seul compté
+//                  mpn_rejete et le seul journalisé.
 const MPN_MAX_MOTS = 6;
 const MPN_MAX_CARACTERES = 50;
 
-function referenceFabricantValide(v: unknown): string | null {
-  if (typeof v !== "string") return null;
+function classerReferenceFabricant(v: unknown): {
+  valeur: string | null;
+  verdict: "valide" | "absente" | "invalide";
+} {
+  if (v == null) return { valeur: null, verdict: "absente" };
+  if (typeof v !== "string") return { valeur: null, verdict: "invalide" };
   const s = v.trim();
-  if (!s || s.toLowerCase() === "null") return null;
-  if (s.length > MPN_MAX_CARACTERES) return null;
-  if (s.endsWith(".")) return null;
-  if (s.split(/\s+/).filter(Boolean).length > MPN_MAX_MOTS) return null;
-  return s;
+  if (!s || s.toLowerCase() === "null") return { valeur: null, verdict: "absente" };
+  if (
+    s.length > MPN_MAX_CARACTERES ||
+    s.endsWith(".") ||
+    s.split(/\s+/).filter(Boolean).length > MPN_MAX_MOTS
+  ) {
+    return { valeur: null, verdict: "invalide" };
+  }
+  return { valeur: s, verdict: "valide" };
 }
 
 const MODELE_SOURCES = new Set(["lue", "reconnue", "web"]);
@@ -350,20 +372,33 @@ function etatEstimeNormalise(v: unknown): { valeur: string | null; rejete: boole
  * null, et le client traite « pas "lue" » comme « à confirmer ». Une source
  * absente ne peut donc pas servir de passe-droit vers un aspect eBay.
  */
-function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean; etatRejete: boolean } {
+function assainirSortie(item: Record<string, unknown>): {
+  mpnRejete: boolean;
+  mpnAbsente: boolean;
+  etatRejete: boolean;
+} {
   let mpnRejete = false;
+  let mpnAbsente = false;
 
   const attrs = item.attributs_visibles;
   if (attrs && typeof attrs === "object" && !Array.isArray(attrs)) {
     const a = attrs as Record<string, unknown>;
     if ("reference_fabricant" in a) {
-      const valide = referenceFabricantValide(a.reference_fabricant);
-      if (valide === null) {
-        console.warn(`[lens-analysis] reference_fabricant rejetée: ${String(a.reference_fabricant).slice(0, 120)}`);
-        delete a.reference_fabricant;
-        mpnRejete = true;
+      const brutMpn = a.reference_fabricant;
+      const { valeur, verdict } = classerReferenceFabricant(brutMpn);
+      if (verdict === "valide") {
+        a.reference_fabricant = valeur;
       } else {
-        a.reference_fabricant = valide;
+        delete a.reference_fabricant;
+        if (verdict === "invalide") {
+          // Le seul cas qui mérite un warn : le modèle a ÉCRIT quelque chose
+          // et ce quelque chose viole les règles d'un code fabricant.
+          console.warn(`[lens-analysis] reference_fabricant rejetée: ${String(brutMpn).slice(0, 120)}`);
+          mpnRejete = true;
+        } else {
+          // Clé posée à null/vide : article sans référence, pas d'alerte.
+          mpnAbsente = true;
+        }
       }
     }
     // Toutes les clés lues ont été refusées : le contrat dit null, pas {}.
@@ -384,7 +419,7 @@ function assainirSortie(item: Record<string, unknown>): { mpnRejete: boolean; et
   }
   item.etat_estime = etat.valeur;
 
-  return { mpnRejete, etatRejete: etat.rejete };
+  return { mpnRejete, mpnAbsente, etatRejete: etat.rejete };
 }
 
 // ── annonces_marche (2026-07-30, chantier « sources de l'estimation ») ───────
@@ -1032,9 +1067,19 @@ serve(async (req) => {
     // modele_source normalisée, etat_estime ramené dans sa liste fermée
     // (2026-07-29). APRÈS le parsing et la passe de réparation : tout chemin
     // qui produit un JSON passe par ici.
-    const { mpnRejete, etatRejete } = assainirSortie(itemData);
+    const { mpnRejete, mpnAbsente, etatRejete } = assainirSortie(itemData);
+    // Depuis le 03/08, mpn_rejete ne compte QUE les vraies valeurs invalides
+    // (celles pour lesquelles le garde-fou a été écrit). mpn_absente = le
+    // modèle a posé la clé à null : article sans référence imprimée, réponse
+    // correcte — c'était ~100 % de l'ancien compteur (57/57 sur la semaine du
+    // 27/07). marque_absente comble le trou de télémétrie : aucun chiffre ne
+    // disait jusqu'ici si `marque` sortait renseignée sur un scan complet.
+    const marqueBrute = typeof itemData.marque === "string" ? itemData.marque.trim() : "";
+    const marqueAbsente = !marqueBrute || marqueBrute.toLowerCase() === "null";
     if (mpnRejete) logMeta = { ...logMeta, mpn_rejete: true };
+    if (mpnAbsente) logMeta = { ...logMeta, mpn_absente: true };
     if (etatRejete) logMeta = { ...logMeta, etat_rejete: true };
+    if (marqueAbsente) logMeta = { ...logMeta, marque_absente: true };
     // Sources de la fourchette : entrées incomplètes écartées, jamais complétées
     // (sans objet en identify — le champ y est reforcé à null juste dessous).
     assainirAnnoncesMarche(itemData);
@@ -1059,7 +1104,9 @@ serve(async (req) => {
         duree_ms: Date.now() - debutMs,
         modele_source: itemData.modele_source ?? null,
         ...(mpnRejete ? { mpn_rejete: true } : {}),
+        ...(mpnAbsente ? { mpn_absente: true } : {}),
         ...(etatRejete ? { etat_rejete: true } : {}),
+        ...(marqueAbsente ? { marque_absente: true } : {}),
       });
     } else {
       await enregistrerTelemetrie("ok");
