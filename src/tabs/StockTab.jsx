@@ -834,9 +834,11 @@ function formatDepuis(ts, lang) {
   return fr ? `${j} j` : `${j}d`;
 }
 
-// ── Import du dressing Vinted — état vide de l'inventaire (2026-08-03) ───────
-// Cible : celui qui vient d'installer, dont le stock est vide, et qui a déjà
-// 180 annonces en ligne. Trois choses non négociables ici :
+// ── Import du dressing Vinted (2026-08-03) ───────────────────────────────────
+// Cible première : celui qui vient d'installer, dont le stock est vide, et qui
+// a déjà 180 annonces en ligne. Sert aussi, une fois le stock rempli, à
+// actualiser le dressing (le parent choisit l'emplacement et passe `source`
+// pour le tracking). Trois choses non négociables ici :
 //  1. le bouton est GRISÉ tant que l'extension n'est pas PROUVÉE présente.
 //     Sans elle, la commande part dans le vide — c'est exactement le piège des
 //     jobs 'pending' du 20/07 : un ordre que personne ne vient chercher est
@@ -848,7 +850,7 @@ function formatDepuis(ts, lang) {
 //     à un changement d'onglet, et peut avoir été lancée ailleurs ;
 //  3. on annonce ce qu'on lit ET ce qu'on ne touche pas. Un import soupçonné de
 //     republier sur Vinted, c'est la confiance perdue en un écran.
-function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone }) {
   const fr = lang !== 'en';
   const [extVue, setExtVue] = useState(false);
   // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
@@ -1000,7 +1002,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
       setMessage({ ton: 'rouge', texte: String(e?.message ?? e) });
       return;
     }
-    track('vinted_sync_dressing', { source: 'stock_empty', reprise: dejaSync });
+    track('vinted_sync_dressing', { source, reprise: dejaSync });
   };
 
   // Bilan du dernier run terminé — affiché seulement s'il n'y a pas de sync en
@@ -2032,28 +2034,6 @@ const StockTab = memo(function StockTab({
                   </button>
                 </div>
 
-                {/* 5. Import du dressing Vinted — la voie la plus rapide pour
-                    qui a déjà un stock en ligne. Sous les CTA de saisie : c'est
-                    une alternative, pas le chemin principal. */}
-                {/* ⛔ MASQUAGE TEMPORAIRE (03/08) — le séparateur « OU » fait
-                    partie du bloc : sans ça, tout le monde verrait un « OU »
-                    suivi de rien. Retirer la condition ET le fragment quand la
-                    0.5.0 sera servie par le CWS (procédure dans vintedSync.js). */}
-                {syncDressingVisiblePour(user?.email)&&(<>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
-                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
-                      {lang==='fr'?'OU':'OR'}
-                    </span>
-                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                  </div>
-                  <VintedDressingSync
-                    lang={lang} user={user} isNative={isNative}
-                    extensionStatus={extensionStatus}
-                    onDone={rafraichirApresSync}
-                  />
-                </>)}
-
               </div>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -2286,6 +2266,39 @@ const StockTab = memo(function StockTab({
                   </button>
                 )}
                 <div style={{height:24}}/>
+              </div>
+            )}
+
+            {/* Import du dressing Vinted — monté UNE seule fois, HORS du
+                ternaire vide/rempli : le composant porte l'état du run (sonde
+                extension, poll de progression) ; une instance par branche
+                serait démontée/remontée au premier article importé, état
+                perdu en plein suivi. Inventaire vide : sous les CTA de saisie,
+                précédé du séparateur « OU » (une alternative, pas le chemin
+                principal). Inventaire rempli : sous la liste, accès discret
+                pour actualiser le dressing. */}
+            {/* ⛔ MASQUAGE TEMPORAIRE (03/08) — retirer la condition
+                syncDressingVisiblePour quand la 0.5.0 sera servie par le CWS
+                (procédure dans vintedSync.js). Le séparateur « OU » fait
+                partie du bloc : sans ça, l'état vide montrerait un « OU »
+                suivi de rien. */}
+            {syncDressingVisiblePour(user?.email)&&(
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:stock.length===0?12:0}}>
+                {stock.length===0&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                    <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
+                      {lang==='fr'?'OU':'OR'}
+                    </span>
+                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                  </div>
+                )}
+                <VintedDressingSync
+                  lang={lang} user={user} isNative={isNative}
+                  extensionStatus={extensionStatus}
+                  source={stock.length===0?'stock_empty':'stock_liste'}
+                  onDone={rafraichirApresSync}
+                />
               </div>
             )}
           </div>

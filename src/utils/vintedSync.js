@@ -43,7 +43,7 @@ export const SYNC_DEMARRAGE_MAX_MS = 30 * 1000;
 //   3. supprimer l'appel `syncDressingVisiblePour(...)` dans StockTab.jsx.
 // La garde de VERSION (SYNC_VERSION_MIN, plus bas) reste, elle : c'est elle qui
 // évitera que le problème revienne au prochain décalage front / Web Store.
-const BETA_COMPTES = ['nicolas.svobodny@gmail.com', 'hoosslocal@gmail.com'];
+const BETA_COMPTES = ['nicolas.svobodny@gmail.com', 'hoosslocal@gmail.com', 'ornellaracano@icloud.com'];
 
 /** Le bouton de sync doit-il être rendu du tout ? (masquage temporaire) */
 export function syncDressingVisiblePour(email) {
