@@ -1029,6 +1029,28 @@ serve(async (req) => {
     }
   }
 
+  // ── Écriture email_logs : jamais bloquante, jamais silencieuse ────────────
+  // Un insert raté ne doit JAMAIS faire échouer l'envoi ni le run : le mail
+  // est déjà parti, re-jeter ici provoquerait un renvoi. Mais il ne doit plus
+  // être muet non plus — c'est ce silence qui a laissé 180 doublons 'welcome'
+  // s'accumuler sans alerte (corrigé le 03/08), et qui masquerait un type
+  // one-shot oublié dans l'index email_logs_one_shot_unique (une violation
+  // 23505 ici = un doublon d'envoi vient d'être tenté : c'est PRÉCISÉMENT
+  // l'alarme qu'on veut lire). Chaque échec part en console.error (logs de la
+  // fonction) ET dans log_echecs, rendu dans la réponse de chaque branche.
+  const logEchecs: string[] = [];
+  async function logEmail(userId: string, emailType: string): Promise<void> {
+    const { error } = await supabase
+      .from("email_logs")
+      .insert({ user_id: userId, email_type: emailType });
+    if (error) {
+      console.error("email_logs_insert_echec", JSON.stringify({
+        user_id: userId, email_type: emailType, erreur: error.message,
+      }));
+      logEchecs.push(`${emailType}:${userId}:${error.message}`);
+    }
+  }
+
   // ── Diagnostic : statut d'un message chez Resend ──────────────────────────
   // {"resend_lookup":"<id>"} → GET /emails/{id}, rendu mot pour mot.
   // C'est la seule façon de distinguer « accepté par l'API » de « délivré » :
@@ -1134,11 +1156,13 @@ serve(async (req) => {
     const subject = lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
     const ok = await sendEmail(welcomeUserEmail, subject, welcomeHtml(lang));
     if (ok) {
-      await supabase
-        .from("email_logs")
-        .insert({ user_id: welcomeUserId, email_type: "welcome" });
+      await logEmail(welcomeUserId, "welcome");
       return new Response(
-        JSON.stringify({ success: true, sent: [`welcome:${welcomeUserEmail}`] }),
+        JSON.stringify({
+          success: true,
+          sent: [`welcome:${welcomeUserEmail}`],
+          log_echecs: logEchecs,
+        }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
@@ -1191,10 +1215,6 @@ serve(async (req) => {
     return new Response(JSON.stringify({ relance: true, sent, errors }), {
       headers: { "Content-Type": "application/json" },
     });
-  }
-
-  async function logEmail(userId: string, emailType: string): Promise<void> {
-    await supabase.from("email_logs").insert({ user_id: userId, email_type: emailType });
   }
 
   // ── Blast de relance août 2026 : envoi ciblé ───────────────────────────────
@@ -1311,6 +1331,7 @@ serve(async (req) => {
         restant: cibles.length - sent.length,
         sent,
         errors,
+        log_echecs: logEchecs,
         // Détail Resend des seuls échecs : borné, et c'est ce qu'on veut lire.
         resend_echecs: resendTrace.filter((t) => (t.http as number) < 200 || (t.http as number) >= 300),
       }),
@@ -1489,6 +1510,7 @@ serve(async (req) => {
       en_attente_cooldown: enAttente,
       apercu: dryRun ? apercu : undefined,
       sent, errors,
+      log_echecs: logEchecs,
       resend_echecs: resendTrace.filter(
         (r) => (r.http as number) < 200 || (r.http as number) >= 300),
     }), { headers: { "Content-Type": "application/json" } });
@@ -1590,7 +1612,7 @@ serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ success: true, sent, errors }), {
+  return new Response(JSON.stringify({ success: true, sent, errors, log_echecs: logEchecs }), {
     headers: { "Content-Type": "application/json" },
   });
 });

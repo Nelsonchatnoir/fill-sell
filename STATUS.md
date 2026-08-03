@@ -117,6 +117,13 @@ authenticated (service_role intact, aucun flux serveur cassé).
 - **eBay suppression** bloquée passkey.
 - **Compte Apple expiré premium-en-app / 0 Pépite** : `is_premium=false` +
   `apple_original_transaction_id` présent → premium en app mais ignoré du sweep.
+- **`email_logs_one_shot_unique` = liste FERMÉE** (posée le 03/08 après les
+  doublons welcome) : l'index d'unicité ne couvre QUE six types nommés
+  (welcome, how_it_works, blast_relaunch_aout, blast_founder, founder_plan,
+  voice_conversion). **Contrainte : tout nouveau type one-shot doit y être
+  ajouté par migration, sinon il repart en doublon sans alerte.** Les types
+  récurrents (job_pending_relaunch) n'y entrent jamais. Règle détaillée dans
+  CLAUDE.md, section « email_logs ».
 
 ## 7. Conventions de travail
 

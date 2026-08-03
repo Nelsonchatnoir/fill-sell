@@ -67,6 +67,12 @@ Commande : `supabase functions deploy <nom> --no-verify-jwt`
 
 Ne jamais déployer ces fonctions sans ce flag, sinon `verify_jwt` repasse à `true` et les appels externes (Apple, Stripe, Google, pg_net) sont bloqués en 401.
 
+**Numéros de version** : ne JAMAIS écrire un numéro de version de fonction
+(rapport, STATUS.md, commentaire, commit) sans l'avoir lu dans
+`npx supabase functions list`. Les compteurs ne se suivent pas d'une fonction
+à l'autre (voice-transcribe v36 quand voice-intent est v148) — un numéro
+« déduit » est faux.
+
 ## Trigger handle_new_user
 
 Le trigger pg_net appelle email-tunnel via le header `x-cron-secret: fs-cron-2026-tunnel`.
@@ -93,6 +99,29 @@ Toute nouvelle table dans le schéma public nécessite :
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;
 ```
+
+## email_logs — tout nouveau type one-shot DOIT entrer dans l'index
+
+L'unicité de `email_logs` est portée par l'index PARTIEL
+`email_logs_one_shot_unique` sur `(user_id, email_type)`, limité à une liste
+FERMÉE de types nommés : `welcome`, `how_it_works`, `blast_relaunch_aout`,
+`blast_founder`, `founder_plan`, `voice_conversion`.
+
+Règle à respecter AVANT d'ajouter un type d'email :
+- **Type one-shot** (un seul envoi par utilisateur, à vie) → l'ajouter au
+  `WHERE ... IN (...)` de l'index par migration idempotente, SINON il
+  repartira en doublon comme le welcome (bug du 03/08) et rien ne le
+  signalera à l'écriture.
+- **Type récurrent** (plusieurs lignes légitimes par utilisateur, ex.
+  `job_pending_relaunch` et son cooldown 72 h) → ne PAS l'ajouter à l'index ;
+  sa protection anti-doublon doit vivre ailleurs (réservation dédiée type
+  `job_relaunch_log`, jamais une dédup lue-puis-écrite).
+- Toute lecture d'`email_logs` côté fonction doit être PAGINÉE
+  (`.order().range()`) : la table dépasse le millier de lignes et PostgREST
+  tronque à 1000 sans prévenir.
+- Les échecs d'insert sont tracés (`log_echecs` dans la réponse d'email-tunnel
+  + `email_logs_insert_echec` dans ses logs) : un `23505` là = un doublon
+  d'envoi vient d'être tenté, à investiguer, pas à ignorer.
 
 ## Queries Supabase analytics
 
