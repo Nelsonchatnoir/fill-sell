@@ -50,4 +50,36 @@
   }
 
   tick();
+
+  // ── Pont site → extension (2026-08-03) ────────────────────────────────────
+  // Le site n'a AUCUN moyen de parler à l'extension : pas d'externally_connectable
+  // dans le manifest, pas de onMessageExternal. Plutôt que d'ouvrir l'extension
+  // au web (surface d'attaque : n'importe quelle page pourrait déclencher des
+  // actions), on relaie ici, dans un content script déjà limité à fillsell.app —
+  // exactement le pattern de la sonde réseau Vinted.
+  //
+  // Garde-fous : origine vérifiée (e.source === window ET même origine que la
+  // page), et liste FERMÉE de commandes. Ajouter une commande ici, c'est
+  // l'exposer à toute personne capable d'exécuter du JS sur fillsell.app.
+  const COMMANDES = new Set(["SYNC_DRESSING"]);
+  window.addEventListener("message", (e) => {
+    if (e.source !== window) return;
+    const cmd = e.data?.__fillsellCmd;
+    if (!cmd || !COMMANDES.has(cmd)) return;
+    try {
+      chrome.runtime.sendMessage({ type: cmd, declencheur: "bouton" }, () => {
+        void chrome.runtime.lastError;
+      });
+      console.log(`[fillsell-auth] commande relayée : ${cmd}`);
+    } catch { /* extension rechargée : sans conséquence */ }
+  });
+
+  // Signal de présence : le site grise son bouton de sync tant qu'il n'a pas vu
+  // l'extension. Le heartbeat serveur (profiles.extension_last_seen_at) ne se
+  // rafraîchit qu'au poll (2 min) — trop lent pour un bouton qu'on regarde.
+  const annoncer = () => window.postMessage({ __fillsellExt: true, version: chrome.runtime?.getManifest?.().version ?? null }, window.location.origin);
+  annoncer();
+  window.addEventListener("message", (e) => {
+    if (e.source === window && e.data?.__fillsellPing) annoncer();
+  });
 })();

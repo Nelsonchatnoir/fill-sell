@@ -21,6 +21,13 @@ import {
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, LBC_DEPOSIT_URL, humanizeJobError,
 } from '../utils/shared';
+import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
+import { SecondaryButton, Loader } from '../components/ui';
+import {
+  EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
+  ecouterPresenceExtension, demanderSyncDressing,
+  lireDernierRunDressing, aDejaSynchroniseDressing,
+} from '../utils/vintedSync';
 
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
 // Les erreurs « connexion requise » et « brouillon LBC en cours » portent déjà
@@ -826,6 +833,260 @@ function formatDepuis(ts, lang) {
   return fr ? `${j} j` : `${j}d`;
 }
 
+// ── Import du dressing Vinted — état vide de l'inventaire (2026-08-03) ───────
+// Cible : celui qui vient d'installer, dont le stock est vide, et qui a déjà
+// 180 annonces en ligne. Trois choses non négociables ici :
+//  1. le bouton est GRISÉ tant que l'extension n'est pas PROUVÉE présente.
+//     Sans elle, la commande part dans le vide — c'est exactement le piège des
+//     jobs 'pending' du 20/07 : un ordre que personne ne vient chercher est
+//     indiscernable d'un travail en cours. Corollaire : même une fois lancée,
+//     une sync qui ne démarre pas dans les 30 s est ANNONCÉE, jamais laissée
+//     tourner en spinner éternel ;
+//  2. la progression se lit en BASE (vinted_sync_runs), jamais déduite du clic.
+//     La sync vit dans le service worker de l'extension : elle survit à un F5,
+//     à un changement d'onglet, et peut avoir été lancée ailleurs ;
+//  3. on annonce ce qu'on lit ET ce qu'on ne touche pas. Un import soupçonné de
+//     republier sur Vinted, c'est la confiance perdue en un écran.
+function VintedDressingSync({ lang, user, isNative, extensionStatus, onDone }) {
+  const fr = lang !== 'en';
+  const [extVue, setExtVue] = useState(false);
+  const [sondeFinie, setSondeFinie] = useState(false);
+  const [run, setRun] = useState(null);
+  const [dejaSync, setDejaSync] = useState(false);
+  const [suivi, setSuivi] = useState(false);
+  const [attente, setAttente] = useState(false);   // clic émis, run pas encore visible en base
+  const [message, setMessage] = useState(null);    // ce que la base ne dit pas (commande non prise, poll abandonné)
+  const clicAtRef = useRef(0);
+
+  // Signal immédiat de présence. Le heartbeat serveur ne se rafraîchit qu'au
+  // poll de l'extension (2 min) : bien trop lent pour un bouton qu'on regarde.
+  useEffect(() => {
+    if (isNative) { setSondeFinie(true); return; }
+    const stop = ecouterPresenceExtension(() => { setExtVue(true); setSondeFinie(true); });
+    const t = setTimeout(() => setSondeFinie(true), EXT_SONDE_MS);
+    return () => { stop(); clearTimeout(t); };
+  }, [isNative]);
+
+  // Reprise d'affichage au montage : une sync peut tourner depuis un autre
+  // onglet ou depuis avant le rechargement de la page.
+  useEffect(() => {
+    if (!user?.id) return;
+    let annule = false;
+    (async () => {
+      try {
+        const [dernier, deja] = await Promise.all([
+          lireDernierRunDressing(user.id),
+          aDejaSynchroniseDressing(user.id),
+        ]);
+        if (annule) return;
+        setRun(dernier);
+        setDejaSync(deja);
+        if (dernier?.status === 'running') setSuivi(true);
+      } catch (e) {
+        if (!annule) console.warn('[sync-dressing] lecture du dernier run :', e?.message ?? e);
+      }
+    })();
+    return () => { annule = true; };
+  }, [user?.id]);
+
+  // Poll de progression. ⚠️ Le clearInterval du démontage n'est pas cosmétique :
+  // sans lui, quitter l'onglet Stock laisse un timer interroger Supabase toutes
+  // les 2 s pour toujours.
+  useEffect(() => {
+    if (!user?.id || !suivi) return;
+    let annule = false;
+    const debut = Date.now();
+    const tick = async () => {
+      let r = null;
+      try { r = await lireDernierRunDressing(user.id); }
+      catch { return; } // un 5xx passager ne doit pas tuer le suivi
+      if (annule) return;
+      // PIÈGE : dans les secondes qui suivent le clic, la ligne du nouveau run
+      // n'existe pas encore et la requête ramène le run PRÉCÉDENT (le 'done'
+      // d'hier). Le prendre pour le nôtre afficherait « terminé » avant même
+      // que ça commence. On n'accepte un run TERMINÉ que s'il a démarré après
+      // le clic ; un run 'running' est toujours le bon — l'extension REPREND
+      // un run interrompu, dont le started_at est ancien par construction.
+      const attenduDepuis = clicAtRef.current;
+      const pertinent = r && (r.status === 'running' || !attenduDepuis || Date.parse(r.started_at) >= attenduDepuis - 5000);
+      if (pertinent) {
+        setRun(r);
+        setAttente(false);
+        if (r.status !== 'running') {
+          setSuivi(false);
+          if (r.status === 'done') { setDejaSync(true); onDone?.(); }
+          return;
+        }
+      } else if (attenduDepuis && Date.now() - attenduDepuis > SYNC_DEMARRAGE_MAX_MS) {
+        setAttente(false);
+        setSuivi(false);
+        setMessage({ ton: 'orange', texte: fr
+          ? "L'extension n'a pas démarré la synchronisation. Vérifie qu'elle est bien installée, activée et à jour dans Chrome, puis réessaie."
+          : "The extension didn't start the sync. Check that it's installed, enabled and up to date in Chrome, then try again." });
+        return;
+      }
+      if (Date.now() - debut > SYNC_POLL_MAX_MS) {
+        setSuivi(false);
+        setMessage({ ton: 'orange', texte: fr
+          ? "Suivi arrêté au bout de 10 minutes. La synchronisation continue peut-être en arrière-plan : recharge la page pour en avoir le cœur net."
+          : "Tracking stopped after 10 minutes. The sync may still be running in the background: reload the page to check." });
+      }
+    };
+    tick();
+    const id = setInterval(tick, SYNC_POLL_MS);
+    return () => { annule = true; clearInterval(id); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, suivi]);
+
+  // Repli serveur : le heartbeat (profiles.extension_last_seen_at) prouve que
+  // l'extension tourne même si le content script ne s'est pas encore annoncé
+  // (onglet ouvert avant l'injection, sonde ratée). Mêmes seuils que le
+  // diagnostic des jobs — surtout pas un troisième jeu de constantes.
+  const seen = Date.parse(extensionStatus?.lastSeenAt ?? '');
+  const heartbeatVivant = Number.isFinite(seen) && Date.now() - seen <= EXT_MORT_MS;
+  const extPresente = extVue || heartbeatVivant;
+  const enCours = attente || (suivi && run?.status === 'running');
+
+  const raisonGrisee = (() => {
+    if (isNative) {
+      return fr
+        ? "La synchronisation lit ton dressing depuis Chrome, sur ordinateur — elle n'est pas disponible dans l'application mobile."
+        : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
+    }
+    if (!sondeFinie || extPresente) return null; // tant que la sonde court, on ne conclut RIEN
+    // Heartbeat déjà vu une fois : le diagnostic existant sait quoi dire.
+    if (Number.isFinite(seen)) {
+      const d = diagnostiquerExtension(extensionStatus, lang);
+      return `${d.titre} — ${d.detail}`;
+    }
+    return fr
+      ? "L'extension FillSell n'est pas détectée dans ce navigateur. C'est elle qui lit ton dressing : installe-la sur Chrome (page Extension dans les réglages), puis reviens ici."
+      : "The FillSell extension isn't detected in this browser. It's what reads your closet: install it on Chrome (Extension page in settings), then come back here.";
+  })();
+
+  const progression = (() => {
+    if (attente) return fr ? 'Démarrage…' : 'Starting…';
+    const vus = run?.items_vus ?? 0;
+    if (run?.total_entries) return fr ? `${vus} articles sur ${run.total_entries}` : `${vus} of ${run.total_entries} items`;
+    return fr ? `${vus} article${vus > 1 ? 's' : ''} lu${vus > 1 ? 's' : ''}` : `${vus} item${vus === 1 ? '' : 's'} read`;
+  })();
+
+  const lancer = () => {
+    setMessage(null);
+    clicAtRef.current = Date.now();
+    setAttente(true);
+    setSuivi(true);
+    try { demanderSyncDressing(); }
+    catch (e) {
+      setAttente(false); setSuivi(false);
+      setMessage({ ton: 'rouge', texte: String(e?.message ?? e) });
+      return;
+    }
+    track('vinted_sync_dressing', { source: 'stock_empty', reprise: dejaSync });
+  };
+
+  // Bilan du dernier run terminé — affiché seulement s'il n'y a pas de sync en
+  // cours (sinon deux états concurrents à l'écran).
+  const bilan = (() => {
+    if (enCours || !run || run.status === 'running') return null;
+    if (run.status === 'done') {
+      return { ton: 'vert', texte: fr
+        ? `Dressing synchronisé — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
+        : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated.` };
+    }
+    if (run.status === 'interrupted') {
+      // Vinted a bloqué (DataDome) ou la session Vinted a expiré. Ni alarme ni
+      // faute de l'utilisateur : la reprise repartira de la page courante.
+      return { ton: 'orange', texte: fr
+        ? `Synchronisation mise en pause par Vinted après ${run.items_vus ?? 0} article${(run.items_vus ?? 0) > 1 ? 's' : ''}. Vérifie que tu es bien connecté à Vinted dans ce navigateur, puis réessaie un peu plus tard — la reprise repart là où elle s'est arrêtée.`
+        : `Vinted paused the sync after ${run.items_vus ?? 0} item${(run.items_vus ?? 0) === 1 ? '' : 's'}. Check that you're signed in to Vinted in this browser, then try again a bit later — it resumes where it stopped.` };
+    }
+    if (run.status === 'failed') {
+      // ⚠️ Surtout pas humanizeJobError ici : son repli parle de « publication »
+      // et renvoie relancer depuis la fiche article — un contresens pour une
+      // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
+      // masque que les pavés techniques (URL, JSON, traces).
+      const brut = String(run.erreur ?? '').trim();
+      const lisible = brut && brut.length <= 200 && !/[{}<>]|https?:\/\//.test(brut)
+        ? brut
+        : (fr ? "un imprévu technique — le détail est enregistré" : 'a technical issue — the detail has been recorded');
+      return { ton: 'rouge', texte: fr
+        ? `Synchronisation échouée : ${lisible}. Tu peux réessayer.`
+        : `Sync failed: ${lisible}. You can try again.` };
+    }
+    return null;
+  })();
+
+  const avis = message || bilan;
+  const AVIS_COULEURS = {
+    vert:   { bg: '#F0FDFB', bord: 'rgba(13,148,136,0.2)',  texte: '#1B6E62' },
+    orange: { bg: '#FFF7ED', bord: '#FED7AA',               texte: '#9A3412' },
+    rouge:  { bg: '#FEF2F2', bord: '#FECACA',               texte: '#B91C1C' },
+  };
+
+  return (
+    <div style={{background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"14px",display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <PlatformLogo platform="vinted" size={20}/>
+        <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
+          {fr?"Tu vends déjà sur Vinted ?":"Already selling on Vinted?"}
+        </div>
+      </div>
+
+      <SecondaryButton disabled={!extPresente||enCours} onClick={lancer}>
+        {enCours
+          ? (fr?"Synchronisation en cours…":"Syncing…")
+          : dejaSync
+            ? (fr?"Actualiser mon dressing":"Refresh my closet")
+            : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
+      </SecondaryButton>
+
+      {enCours&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,background:"#F0FDFB",border:"1px solid rgba(13,148,136,0.18)",borderRadius:10,padding:"10px 12px"}}>
+          <Loader size={18} thickness={2}/>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#1B6E62"}}>{progression}</div>
+            <div style={{fontSize:11,color:"#6B7A75",marginTop:2}}>
+              {fr?"Tu peux fermer cet onglet : la synchronisation continue.":"You can close this tab: the sync keeps running."}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {avis&&(()=>{
+        const c=AVIS_COULEURS[avis.ton]||AVIS_COULEURS.orange;
+        return (
+          <div style={{background:c.bg,border:`1px solid ${c.bord}`,borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:c.texte}}>
+            {avis.texte}
+          </div>
+        );
+      })()}
+
+      {raisonGrisee&&(
+        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{raisonGrisee}</div>
+      )}
+
+      {/* Le contrat, en toutes lettres. La 2e ligne n'est pas un détail : sans
+          elle, un vendeur qui a 400 ventes derrière lui et n'en voit revenir
+          qu'une poignée conclut à une sync ratée et perd confiance — alors que
+          c'est Vinted qui n'expose pas l'historique complet. */}
+      <div style={{fontSize:11.5,lineHeight:1.55,color:"#8A8578"}}>
+        {fr
+          ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris). Rien n'est publié, modifié ni supprimé sur Vinted."
+          : "We read your online listings (title, price, photos, views, favourites). Nothing is published, edited or deleted on Vinted."}
+        <br/>
+        {fr
+          ? "Vinted n'expose pas tout l'historique de ventes : on récupère les annonces en ligne et les ventes récentes, pas l'intégralité de ton passé."
+          : "Vinted doesn't expose the full sales history: we get your online listings and recent sales, not everything you've ever sold."}
+        <br/>
+        {fr
+          ? "Les articles importés arrivent avec un prix d'achat à compléter — sans lui, aucune marge ne peut être calculée."
+          : "Imported items arrive with a purchase price to fill in — without it, no margin can be computed."}
+      </div>
+    </div>
+  );
+}
+
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
@@ -864,6 +1125,10 @@ const StockTab = memo(function StockTab({
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, onStepperOpenChange,
+  // Optionnelle : point d'entrée explicite après un import de dressing réussi.
+  // Non fournie, on retombe sur vaActions.fetchAll (déjà passé par App.jsx) —
+  // les appelants existants n'ont donc rien à changer.
+  onSyncDone = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const isMobile = useIsMobile(); // P4 : réactif (grille desktop ↔ liste mobile)
@@ -1064,6 +1329,15 @@ const StockTab = memo(function StockTab({
   function replaceZoneResult(idx, patch) {
     setVoiceZoneResults(prev => prev.map((r, i) => i === idx ? {...r, ...patch} : r));
   }
+
+  // Après un import de dressing : la liste vient des props (App.jsx), rien ne la
+  // relit tout seul — sans ce rafraîchissement l'écran resterait VIDE alors que
+  // les articles sont en base. App ne passe pas de prop de refetch dédiée, mais
+  // vaActions.fetchAll (assistant vocal) relit inventaire + ventes.
+  const rafraichirApresSync = () => {
+    if (onSyncDone) { onSyncDone(); return; }
+    vaActions?.fetchAll?.();
+  };
 
   return (
     <>
@@ -1548,9 +1822,14 @@ const StockTab = memo(function StockTab({
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {soldVisible.map(item=>{
-                  const mc=getMargeColor(item.marginPct);
                   const ts=getTypeStyle(item.type);
                   const qty=item.quantite||1;
+                  // Sans prix d'achat, la marge de cette vente n'existe pas : ni
+                  // montant, ni pourcentage (et surtout pas 0).
+                  const margeConnue=prixAchatConnu(item)&&item.margin!=null&&Number.isFinite(Number(item.margin));
+                  // getMargeColor(null) rendait la couleur d'une marge nulle : le
+                  // tiret s'affichait en « mauvaise marge ». Gris = pas d'avis.
+                  const mc=margeConnue?getMargeColor(item.marginPct):"#A3A9A6";
                   return(
                     <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
@@ -1561,11 +1840,20 @@ const StockTab = memo(function StockTab({
                           {item.type&&item.type!=="Autre"&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(item.type,lang)}</span>}
                           {item.plateforme&&<span style={{background:"#EDE9FE",color:"#7C3AED",borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,flexShrink:0,border:"1px solid #C4B5FD"}}>🏪 {item.plateforme}</span>}
                         </div>
-                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {fmt(item.buy+(item.purchaseCosts||0))} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
+                        {/* PIÈGE : `fmt(item.buy+(item.purchaseCosts||0))` affichait
+                            « 0 € » pour un prix d'achat null (fmt lit null comme 0) —
+                            l'utilisateur croyait avoir saisi 0 € au lieu de rien.
+                            Inconnu → tiret. Un vrai 0 € (article gratuit) s'affiche
+                            toujours 0 €. Le prix de VENTE, lui, reste affiché. */}
+                        <div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>{lang==='fr'?'Achat':'Bought'} {prixAchatConnu(item)?fmt(prixAchatNum(item)+(item.purchaseCosts||0)):'—'} → {lang==='fr'?'Vente':'Sold'} {fmt((item.sell||0)*qty)}</div>
                       </div>
                       <div style={{textAlign:"right",minWidth:90,flexShrink:0}}>
-                        <div style={{fontWeight:700,fontSize:18,color:mc}}>{fmt((item.margin||0)*qty)}</div>
-                        <div style={{fontSize:11,color:"#6B7A75",marginTop:1}}>{fmtp(item.marginPct)}</div>
+                        {/* PIÈGE : `(item.margin||0)*qty` et `fmtp(item.marginPct)`
+                            transformaient une marge inconnue en « 0 € / 0,0 % »,
+                            c'est-à-dire en revente à prix coûtant — un chiffre faux
+                            plutôt qu'un chiffre absent. */}
+                        <div style={{fontWeight:700,fontSize:18,color:mc}}>{margeConnue?fmt(item.margin*qty):'—'}</div>
+                        <div style={{fontSize:11,color:"#6B7A75",marginTop:1}}>{margeConnue&&item.marginPct!=null?fmtp(item.marginPct):'—'}</div>
                       </div>
                     </SwipeRow>
                   );
@@ -1592,7 +1880,12 @@ const StockTab = memo(function StockTab({
                 // Reflète le filtre actif (catégorie/marque/recherche) au lieu du total global :
                 // même formule que stockQty/stockVal (App.jsx) mais appliquée à stockFiltre.
                 const _fQty=stockFiltre.reduce((a,i)=>a+(i.quantite||1),0);
-                const _fVal=stockFiltre.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
+                // PIÈGE : `a+i.buy*(i.quantite||1)` sans même un `||0` — un seul
+                // article au prix d'achat undefined produisait un NaN qui
+                // contaminait TOUT le total (« NaN € »), et un null valait 0 €.
+                // totalInvesti() écarte les articles au prix inconnu ; le compteur
+                // d'articles (_fQty), lui, continue de tous les compter.
+                const _fVal=totalInvesti(stockFiltre);
                 return <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
               })()}
             </div>
@@ -1687,7 +1980,10 @@ const StockTab = memo(function StockTab({
                             )}
                           </div>
                           <div className="right">
-                            <div className="price">{fmt(it.buy*(it.quantite||1))}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
+                            {/* Aperçu à données figées, mais même garde que la vraie
+                                carte : nulle part un prix d'achat inconnu ne doit
+                                pouvoir sortir en « 0 € ». */}
+                            <div className="price">{prixAchatConnu(it)?fmt(prixAchatNum(it)*(it.quantite||1)):'—'}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
                             <div className="btn-stack">
                               <div className="btn-publier">{lang==='fr'?'Publier':'Publish'}</div>
                               <div className="btn-vendre">{lang==='fr'?'Vendre':'Sell'}</div>
@@ -1718,12 +2014,32 @@ const StockTab = memo(function StockTab({
                   </button>
                 </div>
 
+                {/* 5. Import du dressing Vinted — la voie la plus rapide pour
+                    qui a déjà un stock en ligne. Sous les CTA de saisie : c'est
+                    une alternative, pas le chemin principal. */}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
+                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
+                    {lang==='fr'?'OU':'OR'}
+                  </span>
+                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                </div>
+                <VintedDressingSync
+                  lang={lang} user={user} isNative={isNative}
+                  extensionStatus={extensionStatus}
+                  onDone={rafraichirApresSync}
+                />
+
               </div>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {stockVisible.map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
-                  const invested=item.buy*(item.quantite||1)+(item.purchaseCosts||0);
+                  // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
+                  // prix d'achat absent et 0 € sur un null — la carte annonçait
+                  // « 0 € investi » sur un article dont on ignore le coût.
+                  // null ici = « on ne sait pas » ; l'affichage met un tiret.
+                  const invested=prixAchatConnu(item)?prixAchatNum(item)*(item.quantite||1)+(item.purchaseCosts||0):null;
                   const jobsAll=jobsByInventaire[item.id]||[];
                   // Les jobs de retrait ciblé (action='delete') vivent à part :
                   // mélangés aux publish, un delete pending affichait « En
@@ -1890,7 +2206,7 @@ const StockTab = memo(function StockTab({
                           )}
                         </div>
                         <div className="right">
-                          <div className="price">{fmt(invested)}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
+                          <div className="price">{invested!==null?fmt(invested):'—'}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
                           <div className="btn-stack">
                             {/* 3 états, une seule source de vérité : publishedActive
                                 (le même calcul que la pastille « En ligne » et les

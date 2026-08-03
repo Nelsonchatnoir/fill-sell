@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useMemo } from 'react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { Line } from 'react-chartjs-2';
 import { formatCurrency, typeLabel, marqueLabel, getTypeStyle } from '../utils/shared';
+import { prixAchatConnu, prixAchatNum, comptabilisables } from '../utils/comptabilite';
 import { UI, Card, SegmentedPills } from '../components/ui';
 
 function renderMd(text){
@@ -180,17 +181,27 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
     const acc={};
     salesFiltered.forEach(s=>{
       const p=s.plateforme;if(!p)return;
-      if(!acc[p])acc[p]={count:0,revenue:0,profit:0,mpSum:0};
-      acc[p].count++;acc[p].revenue+=(s.sell||0);acc[p].profit+=(s.margin||0);acc[p].mpSum+=(s.marginPct||0);
+      if(!acc[p])acc[p]={count:0,revenue:0,profit:0,mpSum:0,mpCount:0};
+      acc[p].count++;acc[p].revenue+=(s.sell||0);
+      // PIÈGE : `+=(s.margin||0)` et `+=(s.marginPct||0)` lisaient une vente sans
+      // prix d'achat comme une marge de 0 € et de 0 % — bénéfice sous-évalué et
+      // marge moyenne tirée vers le bas (et le dénominateur `d.count` la diluait
+      // une deuxième fois). Ces ventes sont écartées des DEUX. Le CA et le nombre
+      // de ventes, eux, gardent tout : un prix de vente reste vrai sans prix d'achat.
+      if(prixAchatConnu(s)){acc[p].profit+=(s.margin||0);acc[p].mpSum+=(s.marginPct||0);acc[p].mpCount++;}
     });
-    return Object.entries(acc).map(([p,d])=>({p,count:d.count,revenue:d.revenue,profit:d.profit,avgMargin:d.count?d.mpSum/d.count:0})).sort((a,b)=>b.revenue-a.revenue);
+    return Object.entries(acc).map(([p,d])=>({p,count:d.count,revenue:d.revenue,profit:d.profit,avgMargin:d.mpCount?d.mpSum/d.mpCount:0})).sort((a,b)=>b.revenue-a.revenue);
   },[salesFiltered]);
   const platStock=useMemo(()=>{
     const acc={};
     stockItems.filter(i=>i.statut!=='vendu').forEach(i=>{
       const p=i.plateforme;if(!p)return;
       if(!acc[p])acc[p]={count:0,invested:0};
-      acc[p].count+=(i.quantite||1);acc[p].invested+=(i.buy||0)*(i.quantite||1);
+      acc[p].count+=(i.quantite||1);
+      // PIÈGE : `(i.buy||0)*qty` chiffrait à 0 € un article dont le prix d'achat
+      // est inconnu — l'investi par plateforme mentait sans que rien ne le montre.
+      // On n'additionne que ce qu'on sait ; le compteur d'articles garde tout.
+      if(prixAchatConnu(i))acc[p].invested+=prixAchatNum(i)*(i.quantite||1);
     });
     return Object.entries(acc).map(([p,d])=>({p,count:d.count,invested:d.invested})).sort((a,b)=>b.invested-a.invested);
   },[stockItems]);
@@ -274,9 +285,18 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     return d>=cutoff;
   }),[sales,cutoff]);
 
-  const totalProfit=filtered.reduce((a,s)=>a+(s.margin||0),0);
+  // Les ventes dont le prix d'achat est inconnu n'entrent dans AUCUN calcul de
+  // bénéfice ni de moyenne — elles restent dans `filtered` pour le CA et les
+  // compteurs de ventes, qui eux ne dépendent pas du prix d'achat.
+  const ventesComptables=useMemo(()=>comptabilisables(filtered),[filtered]);
+
+  // PIÈGE : `reduce((a,s)=>a+(s.margin||0))` sur TOUTES les ventes comptait une
+  // marge inconnue comme 0 € — bénéfice total faux, et la moyenne divisée par
+  // `filtered.length` incluait au dénominateur des ventes qui n'avaient rien
+  // apporté au numérateur. Le CA (totalRev) reste volontairement non filtré.
+  const totalProfit=ventesComptables.reduce((a,s)=>a+(s.margin||0),0);
   const totalRev=filtered.reduce((a,s)=>a+(s.sell||0),0);
-  const avgMargin=filtered.length?Math.round(filtered.reduce((a,s)=>a+(s.marginPct||0),0)/filtered.length*10)/10:0;
+  const avgMargin=ventesComptables.length?Math.round(ventesComptables.reduce((a,s)=>a+(s.marginPct||0),0)/ventesComptables.length*10)/10:0;
 
   const titleToType=useMemo(()=>{
     const m={};
@@ -284,8 +304,11 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     return m;
   },[items]);
 
+  // PIÈGE : le profit par catégorie parcourait `filtered`, donc une vente sans
+  // prix d'achat ajoutait 0 € à sa catégorie — la catégorie paraissait moins
+  // rentable qu'elle ne l'est, et le donut/`bestCategoryPct` en héritaient.
   const catMap={};
-  filtered.forEach(s=>{
+  ventesComptables.forEach(s=>{
     const raw=s.type||s.categorie||titleToType[s.title?.toLowerCase()?.trim()]||'';
     const c=normalizeCat(raw);
     catMap[c]=(catMap[c]||0)+(s.margin||0);
@@ -294,15 +317,21 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
   const bestCategory=catEntries[0]?.[0]||null;
   const bestCatProfit=catEntries[0]?.[1]||0;
   const bestCategoryPct=totalProfit>0?Math.round((bestCatProfit/totalProfit)*100):0;
-  const bestItem=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0))[0];
+  // PIÈGE : le tri portait sur `filtered` avec `(b.margin||0)` — une vente sans
+  // prix d'achat pouvait donc être élue « meilleur article » (à 0 € de marge)
+  // dès que toutes les autres étaient à perte.
+  const bestItem=[...ventesComptables].sort((a,b)=>(b.margin||0)-(a.margin||0))[0];
   const bestItemName=bestItem?.title||null;
   const bestItemProfit=bestItem?.margin||0;
 
   const totalCatProfit=catEntries.reduce((a,[,v])=>a+(v>0?v:0),0)||1;
   const donutSegs=catEntries.filter(([,v])=>v>0).map(([c,v])=>({color:CAT_COLORS_MAP[c]||'#6B7280',pct:(v/totalCatProfit)*100,label:c}));
 
+  // PIÈGE : les courbes de profit (mensuelle et journalière) agrégeaient
+  // `(s.margin||0)` sur toutes les ventes — un mois entier de ventes sans prix
+  // d'achat s'affichait comme un mois à 0 € de bénéfice, pas comme un trou.
   const monthlyMap={};
-  filtered.forEach(s=>{
+  ventesComptables.forEach(s=>{
     const d=new Date(s.created_at||s.date||0);
     const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     monthlyMap[k]=(monthlyMap[k]||0)+(s.margin||0);
@@ -312,7 +341,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
 
   const dailyData=useMemo(()=>{
     const map={};
-    filtered.forEach(s=>{
+    ventesComptables.forEach(s=>{
       const key=(s.created_at||s.date||'').slice(0,10);
       if(key) map[key]=(map[key]||0)+(s.margin||0);
     });
@@ -326,8 +355,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       result.push({label:`${ld.getDate()}/${ld.getMonth()+1}`,profit});
     }
     return result;
-  },[filtered,cutoff]);
+  },[ventesComptables,cutoff]);
 
+  // Panier moyen = CA / nombre de ventes : deux grandeurs indépendantes du prix
+  // d'achat, donc AUCUN filtre ici — filtrer fausserait le panier moyen.
   const avgBasket=filtered.length?totalRev/filtered.length:0;
   const avgDays=useMemo(()=>{
     const itemDateMap={};
@@ -341,18 +372,26 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     return Math.round(total/pairs.length);
   },[filtered,items]);
 
+  // Ce payload part vers l'IA : un chiffre faux ici ne se voit pas, il ressort en
+  // conseil. PIÈGE : profit et marge moyenne agrégeaient les ventes sans prix
+  // d'achat comme des 0 — l'IA recommandait d'abandonner une plateforme dont la
+  // seule faute était d'avoir des prix d'achat non saisis. CA et count : intacts.
   const platVentesAI=useMemo(()=>{
     const acc={};
-    filtered.forEach(s=>{const p=s.plateforme;if(!p)return;if(!acc[p])acc[p]={count:0,ca:0,profit:0,mpSum:0};acc[p].count++;acc[p].ca+=(s.sell||0);acc[p].profit+=(s.margin||0);acc[p].mpSum+=(s.marginPct||0);});
-    return Object.entries(acc).map(([p,d])=>({p,count:d.count,ca:Math.round(d.ca),profit:Math.round(d.profit),avgMargin:d.count?Math.round(d.mpSum/d.count*10)/10:0})).sort((a,b)=>b.profit-a.profit).slice(0,5);
+    filtered.forEach(s=>{const p=s.plateforme;if(!p)return;if(!acc[p])acc[p]={count:0,ca:0,profit:0,mpSum:0,mpCount:0};acc[p].count++;acc[p].ca+=(s.sell||0);if(prixAchatConnu(s)){acc[p].profit+=(s.margin||0);acc[p].mpSum+=(s.marginPct||0);acc[p].mpCount++;}});
+    return Object.entries(acc).map(([p,d])=>({p,count:d.count,ca:Math.round(d.ca),profit:Math.round(d.profit),avgMargin:d.mpCount?Math.round(d.mpSum/d.mpCount*10)/10:0})).sort((a,b)=>b.profit-a.profit).slice(0,5);
   },[filtered]);
   const platStockAI=useMemo(()=>{
     const acc={};
-    items.filter(i=>i.statut!=='vendu').forEach(i=>{const p=i.plateforme;if(!p)return;if(!acc[p])acc[p]={count:0,invested:0};acc[p].count+=(i.quantite||1);acc[p].invested+=(i.buy||0)*(i.quantite||1);});
+    // Même piège que platStock : `(i.buy||0)*qty` envoyait à l'IA un stock investi
+    // amputé des articles sans prix d'achat, comptés 0 € au lieu d'être écartés.
+    items.filter(i=>i.statut!=='vendu').forEach(i=>{const p=i.plateforme;if(!p)return;if(!acc[p])acc[p]={count:0,invested:0};acc[p].count+=(i.quantite||1);if(prixAchatConnu(i))acc[p].invested+=prixAchatNum(i)*(i.quantite||1);});
     return Object.entries(acc).map(([p,d])=>({p,count:d.count,invested:Math.round(d.invested)})).sort((a,b)=>b.invested-a.invested).slice(0,3);
   },[items]);
 
-  const topSellers=[...filtered].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
+  // PIÈGE : classement par `(b.margin||0)` sur toutes les ventes — une vente sans
+  // prix d'achat pouvait monter sur le podium avec une marge fantôme de 0 €.
+  const topSellers=[...ventesComptables].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
   const topSellerDaysMap=useMemo(()=>{
     const m={};
     items.forEach(i=>{if(i.title&&(i.date_ajout||i.created_at))m[i.title.toLowerCase().trim()]=i.date_ajout||i.created_at;});
@@ -442,7 +481,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
           boxShadow:'0 12px 28px -10px rgba(27,110,98,0.45)',
         }}>
           <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.75)',marginBottom:4}}>{lang==='en'?'Total profit':'Profit total'}</div>
-          <div style={{fontSize:26,fontWeight:600,letterSpacing:'-0.02em',lineHeight:1,color:'#fff'}}>{filtered.length===0?'--':fmt2(totalProfit)}</div>
+          {/* '--' aussi quand AUCUNE vente n'a de prix d'achat : afficher « 0 € »
+              de bénéfice sur des ventes non chiffrables serait le même mensonge,
+              déplacé dans l'affichage. */}
+          <div style={{fontSize:26,fontWeight:600,letterSpacing:'-0.02em',lineHeight:1,color:'#fff'}}>{ventesComptables.length===0?'--':fmt2(totalProfit)}</div>
         </div>
         <Card style={{padding:16}}>
           <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:UI.mute,marginBottom:4}}>{lang==='en'?'Revenue':'Revenu'}</div>
@@ -459,7 +501,9 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         </Card>
         <Card style={{padding:14}}>
           <div style={{fontSize:10,fontWeight:600,color:UI.mute,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>{lang==='en'?'Avg margin':'Marge moy.'}</div>
-          <div style={{fontSize:20,fontWeight:600,color:UI.ink,letterSpacing:'-0.02em'}}>{filtered.length===0?'--':fmtp2(avgMargin)}</div>
+          {/* Idem : sans une seule vente au prix d'achat connu, la marge moyenne
+              n'existe pas — « 0,0 % » serait un chiffre inventé. */}
+          <div style={{fontSize:20,fontWeight:600,color:UI.ink,letterSpacing:'-0.02em'}}>{ventesComptables.length===0?'--':fmtp2(avgMargin)}</div>
           {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color={UI.amber}/>}
         </Card>
       </div>
@@ -557,7 +601,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
       <Card style={{padding:16}}>
         <div style={{fontSize:12,fontWeight:600,color:UI.ink,marginBottom:12}}>{lang==='en'?'📈 Profit evolution':'📈 Évolution du profit'}</div>
         <div style={{position:'relative',height:130}}>
-          {filtered.length===0&&(
+          {/* Même garde que les KPI : si aucune vente n'a de prix d'achat, la
+              courbe serait une ligne plate à 0 € — un bénéfice nul affirmé au
+              lieu d'un bénéfice inconnu. On garde le message d'attente. */}
+          {ventesComptables.length===0&&(
             <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:1,pointerEvents:'none'}}>
               <span style={{fontSize:12,fontWeight:500,color:UI.mute}}>{lang==='en'?'Your profits will appear here':'Tes profits apparaîtront ici'}</span>
             </div>
@@ -646,7 +693,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
                     {s.marque&&<span style={{background:UI.card,color:UI.tealDeep,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:600,border:`1px solid ${UI.border}`}}>{marqueLabel(s.marque,lang)}</span>}
                     {s.type&&s.type!=='Autre'&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:600,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
                     {daysHeld!==null&&<span style={{fontSize:10,fontWeight:600,color:UI.mute}}>{daysHeld}{lang==='en'?'d in stock':'j en stock'}</span>}
-                    {s.buy>0&&s.sell>0&&<span style={{fontSize:10,fontWeight:600,color:UI.mute2,marginLeft:'auto'}}>{fmt2(s.buy)} → {fmt2(s.sell)} · <span style={{color:UI.tealDeep}}>{fmtp2(s.marginPct||0)}</span></span>}
+                    {/* PIÈGE : la condition était `s.buy>0`, qui masquait aussi la
+                        ligne d'un article GRATUIT (0 € assumé) — vide ≠ zéro dans
+                        les deux sens. prixAchatConnu() n'écarte que l'inconnu. */}
+                    {prixAchatConnu(s)&&s.sell>0&&<span style={{fontSize:10,fontWeight:600,color:UI.mute2,marginLeft:'auto'}}>{fmt2(prixAchatNum(s))} → {fmt2(s.sell)} · <span style={{color:UI.tealDeep}}>{fmtp2(s.marginPct||0)}</span></span>}
                   </div>
                 </div>
               );
@@ -672,7 +722,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                     {s.marque&&<span style={{background:UI.card,color:UI.tealDeep,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:600,border:`1px solid ${UI.border}`}}>{marqueLabel(s.marque,lang)}</span>}
                     {s.type&&s.type!=='Autre'&&<span style={{background:ts.bg,color:ts.color,borderRadius:99,padding:'1px 8px',fontSize:10,fontWeight:600,border:`1px solid ${ts.border}`}}>{ts.emoji} {typeLabel(s.type,lang)}</span>}
-                    {s.buy>0&&<span style={{fontSize:10,fontWeight:600,color:UI.mute2,marginLeft:'auto'}}>{lang==='en'?'Invested':'Investi'} <span style={{color:UI.amber}}>{fmt2(s.buy*(s.quantite||1))}</span></span>}
+                    {/* Même piège qu'au-dessus : `s.buy>0` cachait l'investi d'un
+                        article récupéré gratuitement, et l'aurait affiché 0 € si la
+                        condition avait sauté. Inconnu → on n'affiche rien. */}
+                    {prixAchatConnu(s)&&<span style={{fontSize:10,fontWeight:600,color:UI.mute2,marginLeft:'auto'}}>{lang==='en'?'Invested':'Investi'} <span style={{color:UI.amber}}>{fmt2(prixAchatNum(s)*(s.quantite||1))}</span></span>}
                   </div>
                 </div>
               );

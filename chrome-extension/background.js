@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-07-22-timeout-chargement-retentable (un timeout de chargement de page ne tue plus le job : ré-armement borné comme le canal coupé. eBay : budget 60 s pour /sl/list — un SAS qui crée le brouillon côté serveur avant de naviguer vers /lstng — et attente EXPLICITE de /lstng, la vraie page de dépôt, au lieu de rendre la main sur le premier 'complete')";
+  "2026-08-03-sync-dressing-vinted (l'extension sait lire le dressing Vinted de l'utilisateur : GET /api/v2/wardrobe/{id}/items page par page, pauses variables, reprise sur curseur, upsert anti-doublon garanti par la base. Les articles importés arrivent SANS prix d'achat — jamais 0 — et entrent dans le cycle de détection de vente via un cross_post_jobs 'published')";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
@@ -40,6 +40,7 @@ console.log(
 );
 
 const ALARM_NAME = "fillsell-poll-jobs";
+const SYNC_DRESSING_ALARM = "fillsell-sync-dressing";
 
 // Ré-armements "action utilisateur requise" (needsUser) autorisés avant de
 // basculer le job en failed : évite qu'un job attendant une info jamais
@@ -170,10 +171,27 @@ function scheduleAlarm() {
     periodInMinutes: FILLSELL_CONFIG.POLL_INTERVAL_MINUTES,
     delayInMinutes: 1,
   });
+  // Sync du dressing : UNE FOIS PAR JOUR, et c'est un choix, pas une valeur par
+  // défaut. Les vues et favoris d'une annonce bougent de quelques unités par
+  // jour : à 5 minutes, on ferait 288 relevés quotidiens pour la même
+  // information, et on présenterait à DataDome un profil que personne d'humain
+  // ne produit. Le bouton manuel reste disponible à tout moment pour qui veut
+  // un rafraîchissement immédiat.
+  // ⚠️ La sync des MESSAGES, elle, aura besoin des 5 minutes : ce sera une
+  // alarme SÉPARÉE (kind='messages' côté vinted_sync_runs), surtout pas un
+  // raccourcissement de celle-ci.
+  chrome.alarms.create(SYNC_DRESSING_ALARM, {
+    periodInMinutes: 24 * 60,
+    delayInMinutes: 10, // pas au démarrage : on laisse la publication passer d'abord
+  });
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) pollAndProcessJobs();
+  if (alarm.name === SYNC_DRESSING_ALARM) {
+    syncDressingVinted({ declencheur: "cron" }).catch((e) =>
+      console.error("[sync-dressing][cron]", e?.message ?? e));
+  }
 });
 
 // ── Messages (auth content script + popup) ────────────────────────────────────
@@ -255,6 +273,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       (e) => sendResponse({ ok: false, reason: "error", error: String(e?.message ?? e) })
     );
     return true; // réponse asynchrone
+  }
+  // Sync du dressing Vinted, déclenchée depuis le site (relais fillsell-auth.js)
+  // ou par l'alarme quotidienne. Réponse IMMÉDIATE : la sync dure des minutes,
+  // le site suit sa progression dans `vinted_sync_runs` (il la lit déjà pour la
+  // barre de progression), pas par la réponse de ce message.
+  if (msg?.type === "SYNC_DRESSING") {
+    syncDressingVinted({ declencheur: msg.declencheur === "cron" ? "cron" : "bouton" })
+      .catch((e) => console.error("[sync-dressing]", e?.message ?? e));
+    sendResponse({ ok: true, demarre: true });
   }
 });
 
@@ -4680,6 +4707,317 @@ async function restRequest(path, accessToken, init = {}) {
   });
   if (!res.ok) throw new Error(`REST ${path} → HTTP ${res.status}`);
   return init.method && init.method !== "GET" ? null : res.json();
+}
+
+// ── Sync du dressing Vinted (2026-08-03) ─────────────────────────────────────
+// Objectif : remplir FillSell en une action avec les annonces qui appartiennent
+// déjà à l'utilisateur, et commencer à mesurer ce qu'elles deviennent (vues,
+// favoris, prix) — sans quoi tout ce qui suit (repérer ce qui stagne, proposer
+// une action) resterait aveugle.
+//
+// Trois invariants, dans cet ordre d'importance :
+//  1. ZÉRO DOUBLON. L'identité d'une annonce est (user_id, vinted_item_id) et
+//     l'unicité est portée par la BASE (index inventaire_user_vinted_item_unique).
+//     On écrit par upsert `?on_conflict=user_id,vinted_item_id` : même un bug
+//     de cette fonction ne peut pas créer deux fois le même article.
+//  2. PRIX D'ACHAT JAMAIS INVENTÉ. Un article importé arrive avec
+//     prix_achat = NULL (pas 0) : Vinted ne connaît pas le prix d'achat, et un
+//     0 produirait 100 % de marge sur toute la boutique.
+//  3. RIEN N'EST SUPPRIMÉ. Un article vu puis absent est daté (disparu_le), pas
+//     effacé : un incident réseau ne doit pas emporter d'historique.
+//
+// Rythme : séquentiel, une page à la fois, pauses variables. Le dressing bouge
+// de quelques vues par jour — il n'y a rien à gagner à courir, et beaucoup à
+// perdre face à DataDome.
+const SYNC_PAUSE_MIN_MS = 4000;
+const SYNC_PAUSE_MAX_MS = 9000;
+const SYNC_MAX_PAGES = 40; // 40 × 96 = 3840 articles : garde-fou anti-boucle
+let syncDressingEnCours = false;
+
+function syncPauseMs() {
+  return SYNC_PAUSE_MIN_MS + Math.floor(Math.random() * (SYNC_PAUSE_MAX_MS - SYNC_PAUSE_MIN_MS));
+}
+
+/** Date du jour en heure de PARIS (la base stocke en UTC, on regroupe par jour vécu). */
+function jourParis(d = new Date()) {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(d);
+  const g = (t) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")}`;
+}
+
+async function syncDressingVinted({ declencheur = "bouton" } = {}) {
+  // Garde mémoire : deux déclenchements rapprochés (double-clic, alarme qui
+  // tombe pendant un clic) ne doivent pas lire le dressing deux fois. La base
+  // porte la même garantie (index unique WHERE status='running'), celle-ci
+  // évite juste le travail inutile.
+  if (syncDressingEnCours) {
+    console.log("[sync-dressing] déjà en cours, déclenchement ignoré");
+    return { ok: false, reason: "deja_en_cours" };
+  }
+  syncDressingEnCours = true;
+  // withJobFlowLock est IMPÉRATIF : la sync navigue l'onglet de travail Vinted,
+  // le même que celui d'une publication en cours. Sans ce verrou on rejouerait
+  // l'incident du 2026-07-12 (deux flux se disputant le même onglet).
+  try {
+    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur));
+  } finally {
+    syncDressingEnCours = false;
+  }
+}
+
+async function syncDressingUnlocked(declencheur) {
+  const session = await getValidSession();
+  if (!session?.access_token) {
+    console.log("[sync-dressing] pas de session FillSell — abandon silencieux");
+    return { ok: false, reason: "no_session" };
+  }
+  const token = session.access_token;
+  const userId = decodeJwtSub(token);
+  if (!userId) return { ok: false, reason: "no_user" };
+
+  // ── Reprise ───────────────────────────────────────────────────────────────
+  // Un run laissé 'running' par une interruption (onglet fermé, PC éteint,
+  // service worker tué) est REPRIS à sa page courante au lieu de tout relire.
+  let run = null;
+  try {
+    const enCours = await restRequest(
+      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.running&select=id,page_suivante,items_vus,items_crees,items_maj&limit=1`,
+      token, { headers: { Prefer: "return=representation" } },
+    );
+    run = Array.isArray(enCours) && enCours.length ? enCours[0] : null;
+  } catch (e) {
+    console.warn("[sync-dressing] lecture du run en cours impossible:", e?.message ?? e);
+  }
+  if (run) {
+    console.log(`[sync-dressing] reprise du run ${run.id} à la page ${run.page_suivante}`);
+  } else {
+    const cree = await restRequest("vinted_sync_runs", token, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        user_id: userId, kind: "dressing", status: "running",
+        declencheur, extension_build: FILLSELL_BUILD_ID,
+      }),
+    }).catch((e) => { console.error("[sync-dressing] création du run:", e?.message ?? e); return null; });
+    run = Array.isArray(cree) && cree.length ? cree[0] : null;
+    if (!run) return { ok: false, reason: "run_non_cree" };
+  }
+
+  const majRun = (champs) => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ ...champs, updated_at: new Date().toISOString() }),
+  }).catch((e) => console.warn("[sync-dressing] maj run:", e?.message ?? e));
+
+  const echec = async (message) => {
+    console.error("[sync-dressing] échec:", message);
+    await majRun({ status: "failed", erreur: String(message).slice(0, 500), finished_at: new Date().toISOString() });
+    return { ok: false, reason: "echec", error: message };
+  };
+
+  // ── Onglet de travail Vinted (fenêtre dédiée, jamais chez l'utilisateur) ──
+  let tabId;
+  try {
+    tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+  } catch (e) {
+    return await echec(`onglet de travail Vinted : ${e?.message ?? e}`);
+  }
+
+  const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
+    success: false, error: String(e?.message ?? e),
+  }));
+  if (!ident?.success) {
+    return await echec(ident?.sessionExpiree
+      ? "session Vinted expirée — se reconnecter à Vinted dans ce navigateur"
+      : `identité Vinted illisible : ${ident?.error ?? "inconnue"}`);
+  }
+
+  const vusCetteSync = new Set();
+  let page = run.page_suivante || 1;
+  let items_vus = run.items_vus || 0;
+  let items_crees = run.items_crees || 0;
+  let items_maj = run.items_maj || 0;
+  let totalEntries = null;
+
+  while (page <= SYNC_MAX_PAGES) {
+    const res = await sendMessageToTab(tabId, {
+      type: "SYNC_DRESSING_PAGE", page, userId: ident.userId,
+    }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+
+    if (!res?.success) {
+      // Bot-shield ou session morte : on s'arrête PROPREMENT et on garde le
+      // curseur. Le run reste repérable et la prochaine sync reprendra ici —
+      // surtout pas de retry en rafale, c'est ce qui aggrave un challenge.
+      if (res?.botShield || res?.sessionExpiree) {
+        await majRun({ status: "interrupted", page_suivante: page, items_vus, items_crees, items_maj,
+          erreur: String(res?.error ?? "").slice(0, 500), finished_at: new Date().toISOString() });
+        return { ok: false, reason: res.botShield ? "bot_shield" : "session_vinted", page };
+      }
+      return await echec(`page ${page} : ${res?.error ?? "erreur inconnue"}`);
+    }
+
+    const articles = Array.isArray(res.articles) ? res.articles : [];
+    totalEntries = res.pagination?.total_entries ?? totalEntries;
+    const totalPages = res.pagination?.total_pages ?? null;
+
+    for (const a of articles) vusCetteSync.add(a.vinted_item_id);
+    const bilan = await enregistrerArticlesDressing(articles, { token, userId });
+    items_vus += articles.length;
+    items_crees += bilan.crees;
+    items_maj += bilan.majs;
+
+    await majRun({
+      page_suivante: page + 1, items_vus, items_crees, items_maj,
+      total_pages: totalPages, total_entries: totalEntries,
+    });
+    console.log(`[sync-dressing] page ${page}/${totalPages ?? "?"} — ${articles.length} articles (${items_vus} au total)`);
+
+    if (articles.length === 0) break;
+    if (totalPages != null && page >= totalPages) break;
+    page += 1;
+    await sleep(syncPauseMs());
+  }
+
+  // ── Disparitions : datées, JAMAIS supprimées ─────────────────────────────
+  // Uniquement si la sync est allée au bout : interrompue à la page 2, on ne
+  // sait rien des pages suivantes et tout marquer « disparu » serait faux.
+  if (vusCetteSync.size > 0) {
+    try {
+      const connus = await restRequest(
+        `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=id,vinted_item_id`,
+        token, { headers: { Prefer: "return=representation" } },
+      );
+      const disparus = (connus ?? []).filter((r) => r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id));
+      for (const d of disparus) {
+        await restRequest(`inventaire?id=eq.${d.id}`, token, {
+          method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
+        }).catch(() => {});
+      }
+      if (disparus.length) console.log(`[sync-dressing] ${disparus.length} annonce(s) disparue(s), datées (aucune suppression)`);
+    } catch (e) {
+      console.warn("[sync-dressing] marquage des disparus:", e?.message ?? e);
+    }
+  }
+
+  await majRun({
+    status: "done", items_vus, items_crees, items_maj,
+    total_entries: totalEntries, finished_at: new Date().toISOString(),
+  });
+  console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
+  return { ok: true, items_vus, items_crees, items_maj };
+}
+
+/**
+ * Écrit une page d'articles : upsert inventaire + relevé du jour + entrée dans
+ * le cycle de détection de vente. Rend le nombre de créations/mises à jour.
+ */
+async function enregistrerArticlesDressing(articles, { token, userId }) {
+  if (!articles.length) return { crees: 0, majs: 0 };
+
+  // Ce qui existe déjà, pour distinguer création et mise à jour (l'upsert seul
+  // ne le dit pas) et pour ne PAS réécrire des champs que l'utilisateur a pu
+  // modifier dans FillSell.
+  const ids = articles.map((a) => `"${a.vinted_item_id}"`).join(",");
+  let existants = [];
+  try {
+    existants = await restRequest(
+      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut`,
+      token, { headers: { Prefer: "return=representation" } },
+    ) ?? [];
+  } catch (e) {
+    console.warn("[sync-dressing] lecture des existants:", e?.message ?? e);
+  }
+  const parVintedId = new Map(existants.map((r) => [r.vinted_item_id, r]));
+  const maintenant = new Date().toISOString();
+  const aujourdhui = jourParis();
+
+  const lignes = articles.map((a, i) => {
+    const dejaLa = parVintedId.get(a.vinted_item_id);
+    return {
+      // `inventaire.id` n'a PAS de valeur par défaut en base (pas d'identity) :
+      // c'est l'appelant qui la fournit, comme le fait déjà le front
+      // (`id: Date.now()+...`). On garde la même convention.
+      id: dejaLa?.id ?? Date.now() * 1000 + i,
+      user_id: userId,
+      titre: a.titre ?? "Article Vinted",
+      // PRIX D'ACHAT VOLONTAIREMENT ABSENT : Vinted ne le connaît pas. Ne
+      // JAMAIS mettre 0 ici (cf. règle de comptabilisation du 03/08).
+      prix_vente: null,
+      statut: a.statut === "sold" ? "vendu" : "stock",
+      marque: a.marque ?? null,
+      photos: a.photos?.length ? a.photos.map((p) => p.url) : null,
+      plateforme: "vinted",
+      origine: "vinted_sync",
+      vinted_item_id: a.vinted_item_id,
+      vinted_view_count: a.vues,
+      vinted_favourite_count: a.favoris,
+      vinted_status: a.statut,
+      // Estimation assumée : timestamp de la photo la plus ancienne. Le nom
+      // « guess » est là pour qu'on ne l'affiche jamais à l'heure près.
+      listed_at_guess: a.photo_ts ? new Date(a.photo_ts * 1000).toISOString() : null,
+      first_seen_at: dejaLa?.first_seen_at ?? maintenant,
+      last_synced_at: maintenant,
+      disparu_le: null, // réapparu : on efface la date de disparition
+    };
+  });
+
+  // UPSERT sur la contrainte d'unicité : 2e passage = mise à jour, jamais
+  // duplication. `merge-duplicates` cible l'index (user_id, vinted_item_id).
+  await restRequest("inventaire?on_conflict=user_id,vinted_item_id", token, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(lignes),
+  });
+
+  // Relevé du jour : c'est lui qui rendra « +3 vues en 15 jours » possible.
+  // Un seul par article et par jour (contrainte de base) — un clic répété sur
+  // le bouton écrase le relevé du jour au lieu d'empiler des lignes.
+  const releves = articles.map((a) => ({
+    user_id: userId,
+    vinted_item_id: a.vinted_item_id,
+    captured_at: maintenant,
+    captured_on: aujourdhui,
+    price: a.prix,
+    view_count: a.vues,
+    favourite_count: a.favoris,
+    status: a.statut,
+  }));
+  await restRequest("vinted_listing_snapshots?on_conflict=user_id,vinted_item_id,captured_on", token, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(releves),
+  }).catch((e) => console.warn("[sync-dressing] snapshots:", e?.message ?? e));
+
+  // ── Entrée dans le cycle de détection de vente ───────────────────────────
+  // Un article importé n'a aucun cross_post_jobs : sans cette ligne,
+  // checkPublishedListings ne le regarderait jamais et sa vente ne serait
+  // jamais détectée. On crée un job DÉJÀ 'published' (l'annonce existe, on ne
+  // publie rien) — status terminal, donc invisible pour get-pending-jobs et
+  // pour recoverStaleProcessingJobs, qui ne repêche que 'processing'.
+  const aCreer = articles.filter((a) => a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id));
+  if (aCreer.length) {
+    const parId = new Map(lignes.map((l) => [l.vinted_item_id, l.id]));
+    const jobs = aCreer.map((a) => ({
+      user_id: userId,
+      inventaire_id: parId.get(a.vinted_item_id) ?? null,
+      platform: "vinted",
+      action: "publish",
+      status: "published",
+      title: a.titre ?? null,
+      price: a.prix,
+      listing_url: a.url,
+      platform_listing_id: a.vinted_item_id,
+      published_at: maintenant,
+      handler_build: `${FILLSELL_BUILD_LABEL} · sync-dressing`,
+    }));
+    await restRequest("cross_post_jobs", token, {
+      method: "POST", body: JSON.stringify(jobs),
+    }).catch((e) => console.warn("[sync-dressing] jobs de suivi:", e?.message ?? e));
+  }
+
+  const crees = articles.filter((a) => !parVintedId.has(a.vinted_item_id)).length;
+  return { crees, majs: articles.length - crees };
 }
 
 // ── Catalogue cumulatif des requis découverts (chantier 2026-07-16) ───────────

@@ -43,6 +43,7 @@ import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
 import { detectType, normalizeMarque } from './utils/shared';
+import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
@@ -720,7 +721,11 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
   if(marginPct>=-30) return m[12];
   return m[13];
 }
-function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null};}
+// ⚠️ prix_achat_inconnu / origine / vinted_* doivent traverser ce mapping :
+// la règle de comptabilisation les lit (prixAchatConnu), et l'UI s'en sert pour
+// marquer « prix d'achat à compléter » sur les articles importés du dressing.
+// Un champ oublié ici est un champ invisible pour toute l'app.
+function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,prix_achat_inconnu:v.prix_achat_inconnu===true,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,vinted_item_id:v.vinted_item_id||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -848,8 +853,13 @@ function groupSales(arr){
     const last=groups[groups.length-1];
     if(last&&last.quantite==null&&last.title===s.title&&last.marque===s.marque&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
       last._qty=(last._qty||1)+1;
-      last.margin=(last.margin||0)+(s.margin||0);
-      last.marginPct=(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:0;
+      // Regrouper N ventes identiques ne doit pas FABRIQUER une marge : si l'une
+      // des lignes n'a pas de prix d'achat, la marge du groupe est inconnue
+      // (l'ancien `(last.margin||0)+(s.margin||0)` la transformait en somme
+      // partielle présentée comme un total).
+      const marges=[last.margin,s.margin];
+      last.margin=marges.some(m=>m==null)?null:marges.reduce((a,m)=>a+m,0);
+      last.marginPct=last.margin!=null&&(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:null;
     }else{
       groups.push({...s,_qty:1});
     }
@@ -1791,6 +1801,8 @@ export default function App({ loginOnly = false }){
   // Prix de vente confirmé par l'utilisateur, par job (pré-rempli avec le prix
   // de mise en ligne, MODIFIABLE : la vente a pu être négociée).
   const [salePriceDraft,setSalePriceDraft]=useState({});
+  // Prix d'ACHAT saisi dans le bandeau de vente détectée (par job).
+  const [buyPriceDraft,setBuyPriceDraft]=useState({});
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
@@ -2178,7 +2190,13 @@ export default function App({ loginOnly = false }){
     if(!silencieux) setLoading(true);
     const [v,i,p]=await Promise.all([
       supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
-      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
+      // ⚠️ Plafond relevé de 500 à 3000 (03/08). Il était DÉJÀ atteint (800
+      // lignes sur le compte de test) : au-delà, l'inventaire était tronqué en
+      // silence et tous les totaux — investi, valeur du stock, bénéfices —
+      // portaient sur une partie des données sans que rien ne le signale. La
+      // sync du dressing, qui importe des centaines d'annonces d'un coup, en
+      // faisait un problème quotidien.
+      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(3000),
       supabase.from('profiles').select('is_premium,is_pro,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
@@ -2439,7 +2457,12 @@ export default function App({ loginOnly = false }){
 
   // KPI mois courant — indépendant du filtre
   const currentMonthSales=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
-  const tm={profit:currentMonthSales.reduce((a,s)=>a+s.margin,0),count:currentMonthSales.length};
+  // `reduce((a,s)=>a+s.margin,0)` additionnait les marges null comme des 0 : le
+  // « bénéfice du mois » du dashboard était donc juste seulement si TOUTES les
+  // ventes du mois avaient un prix d'achat. `count` reste le nombre RÉEL de
+  // ventes ; `sansAchat` dit combien d'entre elles ne sont pas comptabilisées.
+  const _tmMarge=totalMarge(currentMonthSales);
+  const tm={profit:_tmMarge.total,count:currentMonthSales.length,retenues:_tmMarge.retenues,sansAchat:_tmMarge.exclus};
 
   // Filtre par période pour les graphiques
   function filterSalesByRange(salesArr,range){
@@ -2526,9 +2549,15 @@ export default function App({ loginOnly = false }){
     scales:_scales('%'),
   };
   const salesForKpis=filterSalesByRange(sales,selectedRange);
-  const totalM=salesForKpis.reduce((a,s)=>a+s.margin,0);
-  const totalR=salesForKpis.reduce((a,s)=>a+s.sell,0);
-  const avgM=totalR>0?(totalM/totalR)*100:0;
+  // RÈGLE DE COMPTABILISATION (03/08) : une vente sans prix d'achat connu
+  // n'entre dans AUCUN total de bénéfice. `reduce((a,s)=>a+s.margin,0)` lisait
+  // un null comme 0 : le bénéfice n'était pas faux de peu, il était calculé sur
+  // un dénominateur (le CA) qui, lui, incluait ces ventes → marge moyenne
+  // écrasée. Le CA reste calculé sur TOUTES les ventes : il est vrai, lui.
+  const {total:totalM,exclus:ventesSansAchat}=totalMarge(salesForKpis);
+  const totalR=totalCA(salesForKpis);
+  const caComptabilise=totalCA(comptabilisables(salesForKpis));
+  const avgM=caComptabilise>0?(totalM/caComptabilise)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
   const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal()}/>;return C;},[user]);
@@ -2558,8 +2587,12 @@ export default function App({ loginOnly = false }){
   const stockVisible=useMemo(()=>showAllStock?stockFiltre:stockFiltre.slice(0,10),[stockFiltre,showAllStock]);
   const groupedSales=useMemo(()=>groupSales(sales),[sales]);
   const visibleSales=useMemo(()=>(showAllSales?groupedSales:groupedSales.slice(0,10)).filter(s=>searchMatch(s,searchHistory)),[groupedSales,showAllSales,searchHistory]);
-  const invested=items.reduce((a,i)=>a+i.buy*(i.quantite||1),0);
-  const stockVal=useMemo(()=>stock.reduce((a,i)=>a+i.buy*(i.quantite||1),0),[stock]);
+  // Total investi / valeur du stock : les articles sans prix d'achat sont
+  // ÉCARTÉS. L'ancien reduce n'avait même pas de `||0` — un buy null comptait 0
+  // et un undefined produisait un NaN qui contaminait tout le total affiché.
+  const invested=useMemo(()=>totalInvesti(items),[items]);
+  const stockVal=useMemo(()=>totalInvesti(stock),[stock]);
+  const stockSansPrixAchat=useMemo(()=>nbSansPrixAchat(stock),[stock]);
   const stockQty=useMemo(()=>stock.reduce((a,i)=>a+(i.quantite||1),0),[stock]);
   const soldQty=useMemo(()=>sold.reduce((a,i)=>a+(i.quantite||1),0),[sold]);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
@@ -2789,6 +2822,18 @@ export default function App({ loginOnly = false }){
     const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
     if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
     setConfirmingSale(job.id);
+    // PRIX D'ACHAT DEMANDÉ ICI, ET NULLE PART AILLEURS (2026-08-03).
+    // C'est le seul instant où la personne se souvient de ce qu'elle a payé et
+    // où elle a une raison de répondre : elle vient de gagner de l'argent.
+    // Écrit AVANT l'orchestration serveur, qui lit `inventaire.prix_achat` pour
+    // calculer le bénéfice — l'ordre inverse enregistrerait la vente sans marge.
+    // Une saisie vide ne remplace JAMAIS le prix par 0 : on n'écrit rien.
+    const achatSaisi=parseFloat(String(buyPriceDraft[job.id]??'').replace(',','.'));
+    if(job.inventaire_id!=null&&Number.isFinite(achatSaisi)&&achatSaisi>=0){
+      await supabase.from('inventaire')
+        .update({prix_achat:achatSaisi,prix_achat_inconnu:false})
+        .eq('id',job.inventaire_id).eq('user_id',user.id);
+    }
     // ⚠️ ANTI-DOUBLE-VENTE (2026-07-17) : un article détecté hors ligne sur
     // PLUSIEURS plateformes affiche un bandeau « Vendue ? » PAR plateforme.
     // Confirmer la vente d'UN retire IMMÉDIATEMENT (avant l'appel réseau) TOUS
@@ -2853,9 +2898,16 @@ export default function App({ loginOnly = false }){
     // Compute per-unit values based on selected price/fees mode
     const svUnit=sellModal.prixMode==="unit"||qVendue<=1?sv:sv/qVendue;
     const sfUnit=sellModal.feesMode==="unit"||qVendue<=1?sf:sf/qVendue;
-    const cogsUnit=item.buy+(item.purchaseCosts||0);
-    const mgUnit=svUnit-cogsUnit-sfUnit;
-    const mgpUnit=svUnit>0?(mgUnit/svUnit)*100:0;
+    // VIDE ≠ ZÉRO (03/08) : `item.buy` à null donnait cogsUnit=0, donc une
+    // marge égale au prix de vente entier, ÉCRITE EN BASE. margeUnitaire rend
+    // null quand le prix d'achat est inconnu — la vente est enregistrée, le
+    // bénéfice reste vide jusqu'à ce que l'utilisateur le complète.
+    const {margin:mgUnit,marginPct:mgpUnit}=margeUnitaire({
+      prixVente:svUnit,
+      prixAchat:prixAchatConnu(item)?item.buy:null,
+      purchaseCosts:item.purchaseCosts||0,
+      sellingFees:sfUnit,
+    });
     const remaining=qTotal-qVendue;
     if(remaining>0){
       await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
@@ -3943,8 +3995,14 @@ export default function App({ loginOnly = false }){
       const sv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       if(!sv||sv<=0)throw new Error("Prix vente invalide");
       const sf=parseFloat(String(frais??0).replace(",","."))||0;
-      const cogs=item.buy+(item.purchaseCosts||0);
-      const mg=sv-cogs-sf;const mgp=(mg/sv)*100;
+      // VIDE ≠ ZÉRO (03/08) — même trou que confirmSell : `item.buy` null
+      // donnait cogs=0 et un bénéfice égal au prix de vente, écrit en base.
+      const {margin:mg,marginPct:mgp}=margeUnitaire({
+        prixVente:sv,
+        prixAchat:prixAchatConnu(item)?item.buy:null,
+        purchaseCosts:item.purchaseCosts||0,
+        sellingFees:sf,
+      });
       const qTotal=item.quantite||1;
       const qVendue=Math.min(quantite_vendue||1,qTotal);
       const remaining=qTotal-qVendue;
@@ -4014,10 +4072,17 @@ export default function App({ loginOnly = false }){
     // Insère uniquement dans ventes — pas de suppression inventaire.
     addDirectSale:async({nom,marque,type,description,prix_vente,prix_achat,quantite_vendue,plateforme})=>{
       const pv=parseFloat(String(prix_vente??0).replace(",","."))||0;
-      const pa=parseFloat(String(prix_achat??0).replace(",","."))||0;
+      // VIDE ≠ ZÉRO (03/08). L'ancien code écrivait `benefice: pa>0 ? pv-pa : pv`
+      // — c'est-à-dire : prix d'achat non dicté ⇒ le bénéfice DEVIENT le chiffre
+      // d'affaires entier. C'était le fallback le plus faux du dépôt, sur le
+      // chemin le plus fréquent (vente dictée d'un article hors stock).
+      const paBrut=prix_achat===null||prix_achat===undefined||prix_achat===""
+        ?null:parseFloat(String(prix_achat).replace(",","."));
+      const pa=Number.isFinite(paBrut)?paBrut:null;
       const qv=Math.max(1,parseInt(quantite_vendue)||1);
       const marqueNorm=normalizeMarque(marque);
-      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:pa>0?pv-pa:pv,date:new Date().toISOString().split('T')[0],plateforme:plateforme||null,quantite:qv>1?qv:null};
+      const {margin:benef}=margeUnitaire({prixVente:pv,prixAchat:pa});
+      const row={user_id:user.id,titre:nom||"Article",marque:marqueNorm,type:type||null,description:description||null,prix_achat:pa,prix_vente:pv,benefice:benef,date:new Date().toISOString().split('T')[0],plateforme:plateforme||null,quantite:qv>1?qv:null};
       const{data,error}=await supabase.from('ventes').insert([row]).select().single();
       if(error)throw new Error(error.message);
       if(data)setSales(prev=>[mapSale(data),...prev]);
@@ -4655,6 +4720,44 @@ export default function App({ loginOnly = false }){
                   style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
                 <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
               </div>
+              {/* PRIX D'ACHAT — demandé ICI, au seul moment où la personne s'en
+                  souvient et où elle veut répondre. Affiché uniquement si
+                  l'article est lié à l'inventaire ET que son prix d'achat est
+                  encore inconnu (les articles importés du dressing Vinted sont
+                  exactement dans ce cas).
+                  « Je ne sais plus » est OBLIGATOIRE et pas décoratif : sans
+                  porte de sortie, les gens inventent un chiffre pour se
+                  débarrasser de la question, et toutes les stats deviennent du
+                  bruit indétectable. Marge absente > marge fausse. */}
+              {(()=>{
+                const art=items.find(i=>String(i.id)===String(job.inventaire_id));
+                if(!art||prixAchatConnu(art)||art.prix_achat_inconnu)return null;
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <label style={{fontSize:13,color:UI.mute2,fontWeight:600}}>
+                      {lang==='fr'?"Tu l'avais payé combien ?":'What did you pay for it?'}
+                    </label>
+                    <input type="text" inputMode="decimal" disabled={busy}
+                      value={buyPriceDraft[job.id]??''}
+                      onChange={e=>setBuyPriceDraft(p=>({...p,[job.id]:e.target.value}))}
+                      style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
+                    <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
+                    <button type="button" disabled={busy}
+                      onClick={async()=>{
+                        // Exclut DÉFINITIVEMENT cet article des calculs de marge
+                        // (prix_achat reste NULL) et on ne repose plus la question.
+                        setBuyPriceDraft(p=>({...p,[job.id]:''}));
+                        if(job.inventaire_id==null)return;
+                        await supabase.from('inventaire').update({prix_achat_inconnu:true})
+                          .eq('id',job.inventaire_id).eq('user_id',user.id);
+                        setItems(prev=>prev.map(i=>String(i.id)===String(job.inventaire_id)?{...i,prix_achat_inconnu:true}:i));
+                      }}
+                      style={{padding:"6px 12px",borderRadius:999,border:`1px solid ${UI.border}`,background:"transparent",color:UI.mute2,fontSize:12.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                      {lang==='fr'?'Je ne sais plus':"I don't remember"}
+                    </button>
+                  </div>
+                );
+              })()}
               <div style={{display:"flex",gap:10}}>
                 <button disabled={busy} onClick={()=>confirmSaleFromBanner(job)}
                   style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>

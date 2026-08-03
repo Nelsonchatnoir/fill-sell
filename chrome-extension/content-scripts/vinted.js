@@ -224,6 +224,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
     }
+    if (msg?.type === "VINTED_CURRENT_USER") {
+      vintedUtilisateurCourant()
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
+    if (msg?.type === "SYNC_DRESSING_PAGE") {
+      lirePageDressing(msg.page, msg.userId)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -245,6 +257,137 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       chrome.runtime.sendMessage({ type: "VINTED_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
     } catch { /* extension rechargée : sans conséquence */ }
   });
+}
+
+// Identité Vinted du compte connecté DANS CE NAVIGATEUR. L'id du dressing ne
+// peut pas venir de FillSell : c'est la session Vinted de l'utilisateur qui
+// fait foi, et lui seul sait sur quel compte il est connecté.
+async function vintedUtilisateurCourant() {
+  if (estPageBotShieldVinted()) {
+    return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield)" };
+  }
+  try {
+    const r = await fetch("/api/v2/users/current", {
+      headers: { Accept: "application/json" }, credentials: "include",
+    });
+    if (r.status === 401 || r.status === 403) {
+      return { success: false, sessionExpiree: true, error: `session Vinted refusée (HTTP ${r.status})` };
+    }
+    const brut = await r.text();
+    if (!brut.trim().startsWith("{")) return { success: false, error: `réponse non-JSON (HTTP ${r.status})` };
+    const j = JSON.parse(brut);
+    const u = j?.user;
+    if (!u?.id) return { success: false, error: "id utilisateur Vinted absent de la réponse" };
+    return {
+      success: true,
+      userId: String(u.id),
+      login: u.login ?? null,
+      // Ce que Vinted annonce sur le profil : sert à DIRE dans l'app que le
+      // dressing n'expose pas tout l'historique (32 remontés vs 236 annoncés
+      // sur le compte de test), au lieu de laisser croire à une sync ratée.
+      itemCount: Number.isFinite(u.item_count) ? u.item_count : null,
+      totalItemsCount: Number.isFinite(u.total_items_count) ? u.total_items_count : null,
+    };
+  } catch (e) {
+    return { success: false, error: String(e?.message ?? e) };
+  }
+}
+
+// ── Lecture du dressing (sync, 2026-08-03) ───────────────────────────────────
+// UNE page de dressing par appel. Le background pilote la pagination et les
+// pauses : ce fichier ne boucle JAMAIS tout seul sur le réseau de Vinted.
+//
+// Endpoint retenu (relevé en direct le 03/08 sur session authentifiée) :
+//   GET /api/v2/wardrobe/{user_id}/items?page=N&per_page=96
+// `per_page` est plafonné à 96 côté serveur (demander 100 ou 200 rend 96).
+// La réponse porte DÉJÀ view_count et favourite_count : pas besoin d'un appel
+// par article pour l'observabilité, qui est tout l'intérêt du chantier.
+//
+// ⛔ NE JAMAIS transformer ceci en boucle sur /api/v2/item_upload/items/{id}
+// pour récupérer les descriptions. C'est l'endpoint du FORMULAIRE D'ÉDITION :
+// 200 appels d'affilée dessus, c'est le profil de trafic le plus exposé du
+// projet sur une plateforme sous DataDome (Leboncoin nous l'a rappelé le
+// 30/07). Il sera appelé à l'unité, sur action humaine (republier / exporter
+// un article), jamais en lot.
+//
+// Champs ABSENTS de l'API, à ne pas chercher ailleurs : la date de mise en
+// ligne (Vinted ne l'expose pas ; la page publique n'affiche que « il y a
+// 2 jours »), et l'historique de prix. Le seul repère disponible est le
+// timestamp de la 1re photo — c'est la date du dernier ENVOI DE PHOTO, d'où
+// le nom `listed_at_guess` côté base.
+async function lirePageDressing(page, userId) {
+  const t = (line) => console.log(`[vinted][sync] ${line}`);
+  if (!userId) return { success: false, error: "user_id Vinted manquant" };
+
+  // Un challenge DataDome rend du HTML : on le dit au lieu de faire planter le
+  // JSON.parse sur une page de blocage (cf. bot-shield des 4 plateformes).
+  if (estPageBotShieldVinted()) {
+    return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield) — sync interrompue" };
+  }
+
+  const url = `/api/v2/wardrobe/${encodeURIComponent(userId)}/items?page=${page}&per_page=96`;
+  let resp;
+  try {
+    resp = await fetch(url, { headers: { Accept: "application/json" }, credentials: "include" });
+  } catch (e) {
+    return { success: false, error: `réseau : ${String(e?.message ?? e)}` };
+  }
+  t(`page ${page} → HTTP ${resp.status}`);
+  if (resp.status === 401 || resp.status === 403) {
+    return { success: false, sessionExpiree: true, error: `session Vinted refusée (HTTP ${resp.status})` };
+  }
+  const brut = await resp.text();
+  if (!brut.trim().startsWith("{")) {
+    // Vinted rend une page d'erreur HTML avec un content-type JSON : ne jamais
+    // conclure « 0 article » sur ce corps, ce serait lu comme un dressing vide.
+    return { success: false, error: `réponse non-JSON (HTTP ${resp.status})` };
+  }
+  let data;
+  try { data = JSON.parse(brut); } catch (e) {
+    return { success: false, error: `JSON illisible : ${String(e?.message ?? e)}` };
+  }
+
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const pagination = data?.pagination ?? null;
+
+  const articles = items.map((it) => {
+    const photos = Array.isArray(it.photos) ? it.photos : [];
+    // Statut : is_closed + item_closing_action='sold' = vendu. Les autres
+    // fermetures existent (retrait), on ne les confond pas avec une vente.
+    let statut = "active";
+    if (it.is_draft) statut = "draft";
+    else if (it.is_closed) statut = it.item_closing_action === "sold" ? "sold" : "closed";
+    else if (it.is_reserved) statut = "reserved";
+    else if (it.is_hidden) statut = "hidden";
+    return {
+      vinted_item_id: String(it.id),
+      titre: it.title ?? null,
+      url: it.url ?? (it.path ? `https://www.vinted.fr${it.path}` : null),
+      // price.amount est une STRING ("48.0") — parsing explicite, jamais de
+      // Number() implicite sur l'objet.
+      prix: it.price?.amount != null ? parseFloat(String(it.price.amount)) : null,
+      devise: it.price?.currency_code ?? it.currency ?? null,
+      marque: it.brand ?? null,
+      taille: it.size ?? null,
+      etat: it.status ?? null,
+      vues: Number.isFinite(it.view_count) ? it.view_count : null,
+      favoris: Number.isFinite(it.favourite_count) ? it.favourite_count : null,
+      statut,
+      photos: photos.map((p) => ({
+        url: p.full_size_url ?? p.url ?? null,
+        principale: p.is_main === true,
+        ts: p.high_resolution?.timestamp ?? null,
+      })).filter((p) => p.url),
+      // Repère de mise en ligne : timestamp de la photo la plus ANCIENNE de
+      // l'annonce (une photo ajoutée après coup ne doit pas rajeunir l'article).
+      photo_ts: photos.reduce((min, p) => {
+        const ts = p.high_resolution?.timestamp;
+        return Number.isFinite(ts) && (min === null || ts < min) ? ts : min;
+      }, null),
+    };
+  });
+
+  return { success: true, articles, pagination, page };
 }
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ────────────────────────────────

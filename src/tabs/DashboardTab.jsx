@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import { formatCurrency, fmtp, MONTHS_FR, MONTHS_EN, groupSales } from '../utils/shared';
 import { UI, Loader, SegmentedPills, StatTile } from '../components/ui';
+import { comptabilisable, comptabilisables, prixAchatNum, totalCA } from '../utils/comptabilite';
 
 // ── Design « Dashboard » (Claude Design, projet e47b36df — intégré 2026-07-14) ──
 // Hero en verre dépoli, KPI 2×2, sélecteur de période, graphes SVG (bénéfices +
@@ -9,19 +10,28 @@ import { UI, Loader, SegmentedPills, StatTile } from '../components/ui';
 // tout vient des données déjà agrégées par App.jsx (tm, totalM, salesForKpis…)
 // et de buildChartData, qui pilote AUSSI le sélecteur de période.
 
+// Un point de graphe = une somme de marges. Une vente sans prix d'achat n'a pas
+// de marge : `reduce((a,s)=>a+s.margin,0)` lisait son null comme 0 (barre juste)
+// et surtout la comptait au dénominateur de « Marge % », qui plongeait sans
+// qu'aucune vente n'ait été mauvaise. On écarte la vente des DEUX agrégats.
+const agregats=(liste)=>{
+  const ms=comptabilisables(liste).filter(s=>s.margin!=null&&Number.isFinite(Number(s.margin)));
+  return{profit:ms.reduce((a,s)=>a+Number(s.margin),0),"Marge %":ms.length?ms.reduce((a,s)=>a+(Number(s.marginPct)||0),0)/ms.length:0};
+};
+
 function buildChartData(salesArr, range, now, lang){
   const MONTHS=lang==='en'?MONTHS_EN:MONTHS_FR;
   const byMonth=(n)=>Array.from({length:n},(_,i)=>{
     const d=new Date(now.getFullYear(),now.getMonth()-(n-1)+i,1);
     const m=d.getMonth();const y=d.getFullYear();
     const ms=salesArr.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
-    return{name:MONTHS[m],profit:ms.reduce((a,s)=>a+s.margin,0),"Marge %":ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:0};
+    return{name:MONTHS[m],...agregats(ms)};
   });
   if(range==='7j'){
     return Array.from({length:7},(_,i)=>{
       const d=new Date(now);d.setDate(d.getDate()-6+i);
       const ds=salesArr.filter(s=>{const sd=new Date(s.date);return sd.toDateString()===d.toDateString();});
-      return{name:`${d.getDate()}/${d.getMonth()+1}`,profit:ds.reduce((a,s)=>a+s.margin,0),"Marge %":ds.length?ds.reduce((a,s)=>a+s.marginPct,0)/ds.length:0};
+      return{name:`${d.getDate()}/${d.getMonth()+1}`,...agregats(ds)};
     });
   }
   if(range==='1M'){
@@ -29,7 +39,7 @@ function buildChartData(salesArr, range, now, lang){
       const end=new Date(now);end.setDate(end.getDate()-i*7);
       const start=new Date(end);start.setDate(start.getDate()-6);
       const ds=salesArr.filter(s=>{const sd=new Date(s.date);return sd>=start&&sd<=end;});
-      return{name:`S${4-i}`,profit:ds.reduce((a,s)=>a+s.margin,0),"Marge %":ds.length?ds.reduce((a,s)=>a+s.marginPct,0)/ds.length:0};
+      return{name:`S${4-i}`,...agregats(ds)};
     }).reverse();
   }
   if(range==='1A') return byMonth(12);
@@ -276,8 +286,15 @@ const DashboardTab = memo(function DashboardTab({
   const now = new Date();
 
   const mData = buildChartData(sales, selectedRange, now, lang);
-  const totalR = salesForKpis.reduce((a,s)=>a+s.sell,0);
-  const avgM = totalR>0?(totalM/totalR)*100:0;
+  // totalM (prop) exclut déjà les ventes sans prix d'achat. Le diviser par le CA
+  // de TOUTES les ventes revenait à comparer un bénéfice partiel à un chiffre
+  // d'affaires complet : la marge moyenne s'écrasait à chaque vente non
+  // renseignée. Le CA affiché, lui, reste complet — il est vrai sans prix d'achat.
+  const kpiComptables = comptabilisables(salesForKpis);
+  const totalR = totalCA(salesForKpis);
+  const caComptabilise = totalCA(kpiComptables);
+  const avgM = caComptabilise>0?(totalM/caComptabilise)*100:0;
+  const ventesSansAchat = salesForKpis.length-kpiComptables.length;
   const hasData = sales.length>0;
 
   const rangeLabel = selectedRange==='7j'?t('dernierNJours')
@@ -289,9 +306,12 @@ const DashboardTab = memo(function DashboardTab({
   // ── Activité récente : fusion ventes + ajouts stock, déjà chargés côté client ──
   const recentActivity = (()=>{
     if(!hasData && (!stock || stock.length===0)) return [];
+    // amount = null quand le montant n'existe pas (pas de prix d'achat → pas de
+    // marge) : `s.margin` valait null et l'affichage, qui teste `>=0`, sortait
+    // un « +0,00 € » qu'on lisait comme une vente à marge nulle.
     const soldRows = groupSales(sales).slice(0,5).map(s=>({
       kind:'sale', id:`s-${s.id}`, date:s.date, title:s.title, marque:s.marque, type:s.type,
-      amount:s.margin, qty:s._qty||1,
+      amount:comptabilisable(s)&&s.margin!=null&&Number.isFinite(Number(s.margin))?Number(s.margin):null, qty:s._qty||1,
     }));
     const addRows = (stock||[])
       .filter(i=>i.date_ajout||i.created_at)
@@ -299,8 +319,10 @@ const DashboardTab = memo(function DashboardTab({
       .sort((a,b)=>new Date(b.date_ajout||b.created_at)-new Date(a.date_ajout||a.created_at))
       .slice(0,5)
       .map(i=>({
+        // `i.buy` brut affichait « 0,00 € » pour un article dont on ignore le
+        // prix d'achat : prixAchatNum rend null, jamais un zéro inventé.
         kind:'add', id:`a-${i.id}`, date:i.date_ajout||i.created_at, title:i.title, marque:i.marque, type:i.type,
-        amount:i.buy, qty:i.quantite||1,
+        amount:prixAchatNum(i), qty:i.quantite||1,
       }));
     return [...soldRows, ...addRows]
       .sort((a,b)=>new Date(b.date)-new Date(a.date))
@@ -395,8 +417,12 @@ const DashboardTab = memo(function DashboardTab({
                 <div style={{fontSize:34,fontWeight:700,color:UI.ink,letterSpacing:"-0.03em",lineHeight:1,whiteSpace:"nowrap"}}>{fmt(totalM)}</div>
                 <HeroSparkline data={mData.map(d=>d.profit)} />
               </div>
+              {/* La marge moyenne se divise par les ventes RETENUES : totalM ne
+                  contient plus les ventes sans prix d'achat, les diviser par le
+                  total des ventes rabotait le montant à chaque fiche incomplète.
+                  Le nombre de ventes affiché, lui, reste le vrai total. */}
               <div style={{fontSize:12.5,fontWeight:500,color:UI.mute2,marginTop:10}}>
-                {tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(salesForKpis.length?totalM/salesForKpis.length:0)}
+                {tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(kpiComptables.length?totalM/kpiComptables.length:0)}
               </div>
               <div style={{fontSize:12,fontWeight:600,color:UI.tealDeep,marginTop:10,display:"flex",alignItems:"center",gap:5}}>
                 {t('analyseComplete')}
@@ -407,7 +433,10 @@ const DashboardTab = memo(function DashboardTab({
           {/* KPIs 2×2 */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <StatTile icon={IcoBars}  tileColor={UI.teal}     label={t('ceMois')}          value={fmt(tm?.profit||0)}         sub={tpl('venteLabel',{n:tm?.count||0})} />
-            <StatTile icon={IcoTrend} tileColor={UI.tealDeep} label={t('margeMoy')}        value={fmtp(avgM)}                 sub={t('toutesVentes')} />
+            {/* Un total devenu partiel doit le dire : sinon « marge moy. » passe
+                pour une moyenne sur tout alors qu'elle ignore les ventes sans
+                prix d'achat. Compteur affiché seulement s'il y en a. */}
+            <StatTile icon={IcoTrend} tileColor={UI.tealDeep} label={t('margeMoy')}        value={fmtp(avgM)}                 sub={ventesSansAchat>0?(lang==='en'?`excl. ${ventesSansAchat} sale${ventesSansAchat>1?'s':''} without buy price`:`hors ${ventesSansAchat} vente${ventesSansAchat>1?'s':''} sans prix d'achat`):t('toutesVentes')} />
             <StatTile icon={IcoGem}   tileColor={UI.amber}    label={t('revenuBrutLabel')} value={fmt(totalR)}                sub={t('totalEncaisse')} />
             <StatTile icon={IcoBox}   tileColor={UI.mute}     label={t('enStock')}         value={`${stockQty??stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} />
           </div>
@@ -461,8 +490,10 @@ const DashboardTab = memo(function DashboardTab({
                           {d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]} · {isSale?(lang==='en'?'Sold':'Vendu'):(lang==='en'?'Added':'Ajouté')}
                         </div>
                       </div>
-                      <div style={{fontWeight:700,fontSize:14,flexShrink:0,color:isSale?(a.amount>=0?UI.tealDeep:UI.negative):UI.mute}}>
-                        {isSale?`${a.amount>=0?"+":""}${fmt(a.amount)}`:fmt(a.amount)}
+                      {/* Montant inconnu = tiret. Sans ce test, `a.amount>=0` était
+                          vrai pour null et la ligne affichait un « +0,00 € » faux. */}
+                      <div style={{fontWeight:700,fontSize:14,flexShrink:0,color:a.amount==null?UI.mute:isSale?(a.amount>=0?UI.tealDeep:UI.negative):UI.mute}}>
+                        {a.amount==null?"—":isSale?`${a.amount>=0?"+":""}${fmt(a.amount)}`:fmt(a.amount)}
                       </div>
                     </div>
                   );

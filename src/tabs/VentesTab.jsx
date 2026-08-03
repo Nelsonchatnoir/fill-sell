@@ -1,13 +1,15 @@
-import { memo, useState, useEffect } from 'react';
+import { memo, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
+import { supabase } from '../lib/supabase';
 import {
   formatCurrency, fmtp,
   typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
 } from '../utils/shared';
+import { comptabilisable, comptabilisables, totalMarge, totalCA, margeUnitaire } from '../utils/comptabilite';
 
 // ── Design 2026 (Lens / navbar) — liste des ventes ──
 // Même système de cards que StockTab (buildCardCss) + stats mensuelles / profit.
@@ -20,6 +22,29 @@ const VENTES_CSS = buildCardCss('ventes-v2') + `
 .ventes-v2 .profit{font-weight:700;font-size:15px;color:var(--teal-deep);}
 .ventes-v2 .profit.neg{color:#B0645A;}
 .ventes-v2 .sold-date{font-size:10px;color:var(--mute);margin-top:3px;}
+
+/* ── Prix d'achat manquant (03/08) ──
+   Ton INVITATION, jamais alerte : ces ventes ne sont pas des erreurs, il manque
+   juste une info. D'où le teal du design system et pas de rouge — le rouge
+   ferait lire « tu as fait une bêtise » là où il n'y a rien à réparer. */
+.ventes-v2 .pa-call{width:100%;display:flex;align-items:center;gap:11px;text-align:left;padding:11px 14px;border-radius:14px;cursor:pointer;font-family:inherit;background:rgba(47,158,144,.08);border:1px solid rgba(47,158,144,.28);color:var(--ink);}
+.ventes-v2 .pa-call.on{background:linear-gradient(120deg,var(--teal),var(--teal-deep));border-color:transparent;color:#fff;box-shadow:0 10px 22px -12px rgba(47,158,144,.55);}
+.ventes-v2 .pa-call .n{display:block;font-size:13.5px;font-weight:700;line-height:1.25;}
+.ventes-v2 .pa-call .sub{display:block;font-size:11px;font-weight:500;color:var(--mute);margin-top:2px;line-height:1.3;}
+.ventes-v2 .pa-call.on .sub{color:rgba(255,255,255,.88);}
+.ventes-v2 .pa-line{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.ventes-v2 .pa-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;border:1px dashed rgba(47,158,144,.55);background:rgba(47,158,144,.07);color:var(--teal-deep);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.ventes-v2 .pa-input{width:82px;padding:5px 8px;border-radius:9px;border:1px solid var(--teal);background:#fff;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink);outline:none;}
+.ventes-v2 .pa-ok{border:none;background:var(--teal);color:#fff;border-radius:9px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1.2;}
+.ventes-v2 .pa-hint{font-size:9.5px;color:var(--mute);}
+.ventes-v2 .pa-err{font-size:10.5px;color:#B0645A;font-weight:600;}
+.ventes-v2 .pa-note{font-size:10px;color:var(--mute);margin-top:5px;font-style:italic;}
+.ventes-v2 .pa-check{width:17px;height:17px;accent-color:#2F9E90;flex-shrink:0;cursor:pointer;margin:0;}
+.ventes-v2 .pa-bar{position:sticky;top:0;z-index:6;background:#fff;border:1px solid var(--teal);border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 10px 24px -14px rgba(16,32,27,.45);}
+.ventes-v2 .pa-bar .lbl{font-size:12px;font-weight:700;color:var(--ink);}
+.ventes-v2 .pa-bar .apply{border:none;background:linear-gradient(120deg,var(--teal),var(--teal-deep));color:#fff;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.ventes-v2 .pa-bar .ghost{border:1px solid var(--border);background:#fff;color:var(--mute);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+.ventes-v2 .pa-bar button:disabled{opacity:.45;cursor:default;}
 `;
 
 // Accord du participe "Vendu(e)" : noms féminins courants détectés dans le
@@ -217,6 +242,29 @@ function SalesTicker({ lang, fmt, setTab }) {
   );
 }
 
+// Saisie d'un prix -> nombre.
+//  · ""      -> null  : VIDE ≠ ZÉRO. On n'écrit RIEN (0 = « gratuit assumé »,
+//                       une affirmation que l'utilisateur n'a pas faite).
+//  · illisible -> NaN : on le dit, on ne le range pas en douce à 0.
+// ⚠️ La virgule décimale est la saisie NORMALE en français : parseFloat("12,50")
+// rend 12 sans broncher — 50 centimes évaporés en silence à chaque saisie.
+function parsePrix(v){
+  const t=String(v??"").trim().replace(/[\s€]/g,"").replace(",",".");
+  if(!t) return null;
+  const n=parseFloat(t);
+  return Number.isFinite(n)&&n>=0?n:NaN;
+}
+
+// Même recherche que searchMatch (App.jsx) — cette fonction n'est pas exportée,
+// et le mode « à compléter » reconstruit sa liste depuis groupedSales (non
+// filtré par la recherche) : sans ce filtre, taper un nom puis cliquer le
+// compteur ferait réapparaître des ventes que la recherche venait d'écarter.
+function matchRecherche(s,q){
+  const t=String(q||"").toLowerCase().trim();
+  if(!t) return true;
+  return !!(s.title?.toLowerCase().includes(t)||s.marque?.toLowerCase().includes(t)||s.description?.toLowerCase().includes(t)||s.type?.toLowerCase().includes(t));
+}
+
 const VentesTab = memo(function VentesTab({
   lang, currency, isPremium, isNative, user,
   sales, visibleSales, groupedSales,
@@ -226,19 +274,227 @@ const VentesTab = memo(function VentesTab({
   delSale, setTab, setEditItem,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal,
+  // Rafraîchissement du parent APRÈS écriture. App.jsx ne la passe pas
+  // aujourd'hui (d'où la valeur par défaut : aucun appelant à casser) — c'est
+  // la couche optimiste `patchs` ci-dessous qui tient l'affichage en attendant
+  // le prochain fetchAll.
+  onSaleUpdated=()=>{},
 }) {
   const { t } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [filterType, setFilterType] = useState("Tous");
+  const fr=lang!=='en';
+
+  // ── Complétion des prix d'achat manquants (03/08) ──────────────────────────
+  // `patchs` : couche OPTIMISTE locale, indexée par id de ligne `ventes`.
+  //   {buy,margin} = prix saisi ; {inconnu:true} = « je ne sais plus ».
+  // Elle existe parce que ce composant ne POSSÈDE pas `sales` : la liste vient
+  // d'App.jsx et ne bouge qu'au prochain fetchAll. Sans patch, une vente qu'on
+  // vient de compléter resterait à « — » et hors des totaux jusqu'au rechargement
+  // de l'écran — exactement l'inverse de ce qu'on promet à l'utilisateur.
+  const [patchs,setPatchs]=useState({});
+  const [modeACompleter,setModeACompleter]=useState(false);
+  const [openId,setOpenId]=useState(null);      // ligne dont le champ est ouvert
+  const [draft,setDraft]=useState("");
+  const [erreur,setErreur]=useState(null);      // {id,message} — id null = barre de lot
+  const [selection,setSelection]=useState(()=>new Set());
+  const [prixLot,setPrixLot]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [liensInv,setLiensInv]=useState({});    // id de vente -> inventaire_id (ou null)
+  // Entrée/Échap changent openId : le champ est démonté, et le blur qui suit
+  // re-sauverait (ou sauverait une valeur annulée). Ce drapeau neutralise ce
+  // blur-là, et lui seul.
+  const sauteBlur=useRef(false);
+
+  const patchLigne=useCallback((s,facteur=1)=>{
+    const p=patchs[s?.id];
+    if(!p) return s;
+    if(p.inconnu) return {...s,prix_achat_inconnu:true};
+    // facteur : une ligne groupée « ×3 » affiche la SOMME des marges (cf.
+    // groupSales, App.jsx) alors qu'on écrit une marge UNITAIRE en base.
+    return {...s,buy:p.buy,prix_achat:p.buy,margin:p.margin==null?null:p.margin*facteur};
+  },[patchs]);
+
+  const aDesPatchs=Object.keys(patchs).length>0;
+  const salesPatchees=useMemo(()=>aDesPatchs?sales.map(s=>patchLigne(s)):sales,[sales,aDesPatchs,patchLigne]);
+
+  // Le compteur se lit sur les LIGNES AFFICHÉES (groupes) : une vente ×3 est UNE
+  // saisie à faire, pas trois. Une ligne déjà traitée (prix saisi OU « je ne sais
+  // plus ») sort du compte ; un échec Supabase remet son patch à zéro, donc elle
+  // y revient d'elle-même.
+  const lignesSansPrix=useMemo(()=>groupedSales.filter(s=>!comptabilisable(s)),[groupedSales]);
+  const nbACompleter=useMemo(()=>lignesSansPrix.filter(s=>!patchs[s.id]).length,[lignesSansPrix,patchs]);
+
+  // ⚠️ PIÈGE DU GROUPEMENT (groupSales, App.jsx) : une ligne affichée peut
+  // recouvrir PLUSIEURS lignes de la table `ventes` (ventes identiques
+  // consécutives fusionnées en « ×3 ») et ne porte que l'id de la PREMIÈRE.
+  // N'écrire que sur cet id laisserait les autres sans prix : le compteur
+  // remonterait au rechargement et les totaux resteraient partiels. Une ligne à
+  // `quantite` non nulle, elle, EST une seule ligne en base.
+  const idsCibles=useCallback((ligne)=>{
+    if(!ligne) return [];
+    if(ligne.quantite!=null||(ligne._qty||1)<=1) return [ligne.id];
+    const ids=sales.filter(s=>s.quantite==null&&!comptabilisable(s)
+      &&s.title===ligne.title&&s.marque===ligne.marque&&s.date===ligne.date
+      &&Math.abs((s.sell||0)-(ligne.sell||0))<0.01).map(s=>s.id);
+    return ids.length?ids:[ligne.id];
+  },[sales]);
+
+  // Une ligne cochée puis complétée à la main sort d'elle-même de la sélection :
+  // sa case n'est plus rendue, elle ne pourrait donc plus être décochée, et la
+  // barre compterait des ventes qu'elle ne peut plus toucher.
+  const lignesSelectionnees=useMemo(()=>groupedSales.filter(s=>selection.has(s.id)&&!patchs[s.id]),[groupedSales,selection,patchs]);
+  const nbSel=lignesSelectionnees.length;
+  const idsSelection=useMemo(()=>lignesSelectionnees.flatMap(idsCibles),[lignesSelectionnees,idsCibles]);
+
+  // `inventaire_id` n'est pas exposé par mapSale (App.jsx) : on va le chercher
+  // pour les seules ventes sélectionnées, et seulement une fois par id — c'est ce
+  // qui décide si « Je ne sais plus » a une cible à marquer.
+  useEffect(()=>{
+    const manquants=idsSelection.filter(id=>!(id in liensInv));
+    if(!manquants.length) return;
+    let annule=false;
+    supabase.from('ventes').select('id,inventaire_id').in('id',manquants).then(({data,error})=>{
+      if(annule||error) return;
+      // Les ids que la requête ne rend PAS (RLS, ligne disparue) sont notés
+      // « sans article lié » : sinon liensCharges reste faux pour toujours et le
+      // bouton « Je ne sais plus » ne sortirait jamais de son état grisé.
+      setLiensInv(prev=>{const n={...prev};for(const id of manquants)n[id]=null;for(const r of(data||[]))n[r.id]=r.inventaire_id??null;return n;});
+    });
+    return()=>{annule=true;};
+  },[idsSelection,liensInv]);
+
+  const liensCharges=idsSelection.every(id=>id in liensInv);
+  const invIdsSelection=useMemo(()=>[...new Set(idsSelection.map(id=>liensInv[id]).filter(v=>v!=null))],[idsSelection,liensInv]);
+
+  // Écriture d'un prix d'achat sur UNE ligne affichée (1..n lignes en base).
+  // Rend true/false — la barre de lot s'en sert pour savoir quoi vider.
+  async function enregistrerPrix(ligne,pa){
+    const ids=idsCibles(ligne);
+    if(!ids.length) return false;
+    const {margin}=margeUnitaire({prixVente:ligne.sell,prixAchat:pa});
+    const avant={};ids.forEach(id=>{avant[id]=patchs[id];});
+    setPatchs(p=>{const n={...p};ids.forEach(id=>{n[id]={buy:pa,margin};});return n;});
+    setErreur(null);
+    let req=supabase.from('ventes').update({prix_achat:pa,benefice:margin}).in('id',ids);
+    if(user?.id) req=req.eq('user_id',user.id);
+    const {error}=await req;
+    if(error){
+      // Rollback à l'état EXACT d'avant (undefined = aucun patch) : laisser le
+      // patch en place afficherait un bénéfice que la base n'a pas.
+      setPatchs(p=>{const n={...p};ids.forEach(id=>{if(avant[id]===undefined)delete n[id];else n[id]=avant[id];});return n;});
+      setErreur({id:ligne.id,message:error.message});
+      return false;
+    }
+    onSaleUpdated();
+    return true;
+  }
+
+  function ouvrirSaisie(id){setOpenId(id);setDraft("");setErreur(null);}
+  function fermerSaisie(){sauteBlur.current=true;setOpenId(null);setDraft("");setTimeout(()=>{sauteBlur.current=false;},0);}
+
+  // Chaînage clavier : la vente suivante de la liste AFFICHÉE qui n'a toujours
+  // ni prix ni décision. `filteredSales` est déjà patché, donc une ligne validée
+  // à l'instant n'est jamais reproposée.
+  function ligneSuivante(apres){
+    const i=filteredSales.findIndex(s=>s.id===apres);
+    for(let k=i+1;k<filteredSales.length;k++){
+      const s=filteredSales[k];
+      if(!patchs[s.id]&&!comptabilisable(s)) return s.id;
+    }
+    return null;
+  }
+
+  async function validerSaisie(ligne,{enchainer}={}){
+    const pa=parsePrix(draft);
+    if(Number.isNaN(pa)){setErreur({id:ligne.id,message:fr?'Prix illisible':'Invalid price'});return;}
+    const suivant=enchainer?ligneSuivante(ligne.id):null;
+    sauteBlur.current=true;
+    setOpenId(suivant);setDraft("");
+    setTimeout(()=>{sauteBlur.current=false;},0);
+    // Champ vide : Entrée sert à PASSER la vente, pas à la déclarer gratuite.
+    if(pa!==null) await enregistrerPrix(ligne,pa);
+  }
+
+  function onKeyPrix(e,ligne){
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();fermerSaisie();setErreur(null);return;}
+    if(e.key!=='Enter') return;
+    e.preventDefault();e.stopPropagation();
+    validerSaisie(ligne,{enchainer:true});
+  }
+
+  // Filet du clic à côté : ce qui est tapé est sauvé, pas perdu. Ne se déclenche
+  // jamais après Entrée/Échap (cf. sauteBlur).
+  function onBlurPrix(ligne){
+    if(sauteBlur.current) return;
+    const pa=parsePrix(draft);
+    setOpenId(null);setDraft("");
+    if(pa!==null&&!Number.isNaN(pa)) enregistrerPrix(ligne,pa);
+  }
+
+  function toggleSelection(id){
+    setSelection(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
+  }
+
+  async function appliquerLot(){
+    const pa=parsePrix(prixLot);
+    if(pa===null||Number.isNaN(pa)){setErreur({id:null,message:fr?'Entre un prix unitaire':'Enter a unit price'});return;}
+    setBusy(true);
+    let ko=0;
+    // Séquentiel : chaque vente a son prix de vente, donc son bénéfice — il n'y a
+    // pas d'update unique possible.
+    for(const l of lignesSelectionnees){ const ok=await enregistrerPrix(l,pa); if(!ok) ko++; }
+    setBusy(false);
+    if(!ko){setSelection(new Set());setPrixLot("");}
+  }
+
+  async function marquerInconnu(){
+    if(!invIdsSelection.length) return;
+    setBusy(true);setErreur(null);
+    let req=supabase.from('inventaire').update({prix_achat_inconnu:true}).in('id',invIdsSelection);
+    if(user?.id) req=req.eq('user_id',user.id);
+    const {error}=await req;
+    setBusy(false);
+    if(error){setErreur({id:null,message:error.message});return;}
+    // ⚠️ SCHÉMA VÉRIFIÉ LE 03/08 : `ventes` n'a PAS de colonne
+    // prix_achat_inconnu — le drapeau ne vit que sur l'ARTICLE d'inventaire lié
+    // (colonne ventes.inventaire_id). Conséquence assumée : côté ventes, la
+    // marque « je ne sais plus » ne tient que le temps de l'écran ; au prochain
+    // fetchAll ces ventes reviennent dans le compteur. `prix_achat` reste NULL
+    // dans tous les cas — jamais 0.
+    // On ne marque QUE les ventes dont l'article lié a réellement été drapeauté.
+    // Griser aussi les autres reviendrait à afficher une décision que rien, nulle
+    // part, n'a enregistrée.
+    const idsMarques=idsSelection.filter(id=>liensInv[id]!=null);
+    setPatchs(p=>{const n={...p};idsMarques.forEach(id=>{n[id]={inconnu:true};});return n;});
+    setSelection(new Set());
+    onSaleUpdated();
+  }
 
   // KPI mois courant — même formule que tm (App.jsx)
   const now=new Date();
-  const monthSales=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
-  const monthProfit=monthSales.reduce((a,s)=>a+(s.margin||0),0);
-  const monthRevenue=monthSales.reduce((a,s)=>a+(s.sell||0),0);
-  const monthMargePct=monthRevenue>0?(monthProfit/monthRevenue)*100:0;
+  const monthSales=salesPatchees.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
+  // `(s.margin||0)` transformait une vente sans prix d'achat en vente à marge
+  // nulle : elle ne rapportait rien au bénéfice mais pesait au dénominateur du
+  // pourcentage, qui tombait sans qu'aucune vente ait été mauvaise. Le CA sert
+  // ici de dénominateur uniquement — d'où le CA des seules ventes retenues (cet
+  // écran n'affiche aucun chiffre d'affaires, qui lui ne se filtre jamais).
+  const {total:monthProfit,exclus:monthSansAchat}=totalMarge(monthSales);
+  const monthCaComptabilise=totalCA(comptabilisables(monthSales));
+  const monthMargePct=monthCaComptabilise>0?(monthProfit/monthCaComptabilise)*100:0;
 
-  const filteredSales=filterType==="Tous"?visibleSales:visibleSales.filter(s=>s.type===filterType);
+  // Mode « à compléter » : on repart de groupedSales (TOUTES les ventes) et non
+  // de visibleSales, plafonné à 10 lignes — sinon on inviterait à compléter 24
+  // ventes en n'en montrant que 10.
+  // ⚠️ L'appartenance à cette liste se juge sur la ligne BRUTE, pas patchée : une
+  // vente qu'on vient de compléter DOIT rester à sa place. Si elle disparaissait
+  // sous le curseur, la ligne suivante remonterait d'un cran à chaque Entrée et
+  // le chaînage clavier sauterait une vente sur deux.
+  const baseListe=modeACompleter
+    ?groupedSales.filter(s=>!comptabilisable(s)&&matchRecherche(s,searchHistory))
+    :visibleSales;
+  const filteredSales=(filterType==="Tous"?baseListe:baseListe.filter(s=>s.type===filterType))
+    .map(s=>patchLigne(s,s.quantite!=null?1:(s._qty||1)));
 
   return (
     <div className="ventes-v2" style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -258,6 +514,70 @@ const VentesTab = memo(function VentesTab({
           <div className="stat-card">
             <div className="stat-lbl">{t('margeMoy')}</div>
             <div className="stat-val">{fmtp(monthMargePct)}</div>
+            {/* Un total partiel doit le dire, sinon ce % passe pour une moyenne
+                sur toutes les ventes du mois. Affiché seulement s'il y a des exclus. */}
+            {monthSansAchat>0&&(
+              <div style={{fontSize:9,color:"var(--mute)",marginTop:2,lineHeight:1.25}}>
+                {lang==='en'?`excl. ${monthSansAchat} without buy price`:`hors ${monthSansAchat} sans prix d'achat`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Prix d'achat manquants : compteur-invitation, cliquable ──
+          ON N'OBLIGE JAMAIS : pas de modale, pas de blocage, pas de rouge. Un
+          filtre qu'on ouvre et qu'on referme, rien de plus. Reste affiché à 0
+          quand le mode est ouvert, sinon on ne pourrait plus en sortir. */}
+      {(nbACompleter>0||modeACompleter)&&(
+        <button className={`pa-call${modeACompleter?" on":""}`}
+          onClick={()=>{setModeACompleter(v=>!v);setSelection(new Set());setOpenId(null);setErreur(null);}}>
+          <span style={{fontSize:17,flexShrink:0}}>{modeACompleter?"↩":"💡"}</span>
+          <span style={{flex:1,minWidth:0}}>
+            <span className="n">
+              {modeACompleter
+                ?(fr?"Revenir à toutes les ventes":"Back to all sales")
+                :(fr?`${nbACompleter} vente${nbACompleter>1?"s":""} sans prix d'achat`
+                    :`${nbACompleter} sale${nbACompleter>1?"s":""} without purchase price`)}
+            </span>
+            <span className="sub">
+              {modeACompleter
+                ?(nbACompleter===0
+                    ?(fr?"Tout est complété 🎉":"All done 🎉")
+                    :(fr?`Encore ${nbACompleter} à compléter · Entrée enchaîne la suivante`:`${nbACompleter} left · Enter jumps to the next one`))
+                :(fr?"Complète-les pour voir tes bénéfices":"Add them to see your profit")}
+            </span>
+          </span>
+        </button>
+      )}
+
+      {/* Barre de lot — le vide-grenier : « ces 20 t-shirts, 2 € pièce ». */}
+      {nbSel>0&&(
+        <div className="pa-bar">
+          <span className="lbl">{fr?`${nbSel} sélectionnée${nbSel>1?"s":""}`:`${nbSel} selected`}</span>
+          <input className="pa-input" inputMode="decimal" value={prixLot}
+            onChange={e=>setPrixLot(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();appliquerLot();}if(e.key==='Escape'){e.preventDefault();setSelection(new Set());setPrixLot("");}}}
+            placeholder={fr?"2,50":"2.50"} aria-label={fr?"Prix d'achat unitaire":"Unit purchase price"}/>
+          <button className="apply" disabled={busy} onClick={appliquerLot}>
+            {busy?"…":(fr?`Appliquer aux ${nbSel} vente${nbSel>1?"s":""}`:`Apply to ${nbSel} sale${nbSel>1?"s":""}`)}
+          </button>
+          {/* « Je ne sais plus » n'a de cible que si la vente vient d'un article
+              du stock : le drapeau prix_achat_inconnu vit sur `inventaire`, pas
+              sur `ventes`. Sans article lié, le bouton est inerte et le dit. */}
+          <button className="ghost" disabled={busy||!liensCharges||invIdsSelection.length===0} onClick={marquerInconnu}>
+            {fr?"Je ne sais plus":"I don't remember"}
+          </button>
+          <button className="ghost" onClick={()=>{setSelection(new Set());setPrixLot("");}}>✕</button>
+          <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
+            <span className="pa-hint">{fr?"Prix d'achat UNITAIRE — le bénéfice se recalcule vente par vente.":"UNIT purchase price — profit is recomputed sale by sale."}</span>
+            {liensCharges&&invIdsSelection.length===0&&(
+              <span className="pa-hint">
+                {fr?"« Je ne sais plus » indisponible : aucune de ces ventes n'est liée à un article du stock, il n'y a rien à marquer."
+                   :"“I don't remember” unavailable: none of these sales is linked to a stock item, nothing to flag."}
+              </span>
+            )}
+            {erreur?.id===null&&<span className="pa-err">{erreur.message}</span>}
           </div>
         </div>
       )}
@@ -306,6 +626,10 @@ const VentesTab = memo(function VentesTab({
             const d=new Date(s.date);
             const sameYear=d.getFullYear()===now.getFullYear();
             const pKey=(s.plateforme||"").toLowerCase().trim();
+            // Sans prix d'achat il n'y a pas de marge à montrer : `s.margin>=0`
+            // était vrai pour null et la ligne affichait un « +0 € » vert, lu
+            // comme « vendu à prix coûtant » au lieu de « on ne sait pas ».
+            const margeConnue=comptabilisable(s)&&s.margin!=null&&Number.isFinite(Number(s.margin));
             return(
               // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer la vente.
               <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
@@ -329,16 +653,50 @@ const VentesTab = memo(function VentesTab({
                           :<div className="micon ic-plateforme">{s.plateforme}</div>}
                       </div>
                     )}
+                    {/* Saisie du prix d'achat manquant, DANS la ligne.
+                        ⚠️ stopPropagation obligatoire : la carte entière porte un
+                        onClick qui ouvre la modale d'édition — sans lui, le
+                        moindre clic dans le champ ferme l'écran et perd la
+                        frappe en cours. */}
+                    {!comptabilisable(s)&&!patchs[s.id]&&(
+                      <div className="pa-line" onClick={e=>e.stopPropagation()}>
+                        <input type="checkbox" className="pa-check" checked={selection.has(s.id)} onChange={()=>toggleSelection(s.id)}
+                          aria-label={fr?"Sélectionner cette vente":"Select this sale"}/>
+                        {openId===s.id?(
+                          <>
+                            {/* autoFocus : le champ est démonté puis remonté sur
+                                la vente suivante à chaque Entrée — c'est ce
+                                remontage qui donne le focus, sans ref ni effet. */}
+                            <input className="pa-input" autoFocus inputMode="decimal" value={draft}
+                              placeholder={fr?"12,50":"12.50"}
+                              onChange={e=>setDraft(e.target.value)}
+                              onKeyDown={e=>onKeyPrix(e,s)}
+                              onBlur={()=>onBlurPrix(s)}
+                              aria-label={fr?"Prix d'achat":"Purchase price"}/>
+                            <button className="pa-ok" onMouseDown={e=>e.preventDefault()} onClick={()=>validerSaisie(s)}>✓</button>
+                            <span className="pa-hint">{fr?"Entrée = suivante · Échap = annuler":"Enter = next · Esc = cancel"}</span>
+                          </>
+                        ):(
+                          <button className="pa-chip" onClick={()=>ouvrirSaisie(s.id)}>+ {fr?"prix d'achat":"purchase price"}</button>
+                        )}
+                        {erreur?.id===s.id&&<span className="pa-err">{erreur.message}</span>}
+                      </div>
+                    )}
+                    {patchs[s.id]?.inconnu&&(
+                      <div className="pa-note">{fr?"Prix d'achat inconnu — hors calcul de marge":"Purchase price unknown — excluded from margins"}</div>
+                    )}
                   </div>
                   <div className="right">
-                    <div className={`profit${s.margin<0?" neg":""}`}>{s.margin>=0?"+":""}{fmt(s.margin)}</div>
+                    <div className={`profit${margeConnue&&s.margin<0?" neg":""}`} style={margeConnue?undefined:{color:"var(--mute)"}}>{margeConnue?`${s.margin>=0?"+":""}${fmt(s.margin)}`:"—"}</div>
                     <div className="sold-date">{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}{sameYear?"":` ${d.getFullYear()}`}</div>
                   </div>
                 </div>
               </SwipeRow>
             );
           })}
-          {!showAllSales&&groupedSales.length>10&&(
+          {/* En mode « à compléter », la liste est déjà complète (elle ne passe
+              pas par le plafond de 10 de visibleSales) : le bouton mentirait. */}
+          {!modeACompleter&&!showAllSales&&groupedSales.length>10&&(
             <button onClick={()=>setShowAllSales(true)}
               style={{width:"100%",padding:"12px",background:"none",border:"1px solid #2F9E90",borderRadius:999,color:"#2F9E90",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
               {lang==='fr'?`Voir plus (${groupedSales.length-10} autres)`:`Show more (${groupedSales.length-10} more)`}

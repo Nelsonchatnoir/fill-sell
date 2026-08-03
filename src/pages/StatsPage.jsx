@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import { track } from '../analytics/analytics';
+import { comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA } from '../utils/comptabilite';
 const EUR_TO_USD = 1.08;
 const fmtp = n => (Math.round(n*10)/10).toFixed(1)+"%";
 
@@ -75,19 +76,32 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   const filteredItems = period === 'all' ? items : items.filter(i => new Date(i.date) >= cutoff);
 
   const n = filteredSales.length;
-  const totalProfit = filteredSales.reduce((a,s)=>a+s.margin, 0);
-  const totalRevenue = filteredSales.reduce((a,s)=>a+s.sell, 0);
-  const totalInvested = filteredItems.reduce((a,i)=>a+(i.buy||0), 0);
-  const avgMargin = totalRevenue>0 ? (totalProfit/totalRevenue)*100 : 0;
-  const avgBasket = n>0 ? totalRevenue/n : 0;
-  const avgProfit = n>0 ? totalProfit/n : 0;
+  // Toute la page d'argent tourne sur les ventes dont le prix d'achat est connu :
+  // `reduce((a,s)=>a+s.margin,0)` additionnait des null comme des 0 et
+  // `(i.buy||0)` inventait un achat gratuit pour chaque article non renseigné.
+  const ventesComptables = comptabilisables(filteredSales);
+  const { total: totalProfit, exclus: ventesSansAchat } = totalMarge(filteredSales);
+  const totalRevenue = totalCA(filteredSales);            // CA : jamais filtré, il est vrai sans prix d'achat
+  // totalInvesti multiplie par la quantité — l'ancien reduce comptait un lot de
+  // 10 articles à 5 € comme 5 € investis.
+  const totalInvested = totalInvesti(filteredItems);
+  const articlesSansAchat = nbSansPrixAchat(filteredItems);
+  const caComptabilise = totalCA(ventesComptables);
+  const avgMargin = caComptabilise>0 ? (totalProfit/caComptabilise)*100 : 0;
+  const avgBasket = n>0 ? totalRevenue/n : 0;             // panier moyen = CA / ventes : les deux termes restent complets
+  // Bénéfice partiel ÷ ventes retenues : le diviser par toutes les ventes
+  // faisait baisser le « profit par vente » à chaque fiche incomplète.
+  const avgProfit = ventesComptables.length>0 ? totalProfit/ventesComptables.length : 0;
 
-  const bestSale = n>0 ? [...filteredSales].sort((a,b)=>b.margin-a.margin)[0] : null;
-  const bestPct  = n>0 ? [...filteredSales].sort((a,b)=>b.marginPct-a.marginPct)[0] : null;
+  // Podiums : une vente sans marge ne peut ni gagner ni perdre un tri — b.margin
+  // avec un null donnait NaN et rendait l'ordre du sort imprévisible.
+  const bestSale = ventesComptables.length>0 ? [...ventesComptables].sort((a,b)=>b.margin-a.margin)[0] : null;
+  const bestPct  = ventesComptables.length>0 ? [...ventesComptables].sort((a,b)=>b.marginPct-a.marginPct)[0] : null;
 
-  // Best month
+  // Best month — sur les ventes comptabilisables : un mois entier de ventes sans
+  // prix d'achat affichait « +0,00 € » comme s'il n'avait rien rapporté.
   const monthMap = {};
-  filteredSales.forEach(s=>{
+  ventesComptables.forEach(s=>{
     const d=new Date(s.date);
     const key=`${d.getFullYear()}-${d.getMonth()}`;
     if(!monthMap[key]) monthMap[key]={profit:0,month:d.getMonth(),year:d.getFullYear()};
@@ -108,14 +122,16 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
   const soldItems = filteredItems.filter(i=>i.statut==='vendu');
   const sellRate = filteredItems.length>0 ? Math.round((soldItems.length/filteredItems.length)*100) : 0;
 
-  // Top 3
-  const top3 = [...filteredSales].sort((a,b)=>b.margin-a.margin).slice(0,3);
+  // Top 3 — même raison que bestSale : sans marge chiffrée, pas de classement.
+  const top3 = [...ventesComptables].sort((a,b)=>b.margin-a.margin).slice(0,3);
 
   // Chart (last 6 months within filtered sales)
+  // Courbe de profit : une vente sans prix d'achat n'apporte pas 0 € de
+  // bénéfice, elle n'apporte AUCUNE information — elle sort de la somme.
   const chartData = Array.from({length:6},(_,i)=>{
     const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
     const m=d.getMonth();const y=d.getFullYear();
-    const ms=filteredSales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
+    const ms=ventesComptables.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
     return{name:MONTHS[m],profit:ms.reduce((a,s)=>a+s.margin,0)};
   });
 
@@ -181,9 +197,11 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
         <>
           <SectionTitle>{tr('vueGlobale')}</SectionTitle>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <KpiCard label={tr('profitTotal')} value={fmt(totalProfit)} color={totalProfit>=0?"#1D9E75":"#E53E3E"}/>
+            {/* Les totaux devenus partiels le disent : sans ça, un profit amputé
+                des ventes sans prix d'achat passait pour le profit complet. */}
+            <KpiCard label={tr('profitTotal')} value={fmt(totalProfit)} color={totalProfit>=0?"#1D9E75":"#E53E3E"} sub={ventesSansAchat>0?(lang==='fr'?`hors ${ventesSansAchat} vente${ventesSansAchat>1?"s":""} sans prix d'achat`:`excl. ${ventesSansAchat} sale${ventesSansAchat>1?"s":""} without buy price`):undefined}/>
             <KpiCard label={tr('revenuTotal')} value={fmt(totalRevenue)} color="#4ECDC4"/>
-            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#F9A26C" sub={lang==='fr'?"stock + articles vendus":"stock + sold items"}/>
+            <KpiCard label={tr('totalInvesti')} value={fmt(totalInvested)} color="#F9A26C" sub={`${lang==='fr'?"stock + articles vendus":"stock + sold items"}${articlesSansAchat>0?(lang==='fr'?` · hors ${articlesSansAchat} sans prix`:` · excl. ${articlesSansAchat} without price`):""}`}/>
             <KpiCard label={tr('ventesTotales')} value={n} color="#0D0D0D"/>
           </div>
 
