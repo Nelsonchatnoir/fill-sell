@@ -143,12 +143,38 @@ export function groupSellLots(results, items) {
 }
 
 const getPrixVente = s => s.prix_vente ?? s.sell ?? s.selling_price ?? 0;
-const getPrixAchat = s => s.prix_achat ?? s.buy ?? s.purchase_price ?? 0;
 const getFrais     = s => s.frais ?? s.sellingFees ?? s.selling_fees ?? 0;
+
+// RÈGLE DE COMPTABILISATION (2026-08-03) — VIDE ≠ ZÉRO.
+// AVANT : `getPrixAchat = s => s.prix_achat ?? s.buy ?? s.purchase_price ?? 0`.
+// Ce `?? 0` final était la RACINE de tous les chiffres faux du moteur vocal :
+// il était appelé par le profit, le « total dépensé », le stock immobilisé, la
+// marge moyenne et le ROI. Un article sans prix d'achat y valait 0 €, donc
+// « 100 % de marge » et « 0 € dépensé » — et l'assistant l'annonçait à voix
+// haute.
+// MAINTENANT : null quand le prix est inconnu, et chaque appelant décide
+// explicitement d'exclure la ligne (jamais de la compter zéro).
+const getPrixAchat = s => {
+  if (!s || s.prix_achat_inconnu === true) return null;
+  const brut = s.prix_achat ?? s.buy ?? s.purchase_price ?? null;
+  if (brut === null || brut === undefined || brut === "") return null;
+  const n = typeof brut === "number" ? brut : parseFloat(String(brut).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+/** Le prix d'achat est-il connu ? Seule porte d'entrée des calculs d'argent. */
+const aPrixAchat = s => getPrixAchat(s) !== null;
+/** Marge d'une ligne, ou null si le prix d'achat est inconnu. */
 const getMargin    = s => {
   const m = s.margin ?? s.benefice ?? s.profit;
-  return m != null ? m : getPrixVente(s) - getPrixAchat(s) - getFrais(s);
+  if (m != null) return m;
+  const pa = getPrixAchat(s);
+  return pa === null ? null : getPrixVente(s) - pa - getFrais(s);
 };
+/** Somme de marges qui ÉCARTE les lignes sans prix d'achat (jamais +0). */
+const sommeMarges = liste => (liste || []).reduce((a, s) => {
+  const m = getMargin(s);
+  return m === null || isNaN(m) ? a : a + m;
+}, 0);
 
 function getPeriodDates(periode, date_from, date_to) {
   const today = new Date();
@@ -319,7 +345,7 @@ function handleAnalyticsQuery(task, context) {
 
   switch (type) {
     case "profit":
-      value = filtered.reduce((a, s) => { const m=getMargin(s); return a+(isNaN(m)?0:m); }, 0);
+      value = sommeMarges(filtered);
       label = context.lang === "en" ? "Total profit" : "Bénéfice total";
       break;
     case "revenue":
@@ -330,34 +356,45 @@ function handleAnalyticsQuery(task, context) {
       value = filtered.length;
       label = context.lang === "en" ? "Sales count" : "Nombre de ventes";
       break;
-    case "avg_margin":
-      if (filtered.length) {
-        const sum = filtered.reduce((a, s) => {
+    case "avg_margin": {
+      // Moyenne calculée sur les SEULES ventes au prix d'achat connu, au
+      // numérateur comme au dénominateur. Avant, une vente sans prix comptait
+      // 0 % et tirait la moyenne vers le bas ; la formule (dénominateur
+      // Math.max(PA,1)) reste inchangée, décision produit.
+      const avecPrix = filtered.filter(aPrixAchat);
+      if (avecPrix.length) {
+        const sum = avecPrix.reduce((a, s) => {
           const mp =
             s.margin_pct ??
             ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100;
           return a + (isNaN(mp) ? 0 : mp);
         }, 0);
-        value = sum / filtered.length;
+        value = sum / avecPrix.length;
       }
       label = context.lang === "en" ? "Avg margin %" : "Marge moyenne %";
       break;
-    case "avg_roi":
-      if (filtered.length) {
-        const sum = filtered.reduce((a, s) => {
+    }
+    case "avg_roi": {
+      const avecPrix = filtered.filter(aPrixAchat);
+      if (avecPrix.length) {
+        const sum = avecPrix.reduce((a, s) => {
           const roi = (getPrixVente(s) - getPrixAchat(s)) / Math.max(getPrixAchat(s), 1);
           return a + (isNaN(roi) ? 0 : roi);
         }, 0);
-        value = sum / filtered.length;
+        value = sum / avecPrix.length;
       }
       label = context.lang === "en" ? "Avg ROI" : "ROI moyen";
       break;
+    }
     case "spend":
-      value = filtered.reduce((a, s) => a + getPrixAchat(s), 0);
+      // « Total dépensé » : ce qu'on SAIT avoir été dépensé. Un article au prix
+      // inconnu n'ajoute pas 0 € — il est écarté, sinon la réponse affirme un
+      // total plus bas que la réalité avec l'aplomb d'un chiffre exact.
+      value = filtered.filter(aPrixAchat).reduce((a, s) => a + getPrixAchat(s), 0);
       label = context.lang === "en" ? "Total spend" : "Total dépensé";
       break;
     default:
-      value = filtered.reduce((a, s) => { const m=getMargin(s); return a+(isNaN(m)?0:m); }, 0);
+      value = sommeMarges(filtered);
       label = context.lang === "en" ? "Total profit" : "Bénéfice total";
   }
 
@@ -387,8 +424,12 @@ function handleAnalyticsBest(task, context) {
     const byCategory = {};
     const cats = [...new Set(filtered.map(s => s.categorie).filter(Boolean))];
     for (const cat of cats) {
+      // `.filter(s => !isNaN(s._sortVal))` NE SUFFIT PAS : isNaN(null) vaut
+      // false (Number(null) === 0), donc une ligne sans prix d'achat passait le
+      // filtre et était classée comme un article à 0 € de marge. On écarte
+      // explicitement les lignes au prix inconnu AVANT le classement.
       const top = filtered
-        .filter(s => s.categorie === cat)
+        .filter(s => s.categorie === cat && aPrixAchat(s))
         .map(s => ({
           ...s,
           _sortVal:
@@ -397,7 +438,7 @@ function handleAnalyticsBest(task, context) {
                   ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100)
               : getMargin(s),
         }))
-        .filter(s => !isNaN(s._sortVal))
+        .filter(s => s._sortVal !== null && !isNaN(s._sortVal))
         .sort((a, b) => b._sortVal - a._sortVal)[0];
       if (top) byCategory[cat] = top;
     }
@@ -411,16 +452,21 @@ function handleAnalyticsBest(task, context) {
   }
 
   const lim = task.data.limit ? Math.max(1, parseInt(task.data.limit)) : 5;
+  // Cette branche lisait les champs bruts (s.prix_achat) au lieu des
+  // accesseurs : un prix absent y devenait undefined, puis NaN, filtré ensuite
+  // — mais un prix null passait comme 0. On repasse par les accesseurs et on
+  // écarte d'entrée les lignes sans prix d'achat connu.
   const topN = filtered
+    .filter(aPrixAchat)
     .map(s => ({
       ...s,
       _sortVal:
         metric === "margin"
           ? (s.margin_pct ??
-              ((s.prix_vente - s.prix_achat - (s.frais ?? s.sellingFees ?? 0)) / Math.max(s.prix_achat, 1)) * 100)
-          : (s.margin ?? s.benefice ?? s.prix_vente - s.prix_achat),
+              ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100)
+          : getMargin(s),
     }))
-    .filter(s => !isNaN(s._sortVal))
+    .filter(s => s._sortVal !== null && !isNaN(s._sortVal))
     .sort((a, b) => b._sortVal - a._sortVal)
     .slice(0, lim);
 
@@ -497,7 +543,10 @@ function handleAnalyticsDate(task, context) {
   const soldItems   = items.filter(i => i._type === "sold");
   const summary = {
     count: items.length,
-    totalSpend:   boughtItems.reduce((a, i) => a + getPrixAchat(i), 0),
+    // Dépense connue seulement : un article au prix inconnu n'ajoute pas 0 €
+    // (il aurait fait passer « j'ai dépensé combien cette semaine ? » sous la
+    // réalité, sans que rien ne le signale).
+    totalSpend:   boughtItems.filter(aPrixAchat).reduce((a, i) => a + getPrixAchat(i), 0),
     totalRevenue: soldItems.reduce((a, s) => a + getPrixVente(s), 0),
   };
 
@@ -523,9 +572,13 @@ function handleQueryStats(task, context) {
     case "best_sales": {
       let filtered = [...context.sales];
       if (periode) filtered = filterByPeriod(filtered, periode, date_from, date_to);
+      // aPrixAchat AVANT le tri : isNaN(null) === false, une vente sans prix
+      // aurait été classée comme une vente à 0 € de marge (et serait ressortie
+      // en tête des « pires ventes » sans l'être).
       const top = filtered
+        .filter(aPrixAchat)
         .map(s => ({ ...s, _sortVal: getMargin(s) }))
-        .filter(s => !isNaN(s._sortVal))
+        .filter(s => s._sortVal !== null && !isNaN(s._sortVal))
         .sort((a, b) => b._sortVal - a._sortVal)
         .slice(0, lim);
       const label = lim === 1
@@ -537,8 +590,9 @@ function handleQueryStats(task, context) {
       let filtered = [...context.sales];
       if (periode) filtered = filterByPeriod(filtered, periode, date_from, date_to);
       const bottom = filtered
+        .filter(aPrixAchat)
         .map(s => ({ ...s, _sortVal: getMargin(s) }))
-        .filter(s => !isNaN(s._sortVal))
+        .filter(s => s._sortVal !== null && !isNaN(s._sortVal))
         .sort((a, b) => a._sortVal - b._sortVal)
         .slice(0, lim);
       const label = lim === 1
@@ -550,24 +604,30 @@ function handleQueryStats(task, context) {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const monthSales = context.sales.filter(s => new Date(s.date || s.created_at) >= startOfMonth);
-      const total = monthSales.reduce((a, s) => { const m = getMargin(s); return a + (isNaN(m) ? 0 : m); }, 0);
+      const total = sommeMarges(monthSales);
       const monthName = now.toLocaleString(context.lang === "en" ? "en-US" : "fr-FR", { month: "long" });
       return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, monthName }, message: `${Math.round(total * 100) / 100}€` };
     }
     case "marge_moyenne": {
       let filtered = [...context.sales];
       if (periode) filtered = filterByPeriod(filtered, periode, date_from, date_to);
-      const avg = filtered.length
-        ? filtered.reduce((a, s) => {
+      // Moyenne sur les seules ventes au prix d'achat connu : une vente sans
+      // prix comptait 0 % et faisait chuter la marge moyenne annoncée.
+      const avecPrix = filtered.filter(aPrixAchat);
+      const avg = avecPrix.length
+        ? avecPrix.reduce((a, s) => {
             const mp = s.margin_pct ?? ((getPrixVente(s) - getPrixAchat(s) - getFrais(s)) / Math.max(getPrixAchat(s), 1)) * 100;
             return a + (isNaN(mp) ? 0 : mp);
-          }, 0) / filtered.length
+          }, 0) / avecPrix.length
         : 0;
       return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(avg * 10) / 10, metric }, message: `${Math.round(avg * 10) / 10}%` };
     }
     case "stock_immobilise": {
       const stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
-      const total = stock.reduce((a, i) => a + getPrixAchat(i) * Math.max(1, i.quantite || 1), 0);
+      // Stock immobilisé = l'argent qu'on SAIT avoir immobilisé. Les articles
+      // au prix inconnu (dressing Vinted importé, notamment) sont écartés, pas
+      // comptés 0 € — sinon la réponse sous-estime sans le dire.
+      const total = stock.filter(aPrixAchat).reduce((a, i) => a + getPrixAchat(i) * Math.max(1, i.quantite || 1), 0);
       return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, count: stock.length }, message: `${Math.round(total * 100) / 100}€` };
     }
     case "stock_count": {
@@ -603,17 +663,26 @@ function handlePlatformStats(task, context) {
   let sales = [...context.sales];
   if (periode) sales = filterByPeriod(sales, periode, null, null);
 
+  // `profit += getMargin(s)` sur une marge null donnait NaN, qui contaminait
+  // le total de la plateforme entière (un seul article sans prix suffisait à
+  // faire disparaître le chiffre). Le CA compte toutes les ventes ; le profit
+  // et la marge moyenne ne comptent que celles au prix d'achat connu, et
+  // `countProfit` sert de dénominateur pour ne pas diluer la moyenne.
   const platSalesMap = {};
   sales.forEach(s => {
     const p = s.plateforme; if (!p) return;
-    if (!platSalesMap[p]) platSalesMap[p] = { count: 0, revenue: 0, profit: 0, mpSum: 0 };
+    if (!platSalesMap[p]) platSalesMap[p] = { count: 0, countProfit: 0, revenue: 0, profit: 0, mpSum: 0 };
     platSalesMap[p].count++;
     platSalesMap[p].revenue += getPrixVente(s);
-    platSalesMap[p].profit += getMargin(s);
-    platSalesMap[p].mpSum += (s.margin_pct ?? s.marginPct ?? 0);
+    const m = getMargin(s);
+    if (m !== null && !isNaN(m)) {
+      platSalesMap[p].countProfit++;
+      platSalesMap[p].profit += m;
+      platSalesMap[p].mpSum += (s.margin_pct ?? s.marginPct ?? 0);
+    }
   });
   const platSales = Object.entries(platSalesMap)
-    .map(([p, d]) => ({ plateforme: p, count: d.count, revenue: Math.round(d.revenue * 100) / 100, profit: Math.round(d.profit * 100) / 100, avgMargin: d.count ? Math.round(d.mpSum / d.count * 10) / 10 : 0 }))
+    .map(([p, d]) => ({ plateforme: p, count: d.count, revenue: Math.round(d.revenue * 100) / 100, profit: Math.round(d.profit * 100) / 100, avgMargin: d.countProfit ? Math.round(d.mpSum / d.countProfit * 10) / 10 : 0 }))
     .sort((a, b) => b.profit - a.profit);
 
   const platStockMap = {};
@@ -621,7 +690,8 @@ function handlePlatformStats(task, context) {
     const p = i.plateforme; if (!p) return;
     if (!platStockMap[p]) platStockMap[p] = { count: 0, invested: 0 };
     platStockMap[p].count += (i.quantite || 1);
-    platStockMap[p].invested += (i.buy || 0) * (i.quantite || 1);
+    // `(i.buy || 0)` comptait un article au prix inconnu comme 0 € investi.
+    if (aPrixAchat(i)) platStockMap[p].invested += getPrixAchat(i) * (i.quantite || 1);
   });
   const platStock = Object.entries(platStockMap)
     .map(([p, d]) => ({ plateforme: p, count: d.count, invested: Math.round(d.invested * 100) / 100 }))
@@ -691,19 +761,23 @@ async function handleBusinessAdvice(task, context) {
     return d >= prevMonthStart && d < monthStart;
   });
 
-  // Chiffres globaux mois courant
-  const profit    = salesMonth.reduce((a, s) => a + (s.margin ?? s.benefice ?? 0), 0);
+  // Chiffres globaux mois courant.
+  // Ces valeurs partent dans le prompt de stats-analysis : un bénéfice gonflé
+  // par des ventes sans prix d'achat (comptées `?? 0`, donc marge = CA) faisait
+  // produire à l'IA des conseils bâtis sur une rentabilité imaginaire.
+  const salesMonthComptables = salesMonth.filter(aPrixAchat);
+  const profit    = sommeMarges(salesMonth);
   const ventes    = salesMonth.length;
   const ca        = salesMonth.reduce((a, s) => a + getPrixVente(s), 0);
-  const avgMargin = ventes > 0
-    ? salesMonth.reduce((a, s) => {
+  const avgMargin = salesMonthComptables.length > 0
+    ? salesMonthComptables.reduce((a, s) => {
         const pv = getPrixVente(s);
         return a + (pv > 0 ? ((s.margin ?? s.benefice ?? 0) / pv) * 100 : 0);
-      }, 0) / ventes
+      }, 0) / salesMonthComptables.length
     : 0;
 
   // Chiffres mois précédent
-  const profitPrev = salesPrev.reduce((a, s) => a + (s.margin ?? s.benefice ?? 0), 0);
+  const profitPrev = sommeMarges(salesPrev);
   const ventesPrev = salesPrev.length;
 
   // Top 3 catégories par bénéfice (sur toutes les ventes)
@@ -711,7 +785,8 @@ async function handleBusinessAdvice(task, context) {
   for (const s of sales) {
     const c = s.type || s.categorie || "Autre";
     if (!catData[c]) catData[c] = { profit: 0, ca: 0, count: 0 };
-    catData[c].profit += s.margin ?? s.benefice ?? 0;
+    // Profit par catégorie : seules les ventes au prix d'achat connu y entrent.
+    if (aPrixAchat(s)) catData[c].profit += s.margin ?? s.benefice ?? 0;
     catData[c].ca     += getPrixVente(s);
     catData[c].count  += 1;
   }
@@ -729,6 +804,7 @@ async function handleBusinessAdvice(task, context) {
   for (const s of sales) {
     const m = s.marque || "Sans marque";
     if (m === "Sans marque") continue;
+    if (!aPrixAchat(s)) continue; // profit par marque : prix d'achat connu seulement
     marqueData[m] = (marqueData[m] || 0) + (s.margin ?? s.benefice ?? 0);
   }
   const marques_top3 = Object.entries(marqueData)
@@ -736,8 +812,11 @@ async function handleBusinessAdvice(task, context) {
     .slice(0, 3)
     .map(([marque, p]) => ({ marque, profit: Math.round(p) }));
 
-  // Meilleur article
-  const bestSale = [...sales].sort((a, b) => (b.margin ?? b.benefice ?? 0) - (a.margin ?? a.benefice ?? 0))[0];
+  // Meilleur article : classé sur les ventes dont on connaît le prix d'achat.
+  // Sinon l'article « le plus rentable » pouvait être celui dont on ignorait
+  // tout, avec une marge égale à son prix de vente.
+  const bestSale = [...sales].filter(aPrixAchat)
+    .sort((a, b) => (b.margin ?? b.benefice ?? 0) - (a.margin ?? a.benefice ?? 0))[0];
 
   // Articles lents (>30j en stock, non vendus)
   const slowItems = items.filter(i => {
@@ -762,8 +841,10 @@ async function handleBusinessAdvice(task, context) {
     const p = s.plateforme; if (!p) continue;
     if (!platSalesData[p]) platSalesData[p] = { count: 0, ca: 0, profit: 0, mpSum: 0 };
     platSalesData[p].count++; platSalesData[p].ca += getPrixVente(s);
-    platSalesData[p].profit += s.margin ?? s.benefice ?? 0;
-    platSalesData[p].mpSum += s.margin_pct ?? 0;
+    if (aPrixAchat(s)) {
+      platSalesData[p].profit += s.margin ?? s.benefice ?? 0;
+      platSalesData[p].mpSum += s.margin_pct ?? 0;
+    }
   }
   const plateformes_ventes = Object.entries(platSalesData)
     .map(([p, d]) => ({ p, count: d.count, ca: Math.round(d.ca), profit: Math.round(d.profit), avgMargin: d.count ? Math.round(d.mpSum / d.count * 10) / 10 : 0 }))
@@ -776,7 +857,9 @@ async function handleBusinessAdvice(task, context) {
     const p = i.plateforme; if (!p) continue;
     if (!platStockData[p]) platStockData[p] = { count: 0, invested: 0 };
     platStockData[p].count += (i.quantite || 1);
-    platStockData[p].invested += (i.buy || i.prix_achat || 0) * (i.quantite || 1);
+    // Triple fallback vers 0 supprimé : un article au prix inconnu n'est pas
+    // un article à 0 € investi.
+    if (aPrixAchat(i)) platStockData[p].invested += getPrixAchat(i) * (i.quantite || 1);
   }
   const plateformes_stock = Object.entries(platStockData)
     .map(([p, d]) => ({ p, count: d.count, invested: Math.round(d.invested) }))

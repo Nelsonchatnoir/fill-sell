@@ -87,7 +87,7 @@ export async function orchestrateSale(
   if (job.inventaire_id != null) {
     const { data } = await admin
       .from("inventaire")
-      .select("id, titre, prix_achat, purchase_costs, marque, type, description, emplacement, statut, quantite")
+      .select("id, titre, prix_achat, prix_achat_inconnu, purchase_costs, marque, type, description, emplacement, statut, quantite")
       .eq("id", job.inventaire_id)
       .maybeSingle();
     inv = data ?? null;
@@ -95,11 +95,29 @@ export async function orchestrateSale(
 
   const override = Number(opts?.priceOverride);
   const prixVente = Number.isFinite(override) && override > 0 ? override : Number(job.price ?? 0);
-  const prixAchat = Number(inv?.prix_achat ?? 0);
+
+  // RÈGLE DE COMPTABILISATION (2026-08-03) — VIDE ≠ ZÉRO.
+  // AVANT : `Number(inv?.prix_achat ?? 0)`. Un article sans prix d'achat
+  // renseigné (import du dressing Vinted, article créé par Lens, publication
+  // sans saisie) produisait `prixAchat = 0`, donc `benefice = prixVente`
+  // ENTIER — écrit en base dans `ventes.benefice` et dans `inventaire.margin`,
+  // puis annoncé tel quel dans l'e-mail de vente. Une marge de 100 % sur du
+  // vent, impossible à distinguer d'une vraie ensuite.
+  // MAINTENANT : prix d'achat inconnu → bénéfice et pourcentage NULL. La vente
+  // est enregistrée normalement (le CA est vrai, lui), seul le bénéfice est
+  // laissé vide jusqu'à ce que l'utilisateur complète le prix.
+  // `prix_achat_inconnu` (« je ne sais plus ») vaut un prix absent.
+  const prixAchatBrut = inv?.prix_achat;
+  const prixAchatConnu = !inv?.prix_achat_inconnu &&
+    prixAchatBrut !== null && prixAchatBrut !== undefined &&
+    Number.isFinite(Number(prixAchatBrut));
+  const prixAchat = prixAchatConnu ? Number(prixAchatBrut) : null;
   const purchaseCosts = Number(inv?.purchase_costs ?? 0);
   const sellingFees = 0; // décision produit : 0, éditable ensuite dans l'app
-  const benefice = prixVente - prixAchat - purchaseCosts - sellingFees;
-  const marginPct = prixVente > 0 ? (benefice / prixVente) * 100 : 0;
+  const benefice = prixAchatConnu
+    ? prixVente - (prixAchat as number) - purchaseCosts - sellingFees
+    : null;
+  const marginPct = benefice !== null && prixVente > 0 ? (benefice / prixVente) * 100 : null;
 
   // ── 2 + 3. GATE ATOMIQUE anti-double-vente (2026-07-17) ───────────────────
   // Un article détecté hors ligne sur PLUSIEURS plateformes affiche un bandeau
@@ -235,8 +253,13 @@ export async function orchestrateSale(
     const email = userData?.user?.email;
     if (cronSecret && email) {
       const label = PLATFORM_LABELS[job.platform] ?? job.platform;
-      const sign = benefice >= 0 ? "+" : "";
       const titre = job.title ?? inv?.titre ?? "Ton article";
+      // Bénéfice inconnu (prix d'achat non renseigné) : on annonce la VENTE et
+      // le prix, jamais un bénéfice inventé. `benefice.toFixed()` aurait de
+      // toute façon planté sur null depuis la règle du 03/08.
+      const ligneArgent = benefice === null
+        ? `vendu ${prixVente.toFixed(0)}€. Ajoute son prix d'achat dans FillSell pour connaître ton bénéfice.`
+        : `${benefice >= 0 ? "+" : ""}${benefice.toFixed(0)}€ de bénéfice.`;
       const removalLine = pendingRemoval > 0
         ? `\n\n${pendingRemoval} annonce${pendingRemoval > 1 ? "s" : ""} du même article ${pendingRemoval > 1 ? "sont" : "est"} encore en ligne sur d'autres plateformes — ouvre FillSell pour ${pendingRemoval > 1 ? "les" : "la"} retirer en un clic.`
         : "";
@@ -247,7 +270,7 @@ export async function orchestrateSale(
           relance_emails: [{
             to: email,
             subject: `Vendu sur ${label} 🎉`,
-            body_text: `« ${titre} » vient de se vendre sur ${label} : ${sign}${benefice.toFixed(0)}€ de bénéfice.${removalLine}`,
+            body_text: `« ${titre} » vient de se vendre sur ${label} : ${ligneArgent}${removalLine}`,
           }],
         }),
       });

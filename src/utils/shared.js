@@ -1147,8 +1147,12 @@ export function groupSales(arr){
     const last=groups[groups.length-1];
     if(last&&last.quantite==null&&last.title===s.title&&last.marque===s.marque&&last.date===s.date&&Math.abs((last.sell||0)-(s.sell||0))<0.01){
       last._qty=(last._qty||1)+1;
-      last.margin=(last.margin||0)+(s.margin||0);
-      last.marginPct=(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:0;
+      // Copie de la groupSales d'App.jsx — même correction : une marge inconnue
+      // dans le groupe rend la marge du groupe inconnue, au lieu d'additionner
+      // les seules lignes chiffrées et de présenter le résultat comme un total.
+      const marges=[last.margin,s.margin];
+      last.margin=marges.some(m=>m==null)?null:marges.reduce((a,m)=>a+m,0);
+      last.marginPct=last.margin!=null&&(last.sell||0)>0?(last.margin/(last.sell*last._qty))*100:null;
     }else{
       groups.push({...s,_qty:1});
     }
