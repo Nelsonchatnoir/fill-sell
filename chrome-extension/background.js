@@ -4706,7 +4706,14 @@ async function restRequest(path, accessToken, init = {}) {
     },
   });
   if (!res.ok) throw new Error(`REST ${path} → HTTP ${res.status}`);
-  return init.method && init.method !== "GET" ? null : res.json();
+  // Un écrivain qui demande return=representation VEUT les lignes. Avant le
+  // 03/08 au soir, tout non-GET rendait null quel que soit Prefer — deux
+  // victimes silencieuses : la création du run de sync (« run_non_cree » au
+  // premier clic, le 2e clic reprenait la ligne pourtant créée) et le
+  // rattachement du dressing (rattaches toujours vide → 409 du run d10ab149).
+  const prefer = String(init.headers?.Prefer ?? "");
+  if (init.method && init.method !== "GET" && !prefer.includes("return=representation")) return null;
+  return res.status === 204 ? null : res.json();
 }
 
 // ── Sync du dressing Vinted (2026-08-03) ─────────────────────────────────────
@@ -4864,6 +4871,7 @@ async function syncDressingUnlocked(declencheur) {
   }
 
   const vusCetteSync = new Set();
+  const echecsEcriture = []; // articles refusés par la base, rapportés à la clôture
   let page = run.page_suivante || 1;
   let items_vus = run.items_vus || 0;
   let items_crees = run.items_crees || 0;
@@ -4893,6 +4901,7 @@ async function syncDressingUnlocked(declencheur) {
 
     for (const a of articles) vusCetteSync.add(a.vinted_item_id);
     const bilan = await enregistrerArticlesDressing(articles, { token, userId });
+    if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
     items_vus += articles.length;
     items_crees += bilan.crees;
     items_maj += bilan.majs;
@@ -4930,12 +4939,20 @@ async function syncDressingUnlocked(declencheur) {
     }
   }
 
+  // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
+  // allée au bout) mais sont consignés dans `erreur` : items_vus − créés −
+  // maj doit toujours s'expliquer en lisant la ligne du run.
   await clore({
     status: "done", items_vus, items_crees, items_maj,
     total_entries: totalEntries,
+    ...(echecsEcriture.length ? {
+      erreur: (`${echecsEcriture.length} article(s) non écrit(s) : ` +
+        echecsEcriture.map((f) => `${f.vinted_item_id} (${f.erreur})`).join(" ; ")).slice(0, 500),
+    } : {}),
   });
+  if (echecsEcriture.length) console.error(`[sync-dressing] ${echecsEcriture.length} article(s) non écrit(s) — détail dans vinted_sync_runs.erreur`);
   console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
-  return { ok: true, items_vus, items_crees, items_maj };
+  return { ok: true, items_vus, items_crees, items_maj, echecs: echecsEcriture.length };
 
   } catch (e) {
     // Filet général : c'est CE catch qui garantit qu'aucune fin d'exécution ne
@@ -4959,7 +4976,7 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   let existants = [];
   try {
     existants = await restRequest(
-      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut`,
+      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine`,
       token, { headers: { Prefer: "return=representation" } },
     ) ?? [];
   } catch (e) {
@@ -5007,37 +5024,63 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
       console.warn("[sync-dressing] lecture des jobs de publication:", e?.message ?? e);
     }
   }
-  // Rattachement : on ADOSSE l'identité Vinted à la ligne EXISTANTE de
-  // l'utilisateur — sans toucher à ses données (titre, marque, photos, prix,
-  // statut, origine) : c'est SON article, la sync n'en est pas la source.
-  const rattaches = new Map(); // vinted_item_id → inventaire_id rattaché avec succès
-  for (const a of orphelins) {
-    const invId = parJob.get(String(a.vinted_item_id));
+  // ── PATCH léger : la règle de propriété (2026-08-03, 2e revue) ────────────
+  // La sync ne réécrit EN ENTIER que SES lignes (origine='vinted_sync').
+  // Toute autre ligne — rattachée via un job ce run-ci, OU déjà identifiée
+  // par vinted_item_id lors d'un run précédent — ne reçoit QUE l'identité et
+  // les compteurs Vinted : titre, marque, photos, prix, statut, origine sont
+  // à l'utilisateur. La faire entrer dans l'upsert plein l'écraserait (et
+  // réécrirait même son id, cf. le 409 du run d10ab149 : merge-duplicates
+  // pose TOUTES les colonnes du payload dans le DO UPDATE, id compris — la
+  // FK cross_post_jobs_inventaire_id_fkey a heureusement tout annulé).
+  const patchLeger = (invId, a) => restRequest(`inventaire?id=eq.${invId}&user_id=eq.${userId}`, token, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      vinted_item_id: a.vinted_item_id,
+      vinted_view_count: a.vues,
+      vinted_favourite_count: a.favoris,
+      vinted_status: a.statut,
+      last_synced_at: maintenant,
+      disparu_le: null,
+    }),
+  });
+
+  const patchesLegers = new Set(); // vinted_item_id écrits par PATCH — exclus du lot d'upsert
+  const echecs = [];               // { vinted_item_id, titre, erreur } — remontés dans le run
+  for (const a of articles) {
+    const dejaLa = parVintedId.get(a.vinted_item_id);
+    let invId = null;
+    if (dejaLa && dejaLa.origine !== "vinted_sync") invId = dejaLa.id;                 // ligne FillSell déjà identifiée
+    else if (!dejaLa) { const viaJob = parJob.get(String(a.vinted_item_id)); if (viaJob != null) invId = viaJob; }
     if (invId == null) continue;
     try {
-      const patched = await restRequest(`inventaire?id=eq.${invId}&user_id=eq.${userId}`, token, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          vinted_item_id: a.vinted_item_id,
-          vinted_view_count: a.vues,
-          vinted_favourite_count: a.favoris,
-          vinted_status: a.statut,
-          last_synced_at: maintenant,
-          disparu_le: null,
-        }),
-      });
+      const patched = await patchLeger(invId, a);
       if (Array.isArray(patched) && patched.length) {
-        rattaches.set(a.vinted_item_id, invId);
+        patchesLegers.add(a.vinted_item_id);
       }
       // 0 ligne = l'article a été supprimé de FillSell depuis la publication :
       // il repart en création normale ci-dessous, comme un article inconnu.
     } catch (e) {
-      console.warn(`[sync-dressing] rattachement ${a.vinted_item_id} → inventaire ${invId}:`, e?.message ?? e);
+      // PATCH raté : surtout ne PAS laisser l'article filer dans l'upsert
+      // plein (doublon pour un rattaché, écrasement pour une ligne FillSell).
+      // Il est signalé et sera retenté au prochain run.
+      patchesLegers.add(a.vinted_item_id);
+      echecs.push({ vinted_item_id: a.vinted_item_id, titre: a.titre ?? null, erreur: String(e?.message ?? e) });
+      console.error(`[sync-dressing] PATCH ${a.vinted_item_id} → inventaire ${invId} refusé:`, e?.message ?? e);
     }
   }
 
-  const lignes = articles.filter((a) => !rattaches.has(a.vinted_item_id)).map((a, i) => {
+  // Lot d'upsert : jamais un article patché, jamais deux fois le même id
+  // (deux entrées wardrobe pour le même id feraient un « cannot affect row a
+  // second time » — première occurrence seule).
+  const vusDansLeLot = new Set();
+  const lignes = articles.filter((a) => {
+    if (patchesLegers.has(a.vinted_item_id)) return false;
+    if (vusDansLeLot.has(a.vinted_item_id)) return false;
+    vusDansLeLot.add(a.vinted_item_id);
+    return true;
+  }).map((a, i) => {
     const dejaLa = parVintedId.get(a.vinted_item_id);
     return {
       // `inventaire.id` n'a PAS de valeur par défaut en base (pas d'identity) :
@@ -5069,11 +5112,32 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
 
   // UPSERT sur la contrainte d'unicité : 2e passage = mise à jour, jamais
   // duplication. `merge-duplicates` cible l'index (user_id, vinted_item_id).
-  await restRequest("inventaire?on_conflict=user_id,vinted_item_id", token, {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(lignes),
-  });
+  // Le lot est ATOMIQUE : une seule ligne refusée perdait les 30 autres (run
+  // d10ab149 : 0 création sur un lot de 32). En cas de refus du lot, reprise
+  // ligne par ligne — les lignes saines passent, les refusées sont signalées.
+  if (lignes.length) {
+    try {
+      await restRequest("inventaire?on_conflict=user_id,vinted_item_id", token, {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(lignes),
+      });
+    } catch (e) {
+      console.warn(`[sync-dressing] lot d'upsert refusé (${e?.message ?? e}) — reprise ligne par ligne`);
+      for (const ligne of lignes) {
+        try {
+          await restRequest("inventaire?on_conflict=user_id,vinted_item_id", token, {
+            method: "POST",
+            headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify([ligne]),
+          });
+        } catch (e2) {
+          echecs.push({ vinted_item_id: ligne.vinted_item_id, titre: ligne.titre, erreur: String(e2?.message ?? e2) });
+          console.error(`[sync-dressing] article ${ligne.vinted_item_id} (« ${ligne.titre} ») non écrit:`, e2?.message ?? e2);
+        }
+      }
+    }
+  }
 
   // Relevé du jour : c'est lui qui rendra « +3 vues en 15 jours » possible.
   // Un seul par article et par jour (contrainte de base) — un clic répété sur
@@ -5100,11 +5164,14 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   // jamais détectée. On crée un job DÉJÀ 'published' (l'annonce existe, on ne
   // publie rien) — status terminal, donc invisible pour get-pending-jobs et
   // pour recoverStaleProcessingJobs, qui ne repêche que 'processing'.
-  // Les rattachés sont EXCLUS : leur job de publication réel existe déjà et
+  // Les patchés sont EXCLUS : leur job de publication réel existe déjà et
   // alimente déjà la détection de vente — un synthétique en plus ferait deux
-  // jobs 'published' sur le même platform_listing_id.
+  // jobs 'published' sur le même platform_listing_id. Les échecs d'écriture
+  // aussi : leur inventaire_id ne pointerait sur rien (FK cross_post_jobs).
+  const nonEcrits = new Set(echecs.map((f) => f.vinted_item_id));
   const aCreer = articles.filter((a) =>
-    a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id) && !rattaches.has(a.vinted_item_id));
+    a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id)
+    && !patchesLegers.has(a.vinted_item_id) && !nonEcrits.has(a.vinted_item_id));
   if (aCreer.length) {
     const parId = new Map(lignes.map((l) => [l.vinted_item_id, l.id]));
     const jobs = aCreer.map((a) => ({
@@ -5125,10 +5192,13 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
     }).catch((e) => console.warn("[sync-dressing] jobs de suivi:", e?.message ?? e));
   }
 
-  // Un rattachement compte comme une mise à jour : l'article existait, la
-  // sync n'a fait que lui adosser son identité Vinted.
-  const crees = articles.filter((a) => !parVintedId.has(a.vinted_item_id) && !rattaches.has(a.vinted_item_id)).length;
-  return { crees, majs: articles.length - crees };
+  // Un PATCH léger compte comme une mise à jour : l'article existait, la
+  // sync n'a fait que lui adosser son identité Vinted et ses compteurs.
+  // Les échecs ne comptent ni créés ni mis à jour : ils sont RAPPORTÉS.
+  const patchesReussis = [...patchesLegers].filter((id) => !nonEcrits.has(id)).length;
+  const crees = lignes.filter((l) => !parVintedId.has(l.vinted_item_id) && !nonEcrits.has(l.vinted_item_id)).length;
+  const majsLot = lignes.filter((l) => parVintedId.has(l.vinted_item_id) && !nonEcrits.has(l.vinted_item_id)).length;
+  return { crees, majs: patchesReussis + majsLot, echecs };
 }
 
 // ── Catalogue cumulatif des requis découverts (chantier 2026-07-16) ───────────
