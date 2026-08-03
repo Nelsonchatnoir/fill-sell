@@ -26,7 +26,7 @@ import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
   ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
-  versionAuMoins, SYNC_VERSION_MIN,
+  versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS,
   lireDernierRunDressing, aDejaSynchroniseDressing,
 } from '../utils/vintedSync';
 
@@ -965,6 +965,36 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const extCapable = extVue && versionAuMoins(extVersion, SYNC_VERSION_MIN);
   const enCours = attente || (suivi && run?.status === 'running');
 
+  // ── Cadence des syncs manuelles ───────────────────────────────────────────
+  // Miroir d'affichage de la borne background (qui, elle, relit la base et ne
+  // se contourne pas en rechargeant la page). Seul un run DONE arme la
+  // fenêtre : un échec se retente tout de suite.
+  const finDernierDone = run?.status === 'done' && run?.finished_at ? Date.parse(run.finished_at) : NaN;
+  const cadenceFinA = Number.isFinite(finDernierDone) ? finDernierDone + SYNC_CADENCE_MANUELLE_MS : 0;
+  const [, forcerRendu] = useState(0);
+  // Re-rendu périodique pendant la fenêtre : sans lui, « dans ~12 min »
+  // resterait figé et le bouton ne se réactiverait qu'au prochain montage.
+  useEffect(() => {
+    if (!cadenceFinA || Date.now() >= cadenceFinA) return;
+    const id = setInterval(() => forcerRendu((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [cadenceFinA]);
+  const enCadence = !enCours && cadenceFinA > Date.now();
+  const cadenceTexte = (() => {
+    if (!enCadence) return null;
+    const depuisMin = Math.max(0, Math.round((Date.now() - finDernierDone) / 60000));
+    const dansMin = Math.max(1, Math.ceil((cadenceFinA - Date.now()) / 60000));
+    // Ton neutre : c'est une cadence, pas une faute.
+    if (depuisMin < 1) {
+      return fr
+        ? `Dressing synchronisé à l'instant — tu pourras actualiser dans ~${dansMin} min.`
+        : `Closet synced just now — you can refresh in ~${dansMin} min.`;
+    }
+    return fr
+      ? `Dressing synchronisé il y a ${depuisMin} min — tu pourras actualiser dans ~${dansMin} min.`
+      : `Closet synced ${depuisMin} min ago — you can refresh in ~${dansMin} min.`;
+  })();
+
   const raisonGrisee = (() => {
     if (isNative) {
       return fr
@@ -998,6 +1028,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   })();
 
   const lancer = () => {
+    if (enCadence) return; // le bouton est désactivé ; ceinture si l'état a un tour de retard
     setMessage(null);
     clicAtRef.current = Date.now();
     setAttente(true);
@@ -1068,13 +1099,18 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         </div>
       </div>
 
-      <SecondaryButton disabled={!extCapable||enCours} onClick={lancer}>
+      <SecondaryButton disabled={!extCapable||enCours||enCadence} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
           : dejaSync
             ? (fr?"Actualiser mon dressing":"Refresh my closet")
             : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
+
+      {/* Jamais un bouton mort sans explication : la cadence dit quand. */}
+      {cadenceTexte&&(
+        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{cadenceTexte}</div>
+      )}
 
       {enCours&&(
         <div style={{display:"flex",alignItems:"center",gap:10,background:"#F0FDFB",border:"1px solid rgba(13,148,136,0.18)",borderRadius:10,padding:"10px 12px"}}>

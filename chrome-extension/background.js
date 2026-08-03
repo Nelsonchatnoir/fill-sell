@@ -4745,6 +4745,18 @@ const SYNC_MAX_PAGES = 40; // 40 × 96 = 3840 articles : garde-fou anti-boucle
 // vers Supabase : aucun trafic Vinted supplémentaire, les pauses anti-bot
 // (entre pages uniquement) ne bougent pas.
 const SYNC_CHUNK = 8;
+// Cadence des syncs MANUELLES (2026-08-03) : un run ne dure que ~7 s — sans
+// borne, le bouton se relance en boucle et c'est le compte VINTED de
+// l'utilisateur qui présente un profil de requêtes mécanique. 15 min : re-
+// consulter son dressing au quart d'heure est un comportement humain normal,
+// toutes les 7 s non ; cohérent avec les cadences du projet (sonde sessions
+// 10 min, snapshots 1/jour, cron 24 h) ; et les vues/favoris bougent de
+// quelques unités par JOUR — une fraîcheur plus fine n'apporte rien.
+// Seul un run DONE arme la fenêtre : un échec (session expirée, bot-shield)
+// doit pouvoir être retenté aussitôt corrigé. Le cron quotidien est exempt
+// (declencheur='cron'). Miroir front : SYNC_CADENCE_MANUELLE_MS dans
+// src/utils/vintedSync.js — même valeur, à faire évoluer ENSEMBLE.
+const SYNC_MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
 let syncDressingEnCours = false;
 
 function syncPauseMs() {
@@ -4806,6 +4818,27 @@ async function syncDressingUnlocked(declencheur) {
   if (run) {
     console.log(`[sync-dressing] reprise du run ${run.id} à la page ${run.page_suivante}`);
   } else {
+    // ── Cadence manuelle : borne posée ICI, côté background + base ─────────
+    // (l'état React se contourne d'un F5). La REPRISE d'un run 'running'
+    // au-dessus n'est jamais bornée : continuer un run interrompu n'est pas
+    // une nouvelle sync. Lecture indisponible → on laisse passer : c'est un
+    // régulateur de cadence, pas une barrière de sécurité.
+    if (declencheur === "bouton") {
+      try {
+        const derniers = await restRequest(
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&select=finished_at&order=finished_at.desc&limit=1`,
+          token, { headers: { Prefer: "return=representation" } },
+        );
+        const dernierFini = Date.parse(derniers?.[0]?.finished_at ?? "");
+        if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS) {
+          const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_MANUAL_COOLDOWN_MS - Date.now()) / 60000));
+          console.log(`[sync-dressing] dressing synchronisé il y a moins de 15 min — prochaine sync manuelle possible dans ~${dansMin} min (cron non concerné)`);
+          return { ok: false, reason: "cadence", prochaine_dans_min: dansMin };
+        }
+      } catch (e) {
+        console.warn("[sync-dressing] lecture de cadence impossible (on laisse passer):", e?.message ?? e);
+      }
+    }
     const cree = await restRequest("vinted_sync_runs", token, {
       method: "POST",
       headers: { Prefer: "return=representation" },

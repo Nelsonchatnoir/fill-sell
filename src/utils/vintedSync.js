@@ -67,6 +67,16 @@ export function syncDressingVisiblePour(email) {
 // « aucune extension » dans le message affiché — jamais à autoriser le clic.
 export const SYNC_VERSION_MIN = '0.5.0';
 
+// ── Cadence des syncs manuelles (2026-08-03) ────────────────────────────────
+// Un run ne dure que ~7 s : sans borne, le bouton se relance en boucle et
+// c'est le compte VINTED de l'utilisateur qui présente un profil mécanique.
+// La borne RÉELLE vit côté background/base (un F5 ne la contourne pas) ;
+// cette constante n'est que le miroir d'affichage — même valeur que
+// SYNC_MANUAL_COOLDOWN_MS dans chrome-extension/background.js, à faire
+// évoluer ENSEMBLE. Seul un run DONE arme la fenêtre : un échec se retente
+// tout de suite. Ce n'est pas une faute, c'est une cadence.
+export const SYNC_CADENCE_MANUELLE_MS = 15 * 60 * 1000;
+
 /** a >= b sur des versions « x.y.z ». Rend false si l'un des deux est illisible. */
 export function versionAuMoins(a, b) {
   const parse = (v) => String(v ?? '').trim().split('.').map((n) => parseInt(n, 10));
