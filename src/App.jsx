@@ -3026,13 +3026,34 @@ export default function App({ loginOnly = false }){
         .in('id',p.aAnnuler.map(j=>j.id));
       if(error)throw new Error(error.message);
     }
-    // 3. SEULEMENT MAINTENANT
-    await supabase.from('inventaire').delete().eq('id',item.id);
+    // 3. SEULEMENT MAINTENANT — et les ventes liées AVANT la ligne inventaire :
+    // la FK ventes_inventaire_id_fkey est en NO ACTION (vérifié en prod le
+    // 03/08) — supprimer un article encore référencé par une vente est REJETÉ
+    // par la base, et l'ancien code avalait cette erreur : l'article
+    // « supprimé » réapparaissait au fetchAll suivant.
     if(alsoDeleteSale){
-      const t=item?.title?.toLowerCase().trim();
-      const ms=sales.find(s=>s.title?.toLowerCase().trim()===t);
-      if(ms)await supabase.from('ventes').delete().eq('id',ms.id);
+      // Lien PAR ID (ventes.inventaire_id), jamais par titre (2026-08-03 soir) :
+      // avec l'import du dressing les homonymes deviennent la norme (titres
+      // Vinted génériques) — l'ancien sales.find(title===…) pouvait supprimer
+      // la vente d'un AUTRE article, même classe de bug que la cible d'édition
+      // (692f873). Delete directement en base sur inventaire_id : couvre aussi
+      // les ventes au-delà du cap de 500 lignes chargées côté client, et les
+      // ventes multiples du même article (ventes partielles). Une vente SANS
+      // inventaire_id (lignes historiques, flux qui ne posent pas le lien)
+      // n'est PAS touchée : jamais de suppression devinée.
+      const{error:vErr}=await supabase.from('ventes').delete()
+        .eq('inventaire_id',item.id).eq('user_id',user.id);
+      if(vErr)throw new Error(vErr.message);
+    }else{
+      // « Supprimer l'article uniquement » : la vente reste dans le tableau de
+      // bord, mais la FK (NO ACTION) interdit de supprimer un article encore
+      // référencé — on détache le lien, la vente garde tous ses montants.
+      const{error:dErr}=await supabase.from('ventes')
+        .update({inventaire_id:null}).eq('inventaire_id',item.id).eq('user_id',user.id);
+      if(dErr)throw new Error(dErr.message);
     }
+    const{error:iErr}=await supabase.from('inventaire').delete().eq('id',item.id);
+    if(iErr)throw new Error(iErr.message);
     await fetchAll(user.id);
   }
   // Encart « ce qui va se passer », partagé par les deux modales de suppression

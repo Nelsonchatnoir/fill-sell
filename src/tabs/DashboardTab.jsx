@@ -412,8 +412,12 @@ const DashboardTab = memo(function DashboardTab({
               border:"1px solid rgba(255,255,255,0.7)",borderRadius:26,
               boxShadow:"0 14px 36px -16px rgba(16,32,27,0.28), inset 0 1px 0 rgba(255,255,255,0.7)",
             }}>
+              {/* « depuis le début » (2026-08-03 soir) : ces chiffres sont
+                  GLOBAUX — le sélecteur de période ne pilote que les graphes.
+                  Sans cette mention, un changement de période qui ne les fait
+                  pas bouger ressemble à un bug. */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:10}}>
-                <span style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.12em",color:UI.mute2}}>{t('profitNet')}</span>
+                <span style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.12em",color:UI.mute2}}>{t('profitNet')} · {lang==='en'?'all-time':'depuis le début'}</span>
                 <span style={{background:"rgba(47,158,144,0.14)",border:"1px solid rgba(47,158,144,0.28)",borderRadius:999,padding:"4px 10px",fontSize:10.5,fontWeight:600,color:UI.tealDeep,whiteSpace:"nowrap"}}>
                   {tm.profit>=0?"+":""}{fmt(tm.profit)} {t('ceNoisPill')}
                 </span>
@@ -427,7 +431,7 @@ const DashboardTab = memo(function DashboardTab({
                   total des ventes rabotait le montant à chaque fiche incomplète.
                   Le nombre de ventes affiché, lui, reste le vrai total. */}
               <div style={{fontSize:12.5,fontWeight:500,color:UI.mute2,marginTop:10}}>
-                {tpl('venteLabel',{n:salesForKpis.length})} · {t('margeMoyDash')} {fmt(kpiComptables.length?totalM/kpiComptables.length:0)}
+                {tpl('venteLabel',{n:salesForKpis.length})} {lang==='en'?'all-time':'depuis le début'} · {t('margeMoyDash')} {fmt(kpiComptables.length?totalM/kpiComptables.length:0)}
               </div>
               <div style={{fontSize:12,fontWeight:600,color:UI.tealDeep,marginTop:10,display:"flex",alignItems:"center",gap:5}}>
                 {t('analyseComplete')}
@@ -441,13 +445,20 @@ const DashboardTab = memo(function DashboardTab({
             {/* Un total devenu partiel doit le dire : sinon « marge moy. » passe
                 pour une moyenne sur tout alors qu'elle ignore les ventes sans
                 prix d'achat. Compteur affiché seulement s'il y en a. */}
-            <StatTile icon={IcoTrend} tileColor={UI.tealDeep} label={t('margeMoy')}        value={fmtp(avgM)}                 sub={ventesSansAchat>0?(lang==='en'?`excl. ${ventesSansAchat} sale${ventesSansAchat>1?'s':''} without buy price`:`hors ${ventesSansAchat} vente${ventesSansAchat>1?'s':''} sans prix d'achat`):t('toutesVentes')} />
-            <StatTile icon={IcoGem}   tileColor={UI.amber}    label={t('revenuBrutLabel')} value={fmt(totalR)}                sub={t('totalEncaisse')} />
+            <StatTile icon={IcoTrend} tileColor={UI.tealDeep} label={t('margeMoy')}        value={fmtp(avgM)}                 sub={ventesSansAchat>0?(lang==='en'?`all-time · excl. ${ventesSansAchat} sale${ventesSansAchat>1?'s':''} without buy price`:`depuis le début · hors ${ventesSansAchat} sans prix d'achat`):(lang==='en'?'all-time':'depuis le début')} />
+            <StatTile icon={IcoGem}   tileColor={UI.amber}    label={t('revenuBrutLabel')} value={fmt(totalR)}                sub={`${t('totalEncaisse')} · ${lang==='en'?'all-time':'depuis le début'}`} />
             <StatTile icon={IcoBox}   tileColor={UI.mute}     label={t('enStock')}         value={`${stockQty??stock.length}`} sub={`${fmt(stockVal)} ${t('investi')}`} />
           </div>
 
-          {/* Sélecteur de période — pilote buildChartData (7j / 1M / 6M / 1A / YTD) */}
-          <div style={{display:"flex",justifyContent:"flex-end"}}>
+          {/* Sélecteur de période — il ne pilote QUE les graphes (les KPI
+              ci-dessus sont globaux, « depuis le début ») : il est donc rendu
+              comme l'EN-TÊTE du bloc graphes, avec son libellé, collé aux
+              cartes qu'il commande — pas comme un contrôle flottant qu'on
+              croirait maître de toute la page. */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:-8}}>
+            <span style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:UI.mute2}}>
+              {lang==='en'?'Charts period':'Période des graphes'}
+            </span>
             <div style={{display:"inline-flex",background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:999,padding:3}}>
               <SegmentedPills
                 options={['7j','1M','6M','1A','YTD']}

@@ -5057,7 +5057,7 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
   let existants = [];
   try {
     existants = await restRequest(
-      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine`,
+      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine,photos`,
       token, { headers: { Prefer: "return=representation" } },
     ) ?? [];
   } catch (e) {
@@ -5175,7 +5175,20 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
       prix_vente: null,
       statut: a.statut === "sold" ? "vendu" : "stock",
       marque: a.marque ?? null,
-      photos: a.photos?.length ? a.photos.map((p) => p.url) : null,
+      // PHOTOS : ne JAMAIS écraser des photos déjà en base (2026-08-03 soir).
+      // Après une publication, le stepper réécrit inventaire.photos avec les
+      // photos TRAITÉES hébergées chez nous (ListingPreviewScreen:5253) : les
+      // remplacer au run suivant par les URLs CDN Vinted serait une régression
+      // silencieuse. On réécrit la valeur existante telle quelle (le lot
+      // d'upsert exige les mêmes clés sur toutes les lignes — la colonne doit
+      // rester présente) ; les URLs Vinted ne servent qu'aux lignes qui n'ont
+      // encore rien. `description`, elle, est VOLONTAIREMENT absente de ce
+      // payload : merge-duplicates ne touche que les colonnes présentes, et la
+      // description récupérée au clic « Publier » doit survivre aux runs — ne
+      // jamais l'ajouter ici.
+      photos: (Array.isArray(dejaLa?.photos) && dejaLa.photos.length)
+        ? dejaLa.photos
+        : (a.photos?.length ? a.photos.map((p) => p.url) : null),
       plateforme: "vinted",
       origine: "vinted_sync",
       vinted_item_id: a.vinted_item_id,
