@@ -4739,6 +4739,12 @@ async function restRequest(path, accessToken, init = {}) {
 const SYNC_PAUSE_MIN_MS = 4000;
 const SYNC_PAUSE_MAX_MS = 9000;
 const SYNC_MAX_PAGES = 40; // 40 × 96 = 3840 articles : garde-fou anti-boucle
+// Écriture par tranches : la progression (items_vus, updated_at) bouge
+// PENDANT la page, pas seulement entre deux pages — un dressing d'une seule
+// page (96 max) n'affichait RIEN avant la fin. Les tranches n'écrivent que
+// vers Supabase : aucun trafic Vinted supplémentaire, les pauses anti-bot
+// (entre pages uniquement) ne bougent pas.
+const SYNC_CHUNK = 8;
 let syncDressingEnCours = false;
 
 function syncPauseMs() {
@@ -4899,17 +4905,26 @@ async function syncDressingUnlocked(declencheur) {
     totalEntries = res.pagination?.total_entries ?? totalEntries;
     const totalPages = res.pagination?.total_pages ?? null;
 
-    for (const a of articles) vusCetteSync.add(a.vinted_item_id);
-    const bilan = await enregistrerArticlesDressing(articles, { token, userId });
-    if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
-    items_vus += articles.length;
-    items_crees += bilan.crees;
-    items_maj += bilan.majs;
+    // Périmètre annoncé DÈS la lecture de la page : l'UI peut afficher
+    // « 0 sur 32 » avant la première écriture, au lieu d'un compteur muet.
+    await majRun({ total_pages: totalPages, total_entries: totalEntries, items_vus });
 
-    await majRun({
-      page_suivante: page + 1, items_vus, items_crees, items_maj,
-      total_pages: totalPages, total_entries: totalEntries,
-    });
+    // ⚠️ page_suivante n'avance qu'une fois la page ENTIÈRE écrite : un
+    // curseur avancé en milieu de page ferait sauter, à la reprise, les
+    // tranches jamais écrites de cette page. Les écritures de tranche
+    // portent la progression, pas le curseur.
+    for (let debut = 0; debut < articles.length; debut += SYNC_CHUNK) {
+      const tranche = articles.slice(debut, debut + SYNC_CHUNK);
+      for (const a of tranche) vusCetteSync.add(a.vinted_item_id);
+      const bilan = await enregistrerArticlesDressing(tranche, { token, userId });
+      if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
+      items_vus += tranche.length;
+      items_crees += bilan.crees;
+      items_maj += bilan.majs;
+      await majRun({ items_vus, items_crees, items_maj, total_pages: totalPages, total_entries: totalEntries });
+    }
+
+    await majRun({ page_suivante: page + 1, items_vus, items_crees, items_maj });
     console.log(`[sync-dressing] page ${page}/${totalPages ?? "?"} — ${articles.length} articles (${items_vus} au total)`);
 
     if (articles.length === 0) break;
