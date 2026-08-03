@@ -126,6 +126,28 @@ Règle à respecter AVANT d'ajouter un type d'email :
   (type one-shot oublié dans l'index — enquêter le jour même) ; autre code =
   ligne de dédup perdue (l'utilisateur reste renvoyable, reposer la ligne).
 
+## Prix d'achat : VIDE ≠ ZÉRO (règle posée le 03/08)
+
+`inventaire.prix_achat` **NULL = inconnu** → l'article n'entre dans **AUCUN**
+calcul de marge, de bénéfice, de total investi ni de moyenne.
+`prix_achat = 0` = **article gratuit assumé** (don, lot offert) → il compte
+normalement. Ne JAMAIS écrire 0 pour dire « je ne sais pas » : ça produit une
+marge de 100 % sur du vent, indétectable ensuite.
+
+- Source unique : `src/utils/comptabilite.js` (prixAchatConnu, comptabilisables,
+  totalInvesti, totalMarge, margeUnitaire). Tout nouveau calcul passe par là.
+- Ne jamais réintroduire `parseFloat(x) || 0`, `?? 0` ou `Number(x ?? 0)` sur un
+  prix d'achat.
+- ⚠️ Piège JS : `isNaN(null) === false`. Un `.filter(x => !isNaN(x))` laisse
+  donc passer les valeurs nulles comme des zéros — filtrer explicitement.
+- `prix_achat_inconnu = true` (bouton « je ne sais plus ») vaut un prix absent :
+  exclu des calculs, mais on ne repose plus la question.
+- Le **chiffre d'affaires** ne se filtre jamais : il est vrai même sans prix
+  d'achat.
+- Les 346 lignes historiques à `prix_achat = 0` sont ambiguës et n'ont pas été
+  converties. Les 3 dénominateurs divergents de « marge % » (prix de vente,
+  prix d'achat, COGS) sont une dette connue, à ne pas unifier sans décision.
+
 ## Queries Supabase analytics
 
 - Toujours utiliser `AT TIME ZONE 'Europe/Paris'`.
