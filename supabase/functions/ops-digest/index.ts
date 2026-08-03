@@ -31,6 +31,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 //      App Store Connect (les clés d'équipe ne signent pas pour cette API).
 //      Google n'a pas d'équivalent relisible : couvert par google-play-webhook
 //      (crédit server-side) + filet client au lancement.
+// S'y ajoutent la 7e (plafond global identify, commentée à sa section) et la
+// 8e (03/08) : échecs d'écriture email_logs via le journal email_log_echecs —
+// 23505 (doublon d'envoi tenté, grave) distingué des écritures perdues.
 
 const RESEND_API = "https://api.resend.com/emails";
 const FROM = "FillSell <support@fillsell.app>";
@@ -250,6 +253,39 @@ serve(async (req) => {
     );
   }
 
+  // 8. Échecs d'écriture email_logs (journal email_log_echecs, posé le
+  // 03/08). email-tunnel détecte ces échecs mais ses deux canaux n'ont pas
+  // de lecteur (réponse HTTP jetée par pg_net, logs consultés a posteriori) :
+  // ce journal est le seul chemin qui remonte jusqu'à un humain. Deux
+  // gravités, deux réactions :
+  //   - code 23505 = l'index email_logs_one_shot_unique vient de BLOQUER un
+  //     doublon — le mail en double est DÉJÀ PARTI (l'insert suit l'envoi).
+  //     Type one-shot oublié dans l'index ou dédup contournée : enquêter le
+  //     jour même ;
+  //   - autre code (réseau, RLS…) = la ligne de dédup est PERDUE :
+  //     l'utilisateur reste renvoyable tant qu'elle manque — reposer la
+  //     ligne à la main.
+  const emailLogDoublons: string[] = [];
+  const emailLogAutres: string[] = [];
+  try {
+    const { data: echecs, error: e8 } = await supabase
+      .from("email_log_echecs")
+      .select("user_id, email_type, code, erreur, created_at")
+      .gte("created_at", iso24h)
+      .order("created_at", { ascending: false });
+    if (e8) throw new Error(e8.message);
+    for (const x of (echecs ?? []) as Array<Record<string, unknown>>) {
+      const ligne =
+        `${x.email_type} — user ${x.user_id ?? "?"} — ${String(x.created_at).slice(0, 19)} — ${x.erreur}`;
+      if (String(x.code ?? "") === "23505") emailLogDoublons.push(ligne);
+      else emailLogAutres.push(ligne);
+    }
+  } catch (e) {
+    emailLogAutres.push(
+      `Journal email_log_echecs illisible (${String((e as Error)?.message ?? e)}) — échecs d'écriture email_logs non vérifiables aujourd'hui.`,
+    );
+  }
+
   const queryErrors = [e1, e2, e3, e4].filter(Boolean).map((e) => e!.message);
   if (queryErrors.length > 0) {
     return new Response(JSON.stringify({ error: queryErrors }), {
@@ -266,6 +302,8 @@ serve(async (req) => {
     iap_alerts: iapAlerts.length,
     awaiting_payment: awaitingRows.length,
     lens_identify: identifyRows.length,
+    email_log_doublons: emailLogDoublons.length,
+    email_log_echecs: emailLogAutres.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -324,6 +362,33 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    emailLogDoublons.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔴 email_logs — DOUBLONS D'ENVOI tentés, bloqués par l'index (${emailLogDoublons.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Violation 23505 sur email_logs_one_shot_unique : le mail en double est DÉJÀ PARTI
+      (l'insert suit l'envoi). Type one-shot oublié dans l'index ou dédup contournée —
+      enquêter le jour même.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${emailLogDoublons.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    emailLogAutres.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      ⚠️ email_logs — écritures de dédup perdues (${emailLogAutres.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      L'insert email_logs a échoué (réseau, RLS…) : le mail est parti mais sa ligne de
+      dédup MANQUE — l'utilisateur reste renvoyable tant qu'elle n'est pas reposée à la main.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${emailLogAutres.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     identifyRows.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       🔴 Lens identify — plafond global journalier (${identifyRows.length})
@@ -348,7 +413,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs})`,
       html,
     }),
   });

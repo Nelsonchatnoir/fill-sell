@@ -1037,7 +1037,10 @@ serve(async (req) => {
   // one-shot oublié dans l'index email_logs_one_shot_unique (une violation
   // 23505 ici = un doublon d'envoi vient d'être tenté : c'est PRÉCISÉMENT
   // l'alarme qu'on veut lire). Chaque échec part en console.error (logs de la
-  // fonction) ET dans log_echecs, rendu dans la réponse de chaque branche.
+  // fonction), dans log_echecs (réponse de chaque branche) ET dans le journal
+  // email_log_echecs — le SEUL canal avec un lecteur : la réponse HTTP part
+  // vers pg_net qui la jette, les logs ne sont consultés qu'a posteriori,
+  // mais l'ops-digest de 8h50 interroge le journal chaque matin sur 24 h.
   const logEchecs: string[] = [];
   async function logEmail(userId: string, emailType: string): Promise<void> {
     const { error } = await supabase
@@ -1048,6 +1051,15 @@ serve(async (req) => {
         user_id: userId, email_type: emailType, erreur: error.message,
       }));
       logEchecs.push(`${emailType}:${userId}:${error.message}`);
+      const { error: journalErr } = await supabase.from("email_log_echecs").insert({
+        user_id: userId,
+        email_type: emailType,
+        code: (error as { code?: string }).code ?? null,
+        erreur: error.message,
+      });
+      // Échec du journal lui-même : console.error seulement — jamais de
+      // throw, un échec de log ne doit ni casser le run ni renvoyer un mail.
+      if (journalErr) console.error("email_log_echecs_insert_echec", journalErr.message);
     }
   }
 

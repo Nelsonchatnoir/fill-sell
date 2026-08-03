@@ -119,9 +119,12 @@ Règle à respecter AVANT d'ajouter un type d'email :
 - Toute lecture d'`email_logs` côté fonction doit être PAGINÉE
   (`.order().range()`) : la table dépasse le millier de lignes et PostgREST
   tronque à 1000 sans prévenir.
-- Les échecs d'insert sont tracés (`log_echecs` dans la réponse d'email-tunnel
-  + `email_logs_insert_echec` dans ses logs) : un `23505` là = un doublon
-  d'envoi vient d'être tenté, à investiguer, pas à ignorer.
+- Les échecs d'insert sont journalisés dans la table `email_log_echecs` et
+  remontés dans l'**ops-digest de 8h50** du lendemain (en plus de `log_echecs`
+  dans la réponse et des logs, qui n'ont pas de lecteur quotidien). Deux
+  gravités dans le digest : `23505` = un doublon d'envoi vient de partir
+  (type one-shot oublié dans l'index — enquêter le jour même) ; autre code =
+  ligne de dédup perdue (l'utilisateur reste renvoyable, reposer la ligne).
 
 ## Queries Supabase analytics
 
