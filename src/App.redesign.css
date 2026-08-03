@@ -516,19 +516,13 @@ body.bg-dots {
 @media (max-width: 768px) {
   .desktop-nav { margin-top: 0; }
 }
-.tb-logo .name {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
-  font-style: italic !important;
-  font-weight: 800 !important;
-  font-size: 20px !important;
-  letter-spacing: 0.2px !important;
-  background: linear-gradient(135deg, #3EACA0 0%, #E8956D 100%) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  overflow: visible !important;
-  padding-right: 6px !important;
-}
+/* `.tb-logo .name` a été DÉPLACÉ dans src/components/BrandMark.css (03/08).
+   Il était défini ici en 20 px !important ET dans App.css en 17 px, et ces
+   deux feuilles ne sont chargées que sur /login et /app. La landing, qui rend
+   le même composant, tombait donc sur une troisième valeur — d'où un wordmark
+   petit tant qu'on n'avait pas changé de route (ce qui charge ces feuilles et
+   « corrigeait » l'affichage). Une seule source désormais, chargée partout :
+   ne pas redéfinir cette règle ici. */
 .tb-icon-btn-light {
   width: 38px !important; height: 38px !important;
   background: rgba(15,23,42,0.04) !important;

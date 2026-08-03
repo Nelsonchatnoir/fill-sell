@@ -32,17 +32,35 @@
   flex-shrink: 0;
 }
 
+/* ⚠️ CES VALEURS VIENNENT D'App.redesign.css:519, PAS D'App.css:92.
+   C'était la cause du wordmark « petit et étroit » sur la landing (03/08) :
+   deux feuilles définissent `.tb-logo .name`, App.css en 17 px et
+   App.redesign.css en 20 px !important. App.jsx les importe dans cet ordre
+   (l.65 puis l.66), donc la taille RÉELLEMENT appliquée dans l'app a toujours
+   été 20 px. En extrayant ce composant, les valeurs avaient été recopiées
+   depuis App.css seul : la landing affichait donc un wordmark à 17 px, sans
+   le padding qui empêche le « l » italique final d'être rogné — d'où
+   « petit ET étroit ».
+   Et comme le correctif arrivait au CHANGEMENT DE ROUTE (le bouton
+   « Commencer » charge App.jsx, donc App.redesign.css, que Vite n'enlève
+   jamais ensuite), le symptôme ressemblait à un problème de rendu iOS. Il
+   n'en était pas un : c'était une différence de feuille.
+   Toute modification ici doit être répercutée dans App.redesign.css:519. */
 .tb-logo .name {
-  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   font-style: italic;
   font-weight: 800;
-  font-size: 17px;
+  font-size: 20px;
   letter-spacing: 0.2px;
   white-space: nowrap;
   background: linear-gradient(135deg, #3EACA0 0%, #E8956D 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  /* Un gras italique déborde de sa boîte à droite : sans ces deux règles, le
+     « l » final est rogné. C'est l'autre moitié du « étroit » signalé. */
+  overflow: visible;
+  padding-right: 6px;
 }
 
 /* UNE SEULE des deux images à la fois — c'est la règle dont l'absence a produit

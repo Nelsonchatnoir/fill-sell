@@ -85,22 +85,12 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   position: relative;
   z-index: 10;
 }
-.tb-logo {
-  display: flex; align-items: center; gap: 8px;
-  background: transparent; border: none; padding: 0; cursor: pointer; flex-shrink: 0;
-}
-.tb-logo .name {
-  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
-  font-style: italic;
-  font-weight: 800;
-  font-size: 17px;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
-  background: linear-gradient(135deg, #3EACA0 0%, #E8956D 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+/* `.tb-logo` et `.tb-logo .name` vivent maintenant dans
+   src/components/BrandMark.css, chargé avec le composant sur TOUTES les routes
+   (03/08). Ils étaient ici en 17 px, et redéfinis en 20 px !important dans
+   App.redesign.css — deux valeurs pour le même élément, dans deux feuilles que
+   la landing ne charge pas. Ne pas les réintroduire ici : c'est cette
+   duplication qui a produit le wordmark trop petit sur fillsell.app. */
 /* .tb-premium supprimé le 2026-07-14 : le badge d'abonnement du header est
    désormais le composant PlanBadge (Premium / Pro), stylé en inline. */
 .tb-icon-btn-light {
