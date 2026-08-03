@@ -45,6 +45,13 @@ const VENTES_CSS = buildCardCss('ventes-v2') + `
 .ventes-v2 .pa-bar .apply{border:none;background:linear-gradient(120deg,var(--teal),var(--teal-deep));color:#fff;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
 .ventes-v2 .pa-bar .ghost{border:1px solid var(--border);background:#fff;color:var(--mute);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
 .ventes-v2 .pa-bar button:disabled{opacity:.45;cursor:default;}
+/* ── Ventes importées du dressing à enregistrer (03/08 soir) ── */
+.ventes-v2 .pa-date{width:132px;}
+.ventes-v2 .imp-info{background:rgba(47,158,144,.06);border:1px solid rgba(47,158,144,.2);border-radius:14px;padding:11px 14px;font-size:12px;line-height:1.55;color:var(--ink);}
+.ventes-v2 .imp-champ{display:flex;flex-direction:column;gap:3px;}
+.ventes-v2 .imp-lbl{font-size:9.5px;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;}
+.ventes-v2 .imp-ghost{border:1px solid var(--border);background:#fff;color:var(--mute);border-radius:999px;padding:4px 9px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.ventes-v2 .imp-ghost.on{border-color:var(--teal);color:var(--teal-deep);background:rgba(47,158,144,.08);}
 `;
 
 // Accord du participe "Vendu(e)" : noms féminins courants détectés dans le
@@ -274,6 +281,10 @@ const VentesTab = memo(function VentesTab({
   delSale, setTab, setEditItem,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal,
+  // Vendus importés du dressing Vinted SANS ligne `ventes` (calculé par
+  // App.jsx sur ventes.inventaire_id) : chacun attend prix de vente réel,
+  // prix d'achat et date — Vinted ne communique aucun des trois.
+  vendusAEnregistrer=[],
   // Rafraîchissement du parent APRÈS écriture. App.jsx ne la passe pas
   // aujourd'hui (d'où la valeur par défaut : aucun appelant à casser) — c'est
   // la couche optimiste `patchs` ci-dessous qui tient l'affichage en attendant
@@ -471,6 +482,114 @@ const VentesTab = memo(function VentesTab({
     onSaleUpdated();
   }
 
+  // ── Ventes importées du dressing : enregistrement (03/08 soir) ─────────────
+  // Une vente ne s'écrit que par un geste humain : ces lignes d'inventaire
+  // (statut='vendu', origine='vinted_sync') n'ont PAS de ligne `ventes` tant
+  // que l'utilisateur n'a pas donné le prix réellement reçu — l'API Vinted
+  // n'expose ni la date de vente ni le prix payé après négociation (prouvé le
+  // 03/08 : aucun sold_at, price.amount = prix DEMANDÉ).
+  const [modeImportes,setModeImportes]=useState(false);
+  const [impSel,setImpSel]=useState(()=>new Set());
+  const [impDrafts,setImpDrafts]=useState({});   // item.id -> {pv,pa,paInconnu,date,dateInconnue}
+  const [impDone,setImpDone]=useState({});       // item.id -> true (optimiste : la ligne ventes existe)
+  const [impErr,setImpErr]=useState(null);       // {id,message} — id null = barre de lot
+  const [impBusy,setImpBusy]=useState(false);
+  const [paLotImp,setPaLotImp]=useState("");
+  const [dateLotImp,setDateLotImp]=useState("");
+  const [dateLotInconnue,setDateLotInconnue]=useState(false);
+  // Proposition de prix de vente = dernier prix AFFICHÉ sur Vinted (relevés
+  // vinted_listing_snapshots). PROPOSÉ, jamais imposé : pré-rempli dans un
+  // champ éditable, à corriger si la vente a été négociée.
+  const [propositions,setPropositions]=useState({}); // vinted_item_id -> price | null
+
+  const vendusRestants=useMemo(()=>vendusAEnregistrer.filter(i=>!impDone[i.id]),[vendusAEnregistrer,impDone]);
+  const nbImportes=vendusRestants.length;
+  const lignesImpSel=useMemo(()=>vendusRestants.filter(i=>impSel.has(i.id)),[vendusRestants,impSel]);
+
+  useEffect(()=>{
+    if(!modeImportes) return;
+    const ids=vendusAEnregistrer.map(i=>i.vinted_item_id).filter(Boolean).filter(id=>!(id in propositions));
+    if(!ids.length) return;
+    let annule=false;
+    supabase.from('vinted_listing_snapshots')
+      .select('vinted_item_id,price')
+      .eq('user_id',user?.id).in('vinted_item_id',ids)
+      .order('captured_at',{ascending:false}).limit(1000)
+      .then(({data,error})=>{
+        if(annule) return;
+        // Ids sans relevé notés null : sans ça l'effet re-requêterait à chaque
+        // rendu. error → tous null, le champ reste simplement vide.
+        setPropositions(prev=>{
+          const n={...prev};
+          for(const id of ids) if(!(id in n)) n[id]=null;
+          if(!error) for(const r of (data||[])) if(n[r.vinted_item_id]==null) n[r.vinted_item_id]=r.price;
+          return n;
+        });
+      });
+    return ()=>{annule=true;};
+  },[modeImportes,vendusAEnregistrer,propositions,user?.id]);
+
+  const majDraft=(id,champ,val)=>setImpDrafts(p=>({...p,[id]:{...(p[id]??{}),[champ]:val}}));
+
+  // Écrit LA ligne ventes (le geste humain) + reporte le prix d'achat (ou la
+  // décision « je ne sais plus ») sur l'article d'inventaire, comme partout.
+  async function enregistrerVenteImportee(item,{pvBrut,paBrut,paInconnu,dateStr,dateInconnue}){
+    const pv=parsePrix(pvBrut);
+    if(pv===null||Number.isNaN(pv)){
+      setImpErr({id:item.id,message:fr?'Le prix réellement reçu est requis':'The amount you actually received is required'});
+      return false;
+    }
+    const pa=paInconnu?null:parsePrix(paBrut);
+    if(Number.isNaN(pa)){setImpErr({id:item.id,message:fr?"Prix d'achat illisible":'Invalid purchase price'});return false;}
+    const dateVente=dateInconnue?null:(dateStr||null);
+    // Sans prix d'achat (vide ou « je ne sais plus ») : benefice NULL — la
+    // vente compte au CA, jamais une marge inventée (règle VIDE ≠ ZÉRO).
+    const {margin}=margeUnitaire({prixVente:pv,prixAchat:pa});
+    const ligne={user_id:user?.id,titre:item.title,prix_achat:pa,prix_vente:pv,benefice:margin,
+      date:dateVente,plateforme:'vinted',marque:item.marque||null,type:item.type||null,
+      description:item.description||null,quantite:item.quantite||1,inventaire_id:item.id,statut:'vendu'};
+    const {error}=await supabase.from('ventes').insert([ligne]);
+    if(error){setImpErr({id:item.id,message:error.message});return false;}
+    if(pa!=null){
+      await supabase.from('inventaire').update({prix_achat:pa,prix_achat_inconnu:false}).eq('id',item.id).eq('user_id',user?.id);
+    }else if(paInconnu){
+      await supabase.from('inventaire').update({prix_achat_inconnu:true}).eq('id',item.id).eq('user_id',user?.id);
+    }
+    setImpDone(p=>({...p,[item.id]:true}));
+    setImpErr(null);
+    onSaleUpdated();
+    return true;
+  }
+
+  function enregistrerLigneImportee(item){
+    const d=impDrafts[item.id]??{};
+    return enregistrerVenteImportee(item,{
+      pvBrut:d.pv??propositions[item.vinted_item_id]??'',
+      paBrut:d.pa??'',paInconnu:d.paInconnu===true,
+      dateStr:d.date??'',dateInconnue:d.dateInconnue===true,
+    });
+  }
+
+  // Lot : les valeurs de la barre servent de REPLI aux lignes sélectionnées qui
+  // n'ont pas leur propre saisie. Le prix de vente reste par ligne (pré-rempli
+  // au prix affiché, VISIBLE dans chaque champ avant le clic).
+  async function enregistrerLotImportes(){
+    if(!lignesImpSel.length) return;
+    setImpBusy(true);
+    let ko=0;
+    for(const item of lignesImpSel){
+      const d=impDrafts[item.id]??{};
+      const ok=await enregistrerVenteImportee(item,{
+        pvBrut:d.pv??propositions[item.vinted_item_id]??'',
+        paBrut:d.pa??paLotImp,paInconnu:d.paInconnu===true,
+        dateStr:d.date??dateLotImp,dateInconnue:d.dateInconnue===true||(!d.date&&dateLotInconnue),
+      });
+      if(!ok) ko++;
+    }
+    setImpBusy(false);
+    if(!ko){setImpSel(new Set());setPaLotImp("");setDateLotImp("");setDateLotInconnue(false);}
+  }
+
   // KPI mois courant — même formule que tm (App.jsx)
   const now=new Date();
   const monthSales=salesPatchees.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
@@ -531,7 +650,7 @@ const VentesTab = memo(function VentesTab({
           quand le mode est ouvert, sinon on ne pourrait plus en sortir. */}
       {(nbACompleter>0||modeACompleter)&&(
         <button className={`pa-call${modeACompleter?" on":""}`}
-          onClick={()=>{setModeACompleter(v=>!v);setSelection(new Set());setOpenId(null);setErreur(null);}}>
+          onClick={()=>{setModeACompleter(v=>!v);setModeImportes(false);setSelection(new Set());setOpenId(null);setErreur(null);}}>
           <span style={{fontSize:17,flexShrink:0}}>{modeACompleter?"↩":"💡"}</span>
           <span style={{flex:1,minWidth:0}}>
             <span className="n">
@@ -546,6 +665,33 @@ const VentesTab = memo(function VentesTab({
                     ?(fr?"Tout est complété 🎉":"All done 🎉")
                     :(fr?`Encore ${nbACompleter} à compléter · Entrée enchaîne la suivante`:`${nbACompleter} left · Enter jumps to the next one`))
                 :(fr?"Complète-les pour voir tes bénéfices":"Add them to see your profit")}
+            </span>
+          </span>
+        </button>
+      )}
+
+      {/* ── Ventes Vinted importées à enregistrer — compteur-invitation ──
+          Même contrat que le compteur au-dessus : ON N'OBLIGE JAMAIS. Ces
+          lignes ne sont pas des erreurs — Vinted ne communique simplement ni
+          la date ni le prix payé, seul l'utilisateur les connaît. */}
+      {(nbImportes>0||modeImportes)&&(
+        <button className={`pa-call${modeImportes?" on":""}`}
+          onClick={()=>{setModeImportes(v=>!v);setModeACompleter(false);setImpSel(new Set());setImpErr(null);}}>
+          <span style={{fontSize:17,flexShrink:0}}>{modeImportes?"↩":"🧾"}</span>
+          <span style={{flex:1,minWidth:0}}>
+            <span className="n">
+              {modeImportes
+                ?(fr?"Revenir à toutes les ventes":"Back to all sales")
+                :(fr?`${nbImportes} vente${nbImportes>1?"s":""} Vinted à enregistrer`
+                    :`${nbImportes} Vinted sale${nbImportes>1?"s":""} to record`)}
+            </span>
+            <span className="sub">
+              {modeImportes
+                ?(nbImportes===0
+                    ?(fr?"Tout est enregistré 🎉":"All recorded 🎉")
+                    :(fr?`Encore ${nbImportes} à enregistrer`:`${nbImportes} left to record`))
+                :(fr?"Prix et date réels connus de toi seul — enregistre-les pour qu'elles comptent"
+                    :"Only you know the real price and date — record them so they count")}
             </span>
           </span>
         </button>
@@ -610,7 +756,111 @@ const VentesTab = memo(function VentesTab({
         );
       })()}
 
-      {sales.length===0?(
+      {modeImportes?(
+        <>
+          {/* Explication UNE fois, en tête de mode — jamais répétée par ligne. */}
+          <div className="imp-info">
+            {fr
+              ?<>Ces articles sont <b>vendus sur Vinted</b>, mais Vinted ne communique ni la date de vente ni le prix réellement payé après une négociation — ces infos n'existent que chez toi. Le prix est <b>pré-rempli avec le prix affiché</b> de l'annonce : corrige-le si la vente a été négociée. Une fois enregistrée, la vente compte dans tes chiffres comme toutes les autres.<br/>Tes annonces encore en ligne, elles, sont suivies automatiquement : à leur vente, FillSell te proposera d'enregistrer le prix et la date réels.</>
+              :<>These items are <b>sold on Vinted</b>, but Vinted shares neither the sale date nor the price actually paid after an offer — only you know them. The price is <b>prefilled with the listing price</b>: adjust it if the sale was negotiated. Once recorded, the sale counts in your numbers like any other.<br/>Your listings still online are tracked automatically: when they sell, FillSell will offer to record the real price and date.</>}
+          </div>
+
+          {/* Barre de lot : repli commun pour prix d'achat et date. Le prix de
+              vente reste PAR LIGNE, visible dans chaque champ avant le clic. */}
+          {lignesImpSel.length>0&&(
+            <div className="pa-bar">
+              <span className="lbl">{fr?`${lignesImpSel.length} sélectionnée${lignesImpSel.length>1?"s":""}`:`${lignesImpSel.length} selected`}</span>
+              <input className="pa-input" inputMode="decimal" value={paLotImp} onChange={e=>setPaLotImp(e.target.value)}
+                placeholder={fr?"achat 2,50":"buy 2.50"} aria-label={fr?"Prix d'achat commun":"Common purchase price"}/>
+              <input type="date" className="pa-input pa-date" value={dateLotImp} disabled={dateLotInconnue}
+                max={new Date().toISOString().slice(0,10)}
+                onChange={e=>setDateLotImp(e.target.value)} aria-label={fr?"Date commune":"Common date"}/>
+              <button className={`imp-ghost${dateLotInconnue?" on":""}`} onClick={()=>setDateLotInconnue(v=>!v)}>
+                {fr?"date : je ne sais plus":"date: I don't remember"}
+              </button>
+              <button className="apply" disabled={impBusy} onClick={enregistrerLotImportes}>
+                {impBusy?"…":(fr?`Enregistrer les ${lignesImpSel.length}`:`Record ${lignesImpSel.length}`)}
+              </button>
+              <button className="ghost" onClick={()=>{setImpSel(new Set());setPaLotImp("");setDateLotImp("");setDateLotInconnue(false);}}>✕</button>
+              <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
+                <span className="pa-hint">
+                  {fr?"Chaque ligne part avec SON prix de vente affiché dans son champ — la barre ne fournit que l'achat et la date manquants."
+                     :"Each line is recorded with ITS sale price shown in its field — the bar only fills missing buy price and date."}
+                </span>
+                {impErr?.id===null&&<span className="pa-err">{impErr.message}</span>}
+              </div>
+            </div>
+          )}
+
+          {vendusRestants.length===0&&(
+            <div className="imp-info" style={{textAlign:'center'}}>{fr?"Tout est enregistré 🎉":"All recorded 🎉"}</div>
+          )}
+
+          {vendusRestants.map(item=>{
+            const d=impDrafts[item.id]??{};
+            const pvAffiche=d.pv??(propositions[item.vinted_item_id]??"");
+            return(
+              <div key={item.id} className="row" style={{cursor:"default"}}>
+                <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
+                <div className="left">
+                  <div className="title-line">
+                    <span className="title">{item.title}</span>
+                    {item.marque&&(<><span className="brand-dot"/><span className="brandname">{marqueLabel(item.marque,lang)}</span></>)}
+                  </div>
+                  <div className="meta">
+                    {fr?"Vendu sur Vinted — montants à confirmer":"Sold on Vinted — amounts to confirm"}
+                  </div>
+                  <div className="pa-line" style={{alignItems:"flex-end"}}>
+                    <input type="checkbox" className="pa-check" style={{marginBottom:7}} checked={impSel.has(item.id)}
+                      onChange={()=>setImpSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
+                      aria-label={fr?"Sélectionner cette vente":"Select this sale"}/>
+                    <div className="imp-champ">
+                      <span className="imp-lbl">{fr?"Vendu (€)":"Sold (€)"}</span>
+                      <input className="pa-input" inputMode="decimal" value={pvAffiche}
+                        onChange={e=>majDraft(item.id,'pv',e.target.value)}
+                        placeholder={fr?"prix reçu":"received"}
+                        aria-label={fr?"Prix de vente réellement reçu":"Actual sale price"}/>
+                    </div>
+                    <div className="imp-champ">
+                      <span className="imp-lbl">{fr?"Acheté (€)":"Bought (€)"}</span>
+                      {d.paInconnu
+                        ?<button className="imp-ghost on" style={{padding:"6px 9px"}} onClick={()=>majDraft(item.id,'paInconnu',false)}>{fr?"inconnu ✓":"unknown ✓"}</button>
+                        :<input className="pa-input" inputMode="decimal" value={d.pa??""}
+                            onChange={e=>majDraft(item.id,'pa',e.target.value)}
+                            placeholder="—" aria-label={fr?"Prix d'achat":"Purchase price"}/>}
+                    </div>
+                    <div className="imp-champ">
+                      <span className="imp-lbl">{fr?"Vendu le":"Sold on"}</span>
+                      {d.dateInconnue
+                        ?<button className="imp-ghost on" style={{padding:"6px 9px"}} onClick={()=>majDraft(item.id,'dateInconnue',false)}>{fr?"inconnue ✓":"unknown ✓"}</button>
+                        :<input type="date" className="pa-input pa-date" value={d.date??""}
+                            max={new Date().toISOString().slice(0,10)}
+                            onChange={e=>majDraft(item.id,'date',e.target.value)}
+                            aria-label={fr?"Date de vente":"Sale date"}/>}
+                    </div>
+                    <button className="pa-ok" style={{padding:"6px 11px"}} onClick={()=>enregistrerLigneImportee(item)}>
+                      {fr?"Enregistrer":"Record"}
+                    </button>
+                  </div>
+                  <div className="pa-line" style={{marginTop:2}}>
+                    {!d.paInconnu&&(
+                      <button className="imp-ghost" onClick={()=>majDraft(item.id,'paInconnu',true)}>
+                        {fr?"achat : je ne sais plus":"buy: I don't remember"}
+                      </button>
+                    )}
+                    {!d.dateInconnue&&(
+                      <button className="imp-ghost" onClick={()=>majDraft(item.id,'dateInconnue',true)}>
+                        {fr?"date : je ne sais plus":"date: I don't remember"}
+                      </button>
+                    )}
+                    {impErr?.id===item.id&&<span className="pa-err">{impErr.message}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      ):sales.length===0?(
         // Condition d'affichage inchangée : cet écran ne sort QUE si l'utilisateur
         // n'a réellement aucune vente. Le padding bas laisse passer le FAB micro
         // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
@@ -623,8 +873,11 @@ const VentesTab = memo(function VentesTab({
       ):(
         <>
           {filteredSales.map(s=>{
-            const d=new Date(s.date);
-            const sameYear=d.getFullYear()===now.getFullYear();
+            // date NULL = vente enregistrée « je ne sais plus » (import
+            // dressing) : elle vit dans la liste et les totaux, hors des
+            // périodes — et surtout pas un « NaN undefined » à l'écran.
+            const d=s.date?new Date(s.date):null;
+            const sameYear=!d||d.getFullYear()===now.getFullYear();
             const pKey=(s.plateforme||"").toLowerCase().trim();
             // Sans prix d'achat il n'y a pas de marge à montrer : `s.margin>=0`
             // était vrai pour null et la ligne affichait un « +0 € » vert, lu
@@ -688,7 +941,7 @@ const VentesTab = memo(function VentesTab({
                   </div>
                   <div className="right">
                     <div className={`profit${margeConnue&&s.margin<0?" neg":""}`} style={margeConnue?undefined:{color:"var(--mute)"}}>{margeConnue?`${s.margin>=0?"+":""}${fmt(s.margin)}`:"—"}</div>
-                    <div className="sold-date">{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}{sameYear?"":` ${d.getFullYear()}`}</div>
+                    <div className="sold-date">{d?<>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}{sameYear?"":` ${d.getFullYear()}`}</>:(fr?"date inconnue":"unknown date")}</div>
                   </div>
                 </div>
               </SwipeRow>

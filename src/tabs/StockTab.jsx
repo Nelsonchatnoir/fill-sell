@@ -51,7 +51,27 @@ function failJobAction(job, lang) {
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
 // Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
 // CSS partagé avec VentesTab via buildCardCss (src/utils/shared.js).
-const STOCK_CSS = buildCardCss('stock-v2');
+// Les classes pa-* reprennent le langage visuel de la complétion de VentesTab
+// (invitation teal, jamais une alerte) — mêmes valeurs, scope stock-v2.
+const STOCK_CSS = buildCardCss('stock-v2') + `
+.stock-v2 .pa-call{width:100%;display:flex;align-items:center;gap:11px;text-align:left;padding:11px 14px;border-radius:14px;cursor:pointer;font-family:inherit;background:rgba(47,158,144,.08);border:1px solid rgba(47,158,144,.28);color:#10201B;margin-bottom:12px;}
+.stock-v2 .pa-call.on{background:linear-gradient(120deg,#2F9E90,#1B6E62);border-color:transparent;color:#fff;box-shadow:0 10px 22px -12px rgba(47,158,144,.55);}
+.stock-v2 .pa-call .n{display:block;font-size:13.5px;font-weight:700;line-height:1.25;}
+.stock-v2 .pa-call .sub{display:block;font-size:11px;font-weight:500;color:#6B7A75;margin-top:2px;line-height:1.3;}
+.stock-v2 .pa-call.on .sub{color:rgba(255,255,255,.88);}
+.stock-v2 .pa-line{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.stock-v2 .pa-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;border:1px dashed rgba(47,158,144,.55);background:rgba(47,158,144,.07);color:#1B6E62;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.stock-v2 .pa-input{width:82px;padding:5px 8px;border-radius:9px;border:1px solid #2F9E90;background:#fff;font-family:inherit;font-size:12.5px;font-weight:700;color:#10201B;outline:none;}
+.stock-v2 .pa-ok{border:none;background:#2F9E90;color:#fff;border-radius:9px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1.2;}
+.stock-v2 .pa-hint{font-size:9.5px;color:#8A8578;}
+.stock-v2 .pa-err{font-size:10.5px;color:#B0645A;font-weight:600;}
+.stock-v2 .pa-check{width:17px;height:17px;accent-color:#2F9E90;flex-shrink:0;cursor:pointer;margin:0;}
+.stock-v2 .pa-ghost{border:1px solid #E7E3D8;background:#fff;color:#6B7A75;border-radius:999px;padding:4px 9px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.stock-v2 .pa-bar{position:sticky;top:0;z-index:6;background:#fff;border:1px solid #2F9E90;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 10px 24px -14px rgba(16,32,27,.45);margin-bottom:12px;}
+.stock-v2 .pa-bar .lbl{font-size:12px;font-weight:700;color:#10201B;}
+.stock-v2 .pa-bar .apply{border:none;background:linear-gradient(120deg,#2F9E90,#1B6E62);color:#fff;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.stock-v2 .pa-bar button:disabled{opacity:.45;cursor:default;}
+`;
 
 // ── Redesign zone de saisie IA (haut StockTab) — eyebrow + toggle Écrire/Parler ──
 const STOCK_TOP_CSS = `
@@ -1410,6 +1430,78 @@ const StockTab = memo(function StockTab({
     vaActions?.fetchAll?.();
   };
 
+  // ── Prix d'achat manquants sur le STOCK (03/08 soir) ───────────────────────
+  // Miroir de la complétion de VentesTab, côté inventaire : les articles
+  // importés du dressing arrivent SANS prix d'achat (Vinted ne le connaît
+  // pas) et n'entrent dans aucun total tant qu'il manque. Invitation, jamais
+  // blocage : la ligne reste pleinement utilisable (Publier, Vendre, éditer).
+  // NULL = question ouverte · valeur (0 compris) = connu · flag = « je ne
+  // sais plus » (question éteinte, article hors calculs).
+  const [modePrixAchat,setModePrixAchat]=useState(false);
+  const [paSel,setPaSel]=useState(()=>new Set());
+  const [paOpenId,setPaOpenId]=useState(null);
+  const [paDraft,setPaDraft]=useState("");
+  const [paErr,setPaErr]=useState(null);
+  const [paBusy,setPaBusy]=useState(false);
+  const [paPatchs,setPaPatchs]=useState({}); // id -> {buy} | {inconnu:true} (optimiste, en attendant le refetch)
+  const [paLot,setPaLot]=useState("");
+
+  // "" -> null (VIDE ≠ ZÉRO), virgule gérée, illisible -> NaN. Même contrat
+  // que parsePrix de VentesTab.
+  const parsePrixStock=(v)=>{
+    const t=String(v??"").trim().replace(/[\s€]/g,"").replace(",",".");
+    if(!t) return null;
+    const n=parseFloat(t);
+    return Number.isFinite(n)&&n>=0?n:NaN;
+  };
+  const paIncomplet=(i)=>!paPatchs[i.id]&&i.statut==='stock'&&!prixAchatConnu(i)&&i.prix_achat_inconnu!==true;
+  const nbSansPrix=stock.filter(paIncomplet).length;
+  const paSelection=modePrixAchat?stockFiltre.filter(i=>paIncomplet(i)&&paSel.has(i.id)):[];
+
+  async function ecrirePrixAchatStock(ids,pa){
+    const avant={};ids.forEach(id=>{avant[id]=paPatchs[id];});
+    setPaPatchs(p=>{const n={...p};ids.forEach(id=>{n[id]={buy:pa};});return n;});
+    setPaErr(null);
+    let req=supabase.from('inventaire').update({prix_achat:pa,prix_achat_inconnu:false}).in('id',ids);
+    if(user?.id) req=req.eq('user_id',user.id);
+    const {error}=await req;
+    if(error){
+      setPaPatchs(p=>{const n={...p};ids.forEach(id=>{if(avant[id]===undefined)delete n[id];else n[id]=avant[id];});return n;});
+      setPaErr({id:ids.length===1?ids[0]:null,message:error.message});
+      return false;
+    }
+    rafraichirApresSync();
+    return true;
+  }
+
+  async function marquerInconnuStock(ids){
+    if(!ids.length) return false;
+    setPaErr(null);
+    let req=supabase.from('inventaire').update({prix_achat_inconnu:true}).in('id',ids);
+    if(user?.id) req=req.eq('user_id',user.id);
+    const {error}=await req;
+    if(error){setPaErr({id:ids.length===1?ids[0]:null,message:error.message});return false;}
+    setPaPatchs(p=>{const n={...p};ids.forEach(id=>{n[id]={inconnu:true};});return n;});
+    rafraichirApresSync();
+    return true;
+  }
+
+  function validerPaStock(item){
+    const pa=parsePrixStock(paDraft);
+    if(Number.isNaN(pa)){setPaErr({id:item.id,message:lang==='fr'?'Prix illisible':'Invalid price'});return;}
+    setPaOpenId(null);setPaDraft("");
+    if(pa!==null) ecrirePrixAchatStock([item.id],pa);
+  }
+
+  async function appliquerPaLot(){
+    const pa=parsePrixStock(paLot);
+    if(pa===null||Number.isNaN(pa)){setPaErr({id:null,message:lang==='fr'?'Entre un prix unitaire':'Enter a unit price'});return;}
+    setPaBusy(true);
+    const ok=await ecrirePrixAchatStock(paSelection.map(i=>i.id),pa);
+    setPaBusy(false);
+    if(ok){setPaSel(new Set());setPaLot("");}
+  }
+
   return (
     <>
       <style>{STOCK_TOP_CSS}</style>
@@ -1981,6 +2073,55 @@ const StockTab = memo(function StockTab({
                 </div>
               );
             })()}
+            {/* ── Prix d'achat manquants : compteur-invitation cliquable ──
+                Même contrat que VentesTab : on n'oblige jamais, pas de rouge.
+                Reste affiché à 0 quand le mode est ouvert (sinon plus de sortie). */}
+            {(nbSansPrix>0||modePrixAchat)&&(
+              <button className={`pa-call${modePrixAchat?" on":""}`}
+                onClick={()=>{setModePrixAchat(v=>!v);setPaSel(new Set());setPaOpenId(null);setPaErr(null);}}>
+                <span style={{fontSize:17,flexShrink:0}}>{modePrixAchat?"↩":"💡"}</span>
+                <span style={{flex:1,minWidth:0}}>
+                  <span className="n">
+                    {modePrixAchat
+                      ?(lang==='fr'?"Revenir à tout le stock":"Back to all stock")
+                      :(lang==='fr'?`${nbSansPrix} article${nbSansPrix>1?"s":""} sans prix d'achat`
+                          :`${nbSansPrix} item${nbSansPrix>1?"s":""} without purchase price`)}
+                  </span>
+                  <span className="sub">
+                    {modePrixAchat
+                      ?(nbSansPrix===0
+                          ?(lang==='fr'?"Tout est complété 🎉":"All done 🎉")
+                          :(lang==='fr'?"Vinted ne connaît pas ce que TU as payé — toi si. Un 0 (don, lot offert) est un prix valide."
+                              :"Vinted doesn't know what YOU paid — you do. 0 (gift, free lot) is a valid price."))
+                      :(lang==='fr'?"Complète-les pour qu'ils comptent dans ton total investi et tes marges"
+                          :"Add them so they count in your invested total and margins")}
+                  </span>
+                </span>
+              </button>
+            )}
+
+            {/* Barre de lot — le vide-grenier : « ces 10 articles, 2 € pièce ». */}
+            {modePrixAchat&&paSelection.length>0&&(
+              <div className="pa-bar">
+                <span className="lbl">{lang==='fr'?`${paSelection.length} sélectionné${paSelection.length>1?"s":""}`:`${paSelection.length} selected`}</span>
+                <input className="pa-input" inputMode="decimal" value={paLot}
+                  onChange={e=>setPaLot(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();appliquerPaLot();}if(e.key==='Escape'){e.preventDefault();setPaSel(new Set());setPaLot("");}}}
+                  placeholder={lang==='fr'?"2,50":"2.50"} aria-label={lang==='fr'?"Prix d'achat unitaire":"Unit purchase price"}/>
+                <button className="apply" disabled={paBusy} onClick={appliquerPaLot}>
+                  {paBusy?"…":(lang==='fr'?`Appliquer aux ${paSelection.length}`:`Apply to ${paSelection.length}`)}
+                </button>
+                <button className="pa-ghost" disabled={paBusy} onClick={()=>marquerInconnuStock(paSelection.map(i=>i.id)).then(ok=>{if(ok)setPaSel(new Set());})}>
+                  {lang==='fr'?"Je ne sais plus":"I don't remember"}
+                </button>
+                <button className="pa-ghost" onClick={()=>{setPaSel(new Set());setPaLot("");}}>✕</button>
+                <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
+                  <span className="pa-hint">{lang==='fr'?"Prix d'achat UNITAIRE, appliqué à chaque article sélectionné.":"UNIT purchase price, applied to each selected item."}</span>
+                  {paErr?.id===null&&<span className="pa-err">{paErr.message}</span>}
+                </div>
+              </div>
+            )}
+
             {stock.length===0?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
@@ -2088,7 +2229,9 @@ const StockTab = memo(function StockTab({
               </div>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {stockVisible.map(item=>{
+                {/* Mode « à compléter » : liste COMPLÈTE des incomplets (filtres
+                    actifs respectés via stockFiltre, pas de plafond de 10). */}
+                {(modePrixAchat?stockFiltre.filter(paIncomplet):stockVisible).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
                   // prix d'achat absent et 0 € sur un null — la carte annonçait
@@ -2154,6 +2297,40 @@ const StockTab = memo(function StockTab({
                             {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
                             {typeLabel(item.type||"Autre",lang)}
                           </div>
+                          {/* ── Prix d'achat manquant : saisie DANS la ligne ──
+                              stopPropagation obligatoire : la carte entière
+                              ouvre l'édition au clic. Le « je ne sais plus »
+                              éteint l'invitation sans jamais écrire 0. */}
+                          {paIncomplet(item)&&(
+                            <div className="pa-line" onClick={e=>e.stopPropagation()}>
+                              {modePrixAchat&&(
+                                <input type="checkbox" className="pa-check" checked={paSel.has(item.id)}
+                                  onChange={()=>setPaSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
+                                  aria-label={lang==='fr'?"Sélectionner cet article":"Select this item"}/>
+                              )}
+                              {paOpenId===item.id?(
+                                <>
+                                  <input className="pa-input" autoFocus inputMode="decimal" value={paDraft}
+                                    placeholder={lang==='fr'?"12,50":"12.50"}
+                                    onChange={e=>setPaDraft(e.target.value)}
+                                    onKeyDown={e=>{
+                                      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setPaOpenId(null);setPaDraft("");setPaErr(null);}
+                                      if(e.key==='Enter'){e.preventDefault();e.stopPropagation();validerPaStock(item);}
+                                    }}
+                                    aria-label={lang==='fr'?"Prix d'achat":"Purchase price"}/>
+                                  <button className="pa-ok" onMouseDown={e=>e.preventDefault()} onClick={()=>validerPaStock(item)}>✓</button>
+                                  <button className="pa-ghost" onClick={()=>{setPaOpenId(null);setPaDraft("");marquerInconnuStock([item.id]);}}>
+                                    {lang==='fr'?"je ne sais plus":"I don't remember"}
+                                  </button>
+                                </>
+                              ):(
+                                <button className="pa-chip" onClick={()=>{setPaOpenId(item.id);setPaDraft("");setPaErr(null);}}>
+                                  + {lang==='fr'?"prix d'achat":"purchase price"}
+                                </button>
+                              )}
+                              {paErr?.id===item.id&&<span className="pa-err">{paErr.message}</span>}
+                            </div>
+                          )}
                           {/* ── LOTS : dire ce que « Publier » fait vraiment (2026-07-22) ──
                               Un clic « Publier » sur un article à quantite > 1 ne met en
                               ligne QU'UNE unité : la RPC spend_coins_and_publish ne lit

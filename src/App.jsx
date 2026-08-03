@@ -840,7 +840,7 @@ const SKELETON_SOLD=[
   {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
 const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -2560,6 +2560,14 @@ export default function App({ loginOnly = false }){
   const avgM=caComptabilise>0?(totalM/caComptabilise)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
+  // Vendus importés du dressing SANS ligne `ventes` : Vinted ne communique ni
+  // la date de vente ni le prix réellement payé — la ligne de vente n'est
+  // écrite QUE quand l'utilisateur complète (VentesTab, mode dédié). Le lien
+  // se fait par ventes.inventaire_id, posé par ce flux d'enregistrement.
+  const ventesInvIds=useMemo(()=>new Set(sales.map(s=>s.inventaire_id).filter(v=>v!=null).map(String)),[sales]);
+  const vendusAEnregistrer=useMemo(
+    ()=>sold.filter(i=>i.origine==='vinted_sync'&&!ventesInvIds.has(String(i.id))),
+    [sold,ventesInvIds]);
   const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal()}/>;return C;},[user]);
   function searchMatch(item,query){
     if(!query.trim())return true;
@@ -3114,13 +3122,18 @@ export default function App({ loginOnly = false }){
   async function handleEditSave(){
     if(!editItem)return;
     const qty=Math.max(1,parseInt(editItem.quantite)||1);
-    const rawB=parseFloat(editItem.buy)||0;
-    const b=(editItem.priceMode==="total"&&qty>1)?rawB/qty:rawB;
+    // VIDE ≠ ZÉRO : un prix d'achat laissé VIDE reste NULL. L'ancien
+    // `parseFloat(...)||0` transformait chaque sauvegarde d'un article importé
+    // du dressing (prix inconnu) en « gratuit assumé » — marge de 100 % sur du
+    // vent, indétectable ensuite. Un vrai 0 tapé reste un 0 valide.
+    const buyVide=String(editItem.buy??'').trim()==='';
+    const rawB=buyVide?null:(parseFloat(String(editItem.buy).replace(',','.'))||0);
+    const b=rawB==null?null:((editItem.priceMode==="total"&&qty>1)?rawB/qty:rawB);
     const s=parseFloat(editItem.sell)||0;
     const f=parseFloat(editItem.frais)||0;
     const hasS=s>0;
-    const mg=hasS?s-b-f:null;
-    const mgp=hasS?(mg/s)*100:null;
+    const mg=hasS&&b!=null?s-b-f:null;
+    const mgp=hasS&&mg!=null?(mg/s)*100:null;
     const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
     const marqueNorm=editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null;
     if(editItem._isNew){
@@ -3153,13 +3166,15 @@ export default function App({ loginOnly = false }){
       prix_vente:hasS?s:null,
       margin:mg,
       margin_pct:mgp,
+      // Un prix saisi lève le drapeau « je ne sais plus » — la réponse a changé.
+      ...(b!=null?{prix_achat_inconnu:false}:{}),
       description:editItem.description||null,
       quantite:qty,
       // Même colonne que l'intention vocale inventory_move (moveToLocation).
       emplacement:editItem.emplacement?.trim()||null,
     }).eq('id',editItem.id);
     if(!error){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -4928,6 +4943,8 @@ export default function App({ loginOnly = false }){
             delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
+            vendusAEnregistrer={vendusAEnregistrer}
+            onSaleUpdated={()=>{if(user?.id)fetchAll(user.id,{silencieux:true});}}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
