@@ -2,6 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { CapacitorUpdater } from '@capgo/capacitor-updater'
 import AppRouter from './router/AppRouter'
+// Socle commun (reset, police du corps, garde-fous de formulaire). Importé ICI
+// et pas dans App.jsx : depuis le code-splitting par route, App.css n'est
+// chargé que sur /login et /app, et les routes servies en entrée directe
+// (/blog, /reset-password, /success, /cancel) se retrouvaient sans police ni
+// reset. main.jsx est le seul point par lequel TOUTES les routes passent.
+import './base.css'
 
 // ── Capgo live updates : ACQUITTEMENT DU BUNDLE (2026-07-29) ─────────────────
 // PREMIÈRE instruction exécutée du point d'entrée : avant le render, et surtout

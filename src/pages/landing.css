@@ -133,7 +133,11 @@
   background: rgba(250, 250, 248, 0.92);
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  border-bottom: 1px solid var(--line);
+  /* --lp-line, PAS --line : cette dernière est définie dans App.css, qui n'est
+     plus chargé sur la landing depuis le code-splitting (5115c57). La variable
+     ne se résolvant plus, toute la déclaration devenait invalide et la bordure
+     tombait à `none` — le filet sous le header collant avait disparu. */
+  border-bottom: 1px solid var(--lp-line);
 }
 /* nowrap : rien ne doit jamais retomber sous le logo. Ce qui ne tient plus part
    dans le menu burger, jamais sur une deuxième ligne. */

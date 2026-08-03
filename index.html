@@ -158,6 +158,25 @@
     </script>
 
     <style>
+      html {
+        /* ⚠️ NE PAS RETIRER — corrige le wordmark « FillSell » qui restait
+           petit sur Safari iOS jusqu'au premier appui sur un bouton (03/08).
+           Safari mobile applique par défaut son « text autosizing » : il
+           recalcule la taille des textes selon la largeur de leur bloc. Le
+           facteur est établi au layout initial et n'est PAS réévalué ensuite —
+           d'où un texte figé à la mauvaise taille indéfiniment, puis corrigé
+           d'un coup au premier événement tactile, qui provoque le relayout.
+           Ça n'est ni un FOUT (le texte ne se corrigeait jamais tout seul) ni
+           un problème de chargement CSS (la feuille est bloquante dans ce
+           head, vérifié sur le build). Déclarer 100 % désactive l'ajustement :
+           la taille rendue est exactement celle du CSS, dès le premier rendu,
+           sans dépendre d'un recalcul. C'est ce que font normalize.css et tous
+           les resets modernes ; ça ne figurait nulle part dans ce projet.
+           Invisible sur Chrome/Firefox et sur WebKit de bureau : cette
+           fonctionnalité n'existe que sur Safari mobile. */
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
       html, body {
         overflow-x: hidden !important;
         max-width: 100vw;

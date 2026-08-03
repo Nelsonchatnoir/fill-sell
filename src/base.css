@@ -1,0 +1,54 @@
+/**
+ * SOCLE COMMUN À TOUTES LES ROUTES — importé par main.jsx (2026-08-03).
+ *
+ * Pourquoi ce fichier existe : le code-splitting par route (5115c57, 02/08) a
+ * enfermé le reset, la police du corps de texte et les garde-fous de
+ * formulaire dans App.css, qui n'est plus chargé que sur /login et /app. Les
+ * routes servies en entrée directe — /blog (trafic SEO), /reset-password (lien
+ * reçu par mail), /success et /cancel (retours Stripe) — ont donc perdu :
+ *   · la police : tout texte sans font-family explicite retombait en serif du
+ *     navigateur (Times). Le corps des articles de blog était concerné ;
+ *   · `input, select, textarea { font-size: 16px }` : sous 16 px, Safari iOS
+ *     ZOOME automatiquement au focus. Les champs de /reset-password sont à
+ *     15 px et déclenchaient donc ce zoom ;
+ *   · `button { font-family: inherit }` : les <button> n'héritent PAS de la
+ *     police du body, ils prennent celle du système. Les CTA de Success,
+ *     Cancel et ResetPassword étaient hors charte ;
+ *   · `box-sizing: border-box` : les largeurs du blog incluaient leur padding
+ *     en plus, au lieu de dedans.
+ * Ces défauts n'apparaissaient QU'EN CHARGEMENT DIRECT : en navigation interne
+ * depuis l'app, App.css avait déjà été injecté et masquait tout. D'où des
+ * régressions invisibles aux tests manuels.
+ *
+ * ⚠️ VALEURS STRICTEMENT IDENTIQUES à celles d'App.css (lignes 40-59). Les deux
+ * feuilles coexistent sur /app, où App.css est injecté après et gagne : elles
+ * doivent dire la même chose. Toute modification ici se répercute là-bas, et
+ * réciproquement.
+ *
+ * Ce fichier ne contient QUE le socle. Il ne porte ni couleurs de marque, ni
+ * variables --*, ni mise en page : chaque route garde ses propres styles.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Les <button> et les champs n'héritent pas de la police : sans ces deux
+   règles, ils retombent sur la police système du navigateur. */
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+/* font-size 16px : ce n'est pas un choix esthétique mais le SEUIL en dessous
+   duquel Safari iOS zoome de force au focus d'un champ. Ne pas descendre. */
+input, textarea, select { font-family: inherit; font-size: 16px; }
+
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type=number] { -moz-appearance: textfield; }
