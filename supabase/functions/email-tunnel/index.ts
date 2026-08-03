@@ -1108,11 +1108,15 @@ serve(async (req) => {
   const welcomeUserEmail: string | null = body?.user_email ?? null;
 
   if (welcomeNow && welcomeUserId && welcomeUserEmail) {
+    // .limit(1) obligatoire : sur un compte portant PLUSIEURS lignes 'welcome'
+    // (doublons historiques), maybeSingle() seul rend une ERREUR — donc
+    // existing null — donc renvoi. Avec limit(1), une ligne suffit à bloquer.
     const { data: existing } = await supabase
       .from("email_logs")
       .select("id")
       .eq("user_id", welcomeUserId)
       .eq("email_type", "welcome")
+      .limit(1)
       .maybeSingle();
     if (existing) {
       return new Response(JSON.stringify({ skipped: true, reason: "already_sent" }), {
@@ -1501,20 +1505,6 @@ serve(async (req) => {
     );
   }
 
-  // ── Load existing logs to prevent duplicates ───────────────────────────────
-  const userIds: string[] = candidates.map((c: any) => c.user_id);
-  const { data: existingLogs } = userIds.length > 0
-    ? await supabase
-        .from("email_logs")
-        .select("user_id, email_type")
-        .in("user_id", userIds)
-    : { data: [] as any[] };
-
-  const sentSet = new Set<string>(
-    (existingLogs ?? []).map((l: any) => `${l.user_id}:${l.email_type}`)
-  );
-  const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
-
   // ── Date windows (UTC) ────────────────────────────────────────────────────
   const now = new Date();
   const todayUTC = new Date(
@@ -1528,9 +1518,48 @@ serve(async (req) => {
     return dayUTC.getTime() === targetDay.getTime();
   }
 
+  // Seuls les inscrits d'HIER (fenêtre UTC) sont concernés par les deux
+  // triggers J+1 : filtrer AVANT de lire email_logs, pour que la dédup ne
+  // porte que sur une poignée de comptes au lieu de toute la base.
+  const ciblesJ1 = (candidates as any[]).filter((u) =>
+    registeredOn(u.created_at, dayMinus1)
+  );
+
+  // ── Load existing logs to prevent duplicates ───────────────────────────────
+  // Bug du 03/08 (37 welcomes en double du 01 au 03/08) : ce bloc lisait les
+  // lignes de TOUS les candidats, sans pagination ni ORDER BY — or PostgREST
+  // plafonne à 1000 lignes et la table en avait 1488. Les lignes 'welcome' de
+  // la veille (les plus récentes) tombaient dans la tranche tronquée, le Set
+  // les ignorait, et le cron RE-envoyait le welcome à tous les inscrits de la
+  // veille. La branche blast_relaunch paginait déjà pour cette raison exacte.
+  // Pagination conservée malgré la cible réduite : c'est elle, la garantie.
+  const sentSet = new Set<string>();
+  const idsCibles: string[] = [...new Set(ciblesJ1.map((c: any) => c.user_id as string))];
+  if (idsCibles.length > 0) {
+    const PAGE = 1000;
+    for (let debut = 0; ; debut += PAGE) {
+      const { data: page, error: pageErr } = await supabase
+        .from("email_logs")
+        .select("user_id, email_type")
+        .in("user_id", idsCibles)
+        .order("id")
+        .range(debut, debut + PAGE - 1);
+      // Échec fermé : une dédup illisible ne doit JAMAIS autoriser l'envoi.
+      // L'ancien code ignorait l'erreur → Set vide → doublons pour tous.
+      if (pageErr) {
+        return new Response(
+          JSON.stringify({ error: `email_logs: ${pageErr.message}` }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      for (const l of page ?? []) sentSet.add(`${(l as any).user_id}:${(l as any).email_type}`);
+      if (!page || page.length < PAGE) break;
+    }
+  }
+  const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
+
   // ── Trigger 1: J+1 welcome ────────────────────────────────────────────────
-  for (const user of candidates as any[]) {
-    if (!registeredOn(user.created_at, dayMinus1)) continue;
+  for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "welcome")) continue;
     const subject =
       user.lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
@@ -1546,8 +1575,7 @@ serve(async (req) => {
   // ── Trigger 2: J+1 « comment ça marche » (tous, même fenêtre que le welcome) ─
   // Dédup type 'how_it_works', distinct de 'welcome' : les deux coexistent le
   // même jour sans conflit. Aucune condition premium/non-premium.
-  for (const user of candidates as any[]) {
-    if (!registeredOn(user.created_at, dayMinus1)) continue;
+  for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "how_it_works")) continue;
     const subject =
       user.lang === "en"
