@@ -35,6 +35,11 @@ const els = {
   ctaCount: document.getElementById("cta-count"),
   queueLabel: document.getElementById("queue-label"),
   history: document.getElementById("history"),
+  life: document.getElementById("life"),
+  alerts: document.getElementById("alerts"),
+  now: document.getElementById("now"),
+  queueExtra: document.getElementById("queue-extra"),
+  diag: document.getElementById("diag"),
 };
 
 const state = {
@@ -47,6 +52,12 @@ const state = {
   status: {},           // { [platform]: { phase: 'idle'|'busy'|'done'|'err'|'connect', msg } }
   recent: {},           // { [platform]: résultat terminé <30 min par le poll de fond (Sujet 5) }
   publishing: false,
+  // ── Poste de pilotage (2026-08-04) ────────────────────────────────────────
+  besoinGeste: [],      // jobs 'needs_user' — ce qui attend une décision
+  sync: null,           // dernier run vinted_sync_runs (état + progression)
+  sessions: null,       // profiles.extension_sessions (relevé de l'extension)
+  dernierPoll: null,    // chrome.storage.local LAST_POLL
+  prochainPoll: null,   // chrome.alarms — échéance réelle, pas une estimation
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,10 +122,16 @@ async function fetchPendingJobs(accessToken) {
       Authorization: `Bearer ${accessToken}`,
       apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
     },
-    body: JSON.stringify({ include_processing: true }),
+    // include_needs_user + include_context (2026-08-04) : réservés au popup.
+    // Le contexte (état de la sync, sessions plateformes) voyage dans CETTE
+    // réponse — pas de requête supplémentaire. Le background, lui, n'envoie
+    // aucun de ces flags et ne paie donc rien.
+    body: JSON.stringify({ include_processing: true, include_needs_user: true, include_context: true }),
   });
   if (!res.ok) throw new Error(`get-pending-jobs → HTTP ${res.status}`);
   const data = await res.json().catch(() => ({}));
+  state.sync = data?.contexte?.sync ?? null;
+  state.sessions = data?.contexte?.sessions ?? null;
   // Les jobs action='delete' (retrait cross-plateforme, 2026-07-11) passent
   // par la même file mais ne sont PAS des annonces à publier : ils
   // n'apparaissent pas dans le popup et ne sont jamais ciblés par
@@ -155,14 +172,32 @@ async function load() {
   if (state.session) {
     try {
       const tous = await fetchPendingJobs(state.session.access_token);
-      const { repub, autres } = splitRepublish(tous);
+      // ⚠️ Les jobs 'needs_user' sortent AVANT tout le reste. Mêlés au flux de
+      // dépôt, ils deviendraient des « annonces à publier » sélectionnables,
+      // et un clic sur « Publier maintenant » relancerait une opération qui
+      // attend une décision humaine. Ils ont leur bloc, en tête.
+      state.besoinGeste = tous.filter((j) => j.status === "needs_user");
+      const actifs = tous.filter((j) => j.status !== "needs_user");
+      const { repub, autres } = splitRepublish(actifs);
       state.jobs = autres;
       state.repub = repub;
     } catch (e) {
       console.warn("[popup] get-pending-jobs:", e);
       state.jobs = [];
       state.repub = [];
+      state.besoinGeste = [];
     }
+    // Signaux LOCAUX, gratuits et exacts : quand cette extension-ci est
+    // passée, et quand elle repassera. On ne parle jamais du heartbeat
+    // serveur ici — le popup EST l'extension, il se décrit lui-même.
+    try {
+      const st = await chrome.storage.local.get(LAST_POLL);
+      state.dernierPoll = st?.[LAST_POLL] ? Date.parse(st[LAST_POLL]) : null;
+    } catch { state.dernierPoll = null; }
+    try {
+      const al = await chrome.alarms.get("fillsell-poll-jobs");
+      state.prochainPoll = al?.scheduledTime ?? null;
+    } catch { state.prochainPoll = null; }
     state.annonce = firstAnnonce(state.jobs);
     // Sélection par défaut : toutes les plateformes supportées présentes dans
     // l'annonce (session plateforme supposée ouverte — détection réactive).
@@ -413,20 +448,14 @@ function renderCta() {
 }
 
 function renderFooter() {
-  const n = state.jobs.length;
-  let texte = n === 0 ? "0 en file" : `${n} en file`;
-  // É5 : état des republications — lisible et rassurant, jamais mêlé au flux
-  // de dépôt. « recréation en attente » = suppression faite, la recréation
-  // part au prochain passage (rien n'est perdu).
+  // Le compteur dit LA FILE, pas une partie d'elle. Il excluait les
+  // republications sans le dire : « 0 en file » s'affichait pendant que trois
+  // republications attendaient. Le DÉTAIL vit dans le bloc « Aussi en file »,
+  // ce compteur n'en est que le total.
   const repub = state.repub ?? [];
-  if (repub.length) {
-    const reprise = repub.filter((j) => j.status === "pending" && j.platform_fields?.republish_step === "deleted").length;
-    const enCours = repub.filter((j) => j.status === "processing").length;
-    const morceaux = [`${repub.length} republication${repub.length > 1 ? "s" : ""}`];
-    if (enCours) morceaux.push("en cours");
-    if (reprise) morceaux.push(`${reprise} recréation${reprise > 1 ? "s" : ""} en attente`);
-    texte += ` · 🔁 ${morceaux.join(", ")}`;
-  } else if (state.recentRepub) {
+  const n = state.jobs.length + repub.length;
+  let texte = n === 0 ? "0 en file" : `${n} en file`;
+  if (!repub.length && state.recentRepub) {
     const r = state.recentRepub;
     if (r.status === "published") texte += " · 🔁 republication terminée ✓";
     else if (r.status === "dry_run_completed") texte += " · 🔁 republication testée (dry run) ✓";
@@ -435,12 +464,141 @@ function renderFooter() {
   els.queueLabel.textContent = texte;
 }
 
+// ── Poste de pilotage (2026-08-04) ───────────────────────────────────────────
+// Règle commune à tous ces blocs : ils n'existent QUE s'ils ont quelque chose
+// à dire, et ils ne disent que ce dont on est SÛR. Une donnée dont on ne peut
+// pas garantir la fraîcheur ne s'affiche pas — mieux vaut le silence qu'un
+// voyant vert périmé.
+
+function ilYA(ms) {
+  const min = Math.round(ms / 60000);
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `il y a ${h} h`;
+  return `il y a ${Math.round(h / 24)} j`;
+}
+
+function dansCombien(ms) {
+  const min = Math.ceil(ms / 60000);
+  return min <= 1 ? "dans moins d'une minute" : `dans ${min} min`;
+}
+
+function renderLife() {
+  if (!state.session || state.dernierPoll == null) { els.life.classList.add("hidden"); return; }
+  const ecoule = Date.now() - state.dernierPoll;
+  // Au-delà d'une heure sans passage, on ne prétend plus que tout va bien :
+  // la pastille s'éteint et le texte ne promet pas de prochain passage.
+  const froid = ecoule > 60 * 60 * 1000;
+  const suite = !froid && state.prochainPoll && state.prochainPoll > Date.now()
+    ? ` · prochain ${dansCombien(state.prochainPoll - Date.now())}`
+    : "";
+  els.life.innerHTML =
+    `<span class="dot${froid ? " cold" : ""}"></span>` +
+    `<span>${froid ? "En veille" : "Active"} · dernier passage ${escapeHtml(ilYA(ecoule))}${escapeHtml(suite)}</span>`;
+  els.life.classList.remove("hidden");
+}
+
+function renderAlerts() {
+  const n = state.besoinGeste.length;
+  if (!n) { els.alerts.classList.add("hidden"); return; }
+  // Le motif écrit par l'extension est déjà rédigé pour être lu : on le montre
+  // tel quel s'il est propre, jamais un code technique.
+  const brut = String(state.besoinGeste[0]?.error ?? "").trim();
+  const propre = brut && brut.length <= 220 && !/[{}<>]|https?:\/\//.test(brut);
+  els.alerts.innerHTML =
+    `<div class="bloc alerte">` +
+    `<div class="bloc-t">⚠️ ${n} opération${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ta décision</div>` +
+    `<div class="bloc-s">${propre ? escapeHtml(brut) : "Ouvre FillSell pour voir ce qui bloque et relancer."}</div>` +
+    `</div>`;
+  els.alerts.classList.remove("hidden");
+}
+
+function renderNow() {
+  const morceaux = [];
+  const s = state.sync;
+  if (s?.status === "running") {
+    const vus = s.items_vus ?? 0;
+    morceaux.push(s.total_entries
+      ? `Synchronisation du dressing — ${vus} articles sur ${s.total_entries}`
+      : `Synchronisation du dressing — ${vus} article${vus > 1 ? "s" : ""} lu${vus > 1 ? "s" : ""}`);
+  }
+  const pub = state.jobs.filter((j) => j.status === "processing").length;
+  if (pub) morceaux.push(`Publication en cours sur ${pub} plateforme${pub > 1 ? "s" : ""}`);
+  const rep = state.repub.filter((j) => j.status === "processing").length;
+  if (rep) morceaux.push(`Republication en cours`);
+  if (!morceaux.length) { els.now.classList.add("hidden"); return; }
+  els.now.innerHTML =
+    `<div class="bloc"><div class="bloc-t">En cours</div>` +
+    morceaux.map((m) => `<div class="bloc-s">${escapeHtml(m)}</div>`).join("") +
+    `</div>`;
+  els.now.classList.remove("hidden");
+}
+
+// Étapes de republication, en clair. 'a_capturer' = rien n'a encore été
+// touché ; 'deleted' = l'annonce est supprimée et la recréation reste à
+// faire — c'est l'état qu'il faut savoir nommer sans inquiéter.
+const REPUB_ETAPES = {
+  a_capturer: "à relever",
+  captured: "prête à republier",
+  deleted: "recréation en attente",
+  recreated: "recréée",
+};
+
+function renderQueueExtra() {
+  const lignes = [];
+  const rep = state.repub.filter((j) => j.status !== "processing");
+  if (rep.length) {
+    const parEtape = {};
+    for (const j of rep) {
+      const e = REPUB_ETAPES[j.platform_fields?.republish_step ?? "a_capturer"] ?? "en file";
+      parEtape[e] = (parEtape[e] ?? 0) + 1;
+    }
+    const detail = Object.entries(parEtape).map(([e, n]) => `${n} ${e}`).join(" · ");
+    lignes.push(`🔁 <b>${rep.length} republication${rep.length > 1 ? "s" : ""}</b> — ${escapeHtml(detail)}`);
+  }
+  if (state.sync?.status === "queued") {
+    lignes.push(`🔄 <b>Synchronisation demandée</b> — elle part à mon prochain passage`);
+  }
+  if (!lignes.length) { els.queueExtra.classList.add("hidden"); return; }
+  els.queueExtra.innerHTML =
+    `<div class="bloc"><div class="bloc-t">Aussi en file</div>` +
+    lignes.map((l) => `<div class="bloc-l">${l}</div>`).join("") +
+    `</div>`;
+  els.queueExtra.classList.remove("hidden");
+}
+
+// Fraîcheur exigée du relevé de sessions. Au-delà, on n'affiche RIEN : une
+// pastille verte sur un relevé de la semaine dernière est un mensonge.
+const SESSIONS_FRAICHEUR_MS = 60 * 60 * 1000;
+
+function renderDiag() {
+  const bouts = [];
+  const s = state.sessions;
+  const vu = s?.checked_at ? Date.parse(s.checked_at) : NaN;
+  if (Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS) {
+    const pastilles = PLATFORMS
+      .filter((p) => typeof s[p.key] === "boolean")
+      .map((p) => `<span class="sess"><span class="sdot ${s[p.key] ? "ok" : "ko"}"></span>${escapeHtml(p.name)}</span>`);
+    if (pastilles.length) bouts.push(`<div style="display:flex;gap:9px;flex-wrap:wrap">${pastilles.join("")}</div>`);
+  }
+  const v = chrome.runtime.getManifest().version;
+  bouts.push(`<span class="build">v${escapeHtml(v)}</span>`);
+  els.diag.innerHTML = bouts.join("");
+  els.diag.classList.toggle("hidden", !state.session);
+}
+
 function render() {
   renderAccount();
+  renderLife();
+  renderAlerts();
+  renderNow();
   renderListing();
   renderFlow();
   renderCta();
+  renderQueueExtra();
   renderFooter();
+  renderDiag();
 }
 
 // ── Interactions ─────────────────────────────────────────────────────────────

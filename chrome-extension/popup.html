@@ -257,6 +257,39 @@
     }
     .history:hover { opacity: 0.7; }
 
+    /* ── Poste de pilotage (2026-08-04) ─────────────────────────────────────
+       Le popup ne répondait qu'à « qu'est-ce que je publie ? ». Ces blocs
+       répondent à « où j'en suis ? ». Chacun n'existe QUE s'il a quelque
+       chose à dire — rien ne s'affiche « vide ». */
+    .life {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--ink-50); font-weight: 600;
+      margin: -4px 0 12px;
+    }
+    .life .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
+    .life .dot.cold { background: var(--ink-50); opacity: 0.5; }
+
+    .bloc {
+      border-radius: 14px; padding: 10px 12px; margin-bottom: 10px;
+      border: 1px solid var(--line); background: var(--paper);
+    }
+    .bloc.alerte { border-color: var(--amber); background: rgba(232,149,109,0.10); }
+    .bloc-t { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+    .bloc.alerte .bloc-t { color: #9A3412; }
+    .bloc-s { font-size: 11px; line-height: 1.5; color: var(--ink-50); }
+    .bloc-l { font-size: 11.5px; line-height: 1.6; color: var(--ink-50); }
+    .bloc-l b { color: var(--ink); font-weight: 700; }
+
+    .diag {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--ink-50);
+    }
+    .diag .sess { display: flex; align-items: center; gap: 5px; }
+    .diag .sdot { width: 6px; height: 6px; border-radius: 50%; }
+    .diag .sdot.ok { background: var(--teal); }
+    .diag .sdot.ko { background: var(--amber); }
+    .diag .build { opacity: 0.65; font-family: ui-monospace, Menlo, monospace; }
+
     .hidden { display: none !important; }
 
     @media (prefers-reduced-motion: reduce) {
@@ -278,6 +311,15 @@
     </button>
   </div>
 
+  <!-- Ligne de vie : dernier passage / prochain. Gratuite et exacte. -->
+  <div id="life" class="life hidden"></div>
+
+  <!-- Ce qui attend un geste : TOUJOURS en tête, rien ne passe devant. -->
+  <div id="alerts" class="hidden"></div>
+
+  <!-- Ce qui tourne en ce moment -->
+  <div id="now" class="hidden"></div>
+
   <!-- Annonce prête -->
   <div class="section">
     <p class="eyebrow">Annonce prête</p>
@@ -296,11 +338,18 @@
     <span id="cta-count" class="cta-count hidden">0</span>
   </button>
 
+  <!-- Le reste de la file : republications, demande de sync -->
+  <div id="queue-extra" class="hidden"></div>
+
   <!-- Footer -->
   <div class="footer">
     <div class="queue"><span class="dot"></span><span id="queue-label">0 en file</span></div>
     <button id="history" class="history" type="button">Historique</button>
   </div>
+
+  <!-- Diagnostic discret : sessions plateformes (seulement si le relevé est
+       récent) + version installée. Jamais de pastille verte périmée. -->
+  <div id="diag" class="diag hidden"></div>
 
   <script src="config.js"></script>
   <script src="popup.js"></script>

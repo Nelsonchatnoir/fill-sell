@@ -79,7 +79,15 @@ serve(async (req) => {
     // lui renvoyer des jobs 'processing' le ferait re-traiter des jobs en cours.
     const body = await req.json().catch(() => ({}));
     const includeProcessing = body?.include_processing === true;
-    const statuses = includeProcessing ? ["pending", "processing"] : ["pending"];
+    // include_needs_user (2026-08-04) : demandé UNIQUEMENT par le popup, qui
+    // doit montrer en TÊTE ce qui attend un geste de l'utilisateur. ⚠️ Le
+    // BACKGROUND ne l'envoie pas et ne doit jamais le faire : un job
+    // 'needs_user' distribué au poll serait re-traité en boucle alors qu'il
+    // attend une décision humaine.
+    const includeNeedsUser = body?.include_needs_user === true;
+    const statuses = ["pending"];
+    if (includeProcessing) statuses.push("processing");
+    if (includeNeedsUser) statuses.push("needs_user");
 
     // Télémétrie extension (2026-07-18) : chaque poll stampe
     // profiles.extension_last_seen_at (+ extension_build si le background
@@ -180,7 +188,33 @@ serve(async (req) => {
       } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
     }
 
-    return json({ jobs: out, sync_command: syncCommand });
+    // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
+    // Le popup doit répondre à « où j'en suis ? », pas seulement « qu'est-ce
+    // que je publie ? ». Ces deux lectures sont servies ICI plutôt que par
+    // deux requêtes REST depuis le popup : la fonction a déjà authentifié
+    // l'utilisateur et tient un client scopé RLS — c'est zéro aller-retour de
+    // plus. Derrière un flag : le BACKGROUND, qui poll toutes les 2 minutes,
+    // ne paie rien de tout ça.
+    let contexte: { sync: unknown; sessions: unknown } | null = null;
+    if (body?.include_context === true) {
+      contexte = { sync: null, sessions: null };
+      try {
+        const { data: runs } = await userClient
+          .from("vinted_sync_runs")
+          .select("status, items_vus, items_crees, items_maj, total_entries, queued_at, started_at, finished_at, erreur")
+          .eq("kind", "dressing")
+          .order("started_at", { ascending: false })
+          .limit(1);
+        contexte.sync = runs?.[0] ?? null;
+      } catch (_e) { /* le contexte ne doit JAMAIS empêcher de publier */ }
+      try {
+        const { data: prof } = await userClient
+          .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+        contexte.sessions = prof?.extension_sessions ?? null;
+      } catch (_e) { /* idem */ }
+    }
+
+    return json({ jobs: out, sync_command: syncCommand, contexte });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[get-pending-jobs] Erreur inattendue:", msg);
