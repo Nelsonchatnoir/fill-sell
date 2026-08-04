@@ -121,6 +121,95 @@ const privacyTexts = {
   },
 };
 
+// CGV Pépites — texte contractuel validé par Nico le 05/08/2026, aligné sur le
+// code réellement en prod (plafond de cumul = grant_monthly_coins, ordre de
+// dépense = spend_*, restitutions = coin_reservations/refund triggers). Toute
+// modification de ces mécanismes doit être répercutée ici.
+const cgvTexts = {
+  fr: [
+    { t: "Article 1 — Nature des Pépites", ps: [
+      "Les « Pépites » sont des crédits d'usage internes au service FillSell. Elles permettent d'utiliser certaines fonctionnalités payantes de l'application (génération d'annonce, analyse photo, retouche photo, publication, republication), selon la grille en vigueur affichée dans l'application.",
+      "Les Pépites n'ont aucune valeur monétaire. Elles ne constituent ni une monnaie électronique, ni un avoir, ni un instrument de paiement. Elles ne sont pas convertibles ni remboursables en euros (sous réserve des droits impératifs prévus à l'article 9), ne sont ni transférables ni cessibles à un tiers, et sont exclusivement attachées au compte FillSell qui les a reçues. La suppression du compte entraîne la perte définitive des Pépites restantes, sans compensation.",
+    ]},
+    { t: "Article 2 — Prix des actions et grille tarifaire", ps: [
+      "Le prix en Pépites de chaque action est celui affiché dans l'application au moment de l'utilisation. Il est présenté à l'utilisateur avant toute dépense.",
+      "FillSell peut faire évoluer cette grille (prix des actions, dotations mensuelles incluses dans les abonnements, contenu des packs de Pépites) moyennant un préavis raisonnable porté à la connaissance des utilisateurs dans l'application. Une modification de la grille ne s'applique jamais rétroactivement : les Pépites déjà créditées restent utilisables, au prix en vigueur au moment de chaque utilisation.",
+    ]},
+    { t: "Article 3 — Durée de validité", ps: [
+      "Les Pépites achetées (packs) n'expirent pas.",
+      "Les Pépites incluses (créditées chaque mois avec un plan) n'expirent pas non plus à date fixe : aucune Pépite déjà créditée n'est jamais retirée du compte. En revanche, leur cumul est plafonné : à chaque crédit mensuel, le solde de Pépites incluses ne peut excéder deux fois la dotation mensuelle du plan en vigueur. La fraction du crédit mensuel qui porterait le solde au-delà de ce plafond n'est pas versée. Le plafond s'apprécie sur la dotation du plan actif au moment du crédit ; il ne s'applique pas aux Pépites achetées.",
+      "Le crédit mensuel des plans payants est conditionné au paiement effectif de l'échéance d'abonnement correspondante.",
+    ]},
+    { t: "Article 4 — Ordre de consommation", ps: [
+      "Lors d'une dépense, les Pépites incluses sont consommées en priorité ; les Pépites achetées ne sont entamées qu'une fois le solde de Pépites incluses épuisé. En cas de restitution (article 5), les Pépites achetées sont restituées en premier.",
+    ]},
+    { t: "Article 5 — Restitutions automatiques", ps: [
+      "L'utilisateur n'est facturé que pour les actions effectivement rendues :",
+      "– Publication : le prix d'une publication comporte deux parts. La part retouche photo est débitée définitivement au lancement de la publication, en même temps que le traitement des photos. La part publication (facturée par plateforme) est quant à elle seulement réservée à ce moment-là, et n'est définitivement débitée que lorsque l'annonce est effectivement publiée ; si la publication échoue ou est annulée, la part réservée correspondante est restituée automatiquement.",
+      "– Retouche photo : si aucune des photos du lot ne peut être retouchée, la part retouche n'est pas facturée. Dès lors qu'au moins une photo retouchée est livrée, la part retouche est due en totalité ; il n'est pas appliqué de facturation proportionnelle au nombre de photos retouchées.",
+      "– Génération d'annonce : en cas d'échec de la génération, les Pépites débitées sont automatiquement remboursées.",
+      "– Republication : si la republication échoue ou est annulée avant la suppression de l'annonce d'origine (annonce intacte), les Pépites débitées sont automatiquement restituées. Après la suppression, l'opération est reprise à l'étape de recréation (article 8) ; le service étant en cours d'exécution, elle ne donne pas lieu à restitution.",
+      "Ces restitutions se font en Pépites, sur le compte de l'utilisateur, jamais en euros.",
+    ]},
+    { t: "Article 6 — Extension Chrome requise", ps: [
+      "La publication, la republication et le retrait automatique d'annonces sur les plateformes tierces sont exécutés par l'extension Chrome FillSell, installée sur un ordinateur (navigateur Chrome ou compatible). Sans extension installée et active, ces actions ne peuvent pas aboutir — y compris lorsqu'elles sont commandées depuis l'application mobile. Avant toute facturation, FillSell vérifie qu'une extension a été associée au compte ; à défaut, l'action est refusée et aucune Pépite n'est débitée. Si une action commandée ne peut aboutir faute d'extension active, les Pépites correspondantes sont restituées dans les conditions de l'article 5 : immédiatement en cas d'annulation, et au plus tard à l'expiration de la réservation, dans un délai de 30 jours.",
+    ]},
+    { t: "Article 7 — Plateformes tierces", ps: [
+      "FillSell n'est affilié à aucune des plateformes sur lesquelles les annonces sont publiées (Vinted, Leboncoin, eBay, Beebs) et n'est ni approuvé ni sponsorisé par elles. L'extension exécute les actions dans le navigateur de l'utilisateur, au sein de ses propres sessions, comme il le ferait manuellement ; l'utilisateur reste seul titulaire de ses comptes sur ces plateformes et seul responsable du respect de leurs conditions d'utilisation.",
+      "FillSell ne garantit ni la disponibilité, ni le maintien, ni le résultat de la publication sur ces plateformes : celles-ci peuvent modifier leur fonctionnement ou restreindre l'accès automatisé à tout moment et sans préavis, ce qui peut interrompre tout ou partie du service sans que la responsabilité de FillSell puisse être engagée. En pareil cas, les actions échouées donnent lieu aux restitutions prévues à l'article 5.",
+    ]},
+    { t: "Article 8 — Republication d'annonces", ps: [
+      "La republication d'une annonce Vinted consiste à supprimer l'annonce existante puis à en créer une nouvelle. Il s'agit d'une annonce distincte : les vues, les favoris et l'ancienneté de l'annonce d'origine sont définitivement perdus. Cet effet est irréversible : une annonce supprimée ne peut pas être restaurée par FillSell. Si une interruption survient après la suppression, l'opération est reprise à l'étape de recréation de l'annonce, le cas échéant avec l'intervention de l'utilisateur, sans que l'aboutissement de la recréation puisse être garanti ; l'annonce d'origine n'est en aucun cas rétablie, et les Pépites débitées restent dues, le service étant en cours d'exécution. En demandant une republication — manuelle ou automatisée — l'utilisateur reconnaît et accepte cet effet.",
+    ]},
+    { t: "Article 9 — Droit de rétractation", ps: [
+      "Abonnements : conformément aux articles L221-18 et suivants du Code de la consommation, l'utilisateur consommateur dispose d'un délai de 14 jours à compter de la souscription pour se rétracter, en écrivant à support@fillsell.app. Si l'utilisateur a demandé l'exécution immédiate du service, le remboursement est diminué du prorata correspondant à la période déjà écoulée.",
+      "Packs de Pépites : en achetant un pack, l'utilisateur demande expressément l'exécution immédiate (crédit instantané des Pépites) et reconnaît que toute Pépite consommée avant l'expiration du délai de 14 jours emporte, pour la partie consommée, renonciation expresse à son droit de rétractation (article L221-28 du Code de la consommation). La rétractation reste possible dans le délai de 14 jours pour la partie du pack non consommée.",
+      "Pour les achats effectués via l'App Store (Apple) ou Google Play, les demandes de remboursement sont soumises aux conditions du store concerné et doivent lui être adressées directement.",
+    ]},
+  ],
+  en: [
+    { t: "Article 1 — Nature of Nuggets", ps: [
+      "\"Nuggets\" are usage credits internal to the FillSell service. They give access to certain paid features of the application (listing generation, photo analysis, photo enhancement, publishing, reposting), according to the price list displayed in the app.",
+      "Nuggets have no monetary value. They are neither electronic money, nor a credit note, nor a payment instrument. They cannot be converted into or refunded in euros (subject to the mandatory rights set out in Article 9), are neither transferable nor assignable to any third party, and are exclusively attached to the FillSell account that received them. Deleting the account results in the permanent loss of any remaining Nuggets, without compensation.",
+    ]},
+    { t: "Article 2 — Action prices and price list", ps: [
+      "The price in Nuggets of each action is the one displayed in the app at the time of use. It is shown to the user before any spending.",
+      "FillSell may change this price list (action prices, monthly allowances included with subscriptions, contents of Nugget packs) subject to reasonable prior notice given to users in the app. A change to the price list never applies retroactively: Nuggets already credited remain usable, at the price in force at the time of each use.",
+    ]},
+    { t: "Article 3 — Validity period", ps: [
+      "Purchased Nuggets (packs) do not expire.",
+      "Included Nuggets (credited monthly with a plan) do not expire on any date either: no Nugget already credited is ever removed from the account. However, their accumulation is capped: at each monthly credit, the included-Nugget balance may not exceed twice the monthly allowance of the current plan. The portion of the monthly credit that would take the balance above this cap is not credited. The cap is assessed against the allowance of the plan active at the time of the credit; it does not apply to purchased Nuggets.",
+      "The monthly credit of paid plans is conditional upon actual payment of the corresponding subscription instalment.",
+    ]},
+    { t: "Article 4 — Spending order", ps: [
+      "When spending, included Nuggets are consumed first; purchased Nuggets are only drawn upon once the included balance is exhausted. In the event of a restitution (Article 5), purchased Nuggets are returned first.",
+    ]},
+    { t: "Article 5 — Automatic restitutions", ps: [
+      "The user is only charged for actions actually delivered:",
+      "– Publishing: the price of a publication has two components. The photo-enhancement component is definitively debited when publishing starts, at the same time as the photos are processed. The publishing component (charged per marketplace) is only reserved at that point, and is definitively debited only once the listing is actually published; if publishing fails or is cancelled, the corresponding reserved portion is automatically returned.",
+      "– Photo enhancement: if none of the photos in the batch can be enhanced, the enhancement component is not charged. As soon as at least one enhanced photo is delivered, the enhancement component is due in full; no pro-rata billing is applied based on the number of successfully enhanced photos.",
+      "– Listing generation: if generation fails, the debited Nuggets are automatically refunded.",
+      "– Reposting: if the repost fails or is cancelled before the original listing is deleted (listing intact), the debited Nuggets are automatically returned. After deletion, the operation is resumed at the re-creation step (Article 8); as the service is then in the course of performance, no restitution is made.",
+      "These restitutions are made in Nuggets, to the user's account, never in euros.",
+    ]},
+    { t: "Article 6 — Chrome extension required", ps: [
+      "Publishing, reposting and automated withdrawal of listings on third-party marketplaces are performed by the FillSell Chrome extension, installed on a computer (Chrome or compatible browser). Without the extension installed and active, these actions cannot be completed — including when they are requested from the mobile app. Before any charge, FillSell verifies that an extension has been linked to the account; failing that, the action is refused and no Nuggets are charged. If a requested action cannot be completed for lack of an active extension, the corresponding Nuggets are returned under the conditions of Article 5: immediately if the action is cancelled, and at the latest upon expiry of the reservation, within 30 days.",
+    ]},
+    { t: "Article 7 — Third-party marketplaces", ps: [
+      "FillSell is not affiliated with any of the marketplaces on which listings are published (Vinted, Leboncoin, eBay, Beebs), and is neither endorsed nor sponsored by them. The extension performs actions in the user's browser, within the user's own sessions, as the user would manually; the user remains the sole holder of their accounts on those marketplaces and solely responsible for complying with their terms of service.",
+      "FillSell does not guarantee the availability, continuity or outcome of publishing on these marketplaces: they may change how they operate or restrict automated access at any time and without notice, which may interrupt all or part of the service without FillSell incurring any liability. In such cases, failed actions give rise to the restitutions provided for in Article 5.",
+    ]},
+    { t: "Article 8 — Reposting of listings", ps: [
+      "Reposting a Vinted listing consists of deleting the existing listing and creating a new one. The new listing is a distinct listing: the views, favourites and seniority of the original listing are permanently lost. This effect is irreversible: a deleted listing cannot be restored by FillSell. If an interruption occurs after deletion, the operation is resumed at the re-creation step, where applicable with the user's involvement, and successful re-creation cannot be guaranteed; the original listing is in no event reinstated, and the debited Nuggets remain due, as the service is in the course of performance. By requesting a repost — whether manual or automated — the user acknowledges and accepts this effect.",
+    ]},
+    { t: "Article 9 — Right of withdrawal", ps: [
+      "Subscriptions: in accordance with applicable consumer law (Articles L221-18 et seq. of the French Consumer Code), consumers have 14 days from subscribing to withdraw, by writing to support@fillsell.app. If the user requested immediate performance of the service, the refund is reduced pro rata for the period already elapsed.",
+      "Nugget packs: by purchasing a pack, the user expressly requests immediate performance (instant crediting of the Nuggets) and acknowledges that any Nugget consumed before the 14-day period expires entails, for the consumed portion, express waiver of the right of withdrawal (Article L221-28 of the French Consumer Code). Withdrawal remains possible within the 14-day period for the unconsumed portion of the pack.",
+      "For purchases made through the App Store (Apple) or Google Play, refund requests are subject to the terms of the relevant store and must be addressed to it directly.",
+    ]},
+  ],
+};
+
 // Détail technique des droits de l'extension Chrome, aligné 1:1 sur
 // chrome-extension/manifest.json (permissions + host_permissions). Toute
 // modification du manifest doit être répercutée ici pour la soumission Web Store.
@@ -173,8 +262,8 @@ export default function Legal() {
   // et un crawler n'a pas de localStorage — il verrait toujours le français.
   useSeo({
     path: '/legal',
-    title: 'Mentions légales, CGU et confidentialité — FillSell',
-    description: "Mentions légales de FillSell : éditeur, hébergement, conditions générales d'utilisation, politique de confidentialité (RGPD), abonnements et suppression de compte.",
+    title: 'Mentions légales, CGU, CGV et confidentialité — FillSell',
+    description: "Mentions légales de FillSell : éditeur, hébergement, conditions générales d'utilisation et de vente (Pépites), politique de confidentialité (RGPD), abonnements et suppression de compte.",
     ogType: 'website',
   });
 
@@ -199,7 +288,7 @@ export default function Legal() {
             onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.2)"}
           >{en ? '← Back' : '← Retour'}</button>
           <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}>
-            {en ? 'Legal Notice & T&C' : 'Mentions légales & CGU'}
+            {en ? 'Legal Notice, T&C & Terms of Sale' : 'Mentions légales, CGU & CGV'}
           </div>
         </div>
       </div>
@@ -212,10 +301,10 @@ export default function Legal() {
             {en ? 'Legal documents' : 'Documents légaux'}
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 900, color: C.text, letterSpacing: "-0.8px", marginBottom: 8 }}>
-            {en ? 'Legal Notice & T&C' : 'Mentions légales & CGU'}
+            {en ? 'Legal Notice, T&C & Terms of Sale' : 'Mentions légales, CGU & CGV'}
           </h1>
           <p style={{ fontSize: 13, color: C.label }}>
-            {en ? 'Last updated: July 2026' : 'Dernière mise à jour : juillet 2026'}
+            {en ? 'Last updated: August 2026' : 'Dernière mise à jour : août 2026'}
           </p>
         </div>
 
@@ -273,14 +362,14 @@ export default function Legal() {
           </p>
 
           {en ? (
-            <p className="legal-p"><span className="legal-strong">3.4 Premium Subscription</span><br />
-              The Premium plan is offered at <span className="legal-strong">€12.99 per month</span>, no commitment required. It gives access to unlimited items, advanced analytics, and includes manual reposting of Vinted listings at no extra charge. The Pro plan (<span className="legal-strong">€29.99 per month</span>) additionally includes automatic reposting.<br /><br />
+            <p className="legal-p"><span className="legal-strong">3.4 Premium and Pro Subscriptions</span><br />
+              The Premium plan is offered at <span className="legal-strong">€12.99 per month</span>, no commitment required. It gives access to unlimited items, advanced analytics, and includes manual reposting of Vinted listings at no extra charge. The Pro plan (<span className="legal-strong">€29.99 per month</span>) additionally includes automatic reposting, limited to a maximum of <span className="legal-strong">50 reposts per day</span>; this cap is adjustable by the user in the app and set to 10 by default. Reposting (manual and automatic) is being progressively rolled out and may not yet be available on all accounts. Its effects are described in Article 8 of the Terms of Sale below.<br /><br />
               <span className="legal-strong">On web:</span> payment is securely processed by <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">On iOS:</span> payment is managed via the Apple App Store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your Apple account settings.
             </p>
           ) : (
-            <p className="legal-p"><span className="legal-strong">3.4 Abonnement Premium</span><br />
-              Le plan Premium est proposé au tarif de <span className="legal-strong">12,99 € TTC par mois</span>, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées, et inclut la republication manuelle d'annonces Vinted sans frais supplémentaires. Le plan Pro (<span className="legal-strong">29,99 € TTC par mois</span>) inclut en outre la republication automatique.<br /><br />
+            <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium et Pro</span><br />
+              Le plan Premium est proposé au tarif de <span className="legal-strong">12,99 € TTC par mois</span>, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées, et inclut la republication manuelle d'annonces Vinted sans frais supplémentaires. Le plan Pro (<span className="legal-strong">29,99 € TTC par mois</span>) inclut en outre la republication automatique, limitée à <span className="legal-strong">50 republications par jour</span> au maximum ; ce plafond est réglable par l'utilisateur dans l'application et fixé à 10 par défaut. La republication (manuelle et automatique) est en cours de déploiement progressif et peut ne pas être encore disponible sur tous les comptes. Ses effets sont décrits à l'article 8 des CGV ci-dessous.<br /><br />
               <span className="legal-strong">Sur le web :</span> le paiement est traité de manière sécurisée par <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">Sur iOS :</span> le paiement est géré via l'App Store Apple (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte Apple.
             </p>
@@ -294,10 +383,14 @@ export default function Legal() {
           </p>
 
           <p className="legal-p">
-            <span className="legal-strong">{en ? '3.6 Refunds' : '3.6 Remboursement'}</span><br />
+            <span className="legal-strong">{en ? '3.6 Refunds and withdrawal' : '3.6 Remboursement et rétractation'}</span><br />
             {en
-              ? <>In accordance with applicable consumer protection regulations, the 14-day withdrawal right does not apply to digital services whose execution has begun with the user's express consent. However, in the event of a manifest error or service defect, a refund request may be submitted to <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a> within 7 days of the charge.</>
-              : <>Conformément à l'article L221-28 du Code de la consommation, le droit de rétractation de 14 jours ne s'applique pas aux services numériques dont l'exécution a commencé avec l'accord exprès de l'utilisateur. Toutefois, en cas d'erreur manifeste ou de défaut du service, une demande de remboursement peut être adressée à <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a> dans un délai de 7 jours suivant le débit.</>}
+              ? <><span className="legal-strong">Subscriptions:</span> in accordance with applicable consumer law (Articles L221-18 et seq. of the French Consumer Code), consumers have 14 days from subscribing to withdraw, by writing to <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>. If the user requested immediate performance of the service, the refund is reduced pro rata for the period already elapsed.<br /><br />
+                  <span className="legal-strong">Nugget packs:</span> withdrawal remains possible within the 14-day period for the unconsumed portion of the pack. Any Nugget consumed before that period expires entails, for the consumed portion, express waiver of the right of withdrawal (Article L221-28 of the French Consumer Code).<br /><br />
+                  In the event of a manifest error or service defect, a refund request may additionally be submitted to <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a> within 7 days of the charge. For purchases made through the App Store (Apple) or Google Play, refund requests are subject to the terms of the relevant store and must be addressed to it directly.</>
+              : <><span className="legal-strong">Abonnements :</span> conformément aux articles L221-18 et suivants du Code de la consommation, l'utilisateur consommateur dispose d'un délai de 14 jours à compter de la souscription pour se rétracter, en écrivant à <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a>. Si l'utilisateur a demandé l'exécution immédiate du service, le remboursement est diminué du prorata correspondant à la période déjà écoulée.<br /><br />
+                  <span className="legal-strong">Packs de Pépites :</span> la rétractation reste possible dans le délai de 14 jours pour la partie du pack non consommée. Toute Pépite consommée avant l'expiration de ce délai emporte, pour la partie consommée, renonciation expresse au droit de rétractation (article L221-28 du Code de la consommation).<br /><br />
+                  En cas d'erreur manifeste ou de défaut du service, une demande de remboursement peut par ailleurs être adressée à <a href="mailto:support@fillsell.app" className="legal-link">support@fillsell.app</a> dans un délai de 7 jours suivant le débit. Pour les achats effectués via l'App Store (Apple) ou Google Play, les demandes de remboursement sont soumises aux conditions du store concerné et doivent lui être adressées directement.</>}
           </p>
 
           <p className="legal-p">
@@ -313,6 +406,20 @@ export default function Legal() {
               ? 'All elements of the website (logo, design, code, content) are the exclusive property of FillSell. Any reproduction, even partial, without prior written authorization is prohibited.'
               : "L'ensemble des éléments du site (logo, design, code, contenus) sont la propriété exclusive de FillSell. Toute reproduction, même partielle, sans autorisation écrite préalable est interdite."}
           </p>
+        </Section>
+
+        {/* CGV — Pépites et services payants. Articles numérotés 1-9 en propre :
+            la numérotation des sections existantes (4 RGPD, 8 Extension…) est
+            référencée ailleurs (fiches stores, liens du footer) et ne bouge pas. */}
+        <Section id="cgv" icon="💎" title={en ? 'Terms of Sale — Nuggets and paid services' : 'Conditions générales de vente (CGV) — Pépites et services payants'}>
+          {cgvTexts[en ? 'en' : 'fr'].map((art, ai) => (
+            <div key={art.t} style={{ marginBottom: ai === cgvTexts[en ? 'en' : 'fr'].length - 1 ? 0 : 18 }}>
+              <p className="legal-p"><span className="legal-strong">{art.t}</span></p>
+              {art.ps.map((txt, i) => (
+                <p className="legal-p" key={i} style={txt.startsWith('–') ? { paddingLeft: 14 } : undefined}>{txt}</p>
+              ))}
+            </div>
+          ))}
         </Section>
 
         {/* 4. RGPD / GDPR */}
