@@ -59,6 +59,7 @@ Toutes les fonctions webhook et cron doivent être déployées avec `--no-verify
 - apple-notification-history
 - ops-digest
 - handler-watch
+- republish-purge
 
 (`send-merine-reply` a été supprimée en prod le 28/07/2026 — un one-shot en
 `verify_jwt = false` que plus rien n'appelait.)

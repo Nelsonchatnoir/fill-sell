@@ -116,6 +116,11 @@ verify_jwt = true
 [functions.republish-capture-photos]
 verify_jwt = true
 
+# Purge quotidienne des captures de republication + leurs photos storage
+# (cron pg_net, x-cron-secret) — verify_jwt = false comme tous les crons.
+[functions.republish-purge]
+verify_jwt = false
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
 [functions.create-checkout-session]
 verify_jwt = true
