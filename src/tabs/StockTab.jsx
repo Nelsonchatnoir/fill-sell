@@ -5,7 +5,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
-import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
+import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -2855,13 +2855,15 @@ const StockTab = memo(function StockTab({
           isPro={isPro}
           onUpgrade={openUpgradeModal}
           extensionNeverSeen={extensionNeverSeen}
-          // Photos déjà retouchées PAR NOUS (2026-08-05) : au moins une entrée
-          // OBJET du pipeline (enhanced/bg_removed — frontière a88bded). Les
-          // strings nues (CDN Vinted de la sync, uploads bruts) ne comptent
-          // pas : rien n'a été payé pour elles. Calculé ICI, sur les photos
-          // BRUTES de la ligne — le stepper ne reçoit que des URLs aplaties.
+          // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la
+          // source UNIQUE isRetouchedPhotoEntry — la première version de ce
+          // calcul (enhanced/bg_removed seuls) ne matchait que le schéma
+          // HISTORIQUE, or le pipeline actuel écrit des {type,url} dont la
+          // photo 0 retouchée garde type:'original' : l'URL /enhanced/ fait
+          // foi. Calculé ICI, sur les photos BRUTES de la ligne — le stepper
+          // ne reçoit que des URLs aplaties.
           alreadyRetouched={Array.isArray(publishItem.photos) &&
-            publishItem.photos.some(p => p && typeof p === "object" && (p.enhanced || p.bg_removed))}
+            publishItem.photos.some(isRetouchedPhotoEntry)}
         />
       )}
     </>

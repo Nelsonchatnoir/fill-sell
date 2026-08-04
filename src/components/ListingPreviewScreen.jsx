@@ -39,6 +39,24 @@ const T = {
 };
 
 export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+
+// ── Une photo est-elle une retouche PAYÉE, à nous ? ──────────────────────────
+// Source UNIQUE (StockTab l'importe, le RPC spend_coins_and_publish porte la
+// même règle en SQL — migration 20260805030000). Trois formats coexistent :
+//  · pipeline actuel : objets {type,url} — ⚠️ la photo 0 retouchée garde
+//    type:'original' avec une URL sous /enhanced/ (relevé generate-listing) :
+//    l'URL fait foi, le type n'est qu'un indice ;
+//  · schéma historique : objets {original, bg_removed, enhanced} ;
+//  · strings nues : /enhanced/ = retouche réutilisée puis aplatie par la
+//    persistance ; /raw/ ou CDN Vinted = rien de payé.
+export function isRetouchedPhotoEntry(p) {
+  if (!p) return false;
+  if (typeof p === "string") return p.includes("/enhanced/");
+  if (typeof p !== "object") return false;
+  if (p.enhanced || p.bg_removed) return true;
+  if (typeof p.type === "string" && p.type.startsWith("enhanced")) return true;
+  return typeof p.url === "string" && p.url.includes("/enhanced/");
+}
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 
@@ -1071,7 +1089,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, reservedBalance = 0, reuseRetouched = false, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, reservedBalance = 0, reuseRetouched = false, retoucheNewCount = 0, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
@@ -1225,6 +1243,17 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               ? "You already paid for these retouched photos — they'll be reused as they are. Nothing to pay again for photos."
               : "Tu as déjà payé la retouche de ces photos — elles repartent telles quelles. Rien à repayer côté photos."}
           </div>
+        </div>
+      )}
+      {/* Option A (2026-08-05, validée Nico) : nouvelles photos sur un article
+          déjà retouché — l'option s'applique aux SEULES nouvelles photos, au
+          tarif plein ; les anciennes retouches (déjà payées) sont conservées
+          telles quelles et ne repassent pas dans l'IA. */}
+      {!reuseRetouched && retoucheNewCount > 0 && (
+        <div style={{ marginBottom:10, padding:"10px 13px", borderRadius:12, background:"#E7F3F0", border:"1px solid #CBE5DF", fontSize:12, lineHeight:1.45, color:T.tealDeep, fontWeight:600 }}>
+          {lang === "en"
+            ? `✨ Retouching of your ${retoucheNewCount} new photo${retoucheNewCount > 1 ? "s" : ""} — the already-retouched ones are kept as they are (nothing to pay again for them).`
+            : `✨ Retouche des ${retoucheNewCount} nouvelle${retoucheNewCount > 1 ? "s" : ""} photo${retoucheNewCount > 1 ? "s" : ""} — celles déjà retouchées sont conservées telles quelles (rien à repayer pour elles).`}
         </div>
       )}
       <div style={{ display: reuseRetouched ? "none" : "flex", flexDirection:"column", gap:10, marginBottom:12 }}>
@@ -3161,8 +3190,18 @@ export default function ListingPreviewScreen({
   // lisent le pré-check du step 1, le CTA Publier et la ConversionModal, et il
   // se recalcule à chaque plateforme cochée/décochée.
   const pubUnitPrice = coinPrices?.per_platform ?? null;
+  // ── Retouche non livrée ⇒ jamais facturée (2026-08-05 soir) ───────────────
+  // Le pipeline retombe photo par photo sur l'original en cas d'échec GPT
+  // Image : une option ia_* peut donc livrer ZÉRO retouche. Même détection
+  // que le serveur (isRetouchedPhotoEntry ↔ RPC v6) : part photos à 0 dans
+  // tous les affichages, et bandeau honnête au-dessus du CTA. Tant que la
+  // génération n'a pas eu lieu (processedPhotos vide), le plein tarif
+  // s'affiche — on ne promet pas un rabais qu'on ne sait pas encore vrai.
+  const retoucheLivree = (processedPhotos ?? []).some(isRetouchedPhotoEntry);
+  const retoucheNonLivree = photoOption !== "original"
+    && (processedPhotos?.length ?? 0) > 0 && !retoucheLivree;
   const publishTotalFor = (opt, nPlatforms) => {
-    const photo = coinPriceFor(opt);
+    const photo = retoucheNonLivree ? 0 : coinPriceFor(opt);
     if (photo == null || pubUnitPrice == null) return null;
     return photo + pubUnitPrice * nPlatforms;
   };
@@ -3504,6 +3543,12 @@ export default function ListingPreviewScreen({
           // sinon, mais on n'envoie même pas une valeur trompeuse hors avancé).
           background: photoOption === "ia_advanced" ? background : "original",
           price,
+          // Option A (2026-08-05) : photos déjà retouchées CONSERVÉES telles
+          // quelles — l'IA ne retraite que les nouvelles, au tarif plein de
+          // l'option. Les verrouillées ne consomment pas le budget retouche.
+          ...(alreadyRetouched && photoOption !== "original"
+            ? { locked_photos: photos.filter(u => initialPhotos.includes(u)) }
+            : {}),
           ...(notes ? { notes } : {}),
         },
       });
@@ -5612,7 +5657,9 @@ export default function ListingPreviewScreen({
           la nôtre, pas la sienne, et il a payé. */}
       {createdThisRun && (
         <div style={{ fontSize:13, color:T.tealDeep, fontWeight:600, textAlign:"center", lineHeight:1.5, marginTop:12, maxWidth:300 }}>
-          {photoOption !== "original" ? t("doneAddedToStockRetouched") : t("doneAddedToStock")}
+          {/* « avec ses photos retouchées » seulement si la retouche a été
+              LIVRÉE — sinon la ligne mentirait sur ce qui a été payé. */}
+          {photoOption !== "original" && !retoucheNonLivree ? t("doneAddedToStockRetouched") : t("doneAddedToStock")}
         </div>
       )}
       <button
@@ -5704,6 +5751,9 @@ export default function ListingPreviewScreen({
             coinBalance={coinBalance}
             reservedBalance={reservedBalance}
             reuseRetouched={reuseRetouched}
+            retoucheNewCount={alreadyRetouched && addedNewPhotos
+              ? photos.filter(u => !initialPhotos.includes(u)).length
+              : 0}
             onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
             publishedSet={publishedSet}
@@ -5795,6 +5845,17 @@ export default function ListingPreviewScreen({
           dans le flux scrollé : toujours visible, jamais sous la barre Safari.
           Fond + bordure haute pour le détacher du contenu qui scrolle dessous. */}
       <div style={{ padding:"8px 20px", paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 20px)", flexShrink:0, background:T.canvas, borderTop:`1px solid ${T.border}`, boxShadow:"0 -6px 16px rgba(16,32,27,0.05)" }}>
+        {/* Retouche non aboutie : dit AVANT le clic Publier que la part photos
+            ne sera pas facturée (le serveur applique la même règle, RPC v6).
+            Jamais un rabais silencieux que l'utilisateur prendrait pour un
+            bug de prix. */}
+        {retoucheNonLivree && step >= 2 && (
+          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FCD34D", fontSize:12, lineHeight:1.45, color:"#92400E", fontWeight:600 }}>
+            {lang === "en"
+              ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are."
+              : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}
+          </div>
+        )}
         <PrimaryButton
           disabled={ctaDisabled}
           onClick={handleNext}

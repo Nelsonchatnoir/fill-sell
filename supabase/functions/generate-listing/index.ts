@@ -704,6 +704,9 @@ serve(async (req) => {
     // spend_coins_for_lens. Échec de génération → remboursement AUTOMATIQUE
     // (refundGenerateFn ci-dessous, kind 'refund_generate') : un débit qui
     // survivrait à un échec transformerait le geste en arnaque au premier bug.
+    // (La garde « pricing_ack » du 05/08 au soir a été retirée le soir même,
+    // décision Nico : Capgo va être réactivé, les fronts mobiles retrouveront
+    // l'affichage du prix à la source — le débit reste inconditionnel.)
     {
       const { data: spend, error: spendErr } = await adminClient
         .rpc("spend_coins_for_generate", { p_user_id: user.id });
@@ -859,14 +862,33 @@ serve(async (req) => {
       }
       const qualityToUse = isLight ? "low" : "medium";
       const photosToProcess = photos as string[];
+      // ── Photos verrouillées (2026-08-05, option A validée par Nico) ────────
+      // Article DÉJÀ retouché auquel on ajoute de nouvelles photos : le client
+      // envoie locked_photos = les URLs déjà retouchées (et déjà payées). Ces
+      // photos passent TELLES QUELLES — l'IA ne retraite que les nouvelles,
+      // on ne refait jamais un travail payé. Elles ne consomment pas non plus
+      // le budget de retouche : le plafond MAX_RETOUCHED s'applique aux photos
+      // réellement envoyées à GPT Image, pas aux positions.
+      const lockedSet = new Set<string>(
+        Array.isArray(body.locked_photos)
+          ? (body.locked_photos as unknown[]).filter((u): u is string => typeof u === "string")
+          : [],
+      );
       // Garde-fou coûts : 5 photos max passent en retouche GPT Image par annonce
       // (base du prix fixe par annonce du système de pièces) ; les photos au-delà
       // sont conservées telles quelles dans l'annonce.
       const MAX_RETOUCHED = 5;
+      let retouchBudget = MAX_RETOUCHED;
+      const shouldRetouch = photosToProcess.map((u) => {
+        if (lockedSet.has(u)) return false;
+        if (retouchBudget <= 0) return false;
+        retouchBudget--;
+        return true;
+      });
       const ts = Date.now();
       const results = await Promise.allSettled(
         photosToProcess.map(async (photoUrl, idx) => {
-          if (idx >= MAX_RETOUCHED) {
+          if (!shouldRetouch[idx]) {
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
           const srcRes = await fetch(photoUrl);
