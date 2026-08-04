@@ -110,6 +110,12 @@ verify_jwt = true
 [functions.lot-distribute]
 verify_jwt = true
 
+# Re-hébergement des photos d'une annonce Vinted à la capture (É1
+# republication, 2026-08-05) : JWT utilisateur obligatoire — sans lui, la
+# fonction serait un proxy de téléchargement anonyme vers notre storage.
+[functions.republish-capture-photos]
+verify_jwt = true
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
 [functions.create-checkout-session]
 verify_jwt = true
