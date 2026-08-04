@@ -270,11 +270,15 @@ function LensScanHome({
               ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
               <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
               qui suit dans LensTab n'est atteint qu'une fois un résultat obtenu. */}
+          {/* « l'annonce, elle, est gratuite » supprimé le 2026-08-05 : la
+              génération coûte désormais 1 Pépite (price_generate), le prix
+              s'affiche sur le CTA du stepper au moment du clic — pas de
+              montant en dur ici. */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:8, textAlign:'center', color:'#A6A192' }}>
             <PepiteIcon size={11} />
             {lang === 'en'
-              ? 'Price estimate + deal verdict — the listing itself is free'
-              : "Estimation du prix + verdict du deal — l'annonce, elle, est gratuite"}
+              ? 'Price estimate + deal verdict'
+              : 'Estimation du prix + verdict du deal'}
           </div>
         </div>
 

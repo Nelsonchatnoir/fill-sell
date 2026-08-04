@@ -2855,6 +2855,13 @@ const StockTab = memo(function StockTab({
           isPro={isPro}
           onUpgrade={openUpgradeModal}
           extensionNeverSeen={extensionNeverSeen}
+          // Photos déjà retouchées PAR NOUS (2026-08-05) : au moins une entrée
+          // OBJET du pipeline (enhanced/bg_removed — frontière a88bded). Les
+          // strings nues (CDN Vinted de la sync, uploads bruts) ne comptent
+          // pas : rien n'a été payé pour elles. Calculé ICI, sur les photos
+          // BRUTES de la ligne — le stepper ne reçoit que des URLs aplaties.
+          alreadyRetouched={Array.isArray(publishItem.photos) &&
+            publishItem.photos.some(p => p && typeof p === "object" && (p.enhanced || p.bg_removed))}
         />
       )}
     </>

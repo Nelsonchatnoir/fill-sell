@@ -1071,7 +1071,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, reservedBalance = 0, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, reservedBalance = 0, reuseRetouched = false, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
@@ -1209,7 +1209,25 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         )}
       </div>
 
-      <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:12 }}>
+      {/* ── Photos déjà retouchées par nous (2026-08-05) ─────────────────────
+          Un travail déjà payé ne se repaie pas et ne se refait pas : les
+          options de retouche disparaissent, les images existantes repartent
+          telles quelles, part photos = 0 — dit en toutes lettres pour que le
+          gratuit ne ressemble pas à un bug. Ajouter une nouvelle photo rend
+          les options normales (vrai travail neuf, cas tarifaire à trancher). */}
+      {reuseRetouched && (
+        <div style={{ marginBottom:12, padding:"14px 15px", borderRadius:16, background:"#E7F3F0", border:`1px solid ${T.teal}` }}>
+          <div style={{ fontSize:14, fontWeight:600, color:T.tealDeep, display:"flex", alignItems:"center", gap:6 }}>
+            ✨ {lang === "en" ? "Photos already retouched" : "Photos déjà retouchées"}
+          </div>
+          <div style={{ fontSize:12, marginTop:3, lineHeight:1.45, color:T.mute2 }}>
+            {lang === "en"
+              ? "You already paid for these retouched photos — they'll be reused as they are. Nothing to pay again for photos."
+              : "Tu as déjà payé la retouche de ces photos — elles repartent telles quelles. Rien à repayer côté photos."}
+          </div>
+        </div>
+      )}
+      <div style={{ display: reuseRetouched ? "none" : "flex", flexDirection:"column", gap:10, marginBottom:12 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
           // Grille 2 axes (2026-08-04) : le chip porte le prix PHOTOS de
@@ -1535,8 +1553,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         <div style={{ marginTop:12, padding:"11px 14px", borderRadius:12, background:T.paper, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
           <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, lineHeight:1.45 }}>
             {lang === 'en'
-              ? <>Photos: {coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption]} · Publishing: {selected.size} × {coinPrices.per_platform}</>
-              : <>Photos : {coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption]} · Publication : {selected.size} × {coinPrices.per_platform}</>}
+              ? <>Photos: {reuseRetouched ? 'already retouched ✓' : (coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption])} · Publishing: {selected.size} × {coinPrices.per_platform}</>
+              : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {selected.size} × {coinPrices.per_platform}</>}
           </span>
           <strong style={{ fontSize:13.5, fontWeight:700, color:T.ink, display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
             = <PepiteIcon size={14} /> {coinPrices[photoOption] + coinPrices.per_platform * selected.size}
@@ -1566,11 +1584,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
-function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang,
+function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
   prixAchat = null }) {
-  const { t } = useTranslation(lang);
+  const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
   const [openCards, setOpenCards] = useState(new Set());
@@ -1669,7 +1687,12 @@ function StepGeneration({ generating, generateError, platformListings, processed
             cursor:"pointer", fontFamily:"inherit",
           }}
         >
-          {t("stepGenRetryButton")}
+          {/* La tentative échouée a été remboursée automatiquement côté
+              serveur : réessayer est une NOUVELLE génération, au même prix —
+              affiché avant le clic, comme sur le CTA du step 1. */}
+          {generatePrice != null
+            ? tpl("stepGenRetryButtonPriced", { price: generatePrice })
+            : t("stepGenRetryButton")}
         </button>
       </div>
     );
@@ -2754,6 +2777,13 @@ export default function ListingPreviewScreen({
   // null/undefined = profil pas encore chargé → on ne bloque PAS côté client
   // (le RPC porte la même garde, reason 'extension_required').
   extensionNeverSeen = null,
+  // Photos déjà retouchées PAR NOUS (2026-08-05) : l'article porte au moins
+  // une entrée objet du pipeline (enhanced/bg_removed — frontière de propriété
+  // a88bded). Un travail déjà payé ne se repaie pas et ne se refait pas : tant
+  // qu'aucune NOUVELLE photo n'est ajoutée, l'option retouche disparaît, les
+  // images existantes sont réutilisées telles quelles et la part photos est
+  // à 0 — dit clairement, jamais un 0 silencieux.
+  alreadyRetouched = false,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -2944,8 +2974,23 @@ export default function ListingPreviewScreen({
 
   // Step 1 — option de retouche
   const [photoOption, setPhotoOption] = useState(() =>
-    draft?.photoOption ?? (isPro ? "ia_advanced" : isPremium ? "ia_light" : "original")
+    // Photos déjà retouchées : le défaut est « réutiliser » (option original =
+    // aucun pipeline relancé, part photos 0) — jamais re-proposer par défaut
+    // une retouche déjà payée.
+    draft?.photoOption ?? (alreadyRetouched ? "original" : (isPro ? "ia_advanced" : isPremium ? "ia_light" : "original"))
   );
+  // Nouvelles photos ajoutées PENDANT cette session (step 0 ou step 1) : le
+  // gel « déjà retouchées » ne vaut que pour les images existantes — dès qu'un
+  // vrai travail neuf entre, les options payantes réapparaissent (cas
+  // « facturer quoi exactement ? » encore à trancher côté produit).
+  const [addedNewPhotos, setAddedNewPhotos] = useState(false);
+  const reuseRetouched = alreadyRetouched && !addedNewPhotos;
+  useEffect(() => {
+    // Un brouillon peut porter ia_light/ia_advanced d'avant le gel : on le
+    // ramène à « réutiliser » tant que le gel s'applique.
+    if (reuseRetouched && photoOption !== "original") setPhotoOption("original");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reuseRetouched, photoOption]);
   // Choix de fond — ia_advanced uniquement (voir StepPhotos). "original" = fond
   // d'origine conservé. Envoyé à generate-listing via le paramètre `background`.
   const [background, setBackground] = useState(draft?.background ?? "original");
@@ -3241,6 +3286,7 @@ export default function ListingPreviewScreen({
   function addFiles(files) {
     const toAdd = files.slice(0, MAX_PHOTOS - pickedFiles.length);
     if (!toAdd.length) return;
+    setAddedNewPhotos(true); // lève le gel « photos déjà retouchées »
     setPickedFiles(prev => [...prev, ...toAdd]);
     toAdd.forEach(f => setPickedPreviews(prev => [...prev, URL.createObjectURL(f)]));
   }
@@ -3391,7 +3437,10 @@ export default function ListingPreviewScreen({
       if (!upErr)
         urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
     }
-    if (urls.length) setPhotos(prev => [...prev, ...urls]);
+    if (urls.length) {
+      setAddedNewPhotos(true); // lève le gel « photos déjà retouchées »
+      setPhotos(prev => [...prev, ...urls]);
+    }
   }
 
   function handleRemovePhoto(idx) {
@@ -3468,7 +3517,10 @@ export default function ListingPreviewScreen({
         try { errBody = await fnErr.context?.json(); } catch { /* body non-JSON → chemin générique */ }
         if (errBody?.error === "insufficient_coins") {
           refreshWallet();
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
+          // coinPrice = le prix REFUSÉ par le serveur (1 Pépite de génération
+          // depuis le 2026-08-05) : la modale dit combien il manque pour QUOI,
+          // au lieu d'afficher le total de publication qui n'est pas en cause.
+          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], coinPrice: errBody.price ?? null });
           return;
         }
         // Plafond de générations (2026-08-04) : le serveur explique déjà tout
@@ -3481,6 +3533,10 @@ export default function ListingPreviewScreen({
       }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
+      // Génération payante : le solde affiché doit refléter le débit qui
+      // vient d'avoir lieu côté serveur (et un éventuel remboursement d'une
+      // tentative précédente).
+      refreshWallet();
       setProcessedPhotos(data.photos ?? []);
       setPrice(prev => data.price ?? prev);
 
@@ -5410,6 +5466,10 @@ export default function ListingPreviewScreen({
     }
     if (step === 1) {
       if (photos.length < MIN_PHOTOS) return minPhotosLabel;
+      // Génération payante (2026-08-05) : le prix s'affiche AVANT le clic —
+      // config pas encore lue → libellé sans prix, jamais un montant faux.
+      const genPrice = coinPrices?.generate ?? null;
+      if (genPrice != null) return tpl("ctaGenerateListingsPriced", { price: genPrice });
       return t("ctaGenerateListings");
     }
     if (step === 2) {
@@ -5474,15 +5534,16 @@ export default function ListingPreviewScreen({
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
     if (step === 1) {
-      // Pièces : blocage doux si le solde ne couvre pas l'option choisie —
-      // remplace l'ancien blocage dur Free. Le débit réel a lieu à Publier,
-      // ici on évite juste de lancer une génération qu'on ne pourra pas payer.
-      // Grille 2 axes : le TOTAL (photos + 3 × plateformes cochées), jamais le
-      // seul prix photos — sinon « photos perso » (0) laisserait passer un
-      // solde vide vers un débit de 3×n au Publier.
-      const price = publishTotalFor(photoOption, selected.size);
-      if (price != null && coinBalance < price) {
-        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
+      // Génération payante (2026-08-05) : le clic débite price_generate — la
+      // garde porte sur CE prix, pas sur le total de la future publication.
+      // Choix assumé : quelqu'un qui n'a que de quoi générer a le droit de
+      // générer (l'annonce a une valeur en soi) ; le récap du step 1 et le
+      // CTA Publier affichent le total de publication, chaque poste tranche à
+      // son propre clic. Le serveur refuse de toute façon en 402 si le solde
+      // a bougé entre-temps.
+      const genPrice = coinPrices?.generate ?? null;
+      if (genPrice != null && coinBalance < genPrice) {
+        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], coinPrice: genPrice });
         return;
       }
       setStep(2);
@@ -5642,6 +5703,7 @@ export default function ListingPreviewScreen({
             coinPrices={coinPrices}
             coinBalance={coinBalance}
             reservedBalance={reservedBalance}
+            reuseRetouched={reuseRetouched}
             onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
             publishedSet={publishedSet}
@@ -5673,6 +5735,7 @@ export default function ListingPreviewScreen({
             setEdited={setEdited}
             onPhotoClick={setLightboxUrl}
             onRetry={handleGeneratePlatforms}
+            generatePrice={coinPrices?.generate ?? null}
             noteOverride={noteSharedOverride}
             lang={lang}
             price={price}

@@ -470,6 +470,13 @@ serve(async (req) => {
     cost.claude_calls += 1;
   };
 
+  // Remboursement automatique du débit de génération (2026-08-05) : assigné
+  // après le débit, appelable depuis le catch GLOBAL (déclaré avant le try
+  // pour être dans son scope). Idempotent et best-effort, comme releaseAttempt
+  // de lens-analysis : un échec de remboursement ne masque jamais l'erreur
+  // d'origine — mais il se voit dans les logs.
+  let refundGenerateFn: ((reason: string) => Promise<void>) | null = null;
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
@@ -686,66 +693,45 @@ serve(async (req) => {
       return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
     }
 
-    // ── Plafond de générations (2026-08-04) ─────────────────────────────────
-    // Texte + retouche sont GRATUITS et rejouables tant qu'on ne publie pas —
-    // et l'accroche extension invite désormais les comptes bloqués à
-    // « préparer leur annonce », donc à consommer Haiku + GPT Image sans
-    // qu'aucun débit ne soit jamais possible. Borne SIMPLE, pas de
-    // facturation : N générations complètes par fenêtre glissante de 24 h
-    // (le calendrier Paris créerait un effet minuit ; « réessaie plus tard »
-    // est plus honnête qu'un compteur qui saute à 00:00).
-    // Compté sur usage_logs feature='generate_listing' (posé à CHAQUE
-    // génération réussie depuis le 28/07, index user/feature/created_at) :
-    // les générations en ÉCHEC ne comptent pas — on ne pénalise pas un retry
-    // légitime. Les modes ciblés resolve_genre/resolve_aspects (retours plus
-    // haut) restent hors plafond : ils font partie du flux de publication.
-    // Échec de comptage → OUVERT (on laisse passer) : bloquer un utilisateur
-    // légitime sur une erreur de mesure serait pire que le trou d'un appel.
-    const GEN_CAP = isPremium ? 60 : 15;
+    // ── Génération PAYANTE : 1 Pépite, débitée ICI, avant tout appel LLM ─────
+    // (2026-08-05, remplace le plafond 15/60 par 24 h ET l'ancien pré-check
+    // « le solde couvre-t-il la future publication » — la génération est un
+    // poste à part entière : quelqu'un qui n'a que de quoi générer a le droit
+    // de générer, la publication tranchera son propre prix à son propre clic.)
+    // Tous tiers : Premium/Pro paient aussi, leurs grants sont là pour ça.
+    // spend_coins_for_generate lit price_generate en config (jamais en dur),
+    // fait le grant mensuel lazy, débite included d'abord — modèle
+    // spend_coins_for_lens. Échec de génération → remboursement AUTOMATIQUE
+    // (refundGenerateFn ci-dessous, kind 'refund_generate') : un débit qui
+    // survivrait à un échec transformerait le geste en arnaque au premier bug.
     {
-      const { count: genCount, error: genCountErr } = await adminClient
-        .from("usage_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("feature", "generate_listing")
-        .gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
-      if (genCountErr) {
-        console.error("[generate-listing] plafond: comptage en échec (laissé passer):", genCountErr.message);
-      } else if ((genCount ?? 0) >= GEN_CAP) {
-        const en = profile?.lang === "en";
-        console.warn(`[generate-listing] plafond atteint user=${user.id} cap=${GEN_CAP} premium=${isPremium}`);
-        return json({
-          error: "generation_limit",
-          cap: GEN_CAP,
-          message: en
-            ? `Text and photo generation are free — to keep them free, they're capped at ${GEN_CAP} runs per 24 hours, and you've just reached it. Try again in a few hours.`
-            : `La génération du texte et des photos est offerte — pour qu'elle le reste, elle est plafonnée à ${GEN_CAP} générations par 24 h, et tu viens d'y arriver. Réessaie dans quelques heures.`,
-        }, 429);
+      const { data: spend, error: spendErr } = await adminClient
+        .rpc("spend_coins_for_generate", { p_user_id: user.id });
+      if (spendErr) {
+        console.error("[generate-listing] spend_coins_for_generate:", spendErr.message);
+        return json({ error: "Internal server error" }, 500);
       }
-    }
-
-    // Free : plus de 403 sec — autorisé si le wallet couvre le prix de l'option
-    // demandée (système de pièces). Simple CHECK ici : le débit réel a lieu à la
-    // publication via spend_coins_and_publish. 402 + prix/solde pour piloter l'UI.
-    // Premium/Pro passent sans check (leur quota est géré à la publication).
-    // Grille à deux axes (2026-08-04) : photos (0/9/32, une fois) + 3 Pépites
-    // PAR PLATEFORME — même formule que spend_coins_and_publish, sur le nombre
-    // de plateformes demandées à CETTE génération.
-    if (!isPremium) {
-      const [{ data: wallet }, { data: priceRows }] = await Promise.all([
-        adminClient.from("coin_wallets").select("included_balance, purchased_balance").eq("user_id", user.id).maybeSingle(),
-        adminClient.from("coin_config").select("key, value").in("key", [`price_${photo_option}`, "price_per_platform"]),
-      ]);
-      const balance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
-      const cfg = new Map((priceRows ?? []).map((r: { key: string; value: number }) => [r.key, r.value]));
-      const photoPrice = cfg.get(`price_${photo_option}`) ?? null;
-      const perPlatform = cfg.get("price_per_platform") ?? null;
-      const price = photoPrice != null && perPlatform != null
-        ? photoPrice + perPlatform * platforms.length
-        : null;
-      if (price == null || balance < price) {
-        return json({ error: "insufficient_coins", price, balance }, 402);
+      if (spend?.allowed === false) {
+        if (spend.reason === "insufficient_coins") {
+          return json({ error: "insufficient_coins", price: spend.price, balance: spend.balance }, 402);
+        }
+        console.error("[generate-listing] débit refusé:", spend?.reason);
+        return json({ error: "Internal server error" }, 500);
       }
+      const paid: number = spend?.price ?? 0;
+      let refunded = false;
+      const uid = user.id;
+      refundGenerateFn = async (reason: string) => {
+        if (refunded || paid <= 0) return;
+        refunded = true;
+        const { error } = await adminClient.rpc("refund_coins", {
+          p_user_id: uid,
+          p_amount: paid,
+          p_metadata: { source: reason },
+          p_kind: "refund_generate",
+        });
+        if (error) console.error("[generate-listing] refund_coins:", error.message);
+      };
     }
 
     let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null };
@@ -757,7 +743,11 @@ serve(async (req) => {
         .select("id, titre, marque, description, type, statut, prix_vente")
         .eq("id", inventaire_id)
         .single();
-      if (itemErr || !data) return json({ error: "Item not found" }, 404);
+      if (itemErr || !data) {
+        // Rien n'a été généré : la Pépite du clic est rendue.
+        await refundGenerateFn?.("item_not_found");
+        return json({ error: "Item not found" }, 404);
+      }
       item = data;
     }
 
@@ -1159,6 +1149,27 @@ serve(async (req) => {
       if (error) console.error("[generate-listing] usage_logs:", error.message);
     });
 
+    // ── Livraison ou remboursement (2026-08-05) ──────────────────────────────
+    // « Réponse vide ou inexploitable » = AUCUNE plateforme générée : le
+    // client n'aurait rien à afficher (il vérifie data.platforms) — la Pépite
+    // est rendue et l'erreur est franche. Une génération PARTIELLE (au moins
+    // une plateforme sur les demandées) reste livrée et due : le stepper
+    // permet de corriger/compléter plateforme par plateforme.
+    const platformsDelivered = Object.values(platformListings ?? {}).filter(Boolean).length;
+    if (platformsDelivered === 0) {
+      await refundGenerateFn?.("empty_generation");
+      return json({ error: "generation_failed" }, 500);
+    }
+    // Cas dégradé TOTAL : la fonction pose des titres de REPLI quand un appel
+    // Claude échoue (design d'avant le paiement, conservé — mieux vaut un
+    // squelette que rien). Mais zéro appel LLM abouti = le service payé (la
+    // rédaction) n'a PAS été rendu : le squelette part quand même, la Pépite
+    // est rendue. cost.claude_calls ne compte que les réponses ABOUTIES.
+    if (cost.claude_calls === 0) {
+      console.warn("[generate-listing] aucun appel LLM abouti — squelette livré, Pépite remboursée");
+      await refundGenerateFn?.("no_llm_output");
+    }
+
     // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
     return json({
       photos: processedPhotos,
@@ -1169,6 +1180,9 @@ serve(async (req) => {
 
   } catch (e) {
     console.error("[generate-listing] unhandled:", e);
+    // Génération jamais livrée (erreur LLM, timeout, exception quelconque) :
+    // la Pépite du clic est rendue avant de répondre.
+    await refundGenerateFn?.("unhandled_error");
     return json({ error: "Internal server error" }, 500);
   }
 });

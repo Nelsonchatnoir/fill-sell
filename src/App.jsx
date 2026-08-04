@@ -517,6 +517,8 @@ const COIN_KIND_LABELS={
   purchase:{fr:'Pack acheté',en:'Pack purchased'},
   spend_publish:{fr:'Publication',en:'Publish'},
   spend_lens:{fr:'Analyse Lens',en:'Lens scan'},
+  spend_generate:{fr:"Génération d'annonce",en:'Listing generation'},
+  refund_generate:{fr:'Génération remboursée (échec)',en:'Generation refunded (failed)'},
   release_publish:{fr:'Pépites rendues (non publié)',en:'Nuggets returned (not published)'},
   refund:{fr:'Remboursement',en:'Refund'},
   admin:{fr:'Ajustement',en:'Adjustment'},
@@ -2310,7 +2312,11 @@ export default function App({ loginOnly = false }){
       const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance,reserved_balance').eq('user_id',user.id).maybeSingle();
       setCoinWallet(w??{included_balance:0,purchased_balance:0,reserved_balance:0});
       if(!showSettings)return;
-      const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(5);
+      // 25 lignes et non plus 5 (2026-08-05) : release_publish (rendu par
+      // plateforme échouée) et spend/refund_generate multiplient les lignes —
+      // à 5, les remboursements automatiques étaient invisibles pour ceux
+      // qu'ils concernent. Conteneur scrollable côté rendu.
+      const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(25);
       setCoinHistory(h??[]);
     })();
   },[showSettings,conversionModal.open,user]);
@@ -5367,7 +5373,7 @@ export default function App({ loginOnly = false }){
                 <PepiteIcon size={16} /> {lang==='fr'?'Recharger mes Pépites':'Top up my Nuggets'}
               </button>
               {coinHistory.length>0&&(
-                <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${UI.border}`,display:"flex",flexDirection:"column",gap:5}}>
+                <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${UI.border}`,display:"flex",flexDirection:"column",gap:5,maxHeight:190,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
                   {coinHistory.map((h,i)=>(
                     <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:UI.mute2}}>
                       <span>{COIN_KIND_LABELS[h.kind]?.[lang==='fr'?'fr':'en']??h.kind} · {new Date(h.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}</span>
