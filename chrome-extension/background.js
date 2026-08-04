@@ -364,7 +364,10 @@ async function publishSelectedUnlocked(jobIds) {
 
   let jobs;
   try {
-    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, { build: FILLSELL_BUILD_ID }));
+    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, {
+      build: FILLSELL_BUILD_ID,
+      version: chrome.runtime.getManifest().version,
+    }));
   } catch (e) {
     // 401 : même invalidation que le poll — et « no_session » plutôt que
     // « fetch_failed » pour que le popup affiche « Se connecter », pas « Échec ».
@@ -745,8 +748,25 @@ function withJobFlowLock(label, fn) {
   return run;
 }
 
+// Commande de sync mise en file depuis le mobile, rapportée par le poll.
+// Variable de module et non valeur de retour : pollAndProcessJobsUnlocked a
+// une dizaine de sorties anticipées, toutes devraient la propager.
+let commandeSyncEnAttente = null;
+
 function pollAndProcessJobs() {
-  return withJobFlowLock("poll", pollAndProcessJobsUnlocked);
+  const p = withJobFlowLock("poll", pollAndProcessJobsUnlocked);
+  // ⚠️ La commande de sync distante s'exécute APRÈS libération du verrou.
+  // syncDressingVinted en réclame un à son tour : l'appeler depuis l'intérieur
+  // du poll serait un auto-blocage (jobFlowTail attendrait la sync, qui
+  // attendrait la fin du poll). Fire-and-forget : la sync dure des minutes et
+  // rend compte dans vinted_sync_runs, le poll n'a pas à l'attendre.
+  return p.finally(() => {
+    const cmd = commandeSyncEnAttente;
+    commandeSyncEnAttente = null;
+    if (!cmd) return;
+    traiterCommandeSyncDistante(cmd).catch((e) =>
+      console.error("[sync-dressing][distant]", e?.message ?? e));
+  });
 }
 
 // ── Reprise des jobs orphelins bloqués en 'processing' (2026-07-12) ───────────
@@ -1133,7 +1153,17 @@ async function pollAndProcessJobsUnlocked() {
   try {
     // build : télémétrie de version (profiles.extension_build via
     // get-pending-jobs) — sert au ciblage du mail « mise à jour extension ».
-    ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, { build: FILLSELL_BUILD_ID }));
+    // version : PAS de la télémétrie. C'est elle qui autorise le serveur à
+    // nous confier une commande de sync mise en file depuis le mobile — une
+    // extension qui ne l'envoie pas n'en reçoit jamais, et ne peut donc pas
+    // avaler une demande qu'elle ne sait pas exécuter (leçon du 03/08 : une
+    // 0.4.x entretient le heartbeat tout en ignorant la commande de sync).
+    const rep = await callEdgeFunction("get-pending-jobs", session.access_token, {
+      build: FILLSELL_BUILD_ID,
+      version: chrome.runtime.getManifest().version,
+    });
+    jobs = rep.jobs;
+    commandeSyncEnAttente = rep.sync_command ?? null;
   } catch (e) {
     console.error("[background] get-pending-jobs:", e);
     if (e?.status === 401) await invalidateRejectedSession(session).catch(() => {});
@@ -4851,6 +4881,81 @@ async function captureVintedItem(vintedItemId) {
       .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
     return res ?? { success: false, error: "réponse vide du content script" };
   });
+}
+
+// ── Commande de sync venue du mobile (2026-08-05) ────────────────────────────
+// L'utilisateur a cliqué depuis son téléphone : le site a posé une ligne
+// vinted_sync_runs en 'queued', get-pending-jobs nous l'a servie (et ne la sert
+// qu'aux versions >= 0.5.0). Trois gestes, dans cet ordre — l'ordre EST le
+// correctif :
+//   1. cadence AVANT réclamation. Une fois la ligne passée en 'running',
+//      syncDressingUnlocked prend la branche REPRISE, qui n'est jamais bornée
+//      (reprendre un run interrompu n'est pas une nouvelle sync). Or le PC peut
+//      s'être réveillé des heures après le clic, derrière un cron quotidien qui
+//      a déjà tout relu. Réclamer d'abord, ce serait resynchroniser pour rien ;
+//   2. réclamation ATOMIQUE (filtre status=eq.queued) : deux Chrome ouverts sur
+//      le même compte ne peuvent pas exécuter la même demande ;
+//   3. exécution — la ligne étant déjà 'running', syncDressingUnlocked la
+//      reprend telle quelle au lieu d'en créer une seconde (l'index unique
+//      un_seul_actif l'interdirait de toute façon).
+async function traiterCommandeSyncDistante(cmd) {
+  const session = await getValidSession();
+  if (!session?.access_token) return;
+  const token = session.access_token;
+  const userId = decodeJwtSub(token);
+  if (!userId) return;
+  const maintenant = () => new Date().toISOString();
+
+  try {
+    const derniers = await restRequest(
+      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&select=finished_at&order=finished_at.desc&limit=1`,
+      token, { headers: { Prefer: "return=representation" } },
+    );
+    const dernierFini = Date.parse(derniers?.[0]?.finished_at ?? "");
+    if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS) {
+      const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_MANUAL_COOLDOWN_MS - Date.now()) / 60000));
+      // Clôturée, pas laissée en file : sinon l'index unique bloquerait tout
+      // nouveau clic jusqu'à l'expiration, et l'utilisateur n'aurait aucun
+      // retour. 'cancelled' + motif lisible : le front l'affiche tel quel.
+      await restRequest(`vinted_sync_runs?id=eq.${cmd.id}&status=eq.queued`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "cancelled", finished_at: maintenant(), updated_at: maintenant(),
+          erreur: `dressing déjà synchronisé il y a moins de 15 min (prochaine sync possible dans ~${dansMin} min)`,
+        }),
+      });
+      console.log(`[sync-dressing][distant] commande ${cmd.id} annulée — cadence (~${dansMin} min)`);
+      return;
+    }
+  } catch (e) {
+    // Régulateur de cadence, pas barrière de sécurité : illisible → on passe.
+    console.warn("[sync-dressing][distant] cadence illisible (on laisse passer):", e?.message ?? e);
+  }
+
+  let reclamee = null;
+  try {
+    reclamee = await restRequest(`vinted_sync_runs?id=eq.${cmd.id}&status=eq.queued`, token, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        status: "running", claimed_at: maintenant(),
+        // started_at remis à MAINTENANT : sans ça, la durée affichée du run
+        // engloberait les heures d'attente entre le clic mobile et le réveil.
+        started_at: maintenant(), updated_at: maintenant(),
+        extension_build: FILLSELL_BUILD_ID,
+      }),
+    });
+  } catch (e) {
+    console.error("[sync-dressing][distant] réclamation impossible:", e?.message ?? e);
+    return;
+  }
+  if (!Array.isArray(reclamee) || !reclamee.length) {
+    console.log(`[sync-dressing][distant] commande ${cmd.id} déjà réclamée ailleurs — ignorée`);
+    return;
+  }
+
+  console.log(`[sync-dressing][distant] commande ${cmd.id} réclamée — synchronisation lancée`);
+  await syncDressingVinted({ declencheur: "bouton_distant" });
 }
 
 async function syncDressingVinted({ declencheur = "bouton" } = {}) {

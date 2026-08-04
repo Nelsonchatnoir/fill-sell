@@ -23,6 +23,24 @@ function isAllowedOrigin(origin: string): boolean {
   return ALLOWED_ORIGINS.includes(origin) || origin.startsWith("chrome-extension://");
 }
 
+// Version minimale sachant lire le dressing Vinted. Miroir de SYNC_VERSION_MIN
+// (src/utils/vintedSync.js) et de la garde SQL de demander_sync_dressing() —
+// les trois doivent évoluer ENSEMBLE.
+const SYNC_VERSION_MIN = "0.5.0";
+
+/** a >= b sur des versions « x.y.z ». false si l'un des deux est illisible —
+ *  une version absente (extension antérieure à l'envoi de `version`) n'est
+ *  JAMAIS traitée comme capable. */
+function versionAuMoins(a: string, b: string): boolean {
+  if (!/^\d+(\.\d+)*$/.test(a ?? "") || !/^\d+(\.\d+)*$/.test(b ?? "")) return false;
+  const x = a.split(".").map(Number), y = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d > 0;
+  }
+  return true;
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsOrigin = isAllowedOrigin(origin) ? origin : "https://fillsell.app";
@@ -70,6 +88,7 @@ serve(async (req) => {
     // futur bandeau de version dans l'app. Service role : ces colonnes ne
     // doivent pas dépendre de la policy UPDATE client. Best-effort : un échec
     // n'empêche JAMAIS la distribution des jobs.
+    const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
     try {
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -79,6 +98,11 @@ serve(async (req) => {
       const build = typeof body?.build === "string" ? body.build.slice(0, 120) : "";
       if (build) patch.extension_build = build;
       await admin.from("profiles").update(patch).eq("id", user.id);
+      // Version du manifest (2026-08-05) : rangée en MAX, pas en dernière vue —
+      // un compte à deux machines (portable 0.4.x, fixe 0.5.0) ne doit pas
+      // faire osciller le bouton de sync. La logique du max vit dans la RPC,
+      // qui n'écrit que si la version proposée est strictement supérieure.
+      if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
 
     // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
@@ -114,7 +138,41 @@ serve(async (req) => {
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : ""),
     );
 
-    return json({ jobs: out });
+    // ── Commande de sync du dressing mise en file depuis le mobile ──────────
+    // (2026-08-05) L'utilisateur installe l'extension UNE FOIS sur son
+    // ordinateur puis commande depuis son téléphone : le clic pose une ligne
+    // vinted_sync_runs en 'queued', que l'extension réclame ici à son poll.
+    //
+    // ⚠️ LA GARDE DE VERSION EST TENUE ICI, À LA LIVRAISON, ET NULLE PART
+    // AILLEURS. Une 0.4.x sait entretenir extension_last_seen_at mais ignore
+    // complètement la commande de sync : si on la lui servait, elle
+    // l'AVALERAIT (demande consommée, jamais exécutée). Elle n'envoie pas de
+    // `version` au poll → elle n'apprend jamais que la commande existe, et
+    // celle-ci attend une extension capable (ou expire à 6 h).
+    // La version qui fait foi est celle de CE poll, pas la colonne stockée
+    // (qui est un max historique, potentiellement d'une AUTRE machine).
+    // Le TTL de 6 h est appliqué ICI en simple filtre de lecture : une demande
+    // trop vieille n'est jamais servie. Le MARQUAGE en 'expired' vit dans
+    // demander_sync_dressing() (au clic suivant) — c'est le seul endroit où il
+    // est nécessaire, puisque c'est là qu'une demande morte bloquerait le
+    // compte via l'index unique. Rien à purger depuis un poll.
+    let syncCommand: { id: string } | null = null;
+    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
+      try {
+        const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+        const { data: cmds } = await userClient
+          .from("vinted_sync_runs")
+          .select("id")
+          .eq("kind", "dressing")
+          .eq("status", "queued")
+          .gte("queued_at", ttl)
+          .order("queued_at", { ascending: true })
+          .limit(1);
+        if (cmds?.length) syncCommand = { id: cmds[0].id as string };
+      } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
+    }
+
+    return json({ jobs: out, sync_command: syncCommand });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[get-pending-jobs] Erreur inattendue:", msg);

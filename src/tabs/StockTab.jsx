@@ -28,6 +28,7 @@ import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
   ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
+  lireCapaciteSyncCompte, demanderSyncDressingServeur,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS,
   lireDernierRunDressing, aDejaSynchroniseDressing,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
@@ -889,6 +890,13 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // dans CE navigateur — l'écran gère lui-même mobile (mailto/copie du lien)
   // vs desktop (lien /extension).
   const [showPitch, setShowPitch] = useState(false);
+  // Capacité du COMPTE, ≠ du navigateur courant (2026-08-05). C'est elle qui
+  // autorise le clic depuis un téléphone, où la sonde locale est
+  // structurellement négative. null = pas encore lu ; {inconnu:true} = colonne
+  // extension_version absente (migration pas encore appliquée) → on retombe
+  // sur le comportement d'avant, gaté sur la seule sonde locale.
+  const [capacite, setCapacite] = useState(null);
+  const [envoi, setEnvoi] = useState(false);   // mise en file en cours
   const clicAtRef = useRef(0);
 
   // Signal immédiat de présence. Le heartbeat serveur ne se rafraîchit qu'au
@@ -899,6 +907,18 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     const t = setTimeout(() => setSondeFinie(true), EXT_SONDE_MS);
     return () => { stop(); clearTimeout(t); };
   }, [isNative]);
+
+  // Capacité du compte — lue même sur l'application native : depuis le
+  // 05/08 la commande passe par la base, donc le téléphone peut lancer une
+  // sync que l'ordinateur exécutera.
+  useEffect(() => {
+    if (!user?.id) return;
+    let annule = false;
+    lireCapaciteSyncCompte(user.id)
+      .then((c) => { if (!annule) setCapacite(c); })
+      .catch(() => { if (!annule) setCapacite({ inconnu: true }); });
+    return () => { annule = true; };
+  }, [user?.id]);
 
   // Reprise d'affichage au montage : une sync peut tourner depuis un autre
   // onglet ou depuis avant le rechargement de la page.
@@ -984,6 +1004,15 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // postMessage `__fillsellExt`, qui n'existe que depuis la 0.5.0 et porte la
   // version du manifest.
   const extCapable = extVue && versionAuMoins(extVersion, SYNC_VERSION_MIN);
+  // ── Capacité du COMPTE (2026-08-05) ───────────────────────────────────────
+  // Le heartbeat seul reste insuffisant (une 0.4.x l'entretient sans savoir
+  // synchroniser) : la capacité exige extension_last_seen_at ET une version
+  // >= 0.5.0, calculée côté serveur sur la version MAX vue du compte. C'est ce
+  // qui rend le bouton cliquable depuis un téléphone.
+  const capaciteConnue = capacite != null && capacite.inconnu === false;
+  const compteCapable = capaciteConnue && capacite.capable === true;
+  const peutLancer = extCapable || compteCapable;
+  const enAttenteDistante = run?.status === 'queued';
   const enCours = attente || (suivi && run?.status === 'running');
 
   // ── Cadence des syncs manuelles ───────────────────────────────────────────
@@ -1031,23 +1060,41 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   //    « elle se met à jour toute seule depuis le Chrome Web Store » (la
   //    0.5.x n'y a jamais été soumise : personne n'aurait rien reçu).
   const raisonGrisee = (() => {
-    if (isNative) {
-      return fr
-        ? "La synchronisation lit ton dressing depuis Chrome, sur ordinateur — elle n'est pas disponible dans l'application mobile."
-        : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
-    }
-    if (!sondeFinie || extCapable) return null; // tant que la sonde court, on ne conclut RIEN
+    if (peutLancer) return null;
+    // On ne conclut RIEN tant qu'on ne sait pas : ni la sonde locale finie, ni
+    // la capacité du compte lue. Sinon le message clignote au montage.
+    if (!sondeFinie && !capaciteConnue) return null;
     if (extVue) {
       // L'extension a répondu ICI : la version est un fait, pas une déduction.
       return fr
         ? `Ton extension FillSell${extVersion ? ` (${extVersion})` : ''} ne sait pas encore lire ton dressing — il lui faut la version ${SYNC_VERSION_MIN} ou plus récente.`
         : `Your FillSell extension${extVersion ? ` (${extVersion})` : ''} can't read your closet yet — it needs version ${SYNC_VERSION_MIN} or newer.`;
     }
-    return null; // aucune réponse dans CE navigateur → bloc d'accroche dédié
+    // Le compte CONNAÎT une extension, mais aucune ne sait synchroniser : c'est
+    // une mise à jour, pas une installation. Le dire depuis le téléphone évite
+    // d'envoyer réinstaller une extension déjà présente sur l'ordinateur.
+    if (capaciteConnue && !capacite.jamaisVue) {
+      return fr
+        ? `L'extension FillSell de ton ordinateur ne sait pas encore lire ton dressing — il lui faut la version ${SYNC_VERSION_MIN} ou plus récente. Ouvre Chrome pour la mettre à jour, puis reviens.`
+        : `The FillSell extension on your computer can't read your closet yet — it needs version ${SYNC_VERSION_MIN} or newer. Open Chrome to update it, then come back.`;
+    }
+    // Repli tant que la migration n'est pas appliquée (capacité illisible) :
+    // l'ancien message de l'application native, honnête et inchangé.
+    if (!capaciteConnue && isNative) {
+      return fr
+        ? "La synchronisation lit ton dressing depuis Chrome, sur ordinateur — elle n'est pas disponible dans l'application mobile."
+        : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
+    }
+    return null; // aucune extension jamais vue → bloc d'accroche dédié
   })();
-  // Aucune extension n'a répondu ici : accroche d'installation (le heartbeat,
-  // même vivant, ne change rien — il parle d'un autre navigateur).
-  const extAbsente = sondeFinie && !extVue && !isNative && !extCapable;
+  // Accroche d'installation : RÉSERVÉE aux comptes qui n'ont JAMAIS eu
+  // d'extension (consigne produit du 05/08). Un compte équipé qui consulte
+  // depuis son téléphone ne doit plus jamais lire « installe l'extension ».
+  // Avant migration (capacité illisible), on garde le comportement d'avant :
+  // sonde locale négative sur un navigateur non natif.
+  const extAbsente = !peutLancer && (capaciteConnue
+    ? capacite.jamaisVue === true
+    : (sondeFinie && !extVue && !isNative));
   // Un état bloquant PRÉSENT prime sur le résultat d'un run PASSÉ : les deux
   // ensemble se contredisent (« synchronisé ✓ » + « impossible de lire ton
   // dressing »). Le bilan et la cadence ne s'affichent que débloqué.
@@ -1060,25 +1107,77 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     return fr ? `${vus} article${vus > 1 ? 's' : ''} lu${vus > 1 ? 's' : ''}` : `${vus} item${vus === 1 ? '' : 's'} read`;
   })();
 
-  const lancer = () => {
-    if (enCadence) return; // le bouton est désactivé ; ceinture si l'état a un tour de retard
+  const lancer = async () => {
+    if (enCadence || envoi) return; // ceinture si l'état a un tour de retard
     setMessage(null);
     clicAtRef.current = Date.now();
-    setAttente(true);
-    setSuivi(true);
-    try { demanderSyncDressing(); }
-    catch (e) {
-      setAttente(false); setSuivi(false);
-      setMessage({ ton: 'rouge', texte: String(e?.message ?? e) });
+
+    // ── Routage (arbitrage Nico, 05/08) : chemin DIRECT si une extension
+    // capable répond dans CE navigateur — instantané, aucun détour par la
+    // base. Sinon mise en file. JAMAIS les deux : deux runs pour un clic.
+    if (extCapable) {
+      setAttente(true);
+      setSuivi(true);
+      try { demanderSyncDressing(); }
+      catch (e) {
+        setAttente(false); setSuivi(false);
+        setMessage({ ton: 'rouge', texte: String(e?.message ?? e) });
+        return;
+      }
+      track('vinted_sync_dressing', { source, reprise: dejaSync, voie: 'directe' });
       return;
     }
-    track('vinted_sync_dressing', { source, reprise: dejaSync });
+
+    setEnvoi(true);
+    let r;
+    try { r = await demanderSyncDressingServeur(); }
+    catch (e) { r = { ok: false, reason: 'erreur', message: String(e?.message ?? e) }; }
+    setEnvoi(false);
+
+    if (r?.ok) {
+      setMessage({ ton: 'vert', texte: fr
+        ? "Demande envoyée. Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur."
+        : 'Request sent. Your sync will start the next time you open Chrome on your computer.' });
+      // Relit la ligne pour afficher l'attente même après un rechargement.
+      try { setRun(await lireDernierRunDressing(user?.id)); }
+      catch { /* l'affichage se rattrape au prochain montage */ }
+      track('vinted_sync_dressing', { source, reprise: dejaSync, voie: 'file' });
+      return;
+    }
+
+    const texte = (() => {
+      if (r?.reason === 'cadence') {
+        const m = r.prochaine_dans_min ?? 15;
+        return fr
+          ? `Ton dressing vient d'être synchronisé — tu pourras actualiser dans ~${m} min.`
+          : `Your closet was just synced — you can refresh in ~${m} min.`;
+      }
+      if (r?.reason === 'deja_en_attente') {
+        return fr
+          ? "Une demande est déjà en attente : elle partira à la prochaine ouverture de Chrome sur ton ordinateur."
+          : 'A request is already pending: it will start the next time you open Chrome on your computer.';
+      }
+      if (r?.reason === 'extension_trop_ancienne') {
+        return fr
+          ? `L'extension de ton ordinateur doit passer en version ${SYNC_VERSION_MIN} ou plus récente pour lire ton dressing.`
+          : `The extension on your computer needs version ${SYNC_VERSION_MIN} or newer to read your closet.`;
+      }
+      if (r?.reason === 'extension_jamais_vue') {
+        return fr
+          ? "Aucune extension FillSell n'est encore associée à ton compte. Installe-la sur Chrome, sur un ordinateur."
+          : 'No FillSell extension is linked to your account yet. Install it on Chrome, on a computer.';
+      }
+      return fr
+        ? "La demande n'a pas pu être envoyée. Réessaie dans un instant."
+        : "The request couldn't be sent. Try again in a moment.";
+    })();
+    setMessage({ ton: r?.reason === 'deja_en_attente' ? 'vert' : 'orange', texte });
   };
 
   // Bilan du dernier run terminé — affiché seulement s'il n'y a pas de sync en
   // cours (sinon deux états concurrents à l'écran).
   const bilan = (() => {
-    if (enCours || !run || run.status === 'running') return null;
+    if (enCours || !run || run.status === 'running' || run.status === 'queued') return null;
     if (run.status === 'done') {
       return { ton: 'vert', texte: fr
         ? `Dressing synchronisé — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
@@ -1113,6 +1212,18 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         ? `Synchronisation échouée : ${lisible}. Tu peux réessayer.`
         : `Sync failed: ${lisible}. You can try again.` };
     }
+    // Demande distante close sans exécution (2026-08-05) : 'cancelled' = la
+    // cadence de 15 min l'a refusée au moment où l'ordinateur l'a reçue,
+    // 'expired' = personne ne l'a réclamée dans les 6 h. Le motif écrit en base
+    // est déjà rédigé pour être lu — on le montre tel quel s'il est propre.
+    if (run.status === 'cancelled' || run.status === 'expired') {
+      const brut = String(run.erreur ?? '').trim();
+      const propre = brut && brut.length <= 200 && !/[{}<>]|https?:\/\//.test(brut);
+      return { ton: 'orange', texte: propre
+        ? (fr ? `Demande de synchronisation non exécutée : ${brut}.` : `Sync request not run: ${brut}.`)
+        : (fr ? "Ta demande de synchronisation n'a pas été exécutée. Tu peux la relancer."
+              : "Your sync request wasn't run. You can start it again.") };
+    }
     return null;
   })();
 
@@ -1134,13 +1245,38 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         </div>
       </div>
 
-      <SecondaryButton disabled={!extCapable||enCours||enCadence} onClick={lancer}>
+      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
-          : dejaSync
-            ? (fr?"Actualiser mon dressing":"Refresh my closet")
-            : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
+          : envoi
+            ? (fr?"Envoi de la demande…":"Sending request…")
+            : enAttenteDistante
+              ? (fr?"Demande en attente":"Request pending")
+              : dejaSync
+                ? (fr?"Actualiser mon dressing":"Refresh my closet")
+                : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
+
+      {/* Attente honnête (2026-08-05) : la demande est en base, elle partira au
+          prochain poll du Chrome de l'utilisateur. Le poll tourne toutes les
+          2 min mais SEULEMENT si Chrome est ouvert — dire « quand ton
+          ordinateur sera réveillé » serait une demi-vérité. Pas de poll rapide
+          ici : on n'interroge pas Supabase toutes les 2 s pendant des heures. */}
+      {enAttenteDistante&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:18,lineHeight:1}}>🕓</div>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:12.5,fontWeight:700,color:"#5C6560"}}>
+              {fr?"Demande envoyée":"Request sent"}
+            </div>
+            <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
+              {fr
+                ? "Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer cette page."
+                : 'Your sync will start the next time you open Chrome on your computer. You can close this page.'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Jamais un bouton mort sans explication : la cadence dit quand.
           Masquée sous blocage : « tu pourras actualiser dans ~12 min » serait

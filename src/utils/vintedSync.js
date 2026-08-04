@@ -129,6 +129,57 @@ export function demanderSyncDressing() {
   window.postMessage({ __fillsellCmd: 'SYNC_DRESSING' }, window.location.origin);
 }
 
+// ── Sync commandée à distance (2026-08-05) ──────────────────────────────────
+// Objectif produit : on installe l'extension UNE FOIS sur son ordinateur, puis
+// on synchronise depuis son téléphone. Le clic mobile pose une ligne
+// vinted_sync_runs 'queued' que l'extension réclame à son prochain poll (2 min,
+// Chrome ouvert). Le chemin DIRECT (postMessage ci-dessus) reste utilisé dès
+// qu'une extension capable répond dans CE navigateur : instantané, pas de
+// détour par la base. Jamais les deux — sinon deux runs pour un clic.
+
+/**
+ * Capacité de sync du COMPTE (pas du navigateur courant).
+ * ⚠️ TOLÉRANTE À L'ABSENCE DE `extension_version` : le front est déployé par
+ * Vercel dès le push, la migration s'applique après. Tant qu'elle n'est pas
+ * passée, la colonne n'existe pas et PostgREST renvoie une erreur — on rend
+ * alors `{ inconnu: true }` et l'appelant retombe sur le comportement
+ * d'avant (bouton gaté sur la seule sonde locale). Aucune fenêtre cassée.
+ */
+export async function lireCapaciteSyncCompte(userId) {
+  if (!userId) return { inconnu: true };
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('extension_last_seen_at,extension_version')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) return { inconnu: true };
+  return {
+    inconnu: false,
+    jamaisVue: data?.extension_last_seen_at == null,
+    version: data?.extension_version ?? null,
+    capable: data?.extension_last_seen_at != null
+      && versionAuMoins(data?.extension_version, SYNC_VERSION_MIN),
+  };
+}
+
+/**
+ * Met une demande de sync en file. Le serveur tranche tout (capacité, cadence
+ * 15 min, doublon) : cette fonction ne décide rien, elle rapporte.
+ * Réponses possibles : ok | extension_jamais_vue | extension_trop_ancienne |
+ * cadence | deja_en_attente | rpc_absente.
+ */
+export async function demanderSyncDressingServeur() {
+  const { data, error } = await supabase.rpc('demander_sync_dressing');
+  if (error) {
+    // PGRST202 = fonction introuvable : migration pas encore appliquée.
+    // Distinct d'une vraie panne — l'appelant sait retomber sur l'ancien
+    // comportement au lieu d'afficher une erreur à l'utilisateur.
+    const absente = error.code === 'PGRST202' || /function .*demander_sync_dressing/i.test(error.message ?? '');
+    return { ok: false, reason: absente ? 'rpc_absente' : 'erreur', message: error.message };
+  }
+  return data ?? { ok: false, reason: 'erreur' };
+}
+
 // ── Détail d'un article Vinted à l'unité (2026-08-03 soir) ──────────────────
 // GET /api/v2/item_upload/items/{id} côté extension — l'endpoint du FORMULAIRE
 // D'ÉDITION de Vinted, le seul qui porte la description. CADRE (décision 2 du
