@@ -1222,6 +1222,227 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   );
 }
 
+// ── Feuille de prix de republication (É5, 2026-08-05 — validée par Nico) ─────
+// Le prix est LA première chose visible au moment de republier. Presets en
+// pourcentage ARRONDIS À L'EURO INFÉRIEUR (−10 % de 25 € → 22 €), PLANCHER
+// 2 € (les articles plafonnés sont NOMMÉS dans l'aperçu) ; champ libre en
+// solo (min 1 €, la garde de publication). En lot : réglage global seulement
+// — l'édition par article à 30 annonces serait inutilisable.
+// ── É6 : republication automatique (PRO uniquement — 2026-08-05) ─────────────
+// Réglage : profiles.platform_settings.vinted.republish_auto {actif,
+// age_jours, plafond_jour} — plafond RÉGLABLE par l'utilisateur (1..50).
+// Écriture en lecture-fusion-écriture (platform_settings porte aussi
+// l'adresse Leboncoin). À l'activation : on dit CE QUI VA SE PASSER (combien
+// d'annonces éligibles aujourd'hui, à quel rythme) — pas de discours de coût,
+// c'est inclus en Pro. Non-Pro : présenté comme un AVANTAGE du plan (renvoi
+// vers la carte Pro), jamais un cadenas frustrant. Si le compte cesse d'être
+// Pro, le background coupe proprement (arret_motif='plan_non_pro') — ce bloc
+// AFFICHE ce motif.
+function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
+  const fr = lang !== 'en';
+  const [cfg, setCfg] = useState(null);          // republish_auto de platform_settings
+  const [eligibles, setEligibles] = useState(null);
+  const [moisCount, setMoisCount] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const ageJours = Math.min(365, Math.max(7, Number(cfg?.age_jours) || 30));
+  const plafond = Math.min(50, Math.max(1, Number(cfg?.plafond_jour) || 10));
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let stale = false;
+    (async () => {
+      const { data } = await supabase.from('profiles').select('platform_settings').eq('id', user.id).maybeSingle();
+      if (stale) return;
+      setCfg(data?.platform_settings?.vinted?.republish_auto ?? {});
+      const seuil = new Date(Date.now() - (Math.min(365, Math.max(7, Number(data?.platform_settings?.vinted?.republish_auto?.age_jours) || 30)) * 86_400_000)).toISOString();
+      const { count } = await supabase.from('inventaire')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id).eq('statut', 'stock')
+        .not('vinted_item_id', 'is', null).is('disparu_le', null)
+        .lt('listed_at_guess', seuil);
+      if (!stale && typeof count === 'number') setEligibles(count);
+      const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
+      const { count: nMois } = await supabase.from('cross_post_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id).eq('action', 'republish').eq('status', 'published')
+        .eq('platform_fields->>republish_source', 'auto')
+        .gte('published_at', debutMois.toISOString());
+      if (!stale && typeof nMois === 'number') setMoisCount(nMois);
+    })();
+    return () => { stale = true; };
+  }, [user?.id]);
+
+  async function ecrire(patch) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      // Lecture-fusion-écriture + .select() de contrôle (leçon RLS profiles).
+      const { data: cur } = await supabase.from('profiles').select('platform_settings').eq('id', user.id).maybeSingle();
+      const ps = cur?.platform_settings ?? {};
+      const next = { ...ps, vinted: { ...(ps.vinted ?? {}), republish_auto: { ...(ps.vinted?.republish_auto ?? {}), ...patch } } };
+      const { data, error } = await supabase.from('profiles').update({ platform_settings: next }).eq('id', user.id).select('platform_settings');
+      if (!error && data?.length) setCfg(data[0].platform_settings?.vinted?.republish_auto ?? {});
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!isPro) {
+    return (
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E7E3D8', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#10201B' }}>
+          ✨ {fr ? 'Republication automatique' : 'Automatic reposting'}
+          <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, background: '#10201B', color: '#F2B48C', borderRadius: 99, padding: '2px 8px', verticalAlign: 'middle' }}>PRO</span>
+        </div>
+        <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.5 }}>
+          {fr
+            ? 'Tes annonces qui stagnent depuis plus de 30 jours sont republiées toutes seules, au rythme humain — un avantage du plan Pro.'
+            : 'Listings sitting for 30+ days get reposted on their own, at a human pace — a Pro plan perk.'}
+        </div>
+        <button onClick={() => openUpgradeModal?.()}
+          style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 999, border: 'none', background: 'linear-gradient(120deg,#E8956D,#F2B48C)', color: '#10201B', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {fr ? 'Découvrir Pro' : 'Discover Pro'}
+        </button>
+      </div>
+    );
+  }
+
+  const actif = cfg?.actif === true;
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E7E3D8', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#10201B' }}>
+          🔁 {fr ? 'Republication automatique' : 'Automatic reposting'}
+        </div>
+        <button disabled={busy}
+          onClick={() => ecrire(actif ? { actif: false, arrete_le: new Date().toISOString(), arret_motif: 'utilisateur' } : { actif: true, age_jours: ageJours, plafond_jour: plafond, arret_motif: null })}
+          style={{ padding: '7px 14px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+            background: actif ? '#FBEDEC' : 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: actif ? '#8C2F28' : '#fff', opacity: busy ? 0.6 : 1 }}>
+          {actif ? (fr ? 'Couper' : 'Turn off') : (fr ? 'Activer' : 'Turn on')}
+        </button>
+      </div>
+      {cfg?.arret_motif === 'plan_non_pro' && !actif && (
+        <div style={{ fontSize: 12, color: '#8C2F28', background: '#FBEDEC', border: '1px solid #EFC2BE', borderRadius: 10, padding: '8px 10px', lineHeight: 1.5 }}>
+          {fr
+            ? "L'automatisation s'est coupée : ton compte n'est plus Pro. Elle se réactive en un clic dès que tu repasses Pro."
+            : 'Automation switched itself off: your account is no longer Pro. Re-enable it in one click once you are Pro again.'}
+        </div>
+      )}
+      {actif ? (
+        <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.55 }}>
+          {fr
+            ? <>ON — {moisCount ?? '…'} republiée{(moisCount ?? 0) > 1 ? 's' : ''} ce mois. {eligibles != null ? `${eligibles} annonce${eligibles > 1 ? 's' : ''} éligible${eligibles > 1 ? 's' : ''} aujourd'hui (en ligne depuis plus de ${ageJours} j)` : '…'} — elles partiront au rythme d'au plus {plafond}/jour, une par passage de l'extension, Chrome ouvert.</>
+            : <>ON — {moisCount ?? '…'} reposted this month. {eligibles != null ? `${eligibles} listing${eligibles > 1 ? 's' : ''} eligible today (live for over ${ageJours} d)` : '…'} — they will go at up to {plafond}/day, one per extension pass, with Chrome open.</>}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.55 }}>
+          {fr
+            ? `À l'activation : ${eligibles != null ? `${eligibles} annonce${eligibles > 1 ? 's' : ''} éligible${eligibles > 1 ? 's' : ''} aujourd'hui` : '…'} (en ligne depuis plus de ${ageJours} j), republiées au rythme d'au plus ${plafond}/jour — une par passage de l'extension, Chrome ouvert. Tu peux couper à tout moment.`
+            : `On activation: ${eligibles != null ? `${eligibles} eligible listing${eligibles > 1 ? 's' : ''} today` : '…'} (live for over ${ageJours} d), reposted at up to ${plafond}/day — one per extension pass, with Chrome open. Turn it off anytime.`}
+        </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
+        {fr ? 'Plafond par jour :' : 'Daily cap:'}
+        <input type="number" min={1} max={50} defaultValue={plafond} disabled={busy}
+          onBlur={e => { const v = Math.min(50, Math.max(1, Number(e.target.value) || 10)); e.target.value = String(v); ecrire({ plafond_jour: v }); }}
+          style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
+      </label>
+    </div>
+  );
+}
+
+const REPUB_PLANCHER_EUR = 2;
+function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm }) {
+  const fr = lang !== 'en';
+  const solo = items.length === 1;
+  const [pct, setPct] = useState(0);
+  const [prixLibre, setPrixLibre] = useState(solo && items[0].prixActuel != null ? String(items[0].prixActuel) : '');
+  const arrondi = (p) => p == null ? null : Math.max(REPUB_PLANCHER_EUR, Math.floor(p * (1 - pct / 100)));
+  const prixFinalSolo = (() => {
+    if (!solo) return null;
+    const libre = Number(String(prixLibre).replace(',', '.'));
+    if (Number.isFinite(libre) && libre >= 1) return libre;
+    return arrondi(items[0].prixActuel);
+  })();
+  const lotApercu = solo ? [] : items.map(({ item, prixActuel }) => ({
+    titre: item.title, avant: prixActuel, apres: pct === 0 ? prixActuel : arrondi(prixActuel),
+    plafonne: pct > 0 && prixActuel != null && Math.floor(prixActuel * (1 - pct / 100)) < REPUB_PLANCHER_EUR,
+  }));
+  const plafonnes = lotApercu.filter(a => a.plafonne);
+  const cout = gratuit
+    ? (fr ? 'inclus dans ton plan' : 'included in your plan')
+    : `${items.length * (prixUnitaire ?? 1)} ${fr ? 'Pépite' : 'Nugget'}${items.length * (prixUnitaire ?? 1) > 1 ? 's' : ''}`;
+  const confirmer = () => {
+    onConfirm(items.map(({ item, prixActuel }) => {
+      let prix = null; // null = garder le prix de l'annonce
+      if (solo) { if (prixFinalSolo != null && prixFinalSolo !== prixActuel) prix = prixFinalSolo; }
+      else if (pct > 0 && prixActuel != null) prix = arrondi(prixActuel);
+      return { item, prix };
+    }));
+  };
+  const chip = (p, label) => (
+    <button key={p} onClick={() => { setPct(p); if (solo && items[0].prixActuel != null) setPrixLibre(String(p === 0 ? items[0].prixActuel : Math.max(REPUB_PLANCHER_EUR, Math.floor(items[0].prixActuel * (1 - p / 100))))); }}
+      style={{ padding: '7px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+        border: `1px solid ${pct === p ? '#2F9E90' : '#E7E3D8'}`, background: pct === p ? '#E7F3F0' : '#F6F5F1', color: pct === p ? '#1B6E62' : '#5C6560' }}>
+      {label}
+    </button>
+  );
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(16,32,27,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#EDEAE0', borderRadius: '26px 26px 0 0', maxHeight: '92vh', overflowY: 'auto', padding: '18px 18px calc(env(safe-area-inset-bottom,0px) + 24px)', fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#10201B', marginBottom: 4 }}>
+          {solo
+            ? (fr ? 'Republier cet article' : 'Repost this item')
+            : (fr ? `Republier ${items.length} annonces` : `Repost ${items.length} listings`)}
+        </div>
+        <div style={{ fontSize: 12.5, color: '#5C6560', lineHeight: 1.5, marginBottom: 12 }}>
+          {fr ? "Baisser un peu le prix aide l'annonce à repartir — à toi de voir." : 'A small price drop helps the listing take off again — up to you.'}
+        </div>
+        {solo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>
+              {items[0].prixActuel != null
+                ? (fr ? `En ligne à ${items[0].prixActuel} €` : `Live at €${items[0].prixActuel}`)
+                : (fr ? 'Prix actuel inconnu' : 'Current price unknown')}
+            </span>
+            <input inputMode="decimal" value={prixLibre} onChange={e => setPrixLibre(e.target.value)}
+              aria-label={fr ? 'Nouveau prix' : 'New price'}
+              style={{ width: 90, padding: '9px 10px', borderRadius: 10, border: '1px solid #E7E3D8', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#10201B' }}>€</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          {chip(0, fr ? 'Garder' : 'Keep')}{chip(5, '−5 %')}{chip(10, '−10 %')}{chip(15, '−15 %')}
+        </div>
+        {!solo && pct > 0 && (
+          <div style={{ background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#5C6560', lineHeight: 1.55, marginBottom: 12 }}>
+            {lotApercu.slice(0, 3).map((a, i) => (
+              <div key={i}>{(a.titre ?? '—')} : {a.avant != null ? `${a.avant} € → ${a.apres} €` : (fr ? 'prix inconnu — gardé' : 'unknown price — kept')}{a.plafonne ? (fr ? ' (plancher)' : ' (floor)') : ''}</div>
+            ))}
+            {lotApercu.length > 3 && <div>… {lotApercu.length - 3} {fr ? 'autres' : 'more'}</div>}
+            {plafonnes.length > 0 && (
+              <div style={{ marginTop: 6, color: '#9A3412', fontWeight: 600 }}>
+                {fr ? `${plafonnes.length} article${plafonnes.length > 1 ? 's' : ''} au plancher de ${REPUB_PLANCHER_EUR} € : ` : `${plafonnes.length} item${plafonnes.length > 1 ? 's' : ''} at the €${REPUB_PLANCHER_EUR} floor: `}
+                {plafonnes.slice(0, 3).map(a => a.titre ?? '—').join(' · ')}{plafonnes.length > 3 ? '…' : ''}
+              </div>
+            )}
+          </div>
+        )}
+        <button onClick={confirmer}
+          style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {solo
+            ? (fr ? `Republier${prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · ${cout}` : `Repost${prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · ${cout}`)
+            : (fr ? `Republier les ${items.length}${pct > 0 ? ` à −${pct} %` : ''} · ${cout}` : `Repost ${items.length}${pct > 0 ? ` at −${pct}%` : ''} · ${cout}`)}
+        </button>
+        <button onClick={onClose} style={{ width: '100%', marginTop: 8, padding: 10, border: 'none', background: 'none', color: '#5C6560', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {fr ? 'Annuler' : 'Cancel'}
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
@@ -1426,14 +1647,14 @@ const StockTab = memo(function StockTab({
     ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
     : 0;
 
-  async function lancerRepublication(item) {
+  async function lancerRepublication(item, prixRepublication = null) {
     if (repubBusy) return;
     if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
     setRepubBusy(item.id);
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
     try {
       const res = await republierArticleVinted(supabase, {
-        userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id,
+        userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
       });
       if (!res.success) {
         const raisons = {
@@ -1467,6 +1688,24 @@ const StockTab = memo(function StockTab({
     }
   }
 
+  // ── Feuille de prix (2026-08-05, validée) ─────────────────────────────────
+  // LE geste Vinted : baisser un peu pour remonter. Ouverte au clic Republier
+  // (solo) et au lancement de lot — le prix est la première chose visible.
+  // Presets ARRONDIS À L'EURO INFÉRIEUR (−10 % de 25 € = 22 €, pas 22,50) et
+  // PLANCHER à 2 € (un pourcentage global sur des prix hétérogènes produirait
+  // des absurdités — l'aperçu nomme les articles plafonnés). Champ libre en
+  // solo : minimum 1 € (la garde de publication existante).
+  const [repubSheet, setRepubSheet] = useState(null); // {items:[{item, prixActuel}]}
+  const repubGratuit = isPremium || isPro;
+  function ouvrirFeuilleRepublication(itemsCibles) {
+    setRepubSheet({
+      items: itemsCibles.map(it => ({
+        item: it,
+        prixActuel: prixAnnonces[it.vinted_item_id] ?? (Number(it.sell) || null),
+      })),
+    });
+  }
+
   // ── É5.2 : sélection multiple (2026-08-05) — même patron que la saisie des
   // prix d'achat (toggle + Set + checkboxes + barre sticky). Seuls les
   // articles ACTIONNABLES sont cochables : les bornes (republish vivant,
@@ -1486,8 +1725,7 @@ const StockTab = memo(function StockTab({
   };
   const repubActionnables = republishActif ? stockFiltre.filter(i => repubEtat(i) === 'ok') : [];
 
-  async function lancerRepublicationLot() {
-    const cibles = repubActionnables.filter(i => repubSel.has(i.id));
+  async function lancerRepublicationLot(cibles /* [{item, prix}] */) {
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
@@ -1496,10 +1734,10 @@ const StockTab = memo(function StockTab({
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
     // vit en base et survit à tout.
     for (let i = 0; i < cibles.length; i++) {
-      const item = cibles[i];
+      const { item, prix } = cibles[i];
       try {
         const res = await republierArticleVinted(supabase, {
-          userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id,
+          userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
         });
         if (res.success) {
           const now = new Date().toISOString();
@@ -2462,10 +2700,11 @@ const StockTab = memo(function StockTab({
                   <>
                     <span className="lbl">
                       {lang==='fr'
-                        ?`${repubSel.size} sélectionné${repubSel.size>1?"s":""} · ${repubSel.size} Pépite${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`
-                        :`${repubSel.size} selected · ${repubSel.size} Nugget${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`}
+                        ?`${repubSel.size} sélectionné${repubSel.size>1?"s":""} · ${repubGratuit?'inclus dans ton plan':`${repubSel.size} Pépite${repubSel.size>1?"s":""}`} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`
+                        :`${repubSel.size} selected · ${repubGratuit?'included in your plan':`${repubSel.size} Nugget${repubSel.size>1?"s":""}`} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`}
                     </span>
-                    <button className="apply" disabled={repubSel.size===0} onClick={lancerRepublicationLot}>
+                    <button className="apply" disabled={repubSel.size===0}
+                      onClick={()=>ouvrirFeuilleRepublication(repubActionnables.filter(i=>repubSel.has(i.id)))}>
                       {lang==='fr'?`Republier les ${repubSel.size}`:`Repost ${repubSel.size}`}
                     </button>
                     <button className="pa-ghost" onClick={()=>{setRepubSel(new Set(repubActionnables.map(i=>i.id)));}}>
@@ -2964,11 +3203,19 @@ const StockTab = memo(function StockTab({
                               }
                               return(
                                 <button className="btn-vendre" disabled={repubBusy===item.id}
-                                  onClick={e=>{e.stopPropagation();lancerRepublication(item);}}
+                                  onClick={e=>{
+                                    e.stopPropagation();
+                                    if(extensionNeverSeen===true){setExtPitchItem(item);return;}
+                                    ouvrirFeuilleRepublication([item]);
+                                  }}
                                   style={{opacity:repubBusy===item.id?0.6:1}}
-                                  title={lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed."}>
+                                  title={repubGratuit
+                                    ?(lang==='fr'?"Inclus dans ton plan. Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Included in your plan. Deletes then recreates the listing identically to bump it in the Vinted feed.")
+                                    :(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")}>
                                   {repubBusy===item.id
                                     ?(lang==='fr'?'Capture…':'Capturing…')
+                                    :repubGratuit
+                                    ?(lang==='fr'?'🔁 Republier':'🔁 Repost')
                                     :(lang==='fr'?`🔁 Republier${republishPrice!=null?` (${republishPrice} Pépite${republishPrice>1?'s':''})`:''}`
                                                  :`🔁 Repost${republishPrice!=null?` (${republishPrice} Nugget${republishPrice>1?'s':''})`:''}`)}
                                 </button>);
@@ -3017,6 +3264,12 @@ const StockTab = memo(function StockTab({
                   source={stock.length===0?'stock_empty':'stock_liste'}
                   onDone={rafraichirApresSync}
                 />
+                {/* É6 : automatisation de la republication — avantage Pro,
+                    réglable, arrêt propre affiché. Même masquage bêta que le
+                    bouton Republier. */}
+                {republishActif&&(
+                  <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
+                )}
               </div>
             )}
           </div>
@@ -3052,6 +3305,21 @@ const StockTab = memo(function StockTab({
           supabase={supabase}
           userId={user?.id}
           onExtensionSeen={()=>{const it=extPitchItem;setExtPitchItem(null);publierAvecDetail(it);}}
+        />
+      )}
+      {/* É5 : feuille de prix de republication — solo et lot passent par elle. */}
+      {repubSheet&&(
+        <RepublishSheet
+          lang={lang}
+          items={repubSheet.items}
+          gratuit={repubGratuit}
+          prixUnitaire={republishPrice}
+          onClose={()=>setRepubSheet(null)}
+          onConfirm={(cibles)=>{
+            setRepubSheet(null);
+            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix);
+            else lancerRepublicationLot(cibles);
+          }}
         />
       )}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).

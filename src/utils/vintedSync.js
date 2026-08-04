@@ -193,7 +193,11 @@ export function ecouterCaptureArticleVinted(onCapture) {
 // font pas tomber la capture : ils rejoignent champs_manquants et le verdict
 // reste 'incomplet' — la garde anti-perte (É2) fera le reste. Pas d'UI ici :
 // le bouton « Republier » (É5) appellera cette fonction telle quelle.
-export async function capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId }) {
+// prixRepublication (2026-08-05, feuille de prix validée) : le prix AJUSTÉ
+// entre DANS la capture (payload.prix) — jamais appliqué après coup. Le prix
+// relevé sur l'annonce est conservé en payload.prix_origine. Tout le reste de
+// la capture reste « à l'identique ».
+export async function capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId, prixRepublication = null }) {
   const id = String(vintedItemId ?? '').trim();
   if (!id) return { success: false, error: "vinted_item_id manquant" };
 
@@ -237,7 +241,11 @@ export async function capturerEtPersisterArticleVinted(supabase, { userId, inven
     verdict,
     champs_manquants: manquants,
     payload: { natif: capture.natif ?? null, dto_public: capture.dto_public ?? null,
-               titre: capture.titre ?? null, prix: capture.prix ?? null,
+               titre: capture.titre ?? null,
+               prix: Number.isFinite(Number(prixRepublication)) && Number(prixRepublication) >= 1
+                 ? Number(prixRepublication) : (capture.prix ?? null),
+               ...(Number.isFinite(Number(prixRepublication)) && Number(prixRepublication) >= 1
+                 ? { prix_origine: capture.prix ?? null } : {}),
                description: capture.description ?? null, photos_cdn: capture.photos_cdn ?? [] },
     libelles: capture.libelles ?? null,
     photos_urls: photosUrls,
@@ -255,8 +263,8 @@ export async function capturerEtPersisterArticleVinted(supabase, { userId, inven
 // étapes (supprimer → attendre → recréer), en DRY RUN tant que Nico n'a pas
 // basculé REPUBLISH_DRY_RUN (background.js). Pas d'UI ici : le bouton
 // « Republier » (É5) appellera cette fonction telle quelle.
-export async function republierArticleVinted(supabase, { userId, inventaireId, vintedItemId }) {
-  const capture = await capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId });
+export async function republierArticleVinted(supabase, { userId, inventaireId, vintedItemId, prixRepublication = null }) {
+  const capture = await capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId, prixRepublication });
   if (!capture.success) return capture;
   if (capture.verdict !== 'valide') {
     return {

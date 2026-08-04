@@ -274,13 +274,13 @@ export default function Legal() {
 
           {en ? (
             <p className="legal-p"><span className="legal-strong">3.4 Premium Subscription</span><br />
-              The Premium plan is offered at <span className="legal-strong">€12.99 per month</span>, no commitment required. It gives access to unlimited items and advanced analytics.<br /><br />
+              The Premium plan is offered at <span className="legal-strong">€12.99 per month</span>, no commitment required. It gives access to unlimited items, advanced analytics, and includes manual reposting of Vinted listings at no extra charge. The Pro plan (<span className="legal-strong">€29.99 per month</span>) additionally includes automatic reposting.<br /><br />
               <span className="legal-strong">On web:</span> payment is securely processed by <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">On iOS:</span> payment is managed via the Apple App Store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your Apple account settings.
             </p>
           ) : (
             <p className="legal-p"><span className="legal-strong">3.4 Abonnement Premium</span><br />
-              Le plan Premium est proposé au tarif de <span className="legal-strong">12,99 € TTC par mois</span>, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées.<br /><br />
+              Le plan Premium est proposé au tarif de <span className="legal-strong">12,99 € TTC par mois</span>, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées, et inclut la republication manuelle d'annonces Vinted sans frais supplémentaires. Le plan Pro (<span className="legal-strong">29,99 € TTC par mois</span>) inclut en outre la republication automatique.<br /><br />
               <span className="legal-strong">Sur le web :</span> le paiement est traité de manière sécurisée par <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">Sur iOS :</span> le paiement est géré via l'App Store Apple (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte Apple.
             </p>

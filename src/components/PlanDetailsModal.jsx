@@ -105,7 +105,12 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
        : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`,
     fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
+    // Droits republication (2026-08-05) : manuelle incluse dès Premium,
+    // automatisation réservée au Pro.
+    fr ? 'Republication Vinted incluse' : 'Vinted reposting included',
     ...(isPro ? [
+      fr ? 'Republication Vinted AUTOMATIQUE (tes annonces qui stagnent remontent toutes seules)'
+         : 'AUTOMATIC Vinted reposting (stale listings bump themselves)',
       fr ? `De quoi publier bien plus d'annonces (retouche photos en option jusqu'à ${retouchMax} Pépites)`
          : `Room for many more listings (optional photo editing up to ${retouchMax} Nuggets)`,
     ] : []),

@@ -256,6 +256,10 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
           // 3/plateforme — mêmes chiffres que la landing, jamais en dur.
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite, publication ${pubUnit} Pépites/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget, publishing ${pubUnit} Nuggets/platform)`,
+          // Droits republication par plan (2026-08-05) : manuelle incluse dès
+          // Premium (1 Pépite en Free), automatisation réservée au Pro.
+          fr ? 'Republication Vinted incluse (fais remonter tes annonces dans le fil)'
+             : 'Vinted reposting included (bump your listings in the feed)',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -317,6 +321,8 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? `De quoi publier bien plus d'annonces (génération ${genPrice} Pépite, ${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
              : `Room for many more listings (generation ${genPrice} Nugget, ${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
+          fr ? 'Republication Vinted AUTOMATIQUE : tes annonces qui stagnent remontent toutes seules'
+             : 'AUTOMATIC Vinted reposting: stale listings bump themselves',
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}

@@ -1192,6 +1192,12 @@ async function pollAndProcessJobsUnlocked() {
     console.error("[background] checkPublishedListings:", e)
   );
 
+  // Republication AUTOMATIQUE (É6, Pro uniquement — 2026-08-05) : au plus UN
+  // article par cycle, mêmes délais humains et mêmes gardes que le manuel.
+  await maybeAutoRepublish(session).catch((e) =>
+    console.error("[background] maybeAutoRepublish:", e)
+  );
+
   // Fin de cycle : fermer les onglets de travail orphelins (dérive d'avant le
   // fix beforeunload, ou cas résiduel). Sous le verrou de flux, après la boucle
   // de jobs → les ids mémorisés sont à jour, aucun onglet actif n'est fermé.
@@ -6199,6 +6205,11 @@ async function processRepublishJob(job, accessToken) {
               // La republication EST une remise en ligne : c'est la nouvelle
               // date de mise en ligne la plus plausible.
               listed_at_guess: new Date().toISOString(),
+              // « Le dernier prix publié fait foi » (doctrine bd9a516) : le
+              // prix du job = celui de la capture, éventuellement AJUSTÉ à la
+              // republication (feuille de prix) — la carte et le prochain
+              // « Publier » doivent le refléter.
+              ...(job.price != null ? { prix_vente: Number(job.price) } : {}),
             }),
           }).catch((e) => console.error(
             `[background] Republish ${job.id} : rattachement inventaire ${job.inventaire_id} → ${nouvelId} NON écrit —`,
@@ -6233,6 +6244,156 @@ async function processRepublishJob(job, accessToken) {
   const msg = `Étape de republication inconnue : ${step}`;
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg }).catch(() => {});
   return { status: "needsUser", error: msg };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// É6 REPUBLICATION AUTOMATIQUE (2026-08-05, validée par Nico — PRO uniquement).
+// Déclencheur CONJONCTIF À ÉCHEC FERMÉ :
+//   · listed_at_guess < now − age_jours (défaut 30 — date d'upload de la photo
+//     la plus ancienne ≈ date de mise en ligne, au jour près, et É4 la
+//     rafraîchit à chaque republication) ;
+//   · aucun republish FillSell vivant ni abouti < 24 h sur l'article ;
+//   · quand des snapshots existent : observé par la sync depuis ≥ age_jours ;
+//   · donnée manquante = PAS de republication auto. Jamais.
+// UN article par cycle de poll maximum — le rythme humain vient de là, plus
+// la machine à étapes elle-même (espacement 2 min, attente 2-5 min).
+// Réglage : profiles.platform_settings.vinted.republish_auto
+//   { actif, age_jours (7..365, déf. 30), plafond_jour (1..50, déf. 10) } —
+// le plafond quotidien est RÉGLABLE PAR L'UTILISATEUR (demande explicite).
+// Compte plus Pro ⇒ l'automatisation se COUPE PROPREMENT (actif:false +
+// arret_motif:'plan_non_pro', lu par l'UI) — jamais une série d'échecs muets.
+let autoRepublishBusy = false;
+
+async function maybeAutoRepublish(session) {
+  if (autoRepublishBusy) return;
+  autoRepublishBusy = true;
+  try {
+    const token = session.access_token;
+    const userId = decodeJwtSub(token);
+    if (!userId) return;
+
+    const profs = await restRequest(`profiles?id=eq.${userId}&select=is_pro,platform_settings`, token,
+      { headers: { Prefer: "return=representation" } });
+    const prof = profs?.[0];
+    const cfg = prof?.platform_settings?.vinted?.republish_auto;
+    if (!cfg?.actif) return;
+
+    if (prof?.is_pro !== true) {
+      // Arrêt PROPRE : lecture-fusion-écriture (platform_settings porte aussi
+      // l'adresse Leboncoin — jamais d'écrasement global).
+      const ps = prof?.platform_settings ?? {};
+      const next = {
+        ...ps,
+        vinted: { ...(ps.vinted ?? {}), republish_auto: {
+          ...cfg, actif: false, arrete_le: new Date().toISOString(), arret_motif: "plan_non_pro",
+        } },
+      };
+      await restRequest(`profiles?id=eq.${userId}`, token, {
+        method: "PATCH", body: JSON.stringify({ platform_settings: next }),
+      }).catch(() => {});
+      console.log("[republish-auto] compte plus Pro — automatisation coupée proprement (motif visible dans l'app)");
+      return;
+    }
+
+    const ageJours = Math.min(365, Math.max(7, Number(cfg.age_jours) || 30));
+    const plafond = Math.min(50, Math.max(1, Number(cfg.plafond_jour) || 10));
+    const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
+    const faits = await restRequest(
+      `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+      `&platform_fields->>republish_source=eq.auto&created_at=gte.${debutJour.toISOString()}&select=id`,
+      token, { headers: { Prefer: "return=representation" } },
+    );
+    if ((faits?.length ?? 0) >= plafond) return;
+
+    const seuil = new Date(Date.now() - ageJours * 86_400_000).toISOString();
+    const cands = await restRequest(
+      `inventaire?user_id=eq.${userId}&statut=eq.stock&vinted_item_id=not.is.null` +
+      `&disparu_le=is.null&listed_at_guess=lt.${encodeURIComponent(seuil)}` +
+      `&select=id,vinted_item_id&order=listed_at_guess.asc&limit=10`,
+      token, { headers: { Prefer: "return=representation" } },
+    );
+
+    for (const c of cands ?? []) {
+      // Republish vivant, ou abouti < 24 h ? Le RPC re-garde de toute façon —
+      // ce pré-filtre évite juste de griller le tour du cycle sur un refus.
+      const jr = await restRequest(
+        `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+        `&platform_fields->>vinted_item_id=eq.${c.vinted_item_id}` +
+        `&status=in.(pending,processing,needs_user,published)` +
+        `&select=status,published_at&order=created_at.desc&limit=1`,
+        token, { headers: { Prefer: "return=representation" } },
+      );
+      const j = jr?.[0];
+      if (j && (j.status !== "published"
+        || (j.published_at && Date.now() - Date.parse(j.published_at) < 24 * 3_600_000))) continue;
+
+      // Second signal : observé par la sync depuis ≥ age_jours quand des
+      // snapshots existent (le premier relevé fait foi).
+      const snap = await restRequest(
+        `vinted_listing_snapshots?user_id=eq.${userId}&vinted_item_id=eq.${c.vinted_item_id}` +
+        `&select=captured_on&order=captured_on.asc&limit=1`,
+        token, { headers: { Prefer: "return=representation" } },
+      );
+      if (snap?.length && Date.parse(snap[0].captured_on) > Date.now() - ageJours * 86_400_000) continue;
+
+      const ok = await autoCaptureEtRepublier(c, token, userId);
+      console.log(`[republish-auto] article ${c.vinted_item_id} : ${ok ? "mis en file" : "capture/RPC refusés — retentera un autre cycle"}`);
+      return; // UN article par cycle, réussi ou pas — jamais de rafale.
+    }
+  } finally {
+    autoRepublishBusy = false;
+  }
+}
+
+// Capture → photos re-hébergées → persistance → RPC (p_source='auto').
+// Miroir volontaire de capturerEtPersisterArticleVinted (site) : l'auto n'a
+// pas d'onglet fillsell.app ouvert, tout passe par le background.
+async function autoCaptureEtRepublier(cand, token, userId) {
+  const cap = await captureVintedItem(cand.vinted_item_id);
+  if (!cap?.success) return false;
+  const manquants = (cap.champs_manquants ?? []).filter((m) => !m.startsWith("photos_rehebergees"));
+  let photos = [];
+  if (cap.photos_cdn?.length) {
+    try {
+      const r = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/republish-capture-photos`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ vinted_item_id: String(cand.vinted_item_id), urls: cap.photos_cdn }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
+      photos = d.photos ?? [];
+      for (const e of d.echecs ?? []) manquants.push(`photo non re-hébergée (${e.raison})`);
+      if (!photos.length) manquants.push("photos_rehebergees (aucune photo re-hébergée)");
+    } catch (e) {
+      manquants.push(`photos_rehebergees (${String(e?.message ?? e)})`);
+    }
+  }
+  const verdict = manquants.length ? "incomplet" : "valide";
+  await restRequest("vinted_republish_captures", token, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId, inventaire_id: cand.id, vinted_item_id: String(cand.vinted_item_id),
+      verdict, champs_manquants: manquants,
+      payload: { natif: cap.natif ?? null, dto_public: cap.dto_public ?? null,
+                 titre: cap.titre ?? null, prix: cap.prix ?? null,
+                 description: cap.description ?? null, photos_cdn: cap.photos_cdn ?? [] },
+      libelles: cap.libelles ?? null, photos_urls: photos,
+    }),
+  }).catch((e) => console.warn("[republish-auto] persistance capture:", String(e?.message ?? e)));
+  if (verdict !== "valide") return false; // échec FERMÉ : l'article retentera un autre jour
+  const rpc = await restRequest("rpc/spend_coins_and_republish", token, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      p_inventaire_id: cand.id, p_vinted_item_id: String(cand.vinted_item_id), p_source: "auto",
+    }),
+  }).catch((e) => { console.warn("[republish-auto] RPC:", String(e?.message ?? e)); return null; });
+  return rpc?.allowed === true;
 }
 
 async function processDeleteJob(job, accessToken) {
