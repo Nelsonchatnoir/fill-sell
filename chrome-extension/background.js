@@ -5046,7 +5046,31 @@ async function syncDressingUnlocked(declencheur) {
         `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=id,vinted_item_id`,
         token, { headers: { Prefer: "return=representation" } },
       );
-      const disparus = (connus ?? []).filter((r) => r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id));
+      // ── É4 (2026-08-05) : un article en cours de REPUBLICATION n'est pas
+      // « disparu » — entre suppression et recréation, son absence du
+      // dressing est VOULUE. Sans cette garde, une sync qui passe dans la
+      // fenêtre daterait disparu_le et armerait le flux « plus en ligne —
+      // vendue ? » sur un article qu'on est en train de republier : le faux
+      // signal le plus dangereux du chantier. needs_user compris (étape
+      // 'deleted' interrompue = toujours une republication vivante).
+      let republishActifs = new Set();
+      try {
+        const jobsRepub = await restRequest(
+          `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+          `&status=in.(pending,processing,needs_user)&select=platform_fields`,
+          token, { headers: { Prefer: "return=representation" } },
+        );
+        republishActifs = new Set(
+          (jobsRepub ?? []).map((j) => j.platform_fields?.vinted_item_id).filter(Boolean),
+        );
+      } catch (e) {
+        // Lecture impossible → on ne marque AUCUN disparu ce run : mieux vaut
+        // un marquage retardé qu'un faux « vendue ? » sur une republication.
+        console.warn("[sync-dressing] republish actifs illisibles — marquage des disparus sauté ce run:", e?.message ?? e);
+        republishActifs = null;
+      }
+      const disparus = republishActifs === null ? [] : (connus ?? []).filter((r) =>
+        r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id) && !republishActifs.has(r.vinted_item_id));
       for (const d of disparus) {
         await restRequest(`inventaire?id=eq.${d.id}`, token, {
           method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
@@ -5127,7 +5151,10 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
       // Cas réel : « Chaussures marron cuir enfant », 2 cancelled + 2 deleted
       // sur des annonces distinctes du même compte.
       const jobsPub = await restRequest(
-        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=eq.publish` +
+        // É4 (2026-08-05) : republish inclus — l'annonce recréée est « publiée
+        // via FillSell » au même titre qu'un publish, le rapprochement
+        // anti-doublon de la sync doit la reconnaître.
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=in.(publish,republish)` +
         `&status=in.(published,sold)` +
         `&inventaire_id=not.is.null&listing_url=not.is.null` +
         `&select=inventaire_id,platform_listing_id,listing_url&order=created_at.desc&limit=1000`,
@@ -5420,7 +5447,10 @@ async function checkPublishedListings(session) {
     jobs = await restRequest(
       "cross_post_jobs" +
         "?select=id,platform,listing_url,last_checked_at,published_at,created_at,platform_fields" +
-        "&status=eq.published&action=eq.publish&listing_url=not.is.null" +
+        // É4 (2026-08-05) : un job republish 'published' EST une annonce en
+        // ligne — sans lui, un article republié sortait de la détection de
+        // vente (le publish d'origine est clos 'cancelled' à la suppression).
+        "&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +
         "&order=last_checked_at.asc.nullsfirst&limit=30",
       session.access_token
     );
@@ -5855,7 +5885,11 @@ const DELETE_TARGETS = {
 // cycle entre scan et suppression) est levé au passage. Best-effort : un échec
 // ici ne doit JAMAIS faire échouer un delete abouti — au pire le bandeau
 // interrogatif apparaît et « Non, je l'ai retirée » le ferme, comme avant.
-async function cancelPublishAfterDelete(accessToken, deleteJob) {
+// opts (É4, 2026-08-05) : la republication clôt les publish de l'ANCIENNE
+// annonce dès la suppression (avant la fenêtre de recréation), avec son
+// propre marqueur et un message vrai — les défauts gardent mot pour mot le
+// comportement historique du retrait ciblé.
+async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
   try {
     let pubs = null;
     if (deleteJob.listing_url) {
@@ -5899,13 +5933,14 @@ async function cancelPublishAfterDelete(accessToken, deleteJob) {
       delete pf.unavailable_since;
       delete pf.sale_signal;
       delete pf.detected_price;
-      pf.removed_by_user = true;
+      if (opts.marqueur) pf[opts.marqueur] = true;
+      else pf.removed_by_user = true;
       await restRequest(`cross_post_jobs?id=eq.${pub.id}`, accessToken, {
         method: "PATCH",
         body: JSON.stringify({
           status: "cancelled",
           platform_fields: pf,
-          error: "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente",
+          error: opts.erreur ?? "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente",
         }),
       });
       console.log(
@@ -5985,6 +6020,35 @@ async function processRepublishJob(job, accessToken) {
       return { status: "failed", error: msg };
     }
     try {
+      // ── Borne de fraîcheur À L'EXÉCUTION (point 3 validé, 2026-08-05) ────
+      // C'est ICI que la péremption compte : un job qui a dormi (Chrome
+      // fermé) supprimerait sur une photo périmée de l'annonce — prix ou
+      // description modifiés entre-temps chez Vinted. Capture > 24 h au
+      // moment d'AGIR → needs_user AVANT toute suppression, avec la vraie
+      // cause et la vraie solution (Chrome ouvert peu après le clic), pas un
+      // « relance » sec.
+      const capRows = await restRequest(
+        `vinted_republish_captures?id=eq.${Number(pf.capture_id)}&select=verdict,captured_at`,
+        accessToken,
+      );
+      const capMeta = capRows?.[0];
+      if (!capMeta || capMeta.verdict !== "valide") {
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: "Capture introuvable ou invalide — rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app.",
+        });
+        return { status: "needsUser", error: "capture invalide avant suppression" };
+      }
+      if (Date.parse(capMeta.captured_at) < Date.now() - 24 * 3600 * 1000) {
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error:
+            "Republication en attente : ta capture date de plus de 24 h et l'annonce a pu changer sur Vinted entre-temps — rien n'a été touché, ton annonce est intacte. " +
+            "La republication a besoin que Chrome reste ouvert peu après ton clic : relance-la depuis l'app à un moment où ton ordinateur reste allumé la dizaine de minutes qui suit.",
+        });
+        return { status: "needsUser", error: "capture périmée (>24 h) à l'exécution" };
+      }
+
       pf.processing_since = new Date().toISOString();
       await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
       const tabId = await getOrCreateWorkTab("vinted", job.listing_url);
@@ -6016,6 +6080,15 @@ async function processRepublishJob(job, accessToken) {
       pf.deleted_at = new Date().toISOString();
       pf.next_action_after = new Date(Date.now() + 120_000 + Math.floor(Math.random() * 180_000)).toISOString();
       await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — pas à la
+      // recréation. Entre suppression et recréation, le veilleur quotidien
+      // scannerait sinon l'ancienne URL, la trouverait morte, et poserait le
+      // faux « plus en ligne — vendue ? » (classe de bug fermée par
+      // cancelPublishAfterDelete). Best-effort, comme pour le retrait ciblé.
+      await cancelPublishAfterDelete(accessToken, job, {
+        marqueur: "republished_pending",
+        erreur: "Annonce en cours de republication (supprimée puis recréée pour remonter dans le fil) — pas une vente",
+      });
       return { status: "retry", error: "annonce supprimée — recréation à la prochaine passe" };
     } catch (e) {
       // Doute (canal coupé pendant la suppression ?) → needs_user, jamais un
@@ -6085,13 +6158,40 @@ async function processRepublishJob(job, accessToken) {
       dernierGesteRepublishAt = Date.now();
 
       if (result?.success && result.listingUrl) {
+        // ── É4 : RATTACHEMENT du nouvel id (2026-08-05) ─────────────────────
+        // L'annonce recréée a un NOUVEL id Vinted. Sans propagation, la
+        // prochaine sync ne matcherait plus la ligne inventaire (→ elle
+        // croirait l'ancien article disparu ET créerait un doublon du
+        // nouveau). Propagé AVANT la clôture du job : si le PATCH inventaire
+        // échoue, le job part quand même en published (l'annonce EST en
+        // ligne) mais l'échec est journalisé — la sync du lendemain le
+        // rattraperait en doublon visible plutôt qu'en perte silencieuse.
+        const ancienId = pf.vinted_item_id ?? null;
+        const nouvelId = result.listingUrl.match(/\/items\/(\d+)/)?.[1] ?? null;
         pf.republish_step = "recreated";
         pf.recreated_at = new Date().toISOString();
+        if (ancienId) pf.old_vinted_item_id = ancienId;
+        if (nouvelId) pf.new_vinted_item_id = nouvelId;
         delete pf.next_action_after;
+        if (nouvelId && job.inventaire_id != null) {
+          await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
+            method: "PATCH",
+            body: JSON.stringify({
+              vinted_item_id: nouvelId,
+              disparu_le: null,
+              // La republication EST une remise en ligne : c'est la nouvelle
+              // date de mise en ligne la plus plausible.
+              listed_at_guess: new Date().toISOString(),
+            }),
+          }).catch((e) => console.error(
+            `[background] Republish ${job.id} : rattachement inventaire ${job.inventaire_id} → ${nouvelId} NON écrit —`,
+            String(e?.message ?? e),
+          ));
+        }
         await updateJobStatus(accessToken, job.id, "published", {
           listing_url: result.listingUrl, platform_fields: pf, error: null,
         });
-        console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl}`);
+        console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl} (id ${ancienId ?? "?"} → ${nouvelId ?? "?"})`);
         return { status: "published", listingUrl: result.listingUrl };
       }
 
