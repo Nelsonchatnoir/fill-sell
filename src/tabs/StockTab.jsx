@@ -30,7 +30,7 @@ import {
   ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
   lireCapaciteSyncCompte, demanderSyncDressingServeur,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
-  SYNC_MAJ_DISPONIBLE,
+  SYNC_MAJ_DISPONIBLE, SYNC_RECLAMATION_MAX_MS,
   lireDernierRunDressing, aDejaSynchroniseDressing,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
   republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
@@ -1028,6 +1028,43 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // tant que la migration n'est pas appliquée).
   const enAttenteDistante = run?.status === 'queued'
     && Date.now() - Date.parse(run.started_at ?? 0) < SYNC_FILE_TTL_MS;
+  // Passé le délai normal de réclamation, l'écran change de discours : ce
+  // n'est plus « ça arrive », c'est « ton ordinateur n'a pas répondu ».
+  const [reclamationTardive, setReclamationTardive] = useState(false);
+
+  // ── Attente d'une réclamation (2026-08-04) ────────────────────────────────
+  // Le cas FRÉQUENT est Chrome ouvert : la demande part en 2 min au plus. On
+  // l'observe donc réellement, au lieu d'afficher d'emblée le discours du
+  // pire cas (« à la prochaine ouverture de Chrome »), qui était faux et
+  // inquiétant la plupart du temps.
+  // Poll BORNÉ : toutes les 2 s, 3 minutes maximum, puis arrêt DÉFINITIF —
+  // c'est cette borne qui rend le rythme de 2 s acceptable. Dès que le run
+  // passe 'running', on rend la main au suivi de progression existant.
+  useEffect(() => {
+    if (!enAttenteDistante || !user?.id) return;
+    const debut = Date.parse(run?.started_at ?? '') || Date.now();
+    if (Date.now() - debut > SYNC_RECLAMATION_MAX_MS) { setReclamationTardive(true); return; }
+    setReclamationTardive(false);
+    let annule = false;
+    const id = setInterval(async () => {
+      if (Date.now() - debut > SYNC_RECLAMATION_MAX_MS) {
+        setReclamationTardive(true);
+        clearInterval(id);
+        return;
+      }
+      let r = null;
+      try { r = await lireDernierRunDressing(user.id); }
+      catch { return; } // un 5xx passager ne doit pas tuer l'attente
+      if (annule || !r) return;
+      setRun(r);
+      // Réclamé et démarré : le suivi de progression prend le relais.
+      if (r.status === 'running') { setSuivi(true); clearInterval(id); }
+    }, SYNC_POLL_MS);
+    return () => { annule = true; clearInterval(id); };
+  // `run?.id` et non `run` : la ligne est remplacée à chaque tick, dépendre de
+  // l'objet relancerait l'effet en boucle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enAttenteDistante, user?.id, run?.id]);
   const enCours = attente || (suivi && run?.status === 'running');
 
   // ── Cadence des syncs manuelles ───────────────────────────────────────────
@@ -1170,9 +1207,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     setEnvoi(false);
 
     if (r?.ok) {
-      setMessage({ ton: 'vert', texte: fr
-        ? "Demande envoyée. Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur."
-        : 'Request sent. Your sync will start the next time you open Chrome on your computer.' });
+      // PAS de message ici : le bloc d'attente ci-dessous EST le retour du
+      // clic, et il dit le délai réel. Deux textes côte à côte disant la même
+      // chose autrement, c'était la contradiction qu'on vient de corriger.
+      setReclamationTardive(false);
       // Relit la ligne pour afficher l'attente même après un rechargement.
       try { setRun(await lireDernierRunDressing(user?.id)); }
       catch { /* l'affichage se rattrape au prochain montage */ }
@@ -1298,24 +1336,31 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                 : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
 
-      {/* Attente honnête (2026-08-05) : la demande est en base, elle partira au
-          prochain poll du Chrome de l'utilisateur. Le poll tourne toutes les
-          2 min mais SEULEMENT si Chrome est ouvert — dire « quand ton
-          ordinateur sera réveillé » serait une demi-vérité. Pas de poll rapide
-          ici : on n'interroge pas Supabase toutes les 2 s pendant des heures. */}
+      {/* Attente d'une réclamation. DEUX discours, dans cet ordre :
+          · le cas FRÉQUENT (Chrome ouvert) — un loader et le délai RÉEL,
+            2 min au plus. C'est ce qui se passe la plupart du temps ;
+          · le cas du PC éteint, seulement APRÈS 3 min sans réponse. Le
+            présenter d'emblée, comme avant, c'était inquiéter pour rien.
+          Le poll qui fait basculer l'un vers l'autre est borné à 3 min. */}
       {enAttenteDistante&&(
         <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
-          <div style={{fontSize:18,lineHeight:1}}>🕓</div>
+          {reclamationTardive
+            ? <div style={{fontSize:18,lineHeight:1}}>🕓</div>
+            : <Loader size={18} thickness={2}/>}
           <div style={{minWidth:0}}>
             <div style={{fontSize:12.5,fontWeight:700,color:"#5C6560"}}>
-              {fr?"Demande envoyée":"Request sent"}
+              {reclamationTardive
+                ? (fr?"Ton ordinateur n'a pas encore répondu":"Your computer hasn't answered yet")
+                : (fr?"Demande envoyée":"Request sent")}
             </div>
             <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
-              {/* Une application ne se « ferme » pas comme une page — seule
-                  différence de formulation entre les deux supports. */}
-              {fr
-                ? `Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer ${isNative ? "l'application" : 'cette page'}.`
-                : `Your sync will start the next time you open Chrome on your computer. You can close ${isNative ? 'this app' : 'this page'}.`}
+              {reclamationTardive
+                ? (fr
+                    ? `Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer ${isNative ? "l'application" : 'cette page'}.`
+                    : `Your sync will start the next time you open Chrome on your computer. You can close ${isNative ? 'this app' : 'this page'}.`)
+                : (fr
+                    ? "Elle part au prochain passage de ton extension — 2 minutes au plus."
+                    : 'It starts at your extension’s next check — 2 minutes at most.')}
             </div>
           </div>
         </div>

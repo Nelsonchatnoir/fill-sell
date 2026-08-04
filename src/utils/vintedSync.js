@@ -37,6 +37,15 @@ export const SYNC_DEMARRAGE_MAX_MS = 30 * 1000;
 // attente éternelle et le bouton resterait grisé sans aucun moyen de repartir.
 export const SYNC_FILE_TTL_MS = 6 * 60 * 60 * 1000;
 
+// Délai NORMAL avant qu'une demande en file soit réclamée : le poll de
+// l'extension tourne toutes les 2 min (chrome-extension/config.js). On observe
+// donc pendant 3 min — une marge d'une minute sur le pire cas normal — puis on
+// ARRÊTE définitivement d'interroger. Au-delà, ce n'est plus un délai, c'est
+// que Chrome n'est pas ouvert : l'écran le dit et cesse de poller.
+// ⚠️ Cette borne est ce qui autorise le poll à 2 s : sans elle on
+// interrogerait la base toutes les 2 s pendant des heures pour rien.
+export const SYNC_RECLAMATION_MAX_MS = 3 * 60 * 1000;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ⛔ BASCULE DU MESSAGE « extension trop ancienne » — false AUJOURD'HUI
 // ═══════════════════════════════════════════════════════════════════════════
