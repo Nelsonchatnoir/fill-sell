@@ -3008,11 +3008,15 @@ export default function ListingPreviewScreen({
     // une retouche déjà payée.
     draft?.photoOption ?? (alreadyRetouched ? "original" : (isPro ? "ia_advanced" : isPremium ? "ia_light" : "original"))
   );
-  // Nouvelles photos ajoutées PENDANT cette session (step 0 ou step 1) : le
-  // gel « déjà retouchées » ne vaut que pour les images existantes — dès qu'un
-  // vrai travail neuf entre, les options payantes réapparaissent (cas
-  // « facturer quoi exactement ? » encore à trancher côté produit).
-  const [addedNewPhotos, setAddedNewPhotos] = useState(false);
+  // Nouvelles photos PRÉSENTES dans la session (step 0 ou step 1) : le gel
+  // « déjà retouchées » ne vaut que pour les images existantes — dès qu'un
+  // vrai travail neuf entre, les options payantes réapparaissent (option A).
+  // DÉRIVÉ de l'état réel des photos, pas un drapeau collant : ajouter une
+  // photo par erreur puis la RETIRER re-engage le gel — sinon l'utilisateur
+  // pouvait payer 9/32 pour un lot où plus rien n'était à retoucher (les
+  // réutilisées, déjà sous /enhanced/, auraient même passé la garde
+  // « retouche livrée » du RPC).
+  const addedNewPhotos = alreadyRetouched && photos.some(u => !initialPhotos.includes(u));
   const reuseRetouched = alreadyRetouched && !addedNewPhotos;
   useEffect(() => {
     // Un brouillon peut porter ia_light/ia_advanced d'avant le gel : on le
@@ -3325,7 +3329,6 @@ export default function ListingPreviewScreen({
   function addFiles(files) {
     const toAdd = files.slice(0, MAX_PHOTOS - pickedFiles.length);
     if (!toAdd.length) return;
-    setAddedNewPhotos(true); // lève le gel « photos déjà retouchées »
     setPickedFiles(prev => [...prev, ...toAdd]);
     toAdd.forEach(f => setPickedPreviews(prev => [...prev, URL.createObjectURL(f)]));
   }
@@ -3476,10 +3479,7 @@ export default function ListingPreviewScreen({
       if (!upErr)
         urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
     }
-    if (urls.length) {
-      setAddedNewPhotos(true); // lève le gel « photos déjà retouchées »
-      setPhotos(prev => [...prev, ...urls]);
-    }
+    if (urls.length) setPhotos(prev => [...prev, ...urls]);
   }
 
   function handleRemovePhoto(idx) {
