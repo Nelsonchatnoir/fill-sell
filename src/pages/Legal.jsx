@@ -268,8 +268,8 @@ export default function Legal() {
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.3 Free Plan' : '3.3 Plan gratuit'}</span><br />
             {en
-              ? <>The free plan allows managing up to <span className="legal-strong">20 items</span> in inventory. Access to the dashboard, margin calculation, and sales history is included without time limit.</>
-              : <>Le plan gratuit permet de gérer jusqu'à <span className="legal-strong">20 articles</span> en stock. L'accès au dashboard, au calcul des marges et à l'historique des ventes est inclus sans limite de durée.</>}
+              ? <>The free plan allows managing up to <span className="legal-strong">200 items</span> in inventory. Access to the dashboard, margin calculation, and sales history is included without time limit.</>
+              : <>Le plan gratuit permet de gérer jusqu'à <span className="legal-strong">200 articles</span> en stock. L'accès au dashboard, au calcul des marges et à l'historique des ventes est inclus sans limite de durée.</>}
           </p>
 
           {en ? (

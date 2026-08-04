@@ -3,6 +3,7 @@ import { useTranslation } from '../i18n/useTranslation';
 import { formatCurrency, fmtp, MONTHS_FR, MONTHS_EN, groupSales } from '../utils/shared';
 import { UI, Loader, SegmentedPills, StatTile } from '../components/ui';
 import { comptabilisable, comptabilisables, prixAchatNum, totalCA } from '../utils/comptabilite';
+import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLimit';
 
 // ── Design « Dashboard » (Claude Design, projet e47b36df — intégré 2026-07-14) ──
 // Hero en verre dépoli, KPI 2×2, sélecteur de période, graphes SVG (bénéfices +
@@ -335,19 +336,21 @@ const DashboardTab = memo(function DashboardTab({
   })();
 
   // Miroir de check_inventory_limit (migration 20260725180000) : la limite
-  // Free de 20 compte les articles NON vendus — items contient aussi les
-  // vendus, et un ex-Premium redevenu Free peut dépasser 20 (articles hérités,
-  // le trigger serveur bloque seulement les NOUVEAUX ajouts). D'où le
-  // « Plus que -21 article » vu en prod le 26/07 : compteur borné à 0 et
-  // libellé dédié une fois la limite atteinte.
-  const freeActive=items.filter(i=>i.statut!=="vendu").length;
-  const freeLeft=Math.max(0,20-freeActive);
+  // Quota Free : même assiette que le trigger serveur (non vendus, HORS
+  // dressing Vinted synchronisé — compteArticlesQuota, bug « X/20 » qui
+  // comptait la sync corrigé le 05/08) ; limite 200 (miroir de
+  // coin_config.free_stock_limit). Un ex-Premium redevenu Free peut dépasser
+  // la limite (articles hérités, le trigger ne bloque que les NOUVEAUX
+  // ajouts) : compteur borné à 0 et libellé dédié une fois la limite
+  // atteinte (« Plus que -21 article » vu en prod le 26/07).
+  const freeActive=compteArticlesQuota(items);
+  const freeLeft=Math.max(0,FREE_STOCK_LIMIT_FALLBACK-freeActive);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",overflow:"hidden"}}>
       <style>{CHART_CSS}</style>
 
-      {!isPremium&&!loading&&freeActive>0&&freeActive<18&&(
+      {!isPremium&&!loading&&freeActive>0&&freeActive<FREE_STOCK_LIMIT_FALLBACK-2&&(
         <div style={{background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 18px",textAlign:"center",overflow:"hidden"}}>
           <div style={{fontSize:13,fontWeight:600,color:freeLeft<=2?UI.amber:UI.tealDeep}}>
             {freeLeft<=2
@@ -357,11 +360,11 @@ const DashboardTab = memo(function DashboardTab({
           </div>
         </div>
       )}
-      {!isNative&&!isPremium&&!loading&&freeActive>=18&&(
+      {!isNative&&!isPremium&&!loading&&freeActive>=FREE_STOCK_LIMIT_FALLBACK-2&&(
         <div onClick={()=>openUpgradeModal()} style={{background:UI.card,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
           <div style={{fontSize:13,fontWeight:600,color:UI.ink}}>
             {freeLeft===0
-              ?(lang==='en'?"⚠️ Free plan limit reached (20 active items)":"⚠️ Limite du plan gratuit atteinte (20 articles actifs)")
+              ?(lang==='en'?`⚠️ Free plan limit reached (${FREE_STOCK_LIMIT_FALLBACK} active items)`:`⚠️ Limite du plan gratuit atteinte (${FREE_STOCK_LIMIT_FALLBACK} articles actifs)`)
               :(lang==='en'?`⚠️ Only ${freeLeft} item${freeLeft>1?"s":""} left on your free plan`:`⚠️ Plus que ${freeLeft} article${freeLeft>1?"s":""} disponible${freeLeft>1?"s":""}`)}
           </div>
           <button onClick={e=>{e.stopPropagation();openUpgradeModal();}} style={{background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",border:"none",borderRadius:99,padding:"7px 14px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>

@@ -54,11 +54,13 @@ const ANIM = `
 // Exporté pour PlanDetailsModal (modale « mon plan » du badge header), qui lit
 // coin_config avec le même repli.
 export const COIN_CONFIG_FALLBACK = {
-  // Grille 2 axes du 2026-08-04 : photos (par article) + 3 Pépites/plateforme.
+  // Grille 2 axes du 2026-08-04 (+ génération payante du 05/08) : photos (par
+  // article) + 3 Pépites/plateforme + 1 Pépite la génération d'annonce.
   price_original: 0,
   price_ia_light: 9,
   price_ia_advanced: 32,
   price_per_platform: 3,
+  price_generate: 1,
   price_lens_overflow: 6,
   monthly_grant_premium: 150,
   monthly_grant_pro: 600,
@@ -225,7 +227,7 @@ function Dismiss({ onClose, label }) {
 }
 
 // Carte Premium (CAS 3) — badge repris de PlanBadge, jamais recréé.
-function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, onUpgrade }) {
+function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit, onUpgrade }) {
   return (
     <div style={{
       background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
@@ -250,7 +252,10 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, onUpgrade }) {
       <Features
         items={[
           fr ? 'Stock illimité' : 'Unlimited stock',
-          fr ? 'Publie sur Vinted, Leboncoin, eBay & Beebs' : 'Publish on Vinted, Leboncoin, eBay & Beebs',
+          // Grille lue en config (2026-08-05) : génération 1, publication
+          // 3/plateforme — mêmes chiffres que la landing, jamais en dur.
+          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite, publication ${pubUnit} Pépites/plateforme)`
+             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget, publishing ${pubUnit} Nuggets/platform)`,
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -277,7 +282,7 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, onUpgrade }) {
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, pubUnit, retouchMax, onUpgrade }) {
+export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, pubUnit, retouchMax, genPrice, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -310,8 +315,8 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
         items={[
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
-          fr ? `De quoi publier bien plus d'annonces (${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
-             : `Room for many more listings (${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
+          fr ? `De quoi publier bien plus d'annonces (génération ${genPrice} Pépite, ${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
+             : `Room for many more listings (generation ${genPrice} Nugget, ${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}
@@ -346,6 +351,7 @@ function PlansStack({ fr, isPremium, targetTiers, grantPrem, grantPro, lensCost,
       {showPremium && (
         <PremiumPlanCard
           fr={fr} grantPrem={grantPrem} lensCost={lensCost} lensScans={lensPerMonth(grantPrem)}
+          genPrice={K.price_generate} pubUnit={K.price_per_platform}
           onUpgrade={onUpgrade}
         />
       )}
@@ -353,7 +359,7 @@ function PlansStack({ fr, isPremium, targetTiers, grantPrem, grantPro, lensCost,
         <ProPlanCard
           fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
           proFactor={proFactor} showFactor
-          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced}
+          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced} genPrice={K.price_generate}
           onUpgrade={onUpgrade}
         />
       )}
@@ -406,7 +412,9 @@ export default function ConversionModal({
   isPremium    = false,
   isPro        = false,
   itemCount    = null,
-  stockLimit   = 20,
+  // Repli seulement — l'hôte passe la valeur lue dans coin_config
+  // (free_stock_limit, source unique de la limite Free depuis le 05/08).
+  stockLimit   = 200,
   coinBalance  = null,             // solde réel (coin_wallets), fourni par l'appelant
   coinPrice    = null,             // coût réel de l'action bloquée (réponse serveur)
   onUseCoins   = null,             // ouvre CoinStoreModal (chemin d'achat existant)
@@ -571,7 +579,7 @@ export default function ConversionModal({
         <ProPlanCard
           fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
           proFactor={proFactor} showFactor
-          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced}
+          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced} genPrice={K.price_generate}
           onUpgrade={onUpgrade}
         />
         <Dismiss onClose={onClose} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />

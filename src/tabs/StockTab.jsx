@@ -6,6 +6,7 @@ import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
+import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -1399,6 +1400,11 @@ const StockTab = memo(function StockTab({
   // à la place du simple rappel. « Préparer mon annonce » reste possible — la
   // garde de publication (stepper + RPC) prendra le relais au dernier clic.
   const [extPitchItem, setExtPitchItem] = useState(null);
+  // Quota Free : même assiette que le trigger serveur (non vendus, hors
+  // dressing synchronisé) et même limite (miroir 200 de
+  // coin_config.free_stock_limit). L'ancien items.length comptait TOUT —
+  // vendus et sync compris.
+  const quotaFree = compteArticlesQuota(items);
   const [jobsByInventaire, setJobsByInventaire] = useState({});
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -1923,20 +1929,20 @@ const StockTab = memo(function StockTab({
               💡 {t('prixHint')}
             </div>
           )}
-          {!isPremium&&items.length>=18&&items.length<20&&(
+          {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK-2&&quotaFree<FREE_STOCK_LIMIT_FALLBACK&&(
             <div style={{background:"#FFFBEB",borderRadius:10,padding:"10px 14px",fontSize:11,color:"#92400E",border:"1px solid #FDE68A",fontWeight:600}}>
-              ⚠️ {lang==='fr'?`${20-items.length} article${20-items.length>1?"s":""} restant${20-items.length>1?"s":""} sur ton plan gratuit`:`${20-items.length} item${20-items.length>1?"s":""} remaining on your free plan`}
+              ⚠️ {lang==='fr'?`${FREE_STOCK_LIMIT_FALLBACK-quotaFree} article${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} restant${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} sur ton plan gratuit`:`${FREE_STOCK_LIMIT_FALLBACK-quotaFree} item${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} remaining on your free plan`}
             </div>
           )}
-          {!isPremium&&items.length>=20&&!isNative
+          {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&!isNative
             ? <PremiumBanner userEmail={user?.email} onOpenModal={openUpgradeModal}/>
-            : !isPremium&&items.length>=20&&isNative
+            : !isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&isNative
             ? null
             : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
                 {iSaved?(lang==='fr'?"✓ Ajouté !":"✓ Added!"):items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice 🚀":"Add your first item → see your profit 🚀"):t('ajouterArticle')}
               </button>
           }
-          {isNative&&!isPremium&&items.length>=20&&(
+          {isNative&&!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&(
             <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore}/>
           )}
           {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
@@ -2196,7 +2202,7 @@ const StockTab = memo(function StockTab({
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('enStockLabel')}</div>
-                {!isPremium&&items.length>=20&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
+                {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
                 {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
               </div>
               {(()=>{

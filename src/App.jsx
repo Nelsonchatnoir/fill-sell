@@ -33,6 +33,7 @@ const buildIdTimestamp = (id) => {
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
+import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from './utils/stockLimit';
 import Toast from './components/Toast';
 import ConversionModal from './components/ConversionModal';
 import StatsPage from './pages/StatsPage';
@@ -2679,11 +2680,13 @@ export default function App({ loginOnly = false }){
   async function addItemsFromVoice(){
     if(!voiceParsed?.items?.length)return;
     let idBase=Date.now();
-    let insertedCount=items.filter(i=>i.statut!=='vendu').length;
+    // Même assiette que le trigger serveur : non vendus, HORS dressing
+    // synchronisé (compteArticlesQuota). Limite = miroir 200 partagé.
+    let insertedCount=compteArticlesQuota(items);
     const{data:{session:avSess}}=await supabase.auth.getSession();
     const avToken=avSess?.access_token;
     for(const item of voiceParsed.items){
-      if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
+      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const qty=Math.max(1,item.quantite||1);
       const isVente=voiceParsed.action==='vente';
       const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
@@ -2746,11 +2749,11 @@ export default function App({ loginOnly = false }){
   async function addLotToInventory(){
     if(!lotDistributed?.items?.length)return;
     let idBase=Date.now();
-    let insertedCount=items.filter(i=>i.statut!=='vendu').length;
+    let insertedCount=compteArticlesQuota(items);
     const{data:{session:ntSess}}=await supabase.auth.getSession();
     const ntToken=ntSess?.access_token;
     for(const item of lotDistributed.items){
-      if(!isPremium&&insertedCount>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
+      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td2;
@@ -2771,7 +2774,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
+    if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
@@ -4078,7 +4081,10 @@ export default function App({ loginOnly = false }){
 
   const vaActions={
     addItem:async(data)=>{
-      if(!isPremium&&items.filter(i=>i.statut!=='vendu').length>=20){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?"20 item limit reached. Upgrade to Premium for unlimited stock.":"Limite de 20 articles atteinte. Passez Premium pour un stock illimité."});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
+      // ⚠️ Les libellés jetés (« Limite gratuite atteinte » / « Free plan limit
+      // reached ») sont des MARQUEURS lus par saveLensItemForListing — ne pas
+      // les reformuler.
+      if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
       // prix_achat explicitement null (et aucune estimation de lot) = prix réellement inconnu,
       // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
       const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);

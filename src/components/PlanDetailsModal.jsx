@@ -99,12 +99,15 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   // (source unique de ce qui est promis) ; le Pro cumule tout le Premium.
   const features = [
     fr ? 'Stock illimité' : 'Unlimited stock',
-    fr ? 'Publie sur Vinted, Leboncoin, eBay & Beebs' : 'Publish on Vinted, Leboncoin, eBay & Beebs',
+    // Grille lue en config (2026-08-05) — mêmes chiffres que la landing et
+    // ConversionModal : génération 1, publication 3/plateforme.
+    fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite, publication ${pubUnit} Pépites/plateforme)`
+       : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`,
     fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
     ...(isPro ? [
-      fr ? `De quoi publier bien plus d'annonces (${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
-         : `Room for many more listings (${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
+      fr ? `De quoi publier bien plus d'annonces (retouche photos en option jusqu'à ${retouchMax} Pépites)`
+         : `Room for many more listings (optional photo editing up to ${retouchMax} Nuggets)`,
     ] : []),
     fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',

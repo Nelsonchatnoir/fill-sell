@@ -19,6 +19,7 @@ import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../ut
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
 import { computeRemovalInfo } from "../utils/publicationState";
+import { FREE_STOCK_LIMIT_FALLBACK } from "../utils/stockLimit";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
@@ -2181,7 +2182,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2271,7 +2272,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   // ici : la comparaison des plans (grants réels lus en base) appartient à la
   // ConversionModal, cet écran annonce le blocage et les sorties.
   if (inventoryFull) {
-    const n = stockCount ?? FREE_STOCK_LIMIT;
+    const n = stockCount ?? stockLimit;
     return (
       <div>
         <Eyebrow>{t("stepPublishEyebrow")}</Eyebrow>
@@ -2286,7 +2287,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               {lang === "en" ? "Free plan stock" : "Stock du plan gratuit"}
             </span>
             <span style={{ fontSize:13, fontWeight:700, color:T.teal }}>
-              {Math.min(n, FREE_STOCK_LIMIT)}/{FREE_STOCK_LIMIT} {lang === "en" ? "items" : "articles"}
+              {Math.min(n, stockLimit)}/{stockLimit} {lang === "en" ? "items" : "articles"}
             </span>
           </div>
           <div style={{ height:8, borderRadius:99, background:T.chip, overflow:"hidden", marginBottom:12 }}>
@@ -2294,8 +2295,8 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           </div>
           <div style={{ fontSize:13.5, color:T.ink, lineHeight:1.6 }}>
             {lang === "en"
-              ? "Your listings are ready — all that's missing is a stock slot. Every listing adds the item to your inventory, and the free plan holds 20 active items."
-              : "Tes annonces sont prêtes — il ne manque qu'une place en stock. Chaque publication ajoute l'article à ton inventaire, et le plan gratuit s'arrête à 20 articles actifs."}
+              ? `Your listings are ready — all that's missing is a stock slot. Every listing adds the item to your inventory, and the free plan holds ${stockLimit} active items.`
+              : `Tes annonces sont prêtes — il ne manque qu'une place en stock. Chaque publication ajoute l'article à ton inventaire, et le plan gratuit s'arrête à ${stockLimit} articles actifs.`}
           </div>
         </div>
 
@@ -2776,10 +2777,11 @@ function readStepperDraft(invKey) {
 }
 
 // ── Plafond inventaire du plan gratuit ───────────────────────────────────────
-// MIROIR de check_inventory_limit (migration 20260725180000) et du compteur du
-// Dashboard (DashboardTab, freeActive) : 20 articles NON vendus. À faire
-// évoluer ENSEMBLE si la règle serveur change.
-const FREE_STOCK_LIMIT = 20;
+// La VRAIE limite vit dans coin_config.free_stock_limit (lue par le trigger
+// check_inventory_limit, migration 20260805040000). Ici : repli d'affichage
+// partagé (src/utils/stockLimit.js) pour le premier rendu — le composant lit
+// la config en direct (stockLimitCfg) dès qu'elle répond.
+const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
@@ -2896,6 +2898,10 @@ export default function ListingPreviewScreen({
   // historique (le serveur tranche au publish, bandeau rouge en dernier
   // recours).
   const [stockCount, setStockCount] = useState(null);
+  // Limite Free lue en config (source unique serveur, clé free_stock_limit) ;
+  // repli 200 partagé. Déclarée ICI (avant inventoryFull qui la lit) — la
+  // section Pépites, plus bas, alimente sa valeur au même fetch coin_config.
+  const [stockLimitCfg, setStockLimitCfg] = useState(FREE_STOCK_LIMIT_FALLBACK);
   useEffect(() => {
     if (step !== 3 || !supabase || !userId || !canToggleStock || isPremium || isPro) return;
     let stale = false;
@@ -2918,7 +2924,7 @@ export default function ListingPreviewScreen({
     return () => { stale = true; };
   }, [step, supabase, userId, canToggleStock, isPremium, isPro]);
   const inventoryFull =
-    !isPremium && !isPro && canToggleStock && stockCount != null && stockCount >= FREE_STOCK_LIMIT;
+    !isPremium && !isPro && canToggleStock && stockCount != null && stockCount >= stockLimitCfg;
 
   // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
   // de maintenance dans StepPublish. Lecture TOLÉRANTE (rafraîchie à
@@ -3223,7 +3229,10 @@ export default function ListingPreviewScreen({
     refreshWallet();
     supabase.from("coin_config").select("key, value").then(({ data }) => {
       const p = {};
-      for (const row of data ?? []) if (row.key.startsWith("price_")) p[row.key.slice(6)] = row.value;
+      for (const row of data ?? []) {
+        if (row.key.startsWith("price_")) p[row.key.slice(6)] = row.value;
+        if (row.key === "free_stock_limit" && Number.isFinite(row.value)) setStockLimitCfg(row.value);
+      }
       setCoinPrices(p);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4840,7 +4849,7 @@ export default function ListingPreviewScreen({
           // est survenue ». La ConversionModal Premium est déjà ouverte par
           // vaActions.addItem ; ce message explique ce qui vient de se passer.
           if (String(e?.message) === "INVENTORY_LIMIT") {
-            throw new Error(t("stepPublishInventoryFull"));
+            throw new Error(tpl("stepPublishInventoryFull", { n: stockLimitCfg }));
           }
           throw e;
         }
@@ -5819,6 +5828,7 @@ export default function ListingPreviewScreen({
             canToggleStock={canToggleStock}
             inventoryFull={inventoryFull}
             stockCount={stockCount}
+            stockLimit={stockLimitCfg}
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
             // Listes FILTRÉES par la règle d'unicité (un champ = un encart) —
@@ -5873,7 +5883,7 @@ export default function ListingPreviewScreen({
           trigger={quotaModal.trigger}
           targetTiers={quotaModal.targetTiers}
           itemCount={quotaModal.trigger === "stock" ? stockCount : null}
-          stockLimit={FREE_STOCK_LIMIT}
+          stockLimit={stockLimitCfg}
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
