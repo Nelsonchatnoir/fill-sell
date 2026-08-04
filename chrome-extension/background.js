@@ -6356,6 +6356,24 @@ async function processRepublishJob(job, accessToken) {
   }
 
   // ── Étape 2 : RECRÉATION ───────────────────────────────────────────────────
+  // PAS de borne d'âge sur la capture ici, À DESSEIN (décision Nico, 04/08).
+  // La borne 24 h de l'étape 'captured' protège la SUPPRESSION : elle empêche
+  // d'effacer une annonce encore en ligne sur des données périmées (prix ou
+  // description modifiés chez Vinted depuis la capture). Après la suppression,
+  // ce risque n'existe plus — il n'y a plus d'annonce dont la capture pourrait
+  // diverger. La capture n'est plus la photo d'un original : elle EST
+  // l'original, la seule copie restante du titre, de la description, du prix,
+  // des photos re-hébergées et des libellés résolus.
+  // Refuser de recréer parce qu'elle est « vieille » laisserait l'utilisateur
+  // sans annonce ET sans contenu, alors que nous détenons son unique
+  // exemplaire : le pire résultat possible. On recrée donc quel que soit
+  // l'âge, tant que verdict='valide'.
+  // Les photos ne peuvent pas avoir été purgées entre-temps :
+  // republish_captures_purgeables (migration 20260805060000) exclut de façon
+  // ABSOLUE toute capture dont un republish n'est pas terminal — et une étape
+  // 'deleted' interrompue vit précisément en needs_user.
+  // ⛔ Ne pas « corriger » cette absence en ajoutant une borne : ce n'est pas
+  // un oubli.
   if (step === "deleted") {
     try {
       // Double verrou : la capture est RELUE et revalidée — jamais de
