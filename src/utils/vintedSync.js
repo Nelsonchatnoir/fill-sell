@@ -143,6 +143,31 @@ export function ecouterDetailArticleVinted(onDetail) {
   return () => window.removeEventListener('message', onMessage);
 }
 
+// ── É1 republication : capture complète (2026-08-05) ────────────────────────
+// Même contrat aller-retour que le détail, en plus riche : payload natif
+// complet + résolutions id→libellé + verdict 'valide'|'incomplet' avec
+// champs_manquants nommés. LECTURE SEULE, à l'unité, sur action humaine,
+// GRATUIT en Pépites. Un verdict 'incomplet' n'autorisera JAMAIS une
+// suppression (garde à la persistance — migration É2 à valider par Nico).
+// Tant que le re-hébergement des photos n'est pas en place (edge function à
+// valider), TOUTE capture est 'incomplet' par construction
+// (champs_manquants contient 'photos_rehebergees') : c'est voulu.
+export const CAPTURE_VERSION_MIN = '0.5.2';
+
+export function demanderCaptureArticleVinted(vintedItemId) {
+  window.postMessage({ __fillsellCmd: 'CAPTURE_VINTED_ITEM', vintedItemId: String(vintedItemId) }, window.location.origin);
+}
+
+// Pose l'écoute des réponses de capture. Retourne le démontage.
+export function ecouterCaptureArticleVinted(onCapture) {
+  const onMessage = (e) => {
+    if (e.source !== window || !e.data?.__fillsellItemCapture) return;
+    onCapture(e.data.__fillsellItemCapture);
+  };
+  window.addEventListener('message', onMessage);
+  return () => window.removeEventListener('message', onMessage);
+}
+
 const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';
 
 // RLS filtre déjà sur auth.uid() ; le `.eq('user_id')` explicite reste pour que

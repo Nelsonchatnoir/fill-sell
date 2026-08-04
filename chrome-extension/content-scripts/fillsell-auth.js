@@ -61,21 +61,23 @@
   // Garde-fous : origine vérifiée (e.source === window ET même origine que la
   // page), et liste FERMÉE de commandes. Ajouter une commande ici, c'est
   // l'exposer à toute personne capable d'exécuter du JS sur fillsell.app.
-  const COMMANDES = new Set(["SYNC_DRESSING", "FETCH_VINTED_ITEM"]);
+  const COMMANDES = new Set(["SYNC_DRESSING", "FETCH_VINTED_ITEM", "CAPTURE_VINTED_ITEM"]);
   window.addEventListener("message", (e) => {
     if (e.source !== window) return;
     const cmd = e.data?.__fillsellCmd;
     if (!cmd || !COMMANDES.has(cmd)) return;
     try {
-      // FETCH_VINTED_ITEM est un ALLER-RETOUR : la réponse du background
-      // (détail d'UN article, demandé au clic « Publier ») repart vers la page
-      // — contrairement à SYNC_DRESSING, qui rend compte par la base.
-      if (cmd === "FETCH_VINTED_ITEM") {
+      // FETCH_VINTED_ITEM et CAPTURE_VINTED_ITEM sont des ALLERS-RETOURS : la
+      // réponse du background repart vers la page — contrairement à
+      // SYNC_DRESSING, qui rend compte par la base. CAPTURE (É1 republication,
+      // 2026-08-05) : lecture seule, à l'unité, sur action humaine.
+      if (cmd === "FETCH_VINTED_ITEM" || cmd === "CAPTURE_VINTED_ITEM") {
         const vintedItemId = String(e.data?.vintedItemId ?? "");
+        const cleReponse = cmd === "CAPTURE_VINTED_ITEM" ? "__fillsellItemCapture" : "__fillsellItemDetail";
         chrome.runtime.sendMessage({ type: cmd, vintedItemId }, (rep) => {
           void chrome.runtime.lastError;
           window.postMessage({
-            __fillsellItemDetail: { vintedItemId, ...(rep ?? { success: false, error: "extension muette" }) },
+            [cleReponse]: { vintedItemId, ...(rep ?? { success: false, error: "extension muette" }) },
           }, window.location.origin);
         });
         console.log(`[fillsell-auth] commande relayée : ${cmd} (${vintedItemId})`);

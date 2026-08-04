@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-07-27-registre-selecteurs (migration clé par clé vers chrome-extension/selectors — resolve.js en cascade + télémétrie selector_health, import dynamique du module)";
+const VINTED_BUILD = "2026-08-05-capture-republication (É1 : capturerAnnonceVinted — payload natif complet + résolutions id→libellé + verdict, lecture seule)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -242,6 +242,13 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
     }
+    if (msg?.type === "VINTED_ITEM_CAPTURE") {
+      // É1 republication : capture complète, lecture SEULE, à l'unité.
+      capturerAnnonceVinted(msg.vintedItemId)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true; // réponse asynchrone
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     fillListingForm(msg.job)
@@ -449,6 +456,167 @@ async function lireDetailArticle(vintedItemId) {
     // Filet : les photos sont normalement déjà en base (écrites par la sync) —
     // on les renvoie quand même, au cas où une ligne ancienne n'en aurait pas.
     photos: photos.map((p) => p?.full_size_url ?? p?.url ?? null).filter(Boolean),
+    // ── Payload NATIF complet (É1 republication, 2026-08-05) ─────────────────
+    // On ne jette RIEN : on ne saura qu'à la recréation ce qui manque vraiment.
+    // `natif` = l'objet item du formulaire d'édition tel que Vinted le rend
+    // (ids catalog/brand/size/status/couleurs/colis, flags…). Les consommateurs
+    // historiques (détail au Publier) continuent de lire description/photos.
+    natif: item && typeof item === "object" ? item : null,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// É1 REPUBLICATION — CAPTURE COMPLÈTE (2026-08-05). Lecture SEULE, à l'unité,
+// sur action humaine — même cadre que lireDetailArticle (bandeau ⛔ ci-dessus).
+// Aucune suppression ici, aucun job : on assemble tout ce qu'il faudrait pour
+// recréer l'annonce À L'IDENTIQUE via le handler publish (voie 2 validée),
+// avec un verdict explicite. RÈGLE ABSOLUE : une résolution id → libellé qui
+// échoue ne produit JAMAIS une valeur approchée — elle nomme le champ dans
+// champs_manquants et le verdict passe 'incomplet'. Un payload incomplet
+// n'autorisera jamais une suppression (garde posée à la persistance, É2).
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Référentiels Vinted — GET same-origin, mémoïsés pour la durée de vie de la
+// page (une capture = au plus un fetch de chaque). ⚠️ Chemins d'API à
+// CONFIRMER sur les comptes bêta : en cas de 404/forme inattendue, la
+// résolution échoue PROPREMENT (champ nommé, jamais une valeur inventée) —
+// c'est le comportement voulu, et le relevé réel corrigera le chemin.
+const _refCache = {};
+async function lireReferentielVinted(cle, chemin, extraire) {
+  if (_refCache[cle]) return _refCache[cle];
+  try {
+    const r = await fetch(chemin, { headers: { Accept: "application/json" }, credentials: "include" });
+    if (!r.ok) return null;
+    const brut = await r.text();
+    if (!brut.trim().startsWith("{")) return null;
+    const data = JSON.parse(brut);
+    const extrait = extraire(data);
+    if (extrait) _refCache[cle] = extrait;
+    return extrait ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// catalog_id → chemin de libellés (["Femmes","Vêtements","Robes","Midi"]),
+// prêt pour platform_fields.categoryPath du handler publish.
+async function resoudreCheminCatalogue(catalogId) {
+  const id = Number(catalogId);
+  if (!Number.isFinite(id)) return null;
+  const racines = await lireReferentielVinted("catalogs", "/api/v2/catalogs", (d) =>
+    Array.isArray(d?.catalogs) ? d.catalogs : null);
+  if (!racines) return null;
+  const chemin = [];
+  const descendre = (noeuds) => {
+    for (const n of noeuds ?? []) {
+      chemin.push(String(n?.title ?? ""));
+      if (Number(n?.id) === id) return true;
+      if (descendre(n?.catalogs)) return true;
+      chemin.pop();
+    }
+    return false;
+  };
+  return descendre(racines) && chemin.every(Boolean) ? chemin.slice() : null;
+}
+
+async function resoudreCouleurs(colorIds) {
+  const ids = (Array.isArray(colorIds) ? colorIds : []).map(Number).filter(Number.isFinite);
+  if (!ids.length) return { libelles: [], ok: true }; // couleurs optionnelles sur Vinted
+  const table = await lireReferentielVinted("colors", "/api/v2/colors", (d) =>
+    Array.isArray(d?.colors) ? new Map(d.colors.map((c) => [Number(c?.id), String(c?.title ?? "")])) : null);
+  if (!table) return { libelles: null, ok: false };
+  const libelles = ids.map((i) => table.get(i)).filter(Boolean);
+  return { libelles, ok: libelles.length === ids.length };
+}
+
+// Capture complète d'UNE annonce en ligne. Combine les DEUX endpoints déjà
+// relevés en prod : item_upload/items/{id} (ids + description — formulaire
+// d'édition) et items/{id} (dto public — libellés status/size/brand, déjà
+// utilisé par les sondes du delete depuis juillet), plus les référentiels.
+async function capturerAnnonceVinted(vintedItemId) {
+  const detail = await lireDetailArticle(vintedItemId);
+  if (!detail.success) return detail; // erreurs déjà typées (session, 404, bot-shield…)
+  const natif = detail.natif ?? {};
+  const manquants = [];
+
+  // dto PUBLIC : source de LIBELLÉS (état, taille, marque) tant que l'annonce
+  // est en ligne. Échec toléré champ par champ — chaque absence est nommée.
+  let dtoPublic = null;
+  try {
+    const r = await fetch(`/api/v2/items/${encodeURIComponent(String(vintedItemId))}`, {
+      headers: { Accept: "application/json" }, credentials: "include",
+    });
+    if (r.ok) {
+      const brut = await r.text();
+      if (brut.trim().startsWith("{")) { const d = JSON.parse(brut); dtoPublic = d?.item ?? d; }
+    }
+  } catch { /* dto public indisponible : les champs concernés seront nommés */ }
+
+  const libelles = {};
+
+  // Catégorie — le champ le plus important pour « à l'identique ».
+  const catalogId = natif?.catalog_id ?? dtoPublic?.catalog_id ?? null;
+  const chemin = catalogId != null ? await resoudreCheminCatalogue(catalogId) : null;
+  if (chemin?.length) libelles.categoryPath = chemin;
+  else manquants.push("categorie (catalog_id → chemin de libellés)");
+
+  // État — libellé public ("Très bon état"), jamais déduit du seul status_id.
+  const etat = String(dtoPublic?.status ?? "").trim();
+  if (etat) libelles.etat = etat;
+  else manquants.push("etat (libellé public)");
+
+  // Taille — size_id null est VALIDE (catégories sans taille) ; sinon un
+  // libellé est requis (size_title du dto public, ou embarqué dans l'édition).
+  const sizeId = natif?.size_id ?? null;
+  const taille = String(dtoPublic?.size_title ?? natif?.size_title ?? natif?.size?.title ?? "").trim();
+  if (taille) libelles.taille = taille;
+  else if (sizeId != null) manquants.push("taille (size_id présent sans libellé)");
+
+  // Marque — brand_id null/vide = « Sans marque », valide.
+  const marque = String(dtoPublic?.brand ?? natif?.brand ?? natif?.brand_dto?.title ?? "").trim();
+  if (marque) libelles.marque = marque;
+  else if (natif?.brand_id != null) manquants.push("marque (brand_id présent sans libellé)");
+
+  // Couleurs.
+  const couleurs = await resoudreCouleurs(natif?.color_ids ?? natif?.colors);
+  if (couleurs.ok) libelles.couleurs = couleurs.libelles ?? [];
+  else manquants.push("couleurs (color_ids → libellés)");
+
+  // Colis — requis au dépôt ; selectPackageSize (handler publish) attend un
+  // libellé. Référentiel dédié, même politique d'échec nommé.
+  const packageId = natif?.package_size_id ?? null;
+  if (packageId != null) {
+    const colis = await lireReferentielVinted("package_sizes", "/api/v2/package_sizes", (d) =>
+      Array.isArray(d?.package_sizes) ? new Map(d.package_sizes.map((p) => [Number(p?.id), String(p?.title ?? "")])) : null);
+    const libelle = colis?.get(Number(packageId));
+    if (libelle) libelles.colis = libelle;
+    else manquants.push("colis (package_size_id → libellé)");
+  } else {
+    manquants.push("colis (package_size_id absent du payload)");
+  }
+
+  // Description — obligatoire au dépôt.
+  if (!detail.description) manquants.push("description");
+
+  // Photos — les URLs CDN sont vivantes (annonce en ligne) mais PAS encore
+  // re-hébergées chez nous : tant que ce n'est pas fait, la capture reste
+  // INCOMPLÈTE par construction — c'est la garde qui interdit de supprimer.
+  const photosCdn = detail.photos ?? [];
+  if (!photosCdn.length) manquants.push("photos (aucune URL lisible)");
+  manquants.push("photos_rehebergees (re-hébergement en attente — infra à valider)");
+
+  return {
+    success: true,
+    vintedItemId: String(vintedItemId),
+    verdict: manquants.length ? "incomplet" : "valide",
+    champs_manquants: manquants,
+    titre: String(natif?.title ?? dtoPublic?.title ?? "").trim() || null,
+    prix: natif?.price?.amount ?? natif?.price ?? dtoPublic?.price?.amount ?? null,
+    description: detail.description,
+    photos_cdn: photosCdn,
+    libelles,
+    natif,        // payload d'édition COMPLET — rien n'est jeté
+    dto_public: dtoPublic, // idem pour le dto public (libellés, compteurs…)
   };
 }
 

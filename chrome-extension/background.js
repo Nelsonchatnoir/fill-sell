@@ -295,6 +295,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     );
     return true; // réponse asynchrone
   }
+  // É1 republication (2026-08-05) : capture COMPLÈTE d'une annonce en ligne —
+  // payload natif + résolutions id→libellé + verdict. Lecture SEULE, à
+  // l'unité, sur action humaine (relais fillsell-auth.js), jamais de lot ni de
+  // cron — même cadre que FETCH_VINTED_ITEM. Aucune suppression ici.
+  if (msg?.type === "CAPTURE_VINTED_ITEM") {
+    captureVintedItem(msg.vintedItemId).then(
+      (r) => sendResponse(r),
+      (e) => sendResponse({ success: false, error: String(e?.message ?? e) })
+    );
+    return true; // réponse asynchrone
+  }
 });
 
 // Événement de progression poussé vers le popup (ignoré s'il est fermé).
@@ -4800,6 +4811,29 @@ async function fetchVintedItemDetail(vintedItemId) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
     const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_DETAIL", vintedItemId: id })
+      .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
+    return res ?? { success: false, error: "réponse vide du content script" };
+  });
+}
+
+// ── É1 republication : capture complète (2026-08-05) ─────────────────────────
+// Même architecture que fetchVintedItemDetail : verrou de flux (on ne se
+// dispute jamais l'onglet de travail avec une publication ou une sync), onglet
+// de travail Vinted, délégation au content script. La capture est une LECTURE
+// (détail d'édition + dto public + référentiels) — le verdict et la liste des
+// champs manquants remontent tels quels au site, qui décidera de la
+// persistance (É2, migration à valider).
+async function captureVintedItem(vintedItemId) {
+  const id = String(vintedItemId ?? "").trim();
+  if (!id) return { success: false, error: "id d'article Vinted manquant" };
+  return await withJobFlowLock("capture-vinted-item", async () => {
+    let tabId;
+    try {
+      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+    } catch (e) {
+      return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+    }
+    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
       .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
     return res ?? { success: false, error: "réponse vide du content script" };
   });
