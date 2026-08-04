@@ -883,6 +883,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const [suivi, setSuivi] = useState(false);
   const [attente, setAttente] = useState(false);   // clic émis, run pas encore visible en base
   const [message, setMessage] = useState(null);    // ce que la base ne dit pas (commande non prise, poll abandonné)
+  // Accroche extension (2026-08-05) : ouverte quand AUCUNE extension ne répond
+  // dans CE navigateur — l'écran gère lui-même mobile (mailto/copie du lien)
+  // vs desktop (lien /extension).
+  const [showPitch, setShowPitch] = useState(false);
   const clicAtRef = useRef(0);
 
   // Signal immédiat de présence. Le heartbeat serveur ne se rafraîchit qu'au
@@ -971,19 +975,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, suivi]);
 
-  // Repli serveur : le heartbeat (profiles.extension_last_seen_at) prouve que
-  // l'extension tourne même si le content script ne s'est pas encore annoncé
-  // (onglet ouvert avant l'injection, sonde ratée). Mêmes seuils que le
-  // diagnostic des jobs — surtout pas un troisième jeu de constantes.
-  const seen = Date.parse(extensionStatus?.lastSeenAt ?? '');
-  const heartbeatVivant = Number.isFinite(seen) && Date.now() - seen <= EXT_MORT_MS;
-  // ⚠️ LE HEARTBEAT N'AUTORISE PLUS LE CLIC (correctif 03/08).
-  // Il prouve qu'UNE extension tourne, pas qu'elle sait synchroniser : une
-  // 0.4.x poll toutes les 2 min et rafraîchit extension_last_seen_at tout en
-  // ignorant complètement la commande de sync. Le bouton s'activait donc pour
-  // des gens dont le clic partait dans le vide.
-  // Seule preuve valable : le signal postMessage `__fillsellExt`, qui n'existe
-  // que depuis la 0.5.0 et porte la version du manifest.
+  // ⚠️ LE HEARTBEAT N'AUTORISE PLUS LE CLIC (correctif 03/08) — et depuis le
+  // 05/08 il ne pilote PLUS AUCUN message non plus : il prouve qu'UNE
+  // extension tourne quelque part (y compris sur une autre machine), jamais
+  // qu'il y en a une dans CE navigateur. Seule preuve valable ici : le signal
+  // postMessage `__fillsellExt`, qui n'existe que depuis la 0.5.0 et porte la
+  // version du manifest.
   const extCapable = extVue && versionAuMoins(extVersion, SYNC_VERSION_MIN);
   const enCours = attente || (suivi && run?.status === 'running');
 
@@ -1017,6 +1014,20 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       : `Closet synced ${depuisMin} min ago — you can refresh in ~${dansMin} min.`;
   })();
 
+  // ── États bloquants (refonte 2026-08-05, bug Safari iOS) ──────────────────
+  // Deux vérités à ne plus jamais confondre :
+  //  · le heartbeat serveur prouve qu'une extension tourne QUELQUE PART (y
+  //    compris sur un autre ordinateur) — il ne dit RIEN de ce navigateur.
+  //    Sur l'iPhone de Nico il fabriquait un « ton extension est trop
+  //    ancienne » alors qu'aucune extension n'existe sur iOS ;
+  //  · le canal postMessage (__fillsellExt) n'existe que depuis la 0.5.0 :
+  //    « présente mais muette (0.4.x) » et « absente » sont INDISCERNABLES
+  //    dans ce navigateur. Règle : pas de réponse au ping → accroche
+  //    d'installation (ExtensionPitchScreen, qui sait parler mobile ET
+  //    desktop) — JAMAIS un mot sur la version. Réponse reçue avec version
+  //    insuffisante → là seulement, le message de version, SANS la promesse
+  //    « elle se met à jour toute seule depuis le Chrome Web Store » (la
+  //    0.5.x n'y a jamais été soumise : personne n'aurait rien reçu).
   const raisonGrisee = (() => {
     if (isNative) {
       return fr
@@ -1024,23 +1035,21 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
     }
     if (!sondeFinie || extCapable) return null; // tant que la sonde court, on ne conclut RIEN
-    // Extension présente mais trop ancienne : le cas le plus fréquent au
-    // lendemain d'une mise en ligne du front. On ne dit pas « pas détectée »,
-    // ce serait faux et la personne chercherait à réinstaller pour rien.
-    if (extVue || heartbeatVivant) {
+    if (extVue) {
+      // L'extension a répondu ICI : la version est un fait, pas une déduction.
       return fr
-        ? `Ton extension FillSell${extVersion ? ` (${extVersion})` : ''} est trop ancienne pour lire ton dressing. Elle se met à jour toute seule depuis le Chrome Web Store — reviens un peu plus tard.`
-        : `Your FillSell extension${extVersion ? ` (${extVersion})` : ''} is too old to read your closet. It updates itself from the Chrome Web Store — come back a bit later.`;
+        ? `Ton extension FillSell${extVersion ? ` (${extVersion})` : ''} ne sait pas encore lire ton dressing — il lui faut la version ${SYNC_VERSION_MIN} ou plus récente.`
+        : `Your FillSell extension${extVersion ? ` (${extVersion})` : ''} can't read your closet yet — it needs version ${SYNC_VERSION_MIN} or newer.`;
     }
-    // Heartbeat déjà vu par le passé mais éteint : le diagnostic existant sait quoi dire.
-    if (Number.isFinite(seen)) {
-      const d = diagnostiquerExtension(extensionStatus, lang);
-      return `${d.titre} — ${d.detail}`;
-    }
-    return fr
-      ? "L'extension FillSell n'est pas détectée dans ce navigateur. C'est elle qui lit ton dressing : installe-la sur Chrome (page Extension dans les réglages), puis reviens ici."
-      : "The FillSell extension isn't detected in this browser. It's what reads your closet: install it on Chrome (Extension page in settings), then come back here.";
+    return null; // aucune réponse dans CE navigateur → bloc d'accroche dédié
   })();
+  // Aucune extension n'a répondu ici : accroche d'installation (le heartbeat,
+  // même vivant, ne change rien — il parle d'un autre navigateur).
+  const extAbsente = sondeFinie && !extVue && !isNative && !extCapable;
+  // Un état bloquant PRÉSENT prime sur le résultat d'un run PASSÉ : les deux
+  // ensemble se contredisent (« synchronisé ✓ » + « impossible de lire ton
+  // dressing »). Le bilan et la cadence ne s'affichent que débloqué.
+  const blocage = raisonGrisee != null || extAbsente;
 
   const progression = (() => {
     if (attente) return fr ? 'Démarrage…' : 'Starting…';
@@ -1105,7 +1114,9 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     return null;
   })();
 
-  const avis = message || bilan;
+  // Blocage présent ⇒ le bilan du run passé se tait (contradiction sinon) ;
+  // `message` reste : c'est le retour d'un clic de CETTE session.
+  const avis = message || (blocage ? null : bilan);
   const AVIS_COULEURS = {
     vert:   { bg: '#F0FDFB', bord: 'rgba(13,148,136,0.2)',  texte: '#1B6E62' },
     orange: { bg: '#FFF7ED', bord: '#FED7AA',               texte: '#9A3412' },
@@ -1129,8 +1140,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
             : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
 
-      {/* Jamais un bouton mort sans explication : la cadence dit quand. */}
-      {cadenceTexte&&(
+      {/* Jamais un bouton mort sans explication : la cadence dit quand.
+          Masquée sous blocage : « tu pourras actualiser dans ~12 min » serait
+          une promesse fausse dans un navigateur sans extension. */}
+      {cadenceTexte&&!blocage&&(
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{cadenceTexte}</div>
       )}
 
@@ -1157,6 +1170,33 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 
       {raisonGrisee&&(
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{raisonGrisee}</div>
+      )}
+
+      {/* Aucune extension n'a répondu DANS CE navigateur : accroche
+          d'installation — l'écran de pitch sait parler mobile (s'envoyer le
+          lien par mail, copier) comme desktop (lien /extension). Jamais un
+          mot sur la « version » ici : sur mobile il n'y a structurellement
+          aucune extension possible. */}
+      {extAbsente&&(
+        <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:12,lineHeight:1.5,color:"#5C6560",fontWeight:600}}>
+            {fr
+              ? "L'extension FillSell n'est pas dans ce navigateur — c'est elle qui lit ton dressing, depuis Chrome sur ordinateur."
+              : "The FillSell extension isn't in this browser — it's what reads your closet, from Chrome on a computer."}
+          </div>
+          <button
+            onClick={()=>setShowPitch(true)}
+            style={{marginTop:8,width:"100%",padding:"10px 12px",borderRadius:10,border:"none",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}
+          >
+            {fr ? "Installer l'extension / recevoir le lien" : 'Install the extension / get the link'}
+          </button>
+        </div>
+      )}
+      {showPitch&&(
+        <ExtensionPitchScreen
+          lang={lang}
+          onClose={()=>setShowPitch(false)}
+        />
       )}
 
       {/* Le contrat, en toutes lettres. La 2e ligne n'est pas un détail : sans
