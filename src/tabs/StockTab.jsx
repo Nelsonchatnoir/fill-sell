@@ -3667,7 +3667,21 @@ const StockTab = memo(function StockTab({
             .map(p=>typeof p==='string'?p:(p?.url||p?.original||p?.enhanced||p?.bg_removed))
             .filter(Boolean)}
           initialListing={{
-            titre:       publishItem.titre       ?? null,
+            // ⚠️ publishItem vient de mapItem (App.jsx), qui RENOMME les
+            // colonnes : `titre` → `title` et `prix_vente` → `sell`. Lire les
+            // noms de COLONNE ici rendait undefined, en silence.
+            //   · titre perdu → detectObjectIcon n'avait plus que la
+            //     description et le type. Les articles manuels étaient
+            //     rattrapés par leur type ; les importés du dressing, dont le
+            //     type est NULL (donc "Autre" après mapItem, donc l'icône 📦
+            //     « non catégorisable »), tombaient à 0 plateforme sur 4 :
+            //     « catégorie non disponible » sur les quatre, alors que leur
+            //     titre suffisait à les classer (mesuré : 27 titres sur 28) ;
+            //   · prix_vente perdu → le prix suggéré retombait TOUJOURS sur le
+            //     prix d'ACHAT, ce que le commentaire d'origine ne voulait pas.
+            // Les deux noms sont acceptés : un futur appelant qui passerait
+            // une ligne brute de la base marchera aussi.
+            titre:       publishItem.title  ?? publishItem.titre  ?? null,
             description: publishItem.description ?? null,
             categorie:   publishItem.type        ?? null,
             marque:      publishItem.marque      ?? null,
@@ -3676,7 +3690,7 @@ const StockTab = memo(function StockTab({
             // stepper existe mais arrive en async, et surtout il ne couvre
             // pas ce que la ligne sait déjà. prix_vente est désormais tenu à
             // jour à chaque publication (fix bd9a516).
-            prix_vente_suggere: publishItem.prix_vente ?? publishItem.prix_achat ?? null,
+            prix_vente_suggere: publishItem.sell ?? publishItem.prix_vente ?? publishItem.prix_achat ?? null,
           }}
           onClose={()=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);}}
           onJobsQueued={(invId,platforms)=>{
