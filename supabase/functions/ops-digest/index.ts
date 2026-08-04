@@ -286,6 +286,32 @@ serve(async (req) => {
     );
   }
 
+  // 9. Réservations de publication expirées (2026-08-05) — relâchées cette
+  // nuit par expire_publish_reservations (pg_cron 03:20 UTC, jobid 8) : des
+  // jobs restés 30 jours sans JAMAIS être exécutés ont été annulés et les
+  // Pépites de publication rendues. Signal produit (extension jamais
+  // installée ? compte abandonné ?) autant que comptable.
+  const reservationRows: string[] = [];
+  try {
+    const { data: expired, error: e9 } = await supabase
+      .from("coin_reservations")
+      .select("user_id, amount, captured, released_included, released_purchased, job_count, created_at")
+      .gte("expired_at", iso24h)
+      .order("expired_at", { ascending: false });
+    if (e9) throw new Error(e9.message);
+    for (const r of (expired ?? []) as Array<Record<string, unknown>>) {
+      const rendues = Number(r.released_included ?? 0) + Number(r.released_purchased ?? 0);
+      reservationRows.push(
+        `user ${r.user_id} — ${r.job_count} job(s) jamais exécutés, ${rendues} Pépites rendues` +
+        ` (réservé ${r.amount}, capturé ${r.captured}) — clic du ${String(r.created_at).slice(0, 10)}`,
+      );
+    }
+  } catch (e) {
+    reservationRows.push(
+      `coin_reservations illisible (${String((e as Error)?.message ?? e)}) — expirations non vérifiables aujourd'hui.`,
+    );
+  }
+
   const queryErrors = [e1, e2, e3, e4].filter(Boolean).map((e) => e!.message);
   if (queryErrors.length > 0) {
     return new Response(JSON.stringify({ error: queryErrors }), {
@@ -304,6 +330,7 @@ serve(async (req) => {
     lens_identify: identifyRows.length,
     email_log_doublons: emailLogDoublons.length,
     email_log_echecs: emailLogAutres.length,
+    reservations_expirees: reservationRows.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -389,6 +416,19 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    reservationRows.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      ⏳ Réservations de publication expirées — 30 j sans exécution (${reservationRows.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Jobs annulés cette nuit par expire_publish_reservations, Pépites de publication rendues.
+      Regarder si ces comptes n'ont simplement jamais installé l'extension.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${reservationRows.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     identifyRows.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       🔴 Lens identify — plafond global journalier (${identifyRows.length})
@@ -413,7 +453,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees})`,
       html,
     }),
   });

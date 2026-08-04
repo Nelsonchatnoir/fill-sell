@@ -1071,7 +1071,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, reservedBalance = 0, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
@@ -1438,9 +1438,19 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 
       {/* Solde de pièces + accès au store */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
-        <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, display:"inline-flex", alignItems:"center", gap:5 }}>
+        <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, display:"inline-flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
           {lang === 'en' ? 'Your Nuggets:' : 'Tes Pépites :'}{' '}
           <strong style={{ color:T.ink, display:"inline-flex", alignItems:"center", gap:4 }}><PepiteIcon size={15} /> {coinBalance}</strong>
+          {/* Réservation/capture (2026-08-05) : montant mis de côté pour des
+              publications encore en file — rendu automatiquement si elles
+              n'aboutissent pas. */}
+          {reservedBalance > 0 && (
+            <span style={{ fontSize:11.5, color:T.mute }}>
+              {lang === 'en'
+                ? `· ${reservedBalance} pending publication`
+                : `· ${reservedBalance} en attente de publication`}
+            </span>
+          )}
         </span>
         <button
           onClick={onOpenStore}
@@ -3094,6 +3104,10 @@ export default function ListingPreviewScreen({
   const [coinPrices, setCoinPrices] = useState(null);
   const [storeOpen, setStoreOpen]   = useState(false);
   const coinBalance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
+  // Réservation/capture (2026-08-05) : Pépites de publication mises de côté au
+  // clic, capturées plateforme par plateforme à la publication réelle, rendues
+  // sinon. Le solde DISPONIBLE (coinBalance) est déjà net de ce montant.
+  const reservedBalance = wallet?.reserved_balance ?? 0;
   const coinPriceFor = (opt) => coinPrices?.[opt] ?? null;
   // Grille à deux axes (2026-08-04) : coinPriceFor rend le prix PHOTOS de
   // l'option (0/9/32, une fois par article) ; la publication coûte EN PLUS
@@ -3111,10 +3125,10 @@ export default function ListingPreviewScreen({
   async function refreshWallet() {
     const { data: w } = await supabase
       .from("coin_wallets")
-      .select("included_balance, purchased_balance")
+      .select("included_balance, purchased_balance, reserved_balance")
       .eq("user_id", userId)
       .maybeSingle();
-    setWallet(w ?? { included_balance: 0, purchased_balance: 0 });
+    setWallet(w ?? { included_balance: 0, purchased_balance: 0, reserved_balance: 0 });
   }
 
   useEffect(() => {
@@ -5334,7 +5348,13 @@ export default function ListingPreviewScreen({
         }
         throw new Error(t("genericError"));
       }
-      setWallet({ included_balance: pubRes.included_after, purchased_balance: pubRes.purchased_after });
+      setWallet({
+        included_balance: pubRes.included_after,
+        purchased_balance: pubRes.purchased_after,
+        // reserved_after absent (RPC d'avant la réservation) → 0 plutôt qu'un
+        // état périmé ; refreshWallet réalignera à la prochaine ouverture.
+        reserved_balance: pubRes.reserved_after ?? 0,
+      });
       // Les jobs sont en base : le Stock peut afficher « En cours… » tout de
       // suite (patch optimiste, cf. prop onJobsQueued). Une relecture réelle
       // écrasera ces lignes synthétiques au prochain poll.
@@ -5621,6 +5641,7 @@ export default function ListingPreviewScreen({
             setSelected={setSelected}
             coinPrices={coinPrices}
             coinBalance={coinBalance}
+            reservedBalance={reservedBalance}
             onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
             publishedSet={publishedSet}

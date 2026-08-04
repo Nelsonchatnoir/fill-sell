@@ -517,6 +517,7 @@ const COIN_KIND_LABELS={
   purchase:{fr:'Pack acheté',en:'Pack purchased'},
   spend_publish:{fr:'Publication',en:'Publish'},
   spend_lens:{fr:'Analyse Lens',en:'Lens scan'},
+  release_publish:{fr:'Pépites rendues (non publié)',en:'Nuggets returned (not published)'},
   refund:{fr:'Remboursement',en:'Refund'},
   admin:{fr:'Ajustement',en:'Adjustment'},
 };
@@ -2306,8 +2307,8 @@ export default function App({ loginOnly = false }){
     const ouvert=showSettings||conversionModal.open;
     if(!ouvert||!user)return;
     (async()=>{
-      const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance').eq('user_id',user.id).maybeSingle();
-      setCoinWallet(w??{included_balance:0,purchased_balance:0});
+      const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance,reserved_balance').eq('user_id',user.id).maybeSingle();
+      setCoinWallet(w??{included_balance:0,purchased_balance:0,reserved_balance:0});
       if(!showSettings)return;
       const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(5);
       setCoinHistory(h??[]);
@@ -5345,6 +5346,16 @@ export default function App({ loginOnly = false }){
                     ?`${coinWallet?.included_balance??0} incluses · ${coinWallet?.purchased_balance??0} achetées`
                     :`${coinWallet?.included_balance??0} included · ${coinWallet?.purchased_balance??0} purchased`}
                 </span>
+                {/* Réservation/capture (2026-08-05) : Pépites mises de côté pour
+                    des publications en file — capturées à la publication réelle,
+                    rendues automatiquement sinon (échec, annulation, 30 j). */}
+                {(coinWallet?.reserved_balance??0)>0&&(
+                  <span style={{fontSize:11,color:UI.mute,fontWeight:600,width:"100%"}}>
+                    {lang==='fr'
+                      ?`dont ${coinWallet.reserved_balance} en attente de publication (rendues si la publication n'aboutit pas)`
+                      :`${coinWallet.reserved_balance} pending publication (returned if publishing doesn't complete)`}
+                  </span>
+                )}
               </div>
               {/* Recharger : ouvre la boutique DÉJÀ montée (coinStoreOpen), la même
                   que celle des modales de conversion. Toujours proposée, quel que
